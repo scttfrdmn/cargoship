@@ -46,6 +46,8 @@ func SuitcaseFormatWithFilename(filename string) (string, error) {
 		return "tar.gpg", nil
 	case strings.HasSuffix(filename, ".tar.gz"):
 		return "tar.gz", nil
+	case strings.HasSuffix(filename, ".tar.gz.gpg"):
+		return "tar.gz.gpg", nil
 	}
 	return "", errors.New("Unknown archive format")
 }
