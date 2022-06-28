@@ -20,7 +20,8 @@ import (
 
 	"github.com/apex/log"
 	"github.com/spf13/cobra"
-	suitcase "gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/suitecase"
+	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/helpers"
+	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
 	"gopkg.in/yaml.v2"
 )
 
@@ -34,14 +35,14 @@ var createInventoryCmd = &cobra.Command{
 		cobra.CheckErr(err)
 
 		// Use absolute dirs forever
-		targetDirs, err := suitcase.ConvertDirsToAboluteDirs(args)
+		targetDirs, err := helpers.ConvertDirsToAboluteDirs(args)
 		cobra.CheckErr(err)
 
-		opt := &suitcase.DirectoryInventoryOptions{
+		opt := &inventory.DirectoryInventoryOptions{
 			TopLevelDirectories: targetDirs,
 			SizeConsideredLarge: lfs,
 		}
-		inventory, err := suitcase.NewDirectoryInventory(opt)
+		inventory, err := inventory.NewDirectoryInventory(opt)
 		cobra.CheckErr(err)
 
 		// Long print

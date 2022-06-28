@@ -18,7 +18,10 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/apex/log"
+	"github.com/apex/log/handlers/cli"
 	"github.com/spf13/cobra"
 
 	homedir "github.com/mitchellh/go-homedir"
@@ -28,6 +31,7 @@ import (
 var (
 	cfgFile string
 	Verbose bool
+	stats   runStats
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -41,6 +45,23 @@ a future point in time`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		log.SetHandler(cli.Default)
+		if Verbose {
+			log.SetLevel(log.DebugLevel)
+			log.Debug("Debug enabled")
+		}
+		stats.Start = time.Now()
+	},
+	PersistentPostRun: func(cmd *cobra.Command, args []string) {
+		stats.End = time.Now()
+		stats.Runtime = stats.End.Sub(stats.Start)
+		log.WithFields(log.Fields{
+			"start": stats.Start,
+			"end":   stats.End,
+			"time":  stats.Runtime,
+		}).Info("Complete")
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -61,7 +82,7 @@ func init() {
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
-	rootCmd.Flags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
+	rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -84,5 +105,20 @@ func initConfig() {
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
 		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+	}
+}
+
+type runStats struct {
+	Start   time.Time
+	End     time.Time
+	Runtime time.Duration
+}
+
+func checkErr(err error, msg string) {
+	if msg == "" {
+		msg = "Fatal Error"
+	}
+	if err != nil {
+		log.WithError(err).Fatal(msg)
 	}
 }

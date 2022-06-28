@@ -1,11 +1,13 @@
-package suitcase
+package helpers
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func ConvertDirsToAboluteDirs(orig []string) ([]string, error) {
@@ -34,4 +36,16 @@ func GetSha256(file string) (string, error) {
 	}
 
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+func SuitcaseFormatWithFilename(filename string) (string, error) {
+	switch {
+	case strings.HasSuffix(filename, ".tar"):
+		return "tar", nil
+	case strings.HasSuffix(filename, ".tar.gpg"):
+		return "tar.gpg", nil
+	case strings.HasSuffix(filename, ".tar.gz"):
+		return "tar.gz", nil
+	}
+	return "", errors.New("Unknown archive format")
 }

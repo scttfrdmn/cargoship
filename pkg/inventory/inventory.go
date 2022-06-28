@@ -1,12 +1,14 @@
-package suitcase
+package inventory
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/apex/log"
+	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/helpers"
 )
 
 type DirectoryInventory struct {
@@ -21,13 +23,15 @@ type DirectoryInventoryOptions struct {
 }
 
 type InventoryFile struct {
-	Location string
-	Name     string
-	Size     int64
-	Mode     os.FileMode
-	ModTime  time.Time
-	IsDir    bool
-	SHA256   string
+	Path        string
+	Destination string
+	Name        string
+	Size        int64
+	Mode        os.FileMode
+	ModTime     time.Time
+	IsDir       bool
+	SHA256      string
+	Encrypt     bool
 }
 
 func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory, error) {
@@ -64,18 +68,21 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 				if path == dir {
 					return nil
 				}
-				sha256hash, err := GetSha256(path)
+				if info.IsDir() {
+					return nil
+				}
+				sha256hash, err := helpers.GetSha256(path)
 				if err != nil {
 					log.WithError(err).WithField("path", path).Warn("error getting sha256 hash")
 				}
 				fItem := InventoryFile{
-					Location: path,
-					Name:     info.Name(),
-					Size:     info.Size(),
-					Mode:     info.Mode(),
-					ModTime:  info.ModTime(),
-					IsDir:    info.IsDir(),
-					SHA256:   sha256hash,
+					Path:        path,
+					Destination: strings.TrimPrefix(path, dir),
+					Name:        info.Name(),
+					Size:        info.Size(),
+					Mode:        info.Mode(),
+					ModTime:     info.ModTime(),
+					SHA256:      sha256hash,
 				}
 				if info.Size() > opts.SizeConsideredLarge {
 					ret.LargeFiles = append(ret.LargeFiles, fItem)
