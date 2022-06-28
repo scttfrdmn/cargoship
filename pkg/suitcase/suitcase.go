@@ -9,6 +9,7 @@ import (
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/suitcase/tar"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/suitcase/targpg"
+	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/suitcase/targz"
 )
 
 type Suitcase interface {
@@ -22,6 +23,8 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 		return tar.New(w, opts), nil
 	case "tar.gpg":
 		return targpg.New(w, opts), nil
+	case "tar.gz":
+		return targz.New(w, opts), nil
 	}
 	return nil, fmt.Errorf("invalid archive format: %s", opts.Format)
 }
