@@ -30,24 +30,24 @@ snapshot:
 
 nfpms:
   - id: rpms
-    bindir: /usr/bin
     license: MIT
     description: Package up research files for distribution
     vendor: Duke University
     section: admin
     priority: optional
-    homepage: https://gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase
     maintainer: Drew Stinnett <drew.stinnett@duke.edu>
+    homepage: >
+      {{ if index .Env "CI_PROJECT_URL" }}{{ . }}{{ else }}https://gitlab.oit.duke.edu/oit-ssi-systems{{ end }}
     formats:
       - rpm
   - id: debs
-    bindir: /usr/bin
     license: MIT
     description: Package up research files for distribution
     vendor: Duke University
     section: admin
     priority: optional
-    homepage: https://gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase
+    homepage: >
+      {{ if index .Env "CI_PROJECT_URL" }}{{ . }}{{ else }}https://gitlab.oit.duke.edu/oit-ssi-systems{{ end }}
     maintainer: Drew Stinnett <drew.stinnett@duke.edu>
     formats:
       - deb
