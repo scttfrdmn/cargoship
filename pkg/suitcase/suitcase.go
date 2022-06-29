@@ -34,7 +34,6 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 
 func FillWithInventory(s Suitcase, i *inventory.DirectoryInventory) error {
 	var err error
-	defer s.Close()
 	fs := []inventory.InventoryFile{}
 	fs = append(fs, i.SmallFiles...)
 	fs = append(fs, i.LargeFiles...)

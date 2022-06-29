@@ -39,12 +39,7 @@ func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
 
 // Close all closeables.
 func (s Suitcase) Close() error {
-	// Gzip -> Cipher -> Tar works, corrupt file
-	// Gzip -> Tar -> Cipher works, corrupt file
-	// Cipher -> Tar -> Gzip -> busted test
-	// Cipher -> Gzip -> Tar -> Busted test
-	// Tar -> Gzip -> Cipher -> Works, corrupt file
-	// Tar -> Cipher -> Gzip -> busted test
+	// Tar -> Gzip -> Cipher -> Works as intended
 
 	// Tar Writer
 	if err := s.tw.Close(); err != nil {

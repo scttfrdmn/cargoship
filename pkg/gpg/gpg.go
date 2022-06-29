@@ -30,7 +30,7 @@ func EncryptToWithCmd(cmd *cobra.Command) (*openpgp.EntityList, error) {
 	if err != nil {
 		return nil, err
 	}
-	var encryptTo *openpgp.EntityList
+	encryptTo := &openpgp.EntityList{}
 	if !excludeSystems {
 		encryptTo, err = CollectGPGPubKeys("")
 		if err != nil {

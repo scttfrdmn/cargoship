@@ -49,14 +49,16 @@ func (a Suitcase) Add(f inventory.InventoryFile) error {
 	if !f.ModTime.IsZero() {
 		header.ModTime = f.ModTime
 	}
-	if f.Mode != 0 {
-		header.Mode = int64(f.Mode)
-	}
+	/*
+			if f.Mode != 0 {
+				header.Mode = int64(f.Mode)
+			}
+		if info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+	*/
 	if err = a.tw.WriteHeader(header); err != nil {
 		return err
-	}
-	if info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return nil
 	}
 	file, err := os.Open(f.Path) // #nosec
 	if err != nil {

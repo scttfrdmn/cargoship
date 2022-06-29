@@ -4,6 +4,7 @@ import (
 	"io"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/apex/log"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/config"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/suitcase/tar"
@@ -34,10 +35,21 @@ func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
 
 // Close all closeables.
 func (s Suitcase) Close() error {
+	// Cipher Writer Close
+	log.Debug("Closing Cipher Writer")
 	item := *s.cw
 	if err := item.Close(); err != nil {
 		return err
 	}
+
+	// Tar Writer Close
+	/*
+		if err := s.tw.Close(); err != nil {
+			return err
+		}
+	*/
+
+	log.Debug("Closing Tar Writer")
 	return s.tw.Close()
 }
 
