@@ -56,11 +56,13 @@ a future point in time`,
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
 		stats.End = time.Now()
 		stats.Runtime = stats.End.Sub(stats.Start)
-		log.WithFields(log.Fields{
-			"start": stats.Start,
-			"end":   stats.End,
-			"time":  stats.Runtime,
-		}).Info("Complete")
+		if cmd.Use != "version" {
+			log.WithFields(log.Fields{
+				"start": stats.Start,
+				"end":   stats.End,
+				"time":  stats.Runtime,
+			}).Info("Complete")
+		}
 	},
 }
 

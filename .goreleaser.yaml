@@ -16,6 +16,7 @@ builds:
       -X {{ .ModulePath }}/cli/cmd.commit={{ .ShortCommit }}
     goos:
       - linux
+      - darwin
     goarch:
       - amd64
     binary: 'suitcasectl'
