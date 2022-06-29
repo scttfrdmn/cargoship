@@ -11,6 +11,7 @@ require (
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/viper v1.12.0
 	github.com/stretchr/testify v1.7.1
+	go.hein.dev/go-version v0.1.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
@@ -53,4 +54,5 @@ require (
 	gopkg.in/ini.v1 v1.66.4 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.0 // indirect
+	sigs.k8s.io/yaml v1.1.0 // indirect
 )

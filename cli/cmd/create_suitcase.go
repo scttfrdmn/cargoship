@@ -69,8 +69,12 @@ var createSuitcaseCmd = &cobra.Command{
 		checkErr(err, "")
 		defer s.Close()
 
-		log.Info("Filling Suitcase")
-		err = suitcase.FillWithInventory(s, &inventory)
+		log.WithFields(log.Fields{
+			"destination":  opts.Destination,
+			"format":       opts.Format,
+			"encryptInner": opts.EncryptInner,
+		}).Info("Filling Suitcase")
+		err = suitcase.FillWithInventory(s, &inventory, encryptInner)
 		checkErr(err, "")
 	},
 }

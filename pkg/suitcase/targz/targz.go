@@ -43,3 +43,8 @@ func (s Suitcase) Close() error {
 func (s Suitcase) Add(f inventory.InventoryFile) error {
 	return s.tw.Add(f)
 }
+
+// Add and encrypt file to the archive.
+func (s Suitcase) AddEncrypt(f inventory.InventoryFile) error {
+	return s.tw.AddEncrypt(f)
+}

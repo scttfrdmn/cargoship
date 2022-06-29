@@ -1,6 +1,7 @@
 package targpg
 
 import (
+	"errors"
 	"io"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -56,4 +57,9 @@ func (s Suitcase) Close() error {
 // Add file to the archive.
 func (s Suitcase) Add(f inventory.InventoryFile) error {
 	return s.tw.Add(f)
+}
+
+// Add encrypted file to the archive.
+func (s Suitcase) AddEncrypt(f inventory.InventoryFile) error {
+	return errors.New("file encryption not supported on already encrypted archives")
 }

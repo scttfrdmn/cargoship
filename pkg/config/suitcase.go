@@ -8,6 +8,5 @@ type SuitCaseOpts struct {
 	Format       string
 	Destination  string
 	EncryptInner bool
-	// Inventory    *inventory.DirectoryInventory
-	EncryptTo *openpgp.EntityList
+	EncryptTo    *openpgp.EntityList
 }

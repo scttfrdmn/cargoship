@@ -2,10 +2,14 @@ package tar
 
 import (
 	"archive/tar"
+	"bytes"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/config"
+	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/gpg"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
 )
 
@@ -49,14 +53,6 @@ func (a Suitcase) Add(f inventory.InventoryFile) error {
 	if !f.ModTime.IsZero() {
 		header.ModTime = f.ModTime
 	}
-	/*
-			if f.Mode != 0 {
-				header.Mode = int64(f.Mode)
-			}
-		if info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return nil
-		}
-	*/
 	if err = a.tw.WriteHeader(header); err != nil {
 		return err
 	}
@@ -66,5 +62,52 @@ func (a Suitcase) Add(f inventory.InventoryFile) error {
 	}
 	defer file.Close()
 	_, err = io.Copy(a.tw, file)
+	return err
+}
+
+// Add and encrypt file to the archive.
+func (a Suitcase) AddEncrypt(f inventory.InventoryFile) error {
+	info, err := os.Lstat(f.Path) // #nosec
+	if err != nil {
+		return err
+	}
+	var link string
+	if info.Mode()&os.ModeSymlink != 0 {
+		link, err = os.Readlink(f.Path) // #nosec
+		if err != nil {
+			return err
+		}
+	}
+	dest := fmt.Sprintf("%v.gpg", f.Destination)
+
+	unencryptedData, err := ioutil.ReadFile(f.Path)
+	if err != nil {
+		return err
+	}
+
+	encryptedD, err := gpg.Encrypt(unencryptedData, a.opts.EncryptTo, true)
+	if err != nil {
+		return err
+	}
+
+	eInfo := gpg.GPGFileInfo{
+		FileName:         dest,
+		Data:             encryptedD,
+		OriginalFileInfo: info,
+		IsDirectory:      info.IsDir(),
+	}
+
+	header, err := tar.FileInfoHeader(&eInfo, link)
+	if err != nil {
+		return err
+	}
+	header.Name = dest
+	if !f.ModTime.IsZero() {
+		header.ModTime = f.ModTime
+	}
+	if err = a.tw.WriteHeader(header); err != nil {
+		return err
+	}
+	_, err = io.Copy(a.tw, bytes.NewReader(encryptedD))
 	return err
 }

@@ -16,6 +16,7 @@ import (
 type Suitcase interface {
 	Close() error
 	Add(f inventory.InventoryFile) error
+	AddEncrypt(f inventory.InventoryFile) error
 }
 
 func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
@@ -32,7 +33,7 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 	return nil, fmt.Errorf("invalid archive format: %s", opts.Format)
 }
 
-func FillWithInventory(s Suitcase, i *inventory.DirectoryInventory) error {
+func FillWithInventory(s Suitcase, i *inventory.DirectoryInventory, encryptAll bool) error {
 	var err error
 	fs := []inventory.InventoryFile{}
 	fs = append(fs, i.SmallFiles...)
@@ -41,13 +42,22 @@ func FillWithInventory(s Suitcase, i *inventory.DirectoryInventory) error {
 	for _, f := range fs {
 		log.WithFields(log.Fields{
 			"path": f.Path,
-			"dest": f.Destination,
 		}).Debug("Adding file to suitcase")
-		err = s.Add(f)
-		if err != nil {
-			log.WithError(err).WithFields(log.Fields{
-				"path": f.Path,
-			}).Warn("Error adding file")
+
+		if encryptAll {
+			err = s.AddEncrypt(f)
+			if err != nil {
+				log.WithError(err).WithFields(log.Fields{
+					"path": f.Path,
+				}).Warn("Error adding file")
+			}
+		} else {
+			err = s.Add(f)
+			if err != nil {
+				log.WithError(err).WithFields(log.Fields{
+					"path": f.Path,
+				}).Warn("Error adding file")
+			}
 		}
 	}
 	return nil
