@@ -14,10 +14,9 @@ release:
     # generate a changelog.
     GIT_DEPTH: 0
   script:
-    - env
 #   - eval $(/scripts/vault-env.sh ssi-systems-${CI_PROJECT_NAME}-packaging)
-#   - goreleaser check
-#   - goreleaser release --rm-dist
+    - goreleaser check
+    - goreleaser release --rm-dist
   retry:
     max: 2
     when: runner_system_failure
