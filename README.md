@@ -23,3 +23,5 @@ Suitcase is the giant blob of all the data
 ```
 
 Encryption is optional. Encryption and compression will be based on the target file extension.
+
+Help available on all the command with `-h` or `--help`
