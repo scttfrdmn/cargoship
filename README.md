@@ -18,7 +18,7 @@ Suitcase is the giant blob of all the data
 ```bash
 ❯ suitcasectl create suitcase -i /tmp/inventory.yaml /tmp/out.tar.gz.gpg
    • Pulling in pubkeys        subdir=linux url=https://gitlab.oit.duke.edu/oit-ssi-systems/staff-public-keys.git
-   • Filling Suitcase          destination=/tmp/out.tar.gz encryptInner=false format=tar.gz
+   • Filling Suitcase          destination=/tmp/out.tar.gz.gpg encryptInner=false format=tar.gz.gpg
    • Complete                  end=2022-06-30 09:33:32.506736 -0400 EDT m=+0.212799779 start=2022-06-30 09:33:32.295733 -0400 EDT m=+0.001800883 time=210.998896ms
 ```
 
