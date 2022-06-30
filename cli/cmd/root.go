@@ -99,7 +99,7 @@ func initConfig() {
 
 		// Search config in home directory with name ".cli" (without extension).
 		viper.AddConfigPath(home)
-		viper.SetConfigName(".suitecase")
+		viper.SetConfigName(".suitcase")
 	}
 
 	viper.AutomaticEnv() // read in environment variables that match
