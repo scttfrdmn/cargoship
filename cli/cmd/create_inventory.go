@@ -32,21 +32,29 @@ var createInventoryCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		lfs, err := cmd.Flags().GetInt64("large-file-size")
-		cobra.CheckErr(err)
+		checkErr(err, "")
+
+		maxSuitcaseSize, err := cmd.Flags().GetInt64("max-suitcase-size")
+		checkErr(err, "")
 
 		// Use absolute dirs forever
 		targetDirs, err := helpers.ConvertDirsToAboluteDirs(args)
-		cobra.CheckErr(err)
+		checkErr(err, "")
 
 		opt := &inventory.DirectoryInventoryOptions{
 			TopLevelDirectories: targetDirs,
 			SizeConsideredLarge: lfs,
 		}
-		inventory, err := inventory.NewDirectoryInventory(opt)
+		inventoryD, err := inventory.NewDirectoryInventory(opt)
 		cobra.CheckErr(err)
+		if maxSuitcaseSize > 0 {
+			numSuitcases, err := inventory.IndexInventory(inventoryD, maxSuitcaseSize)
+			checkErr(err, "")
+			log.WithField("num", numSuitcases).Info("Indexed inventory")
+		}
 
 		// Long print
-		data, err := yaml.Marshal(inventory)
+		data, err := yaml.Marshal(inventoryD)
 		cobra.CheckErr(err)
 		fmt.Println(string(data))
 		log.Info("Completed")

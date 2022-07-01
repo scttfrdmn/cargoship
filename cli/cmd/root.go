@@ -81,6 +81,7 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")
 	rootCmd.PersistentFlags().Int64("large-file-size", 1024*1024, "Size in bytes of files considered 'large'")
+	rootCmd.PersistentFlags().Int64("max-suitcase-size", 0, "Maximum size in bytes for the set of suitcases generated")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.

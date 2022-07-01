@@ -35,7 +35,7 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 
 func FillWithInventory(s Suitcase, i *inventory.DirectoryInventory, encryptAll bool) error {
 	var err error
-	fs := []inventory.InventoryFile{}
+	fs := []*inventory.InventoryFile{}
 	fs = append(fs, i.SmallFiles...)
 	fs = append(fs, i.LargeFiles...)
 
@@ -45,14 +45,14 @@ func FillWithInventory(s Suitcase, i *inventory.DirectoryInventory, encryptAll b
 		}).Debug("Adding file to suitcase")
 
 		if encryptAll {
-			err = s.AddEncrypt(f)
+			err = s.AddEncrypt(*f)
 			if err != nil {
 				log.WithError(err).WithFields(log.Fields{
 					"path": f.Path,
 				}).Warn("Error adding file")
 			}
 		} else {
-			err = s.Add(f)
+			err = s.Add(*f)
 			if err != nil {
 				log.WithError(err).WithFields(log.Fields{
 					"path": f.Path,

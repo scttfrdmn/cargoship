@@ -9,4 +9,6 @@ type SuitCaseOpts struct {
 	Destination  string
 	EncryptInner bool
 	EncryptTo    *openpgp.EntityList
+	// Maximum size per suitecase
+	MaxBytes int64
 }
