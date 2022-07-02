@@ -106,6 +106,12 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 	}
 
 	for _, dir := range opts.TopLevelDirectories {
+		if !helpers.IsDirectory(dir) {
+			log.Warn().
+				Str("path", dir).
+				Msg("top level directory does not exist")
+			return nil, errors.New("not a directory")
+		}
 		log.Info().
 			Str("dir", dir).
 			Msg("walking directory")
@@ -137,7 +143,6 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 				}
 				ret.Files = append(ret.Files, &fItem)
 
-				// fmt.Println(path, info.Size())
 				return nil
 			})
 		if err != nil {

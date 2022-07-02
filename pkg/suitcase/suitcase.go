@@ -48,7 +48,7 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 	return nil, fmt.Errorf("invalid archive format: %s", opts.Format)
 }
 
-func FillWithInventory(s Suitcase, i *inventory.DirectoryInventory, index int) error {
+func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int) error {
 	var err error
 
 	for _, f := range i.Files {

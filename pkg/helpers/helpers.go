@@ -51,3 +51,11 @@ func SuitcaseFormatWithFilename(filename string) (string, error) {
 	}
 	return "", errors.New("Unknown archive format")
 }
+
+func IsDirectory(path string) bool {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return fileInfo.IsDir()
+}

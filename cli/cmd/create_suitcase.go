@@ -83,7 +83,7 @@ var createSuitcaseCmd = &cobra.Command{
 				Bool("encryptInner", opts.EncryptInner).
 				Int("index", i).
 				Msg("Filling suitcase")
-			err = suitcase.FillWithInventory(s, &inventory, i)
+			err = suitcase.FillWithInventoryIndex(s, &inventory, i)
 			checkErr(err, "")
 		}
 	},

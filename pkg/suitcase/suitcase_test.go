@@ -80,3 +80,23 @@ func TestNewGPGSuitcase(t *testing.T) {
 		})
 	}
 }
+
+func TestFillWithInventoryIndex(t *testing.T) {
+	s, err := New(io.Discard, &config.SuitCaseOpts{
+		Format: "tar",
+	})
+	require.NoError(t, err)
+	i, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
+		TopLevelDirectories: []string{"../testdata/fake-dir"},
+	})
+	require.NoError(t, err)
+	err = FillWithInventoryIndex(s, i, 0)
+	require.NoError(t, err)
+}
+
+func TestFillWithInventoryIndexMissingDir(t *testing.T) {
+	_, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
+		TopLevelDirectories: []string{"../testdata/never-exist"},
+	})
+	require.EqualError(t, err, "not a directory")
+}
