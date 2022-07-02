@@ -17,7 +17,7 @@ coverage:
   stage: test
   image: golang:1.18
   script:
-    - go install
+    - go mod tidy
     - go test ./... -coverprofile=coverage.txt -covermode count
     - go get github.com/boumenot/gocover-cobertura
     - go run github.com/boumenot/gocover-cobertura < coverage.txt > coverage.xml
