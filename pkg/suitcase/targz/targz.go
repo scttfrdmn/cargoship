@@ -39,6 +39,10 @@ func (s Suitcase) Close() error {
 	return s.gw.Close()
 }
 
+func (s Suitcase) Config() *config.SuitCaseOpts {
+	return s.opts
+}
+
 // Add file to the archive.
 func (s Suitcase) Add(f inventory.InventoryFile) error {
 	return s.tw.Add(f)

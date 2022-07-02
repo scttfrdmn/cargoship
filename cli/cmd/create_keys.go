@@ -22,7 +22,7 @@ THE SOFTWARE.
 package cmd
 
 import (
-	"github.com/apex/log"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/gpg"
 )
@@ -52,9 +52,9 @@ var createKeysCmd = &cobra.Command{
 
 		created, err := gpg.NewKeyFilesWithPair(kp, dest)
 		checkErr(err, "")
-		log.WithFields(log.Fields{
-			"created": created,
-		}).Info("Created key files")
+		log.Info().
+			Strs("created", created).
+			Msg("Create key files")
 	},
 }
 

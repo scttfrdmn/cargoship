@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/apex/log"
 	"github.com/go-git/go-git/v5"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -123,10 +123,10 @@ func CollectGPGPubKeys(fp string) (*openpgp.EntityList, error) {
 			return nil, err
 		}
 		fp = path.Join(tmpdir, subDir)
-		log.WithFields(log.Fields{
-			"url":    gitlabKeysUrl,
-			"subdir": subDir,
-		}).Info("Pulling in pubkeys")
+		log.Info().
+			Str("url", gitlabKeysUrl).
+			Str("subdir", subDir).
+			Msg("Cloned GPG keys from Git")
 	}
 
 	matches, err := filepath.Glob(fmt.Sprintf("%v/*.gpg", fp))
@@ -136,7 +136,9 @@ func CollectGPGPubKeys(fp string) (*openpgp.EntityList, error) {
 	for _, pubKeyFile := range matches {
 		e, err := ReadEntity(pubKeyFile)
 		if err != nil {
-			log.Warnf("Error opening gpg file: %v, skipping", pubKeyFile)
+			log.Warn().
+				Str("file", pubKeyFile).
+				Msg("Error opening gpg file, skipping")
 			continue
 		}
 		els = append(els, e)

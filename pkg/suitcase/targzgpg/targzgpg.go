@@ -38,6 +38,10 @@ func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
 	}
 }
 
+func (s Suitcase) Config() *config.SuitCaseOpts {
+	return s.opts
+}
+
 // Close all closeables.
 func (s Suitcase) Close() error {
 	// Tar -> Gzip -> Cipher -> Works as intended

@@ -20,8 +20,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/apex/log"
-	"github.com/apex/log/handlers/cli"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
 	homedir "github.com/mitchellh/go-homedir"
@@ -29,9 +29,11 @@ import (
 )
 
 var (
-	cfgFile string
-	Verbose bool
-	stats   runStats
+	cfgFile   string
+	Verbose   bool
+	trace     bool
+	logFormat string
+	stats     runStats
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -46,22 +48,42 @@ a future point in time`,
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		log.SetHandler(cli.Default)
-		if Verbose {
-			log.SetLevel(log.DebugLevel)
-			log.Debug("Debug enabled")
+		zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+		switch logFormat {
+		case "console":
+			log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		case "json":
+			// Json is actually the default, so just do nothing here
+		default:
+			log.Fatal().Msg("Invalid log format. Please use 'console' or 'json'")
 		}
+
+		if trace {
+			log.Logger = log.With().Caller().Logger()
+		}
+		// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		if Verbose {
+			zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		}
+		/*
+			log.SetHandler(cli.Default)
+			if Verbose {
+				log.SetLevel(log.DebugLevel)
+				log.Debug("Debug enabled")
+			}
+		*/
 		stats.Start = time.Now()
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
 		stats.End = time.Now()
 		stats.Runtime = stats.End.Sub(stats.Start)
 		if cmd.Use != "version" {
-			log.WithFields(log.Fields{
-				"start": stats.Start,
-				"end":   stats.End,
-				"time":  stats.Runtime,
-			}).Info("Complete")
+			log.Info().
+				Dur("runtime", stats.Runtime).
+				Time("start", stats.Start).
+				Time("end", stats.End).
+				Msg("Completed")
 		}
 	},
 }
@@ -80,11 +102,13 @@ func init() {
 	// will be global for your application.
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")
-	rootCmd.PersistentFlags().Int64("large-file-size", 1024*1024, "Size in bytes of files considered 'large'")
+	// rootCmd.PersistentFlags().Int64("large-file-size", 1024*1024, "Size in bytes of files considered 'large'")
+	rootCmd.PersistentFlags().StringVar(&logFormat, "log-format", "console", "Log format (console, json)")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
 	rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
+	rootCmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -121,6 +145,6 @@ func checkErr(err error, msg string) {
 		msg = "Fatal Error"
 	}
 	if err != nil {
-		log.WithError(err).Fatal(msg)
+		log.Fatal().Err(err).Msg(msg)
 	}
 }
