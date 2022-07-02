@@ -68,6 +68,7 @@ var createSuitcaseCmd = &cobra.Command{
 		for i := 1; i <= inventory.TotalIndexes; i++ {
 			guard <- struct{}{} // would block if guard channel is already filled
 			wg.Add(1)
+
 			go func(i int) {
 				defer wg.Done()
 				err := suitcase.WriteSuitcaseFile(opts, &inventory, i)
@@ -87,7 +88,8 @@ func init() {
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
 	createSuitcaseCmd.PersistentFlags().StringP("inventory", "i", "", "Inventory file for the suitcase")
-	createSuitcaseCmd.MarkPersistentFlagRequired("inventory")
+	err := createSuitcaseCmd.MarkPersistentFlagRequired("inventory")
+	checkErr(err, "")
 	createSuitcaseCmd.PersistentFlags().Bool("encrypt-inner", false, "Encrypt files within the suitcase")
 	createSuitcaseCmd.PersistentFlags().Bool("exclude-systems-pubkeys", false, "By default, we will include the systems teams pubkeys, unless this option is specified")
 	createSuitcaseCmd.PersistentFlags().String("name", "suitcase", "Name of the suitcase")
