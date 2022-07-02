@@ -16,13 +16,15 @@ limitations under the License.
 package cmd
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
+	"strings"
 
-	"github.com/apex/log"
+	"github.com/rs/zerolog/log"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/config"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/gpg"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/helpers"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/suitcase"
 
@@ -32,11 +34,15 @@ import (
 
 // createSuitcaseCmd represents the createSuitcase command
 var createSuitcaseCmd = &cobra.Command{
-	Use:   "suitcase DESTINATION.tar.gz",
+	Use:   "suitcase DESTINATION_DIR",
 	Short: "Create a new suitcase, which is a binary blob of data",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		inventoryF, err := cmd.Flags().GetString("inventory")
+		checkErr(err, "")
+		name, err := cmd.Flags().GetString("name")
+		checkErr(err, "")
+		format, err := cmd.Flags().GetString("format")
 		checkErr(err, "")
 
 		encryptInner, err := cmd.Flags().GetBool("encrypt-inner")
@@ -58,24 +64,28 @@ var createSuitcaseCmd = &cobra.Command{
 		checkErr(err, "")
 		// opts.Inventory = &inventory
 
-		target, err := os.Create(opts.Destination)
-		cobra.CheckErr(err)
-		defer target.Close()
+		// here is where we create the actual files
+		for i := 1; i <= inventory.TotalIndexes; i++ {
+			targetF := path.Join(opts.Destination, fmt.Sprintf("%v-%d-%v", name, i, format))
+			target, err := os.Create(targetF)
+			checkErr(err, "")
+			defer target.Close()
 
-		opts.Format, err = helpers.SuitcaseFormatWithFilename(opts.Destination)
-		checkErr(err, "")
+			opts.Format = strings.TrimPrefix(format, ".")
 
-		s, err := suitcase.New(target, opts)
-		checkErr(err, "")
-		defer s.Close()
+			s, err := suitcase.New(target, opts)
+			checkErr(err, "")
+			defer s.Close()
 
-		log.WithFields(log.Fields{
-			"destination":  opts.Destination,
-			"format":       opts.Format,
-			"encryptInner": opts.EncryptInner,
-		}).Info("Filling Suitcase")
-		err = suitcase.FillWithInventory(s, &inventory, encryptInner)
-		checkErr(err, "")
+			log.Info().
+				Str("destination", targetF).
+				Str("format", opts.Format).
+				Bool("encryptInner", opts.EncryptInner).
+				Int("index", i).
+				Msg("Filling suitcase")
+			err = suitcase.FillWithInventory(s, &inventory, i)
+			checkErr(err, "")
+		}
 	},
 }
 
@@ -90,6 +100,8 @@ func init() {
 	createSuitcaseCmd.MarkPersistentFlagRequired("inventory")
 	createSuitcaseCmd.PersistentFlags().Bool("encrypt-inner", false, "Encrypt files within the suitcase")
 	createSuitcaseCmd.PersistentFlags().Bool("exclude-systems-pubkeys", false, "By default, we will include the systems teams pubkeys, unless this option is specified")
+	createSuitcaseCmd.PersistentFlags().String("name", "suitcase", "Name of the suitcase")
+	createSuitcaseCmd.PersistentFlags().String("format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")
 
 	createSuitcaseCmd.Flags().StringArrayP("public-key", "p", []string{}, "Public keys to use for encryption")
 

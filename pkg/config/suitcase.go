@@ -7,8 +7,8 @@ import (
 type SuitCaseOpts struct {
 	Format       string
 	Destination  string
-	EncryptInner bool
+	EncryptInner bool // Encrypt all files in the archive
+	EncryptOuter bool // Encrypt the archive itself
 	EncryptTo    *openpgp.EntityList
-	// Maximum size per suitecase
-	MaxBytes int64
+	// MaxBytes     uint64 // Maximum size per suitecase
 }

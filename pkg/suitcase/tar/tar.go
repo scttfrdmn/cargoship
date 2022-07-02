@@ -27,6 +27,10 @@ func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
 	}
 }
 
+func (s Suitcase) Config() *config.SuitCaseOpts {
+	return s.opts
+}
+
 // Close all closeables.
 func (a Suitcase) Close() error {
 	return a.tw.Close()

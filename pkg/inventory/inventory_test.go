@@ -14,12 +14,12 @@ func TestNewDirectoryInventory(t *testing.T) {
 	require.NoError(t, err)
 	require.IsType(t, &DirectoryInventory{}, got)
 
-	require.Greater(t, len(got.SmallFiles), 0)
+	require.Greater(t, len(got.Files), 0)
 }
 
 func TestIndexInventory(t *testing.T) {
 	i := &DirectoryInventory{
-		SmallFiles: []*InventoryFile{
+		Files: []*InventoryFile{
 			{
 				Path: "small-file-1",
 				Size: 1,
@@ -34,14 +34,14 @@ func TestIndexInventory(t *testing.T) {
 			},
 		},
 	}
-	gotNum, err := IndexInventory(i, 3)
+	err := IndexInventory(i, 3)
 	require.NoError(t, err)
-	require.Equal(t, 2, gotNum)
+	require.Equal(t, 2, i.TotalIndexes)
 }
 
 func TestIndexInventoryTooBig(t *testing.T) {
 	i := &DirectoryInventory{
-		SmallFiles: []*InventoryFile{
+		Files: []*InventoryFile{
 			{
 				Path: "small-file-1",
 				Size: 1,
@@ -56,7 +56,14 @@ func TestIndexInventoryTooBig(t *testing.T) {
 			},
 		},
 	}
-	gotNum, err := IndexInventory(i, 3)
+	err := IndexInventory(i, 3)
 	require.EqualError(t, err, "index containes at least one file that is too large")
-	require.Equal(t, 0, gotNum)
+	require.Equal(t, 0, i.TotalIndexes)
+}
+
+func TestNewDirectoryInventoryMissingTopDirs(t *testing.T) {
+	_, err := NewDirectoryInventory(&DirectoryInventoryOptions{
+		TopLevelDirectories: []string{},
+	})
+	require.Error(t, err)
 }

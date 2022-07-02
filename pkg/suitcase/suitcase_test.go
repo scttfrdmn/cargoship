@@ -5,12 +5,14 @@ import (
 	"os"
 	"testing"
 
+	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/stretchr/testify/require"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/config"
+	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/gpg"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
 )
 
-func TestSuitcase(t *testing.T) {
+func TestNewSuitcase(t *testing.T) {
 	folder := t.TempDir()
 	empty, err := os.Create(folder + "/empty.txt")
 	require.NoError(t, err)
@@ -44,4 +46,37 @@ func TestSuitcase(t *testing.T) {
 		})
 		require.EqualError(t, err, "invalid archive format: 7z")
 	})
+}
+
+func TestNewGPGSuitcase(t *testing.T) {
+	folder := t.TempDir()
+	empty, err := os.Create(folder + "/empty.txt")
+	require.NoError(t, err)
+	require.NoError(t, empty.Close())
+	require.NoError(t, os.Mkdir(folder+"/folder-inside", 0o755))
+
+	pubKey, err := gpg.ReadEntity("../testdata/fakey-public.key")
+	require.NoError(t, err)
+
+	for _, format := range []string{"tar.gpg", "tar.gz.gpg"} {
+		format := format
+		t.Run(format, func(t *testing.T) {
+			archive, err := New(io.Discard, &config.SuitCaseOpts{
+				Format:    format,
+				EncryptTo: &openpgp.EntityList{pubKey},
+			})
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				require.NoError(t, archive.Close())
+			})
+			require.NoError(t, archive.Add(inventory.InventoryFile{
+				Path:        empty.Name(),
+				Destination: "empty.txt",
+			}))
+			require.Error(t, archive.Add(inventory.InventoryFile{
+				Path:        empty.Name() + "_nope",
+				Destination: "dont.txt",
+			}))
+		})
+	}
 }

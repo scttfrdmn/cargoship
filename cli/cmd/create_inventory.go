@@ -18,7 +18,8 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/apex/log"
+	"github.com/dustin/go-humanize"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/helpers"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
@@ -31,10 +32,10 @@ var createInventoryCmd = &cobra.Command{
 	Short: "Generate an inventory file for a directory, or set of directories",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		lfs, err := cmd.Flags().GetInt64("large-file-size")
+		maxSuitcaseSizeH, err := cmd.Flags().GetString("max-suitcase-size")
 		checkErr(err, "")
 
-		maxSuitcaseSize, err := cmd.Flags().GetInt64("max-suitcase-size")
+		maxSuitcaseSize, err := humanize.ParseBytes(maxSuitcaseSizeH)
 		checkErr(err, "")
 
 		// Use absolute dirs forever
@@ -43,21 +44,20 @@ var createInventoryCmd = &cobra.Command{
 
 		opt := &inventory.DirectoryInventoryOptions{
 			TopLevelDirectories: targetDirs,
-			SizeConsideredLarge: lfs,
+			// SizeConsideredLarge: lfs,
 		}
 		inventoryD, err := inventory.NewDirectoryInventory(opt)
 		cobra.CheckErr(err)
 		if maxSuitcaseSize > 0 {
-			numSuitcases, err := inventory.IndexInventory(inventoryD, maxSuitcaseSize)
+			err := inventory.IndexInventory(inventoryD, maxSuitcaseSize)
 			checkErr(err, "")
-			log.WithField("num", numSuitcases).Info("Indexed inventory")
+			log.Info().Int("count", inventoryD.TotalIndexes).Msg("Indexed inventory")
 		}
 
 		// Long print
 		data, err := yaml.Marshal(inventoryD)
 		cobra.CheckErr(err)
 		fmt.Println(string(data))
-		log.Info("Completed")
 	},
 }
 
@@ -69,6 +69,8 @@ func init() {
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
 	// createInventoryCmd.PersistentFlags().String("foo", "", "A help for foo")
+	createInventoryCmd.PersistentFlags().String("max-suitcase-size", "", "Maximum size for the set of suitcases generated. If no unit is specified, 'bytes' is assumed")
+	// createInventoryCmd.PersistentFlags().Int64("large-file-size", 1024*1024, "Size in bytes of files considered 'large'")
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
