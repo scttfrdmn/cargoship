@@ -83,9 +83,15 @@ func Encrypt(d []byte, encryptionKeys *openpgp.EntityList, useArmor bool) ([]byt
 		return nil, errors.New("Bad Ciphered Writer")
 	}
 
-	cipheredWriter.Close()
+	err = cipheredWriter.Close()
+	if err != nil {
+		return nil, err
+	}
 	if useArmor {
-		armoredWriter.Close()
+		err = armoredWriter.Close()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return buffer.Bytes(), nil

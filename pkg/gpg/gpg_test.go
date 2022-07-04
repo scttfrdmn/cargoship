@@ -22,3 +22,17 @@ func TestEncryptToWithCmd(t *testing.T) {
 	_, err := EncryptToWithCmd(cmd)
 	require.NoError(t, err)
 }
+
+func TestEncrypt(t *testing.T) {
+	d := []byte("hello world")
+	encryptionKey, err := ReadEntity("../testdata/fakey-public.key")
+	require.NoError(t, err)
+	// Non Armored test
+	got, err := Encrypt(d, &openpgp.EntityList{encryptionKey}, false)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	// Armor the encrypted content
+	got, err = Encrypt(d, &openpgp.EntityList{encryptionKey}, true)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+}

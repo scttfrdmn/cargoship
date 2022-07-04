@@ -16,13 +16,10 @@ limitations under the License.
 package cmd
 
 import (
-	"fmt"
 	"io/ioutil"
-	"os"
-	"path"
 	"strings"
+	"sync"
 
-	"github.com/rs/zerolog/log"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/config"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/gpg"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
@@ -40,9 +37,9 @@ var createSuitcaseCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		inventoryF, err := cmd.Flags().GetString("inventory")
 		checkErr(err, "")
-		name, err := cmd.Flags().GetString("name")
-		checkErr(err, "")
 		format, err := cmd.Flags().GetString("format")
+		checkErr(err, "")
+		concurrency, err := cmd.Flags().GetInt("concurrency")
 		checkErr(err, "")
 
 		encryptInner, err := cmd.Flags().GetBool("encrypt-inner")
@@ -52,6 +49,7 @@ var createSuitcaseCmd = &cobra.Command{
 		opts := &config.SuitCaseOpts{
 			Destination:  args[0],
 			EncryptInner: encryptInner,
+			Format:       strings.TrimPrefix(format, "."),
 		}
 
 		opts.EncryptTo, err = gpg.EncryptToWithCmd(cmd)
@@ -65,27 +63,20 @@ var createSuitcaseCmd = &cobra.Command{
 		// opts.Inventory = &inventory
 
 		// here is where we create the actual files
+		guard := make(chan struct{}, concurrency)
+		var wg sync.WaitGroup
 		for i := 1; i <= inventory.TotalIndexes; i++ {
-			targetF := path.Join(opts.Destination, fmt.Sprintf("%v-%d-%v", name, i, format))
-			target, err := os.Create(targetF)
-			checkErr(err, "")
-			defer target.Close()
+			guard <- struct{}{} // would block if guard channel is already filled
+			wg.Add(1)
 
-			opts.Format = strings.TrimPrefix(format, ".")
-
-			s, err := suitcase.New(target, opts)
-			checkErr(err, "")
-			defer s.Close()
-
-			log.Info().
-				Str("destination", targetF).
-				Str("format", opts.Format).
-				Bool("encryptInner", opts.EncryptInner).
-				Int("index", i).
-				Msg("Filling suitcase")
-			err = suitcase.FillWithInventoryIndex(s, &inventory, i)
-			checkErr(err, "")
+			go func(i int) {
+				defer wg.Done()
+				err := suitcase.WriteSuitcaseFile(opts, &inventory, i)
+				checkErr(err, "")
+				<-guard // release the guard channel
+			}(i)
 		}
+		wg.Wait()
 	},
 }
 
@@ -97,11 +88,13 @@ func init() {
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
 	createSuitcaseCmd.PersistentFlags().StringP("inventory", "i", "", "Inventory file for the suitcase")
-	createSuitcaseCmd.MarkPersistentFlagRequired("inventory")
+	err := createSuitcaseCmd.MarkPersistentFlagRequired("inventory")
+	checkErr(err, "")
 	createSuitcaseCmd.PersistentFlags().Bool("encrypt-inner", false, "Encrypt files within the suitcase")
 	createSuitcaseCmd.PersistentFlags().Bool("exclude-systems-pubkeys", false, "By default, we will include the systems teams pubkeys, unless this option is specified")
 	createSuitcaseCmd.PersistentFlags().String("name", "suitcase", "Name of the suitcase")
 	createSuitcaseCmd.PersistentFlags().String("format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")
+	createSuitcaseCmd.PersistentFlags().Int("concurrency", 10, "Number of concurrent files to create")
 
 	createSuitcaseCmd.Flags().StringArrayP("public-key", "p", []string{}, "Public keys to use for encryption")
 

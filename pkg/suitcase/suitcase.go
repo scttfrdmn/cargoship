@@ -3,6 +3,8 @@ package suitcase
 import (
 	"fmt"
 	"io"
+	"os"
+	"path"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -73,6 +75,33 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 				l.Warn().Err(err).Msg("Failed to add file to suitcase")
 			}
 		}
+	}
+	return nil
+}
+
+func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory, index int) error {
+	targetF := path.Join(so.Destination, fmt.Sprintf("%v-%d.%v", i.Options.Name, index, so.Format))
+	target, err := os.Create(targetF)
+	if err != nil {
+		return err
+	}
+	defer target.Close()
+
+	s, err := New(target, so)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	log.Info().
+		Str("destination", targetF).
+		Str("format", so.Format).
+		Bool("encryptInner", so.EncryptInner).
+		Int("index", index).
+		Msg("Filling suitcase")
+	err = FillWithInventoryIndex(s, i, index)
+	if err != nil {
+		return err
 	}
 	return nil
 }

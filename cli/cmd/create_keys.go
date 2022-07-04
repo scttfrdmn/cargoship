@@ -66,9 +66,11 @@ func init() {
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
 	createKeysCmd.PersistentFlags().StringP("name", "n", "", "Name of the key")
-	createKeysCmd.MarkPersistentFlagRequired("name")
+	err := createKeysCmd.MarkPersistentFlagRequired("name")
+	checkErr(err, "")
 	createKeysCmd.PersistentFlags().StringP("email", "e", "", "Email of the key")
-	createKeysCmd.MarkPersistentFlagRequired("email")
+	err = createKeysCmd.MarkPersistentFlagRequired("email")
+	checkErr(err, "")
 	createKeysCmd.PersistentFlags().StringP("type", "t", "", "Type of the key")
 	createKeysCmd.PersistentFlags().IntP("bits", "b", 4096, "Bit length of the key")
 
