@@ -14,9 +14,15 @@ import (
 )
 
 type DirectoryInventory struct {
-	Files        []*InventoryFile           `json:"files"`
-	Options      *DirectoryInventoryOptions `json:"options"`
-	TotalIndexes int                        `json:"total_indexes"`
+	Files          []*InventoryFile           `json:"files"`
+	Options        *DirectoryInventoryOptions `json:"options"`
+	TotalIndexes   int                        `json:"total_indexes"`
+	IndexSummaries map[int]*IndexSummary      `json:"index_summaries"`
+}
+
+type IndexSummary struct {
+	Count uint   `json:"count"`
+	Size  uint64 `json:"size"`
 }
 
 type DirectoryInventoryOptions struct {
@@ -88,6 +94,17 @@ func IndexInventory(inventory *DirectoryInventory, maxSize uint64) error {
 				item.SuitcaseIndex = numCases
 			}
 		}
+		// Write up summary
+		if inventory.IndexSummaries == nil {
+			inventory.IndexSummaries = map[int]*IndexSummary{}
+		}
+
+		if _, ok := inventory.IndexSummaries[item.SuitcaseIndex]; !ok {
+			inventory.IndexSummaries[item.SuitcaseIndex] = &IndexSummary{}
+		}
+		s := inventory.IndexSummaries[item.SuitcaseIndex]
+		s.Count += 1
+		s.Size += item.Size
 	}
 	inventory.TotalIndexes = numCases
 	return nil
@@ -145,7 +162,6 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 					Mode:        info.Mode(),
 					ModTime:     info.ModTime(),
 					SHA256:      sha256hash,
-					// SuitcaseIndex: 1,
 				}
 				ret.Files = append(ret.Files, &fItem)
 

@@ -53,6 +53,9 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int) error {
 	var err error
 
+	total := i.IndexSummaries[index].Count
+	cur := 0
+
 	for _, f := range i.Files {
 		l := log.With().
 			Str("path", f.Path).
@@ -62,7 +65,10 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 			continue
 		}
 
-		l.Debug().Msg("Adding file to suitcase")
+		l.Debug().
+			Int("cur", cur).
+			Uint("total", total).
+			Msg("Adding file to suitcase")
 
 		if s.Config().EncryptInner {
 			err = s.AddEncrypt(*f)
@@ -75,6 +81,8 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 				l.Warn().Err(err).Msg("Failed to add file to suitcase")
 			}
 		}
+
+		cur++
 	}
 	return nil
 }
