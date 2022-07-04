@@ -78,7 +78,7 @@ func IndexInventory(inventory *DirectoryInventory, maxSize uint64) error {
 				}
 			}
 			if !sorted {
-				log.Warn().
+				log.Info().
 					Str("path", item.Path).
 					Uint64("size", item.Size).
 					Int("numCases", numCases).
@@ -127,6 +127,12 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 				if info.IsDir() {
 					return nil
 				}
+
+				// No symlink dirs
+				if info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+					return nil
+				}
+				// log.Info().Msgf("adding file to inventory: %+v", info)
 				sha256hash, err := helpers.GetSha256(path)
 				if err != nil {
 					log.Warn().Err(err).Str("path", path).Msg("error getting sha256 hash")

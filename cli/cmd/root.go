@@ -80,9 +80,10 @@ a future point in time`,
 		stats.Runtime = stats.End.Sub(stats.Start)
 		if cmd.Use != "version" {
 			log.Info().
-				Dur("runtime", stats.Runtime).
-				Time("start", stats.Start).
-				Time("end", stats.End).
+				// Dur("runtime", stats.Runtime).
+				Str("runtime", stats.Runtime.String()).
+				Str("start", stats.Start.String()).
+				Str("end", stats.End.String()).
 				Msg("Completed")
 		}
 	},

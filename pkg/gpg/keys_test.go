@@ -45,3 +45,17 @@ func TestNewKeyPairErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestNewKeyFilesWithPair(t *testing.T) {
+	gotKp, err := NewKeyPair(&KeyOpts{
+		Name:    "test",
+		Email:   "user@localhost",
+		KeyType: "rsa",
+		Bits:    1024,
+	})
+	require.NoError(t, err)
+	require.IsType(t, &KeyPair{}, gotKp)
+	got, err := NewKeyFilesWithPair(gotKp, "")
+	require.NoError(t, err)
+	require.Equal(t, 2, len(got))
+}
