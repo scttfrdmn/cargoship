@@ -23,6 +23,14 @@ type Suitcase interface {
 	Config() *config.SuitCaseOpts
 }
 
+type SuitcaseFillState struct {
+	Current        uint
+	Total          uint
+	Completed      bool
+	CurrentPercent float64
+	Index          int
+}
+
 // Create a new suitcase
 func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 	// Decide if we are encrypting the whole shebang or not
@@ -50,11 +58,16 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 	return nil, fmt.Errorf("invalid archive format: %s", opts.Format)
 }
 
-func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int) error {
+func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int, stateC chan SuitcaseFillState) error {
 	var err error
 
-	total := i.IndexSummaries[index].Count
-	cur := 0
+	var total uint
+	if index > 0 {
+		total = i.IndexSummaries[index].Count
+	} else {
+		total = uint(len(i.Files))
+	}
+	cur := uint(0)
 
 	for _, f := range i.Files {
 		l := log.With().
@@ -66,7 +79,7 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 		}
 
 		l.Debug().
-			Int("cur", cur).
+			Uint("cur", cur).
 			Uint("total", total).
 			Msg("Adding file to suitcase")
 
@@ -83,21 +96,30 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 		}
 
 		cur++
+		if stateC != nil {
+			stateC <- SuitcaseFillState{
+				Current:        cur,
+				Total:          total,
+				Index:          index,
+				CurrentPercent: float64(cur) / float64(total) * 100,
+			}
+		}
+
 	}
 	return nil
 }
 
-func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory, index int) error {
+func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory, index int, stateC chan SuitcaseFillState) (string, error) {
 	targetF := path.Join(so.Destination, fmt.Sprintf("%v-%d.%v", i.Options.Name, index, so.Format))
 	target, err := os.Create(targetF)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer target.Close()
 
 	s, err := New(target, so)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer s.Close()
 
@@ -107,9 +129,15 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 		Bool("encryptInner", so.EncryptInner).
 		Int("index", index).
 		Msg("Filling suitcase")
-	err = FillWithInventoryIndex(s, i, index)
+	err = FillWithInventoryIndex(s, i, index, stateC)
 	if err != nil {
-		return err
+		return "", err
 	}
-	return nil
+	if stateC != nil {
+		stateC <- SuitcaseFillState{
+			Completed: true,
+			Index:     index,
+		}
+	}
+	return targetF, nil
 }

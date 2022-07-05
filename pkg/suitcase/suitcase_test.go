@@ -90,7 +90,7 @@ func TestFillWithInventoryIndex(t *testing.T) {
 		TopLevelDirectories: []string{"../testdata/fake-dir"},
 	})
 	require.NoError(t, err)
-	err = FillWithInventoryIndex(s, i, 0)
+	err = FillWithInventoryIndex(s, i, 0, nil)
 	require.NoError(t, err)
 }
 
@@ -99,4 +99,19 @@ func TestFillWithInventoryIndexMissingDir(t *testing.T) {
 		TopLevelDirectories: []string{"../testdata/never-exist"},
 	})
 	require.EqualError(t, err, "not a directory")
+}
+
+func TestFillFileWithInventoryIndex(t *testing.T) {
+	d := t.TempDir()
+	so := &config.SuitCaseOpts{
+		Format:      "tar",
+		Destination: d,
+	}
+	i, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
+		TopLevelDirectories: []string{"../testdata/fake-dir"},
+	})
+	require.NoError(t, err)
+	_, err = WriteSuitcaseFile(so, i, 1, nil)
+	// err = FillWithInventoryIndex(s, i, 0, nil)
+	require.NoError(t, err)
 }
