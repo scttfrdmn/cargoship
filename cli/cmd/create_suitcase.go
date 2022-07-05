@@ -18,13 +18,13 @@ package cmd
 import (
 	"io/ioutil"
 	"strings"
-	"sync"
 
+	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/cli/cmdhelpers"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/config"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/gpg"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/suitcase"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 )
@@ -41,9 +41,18 @@ var createSuitcaseCmd = &cobra.Command{
 		checkErr(err, "")
 		concurrency, err := cmd.Flags().GetInt("concurrency")
 		checkErr(err, "")
+		pbarType, err := cmd.Flags().GetString("progress-bar")
+		checkErr(err, "")
 
 		encryptInner, err := cmd.Flags().GetBool("encrypt-inner")
 		checkErr(err, "")
+
+		/*
+			var needsEncrypt bool
+			if encryptInner {
+				needsEncrypt = true
+			}
+		*/
 
 		// Set up options
 		opts := &config.SuitCaseOpts{
@@ -52,8 +61,11 @@ var createSuitcaseCmd = &cobra.Command{
 			Format:       strings.TrimPrefix(format, "."),
 		}
 
-		opts.EncryptTo, err = gpg.EncryptToWithCmd(cmd)
-		checkErr(err, "")
+		// Gather EncryptTo if we need it
+		if strings.HasSuffix(opts.Format, ".gpg") || encryptInner {
+			opts.EncryptTo, err = gpg.EncryptToWithCmd(cmd)
+			checkErr(err, "")
+		}
 
 		yfile, err := ioutil.ReadFile(inventoryF)
 		checkErr(err, "")
@@ -62,21 +74,26 @@ var createSuitcaseCmd = &cobra.Command{
 		checkErr(err, "")
 		// opts.Inventory = &inventory
 
-		// here is where we create the actual files
-		guard := make(chan struct{}, concurrency)
-		var wg sync.WaitGroup
-		for i := 1; i <= inventory.TotalIndexes; i++ {
-			guard <- struct{}{} // would block if guard channel is already filled
-			wg.Add(1)
-
-			go func(i int) {
-				defer wg.Done()
-				err := suitcase.WriteSuitcaseFile(opts, &inventory, i)
-				checkErr(err, "")
-				<-guard // release the guard channel
-			}(i)
+		po := &cmdhelpers.ProcessOpts{
+			Concurrency:  concurrency,
+			Inventory:    &inventory,
+			SuitcaseOpts: opts,
 		}
-		wg.Wait()
+		// We may do different things here...
+		var createdFiles []string
+		switch pbarType {
+		case "mpb":
+			log.Fatal().Msg("Sorry, haven't actually implemented this yet. Issues with it hiding errors")
+			checkErr(err, "")
+		case "none":
+			createdFiles, err = cmdhelpers.ProcessLogging(po)
+			checkErr(err, "")
+		}
+		for _, f := range createdFiles {
+			log.Info().Str("file", f).Msg("Created file")
+		}
+
+		// err = cmdhelpers.ProcessLogging(po)
 	},
 }
 
@@ -95,6 +112,7 @@ func init() {
 	createSuitcaseCmd.PersistentFlags().String("name", "suitcase", "Name of the suitcase")
 	createSuitcaseCmd.PersistentFlags().String("format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")
 	createSuitcaseCmd.PersistentFlags().Int("concurrency", 10, "Number of concurrent files to create")
+	createSuitcaseCmd.PersistentFlags().String("progress-bar", "none", "Progress bar to use. Valid options are: 'mpb' or 'none'")
 
 	createSuitcaseCmd.Flags().StringArrayP("public-key", "p", []string{}, "Public keys to use for encryption")
 
