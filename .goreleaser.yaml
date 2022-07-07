@@ -2,6 +2,10 @@
 gitlab_urls:
   api: https://gitlab.oit.duke.edu/api/v4/
   download: https://gitlab.oit.duke.edu
+env:
+  - VAULT_ADDR={{ .Env.VAULT_ADDR }}
+  - TRANSIT_SECRET_ENGINE_PATH=ssi-systems/transit
+  - VAULT_TOKEN={{ .Env.VAULT_TOKEN }}
 builds:
   - env:
       - CGO_ENABLED=0
@@ -28,7 +32,17 @@ checksum:
   algorithm: sha256
 snapshot:
   name_template: "{{ .Tag }}-snapshot"
-
+brews:
+  - tap:
+      owner: devil-ops
+      name: homebrew-devil-ops
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    description: "Data Suitcase Suitcase Controller"
+    name: "suitcasectl"
+    homepage: >
+      {{ if index .Env "CI_PROJECT_URL" }}{{ . }}{{ else }}https://gitlab.oit.duke.edu/oit-ssi-systems{{ end }}
+    install: |
+      bin.install "suitcasectl"
 nfpms:
   - id: rpms
     license: MIT
@@ -52,3 +66,22 @@ nfpms:
     maintainer: Drew Stinnett <drew.stinnett@duke.edu>
     formats:
       - deb
+uploads:
+  - name: productionrpm
+    target: https://oneget.oit.duke.edu/rpm/devil-ops-rpms/
+    method: PUT
+    mode: archive
+    username: api
+    ids:
+      - rpms
+# - name: productiondeb
+#   target: https://oneget.oit.duke.edu/debian-packages/upload/devil-ops-debs/main/
+#   method: PUT
+#   mode: archive
+#   username: api
+#   ids:
+#     - debs
+signs:
+- cmd: cosign
+  args: ["sign-blob", "--key=hashivault://package-signing", "--output=${signature}", "${artifact}"]
+  artifacts: all

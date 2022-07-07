@@ -4,6 +4,10 @@
 [![coverage report](https://gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/badges/main/coverage.svg)](https://gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/-/commits/main)
 [![Latest Release](https://gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/-/badges/release.svg)](https://gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/-/releases)
 
+## Installation
+
+Download a package from the [releases](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/releases) page, or use the [devil-ops package](https://gitlab.oit.duke.edu/devil-ops/installing-devil-ops-packages) for homebrew, yum, etc.
+
 ## Global Flags
 
 `-v` or `--verbose` : Enable debug logs.
