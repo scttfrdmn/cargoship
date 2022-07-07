@@ -2,6 +2,10 @@
 gitlab_urls:
   api: https://gitlab.oit.duke.edu/api/v4/
   download: https://gitlab.oit.duke.edu
+env:
+  - VAULT_ADDR={{ .Env.VAULT_ADDR }}
+  - TRANSIT_SECRET_ENGINE_PATH=ssi-systems/transit
+  - VAULT_TOKEN={{ .Env.VAULT_TOKEN }}
 builds:
   - env:
       - CGO_ENABLED=0
