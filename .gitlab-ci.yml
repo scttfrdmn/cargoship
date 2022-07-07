@@ -38,7 +38,7 @@ release:
     # generate a changelog.
     GIT_DEPTH: 0
   script:
-#   - eval $(/scripts/vault-env.sh ssi-systems-${CI_PROJECT_NAME}-packaging)
+    - eval $(/scripts/vault-env.sh ssi-systems-${CI_PROJECT_NAME}-packaging)
     - goreleaser check
     - goreleaser release --rm-dist
   retry:
