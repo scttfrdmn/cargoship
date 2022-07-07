@@ -1,6 +1,7 @@
 package inventory
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -66,4 +67,34 @@ func TestNewDirectoryInventoryMissingTopDirs(t *testing.T) {
 		TopLevelDirectories: []string{},
 	})
 	require.Error(t, err)
+}
+
+func TestGetMetadataGlob(t *testing.T) {
+	got, err := GetMetadataWithGlob("../testdata/fake-dir/suitcase-meta*")
+	require.NoError(t, err)
+	require.IsType(t, map[string]string{}, got)
+	for title, content := range got {
+		if strings.HasSuffix(title, "/suitcase-meta.txt") {
+			require.Equal(t, "Text metadata\n", content)
+		} else if strings.HasSuffix(title, "/suitcase-meta.md") {
+			require.Equal(t, "# Markdown Metadata\n", content)
+		} else {
+			require.Fail(t, "unexpected title: %s", title)
+		}
+	}
+}
+
+func TestGetMetadataFiles(t *testing.T) {
+	got, err := GetMetadataWithFiles([]string{"../testdata/fake-dir/suitcase-meta.txt", "../testdata/fake-dir/suitcase-meta.md"})
+	require.NoError(t, err)
+	require.IsType(t, map[string]string{}, got)
+	for title, content := range got {
+		if strings.HasSuffix(title, "/suitcase-meta.txt") {
+			require.Equal(t, "Text metadata\n", content)
+		} else if strings.HasSuffix(title, "/suitcase-meta.md") {
+			require.Equal(t, "# Markdown Metadata\n", content)
+		} else {
+			require.Fail(t, "unexpected title: %s", title)
+		}
+	}
 }
