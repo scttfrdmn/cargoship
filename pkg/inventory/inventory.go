@@ -16,26 +16,26 @@ import (
 )
 
 type DirectoryInventory struct {
-	Files            []*InventoryFile           `json:"files"`
-	Options          *DirectoryInventoryOptions `json:"options"`
-	TotalIndexes     int                        `json:"total_indexes"`
-	IndexSummaries   map[int]*IndexSummary      `json:"index_summaries"`
-	InternalMetadata map[string]string          `json:"internal_metadata"`
-	ExternalMetadata map[string]string          `json:"external_metadata"`
+	Files            []*InventoryFile           `yaml:"files"`
+	Options          *DirectoryInventoryOptions `yaml:"options"`
+	TotalIndexes     int                        `yaml:"total_indexes"`
+	IndexSummaries   map[int]*IndexSummary      `yaml:"index_summaries"`
+	InternalMetadata map[string]string          `yaml:"internal_metadata"`
+	ExternalMetadata map[string]string          `yaml:"external_metadata"`
 }
 
 type IndexSummary struct {
-	Count uint   `json:"count"`
-	Size  uint64 `json:"size"`
+	Count uint   `yaml:"count"`
+	Size  uint64 `yaml:"size"`
 }
 
 type DirectoryInventoryOptions struct {
-	Name                  string   `json:"name"`
-	TopLevelDirectories   []string `json:"top_level_directories"`
-	SizeConsideredLarge   int64    `json:"size_considered_large"`
-	MaxSuitcaseSize       uint64   `json:"max_suitcase_size"`
-	InternalMetadataGlob  string   `json:"internal_metadata_glob,omitempty"`
-	ExternalMetadataFiles []string `json:"external_metadata_files,omitempty"`
+	Name                  string   `yaml:"name"`
+	TopLevelDirectories   []string `yaml:"top_level_directories"`
+	SizeConsideredLarge   int64    `yaml:"size_considered_large"`
+	MaxSuitcaseSize       uint64   `yaml:"max_suitcase_size"`
+	InternalMetadataGlob  string   `yaml:"internal_metadata_glob,omitempty"`
+	ExternalMetadataFiles []string `yaml:"external_metadata_files,omitempty"`
 }
 
 type InventoryFile struct {
