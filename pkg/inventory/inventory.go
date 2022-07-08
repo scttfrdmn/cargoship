@@ -205,19 +205,16 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 					// Mode:        info.Mode(),
 					// ModTime:     info.ModTime(),
 				}
-				var sha256hash string
 				if !opts.SkipHashes {
-					sha256hash, err = helpers.GetSha256(path)
+					fItem.SHA256, err = helpers.GetSha256(path)
 					if err != nil {
 						log.Warn().Err(err).Str("path", path).Msg("error getting sha256 hash")
 					}
-					fItem.SHA256 = sha256hash
 				}
 				log.Debug().
 					Int("count", addedCount).
 					Str("path", path).
 					Int64("size", size).
-					Str("sha256", sha256hash).
 					Msg("adding file to inventory")
 				ret.Files = append(ret.Files, &fItem)
 				addedCount++
