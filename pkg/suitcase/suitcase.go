@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 
@@ -140,4 +141,15 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 		}
 	}
 	return targetF, nil
+}
+
+func PostProcess(s Suitcase) error {
+	c := s.Config()
+	cmd := exec.Command(c.PostProcessScript)
+	cmd.Env = append(cmd.Env, "SUITCASE_DESTINATION="+c.Destination)
+	err := cmd.Run()
+	if err != nil {
+		return err
+	}
+	return nil
 }

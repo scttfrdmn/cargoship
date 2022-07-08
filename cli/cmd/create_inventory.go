@@ -78,7 +78,7 @@ func init() {
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
 	// createInventoryCmd.PersistentFlags().String("foo", "", "A help for foo")
-	createInventoryCmd.PersistentFlags().String("max-suitcase-size", "", "Maximum size for the set of suitcases generated. If no unit is specified, 'bytes' is assumed")
+	createInventoryCmd.PersistentFlags().String("max-suitcase-size", "0", "Maximum size for the set of suitcases generated. If no unit is specified, 'bytes' is assumed")
 	createInventoryCmd.PersistentFlags().String("internal-metadata-glob", "suitcase-meta*", "Glob pattern for internal metadata files. This should be directly under the top level directories of the targets that are being packaged up. Multiple matches will be included if found.")
 	createInventoryCmd.PersistentFlags().StringArray("external-metadata-file", []string{}, "Additional files to include as metadata in the inventory. This should NOT be part of the suitcase target directories...use internal-metadata-glob for those")
 	// createInventoryCmd.PersistentFlags().Int64("large-file-size", 1024*1024, "Size in bytes of files considered 'large'")

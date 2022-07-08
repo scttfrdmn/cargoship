@@ -194,9 +194,9 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 					Destination: strings.TrimPrefix(path, dir),
 					Name:        info.Name(),
 					Size:        uint64(info.Size()),
-					Mode:        info.Mode(),
-					ModTime:     info.ModTime(),
-					SHA256:      sha256hash,
+					// Mode:        info.Mode(),
+					// ModTime:     info.ModTime(),
+					SHA256: sha256hash,
 				}
 				ret.Files = append(ret.Files, &fItem)
 
