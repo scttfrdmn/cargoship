@@ -13,6 +13,12 @@ lint:
       codequality: gl-code-quality-report.json
     paths:
       - gl-code-quality-report.json
+unit-test:
+  stage: test
+  image: golang:1.18
+  coverage: '/coverage: \d+.\d+% of statements/'
+  script:
+    - go test -cover ./...
 coverage:
   stage: test
   image: golang:1.18

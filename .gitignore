@@ -1,2 +1,4 @@
 dist/
 gl-code-quality-report.json
+coverage.txt
+coverage.xml
