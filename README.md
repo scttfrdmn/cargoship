@@ -39,6 +39,16 @@ A couple reasons for setting this:
 * Multiple suitcases will be created in parallel, so this may speed up the total
   time needed to generate them.
 
+### Inventory Metadata
+
+Arbitrary metadata can be included in the inventory file as well. This allows
+for data owners to add some special text describing the data. By default,
+anything in one of the top level directories that matches the glob
+`suitcase-meta*` will be included in the metadata. You can change this glob with
+`--internal-metadata-glob "new-glob*"`. You can also include metadata outside of
+the target directories with `--external-metadata-file /tmp/some-file.txt`. This
+argument can be used multiple times.
+
 ### Example
 
 ```bash
