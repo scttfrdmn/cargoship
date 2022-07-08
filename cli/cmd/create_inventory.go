@@ -34,8 +34,9 @@ var createInventoryCmd = &cobra.Command{
 		maxSuitcaseSizeH, err := cmd.Flags().GetString("max-suitcase-size")
 		checkErr(err, "")
 
-		maxSuitcaseSize, err := humanize.ParseBytes(maxSuitcaseSizeH)
+		maxSuitcaseSizeU, err := humanize.ParseBytes(maxSuitcaseSizeH)
 		checkErr(err, "")
+		maxSuitcaseSize := int64(maxSuitcaseSizeU)
 
 		// Use absolute dirs forever
 		targetDirs, err := helpers.ConvertDirsToAboluteDirs(args)
@@ -55,6 +56,15 @@ var createInventoryCmd = &cobra.Command{
 			ExternalMetadataFiles: externalMetadataFiles,
 			// SizeConsideredLarge: lfs,
 		}
+
+		// Do we want to skip hashes?
+		opt.SkipHashes, err = cmd.Flags().GetBool("skip-hashes")
+		checkErr(err, "")
+		if opt.SkipHashes {
+			log.Warn().
+				Msg("Skipping hashes. This will increase the speed of the inventory, but will not be able to verify the integrity of the files.")
+		}
+
 		inventoryD, err := inventory.NewDirectoryInventory(opt)
 		cobra.CheckErr(err)
 		if maxSuitcaseSize > 0 {
@@ -81,6 +91,7 @@ func init() {
 	createInventoryCmd.PersistentFlags().String("max-suitcase-size", "0", "Maximum size for the set of suitcases generated. If no unit is specified, 'bytes' is assumed")
 	createInventoryCmd.PersistentFlags().String("internal-metadata-glob", "suitcase-meta*", "Glob pattern for internal metadata files. This should be directly under the top level directories of the targets that are being packaged up. Multiple matches will be included if found.")
 	createInventoryCmd.PersistentFlags().StringArray("external-metadata-file", []string{}, "Additional files to include as metadata in the inventory. This should NOT be part of the suitcase target directories...use internal-metadata-glob for those")
+	createInventoryCmd.PersistentFlags().Bool("skip-hashes", false, "Skip hashing of files. This is useful for directories with LOTS of small files")
 	// createInventoryCmd.PersistentFlags().Int64("large-file-size", 1024*1024, "Size in bytes of files considered 'large'")
 
 	// Cobra supports local flags which will only run when this command
