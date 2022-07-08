@@ -31,6 +31,10 @@ something larger or smaller than what you actually want, based on results you
 are getting. If no unit is specified, defaults to bytes. Any unit supported by
 [go-humanize](https://github.com/dustin/go-humanize) is supported here.
 
+`--skip-hashes` : This will skip the hash calculation. If this flag is use, we
+won't be able to verify the integrity of the files afterwards, but it will make
+scanning directories with lots of small files MUCH faster.
+
 A couple reasons for setting this:
 
 * Cloud storage may have a maximum file size limit. This is a good way to limit

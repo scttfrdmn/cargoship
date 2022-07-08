@@ -171,6 +171,7 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 			Msg("walking directory")
 		// err := filepath.Walk(dir,
 		// func(path string, info os.FileInfo, err error) error {
+		var addedCount int
 		err := godirwalk.Walk(dir, &godirwalk.Options{
 			Callback: func(path string, de *godirwalk.Dirent) error {
 				// Skip top level directories from inventory
@@ -213,11 +214,13 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 					fItem.SHA256 = sha256hash
 				}
 				log.Debug().
+					Int("count", addedCount).
 					Str("path", path).
 					Int64("size", size).
 					Str("sha256", sha256hash).
 					Msg("adding file to inventory")
 				ret.Files = append(ret.Files, &fItem)
+				addedCount++
 
 				return nil
 			},
