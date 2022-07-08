@@ -74,13 +74,13 @@ uploads:
     username: api
     ids:
       - rpms
-  - name: productiondeb
-    target: https://oneget.oit.duke.edu/debian-packages/upload/devil-ops-debs/main/
-    method: PUT
-    mode: archive
-    username: api
-    ids:
-      - debs
+# - name: productiondeb
+#   target: https://oneget.oit.duke.edu/debian-packages/upload/devil-ops-debs/main/
+#   method: PUT
+#   mode: archive
+#   username: api
+#   ids:
+#     - debs
 signs:
 - cmd: cosign
   args: ["sign-blob", "--key=hashivault://package-signing", "--output=${signature}", "${artifact}"]
