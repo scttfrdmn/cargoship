@@ -8,17 +8,23 @@ lint:
   script:
     - '[ -e .golangci.yml ] || cp /golangci/.golangci.yml .'
     - golangci-lint run --issues-exit-code 0 --out-format code-climate | tee gl-code-quality-report.json | jq -r '.[] | "\(.location.path):\(.location.lines.begin) \(.description)"'
+  rules:
+    - if: '$CI_COMMIT_TAG !~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
   artifacts:
     reports:
       codequality: gl-code-quality-report.json
     paths:
       - gl-code-quality-report.json
+## This will handle the coverage badge
 unit-test:
   stage: test
   image: golang:1.18
   coverage: '/coverage: \d+.\d+% of statements/'
+  rules:
+    - if: '$CI_COMMIT_TAG !~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
   script:
     - go test -cover ./...
+## Coverage will do visual coverage in the GitLab UI
 coverage:
   stage: test
   image: golang:1.18
@@ -27,6 +33,8 @@ coverage:
     - go test ./... -coverprofile=coverage.txt -covermode count
     - go get github.com/boumenot/gocover-cobertura
     - go run github.com/boumenot/gocover-cobertura < coverage.txt > coverage.xml
+  rules:
+    - if: '$CI_COMMIT_TAG !~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
   artifacts:
     reports:
       coverage_report:
@@ -40,8 +48,6 @@ release:
   rules:
     - if: '$CI_COMMIT_TAG =~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
   variables:
-    # Disable shallow cloning so that goreleaser can diff between tags to
-    # generate a changelog.
     GIT_DEPTH: 0
   script:
     - eval $(/scripts/vault-env.sh ssi-systems-${CI_PROJECT_NAME}-packaging)
