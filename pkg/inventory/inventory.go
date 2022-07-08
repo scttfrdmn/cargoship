@@ -16,12 +16,12 @@ import (
 )
 
 type DirectoryInventory struct {
-	Files            []*InventoryFile           `json:"files"`
-	Options          *DirectoryInventoryOptions `json:"options"`
-	TotalIndexes     int                        `json:"total_indexes"`
-	IndexSummaries   map[int]*IndexSummary      `json:"index_summaries"`
-	InternalMetadata map[string]string          `json:"internal_metadata"`
-	ExternalMetadata map[string]string          `json:"external_metadata"`
+	Files            []*InventoryFile           `yaml:"files"`
+	Options          *DirectoryInventoryOptions `yaml:"options"`
+	TotalIndexes     int                        `yaml:"total_indexes"`
+	IndexSummaries   map[int]*IndexSummary      `yaml:"index_summaries"`
+	InternalMetadata map[string]string          `yaml:"internal_metadata"`
+	ExternalMetadata map[string]string          `yaml:"external_metadata"`
 }
 
 type IndexSummary struct {
