@@ -4,8 +4,7 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -42,8 +41,18 @@ var createInventoryCmd = &cobra.Command{
 		targetDirs, err := helpers.ConvertDirsToAboluteDirs(args)
 		checkErr(err, "")
 
+		// Get the internal and external metadata glob patterns
+		internalMetadataGlob, err := cmd.Flags().GetString("internal-metadata-glob")
+		checkErr(err, "")
+
+		// External metadata file here
+		externalMetadataFiles, err := cmd.Flags().GetStringArray("external-metadata-file")
+		checkErr(err, "")
+
 		opt := &inventory.DirectoryInventoryOptions{
-			TopLevelDirectories: targetDirs,
+			TopLevelDirectories:   targetDirs,
+			InternalMetadataGlob:  internalMetadataGlob,
+			ExternalMetadataFiles: externalMetadataFiles,
 			// SizeConsideredLarge: lfs,
 		}
 		inventoryD, err := inventory.NewDirectoryInventory(opt)
@@ -70,6 +79,8 @@ func init() {
 	// and all subcommands, e.g.:
 	// createInventoryCmd.PersistentFlags().String("foo", "", "A help for foo")
 	createInventoryCmd.PersistentFlags().String("max-suitcase-size", "", "Maximum size for the set of suitcases generated. If no unit is specified, 'bytes' is assumed")
+	createInventoryCmd.PersistentFlags().String("internal-metadata-glob", "suitcase-meta*", "Glob pattern for internal metadata files. This should be directly under the top level directories of the targets that are being packaged up. Multiple matches will be included if found.")
+	createInventoryCmd.PersistentFlags().StringArray("external-metadata-file", []string{}, "Additional files to include as metadata in the inventory. This should NOT be part of the suitcase target directories...use internal-metadata-glob for those")
 	// createInventoryCmd.PersistentFlags().Int64("large-file-size", 1024*1024, "Size in bytes of files considered 'large'")
 
 	// Cobra supports local flags which will only run when this command

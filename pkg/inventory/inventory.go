@@ -3,6 +3,7 @@ package inventory
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -11,13 +12,16 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/helpers"
+	"golang.org/x/tools/godoc/util"
 )
 
 type DirectoryInventory struct {
-	Files          []*InventoryFile           `json:"files"`
-	Options        *DirectoryInventoryOptions `json:"options"`
-	TotalIndexes   int                        `json:"total_indexes"`
-	IndexSummaries map[int]*IndexSummary      `json:"index_summaries"`
+	Files            []*InventoryFile           `json:"files"`
+	Options          *DirectoryInventoryOptions `json:"options"`
+	TotalIndexes     int                        `json:"total_indexes"`
+	IndexSummaries   map[int]*IndexSummary      `json:"index_summaries"`
+	InternalMetadata map[string]string          `json:"internal_metadata"`
+	ExternalMetadata map[string]string          `json:"external_metadata"`
 }
 
 type IndexSummary struct {
@@ -26,10 +30,12 @@ type IndexSummary struct {
 }
 
 type DirectoryInventoryOptions struct {
-	Name                string   `json:"name"`
-	TopLevelDirectories []string `json:"top_level_directories"`
-	SizeConsideredLarge int64    `json:"size_considered_large"`
-	MaxSuitcaseSize     uint64   `json:"max_suitcase_size"`
+	Name                  string   `json:"name"`
+	TopLevelDirectories   []string `json:"top_level_directories"`
+	SizeConsideredLarge   int64    `json:"size_considered_large"`
+	MaxSuitcaseSize       uint64   `json:"max_suitcase_size"`
+	InternalMetadataGlob  string   `json:"internal_metadata_glob,omitempty"`
+	ExternalMetadataFiles []string `json:"external_metadata_files,omitempty"`
 }
 
 type InventoryFile struct {
@@ -117,9 +123,38 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 	if opts.Name == "" {
 		opts.Name = "suitcase"
 	}
+	if opts.InternalMetadataGlob == "" {
+		opts.InternalMetadataGlob = "suitcase-meta*"
+	}
 	// Need at least 1 directory
 	if len(opts.TopLevelDirectories) == 0 {
 		return nil, fmt.Errorf("must specify at least one top level directory")
+	}
+	// First up, slurp in that yummy metadata
+	internalMeta := map[string]string{}
+	for _, dir := range opts.TopLevelDirectories {
+		data, err := GetMetadataWithGlob(fmt.Sprintf("%v/%v", dir, opts.InternalMetadataGlob))
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range data {
+			internalMeta[k] = v
+		}
+	}
+	ret.InternalMetadata = internalMeta
+
+	// Mmm...internal metadata is tasty, but I'm still hungry for some of that external metadata
+	externalMeta := map[string]string{}
+	if len(opts.ExternalMetadataFiles) > 0 {
+		ret.ExternalMetadata = externalMeta
+	}
+
+	if len(ret.InternalMetadata) == 0 && len(ret.ExternalMetadata) == 0 {
+		log.Warn().
+			Str("internal-glob", opts.InternalMetadataGlob).
+			Strs("external-files", opts.ExternalMetadataFiles).
+			Strs("topLevelDirectories", opts.TopLevelDirectories).
+			Msg("no metadata found")
 	}
 
 	for _, dir := range opts.TopLevelDirectories {
@@ -174,6 +209,35 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 	err := IndexInventory(ret, opts.MaxSuitcaseSize)
 	if err != nil {
 		return nil, err
+	}
+	return ret, nil
+}
+
+// Given a file path with a glob, return metadata. The metadata is a map of filename to data
+func GetMetadataWithGlob(fpg string) (map[string]string, error) {
+	matches, err := filepath.Glob(fpg)
+	if err != nil {
+		return nil, err
+	}
+	return GetMetadataWithFiles(matches)
+}
+
+func GetMetadataWithFiles(files []string) (map[string]string, error) {
+	ret := map[string]string{}
+	var err error
+	for _, f := range files {
+		f, err = filepath.Abs(f)
+		if err != nil {
+			return nil, err
+		}
+		data, err := ioutil.ReadFile(f)
+		if err != nil {
+			return nil, err
+		}
+		if !util.IsText(data) {
+			return nil, fmt.Errorf("%s is not a text file", f)
+		}
+		ret[f] = string(data)
 	}
 	return ret, nil
 }
