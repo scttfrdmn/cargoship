@@ -189,21 +189,18 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 					return nil
 				}
 
-				// log.Info().Msgf("adding file to inventory: %+v", info)
-
+				// Finally look at the size
 				st, err := os.Stat(path)
 				if err != nil {
 					return err
 				}
-
 				size := st.Size()
+
 				fItem := InventoryFile{
 					Path:        path,
 					Destination: strings.TrimPrefix(path, dir),
 					Name:        de.Name(),
 					Size:        size,
-					// Mode:        info.Mode(),
-					// ModTime:     info.ModTime(),
 				}
 				if !opts.SkipHashes {
 					fItem.SHA256, err = helpers.GetSha256(path)
