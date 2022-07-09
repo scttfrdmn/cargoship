@@ -7,6 +7,7 @@ require (
 	github.com/ProtonMail/gopenpgp/v2 v2.4.8
 	github.com/dustin/go-humanize v1.0.0
 	github.com/go-git/go-git/v5 v5.4.2
+	github.com/karrick/godirwalk v1.17.0
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/rs/zerolog v1.27.0
 	github.com/spf13/cobra v1.5.0

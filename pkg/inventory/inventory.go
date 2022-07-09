@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/karrick/godirwalk"
 	"github.com/rs/zerolog/log"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/helpers"
 	"golang.org/x/tools/godoc/util"
@@ -25,30 +26,31 @@ type DirectoryInventory struct {
 }
 
 type IndexSummary struct {
-	Count uint   `yaml:"count"`
-	Size  uint64 `yaml:"size"`
+	Count uint  `yaml:"count"`
+	Size  int64 `yaml:"size"`
 }
 
 type DirectoryInventoryOptions struct {
 	Name                  string   `yaml:"name"`
 	TopLevelDirectories   []string `yaml:"top_level_directories"`
 	SizeConsideredLarge   int64    `yaml:"size_considered_large"`
-	MaxSuitcaseSize       uint64   `yaml:"max_suitcase_size"`
+	MaxSuitcaseSize       int64    `yaml:"max_suitcase_size"`
 	InternalMetadataGlob  string   `yaml:"internal_metadata_glob,omitempty"`
 	ExternalMetadataFiles []string `yaml:"external_metadata_files,omitempty"`
+	SkipHashes            bool     `yaml:"skip_hashes"`
 }
 
 type InventoryFile struct {
-	Path          string
-	Destination   string
-	Name          string
-	Size          uint64
-	Mode          os.FileMode
-	ModTime       time.Time
-	IsDir         bool
-	SHA256        string
-	Encrypt       bool
-	SuitcaseIndex int
+	Path          string      `yaml:"path"`
+	Destination   string      `yaml:"destination"`
+	Name          string      `yaml:"name"`
+	Size          int64       `yaml:"size"`
+	Mode          os.FileMode `yaml:"mode,omitempty"`
+	ModTime       time.Time   `yaml:"mod_time,omitempty"`
+	IsDir         bool        `yaml:"is_dir"`
+	SHA256        string      `yaml:"sha256,omitempty"`
+	Encrypt       bool        `yaml:"encrypt,omitempty"`
+	SuitcaseIndex int         `yaml:"suitcase_index,omitempty"`
 }
 
 type FileBucket struct {
@@ -56,8 +58,8 @@ type FileBucket struct {
 }
 
 // Loop through inventory and assign suitcase indexes
-func IndexInventory(inventory *DirectoryInventory, maxSize uint64) error {
-	caseSet := map[int]uint64{
+func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
+	caseSet := map[int]int64{
 		1: maxSize,
 	}
 	numCases := 1
@@ -74,8 +76,8 @@ func IndexInventory(inventory *DirectoryInventory, maxSize uint64) error {
 			if item.Size > maxSize {
 				log.Warn().
 					Str("path", item.Path).
-					Uint64("size", item.Size).
-					Uint64("maxSize", maxSize).
+					Int64("size", item.Size).
+					Int64("maxSize", maxSize).
 					Msg("file is too large for suitcase")
 				return errors.New("index containes at least one file that is too large")
 			}
@@ -92,7 +94,7 @@ func IndexInventory(inventory *DirectoryInventory, maxSize uint64) error {
 			if !sorted {
 				log.Info().
 					Str("path", item.Path).
-					Uint64("size", item.Size).
+					Int64("size", item.Size).
 					Int("numCases", numCases).
 					Msg("index is full, adding new index")
 				numCases += 1
@@ -167,41 +169,60 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 		log.Info().
 			Str("dir", dir).
 			Msg("walking directory")
-		err := filepath.Walk(dir,
-			func(path string, info os.FileInfo, err error) error {
-				if err != nil {
-					return err
-				}
+		// err := filepath.Walk(dir,
+		// func(path string, info os.FileInfo, err error) error {
+		var addedCount int
+		err := godirwalk.Walk(dir, &godirwalk.Options{
+			Callback: func(path string, de *godirwalk.Dirent) error {
 				// Skip top level directories from inventory
-				if path == dir {
-					return nil
-				}
-				if info.IsDir() {
+				var err error
+				/*
+					if path == dir {
+						return nil
+					}
+				*/
+				if de.IsDir() {
 					return nil
 				}
 
 				// No symlink dirs
-				if info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+				if de.IsSymlink() {
+					// return godirwalk.SkipThis
 					return nil
 				}
-				// log.Info().Msgf("adding file to inventory: %+v", info)
-				sha256hash, err := helpers.GetSha256(path)
+
+				// Finally look at the size
+				st, err := os.Stat(path)
 				if err != nil {
-					log.Warn().Err(err).Str("path", path).Msg("error getting sha256 hash")
+					return err
 				}
+				size := st.Size()
+
 				fItem := InventoryFile{
 					Path:        path,
 					Destination: strings.TrimPrefix(path, dir),
-					Name:        info.Name(),
-					Size:        uint64(info.Size()),
-					Mode:        info.Mode(),
-					ModTime:     info.ModTime(),
-					SHA256:      sha256hash,
+					Name:        de.Name(),
+					Size:        size,
+				}
+				if !opts.SkipHashes {
+					fItem.SHA256, err = helpers.GetSha256(path)
+					if err != nil {
+						log.Warn().Err(err).Str("path", path).Msg("error getting sha256 hash")
+					}
 				}
 				ret.Files = append(ret.Files, &fItem)
+				addedCount++
+
+				log.Debug().
+					Int("count", addedCount).
+					Str("path", path).
+					Int64("size", size).
+					Msg("adding file to inventory")
 
 				return nil
-			})
+			},
+			Unsorted: true,
+		})
 		if err != nil {
 			log.Warn().Err(err).Msg("error walking directory")
 		}
