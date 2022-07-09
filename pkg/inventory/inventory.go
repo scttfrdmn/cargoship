@@ -176,9 +176,11 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 			Callback: func(path string, de *godirwalk.Dirent) error {
 				// Skip top level directories from inventory
 				var err error
-				if path == dir {
-					return nil
-				}
+				/*
+					if path == dir {
+						return nil
+					}
+				*/
 				if de.IsDir() {
 					return nil
 				}
@@ -208,13 +210,14 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 						log.Warn().Err(err).Str("path", path).Msg("error getting sha256 hash")
 					}
 				}
+				ret.Files = append(ret.Files, &fItem)
+				addedCount++
+
 				log.Debug().
 					Int("count", addedCount).
 					Str("path", path).
 					Int64("size", size).
 					Msg("adding file to inventory")
-				ret.Files = append(ret.Files, &fItem)
-				addedCount++
 
 				return nil
 			},
