@@ -1,8 +1,8 @@
 # Overview
 
-[![pipeline status](https://gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/badges/main/pipeline.svg)](https://gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/-/commits/main)
-[![coverage report](https://gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/badges/main/coverage.svg)](https://gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/-/commits/main)
-[![Latest Release](https://gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/-/badges/release.svg)](https://gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/-/releases)
+[![pipeline status](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/badges/main/pipeline.svg)](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/commits/main)
+[![coverage report](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/badges/main/coverage.svg)](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/commits/main)
+[![Latest Release](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/badges/release.svg)](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/releases)
 
 ## Installation
 
