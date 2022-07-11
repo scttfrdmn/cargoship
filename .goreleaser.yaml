@@ -51,8 +51,7 @@ nfpms:
     section: admin
     priority: optional
     maintainer: Drew Stinnett <drew.stinnett@duke.edu>
-    homepage: >-
-      {{ if index .Env "CI_PROJECT_URL" }}{{ . }}{{ else }}https://gitlab.oit.duke.edu/oit-ssi-systems{{ end }}
+    homepage: https://gitlab.oit.duke.edu/devil-ops/data-suitcase
     formats:
       - rpm
   - id: debs
@@ -61,8 +60,7 @@ nfpms:
     vendor: Duke University
     section: admin
     priority: optional
-    homepage: >-
-      {{ if index .Env "CI_PROJECT_URL" }}{{ . }}{{ else }}https://gitlab.oit.duke.edu/oit-ssi-systems{{ end }}
+    homepage: https://gitlab.oit.duke.edu/devil-ops/data-suitcase
     maintainer: Drew Stinnett <drew.stinnett@duke.edu>
     formats:
       - deb
@@ -74,13 +72,13 @@ uploads:
     username: api
     ids:
       - rpms
-# - name: productiondeb
-#   target: https://oneget.oit.duke.edu/debian-packages/upload/devil-ops-debs/main/
-#   method: PUT
-#   mode: archive
-#   username: api
-#   ids:
-#     - debs
+  - name: productiondeb
+    target: https://oneget.oit.duke.edu/debian-packages/upload/devil-ops-debs/main/
+    method: PUT
+    mode: archive
+    username: api
+    ids:
+      - debs
 signs:
 - cmd: cosign
   args: ["sign-blob", "--key=hashivault://package-signing", "--output=${signature}", "${artifact}"]
