@@ -44,8 +44,8 @@ var createSuitcaseCmd = &cobra.Command{
 		pbarType, err := cmd.Flags().GetString("progress-bar")
 		checkErr(err, "")
 
-		encryptInner, err := cmd.Flags().GetBool("encrypt-inner")
-		checkErr(err, "")
+		// encryptInnerCli, err := cmd.Flags().GetBool("encrypt-inner")
+		// checkErr(err, "")
 
 		/*
 			var needsEncrypt bool
@@ -54,24 +54,26 @@ var createSuitcaseCmd = &cobra.Command{
 			}
 		*/
 
-		// Set up options
-		opts := &config.SuitCaseOpts{
-			Destination:  args[0],
-			EncryptInner: encryptInner,
-			Format:       strings.TrimPrefix(format, "."),
-		}
-
-		// Gather EncryptTo if we need it
-		if strings.HasSuffix(opts.Format, ".gpg") || encryptInner {
-			opts.EncryptTo, err = gpg.EncryptToWithCmd(cmd)
-			checkErr(err, "")
-		}
-
+		// Parse in the inventory
 		yfile, err := ioutil.ReadFile(inventoryF)
 		checkErr(err, "")
 		var inventory inventory.DirectoryInventory
 		err = yaml.Unmarshal(yfile, &inventory)
 		checkErr(err, "")
+
+		// Set up options
+		opts := &config.SuitCaseOpts{
+			Destination:  args[0],
+			EncryptInner: inventory.Options.EncryptInner,
+			Format:       strings.TrimPrefix(format, "."),
+		}
+
+		// Gather EncryptTo if we need it
+		if strings.HasSuffix(opts.Format, ".gpg") || opts.EncryptInner {
+			opts.EncryptTo, err = gpg.EncryptToWithCmd(cmd)
+			checkErr(err, "")
+		}
+
 		// opts.Inventory = &inventory
 
 		po := &cmdhelpers.ProcessOpts{
@@ -107,7 +109,7 @@ func init() {
 	createSuitcaseCmd.PersistentFlags().StringP("inventory", "i", "", "Inventory file for the suitcase")
 	err := createSuitcaseCmd.MarkPersistentFlagRequired("inventory")
 	checkErr(err, "")
-	createSuitcaseCmd.PersistentFlags().Bool("encrypt-inner", false, "Encrypt files within the suitcase")
+	createSuitcaseCmd.PersistentFlags().Bool("hash-outer", false, "Create SHA256 hashes for the suitcases")
 	createSuitcaseCmd.PersistentFlags().Bool("exclude-systems-pubkeys", false, "By default, we will include the systems teams pubkeys, unless this option is specified")
 	createSuitcaseCmd.PersistentFlags().String("name", "suitcase", "Name of the suitcase")
 	createSuitcaseCmd.PersistentFlags().String("format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")

@@ -37,7 +37,8 @@ type DirectoryInventoryOptions struct {
 	MaxSuitcaseSize       int64    `yaml:"max_suitcase_size"`
 	InternalMetadataGlob  string   `yaml:"internal_metadata_glob,omitempty"`
 	ExternalMetadataFiles []string `yaml:"external_metadata_files,omitempty"`
-	SkipHashes            bool     `yaml:"skip_hashes"`
+	EncryptInner          bool     `yaml:"encrypt_inner"`
+	HashInner             bool     `yaml:"hash_inner"`
 }
 
 type InventoryFile struct {
@@ -204,7 +205,7 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 					Name:        de.Name(),
 					Size:        size,
 				}
-				if !opts.SkipHashes {
+				if opts.HashInner {
 					fItem.SHA256, err = helpers.GetSha256(path)
 					if err != nil {
 						log.Warn().Err(err).Str("path", path).Msg("error getting sha256 hash")

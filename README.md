@@ -31,9 +31,12 @@ something larger or smaller than what you actually want, based on results you
 are getting. If no unit is specified, defaults to bytes. Any unit supported by
 [go-humanize](https://github.com/dustin/go-humanize) is supported here.
 
-`--skip-hashes` : This will skip the hash calculation. If this flag is use, we
-won't be able to verify the integrity of the files afterwards, but it will make
-scanning directories with lots of small files MUCH faster.
+`--hash-inner` : This option will take a sha256 hash of every file inside the
+suitcase, and store it in the inventory. This will allow for future integrity
+checking, but will increase the time that it takes to generate the inventory.
+
+`--encrypt-inner` : This option will tell the inventory to encrypt all of the
+files at suitcase generation time.
 
 A couple reasons for setting this:
 
@@ -78,7 +81,8 @@ encrypted. Valid formats are currently: `tar`, `tar.gz`, `tar.pgp` and
 
 `--concurrency` : How many archive files to write at a time.
 
-`--encrypt-inner` : Encrypt all files inside the suitcase, but not the suitcase itself.
+`--hash-outer` : This will do a final sha256 hash of the suitcase, and store it
+in a ${suitcase}.sha256 file.
 
 `--exclude-systems-pubkeys` : Don't include the systems team public keys when
 doing encryption.

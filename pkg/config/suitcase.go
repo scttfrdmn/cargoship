@@ -9,6 +9,8 @@ type SuitCaseOpts struct {
 	Destination       string
 	EncryptInner      bool // Encrypt all files in the archive
 	EncryptOuter      bool // Encrypt the archive itself
+	HashInner         bool // Hash files inside the archive
+	HashOuter         bool // Hash the archive itself
 	EncryptTo         *openpgp.EntityList
 	PostProcessScript string
 	PostProcessEnv    map[string]string
