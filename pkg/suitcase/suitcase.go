@@ -134,6 +134,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 	if err != nil {
 		return "", err
 	}
+
 	if stateC != nil {
 		stateC <- SuitcaseFillState{
 			Completed: true,

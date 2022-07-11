@@ -1,6 +1,10 @@
 package cmdhelpers
 
 import (
+	"crypto/sha256"
+	"fmt"
+	"io"
+	"os"
 	"sync"
 	"sync/atomic"
 
@@ -91,6 +95,29 @@ func ProcessLogging(po *ProcessOpts) ([]string, error) {
 			if err != nil {
 				log.Warn().Err(err).Msg("Error writing suitcase file")
 				return
+			}
+			// if po.Inventory.Options.Hash
+			if po.SuitcaseOpts.HashOuter {
+				log.Info().Msg("Generating a hash of the suitcase")
+				sf, err := os.Open(createdF)
+				if err != nil {
+					log.Warn().Err(err).Msg("Error writing hash file")
+					return
+				}
+				defer sf.Close()
+				h := sha256.New()
+				if _, err := io.Copy(h, sf); err != nil {
+					log.Warn().Err(err).Msg("Error copying hash data")
+				}
+				hashF := fmt.Sprintf("%v.sha256", createdF)
+				sumS := fmt.Sprintf("%x", h.Sum(nil))
+				log.Info().Msgf("Writing hash to %x", []byte(sumS))
+				hf, err := os.Create(hashF)
+				if err != nil {
+					log.Warn().Err(err).Msg("Error error writing hash file")
+				}
+				defer hf.Close()
+				hf.Write([]byte(sumS))
 			}
 			sm.Store(i, createdF)
 			<-guard // release the guard channel
