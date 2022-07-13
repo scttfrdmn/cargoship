@@ -17,7 +17,7 @@ import (
 )
 
 type DirectoryInventory struct {
-	Files            []*InventoryFile           `yaml:"files"`
+	Files            []*InventoryFile           `yaml:"files,flow"`
 	Options          *DirectoryInventoryOptions `yaml:"options"`
 	TotalIndexes     int                        `yaml:"total_indexes"`
 	IndexSummaries   map[int]*IndexSummary      `yaml:"index_summaries"`

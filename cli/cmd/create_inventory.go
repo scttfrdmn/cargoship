@@ -18,11 +18,11 @@ import (
 	"os"
 
 	"github.com/dustin/go-humanize"
-	"github.com/goccy/go-yaml"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/helpers"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
+	"gopkg.in/yaml.v2"
 )
 
 // createInventoryCmd represents the inventory command
@@ -103,7 +103,10 @@ var createInventoryCmd = &cobra.Command{
 		// data, err := yaml.Marshal(inventoryD)
 		// cobra.CheckErr(err)
 		// fmt.Println(string(data))
+		log.Debug().Msg("About to create new YAML encoder")
 		enc := yaml.NewEncoder(outF)
+		defer enc.Close()
+		log.Debug().Msg("About to encode inventory in to yaml")
 		err = enc.Encode(inventoryD)
 		checkErr(err, "")
 		log.Info().Str("file", outF.Name()).Msg("Created inventory file")
