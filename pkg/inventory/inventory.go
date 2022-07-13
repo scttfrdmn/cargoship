@@ -225,7 +225,9 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 			Unsorted: true,
 		})
 		if err != nil {
-			log.Warn().Err(err).Msg("error walking directory")
+			log.Warn().Err(err).Int("files", addedCount).Msg("error walking directory")
+		} else {
+			log.Info().Int("files", addedCount).Msg("Finished walking directory")
 		}
 	}
 	err := IndexInventory(ret, opts.MaxSuitcaseSize)

@@ -15,14 +15,14 @@ limitations under the License.
 package cmd
 
 import (
-	"fmt"
+	"os"
 
 	"github.com/dustin/go-humanize"
+	"github.com/goccy/go-yaml"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/helpers"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
-	"gopkg.in/yaml.v2"
 )
 
 // createInventoryCmd represents the inventory command
@@ -33,6 +33,21 @@ var createInventoryCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		maxSuitcaseSizeH, err := cmd.Flags().GetString("max-suitcase-size")
 		checkErr(err, "")
+
+		var outF *os.File
+		outFile, err := cmd.Flags().GetString("output-file")
+		checkErr(err, "")
+		if outFile == "" {
+			outF, err = os.CreateTemp("", "suitcase-inventory-*.yaml")
+			checkErr(err, "")
+			defer outF.Close()
+		} else {
+
+			// Go ahead and create the file if it doesn't exist
+			outF, err = os.Create(outFile)
+			checkErr(err, "")
+			defer outF.Close()
+		}
 
 		maxSuitcaseSizeU, err := humanize.ParseBytes(maxSuitcaseSizeH)
 		checkErr(err, "")
@@ -85,9 +100,13 @@ var createInventoryCmd = &cobra.Command{
 		}
 
 		// Long print
-		data, err := yaml.Marshal(inventoryD)
-		cobra.CheckErr(err)
-		fmt.Println(string(data))
+		// data, err := yaml.Marshal(inventoryD)
+		// cobra.CheckErr(err)
+		// fmt.Println(string(data))
+		enc := yaml.NewEncoder(outF)
+		err = enc.Encode(inventoryD)
+		checkErr(err, "")
+		log.Info().Str("file", outF.Name()).Msg("Created inventory file")
 	},
 }
 
@@ -99,6 +118,7 @@ func init() {
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
 	// createInventoryCmd.PersistentFlags().String("foo", "", "A help for foo")
+	createInventoryCmd.PersistentFlags().StringP("output-file", "o", "", "File to write the inventory to. If not specified, the inventory will be written to a temp file.")
 	createInventoryCmd.PersistentFlags().String("max-suitcase-size", "0", "Maximum size for the set of suitcases generated. If no unit is specified, 'bytes' is assumed")
 	createInventoryCmd.PersistentFlags().String("internal-metadata-glob", "suitcase-meta*", "Glob pattern for internal metadata files. This should be directly under the top level directories of the targets that are being packaged up. Multiple matches will be included if found.")
 	createInventoryCmd.PersistentFlags().StringArray("external-metadata-file", []string{}, "Additional files to include as metadata in the inventory. This should NOT be part of the suitcase target directories...use internal-metadata-glob for those")
