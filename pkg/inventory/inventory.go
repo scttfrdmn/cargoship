@@ -59,6 +59,13 @@ type FileBucket struct {
 	Free int64
 }
 
+/*
+func (di DirectoryInventory) Marshal() ([]byte, error) {
+	log.Fatal().Msg("TEST")
+	return yaml.Marshal(di)
+}
+*/
+
 var errHalt = errors.New("halt")
 
 // Loop through inventory and assign suitcase indexes

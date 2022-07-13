@@ -17,6 +17,7 @@ package cmd
 import (
 	"bufio"
 	"os"
+	"runtime"
 
 	"github.com/dustin/go-humanize"
 	"github.com/rs/zerolog/log"
@@ -111,33 +112,31 @@ var createInventoryCmd = &cobra.Command{
 			log.Info().Int("count", inventoryD.TotalIndexes).Msg("Indexed inventory")
 		}
 
-		// Long print
-		// data, err := yaml.Marshal(inventoryD)
-		// cobra.CheckErr(err)
-		// fmt.Println(string(data))
+		// Create a new buffered io writer
 		cmdhelpers.PrintMemUsage()
 		log.Debug().Int("buffer", bufferSize).Msg("About to create a new buffered Writer")
 		// Createa a new io.Writer with a buffer
 		writer := bufio.NewWriterSize(outF, bufferSize)
 		defer writer.Flush()
 
+		// Pass the buffered IO writer to the encoder
 		cmdhelpers.PrintMemUsage()
 		log.Debug().Msg("About to create a new YAML encoder")
 		enc := yaml.NewEncoder(writer)
 		defer enc.Close()
 
+		// Collect that delicious garbage 😋
+		cmdhelpers.PrintMemUsage()
+		log.Debug().Msg("Running garbage collection")
+		runtime.GC()
+
+		// Write the inventory to the file
 		cmdhelpers.PrintMemUsage()
 		log.Debug().Msg("About to encode inventory in to yaml")
-		defer func() {
-			if err := recover(); err != nil {
-				cmdhelpers.PrintMemUsage()
-				log.Warn().Msgf("ERR: %v", err)
-				log.Fatal().
-					Msg("panic occurred")
-			}
-		}()
 		err = enc.Encode(inventoryD)
 		checkErr(err, "")
+
+		// Donzo!
 		cmdhelpers.PrintMemUsage()
 		log.Info().Str("file", outF.Name()).Msg("Created inventory file")
 	},
