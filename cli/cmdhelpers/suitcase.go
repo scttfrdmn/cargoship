@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 
@@ -144,4 +145,19 @@ func ProcessLogging(po *ProcessOpts) ([]string, error) {
 	})
 
 	return ret, nil
+}
+
+func PrintMemUsage() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	log.Info().
+		Uint64("allocated", bToMb(m.Alloc)).
+		Uint64("total-allocated", bToMb(m.TotalAlloc)).
+		Uint64("system", bToMb(m.Sys)).
+		Uint64("gc-count", uint64(m.NumGC)).
+		Msg("Memory Usage in MB")
+}
+
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
 }

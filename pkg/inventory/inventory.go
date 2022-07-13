@@ -39,6 +39,7 @@ type DirectoryInventoryOptions struct {
 	ExternalMetadataFiles []string `yaml:"external_metadata_files,omitempty"`
 	EncryptInner          bool     `yaml:"encrypt_inner"`
 	HashInner             bool     `yaml:"hash_inner"`
+	LimitFileCount        int      `yaml:"limit_file_count"`
 }
 
 type InventoryFile struct {
@@ -57,6 +58,15 @@ type InventoryFile struct {
 type FileBucket struct {
 	Free int64
 }
+
+/*
+func (di DirectoryInventory) Marshal() ([]byte, error) {
+	log.Fatal().Msg("TEST")
+	return yaml.Marshal(di)
+}
+*/
+
+var errHalt = errors.New("halt")
 
 // Loop through inventory and assign suitcase indexes
 func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
@@ -114,6 +124,7 @@ func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
 		s := inventory.IndexSummaries[item.SuitcaseIndex]
 		s.Count += 1
 		s.Size += item.Size
+
 	}
 	inventory.TotalIndexes = numCases
 	return nil
@@ -220,12 +231,32 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 					Int64("size", size).
 					Msg("adding file to inventory")
 
+				if opts.LimitFileCount > 0 && addedCount >= opts.LimitFileCount {
+					log.Warn().Msg("Reached file count limit, stopping walk")
+					return errHalt
+
+				}
 				return nil
 			},
 			Unsorted: true,
+			ErrorCallback: func(osPathname string, err error) godirwalk.ErrorAction {
+				// Desired way, but currently wrong (not halting) due to different error types.
+				if err == errHalt {
+					return godirwalk.Halt
+				}
+
+				// Currently correct way.
+				// if err.Error() == errHalt.Error() {
+				// 	return godirwalk.Halt
+				// }
+
+				return godirwalk.SkipNode
+			},
 		})
 		if err != nil {
-			log.Warn().Err(err).Msg("error walking directory")
+			log.Warn().Err(err).Int("files", addedCount).Msg("error walking directory")
+		} else {
+			log.Info().Int("files", addedCount).Msg("Finished walking directory")
 		}
 	}
 	err := IndexInventory(ret, opts.MaxSuitcaseSize)
