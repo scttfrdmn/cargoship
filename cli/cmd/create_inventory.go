@@ -15,14 +15,16 @@ limitations under the License.
 package cmd
 
 import (
+	"bufio"
 	"os"
 
 	"github.com/dustin/go-humanize"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/cli/cmdhelpers"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/helpers"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // createInventoryCmd represents the inventory command
@@ -31,7 +33,14 @@ var createInventoryCmd = &cobra.Command{
 	Short: "Generate an inventory file for a directory, or set of directories",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		cmdhelpers.PrintMemUsage()
 		maxSuitcaseSizeH, err := cmd.Flags().GetString("max-suitcase-size")
+		checkErr(err, "")
+
+		bufferSize, err := cmd.Flags().GetInt("buffer-size")
+		checkErr(err, "")
+
+		limitFileCount, err := cmd.Flags().GetInt("limit-file-count")
 		checkErr(err, "")
 
 		var outF *os.File
@@ -69,6 +78,7 @@ var createInventoryCmd = &cobra.Command{
 			TopLevelDirectories:   targetDirs,
 			InternalMetadataGlob:  internalMetadataGlob,
 			ExternalMetadataFiles: externalMetadataFiles,
+			LimitFileCount:        limitFileCount,
 			// SizeConsideredLarge: lfs,
 		}
 
@@ -91,8 +101,10 @@ var createInventoryCmd = &cobra.Command{
 		// opt.HashOuter, err = cmd.Flags().GetBool("hash-outer")
 		// checkErr(err, "")
 
+		cmdhelpers.PrintMemUsage()
 		inventoryD, err := inventory.NewDirectoryInventory(opt)
 		cobra.CheckErr(err)
+		cmdhelpers.PrintMemUsage()
 		if maxSuitcaseSize > 0 {
 			err := inventory.IndexInventory(inventoryD, maxSuitcaseSize)
 			checkErr(err, "")
@@ -103,12 +115,30 @@ var createInventoryCmd = &cobra.Command{
 		// data, err := yaml.Marshal(inventoryD)
 		// cobra.CheckErr(err)
 		// fmt.Println(string(data))
-		log.Debug().Msg("About to create new YAML encoder")
-		enc := yaml.NewEncoder(outF)
+		cmdhelpers.PrintMemUsage()
+		log.Debug().Int("buffer", bufferSize).Msg("About to create a new buffered Writer")
+		// Createa a new io.Writer with a buffer
+		writer := bufio.NewWriterSize(outF, bufferSize)
+		defer writer.Flush()
+
+		cmdhelpers.PrintMemUsage()
+		log.Debug().Msg("About to create a new YAML encoder")
+		enc := yaml.NewEncoder(writer)
 		defer enc.Close()
+
+		cmdhelpers.PrintMemUsage()
 		log.Debug().Msg("About to encode inventory in to yaml")
+		defer func() {
+			if err := recover(); err != nil {
+				cmdhelpers.PrintMemUsage()
+				log.Warn().Msgf("ERR: %v", err)
+				log.Fatal().
+					Msg("panic occurred")
+			}
+		}()
 		err = enc.Encode(inventoryD)
 		checkErr(err, "")
+		cmdhelpers.PrintMemUsage()
 		log.Info().Str("file", outF.Name()).Msg("Created inventory file")
 	},
 }
@@ -127,6 +157,8 @@ func init() {
 	createInventoryCmd.PersistentFlags().StringArray("external-metadata-file", []string{}, "Additional files to include as metadata in the inventory. This should NOT be part of the suitcase target directories...use internal-metadata-glob for those")
 	createInventoryCmd.PersistentFlags().Bool("hash-inner", false, "Create SHA256 hashes for the inner contents of the suitcase")
 	createInventoryCmd.PersistentFlags().Bool("encrypt-inner", false, "Encrypt files within the suitcase")
+	createInventoryCmd.PersistentFlags().Int("buffer-size", 1024, "Buffer size for the output file. This may need to be tweaked for the host memory and fileset")
+	createInventoryCmd.PersistentFlags().Int("limit-file-count", 0, "Limit the number of files to include in the inventory. If 0, no limit is applied. Should only be used for debugging")
 	// createInventoryCmd.PersistentFlags().Int64("large-file-size", 1024*1024, "Size in bytes of files considered 'large'")
 
 	// Cobra supports local flags which will only run when this command
