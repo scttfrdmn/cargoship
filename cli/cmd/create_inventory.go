@@ -15,17 +15,17 @@ limitations under the License.
 package cmd
 
 import (
-	"bufio"
 	"os"
-	"runtime"
+	"runtime/debug"
 
 	"github.com/dustin/go-humanize"
+	"github.com/mailru/easyjson"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/cli/cmdhelpers"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/helpers"
 	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
-	"gopkg.in/yaml.v3"
+	//"gopkg.in/yaml.v3"
 )
 
 // createInventoryCmd represents the inventory command
@@ -48,7 +48,7 @@ var createInventoryCmd = &cobra.Command{
 		outFile, err := cmd.Flags().GetString("output-file")
 		checkErr(err, "")
 		if outFile == "" {
-			outF, err = os.CreateTemp("", "suitcase-inventory-*.yaml")
+			outF, err = os.CreateTemp("", "suitcase-inventory-*.json")
 			checkErr(err, "")
 			defer outF.Close()
 		} else {
@@ -116,25 +116,32 @@ var createInventoryCmd = &cobra.Command{
 		cmdhelpers.PrintMemUsage()
 		log.Debug().Int("buffer", bufferSize).Msg("About to create a new buffered Writer")
 		// Createa a new io.Writer with a buffer
-		writer := bufio.NewWriterSize(outF, bufferSize)
-		defer writer.Flush()
+		/*
+			writer := bufio.NewWriterSize(outF, bufferSize)
+			defer writer.Flush()
 
-		// Pass the buffered IO writer to the encoder
-		cmdhelpers.PrintMemUsage()
-		log.Debug().Msg("About to create a new YAML encoder")
-		enc := yaml.NewEncoder(writer)
-		defer enc.Close()
+			// Pass the buffered IO writer to the encoder
+			cmdhelpers.PrintMemUsage()
+			log.Debug().Msg("About to create a new JSON encoder")
+			enc := json.NewEncoder(writer)
 
-		// Collect that delicious garbage 😋
+			// Collect that delicious garbage 😋
+			cmdhelpers.PrintMemUsage()
+			log.Debug().Msg("Running garbage collection")
+			runtime.GC()
+		*/
+
+		// Do this thing Victor says _may_ help
 		cmdhelpers.PrintMemUsage()
-		log.Debug().Msg("Running garbage collection")
-		runtime.GC()
+		log.Info().Msg("Running FreeOSMemory")
+		debug.FreeOSMemory()
 
 		// Write the inventory to the file
 		cmdhelpers.PrintMemUsage()
 		log.Debug().Msg("About to encode inventory in to yaml")
-		err = enc.Encode(inventoryD)
+		_, err = easyjson.MarshalToWriter(inventoryD, outF)
 		checkErr(err, "")
+		// err = enc.Encode(inventoryD)
 
 		// Donzo!
 		cmdhelpers.PrintMemUsage()
