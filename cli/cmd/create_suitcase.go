@@ -16,17 +16,17 @@ limitations under the License.
 package cmd
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"strings"
 
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/cli/cmdhelpers"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/config"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/gpg"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmdhelpers"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/gpg"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v2"
 )
 
 // createSuitcaseCmd represents the createSuitcase command
@@ -58,7 +58,7 @@ var createSuitcaseCmd = &cobra.Command{
 		yfile, err := ioutil.ReadFile(inventoryF)
 		checkErr(err, "")
 		var inventory inventory.DirectoryInventory
-		err = yaml.Unmarshal(yfile, &inventory)
+		err = json.Unmarshal(yfile, &inventory)
 		checkErr(err, "")
 
 		// Set up options

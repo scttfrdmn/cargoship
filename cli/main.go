@@ -15,7 +15,7 @@ limitations under the License.
 */
 package main
 
-import "gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/cli/cmd"
+import "gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmd"
 
 func main() {
 	cmd.Execute()

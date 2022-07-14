@@ -18,6 +18,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -148,4 +149,16 @@ func checkErr(err error, msg string) {
 	if err != nil {
 		log.Fatal().Err(err).Msg(msg)
 	}
+}
+
+func printMemUsage() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	log.Info().
+		Uint64("allocated", m.Alloc).
+		Uint64("total-allocated", m.TotalAlloc).
+		Uint64("allocated-percent", (m.Alloc/m.TotalAlloc)*100).
+		Uint64("system", m.Sys).
+		Uint64("gc-count", uint64(m.NumGC)).
+		Msg("Memory Usage in MB")
 }

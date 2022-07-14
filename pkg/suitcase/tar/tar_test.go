@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/config"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
 )
 
 func TestTarFile(t *testing.T) {

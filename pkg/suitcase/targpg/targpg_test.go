@@ -10,9 +10,9 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/stretchr/testify/require"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/config"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/gpg"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/gpg"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
 )
 
 func TestTarGPGFileCorrupt(t *testing.T) {

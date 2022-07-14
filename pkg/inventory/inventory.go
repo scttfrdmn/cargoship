@@ -12,7 +12,7 @@ import (
 
 	"github.com/karrick/godirwalk"
 	"github.com/rs/zerolog/log"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/helpers"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
 	"golang.org/x/tools/godoc/util"
 )
 
@@ -225,11 +225,12 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 				ret.Files = append(ret.Files, &fItem)
 				addedCount++
 
-				log.Debug().
-					Int("count", addedCount).
-					Str("path", path).
-					Int64("size", size).
-					Msg("adding file to inventory")
+				if addedCount%1000 == 0 {
+					log.Debug().
+						Int("count", addedCount).
+						Msg("Added files to inventory")
+					// cmdhelpers.PrintMemUsage()
+				}
 
 				if opts.LimitFileCount > 0 && addedCount >= opts.LimitFileCount {
 					log.Warn().Msg("Reached file count limit, stopping walk")

@@ -4,9 +4,9 @@ import (
 	"compress/gzip"
 	"io"
 
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/config"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/suitcase/tar"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/tar"
 )
 
 // Archive as tar.
