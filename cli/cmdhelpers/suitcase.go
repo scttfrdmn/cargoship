@@ -86,5 +86,3 @@ func ProcessLogging(po *ProcessOpts) ([]string, error) {
 
 	return ret, nil
 }
-
-

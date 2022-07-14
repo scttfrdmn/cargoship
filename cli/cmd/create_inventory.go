@@ -143,7 +143,7 @@ var createInventoryCmd = &cobra.Command{
 
 			// Pass the buffered IO writer to the encoder
 			printMemUsage()
-			log.Debug().Msg("About to create a new JSON encoder")
+			log.Debug().Msg("About to create a new YAML encoder")
 			enc := yaml.NewEncoder(writer)
 			err = enc.Encode(inventoryD)
 			checkErr(err, "")

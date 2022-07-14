@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -229,7 +230,7 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 					log.Debug().
 						Int("count", addedCount).
 						Msg("Added files to inventory")
-					// cmdhelpers.PrintMemUsage()
+					printMemUsage()
 				}
 
 				if opts.LimitFileCount > 0 && addedCount >= opts.LimitFileCount {
@@ -294,4 +295,16 @@ func GetMetadataWithFiles(files []string) (map[string]string, error) {
 		ret[f] = string(data)
 	}
 	return ret, nil
+}
+
+func printMemUsage() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	log.Info().
+		Uint64("allocated", m.Alloc).
+		Uint64("total-allocated", m.TotalAlloc).
+		Float64("allocated-percent", (float64(m.Alloc)/float64(m.TotalAlloc))*float64(100)).
+		Uint64("system", m.Sys).
+		Uint64("gc-count", uint64(m.NumGC)).
+		Msg("Memory Usage in MB")
 }
