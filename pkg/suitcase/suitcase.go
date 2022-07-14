@@ -9,12 +9,12 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/config"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/suitcase/tar"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/suitcase/targpg"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/suitcase/targz"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/suitcase/targzgpg"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/tar"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/targpg"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/targz"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/targzgpg"
 )
 
 type Suitcase interface {

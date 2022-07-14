@@ -16,17 +16,17 @@ limitations under the License.
 package cmd
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"strings"
 
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/cli/cmdhelpers"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/config"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/gpg"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
-
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v2"
+	"github.com/vjorlikowski/yaml"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmdhelpers"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/gpg"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
 )
 
 // createSuitcaseCmd represents the createSuitcase command
@@ -36,7 +36,7 @@ var createSuitcaseCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		inventoryF, err := cmd.Flags().GetString("inventory")
-		checkErr(err, "")
+		checkErr(err, "Could not get the inventory file from the flags")
 		format, err := cmd.Flags().GetString("format")
 		checkErr(err, "")
 		concurrency, err := cmd.Flags().GetInt("concurrency")
@@ -56,10 +56,17 @@ var createSuitcaseCmd = &cobra.Command{
 
 		// Parse in the inventory
 		yfile, err := ioutil.ReadFile(inventoryF)
-		checkErr(err, "")
+		checkErr(err, "Could not read inventoryF")
 		var inventory inventory.DirectoryInventory
-		err = yaml.Unmarshal(yfile, &inventory)
+		if strings.HasSuffix(inventoryF, ".json") {
+			err = json.Unmarshal(yfile, &inventory)
+			checkErr(err, "Could not unmarshal inventory json")
+		} else {
+			err = yaml.Unmarshal(yfile, &inventory)
+			checkErr(err, "Could not unmarshal inventory yaml")
+		}
 		checkErr(err, "")
+		// log.Info().Msg("Parsing inventory file")
 
 		// Set up options
 		opts := &config.SuitCaseOpts{

@@ -40,7 +40,7 @@ brews:
     description: "Data Suitcase Suitcase Controller"
     name: "suitcasectl"
     homepage: >
-      {{ if index .Env "CI_PROJECT_URL" }}{{ . }}{{ else }}https://gitlab.oit.duke.edu/oit-ssi-systems{{ end }}
+      {{ if index .Env "CI_PROJECT_URL" }}{{ . }}{{ else }}https://gitlab.oit.duke.edu/devil-ops{{ end }}
     install: |
       bin.install "suitcasectl"
 nfpms:

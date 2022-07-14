@@ -6,13 +6,14 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/karrick/godirwalk"
 	"github.com/rs/zerolog/log"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/helpers"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
 	"golang.org/x/tools/godoc/util"
 )
 
@@ -225,11 +226,12 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 				ret.Files = append(ret.Files, &fItem)
 				addedCount++
 
-				log.Debug().
-					Int("count", addedCount).
-					Str("path", path).
-					Int64("size", size).
-					Msg("adding file to inventory")
+				if addedCount%1000 == 0 {
+					log.Debug().
+						Int("count", addedCount).
+						Msg("Added files to inventory")
+					printMemUsage()
+				}
 
 				if opts.LimitFileCount > 0 && addedCount >= opts.LimitFileCount {
 					log.Warn().Msg("Reached file count limit, stopping walk")
@@ -293,4 +295,16 @@ func GetMetadataWithFiles(files []string) (map[string]string, error) {
 		ret[f] = string(data)
 	}
 	return ret, nil
+}
+
+func printMemUsage() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	log.Info().
+		Uint64("allocated", m.Alloc).
+		Uint64("total-allocated", m.TotalAlloc).
+		Float64("allocated-percent", (float64(m.Alloc)/float64(m.TotalAlloc))*float64(100)).
+		Uint64("system", m.Sys).
+		Uint64("gc-count", uint64(m.NumGC)).
+		Msg("Memory Usage in MB")
 }

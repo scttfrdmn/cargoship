@@ -17,15 +17,16 @@ package cmd
 import (
 	"bufio"
 	"os"
-	"runtime"
+	"runtime/debug"
+	"strings"
 
 	"github.com/dustin/go-humanize"
+	"github.com/mailru/easyjson"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/cli/cmdhelpers"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/helpers"
-	"gitlab.oit.duke.edu/oit-ssi-systems/data-suitcase/pkg/inventory"
-	"gopkg.in/yaml.v3"
+	"github.com/vjorlikowski/yaml"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
 )
 
 // createInventoryCmd represents the inventory command
@@ -34,7 +35,7 @@ var createInventoryCmd = &cobra.Command{
 	Short: "Generate an inventory file for a directory, or set of directories",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		cmdhelpers.PrintMemUsage()
+		printMemUsage()
 		maxSuitcaseSizeH, err := cmd.Flags().GetString("max-suitcase-size")
 		checkErr(err, "")
 
@@ -48,7 +49,7 @@ var createInventoryCmd = &cobra.Command{
 		outFile, err := cmd.Flags().GetString("output-file")
 		checkErr(err, "")
 		if outFile == "" {
-			outF, err = os.CreateTemp("", "suitcase-inventory-*.yaml")
+			outF, err = os.CreateTemp("", "suitcase-inventory-*.json")
 			checkErr(err, "")
 			defer outF.Close()
 		} else {
@@ -102,10 +103,10 @@ var createInventoryCmd = &cobra.Command{
 		// opt.HashOuter, err = cmd.Flags().GetBool("hash-outer")
 		// checkErr(err, "")
 
-		cmdhelpers.PrintMemUsage()
+		printMemUsage()
 		inventoryD, err := inventory.NewDirectoryInventory(opt)
 		cobra.CheckErr(err)
-		cmdhelpers.PrintMemUsage()
+		printMemUsage()
 		if maxSuitcaseSize > 0 {
 			err := inventory.IndexInventory(inventoryD, maxSuitcaseSize)
 			checkErr(err, "")
@@ -113,31 +114,44 @@ var createInventoryCmd = &cobra.Command{
 		}
 
 		// Create a new buffered io writer
-		cmdhelpers.PrintMemUsage()
+		printMemUsage()
 		log.Debug().Int("buffer", bufferSize).Msg("About to create a new buffered Writer")
 		// Createa a new io.Writer with a buffer
-		writer := bufio.NewWriterSize(outF, bufferSize)
-		defer writer.Flush()
+		/*
 
-		// Pass the buffered IO writer to the encoder
-		cmdhelpers.PrintMemUsage()
-		log.Debug().Msg("About to create a new YAML encoder")
-		enc := yaml.NewEncoder(writer)
-		defer enc.Close()
+			// Collect that delicious garbage 😋
+			cmdhelpers.PrintMemUsage()
+			log.Debug().Msg("Running garbage collection")
+			runtime.GC()
+		*/
 
-		// Collect that delicious garbage 😋
-		cmdhelpers.PrintMemUsage()
-		log.Debug().Msg("Running garbage collection")
-		runtime.GC()
+		// Do this thing Victor says _may_ help
+		printMemUsage()
+		log.Info().Msg("Running FreeOSMemory")
+		debug.FreeOSMemory()
 
 		// Write the inventory to the file
-		cmdhelpers.PrintMemUsage()
-		log.Debug().Msg("About to encode inventory in to yaml")
-		err = enc.Encode(inventoryD)
-		checkErr(err, "")
+		printMemUsage()
+		if strings.HasSuffix(outF.Name(), ".json") {
+			log.Debug().Msg("About to encode inventory in to json file")
+			_, err = easyjson.MarshalToWriter(inventoryD, outF)
+			checkErr(err, "")
+		} else {
+			log.Debug().Msg("About to encode inventory in to yaml file")
+			writer := bufio.NewWriterSize(outF, bufferSize)
+			defer writer.Flush()
+
+			// Pass the buffered IO writer to the encoder
+			printMemUsage()
+			log.Debug().Msg("About to create a new YAML encoder")
+			enc := yaml.NewEncoder(writer)
+			err = enc.Encode(inventoryD)
+			checkErr(err, "")
+		}
+		// err = enc.Encode(inventoryD)
 
 		// Donzo!
-		cmdhelpers.PrintMemUsage()
+		printMemUsage()
 		log.Info().Str("file", outF.Name()).Msg("Created inventory file")
 	},
 }
