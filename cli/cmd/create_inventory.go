@@ -153,6 +153,23 @@ var createInventoryCmd = &cobra.Command{
 		// Donzo!
 		printMemUsage()
 		log.Info().Str("file", outF.Name()).Msg("Created inventory file")
+		totalC := uint(0)
+		totalS := int64(0)
+		for k, item := range inventoryD.IndexSummaries {
+			totalC += item.Count
+			totalS += item.Size
+			log.Info().
+				Int("index", k).
+				Uint("file-count", item.Count).
+				Int64("file-size", item.Size).
+				Str("file-size-human", humanize.Bytes(uint64(item.Size))).
+				Msg("Individual Suitcase Data")
+		}
+		log.Info().
+			Uint("file-count", totalC).
+			Int64("file-size", totalS).
+			Str("file-size-human", humanize.Bytes(uint64(totalS))).
+			Msg("Total Suitcase Data")
 	},
 }
 

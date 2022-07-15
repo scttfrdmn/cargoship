@@ -3,6 +3,7 @@ package inventory
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -16,6 +17,11 @@ import (
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
 	"golang.org/x/tools/godoc/util"
 )
+
+type Inventoryer interface {
+	Write(io.Writer, *DirectoryInventory) error
+	Read([]byte) (*DirectoryInventory, error)
+}
 
 type DirectoryInventory struct {
 	Files            []*InventoryFile           `yaml:"files"`
