@@ -139,14 +139,6 @@ var createInventoryCmd = &cobra.Command{
 		// Create a new buffered io writer
 		printMemUsage()
 		log.Debug().Int("buffer", bufferSize).Msg("About to create a new buffered Writer")
-		// Createa a new io.Writer with a buffer
-		/*
-
-			// Collect that delicious garbage 😋
-			cmdhelpers.PrintMemUsage()
-			log.Debug().Msg("Running garbage collection")
-			runtime.GC()
-		*/
 
 		// Do this thing Victor says _may_ help
 		printMemUsage()
