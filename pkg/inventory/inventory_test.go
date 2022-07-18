@@ -44,6 +44,10 @@ func TestIndexInventory(t *testing.T) {
 
 func TestExpandInventoryWithNames(t *testing.T) {
 	i := &DirectoryInventory{
+		Options: &DirectoryInventoryOptions{
+			Prefix: "foo",
+			User:   "bar",
+		},
 		Files: []*InventoryFile{
 			{
 				Path: "small-file-1",
@@ -63,7 +67,7 @@ func TestExpandInventoryWithNames(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, i.TotalIndexes)
 
-	err = ExpandSuitcaseNames(i, "foo", "bar", 2)
+	err = ExpandSuitcaseNames(i, 2)
 	require.NoError(t, err)
 	require.Equal(t, ExtractSuitcaseNames(i), []string{"foo-bar-01-of-02.tar", "foo-bar-02-of-02.tar", "foo-bar-02-of-02.tar"})
 }

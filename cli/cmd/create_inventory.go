@@ -133,7 +133,7 @@ var createInventoryCmd = &cobra.Command{
 			log.Info().Int("count", inventoryD.TotalIndexes).Msg("Indexed inventory")
 		}
 		// Add filenames to the inventory
-		err = inventory.ExpandSuitcaseNames(inventoryD, inventoryD.Options.Prefix, inventoryD.Options.User, inventoryD.TotalIndexes)
+		err = inventory.ExpandSuitcaseNames(inventoryD, inventoryD.TotalIndexes)
 		checkErr(err, "")
 
 		// Create a new buffered io writer

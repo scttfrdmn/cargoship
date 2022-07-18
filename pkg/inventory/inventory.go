@@ -73,7 +73,7 @@ type FileBucket struct {
 
 var errHalt = errors.New("halt")
 
-func ExpandSuitcaseNames(di *DirectoryInventory, prefix string, user string, total int) error {
+func ExpandSuitcaseNames(di *DirectoryInventory, total int) error {
 	var extension string
 	if di.Options == nil || di.Options.Format == "" {
 		extension = "tar"
@@ -82,7 +82,7 @@ func ExpandSuitcaseNames(di *DirectoryInventory, prefix string, user string, tot
 	}
 	for _, f := range di.Files {
 		if f.SuitcaseName == "" {
-			n := FormatSuitcaseName(prefix, user, f.SuitcaseIndex, di.TotalIndexes, extension)
+			n := FormatSuitcaseName(di.Options.Prefix, di.Options.User, f.SuitcaseIndex, di.TotalIndexes, extension)
 			f.SuitcaseName = n
 			log.Info().Str("name", n).Msg("expanded suitcase names")
 		}
