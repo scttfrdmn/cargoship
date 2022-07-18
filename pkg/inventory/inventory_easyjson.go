@@ -7,7 +7,6 @@ import (
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
-	fs "io/fs"
 )
 
 // suppress unused package warning
@@ -37,28 +36,18 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory(in *
 			continue
 		}
 		switch key {
-		case "Path":
+		case "path":
 			out.Path = string(in.String())
-		case "Destination":
+		case "destination":
 			out.Destination = string(in.String())
-		case "Name":
+		case "name":
 			out.Name = string(in.String())
-		case "Size":
+		case "size":
 			out.Size = int64(in.Int64())
-		case "Mode":
-			out.Mode = fs.FileMode(in.Uint32())
-		case "ModTime":
-			if data := in.Raw(); in.Ok() {
-				in.AddError((out.ModTime).UnmarshalJSON(data))
-			}
-		case "IsDir":
-			out.IsDir = bool(in.Bool())
-		case "SHA256":
-			out.SHA256 = string(in.String())
-		case "Encrypt":
-			out.Encrypt = bool(in.Bool())
-		case "SuitcaseIndex":
+		case "suitcase_index":
 			out.SuitcaseIndex = int(in.Int())
+		case "suitcase_name":
+			out.SuitcaseName = string(in.String())
 		default:
 			in.SkipRecursive()
 		}
@@ -74,54 +63,34 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory(out 
 	first := true
 	_ = first
 	{
-		const prefix string = ",\"Path\":"
+		const prefix string = ",\"path\":"
 		out.RawString(prefix[1:])
 		out.String(string(in.Path))
 	}
 	{
-		const prefix string = ",\"Destination\":"
+		const prefix string = ",\"destination\":"
 		out.RawString(prefix)
 		out.String(string(in.Destination))
 	}
 	{
-		const prefix string = ",\"Name\":"
+		const prefix string = ",\"name\":"
 		out.RawString(prefix)
 		out.String(string(in.Name))
 	}
 	{
-		const prefix string = ",\"Size\":"
+		const prefix string = ",\"size\":"
 		out.RawString(prefix)
 		out.Int64(int64(in.Size))
 	}
-	{
-		const prefix string = ",\"Mode\":"
-		out.RawString(prefix)
-		out.Uint32(uint32(in.Mode))
-	}
-	{
-		const prefix string = ",\"ModTime\":"
-		out.RawString(prefix)
-		out.Raw((in.ModTime).MarshalJSON())
-	}
-	{
-		const prefix string = ",\"IsDir\":"
-		out.RawString(prefix)
-		out.Bool(bool(in.IsDir))
-	}
-	{
-		const prefix string = ",\"SHA256\":"
-		out.RawString(prefix)
-		out.String(string(in.SHA256))
-	}
-	{
-		const prefix string = ",\"Encrypt\":"
-		out.RawString(prefix)
-		out.Bool(bool(in.Encrypt))
-	}
-	{
-		const prefix string = ",\"SuitcaseIndex\":"
+	if in.SuitcaseIndex != 0 {
+		const prefix string = ",\"suitcase_index\":"
 		out.RawString(prefix)
 		out.Int(int(in.SuitcaseIndex))
+	}
+	if in.SuitcaseName != "" {
+		const prefix string = ",\"suitcase_name\":"
+		out.RawString(prefix)
+		out.String(string(in.SuitcaseName))
 	}
 	out.RawByte('}')
 }
@@ -307,9 +276,11 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(in 
 			continue
 		}
 		switch key {
-		case "Name":
+		case "name":
 			out.Name = string(in.String())
-		case "TopLevelDirectories":
+		case "user":
+			out.User = string(in.String())
+		case "top_level_directories":
 			if in.IsNull() {
 				in.Skip()
 				out.TopLevelDirectories = nil
@@ -332,13 +303,13 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(in 
 				}
 				in.Delim(']')
 			}
-		case "SizeConsideredLarge":
+		case "size_considered_large":
 			out.SizeConsideredLarge = int64(in.Int64())
-		case "MaxSuitcaseSize":
+		case "max_suitcase_size":
 			out.MaxSuitcaseSize = int64(in.Int64())
-		case "InternalMetadataGlob":
+		case "internal_metadata_glob":
 			out.InternalMetadataGlob = string(in.String())
-		case "ExternalMetadataFiles":
+		case "external_metadata_files":
 			if in.IsNull() {
 				in.Skip()
 				out.ExternalMetadataFiles = nil
@@ -361,12 +332,14 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(in 
 				}
 				in.Delim(']')
 			}
-		case "EncryptInner":
+		case "encrypt_inner":
 			out.EncryptInner = bool(in.Bool())
-		case "HashInner":
+		case "hash_inner":
 			out.HashInner = bool(in.Bool())
-		case "LimitFileCount":
+		case "limit_file_count":
 			out.LimitFileCount = int(in.Int())
+		case "format":
+			out.Format = string(in.String())
 		default:
 			in.SkipRecursive()
 		}
@@ -382,12 +355,17 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(out
 	first := true
 	_ = first
 	{
-		const prefix string = ",\"Name\":"
+		const prefix string = ",\"name\":"
 		out.RawString(prefix[1:])
 		out.String(string(in.Name))
 	}
 	{
-		const prefix string = ",\"TopLevelDirectories\":"
+		const prefix string = ",\"user\":"
+		out.RawString(prefix)
+		out.String(string(in.User))
+	}
+	{
+		const prefix string = ",\"top_level_directories\":"
 		out.RawString(prefix)
 		if in.TopLevelDirectories == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
 			out.RawString("null")
@@ -403,26 +381,24 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(out
 		}
 	}
 	{
-		const prefix string = ",\"SizeConsideredLarge\":"
+		const prefix string = ",\"size_considered_large\":"
 		out.RawString(prefix)
 		out.Int64(int64(in.SizeConsideredLarge))
 	}
 	{
-		const prefix string = ",\"MaxSuitcaseSize\":"
+		const prefix string = ",\"max_suitcase_size\":"
 		out.RawString(prefix)
 		out.Int64(int64(in.MaxSuitcaseSize))
 	}
-	{
-		const prefix string = ",\"InternalMetadataGlob\":"
+	if in.InternalMetadataGlob != "" {
+		const prefix string = ",\"internal_metadata_glob\":"
 		out.RawString(prefix)
 		out.String(string(in.InternalMetadataGlob))
 	}
-	{
-		const prefix string = ",\"ExternalMetadataFiles\":"
+	if len(in.ExternalMetadataFiles) != 0 {
+		const prefix string = ",\"external_metadata_files\":"
 		out.RawString(prefix)
-		if in.ExternalMetadataFiles == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
-			out.RawString("null")
-		} else {
+		{
 			out.RawByte('[')
 			for v5, v6 := range in.ExternalMetadataFiles {
 				if v5 > 0 {
@@ -434,19 +410,24 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(out
 		}
 	}
 	{
-		const prefix string = ",\"EncryptInner\":"
+		const prefix string = ",\"encrypt_inner\":"
 		out.RawString(prefix)
 		out.Bool(bool(in.EncryptInner))
 	}
 	{
-		const prefix string = ",\"HashInner\":"
+		const prefix string = ",\"hash_inner\":"
 		out.RawString(prefix)
 		out.Bool(bool(in.HashInner))
 	}
 	{
-		const prefix string = ",\"LimitFileCount\":"
+		const prefix string = ",\"limit_file_count\":"
 		out.RawString(prefix)
 		out.Int(int(in.LimitFileCount))
+	}
+	{
+		const prefix string = ",\"format\":"
+		out.RawString(prefix)
+		out.String(string(in.Format))
 	}
 	out.RawByte('}')
 }
@@ -493,7 +474,7 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(in 
 			continue
 		}
 		switch key {
-		case "Files":
+		case "files":
 			if in.IsNull() {
 				in.Skip()
 				out.Files = nil
@@ -524,7 +505,7 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(in 
 				}
 				in.Delim(']')
 			}
-		case "Options":
+		case "options":
 			if in.IsNull() {
 				in.Skip()
 				out.Options = nil
@@ -534,9 +515,9 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(in 
 				}
 				(*out.Options).UnmarshalEasyJSON(in)
 			}
-		case "TotalIndexes":
+		case "total_indexes":
 			out.TotalIndexes = int(in.Int())
-		case "IndexSummaries":
+		case "index_summaries":
 			if in.IsNull() {
 				in.Skip()
 			} else {
@@ -560,7 +541,7 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(in 
 				}
 				in.Delim('}')
 			}
-		case "InternalMetadata":
+		case "internal_metadata":
 			if in.IsNull() {
 				in.Skip()
 			} else {
@@ -576,7 +557,7 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(in 
 				}
 				in.Delim('}')
 			}
-		case "ExternalMetadata":
+		case "external_metadata":
 			if in.IsNull() {
 				in.Skip()
 			} else {
@@ -607,7 +588,7 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(out
 	first := true
 	_ = first
 	{
-		const prefix string = ",\"Files\":"
+		const prefix string = ",\"files\":"
 		out.RawString(prefix[1:])
 		if in.Files == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
 			out.RawString("null")
@@ -627,7 +608,7 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(out
 		}
 	}
 	{
-		const prefix string = ",\"Options\":"
+		const prefix string = ",\"options\":"
 		out.RawString(prefix)
 		if in.Options == nil {
 			out.RawString("null")
@@ -636,12 +617,12 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(out
 		}
 	}
 	{
-		const prefix string = ",\"TotalIndexes\":"
+		const prefix string = ",\"total_indexes\":"
 		out.RawString(prefix)
 		out.Int(int(in.TotalIndexes))
 	}
 	{
-		const prefix string = ",\"IndexSummaries\":"
+		const prefix string = ",\"index_summaries\":"
 		out.RawString(prefix)
 		if in.IndexSummaries == nil && (out.Flags&jwriter.NilMapAsEmpty) == 0 {
 			out.RawString(`null`)
@@ -666,7 +647,7 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(out
 		}
 	}
 	{
-		const prefix string = ",\"InternalMetadata\":"
+		const prefix string = ",\"internal_metadata\":"
 		out.RawString(prefix)
 		if in.InternalMetadata == nil && (out.Flags&jwriter.NilMapAsEmpty) == 0 {
 			out.RawString(`null`)
@@ -687,7 +668,7 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(out
 		}
 	}
 	{
-		const prefix string = ",\"ExternalMetadata\":"
+		const prefix string = ",\"external_metadata\":"
 		out.RawString(prefix)
 		if in.ExternalMetadata == nil && (out.Flags&jwriter.NilMapAsEmpty) == 0 {
 			out.RawString(`null`)
