@@ -6,7 +6,6 @@ import (
 
 	easyjson "github.com/mailru/easyjson"
 	"github.com/rs/zerolog/log"
-	"github.com/vjorlikowski/yaml"
 )
 
 /*
@@ -28,8 +27,11 @@ func (r *EJSONer) Write(w io.Writer, i *DirectoryInventory) error {
 }
 
 func (r EJSONer) Read(b []byte) (*DirectoryInventory, error) {
+	if b == nil {
+		return nil, errors.New("bytes is nil")
+	}
 	var inventory DirectoryInventory
-	err := yaml.Unmarshal(b, &inventory)
+	err := easyjson.Unmarshal(b, &inventory)
 	if err != nil {
 		return nil, err
 	}

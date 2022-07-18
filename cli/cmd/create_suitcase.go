@@ -16,13 +16,11 @@ limitations under the License.
 package cmd
 
 import (
-	"encoding/json"
 	"io/ioutil"
 	"strings"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/vjorlikowski/yaml"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmdhelpers"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/gpg"
@@ -37,8 +35,6 @@ var createSuitcaseCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		inventoryF, err := cmd.Flags().GetString("inventory")
 		checkErr(err, "Could not get the inventory file from the flags")
-		format, err := cmd.Flags().GetString("format")
-		checkErr(err, "")
 		concurrency, err := cmd.Flags().GetInt("concurrency")
 		checkErr(err, "")
 		pbarType, err := cmd.Flags().GetString("progress-bar")
@@ -55,24 +51,20 @@ var createSuitcaseCmd = &cobra.Command{
 		*/
 
 		// Parse in the inventory
-		yfile, err := ioutil.ReadFile(inventoryF)
+		ib, err := ioutil.ReadFile(inventoryF)
 		checkErr(err, "Could not read inventoryF")
-		var inventory inventory.DirectoryInventory
-		if strings.HasSuffix(inventoryF, ".json") {
-			err = json.Unmarshal(yfile, &inventory)
-			checkErr(err, "Could not unmarshal inventory json")
-		} else {
-			err = yaml.Unmarshal(yfile, &inventory)
-			checkErr(err, "Could not unmarshal inventory yaml")
-		}
+		ir, err := inventory.NewInventoryerWithFilename(inventoryF)
+		checkErr(err, "")
+
+		inventoryS, err := ir.Read(ib)
 		checkErr(err, "")
 		// log.Info().Msg("Parsing inventory file")
 
 		// Set up options
 		opts := &config.SuitCaseOpts{
 			Destination:  args[0],
-			EncryptInner: inventory.Options.EncryptInner,
-			Format:       strings.TrimPrefix(format, "."),
+			EncryptInner: inventoryS.Options.EncryptInner,
+			Format:       inventoryS.Options.Format,
 		}
 
 		// Gather EncryptTo if we need it
@@ -85,7 +77,7 @@ var createSuitcaseCmd = &cobra.Command{
 
 		po := &cmdhelpers.ProcessOpts{
 			Concurrency:  concurrency,
-			Inventory:    &inventory,
+			Inventory:    inventoryS,
 			SuitcaseOpts: opts,
 		}
 		// We may do different things here...
@@ -118,8 +110,6 @@ func init() {
 	checkErr(err, "")
 	createSuitcaseCmd.PersistentFlags().Bool("hash-outer", false, "Create SHA256 hashes for the suitcases")
 	createSuitcaseCmd.PersistentFlags().Bool("exclude-systems-pubkeys", false, "By default, we will include the systems teams pubkeys, unless this option is specified")
-	createSuitcaseCmd.PersistentFlags().String("name", "suitcase", "Name of the suitcase")
-	createSuitcaseCmd.PersistentFlags().String("format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")
 	createSuitcaseCmd.PersistentFlags().Int("concurrency", 10, "Number of concurrent files to create")
 	createSuitcaseCmd.PersistentFlags().String("progress-bar", "none", "Progress bar to use. Valid options are: 'mpb' or 'none'")
 

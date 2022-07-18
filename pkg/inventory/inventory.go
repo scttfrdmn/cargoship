@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/karrick/godirwalk"
 	"github.com/rs/zerolog/log"
@@ -24,12 +23,12 @@ type Inventoryer interface {
 }
 
 type DirectoryInventory struct {
-	Files            []*InventoryFile           `yaml:"files"`
-	Options          *DirectoryInventoryOptions `yaml:"options"`
-	TotalIndexes     int                        `yaml:"total_indexes"`
-	IndexSummaries   map[int]*IndexSummary      `yaml:"index_summaries"`
-	InternalMetadata map[string]string          `yaml:"internal_metadata"`
-	ExternalMetadata map[string]string          `yaml:"external_metadata"`
+	Files            []*InventoryFile           `yaml:"files" json:"files"`
+	Options          *DirectoryInventoryOptions `yaml:"options" json:"options"`
+	TotalIndexes     int                        `yaml:"total_indexes" json:"total_indexes"`
+	IndexSummaries   map[int]*IndexSummary      `yaml:"index_summaries" json:"index_summaries"`
+	InternalMetadata map[string]string          `yaml:"internal_metadata" json:"internal_metadata"`
+	ExternalMetadata map[string]string          `yaml:"external_metadata" json:"external_metadata"`
 }
 
 type IndexSummary struct {
@@ -38,42 +37,76 @@ type IndexSummary struct {
 }
 
 type DirectoryInventoryOptions struct {
-	Name                  string   `yaml:"name"`
-	TopLevelDirectories   []string `yaml:"top_level_directories"`
-	SizeConsideredLarge   int64    `yaml:"size_considered_large"`
-	MaxSuitcaseSize       int64    `yaml:"max_suitcase_size"`
-	InternalMetadataGlob  string   `yaml:"internal_metadata_glob,omitempty"`
-	ExternalMetadataFiles []string `yaml:"external_metadata_files,omitempty"`
-	EncryptInner          bool     `yaml:"encrypt_inner"`
-	HashInner             bool     `yaml:"hash_inner"`
-	LimitFileCount        int      `yaml:"limit_file_count"`
+	Name                  string   `yaml:"name" json:"name"`
+	User                  string   `yaml:"user" json:"user"`
+	Prefix                string   `yaml:"prefix" json:"prefix"`
+	TopLevelDirectories   []string `yaml:"top_level_directories" json:"top_level_directories"`
+	SizeConsideredLarge   int64    `yaml:"size_considered_large" json:"size_considered_large"`
+	MaxSuitcaseSize       int64    `yaml:"max_suitcase_size" json:"max_suitcase_size"`
+	InternalMetadataGlob  string   `yaml:"internal_metadata_glob,omitempty" json:"internal_metadata_glob,omitempty"`
+	ExternalMetadataFiles []string `yaml:"external_metadata_files,omitempty" json:"external_metadata_files,omitempty"`
+	EncryptInner          bool     `yaml:"encrypt_inner" json:"encrypt_inner"`
+	HashInner             bool     `yaml:"hash_inner" json:"hash_inner"`
+	LimitFileCount        int      `yaml:"limit_file_count" json:"limit_file_count"`
+	Format                string   `yaml:"format" json:"format"`
 }
 
 type InventoryFile struct {
-	Path          string      `yaml:"path"`
-	Destination   string      `yaml:"destination"`
-	Name          string      `yaml:"name"`
-	Size          int64       `yaml:"size"`
-	Mode          os.FileMode `yaml:"mode,omitempty"`
-	ModTime       time.Time   `yaml:"mod_time,omitempty"`
-	IsDir         bool        `yaml:"is_dir"`
-	SHA256        string      `yaml:"sha256,omitempty"`
-	Encrypt       bool        `yaml:"encrypt,omitempty"`
-	SuitcaseIndex int         `yaml:"suitcase_index,omitempty"`
+	Path        string `yaml:"path" json:"path"`
+	Destination string `yaml:"destination" json:"destination"`
+	Name        string `yaml:"name" json:"name"`
+	Size        int64  `yaml:"size" json:"size"`
+	/*
+		Mode          os.FileMode `yaml:"mode,omitempty" json:"mode,omitempty"`
+		ModTime       time.Time   `yaml:"mod_time,omitempty" json:"mod_time,omitempty"`
+		IsDir         bool        `yaml:"is_dir" json:"is_dir"`
+		SHA256        string      `yaml:"sha256,omitempty" json:"sha256,omitempty"`
+		Encrypt       bool        `yaml:"encrypt,omitempty" json:"encrypt,omitempty"`
+	*/
+	SuitcaseIndex int    `yaml:"suitcase_index,omitempty" json:"suitcase_index,omitempty"`
+	SuitcaseName  string `yaml:"suitcase_name,omitempty" json:"suitcase_name,omitempty"`
 }
 
 type FileBucket struct {
 	Free int64
 }
 
-/*
-func (di DirectoryInventory) Marshal() ([]byte, error) {
-	log.Fatal().Msg("TEST")
-	return yaml.Marshal(di)
-}
-*/
-
 var errHalt = errors.New("halt")
+
+func ExpandSuitcaseNames(di *DirectoryInventory, prefix string, user string, total int) error {
+	var extension string
+	if di.Options == nil || di.Options.Format == "" {
+		extension = "tar"
+	} else {
+		extension = di.Options.Format
+	}
+	for _, f := range di.Files {
+		if f.SuitcaseName == "" {
+			n := FormatSuitcaseName(prefix, user, f.SuitcaseIndex, di.TotalIndexes, extension)
+			f.SuitcaseName = n
+			log.Info().Str("name", n).Msg("expanded suitcase names")
+		}
+	}
+	return nil
+}
+
+func FormatSuitcaseName(p, u string, i, t int, ext string) string {
+	if u == "" {
+		u = "unknown-user"
+	}
+	if p == "" {
+		u = "unknown-prefix"
+	}
+	return fmt.Sprintf("%v-%v-%02d-of-%02d.%v", p, u, i, t, ext)
+}
+
+func ExtractSuitcaseNames(di *DirectoryInventory) []string {
+	ret := []string{}
+	for _, f := range di.Files {
+		ret = append(ret, f.SuitcaseName)
+	}
+	return ret
+}
 
 // Loop through inventory and assign suitcase indexes
 func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
@@ -224,10 +257,12 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 					Size:        size,
 				}
 				if opts.HashInner {
-					fItem.SHA256, err = helpers.GetSha256(path)
-					if err != nil {
-						log.Warn().Err(err).Str("path", path).Msg("error getting sha256 hash")
-					}
+					/*
+						fItem.SHA256, err = helpers.GetSha256(path)
+						if err != nil {
+							log.Warn().Err(err).Str("path", path).Msg("error getting sha256 hash")
+						}
+					*/
 				}
 				ret.Files = append(ret.Files, &fItem)
 				addedCount++
@@ -267,10 +302,18 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 			log.Info().Int("files", addedCount).Msg("Finished walking directory")
 		}
 	}
+	log.Info().Msg("FINISHED WLAKING")
 	err := IndexInventory(ret, opts.MaxSuitcaseSize)
 	if err != nil {
 		return nil, err
 	}
+	/*
+		err = ExpandSuitcaseNames(ret, ret.Options.Prefix, ret.Options.User, ret.TotalIndexes)
+		log.Warn().Msgf("GOT INDEXES: %v", ret.TotalIndexes)
+		if err != nil {
+			return nil, err
+		}
+	*/
 	return ret, nil
 }
 
@@ -313,4 +356,18 @@ func printMemUsage() {
 		Uint64("system", m.Sys).
 		Uint64("gc-count", uint64(m.NumGC)).
 		Msg("Memory Usage in MB")
+}
+
+func NewInventoryerWithFilename(filename string) (Inventoryer, error) {
+	ext := filepath.Ext(filename)
+	var ir Inventoryer
+	switch ext {
+	case ".json":
+		ir = &EJSONer{}
+	case ".yaml", ".yml":
+		ir = &VAMLer{}
+	default:
+		return nil, fmt.Errorf("unsupported file extension %s", ext)
+	}
+	return ir, nil
 }

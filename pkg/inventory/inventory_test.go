@@ -1,6 +1,8 @@
 package inventory
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -38,6 +40,32 @@ func TestIndexInventory(t *testing.T) {
 	err := IndexInventory(i, 3)
 	require.NoError(t, err)
 	require.Equal(t, 2, i.TotalIndexes)
+}
+
+func TestExpandInventoryWithNames(t *testing.T) {
+	i := &DirectoryInventory{
+		Files: []*InventoryFile{
+			{
+				Path: "small-file-1",
+				Size: 1,
+			},
+			{
+				Path: "small-file-2",
+				Size: 2,
+			},
+			{
+				Path: "big-file-1",
+				Size: 3,
+			},
+		},
+	}
+	err := IndexInventory(i, 3)
+	require.NoError(t, err)
+	require.Equal(t, 2, i.TotalIndexes)
+
+	err = ExpandSuitcaseNames(i, "foo", "bar", 2)
+	require.NoError(t, err)
+	require.Equal(t, ExtractSuitcaseNames(i), []string{"foo-bar-01-of-02.tar", "foo-bar-02-of-02.tar", "foo-bar-02-of-02.tar"})
 }
 
 func TestIndexInventoryTooBig(t *testing.T) {
@@ -96,5 +124,51 @@ func TestGetMetadataFiles(t *testing.T) {
 		} else {
 			require.Fail(t, "unexpected title: %s", title)
 		}
+	}
+}
+
+func TestNewInventoryerWithFilename(t *testing.T) {
+	tests := []struct {
+		filename     string
+		expectedType string
+	}{
+		{
+			filename:     "thing.yaml",
+			expectedType: "*inventory.VAMLer",
+		},
+		{
+			filename:     "thing.yml",
+			expectedType: "*inventory.VAMLer",
+		},
+		{
+			filename:     "thing.json",
+			expectedType: "*inventory.EJSONer",
+		},
+	}
+	for _, tt := range tests {
+		got, err := NewInventoryerWithFilename(tt.filename)
+		require.NoError(t, err)
+		// log.Fatal().Msgf("%+v", reflect.TypeOf(*got))
+		require.Equal(t, tt.expectedType, fmt.Sprintf("%+v", reflect.TypeOf(got)))
+	}
+}
+
+func TestNewInventoryerWithBadFilename(t *testing.T) {
+	tests := []struct {
+		filename string
+	}{
+		{
+			filename: "thing.thing",
+		},
+		{
+			filename: "thing",
+		},
+		{
+			filename: "thing.jsn",
+		},
+	}
+	for _, tt := range tests {
+		_, err := NewInventoryerWithFilename(tt.filename)
+		require.Error(t, err)
 	}
 }

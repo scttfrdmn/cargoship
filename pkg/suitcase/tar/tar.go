@@ -54,9 +54,11 @@ func (a Suitcase) Add(f inventory.InventoryFile) error {
 		return err
 	}
 	header.Name = f.Destination
-	if !f.ModTime.IsZero() {
-		header.ModTime = f.ModTime
-	}
+	/*
+		if !f.ModTime.IsZero() {
+			header.ModTime = f.ModTime
+		}
+	*/
 	if err = a.tw.WriteHeader(header); err != nil {
 		return err
 	}
@@ -106,9 +108,11 @@ func (a Suitcase) AddEncrypt(f inventory.InventoryFile) error {
 		return err
 	}
 	header.Name = dest
-	if !f.ModTime.IsZero() {
-		header.ModTime = f.ModTime
-	}
+	/*
+		if !f.ModTime.IsZero() {
+			header.ModTime = f.ModTime
+		}
+	*/
 	if err = a.tw.WriteHeader(header); err != nil {
 		return err
 	}

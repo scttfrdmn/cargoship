@@ -15,16 +15,14 @@ limitations under the License.
 package cmd
 
 import (
-	"bufio"
 	"os"
+	"os/user"
 	"runtime/debug"
 	"strings"
 
 	"github.com/dustin/go-humanize"
-	"github.com/mailru/easyjson"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/vjorlikowski/yaml"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
 )
@@ -42,14 +40,11 @@ var createInventoryCmd = &cobra.Command{
 		bufferSize, err := cmd.Flags().GetInt("buffer-size")
 		checkErr(err, "")
 
-		limitFileCount, err := cmd.Flags().GetInt("limit-file-count")
-		checkErr(err, "")
-
 		var outF *os.File
 		outFile, err := cmd.Flags().GetString("output-file")
 		checkErr(err, "")
 		if outFile == "" {
-			outF, err = os.CreateTemp("", "suitcase-inventory-*.json")
+			outF, err = os.CreateTemp("", "suitcase-inventory-*.yaml")
 			checkErr(err, "")
 			defer outF.Close()
 		} else {
@@ -64,27 +59,50 @@ var createInventoryCmd = &cobra.Command{
 		checkErr(err, "")
 		maxSuitcaseSize := int64(maxSuitcaseSizeU)
 
+		// Init empty options, we'll fill them in later
+		opt := &inventory.DirectoryInventoryOptions{}
+
 		// Use absolute dirs forever
-		targetDirs, err := helpers.ConvertDirsToAboluteDirs(args)
+		opt.TopLevelDirectories, err = helpers.ConvertDirsToAboluteDirs(args)
 		checkErr(err, "")
 
 		// Get the internal and external metadata glob patterns
-		internalMetadataGlob, err := cmd.Flags().GetString("internal-metadata-glob")
+		opt.InternalMetadataGlob, err = cmd.Flags().GetString("internal-metadata-glob")
 		checkErr(err, "")
 
 		// External metadata file here
-		externalMetadataFiles, err := cmd.Flags().GetStringArray("external-metadata-file")
+		opt.ExternalMetadataFiles, err = cmd.Flags().GetStringArray("external-metadata-file")
 		checkErr(err, "")
 
-		opt := &inventory.DirectoryInventoryOptions{
-			TopLevelDirectories:   targetDirs,
-			InternalMetadataGlob:  internalMetadataGlob,
-			ExternalMetadataFiles: externalMetadataFiles,
-			LimitFileCount:        limitFileCount,
-			// SizeConsideredLarge: lfs,
+		// We may want to limit the number of files in the total
+		// inventory, mainly to help with debugging, but store that here
+		opt.LimitFileCount, err = cmd.Flags().GetInt("limit-file-count")
+		checkErr(err, "")
+
+		// Format for the archive/suitcase
+		opt.Format, err = cmd.Flags().GetString("format")
+		checkErr(err, "")
+
+		// Always strip the leading dot
+		opt.Format = strings.TrimPrefix(opt.Format, ".")
+
+		// We want a username so we can shove it in the suitcase name
+		opt.User, err = cmd.Flags().GetString("user")
+		checkErr(err, "")
+
+		if opt.User == "" {
+			log.Info().Msg("No user specified, using current user")
+			currentUser, err := user.Current()
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to get current user")
+			}
+			opt.User = currentUser.Username
 		}
 
-		// Set the stuff to be encyrpted?
+		opt.Prefix, err = cmd.Flags().GetString("prefix")
+		checkErr(err, "")
+
+		// Set the stuff to be encrypted?
 		opt.EncryptInner, err = cmd.Flags().GetBool("encrypt-inner")
 		checkErr(err, "")
 
@@ -104,14 +122,19 @@ var createInventoryCmd = &cobra.Command{
 		// checkErr(err, "")
 
 		printMemUsage()
+		// Create the inventory
 		inventoryD, err := inventory.NewDirectoryInventory(opt)
 		cobra.CheckErr(err)
+
 		printMemUsage()
 		if maxSuitcaseSize > 0 {
 			err := inventory.IndexInventory(inventoryD, maxSuitcaseSize)
 			checkErr(err, "")
 			log.Info().Int("count", inventoryD.TotalIndexes).Msg("Indexed inventory")
 		}
+		// Add filenames to the inventory
+		err = inventory.ExpandSuitcaseNames(inventoryD, inventoryD.Options.Prefix, inventoryD.Options.User, inventoryD.TotalIndexes)
+		checkErr(err, "")
 
 		// Create a new buffered io writer
 		printMemUsage()
@@ -132,23 +155,11 @@ var createInventoryCmd = &cobra.Command{
 
 		// Write the inventory to the file
 		printMemUsage()
-		if strings.HasSuffix(outF.Name(), ".json") {
-			log.Debug().Msg("About to encode inventory in to json file")
-			_, err = easyjson.MarshalToWriter(inventoryD, outF)
-			checkErr(err, "")
-		} else {
-			log.Debug().Msg("About to encode inventory in to yaml file")
-			writer := bufio.NewWriterSize(outF, bufferSize)
-			defer writer.Flush()
-
-			// Pass the buffered IO writer to the encoder
-			printMemUsage()
-			log.Debug().Msg("About to create a new YAML encoder")
-			enc := yaml.NewEncoder(writer)
-			err = enc.Encode(inventoryD)
-			checkErr(err, "")
-		}
-		// err = enc.Encode(inventoryD)
+		// var ir inventory.Inventoryer
+		ir, err := inventory.NewInventoryerWithFilename(outF.Name())
+		checkErr(err, "")
+		err = ir.Write(outF, inventoryD)
+		checkErr(err, "")
 
 		// Donzo!
 		printMemUsage()
@@ -189,6 +200,9 @@ func init() {
 	createInventoryCmd.PersistentFlags().Bool("encrypt-inner", false, "Encrypt files within the suitcase")
 	createInventoryCmd.PersistentFlags().Int("buffer-size", 1024, "Buffer size for the output file. This may need to be tweaked for the host memory and fileset")
 	createInventoryCmd.PersistentFlags().Int("limit-file-count", 0, "Limit the number of files to include in the inventory. If 0, no limit is applied. Should only be used for debugging")
+	createInventoryCmd.PersistentFlags().String("format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")
+	createInventoryCmd.PersistentFlags().String("user", "", "Username to insert into the suitcase filename. If omitted, we'll try and detect from the current user")
+	createInventoryCmd.PersistentFlags().String("prefix", "suitcase", "Prefex to insert into the suitcase filename")
 	// createInventoryCmd.PersistentFlags().Int64("large-file-size", 1024*1024, "Size in bytes of files considered 'large'")
 
 	// Cobra supports local flags which will only run when this command
