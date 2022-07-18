@@ -84,7 +84,6 @@ func ExpandSuitcaseNames(di *DirectoryInventory, total int) error {
 		if f.SuitcaseName == "" {
 			n := FormatSuitcaseName(di.Options.Prefix, di.Options.User, f.SuitcaseIndex, di.TotalIndexes, extension)
 			f.SuitcaseName = n
-			log.Info().Str("name", n).Msg("expanded suitcase names")
 		}
 	}
 	return nil
@@ -302,7 +301,6 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 			log.Info().Int("files", addedCount).Msg("Finished walking directory")
 		}
 	}
-	log.Info().Msg("FINISHED WLAKING")
 	err := IndexInventory(ret, opts.MaxSuitcaseSize)
 	if err != nil {
 		return nil, err

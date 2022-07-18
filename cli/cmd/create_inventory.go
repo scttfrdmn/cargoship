@@ -150,7 +150,7 @@ var createInventoryCmd = &cobra.Command{
 
 		// Do this thing Victor says _may_ help
 		printMemUsage()
-		log.Info().Msg("Running FreeOSMemory")
+		log.Debug().Msg("Running FreeOSMemory")
 		debug.FreeOSMemory()
 
 		// Write the inventory to the file
