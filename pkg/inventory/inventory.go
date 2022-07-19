@@ -40,7 +40,6 @@ type IndexSummary struct {
 }
 
 type DirectoryInventoryOptions struct {
-	Name                  string   `yaml:"name" json:"name"`
 	User                  string   `yaml:"user" json:"user"`
 	Prefix                string   `yaml:"prefix" json:"prefix"`
 	TopLevelDirectories   []string `yaml:"top_level_directories" json:"top_level_directories"`
@@ -278,8 +277,8 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 	ret := &DirectoryInventory{
 		Options: opts,
 	}
-	if opts.Name == "" {
-		opts.Name = "suitcase"
+	if opts.Prefix == "" {
+		opts.Prefix = "suitcase"
 	}
 	if opts.InternalMetadataGlob == "" {
 		opts.InternalMetadataGlob = "suitcase-meta*"
@@ -410,13 +409,6 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 	if err != nil {
 		return nil, err
 	}
-	/*
-		err = ExpandSuitcaseNames(ret, ret.Options.Prefix, ret.Options.User, ret.TotalIndexes)
-		log.Warn().Msgf("GOT INDEXES: %v", ret.TotalIndexes)
-		if err != nil {
-			return nil, err
-		}
-	*/
 	return ret, nil
 }
 

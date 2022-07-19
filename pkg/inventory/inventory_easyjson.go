@@ -276,8 +276,6 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(in 
 			continue
 		}
 		switch key {
-		case "name":
-			out.Name = string(in.String())
 		case "user":
 			out.User = string(in.String())
 		case "prefix":
@@ -359,13 +357,8 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(out
 	first := true
 	_ = first
 	{
-		const prefix string = ",\"name\":"
-		out.RawString(prefix[1:])
-		out.String(string(in.Name))
-	}
-	{
 		const prefix string = ",\"user\":"
-		out.RawString(prefix)
+		out.RawString(prefix[1:])
 		out.String(string(in.User))
 	}
 	{
