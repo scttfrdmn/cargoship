@@ -112,7 +112,7 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 
 func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory, index int, stateC chan SuitcaseFillState) (string, error) {
 	// targetF := path.Join(so.Destination, fmt.Sprintf("%v-%d.%v", i.Options.Name, index, so.Format))
-	targetF := path.Join(so.Destination, fmt.Sprintf(inventory.FormatSuitcaseName(i.Options.Name, i.Options.User, index, i.TotalIndexes, so.Format)))
+	targetF := path.Join(so.Destination, fmt.Sprintf(inventory.FormatSuitcaseName(i.Options.Prefix, i.Options.User, index, i.TotalIndexes, so.Format)))
 	target, err := os.Create(targetF)
 	if err != nil {
 		return "", err

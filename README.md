@@ -46,6 +46,11 @@ You can also include metadata outside of the target directories with
 `--external-metadata-file /tmp/some-file.txt`. This argument can be used
 multiple times.
 
+### CLI Metadata
+
+This is a yaml file that contains information about what was passed to the CLI.
+It will be created as `cli-invocation-meta.yaml` in the output directory.
+
 ### Suitcases
 
 Suitcases are the giant blob (or blobs) of all the data
@@ -76,3 +81,5 @@ arguments are:
 5:35PM INF Created CLI meta file meta-file=/tmp/cli-invocation-meta.yaml
 5:35PM INF Completed end="2022-07-19 13:35:39.077167 -0400 EDT m=+0.473826130" runtime=471.334499ms start="2022-07-19 13:35:38.605818 -0400 EDT m=+0.002491631"
 ```
+
+For more information on the available arguments, run `suitcasectl create suitcase --help`.
