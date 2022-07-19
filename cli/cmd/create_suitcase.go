@@ -51,6 +51,12 @@ var createSuitcaseCmd = &cobra.Command{
 			log.Fatal().Msg("Error: You must specify an inventory file or target dirs")
 		}
 
+		onlyInventory, err := cmd.Flags().GetBool("only-inventory")
+		checkErr(err, "")
+		if onlyInventory && inventoryFile != "" {
+			log.Fatal().Msg("You can't specify an inventory file and only-inventory at the same time")
+		}
+
 		// Get this first, it'll be important
 		outDir, err = cmdhelpers.NewOutDirWithCmd(cmd)
 		checkErr(err, "Could not figure out the output directory")
@@ -109,28 +115,33 @@ var createSuitcaseCmd = &cobra.Command{
 
 			// Ok, now create the suitcase!
 			// Set up options
-		opts := &config.SuitCaseOpts{
-			Destination:  outDir,
-			EncryptInner: inventoryD.Options.EncryptInner,
-			Format:       inventoryD.Options.SuitcaseFormat,
-		}
 
-		// Gather EncryptTo if we need it
-		if strings.HasSuffix(opts.Format, ".gpg") || opts.EncryptInner {
-			opts.EncryptTo, err = gpg.EncryptToWithCmd(cmd)
-			checkErr(err, "Could not find who to encrypt this to")
-		}
+		if !onlyInventory {
+			opts := &config.SuitCaseOpts{
+				Destination:  outDir,
+				EncryptInner: inventoryD.Options.EncryptInner,
+				Format:       inventoryD.Options.SuitcaseFormat,
+			}
 
-		po := &cmdhelpers.ProcessOpts{
-			Inventory:    inventoryD,
-			SuitcaseOpts: opts,
-		}
-		po.Concurrency, err = cmd.Flags().GetInt("concurrency")
-		checkErr(err, "")
-		createdFiles, err := cmdhelpers.ProcessLogging(po)
-		checkErr(err, "")
-		for _, f := range createdFiles {
-			log.Info().Str("file", f).Msg("Created file")
+			// Gather EncryptTo if we need it
+			if strings.HasSuffix(opts.Format, ".gpg") || opts.EncryptInner {
+				opts.EncryptTo, err = gpg.EncryptToWithCmd(cmd)
+				checkErr(err, "Could not find who to encrypt this to")
+			}
+
+			po := &cmdhelpers.ProcessOpts{
+				Inventory:    inventoryD,
+				SuitcaseOpts: opts,
+			}
+			po.Concurrency, err = cmd.Flags().GetInt("concurrency")
+			checkErr(err, "")
+			createdFiles, err := cmdhelpers.ProcessLogging(po)
+			checkErr(err, "")
+			for _, f := range createdFiles {
+				log.Info().Str("file", f).Msg("Created file")
+			}
+		} else {
+			log.Warn().Msg("Only creating inventory file, no suitcase archives")
 		}
 	},
 }
@@ -158,6 +169,7 @@ func init() {
 	// Stuff around encryption
 	createSuitcaseCmd.PersistentFlags().StringArrayP("public-key", "p", []string{}, "Public keys to use for encryption")
 	createSuitcaseCmd.PersistentFlags().Bool("exclude-systems-pubkeys", false, "By default, we will include the systems teams pubkeys, unless this option is specified")
+	createSuitcaseCmd.PersistentFlags().Bool("only-inventory", false, "Only generate the inventory file, skip the actual suitcase archive creation")
 
 	// createSuitcaseCmd.PersistentFlags().SortFlags = false
 
