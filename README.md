@@ -51,6 +51,12 @@ multiple times.
 This is a yaml file that contains information about what was passed to the CLI.
 It will be created as `cli-invocation-meta.yaml` in the output directory.
 
+### CLI Output
+
+The console output from the `suitcasectl` app will also be logged in json
+format to the directory containing the suitcases. This will be in a file called
+`suitcasectl.log`.
+
 ### Suitcases
 
 Suitcases are the giant blob (or blobs) of all the data
