@@ -39,7 +39,7 @@ func init() {
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
 	// createCmd.PersistentFlags().String("foo", "", "A help for foo")
-	createCmd.PersistentFlags().StringP("output-dir", "o", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
+	// createCmd.PersistentFlags().StringP("output-dir", "o", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:

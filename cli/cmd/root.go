@@ -33,13 +33,13 @@ import (
 )
 
 var (
-	cfgFile   string
-	Verbose   bool
-	trace     bool
-	logFormat string
+	cfgFile string
+	Verbose bool
+	trace   bool
 	// stats     runStats
 	cliMeta *cmdhelpers.CLIMeta
 	outDir  string
+	logFile string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -55,23 +55,29 @@ a future point in time`,
 	// Run: func(cmd *cobra.Command, args []string) { },
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-		switch logFormat {
-		case "console":
-			log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-		case "json":
-			// Json is actually the default, so just do nothing here
-		default:
-			log.Fatal().Msg("Invalid log format. Please use 'console' or 'json'")
-		}
 
-		if trace {
-			log.Logger = log.With().Caller().Logger()
-		}
 		// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 		if Verbose {
 			zerolog.SetGlobalLevel(zerolog.DebugLevel)
 		}
+		// If we have an outDir, also write the logs to a file
+		var multi io.Writer
+		if outDir != "" {
+			logFile = path.Join(outDir, "suitcasectl.log")
+			logF, err := os.Create(logFile)
+			checkErr(err, "")
+			multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr}, logF)
+		} else {
+			multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr})
+		}
+		if trace {
+			log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
+		} else {
+			log.Logger = zerolog.New(multi).With().Timestamp().Logger()
+		}
+
+		// Set up new CLI meta stuff
 		cliMeta = cmdhelpers.NewCLIMeta(args, cmd)
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
@@ -86,6 +92,7 @@ a future point in time`,
 			w, err = os.Create(mf)
 			checkErr(err, "Failed to create output file")
 			log.Info().Str("meta-file", mf).Msg("Created CLI meta file")
+			log.Info().Str("log-file", logFile).Msg("Log File written")
 		}
 		defer w.Close()
 		cliMeta.Print(w)
@@ -116,11 +123,13 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")
 	// rootCmd.PersistentFlags().Int64("large-file-size", 1024*1024, "Size in bytes of files considered 'large'")
-	rootCmd.PersistentFlags().StringVar(&logFormat, "log-format", "console", "Log format (console, json)")
+	// rootCmd.PersistentFlags().StringVar(&logFormat, "log-format", "console", "Log format (console, json)")
 
 	// Cobra also supports local flags, which will only run
-	// when this action is called directly.  rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
+	// when this action is called directly.
+	rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
 	rootCmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
+	rootCmd.PersistentFlags().StringVarP(&outDir, "output-dir", "o", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
 }
 
 // initConfig reads in config file and ENV variables if set.
