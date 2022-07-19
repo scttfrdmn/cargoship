@@ -64,7 +64,7 @@ var createSuitcaseLegacyCmd = &cobra.Command{
 		opts := &config.SuitCaseOpts{
 			Destination:  args[0],
 			EncryptInner: inventoryS.Options.EncryptInner,
-			Format:       inventoryS.Options.Format,
+			Format:       inventoryS.Options.SuitcaseFormat,
 		}
 
 		// Gather EncryptTo if we need it

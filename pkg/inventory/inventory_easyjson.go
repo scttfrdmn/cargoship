@@ -280,6 +280,8 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(in 
 			out.Name = string(in.String())
 		case "user":
 			out.User = string(in.String())
+		case "prefix":
+			out.Prefix = string(in.String())
 		case "top_level_directories":
 			if in.IsNull() {
 				in.Skip()
@@ -338,8 +340,10 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(in 
 			out.HashInner = bool(in.Bool())
 		case "limit_file_count":
 			out.LimitFileCount = int(in.Int())
-		case "format":
-			out.Format = string(in.String())
+		case "suitcase_format":
+			out.SuitcaseFormat = string(in.String())
+		case "inventory_format":
+			out.InventoryFormat = string(in.String())
 		default:
 			in.SkipRecursive()
 		}
@@ -363,6 +367,11 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(out
 		const prefix string = ",\"user\":"
 		out.RawString(prefix)
 		out.String(string(in.User))
+	}
+	{
+		const prefix string = ",\"prefix\":"
+		out.RawString(prefix)
+		out.String(string(in.Prefix))
 	}
 	{
 		const prefix string = ",\"top_level_directories\":"
@@ -425,9 +434,14 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(out
 		out.Int(int(in.LimitFileCount))
 	}
 	{
-		const prefix string = ",\"format\":"
+		const prefix string = ",\"suitcase_format\":"
 		out.RawString(prefix)
-		out.String(string(in.Format))
+		out.String(string(in.SuitcaseFormat))
+	}
+	{
+		const prefix string = ",\"inventory_format\":"
+		out.RawString(prefix)
+		out.String(string(in.InventoryFormat))
 	}
 	out.RawByte('}')
 }

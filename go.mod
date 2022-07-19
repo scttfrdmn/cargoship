@@ -18,7 +18,6 @@ require (
 	github.com/vjorlikowski/yaml v0.1.0
 	go.hein.dev/go-version v0.1.0
 	golang.org/x/tools v0.1.11
-	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
@@ -58,6 +57,7 @@ require (
 	golang.org/x/text v0.3.7 // indirect
 	gopkg.in/ini.v1 v1.66.4 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	sigs.k8s.io/yaml v1.1.0 // indirect
 )

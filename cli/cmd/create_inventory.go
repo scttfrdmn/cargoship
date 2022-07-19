@@ -86,11 +86,11 @@ var createInventoryCmd = &cobra.Command{
 		checkErr(err, "")
 
 		// Format for the archive/suitcase
-		opt.Format, err = cmd.Flags().GetString("format")
+		opt.SuitcaseFormat, err = cmd.Flags().GetString("suitcase-format")
 		checkErr(err, "")
 
 		// Always strip the leading dot
-		opt.Format = strings.TrimPrefix(opt.Format, ".")
+		opt.SuitcaseFormat = strings.TrimPrefix(opt.SuitcaseFormat, ".")
 
 		// We want a username so we can shove it in the suitcase name
 		opt.User, err = cmd.Flags().GetString("user")

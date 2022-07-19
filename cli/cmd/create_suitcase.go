@@ -111,7 +111,7 @@ var createSuitcaseCmd = &cobra.Command{
 		opts := &config.SuitCaseOpts{
 			Destination:  outDir,
 			EncryptInner: inventoryD.Options.EncryptInner,
-			Format:       inventoryD.Options.Format,
+			Format:       inventoryD.Options.SuitcaseFormat,
 		}
 
 		// Gather EncryptTo if we need it
@@ -151,7 +151,7 @@ func init() {
 	createSuitcaseCmd.PersistentFlags().Bool("encrypt-inner", false, "Encrypt files within the suitcase")
 	createSuitcaseCmd.PersistentFlags().Int("buffer-size", 1024, "Buffer size for the output file. This may need to be tweaked for the host memory and fileset")
 	createSuitcaseCmd.PersistentFlags().Int("limit-file-count", 0, "Limit the number of files to include in the inventory. If 0, no limit is applied. Should only be used for debugging")
-	createSuitcaseCmd.PersistentFlags().String("format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")
+	createSuitcaseCmd.PersistentFlags().String("suitcase-format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")
 	createSuitcaseCmd.PersistentFlags().String("user", "", "Username to insert into the suitcase filename. If omitted, we'll try and detect from the current user")
 	createSuitcaseCmd.PersistentFlags().String("prefix", "suitcase", "Prefex to insert into the suitcase filename")
 

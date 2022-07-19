@@ -51,7 +51,7 @@ type DirectoryInventoryOptions struct {
 	EncryptInner          bool     `yaml:"encrypt_inner" json:"encrypt_inner"`
 	HashInner             bool     `yaml:"hash_inner" json:"hash_inner"`
 	LimitFileCount        int      `yaml:"limit_file_count" json:"limit_file_count"`
-	Format                string   `yaml:"format" json:"format"`
+	SuitcaseFormat        string   `yaml:"suitcase_format" json:"suitcase_format"`
 	InventoryFormat       string   `yaml:"inventory_format" json:"inventory_format"`
 }
 
@@ -96,11 +96,11 @@ func NewDirectoryInventoryOptionsWithCmd(cmd *cobra.Command, args []string) (*Di
 	}
 
 	// Format for the archive/suitcase
-	opt.Format, err = cmd.Flags().GetString("format")
+	opt.SuitcaseFormat, err = cmd.Flags().GetString("suitcase-format")
 	if err != nil {
 		return nil, err
 	}
-	opt.Format = strings.TrimPrefix(opt.Format, ".")
+	opt.SuitcaseFormat = strings.TrimPrefix(opt.SuitcaseFormat, ".")
 
 	// Inventory file format (yaml or json)
 	opt.InventoryFormat, err = cmd.Flags().GetString("inventory-format")
@@ -180,10 +180,10 @@ var errHalt = errors.New("halt")
 
 func ExpandSuitcaseNames(di *DirectoryInventory) error {
 	var extension string
-	if di.Options == nil || di.Options.Format == "" {
+	if di.Options == nil || di.Options.SuitcaseFormat == "" {
 		extension = "tar"
 	} else {
-		extension = di.Options.Format
+		extension = di.Options.SuitcaseFormat
 	}
 	for _, f := range di.Files {
 		if f.SuitcaseName == "" {
