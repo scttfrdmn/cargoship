@@ -17,13 +17,16 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"path"
 	"runtime"
 	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmdhelpers"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
@@ -34,7 +37,9 @@ var (
 	Verbose   bool
 	trace     bool
 	logFormat string
-	stats     runStats
+	// stats     runStats
+	cliMeta *cmdhelpers.CLIMeta
+	outDir  string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -67,24 +72,30 @@ a future point in time`,
 		if Verbose {
 			zerolog.SetGlobalLevel(zerolog.DebugLevel)
 		}
-		/*
-			log.SetHandler(cli.Default)
-			if Verbose {
-				log.SetLevel(log.DebugLevel)
-				log.Debug("Debug enabled")
-			}
-		*/
-		stats.Start = time.Now()
+		cliMeta = cmdhelpers.NewCLIMeta(args, cmd)
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
-		stats.End = time.Now()
-		stats.Runtime = stats.End.Sub(stats.Start)
+		cliMeta.Complete()
+		var w io.WriteCloser
+		var err error
+		if outDir == "" {
+			log.Warn().Msg("No output directory specified. Using stdout for cli meta output")
+			w = os.Stdout
+		} else {
+			mf := path.Join(outDir, "cli-invocation-meta.yaml")
+			w, err = os.Create(mf)
+			checkErr(err, "Failed to create output file")
+			log.Info().Str("meta-file", mf).Msg("Created CLI meta file")
+		}
+		defer w.Close()
+		cliMeta.Print(w)
+		// stats.Runtime = stats.End.Sub(stats.Start)
 		if cmd.Use != "version" {
 			log.Info().
 				// Dur("runtime", stats.Runtime).
-				Str("runtime", stats.Runtime.String()).
-				Str("start", stats.Start.String()).
-				Str("end", stats.End.String()).
+				Str("runtime", cliMeta.CompletedAt.Sub(*cliMeta.StartedAt).String()).
+				Str("start", cliMeta.StartedAt.String()).
+				Str("end", cliMeta.CompletedAt.String()).
 				Msg("Completed")
 		}
 	},
@@ -108,8 +119,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&logFormat, "log-format", "console", "Log format (console, json)")
 
 	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
+	// when this action is called directly.  rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
 	rootCmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
 }
 
@@ -154,7 +164,7 @@ func checkErr(err error, msg string) {
 func printMemUsage() {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	log.Info().
+	log.Debug().
 		Uint64("allocated", m.Alloc).
 		Uint64("total-allocated", m.TotalAlloc).
 		Uint64("allocated-percent", (m.Alloc/m.TotalAlloc)*100).

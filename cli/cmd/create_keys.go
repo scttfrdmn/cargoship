@@ -47,10 +47,10 @@ var createKeysCmd = &cobra.Command{
 		kp, err := gpg.NewKeyPair(keyOpts)
 		checkErr(err, "")
 
-		dest, err := cmd.Flags().GetString("destination")
+		outDir, err = cmd.Flags().GetString("output-dir")
 		checkErr(err, "")
 
-		created, err := gpg.NewKeyFilesWithPair(kp, dest)
+		created, err := gpg.NewKeyFilesWithPair(kp, outDir)
 		checkErr(err, "")
 		log.Info().
 			Strs("created", created).
@@ -71,7 +71,7 @@ func init() {
 	createKeysCmd.PersistentFlags().StringP("email", "e", "", "Email of the key")
 	err = createKeysCmd.MarkPersistentFlagRequired("email")
 	checkErr(err, "")
-	createKeysCmd.PersistentFlags().StringP("type", "t", "", "Type of the key")
+	createKeysCmd.PersistentFlags().String("type", "", "Type of the key")
 	createKeysCmd.PersistentFlags().IntP("bits", "b", 4096, "Bit length of the key")
 
 	createKeysCmd.PersistentFlags().StringP("destination", "d", "", "Destination directory for the files")

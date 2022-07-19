@@ -6,13 +6,16 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 
+	"github.com/dustin/go-humanize"
 	"github.com/karrick/godirwalk"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
 	"golang.org/x/tools/godoc/util"
 )
@@ -48,7 +51,109 @@ type DirectoryInventoryOptions struct {
 	EncryptInner          bool     `yaml:"encrypt_inner" json:"encrypt_inner"`
 	HashInner             bool     `yaml:"hash_inner" json:"hash_inner"`
 	LimitFileCount        int      `yaml:"limit_file_count" json:"limit_file_count"`
-	Format                string   `yaml:"format" json:"format"`
+	SuitcaseFormat        string   `yaml:"suitcase_format" json:"suitcase_format"`
+	InventoryFormat       string   `yaml:"inventory_format" json:"inventory_format"`
+}
+
+func NewDirectoryInventoryOptionsWithCmd(cmd *cobra.Command, args []string) (*DirectoryInventoryOptions, error) {
+	var err error
+	opt := &DirectoryInventoryOptions{
+		TopLevelDirectories: args,
+	}
+	opt.TopLevelDirectories, err = helpers.ConvertDirsToAboluteDirs(args)
+	if err != nil {
+		return nil, err
+	}
+
+	// User can specify a human readable string here. We will convert it to bytes for them
+	mssF, err := cmd.Flags().GetString("max-suitcase-size")
+	if err != nil {
+		return nil, err
+	}
+	mssU, err := humanize.ParseBytes(mssF)
+	if err != nil {
+		return nil, err
+	}
+	opt.MaxSuitcaseSize = int64(mssU)
+
+	// Get the internal and external metadata glob patterns
+	opt.InternalMetadataGlob, err = cmd.Flags().GetString("internal-metadata-glob")
+	if err != nil {
+		return nil, err
+	}
+
+	// External metadata file here
+	opt.ExternalMetadataFiles, err = cmd.Flags().GetStringArray("external-metadata-file")
+	if err != nil {
+		return nil, err
+	}
+
+	// We may want to limit the number of files in the total
+	// inventory, mainly to help with debugging, but store that here
+	opt.LimitFileCount, err = cmd.Flags().GetInt("limit-file-count")
+	if err != nil {
+		return nil, err
+	}
+
+	// Format for the archive/suitcase
+	opt.SuitcaseFormat, err = cmd.Flags().GetString("suitcase-format")
+	if err != nil {
+		return nil, err
+	}
+	opt.SuitcaseFormat = strings.TrimPrefix(opt.SuitcaseFormat, ".")
+
+	// Inventory file format (yaml or json)
+	opt.InventoryFormat, err = cmd.Flags().GetString("inventory-format")
+	if err != nil {
+		return nil, err
+	}
+	opt.InventoryFormat = strings.TrimPrefix(opt.InventoryFormat, ".")
+
+	// We want a username so we can shove it in the suitcase name
+	opt.User, err = cmd.Flags().GetString("user")
+	if err != nil {
+		return nil, err
+	}
+
+	if opt.User == "" {
+		log.Info().Msg("No user specified, using current user")
+		currentUser, err := user.Current()
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to get current user")
+		}
+		opt.User = currentUser.Username
+	}
+
+	opt.Prefix, err = cmd.Flags().GetString("prefix")
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the stuff to be encrypted?
+	opt.EncryptInner, err = cmd.Flags().GetBool("encrypt-inner")
+	if err != nil {
+		return nil, err
+	}
+
+	// Do we want to skip hashes?
+	opt.HashInner, err = cmd.Flags().GetBool("hash-inner")
+	if err != nil {
+		return nil, err
+	}
+	if opt.HashInner {
+		log.Warn().
+			Msg("Generating file hashes. This will will likely increase the inventory generation time.")
+	} else {
+		log.Warn().
+			Msg("Skipping file hashes. This will increase the speed of the inventory, but will not be able to verify the integrity of the files.")
+	}
+
+	// optbufferSize, err = cmd.Flags().GetInt("buffer-size")
+	// checkErr(err, "Could not get buffer size")
+
+	// inventoryFormat, err := cmd.Flags().GetString("inventory-format")
+	// checkErr(err, "Could not get inventory format")
+	return opt, nil
 }
 
 type InventoryFile struct {
@@ -73,12 +178,12 @@ type FileBucket struct {
 
 var errHalt = errors.New("halt")
 
-func ExpandSuitcaseNames(di *DirectoryInventory, total int) error {
+func ExpandSuitcaseNames(di *DirectoryInventory) error {
 	var extension string
-	if di.Options == nil || di.Options.Format == "" {
+	if di.Options == nil || di.Options.SuitcaseFormat == "" {
 		extension = "tar"
 	} else {
-		extension = di.Options.Format
+		extension = di.Options.SuitcaseFormat
 	}
 	for _, f := range di.Files {
 		if f.SuitcaseName == "" {

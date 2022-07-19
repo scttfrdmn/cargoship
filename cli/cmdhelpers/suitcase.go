@@ -4,11 +4,13 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"sync"
 	"sync/atomic"
 
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase"
@@ -18,6 +20,20 @@ type ProcessOpts struct {
 	Concurrency  int
 	Inventory    *inventory.DirectoryInventory
 	SuitcaseOpts *config.SuitCaseOpts
+}
+
+func NewOutDirWithCmd(cmd *cobra.Command) (string, error) {
+	o, err := cmd.Flags().GetString("output-dir")
+	if err != nil {
+		return "", err
+	}
+	if o == "" {
+		o, err = ioutil.TempDir("", "suitcasectl-")
+		if err != nil {
+			return "", err
+		}
+	}
+	return o, nil
 }
 
 func ProcessLogging(po *ProcessOpts) ([]string, error) {
