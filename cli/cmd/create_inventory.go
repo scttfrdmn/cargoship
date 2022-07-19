@@ -15,8 +15,11 @@ limitations under the License.
 package cmd
 
 import (
+	"fmt"
+	"io/ioutil"
 	"os"
 	"os/user"
+	"path"
 	"runtime/debug"
 	"strings"
 
@@ -33,27 +36,30 @@ var createInventoryCmd = &cobra.Command{
 	Short: "Generate an inventory file for a directory, or set of directories",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		var err error
+
 		printMemUsage()
 		maxSuitcaseSizeH, err := cmd.Flags().GetString("max-suitcase-size")
 		checkErr(err, "")
 
 		bufferSize, err := cmd.Flags().GetInt("buffer-size")
-		checkErr(err, "")
+		checkErr(err, "Could not get buffer size")
 
-		var outF *os.File
-		outFile, err := cmd.Flags().GetString("output-file")
-		checkErr(err, "")
-		if outFile == "" {
-			outF, err = os.CreateTemp("", "suitcase-inventory-*.yaml")
-			checkErr(err, "")
-			defer outF.Close()
-		} else {
+		inventoryFormat, err := cmd.Flags().GetString("inventory-format")
+		checkErr(err, "Could not get inventory format")
+		inventoryFormat = strings.TrimPrefix(inventoryFormat, ".")
 
-			// Go ahead and create the file if it doesn't exist
-			outF, err = os.Create(outFile)
-			checkErr(err, "")
-			defer outF.Close()
+		outDir, err = cmd.Flags().GetString("output-dir")
+		checkErr(err, "Could not get output directory")
+
+		if outDir == "" {
+			outDir, err = ioutil.TempDir("", "suitcase-")
+			checkErr(err, "Could not create temp directory")
 		}
+		inventoryFName := path.Join(outDir, fmt.Sprintf("inventory.%v", inventoryFormat))
+		outF, err := os.Create(inventoryFName)
+		checkErr(err, "Could not create inventory output file")
+		defer outF.Close()
 
 		maxSuitcaseSizeU, err := humanize.ParseBytes(maxSuitcaseSizeH)
 		checkErr(err, "")
@@ -133,7 +139,7 @@ var createInventoryCmd = &cobra.Command{
 			log.Info().Int("count", inventoryD.TotalIndexes).Msg("Indexed inventory")
 		}
 		// Add filenames to the inventory
-		err = inventory.ExpandSuitcaseNames(inventoryD, inventoryD.TotalIndexes)
+		err = inventory.ExpandSuitcaseNames(inventoryD)
 		checkErr(err, "")
 
 		// Create a new buffered io writer
@@ -184,7 +190,7 @@ func init() {
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
 	// createInventoryCmd.PersistentFlags().String("foo", "", "A help for foo")
-	createInventoryCmd.PersistentFlags().StringP("output-file", "o", "", "File to write the inventory to. If not specified, the inventory will be written to a temp file.")
+	createInventoryCmd.PersistentFlags().String("inventory-format", "yaml", "Format for the inventory. Should be 'yaml' or 'json'")
 	createInventoryCmd.PersistentFlags().String("max-suitcase-size", "0", "Maximum size for the set of suitcases generated. If no unit is specified, 'bytes' is assumed")
 	createInventoryCmd.PersistentFlags().String("internal-metadata-glob", "suitcase-meta*", "Glob pattern for internal metadata files. This should be directly under the top level directories of the targets that are being packaged up. Multiple matches will be included if found.")
 	createInventoryCmd.PersistentFlags().StringArray("external-metadata-file", []string{}, "Additional files to include as metadata in the inventory. This should NOT be part of the suitcase target directories...use internal-metadata-glob for those")

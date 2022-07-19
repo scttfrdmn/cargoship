@@ -67,7 +67,7 @@ func TestExpandInventoryWithNames(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, i.TotalIndexes)
 
-	err = ExpandSuitcaseNames(i, 2)
+	err = ExpandSuitcaseNames(i)
 	require.NoError(t, err)
 	require.Equal(t, ExtractSuitcaseNames(i), []string{"foo-bar-01-of-02.tar", "foo-bar-02-of-02.tar", "foo-bar-02-of-02.tar"})
 }
@@ -175,4 +175,8 @@ func TestNewInventoryerWithBadFilename(t *testing.T) {
 		_, err := NewInventoryerWithFilename(tt.filename)
 		require.Error(t, err)
 	}
+}
+
+func TestNewInventoryOptsWithCmd(t *testing.T) {
+	// TODO
 }
