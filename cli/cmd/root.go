@@ -119,8 +119,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&logFormat, "log-format", "console", "Log format (console, json)")
 
 	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
+	// when this action is called directly.  rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
 	rootCmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
 }
 

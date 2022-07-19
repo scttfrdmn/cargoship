@@ -33,10 +33,11 @@ import (
 
 // createSuitcaseCmd represents the createSuitcase command
 var createSuitcaseCmd = &cobra.Command{
-	Use:   "suitcase [--inventory-file=INVENTORY_FILE | TARGET_DIR...]",
-	Short: "Create a suitcase",
-	Long:  "Create a suitcase from either an inventory file or multiple target directories.",
-	Args:  cobra.ArbitraryArgs,
+	Use:     "suitcase [--inventory-file=INVENTORY_FILE | TARGET_DIR...]",
+	Short:   "Create a suitcase",
+	Long:    "Create a suitcase from either an inventory file or multiple target directories.",
+	Args:    cobra.ArbitraryArgs,
+	Aliases: []string{"suitecase"}, // Encouraging bad habits
 	Run: func(cmd *cobra.Command, args []string) {
 		// Figure out if we are using an inventory file, or creating one
 		inventoryFile, err := cmd.Flags().GetString("inventory-file")
@@ -144,16 +145,21 @@ func init() {
 	createSuitcaseCmd.PersistentFlags().Int("concurrency", 10, "Number of concurrent files to create")
 	createSuitcaseCmd.PersistentFlags().String("inventory-file", "", "Use the given inventory file to create the suitcase")
 	createSuitcaseCmd.PersistentFlags().String("inventory-format", "yaml", "Format for the inventory. Should be 'yaml' or 'json'")
-	createSuitcaseCmd.PersistentFlags().String("max-suitcase-size", "0", "Maximum size for the set of suitcases generated. If no unit is specified, 'bytes' is assumed")
+	createSuitcaseCmd.PersistentFlags().String("max-suitcase-size", "0", "Maximum size for the set of suitcases generated. If no unit is specified, 'bytes' is assumed. 0 means no limit.")
 	createSuitcaseCmd.PersistentFlags().String("internal-metadata-glob", "suitcase-meta*", "Glob pattern for internal metadata files. This should be directly under the top level directories of the targets that are being packaged up. Multiple matches will be included if found.")
 	createSuitcaseCmd.PersistentFlags().StringArray("external-metadata-file", []string{}, "Additional files to include as metadata in the inventory. This should NOT be part of the suitcase target directories...use internal-metadata-glob for those")
 	createSuitcaseCmd.PersistentFlags().Bool("hash-inner", false, "Create SHA256 hashes for the inner contents of the suitcase")
 	createSuitcaseCmd.PersistentFlags().Bool("encrypt-inner", false, "Encrypt files within the suitcase")
-	createSuitcaseCmd.PersistentFlags().Int("buffer-size", 1024, "Buffer size for the output file. This may need to be tweaked for the host memory and fileset")
+	createSuitcaseCmd.PersistentFlags().Int("buffer-size", 1024, "Buffer size if using a YAML inventory.")
 	createSuitcaseCmd.PersistentFlags().Int("limit-file-count", 0, "Limit the number of files to include in the inventory. If 0, no limit is applied. Should only be used for debugging")
 	createSuitcaseCmd.PersistentFlags().String("suitcase-format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")
 	createSuitcaseCmd.PersistentFlags().String("user", "", "Username to insert into the suitcase filename. If omitted, we'll try and detect from the current user")
 	createSuitcaseCmd.PersistentFlags().String("prefix", "suitcase", "Prefex to insert into the suitcase filename")
+	// Stuff around encryption
+	createSuitcaseCmd.PersistentFlags().StringArrayP("public-key", "p", []string{}, "Public keys to use for encryption")
+	createSuitcaseCmd.PersistentFlags().Bool("exclude-systems-pubkeys", false, "By default, we will include the systems teams pubkeys, unless this option is specified")
+
+	// createSuitcaseCmd.PersistentFlags().SortFlags = false
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
