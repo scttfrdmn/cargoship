@@ -6,16 +6,13 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"os/user"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 
-	"github.com/dustin/go-humanize"
 	"github.com/karrick/godirwalk"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
 	"golang.org/x/tools/godoc/util"
 )
@@ -54,6 +51,7 @@ type DirectoryInventoryOptions struct {
 	InventoryFormat       string   `yaml:"inventory_format" json:"inventory_format"`
 }
 
+/*
 func NewDirectoryInventoryOptionsWithCmd(cmd *cobra.Command, args []string) (*DirectoryInventoryOptions, error) {
 	var err error
 	opt := &DirectoryInventoryOptions{
@@ -154,6 +152,7 @@ func NewDirectoryInventoryOptionsWithCmd(cmd *cobra.Command, args []string) (*Di
 	// checkErr(err, "Could not get inventory format")
 	return opt, nil
 }
+*/
 
 type InventoryFile struct {
 	Path        string `yaml:"path" json:"path"`

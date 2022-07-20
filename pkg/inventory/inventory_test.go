@@ -178,5 +178,5 @@ func TestNewInventoryerWithBadFilename(t *testing.T) {
 }
 
 func TestNewInventoryOptsWithCmd(t *testing.T) {
-	// TODO
+	// cs := cmd.NewCreateSuitcaseCmd()
 }

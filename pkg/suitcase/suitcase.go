@@ -1,6 +1,7 @@
 package suitcase
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -61,11 +62,16 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 }
 
 func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int, stateC chan SuitcaseFillState) ([]helpers.HashSet, error) {
+	if i == nil {
+		return nil, errors.New("inventory is nil")
+	}
 	var err error
 
 	var total uint
 	if index > 0 {
-		total = i.IndexSummaries[index].Count
+		if _, ok := i.IndexSummaries[index]; ok {
+			total = i.IndexSummaries[index].Count
+		}
 	} else {
 		total = uint(len(i.Files))
 	}
