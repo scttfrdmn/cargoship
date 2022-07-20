@@ -9,7 +9,7 @@ import (
 )
 
 func TestVersion(t *testing.T) {
-	cmd := NewRootCmd()
+	cmd := NewRootCmd(nil)
 	b := bytes.NewBufferString("")
 	cmd.SetOut(b)
 	cmd.SetArgs([]string{"version"})
@@ -23,7 +23,7 @@ func TestVersion(t *testing.T) {
 }
 
 func TestVersionShort(t *testing.T) {
-	cmd := NewRootCmd()
+	cmd := NewRootCmd(nil)
 	b := bytes.NewBufferString("")
 	cmd.SetOut(b)
 	cmd.SetArgs([]string{"version", "-s"})

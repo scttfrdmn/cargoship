@@ -61,10 +61,6 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 				log.Fatal().Msg("You can't specify an inventory file and only-inventory at the same time")
 			}
 
-			// Get this first, it'll be important
-			outDir, err = cmdhelpers.NewOutDirWithCmd(cmd)
-			checkErr(err, "Could not figure out the output directory")
-
 			// Create an inventory file if one isn't specified
 			var inventoryD *inventory.DirectoryInventory
 			if inventoryFile == "" {
@@ -155,7 +151,12 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 			return nil
 		},
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			setupMultiLogging()
+			// Get this first, it'll be important
+			var err error
+			outDir, err = cmdhelpers.NewOutDirWithCmd(cmd)
+			checkErr(err, "Could not figure out the output directory")
+
+			setupMultiLogging(outDir)
 			hashes = []helpers.HashSet{}
 			// Set up new CLI meta stuff
 			cliMeta = cmdhelpers.NewCLIMeta(args, cmd)
@@ -186,6 +187,8 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 
 			// stats.Runtime = stats.End.Sub(stats.Start)
 			log.Info().Str("log-file", logFile).Msg("Log File written")
+			// log.Info().Str("log-file", logFile).Msg("Switching back to stderr logger and closing the multi log writer so we can hash it")
+			// setupLogging(os.Stderr)
 			log.Info().
 				// Dur("runtime", stats.Runtime).
 				Str("runtime", cliMeta.CompletedAt.Sub(*cliMeta.StartedAt).String()).
@@ -211,7 +214,6 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 	cmd.PersistentFlags().StringArrayP("public-key", "p", []string{}, "Public keys to use for encryption")
 	cmd.PersistentFlags().Bool("exclude-systems-pubkeys", false, "By default, we will include the systems teams pubkeys, unless this option is specified")
 	cmd.PersistentFlags().Bool("only-inventory", false, "Only generate the inventory file, skip the actual suitcase archive creation")
-	cmd.PersistentFlags().StringVarP(&outDir, "output-dir", "o", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
 	return cmd
 }
 

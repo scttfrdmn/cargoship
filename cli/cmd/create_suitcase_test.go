@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"io"
 	"os"
 	"path"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmdhelpers"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
@@ -12,21 +14,28 @@ import (
 
 func TestNewDirectoryInventoryOptionsWithCmd(t *testing.T) {
 	testD := t.TempDir()
-	cmd := NewCreateSuitcaseCmd()
-	cmd.SetArgs([]string{testD})
+	// cmd := NewCreateSuitcaseCmd()
+	cmd := NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{"create", "suitcase", testD})
 	err := cmd.Execute()
 	require.NoError(t, err)
-	// f := cmd.PersistentFlags()
-	// log.Warn().Msgf("%+v", f)
-	_, err = cmdhelpers.NewDirectoryInventoryOptionsWithCmd(cmd, nil)
-
-	require.NoError(t, err)
+	// This is really gross 🤮. What's a better way to get the subcommand yoinked out of root?
+	for _, ccmd := range cmd.Commands() {
+		if ccmd.Name() == "create" {
+			for _, cccmd := range ccmd.Commands() {
+				if cccmd.Name() == "suitcase" {
+					_, err = cmdhelpers.NewDirectoryInventoryOptionsWithCmd(cccmd, nil)
+					assert.NoError(t, err)
+				}
+			}
+		}
+	}
 }
 
 func TestNewSuitcaseWithDir(t *testing.T) {
 	testD := t.TempDir()
-	cmd := NewCreateSuitcaseCmd()
-	cmd.SetArgs([]string{testD})
+	cmd := NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{"create", "suitcase", testD})
 	err := cmd.Execute()
 	require.NoError(t, err)
 }
@@ -47,16 +56,16 @@ func TestNewSuitcaseWithInventory(t *testing.T) {
 	err = ir.Write(outF, i)
 	require.NoError(t, err)
 
-	cmd := NewCreateSuitcaseCmd()
-	cmd.SetArgs([]string{"--inventory-file", outF.Name()})
+	cmd := NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{"create", "suitcase", "--inventory-file", outF.Name()})
 	err = cmd.Execute()
 	require.NoError(t, err)
 }
 
 func TestNewSuitcaseWithInventoryAndDir(t *testing.T) {
 	fakeDir := t.TempDir()
-	cmd := NewCreateSuitcaseCmd()
-	cmd.SetArgs([]string{"--inventory-file", "doesnt-matter", fakeDir})
+	cmd := NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{"create", "suitcase", "--inventory-file", "doesnt-matter", fakeDir})
 	err := cmd.Execute()
 	require.Error(t, err)
 	require.EqualError(t, err, "Error: You can't specify an inventory file and target dir arguments at the same time")

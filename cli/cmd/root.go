@@ -47,7 +47,7 @@ var (
 
 // rootCmd represents the base command when called without any subcommands
 // var rootCmd = &cobra.Command{
-func NewRootCmd() *cobra.Command {
+func NewRootCmd(lo io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "suitcase",
 		Short: "Used for creating encrypted blobs of files and directories for cold storage",
@@ -59,7 +59,7 @@ a future point in time`,
 		// has an action associated with it:
 		// Run: func(cmd *cobra.Command, args []string) { },
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			setupLogging()
+			setupLogging(lo)
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
 			// log.Info().Str("log-file", logFile).Msg("Log File written")
@@ -69,7 +69,6 @@ a future point in time`,
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")
 	cmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
 	cmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
-	cmd.PersistentFlags().StringVarP(&outDir, "output-dir", "o", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
 
 	cmd.AddCommand(createCmd, versionCmd)
 
@@ -80,7 +79,7 @@ a future point in time`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	// rootCmd = NewRootCmd()
-	rootCmd = NewRootCmd()
+	rootCmd = NewRootCmd(nil)
 	cobra.CheckErr(rootCmd.Execute())
 }
 
@@ -142,7 +141,10 @@ func printMemUsage() {
 		Msg("Memory Usage in MB")
 }
 
-func setupLogging() {
+func setupLogging(lo io.Writer) {
+	if lo == nil {
+		lo = os.Stderr
+	}
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
 	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -152,7 +154,7 @@ func setupLogging() {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 	// If we have an outDir, also write the logs to a file
-	multi := io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr})
+	multi := io.MultiWriter(zerolog.ConsoleWriter{Out: lo})
 	if trace {
 		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
 	} else {
@@ -160,7 +162,7 @@ func setupLogging() {
 	}
 }
 
-func setupMultiLogging() {
+func setupMultiLogging(o string) {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
 	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -171,7 +173,10 @@ func setupMultiLogging() {
 	}
 	// If we have an outDir, also write the logs to a file
 	var multi io.Writer
-	logFile = path.Join(outDir, "suitcasectl.log")
+	if o == "" {
+		log.Fatal().Msg("No output directory specified")
+	}
+	logFile = path.Join(o, "suitcasectl.log")
 	logF, err := os.Create(logFile)
 	checkErr(err, "")
 	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr}, logF)
