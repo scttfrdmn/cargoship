@@ -15,8 +15,15 @@ limitations under the License.
 */
 package main
 
-import "gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmd"
+import (
+	"github.com/rs/zerolog/log"
+
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmd"
+)
 
 func main() {
-	cmd.NewRootCmd().Execute()
+	err := cmd.NewRootCmd().Execute()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Error executing command")
+	}
 }

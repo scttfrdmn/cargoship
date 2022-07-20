@@ -63,16 +63,7 @@ a future point in time`,
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
 			// log.Info().Str("log-file", logFile).Msg("Log File written")
-
 			// stats.Runtime = stats.End.Sub(stats.Start)
-			if cmd.Use != "version" {
-				log.Info().
-					// Dur("runtime", stats.Runtime).
-					Str("runtime", cliMeta.CompletedAt.Sub(*cliMeta.StartedAt).String()).
-					Str("start", cliMeta.StartedAt.String()).
-					Str("end", cliMeta.CompletedAt.String()).
-					Msg("Completed")
-			}
 		},
 	}
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")
