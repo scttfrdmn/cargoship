@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"path"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -23,9 +24,27 @@ type CLIMeta struct {
 	Version      string                 `yaml:"version"`
 }
 
-func (c *CLIMeta) Complete() {
+func (c *CLIMeta) Complete(od string) (string, error) {
 	n := time.Now()
 	c.CompletedAt = &n
+
+	var w io.WriteCloser
+	var err error
+	var mf string
+	if od == "" {
+		log.Warn().Msg("No output directory specified. Using stdout for cli meta output")
+		w = os.Stdout
+	} else {
+		mf = path.Join(od, "suitcasectl-invocation-meta.yaml")
+		w, err = os.Create(mf)
+		if err != nil {
+			return "", err
+		}
+		log.Info().Str("meta-file", mf).Msg("Created CLI meta file")
+	}
+	defer w.Close()
+	c.Print(w)
+	return mf, nil
 }
 
 func (c *CLIMeta) Print(w io.Writer) {

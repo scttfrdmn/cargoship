@@ -29,14 +29,16 @@ func TestNewSuitcase(t *testing.T) {
 			t.Cleanup(func() {
 				require.NoError(t, archive.Close())
 			})
-			require.NoError(t, archive.Add(inventory.InventoryFile{
+			_, err = archive.Add(inventory.InventoryFile{
 				Path:        empty.Name(),
 				Destination: "empty.txt",
-			}))
-			require.Error(t, archive.Add(inventory.InventoryFile{
+			})
+			require.NoError(t, err)
+			_, err = archive.Add(inventory.InventoryFile{
 				Path:        empty.Name() + "_nope",
 				Destination: "dont.txt",
-			}))
+			})
+			require.Error(t, err)
 		})
 	}
 
@@ -69,14 +71,16 @@ func TestNewGPGSuitcase(t *testing.T) {
 			t.Cleanup(func() {
 				require.NoError(t, archive.Close())
 			})
-			require.NoError(t, archive.Add(inventory.InventoryFile{
+			_, err = archive.Add(inventory.InventoryFile{
 				Path:        empty.Name(),
 				Destination: "empty.txt",
-			}))
-			require.Error(t, archive.Add(inventory.InventoryFile{
+			})
+			require.NoError(t, err)
+			_, err = archive.Add(inventory.InventoryFile{
 				Path:        empty.Name() + "_nope",
 				Destination: "dont.txt",
-			}))
+			})
+			require.Error(t, err)
 		})
 	}
 }
@@ -90,7 +94,7 @@ func TestFillWithInventoryIndex(t *testing.T) {
 		TopLevelDirectories: []string{"../testdata/fake-dir"},
 	})
 	require.NoError(t, err)
-	err = FillWithInventoryIndex(s, i, 0, nil)
+	_, err = FillWithInventoryIndex(s, i, 0, nil)
 	require.NoError(t, err)
 }
 

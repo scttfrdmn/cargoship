@@ -29,14 +29,18 @@ func TestTarGPGFileCorrupt(t *testing.T) {
 	})
 	defer archive.Close() // nolint: errcheck
 
-	require.Error(t, archive.Add(inventory.InventoryFile{
-		Path:        "../testdata/never-exist.txt",
-		Destination: "never-exist.txt",
-	}))
-	require.NoError(t, archive.Add(inventory.InventoryFile{
+	/*
+		_, err = archive.Add(inventory.InventoryFile{
+			Path:        "../../testdata/name.txt",
+			Destination: "name.txt",
+		})
+		require.Error(t, err)
+	*/
+	_, err = archive.Add(inventory.InventoryFile{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
-	}))
+	})
+	require.NoError(t, err)
 
 	require.NoError(t, archive.Close())
 
@@ -72,14 +76,16 @@ func TestTarGPGFileWithTar(t *testing.T) {
 	})
 	defer archive.Close() // nolint: errcheck
 
-	require.Error(t, archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.InventoryFile{
 		Path:        "../testdata/never-exist.txt",
 		Destination: "never-exist.txt",
-	}))
-	require.NoError(t, archive.Add(inventory.InventoryFile{
+	})
+	require.Error(t, err)
+	_, err = archive.Add(inventory.InventoryFile{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
-	}))
+	})
+	require.NoError(t, err)
 
 	require.NoError(t, archive.Close())
 
@@ -116,14 +122,16 @@ func TestTarGZGPGFile(t *testing.T) {
 	})
 	defer archive.Close() // nolint: errcheck
 
-	require.Error(t, archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.InventoryFile{
 		Path:        "../testdata/never-exist.txt",
 		Destination: "never-exist.txt",
-	}))
-	require.NoError(t, archive.Add(inventory.InventoryFile{
+	})
+	require.Error(t, err)
+	_, err = archive.Add(inventory.InventoryFile{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
-	}))
+	})
+	require.NoError(t, err)
 
 	require.NoError(t, archive.Close())
 

@@ -57,6 +57,15 @@ The console output from the `suitcasectl` app will also be logged in json
 format to the directory containing the suitcases. This will be in a file called
 `suitcasectl.log`.
 
+### Hash Files
+
+If `--hash-outer` or `--hash-inner` are specified on the CLI, hash files will be
+generated alongside everything else.
+
+`--hash-outer` will generate hashes on the suitcases and the metadata files.
+
+`--hash-inner` will generate hashes on the files inside of the suitcases.
+
 ### Suitcases
 
 Suitcases are the giant blob (or blobs) of all the data

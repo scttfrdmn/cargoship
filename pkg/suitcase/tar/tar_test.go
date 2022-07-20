@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -24,14 +25,16 @@ func TestTarFile(t *testing.T) {
 	})
 	defer archive.Close() // nolint: errcheck
 
-	require.Error(t, archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.InventoryFile{
 		Path:        "../testdata/never-exist.txt",
 		Destination: "never-exist.txt",
-	}))
-	require.NoError(t, archive.Add(inventory.InventoryFile{
+	})
+	require.Error(t, err)
+	_, err = archive.Add(inventory.InventoryFile{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
-	}))
+	})
+	require.NoError(t, err)
 
 	require.NoError(t, archive.Close())
 
@@ -56,4 +59,28 @@ func TestTarFile(t *testing.T) {
 		paths = append(paths, next.Name)
 	}
 	require.Equal(t, []string{"name.txt"}, paths)
+}
+
+func TestTarFileAddHash(t *testing.T) {
+	tmp := t.TempDir()
+	f, err := os.Create(filepath.Join(tmp, "test.tar"))
+	require.NoError(t, err)
+	defer f.Close()
+
+	archive := New(f, &config.SuitCaseOpts{
+		Format:    "tar",
+		HashInner: true,
+	})
+	defer archive.Close() // nolint: errcheck
+
+	hs, err := archive.Add(inventory.InventoryFile{
+		Path:        "../../testdata/name.txt",
+		Destination: "name.txt",
+	})
+	require.NoError(t, err)
+
+	require.True(t, strings.HasSuffix(hs.Filename, "name.txt"))
+	require.Equal(t, "68e6c64a20407c35ebc20d905c941e03c63b3bfe3c853a708a93ec5a95532fbd", hs.Hash)
+
+	require.NoError(t, archive.Close())
 }
