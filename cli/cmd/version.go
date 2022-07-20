@@ -16,7 +16,7 @@ var (
 		Use:   "version",
 		Short: "Version will output the current build information",
 		Long:  ``,
-		Run: func(_ *cobra.Command, _ []string) {
+		Run: func(cmd *cobra.Command, _ []string) {
 			var response string
 			versionOutput := goVersion.New(version, commit, date)
 
@@ -25,12 +25,13 @@ var (
 			} else {
 				response = versionOutput.ToJSON()
 			}
-			fmt.Printf("%+v", response)
+			fmt.Fprintf(cmd.OutOrStdout(), "%+v", response)
+			// fmt.Printf("%+v", response)
 		},
 	}
 )
 
 func init() {
 	versionCmd.Flags().BoolVarP(&shortened, "short", "s", false, "Use shortened output for version information.")
-	rootCmd.AddCommand(versionCmd)
+	// rootCmd.AddCommand(versionCmd)
 }

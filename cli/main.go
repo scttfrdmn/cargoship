@@ -18,5 +18,5 @@ package main
 import "gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmd"
 
 func main() {
-	cmd.Execute()
+	cmd.NewRootCmd().Execute()
 }

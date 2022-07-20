@@ -153,7 +153,7 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 			}
 		},
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			setupLogging()
+			setupMultiLogging()
 			hashes = []helpers.HashSet{}
 			// Set up new CLI meta stuff
 			cliMeta = cmdhelpers.NewCLIMeta(args, cmd)
