@@ -28,6 +28,7 @@ import (
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmdhelpers"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/gpg"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
 )
 
@@ -120,6 +121,7 @@ var createSuitcaseCmd = &cobra.Command{
 			opts := &config.SuitCaseOpts{
 				Destination:  outDir,
 				EncryptInner: inventoryD.Options.EncryptInner,
+				HashInner:    inventoryD.Options.HashInner,
 				Format:       inventoryD.Options.SuitcaseFormat,
 			}
 
@@ -139,11 +141,63 @@ var createSuitcaseCmd = &cobra.Command{
 			checkErr(err, "")
 			for _, f := range createdFiles {
 				log.Info().Str("file", f).Msg("Created file")
+				hashes = append(hashes, helpers.HashSet{
+					Filename: strings.TrimPrefix(f, outDir+"/"),
+					Hash:     helpers.MustGetSha256(f),
+				})
 			}
 		} else {
 			log.Warn().Msg("Only creating inventory file, no suitcase archives")
 		}
 	},
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		setupLogging()
+		hashes = []helpers.HashSet{}
+		// Set up new CLI meta stuff
+		cliMeta = cmdhelpers.NewCLIMeta(args, cmd)
+	},
+	PersistentPostRun: func(cmd *cobra.Command, args []string) {
+		metaF, err := cliMeta.Complete(outDir)
+		checkErr(err, "")
+
+		log.Info().Str("file", metaF).Msg("Created meta file")
+
+		// Hash the outer items if asked
+		hashOuter, err := cmd.Flags().GetBool("hash-outer")
+		checkErr(err, "")
+		if hashOuter {
+			hashes = append(hashes, helpers.HashSet{
+				Filename: strings.TrimPrefix(metaF, outDir+"/"),
+				Hash:     helpers.MustGetSha256(metaF),
+			})
+
+			hashFile := path.Join(outDir, "suitcasectl.sha256")
+			log.Info().Str("hash-file", hashFile).Msg("Creating hashes")
+			hashF, err := os.Create(hashFile)
+			checkErr(err, "")
+			defer hashF.Close()
+			err = helpers.WriteHashFile(hashes, hashF)
+			checkErr(err, "")
+		}
+
+		// stats.Runtime = stats.End.Sub(stats.Start)
+		log.Info().Str("log-file", logFile).Msg("Log File written")
+		log.Info().
+			// Dur("runtime", stats.Runtime).
+			Str("runtime", cliMeta.CompletedAt.Sub(*cliMeta.StartedAt).String()).
+			Str("start", cliMeta.StartedAt.String()).
+			Str("end", cliMeta.CompletedAt.String()).
+			Msg("Completed")
+	},
+	/*
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			// Get a hash set ready
+			// hashes = []helpers.HashSet{}
+		},
+		PersistentPostRun: func(cmd *cobra.Command, args []string) {
+			// Ok, let's make some hashes now!
+		},
+	*/
 }
 
 func init() {
@@ -160,6 +214,7 @@ func init() {
 	createSuitcaseCmd.PersistentFlags().String("internal-metadata-glob", "suitcase-meta*", "Glob pattern for internal metadata files. This should be directly under the top level directories of the targets that are being packaged up. Multiple matches will be included if found.")
 	createSuitcaseCmd.PersistentFlags().StringArray("external-metadata-file", []string{}, "Additional files to include as metadata in the inventory. This should NOT be part of the suitcase target directories...use internal-metadata-glob for those")
 	createSuitcaseCmd.PersistentFlags().Bool("hash-inner", false, "Create SHA256 hashes for the inner contents of the suitcase")
+	createSuitcaseCmd.PersistentFlags().Bool("hash-outer", false, "Create SHA256 hashes for the container and metadata files")
 	createSuitcaseCmd.PersistentFlags().Bool("encrypt-inner", false, "Encrypt files within the suitcase")
 	createSuitcaseCmd.PersistentFlags().Int("buffer-size", 1024, "Buffer size if using a YAML inventory.")
 	createSuitcaseCmd.PersistentFlags().Int("limit-file-count", 0, "Limit the number of files to include in the inventory. If 0, no limit is applied. Should only be used for debugging")

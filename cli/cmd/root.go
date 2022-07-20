@@ -27,6 +27,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmdhelpers"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
@@ -40,6 +41,7 @@ var (
 	cliMeta *cmdhelpers.CLIMeta
 	outDir  string
 	logFile string
+	hashes  []helpers.HashSet
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -54,48 +56,11 @@ a future point in time`,
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-
-		// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-		if Verbose {
-			zerolog.SetGlobalLevel(zerolog.DebugLevel)
-		}
-		// If we have an outDir, also write the logs to a file
-		var multi io.Writer
-		if outDir != "" {
-			logFile = path.Join(outDir, "suitcasectl.log")
-			logF, err := os.Create(logFile)
-			checkErr(err, "")
-			multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr}, logF)
-		} else {
-			multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr})
-		}
-		if trace {
-			log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
-		} else {
-			log.Logger = zerolog.New(multi).With().Timestamp().Logger()
-		}
-
-		// Set up new CLI meta stuff
-		cliMeta = cmdhelpers.NewCLIMeta(args, cmd)
+		setupLogging()
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
-		cliMeta.Complete()
-		var w io.WriteCloser
-		var err error
-		if outDir == "" {
-			log.Warn().Msg("No output directory specified. Using stdout for cli meta output")
-			w = os.Stdout
-		} else {
-			mf := path.Join(outDir, "cli-invocation-meta.yaml")
-			w, err = os.Create(mf)
-			checkErr(err, "Failed to create output file")
-			log.Info().Str("meta-file", mf).Msg("Created CLI meta file")
-			log.Info().Str("log-file", logFile).Msg("Log File written")
-		}
-		defer w.Close()
-		cliMeta.Print(w)
+		log.Info().Str("log-file", logFile).Msg("Log File written")
+
 		// stats.Runtime = stats.End.Sub(stats.Start)
 		if cmd.Use != "version" {
 			log.Info().
@@ -180,4 +145,30 @@ func printMemUsage() {
 		Uint64("system", m.Sys).
 		Uint64("gc-count", uint64(m.NumGC)).
 		Msg("Memory Usage in MB")
+}
+
+func setupLogging() {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+
+	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	if Verbose {
+		log.Info().Msg("Verbose output enabled")
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	}
+	// If we have an outDir, also write the logs to a file
+	var multi io.Writer
+	if outDir != "" {
+		logFile = path.Join(outDir, "suitcasectl.log")
+		logF, err := os.Create(logFile)
+		checkErr(err, "")
+		multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr}, logF)
+	} else {
+		multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr})
+	}
+	if trace {
+		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
+	} else {
+		log.Logger = zerolog.New(multi).With().Timestamp().Logger()
+	}
 }

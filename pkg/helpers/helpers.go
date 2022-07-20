@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -38,6 +39,14 @@ func GetSha256(file string) (string, error) {
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
+func MustGetSha256(file string) string {
+	hash, err := GetSha256(file)
+	if err != nil {
+		panic(err)
+	}
+	return hash
+}
+
 func SuitcaseFormatWithFilename(filename string) (string, error) {
 	switch {
 	case strings.HasSuffix(filename, ".tar"):
@@ -58,4 +67,21 @@ func IsDirectory(path string) bool {
 		return false
 	}
 	return fileInfo.IsDir()
+}
+
+type HashSet struct {
+	Filename string
+	Hash     string
+}
+
+func WriteHashFile(hs []HashSet, o io.Writer) error {
+	w := bufio.NewWriter(o)
+	for _, hs := range hs {
+		_, err := w.WriteString(fmt.Sprintf("%s\t%s\n", hs.Filename, hs.Hash))
+		if err != nil {
+			return err
+		}
+	}
+	w.Flush()
+	return nil
 }

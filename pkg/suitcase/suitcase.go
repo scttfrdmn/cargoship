@@ -10,6 +10,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/tar"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/targpg"
@@ -19,7 +20,7 @@ import (
 
 type Suitcase interface {
 	Close() error
-	Add(f inventory.InventoryFile) error
+	Add(inventory.InventoryFile) (*helpers.HashSet, error)
 	AddEncrypt(f inventory.InventoryFile) error
 	Config() *config.SuitCaseOpts
 }
@@ -59,7 +60,7 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 	return nil, fmt.Errorf("invalid archive format: %s", opts.Format)
 }
 
-func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int, stateC chan SuitcaseFillState) error {
+func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int, stateC chan SuitcaseFillState) ([]helpers.HashSet, error) {
 	var err error
 
 	var total uint
@@ -69,6 +70,7 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 		total = uint(len(i.Files))
 	}
 	cur := uint(0)
+	var suitcaseHashes []helpers.HashSet
 
 	for _, f := range i.Files {
 		l := log.With().
@@ -90,9 +92,12 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 				l.Warn().Err(err).Msg("Failed to add file to suitcase")
 			}
 		} else {
-			err = s.Add(*f)
+			hs, err := s.Add(*f)
 			if err != nil {
 				l.Warn().Err(err).Msg("Failed to add file to suitcase")
+			}
+			if s.Config().HashInner {
+				suitcaseHashes = append(suitcaseHashes, *hs)
 			}
 		}
 
@@ -107,7 +112,7 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 		}
 
 	}
-	return nil
+	return suitcaseHashes, nil
 }
 
 func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory, index int, stateC chan SuitcaseFillState) (string, error) {
@@ -131,7 +136,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 		Bool("encryptInner", so.EncryptInner).
 		Int("index", index).
 		Msg("Filling suitcase")
-	err = FillWithInventoryIndex(s, i, index, stateC)
+	hashes, err := FillWithInventoryIndex(s, i, index, stateC)
 	if err != nil {
 		return "", err
 	}
@@ -140,6 +145,20 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 		stateC <- SuitcaseFillState{
 			Completed: true,
 			Index:     index,
+		}
+	}
+
+	if so.HashInner {
+		hashFN := fmt.Sprintf("%v.sha256", targetF)
+		log.Info().Str("file", hashFN).Msgf("Creating hashes file")
+		hashF, err := os.Create(hashFN)
+		if err != nil {
+			return "", err
+		}
+		defer hashF.Close()
+		err = helpers.WriteHashFile(hashes, hashF)
+		if err != nil {
+			return "", err
 		}
 	}
 	return targetF, nil
