@@ -181,7 +181,7 @@ func setupMultiLogging(o string) {
 	logFile = path.Join(o, "suitcasectl.log")
 	var err error
 	logF, err = os.Create(logFile)
-	checkErr(err, "")
+	checkErr(err, "Error Creating log file")
 	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr}, logF)
 	if trace {
 		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()

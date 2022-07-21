@@ -98,3 +98,22 @@ arguments are:
 ```
 
 For more information on the available arguments, run `suitcasectl create suitcase --help`.
+
+## Advanced
+
+### Custom Suitcase Settings File
+
+Users can include a `suitcasectl.[yaml|toml|json]` file in the root of their
+directory which will automatically be used by suitcasectl for certain options.
+This could be useful for things like ignore patterns or other settings.
+
+Example:
+
+```yaml
+ignore-glob:
+  - "*.out"
+  - "*.swp"
+```
+
+Under the covers, the [viper](https://github.com/spf13/viper) library is doing
+this. Their documentation will be useful when tracking down issues.

@@ -67,7 +67,7 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 			if inventoryFile == "" {
 				log.Info().Msg("No inventory file specified, we're going to go ahead and create one")
 				// inventoryOpts, err := cmdhelpers.NewDirectoryInventoryOptionsWithCmd(cmd, args)
-				log.Warn().Msgf("This is a beta feature, and may not work as expected: %+v", userOverrides.AllSettings())
+				// log.Warn().Msgf("This is a beta feature, and may not work as expected: %+v", userOverrides.AllSettings())
 				inventoryOpts, err := cmdhelpers.NewDirectoryInventoryOptionsWithViper(userOverrides, args)
 				log.Debug().Msgf("inventoryOpts: %+v", inventoryOpts)
 				checkErr(err, "Could not get inventory options from viper and args")
