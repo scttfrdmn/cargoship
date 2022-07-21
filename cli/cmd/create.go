@@ -32,7 +32,7 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(createCmd)
+	// rootCmd.AddCommand(createCmd)
 
 	// Here you will define your flags and configuration settings.
 
@@ -40,6 +40,7 @@ func init() {
 	// and all subcommands, e.g.:
 	// createCmd.PersistentFlags().String("foo", "", "A help for foo")
 	// createCmd.PersistentFlags().StringP("output-dir", "o", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
+	createCmd.PersistentFlags().StringVarP(&outDir, "output-dir", "o", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:

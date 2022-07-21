@@ -42,40 +42,44 @@ var (
 	outDir  string
 	logFile string
 	hashes  []helpers.HashSet
+	rootCmd *cobra.Command
 )
 
 // rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
-	Use:   "suitcase",
-	Short: "Used for creating encrypted blobs of files and directories for cold storage",
-	Long: `This tool generates a blob of encrypted files and directories that can be later
+// var rootCmd = &cobra.Command{
+func NewRootCmd(lo io.Writer) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "suitcase",
+		Short: "Used for creating encrypted blobs of files and directories for cold storage",
+		Long: `This tool generates a blob of encrypted files and directories that can be later
 trasnfered to cheap archive storage. Along with the blob, an unencrypted
 manifest file is generated. This manifest can be used to track down the blob at
 a future point in time`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		setupLogging()
-	},
-	PersistentPostRun: func(cmd *cobra.Command, args []string) {
-		log.Info().Str("log-file", logFile).Msg("Log File written")
+		// Uncomment the following line if your bare application
+		// has an action associated with it:
+		// Run: func(cmd *cobra.Command, args []string) { },
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			setupLogging(lo)
+		},
+		PersistentPostRun: func(cmd *cobra.Command, args []string) {
+			// log.Info().Str("log-file", logFile).Msg("Log File written")
+			// stats.Runtime = stats.End.Sub(stats.Start)
+		},
+	}
+	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")
+	cmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
+	cmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
 
-		// stats.Runtime = stats.End.Sub(stats.Start)
-		if cmd.Use != "version" {
-			log.Info().
-				// Dur("runtime", stats.Runtime).
-				Str("runtime", cliMeta.CompletedAt.Sub(*cliMeta.StartedAt).String()).
-				Str("start", cliMeta.StartedAt.String()).
-				Str("end", cliMeta.CompletedAt.String()).
-				Msg("Completed")
-		}
-	},
+	cmd.AddCommand(createCmd, versionCmd)
+
+	return cmd
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	// rootCmd = NewRootCmd()
+	rootCmd = NewRootCmd(nil)
 	cobra.CheckErr(rootCmd.Execute())
 }
 
@@ -85,16 +89,6 @@ func init() {
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
-
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")
-	// rootCmd.PersistentFlags().Int64("large-file-size", 1024*1024, "Size in bytes of files considered 'large'")
-	// rootCmd.PersistentFlags().StringVar(&logFormat, "log-format", "console", "Log format (console, json)")
-
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
-	rootCmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
-	rootCmd.PersistentFlags().StringVarP(&outDir, "output-dir", "o", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -147,7 +141,28 @@ func printMemUsage() {
 		Msg("Memory Usage in MB")
 }
 
-func setupLogging() {
+func setupLogging(lo io.Writer) {
+	if lo == nil {
+		lo = os.Stderr
+	}
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+
+	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	if Verbose {
+		log.Info().Msg("Verbose output enabled")
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	}
+	// If we have an outDir, also write the logs to a file
+	multi := io.MultiWriter(zerolog.ConsoleWriter{Out: lo})
+	if trace {
+		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
+	} else {
+		log.Logger = zerolog.New(multi).With().Timestamp().Logger()
+	}
+}
+
+func setupMultiLogging(o string) {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
 	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -158,14 +173,13 @@ func setupLogging() {
 	}
 	// If we have an outDir, also write the logs to a file
 	var multi io.Writer
-	if outDir != "" {
-		logFile = path.Join(outDir, "suitcasectl.log")
-		logF, err := os.Create(logFile)
-		checkErr(err, "")
-		multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr}, logF)
-	} else {
-		multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr})
+	if o == "" {
+		log.Fatal().Msg("No output directory specified")
 	}
+	logFile = path.Join(o, "suitcasectl.log")
+	logF, err := os.Create(logFile)
+	checkErr(err, "")
+	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr}, logF)
 	if trace {
 		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
 	} else {

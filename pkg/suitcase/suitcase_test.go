@@ -1,7 +1,9 @@
 package suitcase
 
 import (
+	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"testing"
 
@@ -115,7 +117,30 @@ func TestFillFileWithInventoryIndex(t *testing.T) {
 		TopLevelDirectories: []string{"../testdata/fake-dir"},
 	})
 	require.NoError(t, err)
-	_, err = WriteSuitcaseFile(so, i, 1, nil)
+	sf, err := WriteSuitcaseFile(so, i, 1, nil)
 	// err = FillWithInventoryIndex(s, i, 0, nil)
 	require.NoError(t, err)
+	require.FileExists(t, sf)
+}
+
+func TestFillFileWithInventoryIndexHashInner(t *testing.T) {
+	d := t.TempDir()
+	so := &config.SuitCaseOpts{
+		Format:      "tar",
+		Destination: d,
+		HashInner:   true,
+	}
+	i, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
+		TopLevelDirectories: []string{"../testdata/fake-dir"},
+	})
+	require.NoError(t, err)
+	sf, err := WriteSuitcaseFile(so, i, 1, nil)
+	sfs := fmt.Sprintf("%v.sha256", sf)
+	require.NoError(t, err)
+	require.FileExists(t, sfs)
+
+	c, err := ioutil.ReadFile(sfs)
+	require.NoError(t, err)
+	// Make sure our known hash file is up in here
+	require.Contains(t, string(c), "ef3d6ae3230876bc9d15b3df72b89797ce8be0dd872315b78c0be72a4600d466")
 }
