@@ -34,15 +34,16 @@ import (
 )
 
 var (
-	cfgFile string
-	Verbose bool
-	trace   bool
-	// stats     runStats
-	cliMeta *cmdhelpers.CLIMeta
-	outDir  string
-	logFile string
-	hashes  []helpers.HashSet
-	rootCmd *cobra.Command
+	cfgFile       string
+	Verbose       bool
+	trace         bool
+	cliMeta       *cmdhelpers.CLIMeta
+	outDir        string
+	logFile       string
+	logF          *os.File
+	hashes        []helpers.HashSet
+	rootCmd       *cobra.Command
+	userOverrides *viper.Viper
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -66,7 +67,7 @@ a future point in time`,
 			// stats.Runtime = stats.End.Sub(stats.Start)
 		},
 	}
-	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")
+	// cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")
 	cmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
 	cmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
 
@@ -103,7 +104,7 @@ func initConfig() {
 
 		// Search config in home directory with name ".cli" (without extension).
 		viper.AddConfigPath(home)
-		viper.SetConfigName(".suitcase")
+		viper.SetConfigName(".suitcasectl")
 	}
 
 	viper.AutomaticEnv() // read in environment variables that match
@@ -112,6 +113,7 @@ func initConfig() {
 	if err := viper.ReadInConfig(); err == nil {
 		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
 	}
+	// We want a specific viper instance for these user overrides
 }
 
 type runStats struct {
@@ -177,8 +179,9 @@ func setupMultiLogging(o string) {
 		log.Fatal().Msg("No output directory specified")
 	}
 	logFile = path.Join(o, "suitcasectl.log")
-	logF, err := os.Create(logFile)
-	checkErr(err, "")
+	var err error
+	logF, err = os.Create(logFile)
+	checkErr(err, "Error Creating log file")
 	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr}, logF)
 	if trace {
 		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()

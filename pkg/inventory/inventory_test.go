@@ -177,6 +177,13 @@ func TestNewInventoryerWithBadFilename(t *testing.T) {
 	}
 }
 
-func TestNewInventoryOptsWithCmd(t *testing.T) {
-	// cs := cmd.NewCreateSuitcaseCmd()
+func TestNewSuitcaseWithIgnoreGlobs(t *testing.T) {
+	i, err := NewDirectoryInventory(&DirectoryInventoryOptions{
+		TopLevelDirectories: []string{"../testdata/fake-dir"},
+		IgnoreGlobs:         []string{"*.out"},
+	})
+	require.NoError(t, err)
+	for _, f := range i.Files {
+		require.NotContains(t, f.Name, ".out")
+	}
 }

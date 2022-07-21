@@ -14,6 +14,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
@@ -206,5 +207,81 @@ func NewDirectoryInventoryOptionsWithCmd(cmd *cobra.Command, args []string) (*in
 
 	// inventoryFormat, err := cmd.Flags().GetString("inventory-format")
 	// checkErr(err, "Could not get inventory format")
+	return opt, nil
+}
+
+func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*inventory.DirectoryInventoryOptions, error) {
+	var err error
+
+	opt := &inventory.DirectoryInventoryOptions{
+		TopLevelDirectories: args,
+	}
+	opt.TopLevelDirectories, err = helpers.ConvertDirsToAboluteDirs(args)
+	if err != nil {
+		return nil, err
+	}
+
+	// User can specify a human readable string here. We will convert it to bytes for them
+	mssF := v.GetString("max-suitcase-size")
+	if mssF == "" {
+		mssF = "0"
+	}
+	mssU, err := humanize.ParseBytes(mssF)
+	if err != nil {
+		return nil, err
+	}
+	opt.MaxSuitcaseSize = int64(mssU)
+
+	// Get the internal and external metadata glob patterns
+	opt.InternalMetadataGlob = v.GetString("internal-metadata-glob")
+
+	// External metadata file here
+	opt.ExternalMetadataFiles = v.GetStringSlice("external-metadata-file")
+
+	// Globs to ignore
+	opt.IgnoreGlobs = v.GetStringSlice("ignore-glob")
+
+	// We may want to limit the number of files in the total
+	// inventory, mainly to help with debugging, but store that here
+	opt.LimitFileCount = v.GetInt("limit-file-count")
+
+	// Format for the archive/suitcase
+	opt.SuitcaseFormat = v.GetString("suitcase-format")
+	opt.SuitcaseFormat = strings.TrimPrefix(opt.SuitcaseFormat, ".")
+
+	// Inventory file format (yaml or json)
+	opt.InventoryFormat = v.GetString("inventory-format")
+	opt.InventoryFormat = strings.TrimPrefix(opt.InventoryFormat, ".")
+
+	// We want a username so we can shove it in the suitcase name
+	opt.User = v.GetString("user")
+	if err != nil {
+		return nil, err
+	}
+
+	if opt.User == "" {
+		log.Info().Msg("No user specified, using current user")
+		currentUser, err := user.Current()
+		if err != nil {
+			return nil, err
+		}
+		opt.User = currentUser.Username
+	}
+
+	opt.Prefix = v.GetString("prefix")
+
+	// Set the stuff to be encrypted?
+	opt.EncryptInner = v.GetBool("encrypt-inner")
+
+	// Do we want to skip hashes?
+	opt.HashInner = v.GetBool("hash-inner")
+	if opt.HashInner {
+		log.Warn().
+			Msg("Generating file hashes. This will will likely increase the inventory generation time.")
+	} else {
+		log.Warn().
+			Msg("Skipping file hashes. This will increase the speed of the inventory, but will not be able to verify the integrity of the files.")
+	}
+
 	return opt, nil
 }

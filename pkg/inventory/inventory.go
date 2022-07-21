@@ -43,6 +43,7 @@ type DirectoryInventoryOptions struct {
 	SizeConsideredLarge   int64    `yaml:"size_considered_large" json:"size_considered_large"`
 	MaxSuitcaseSize       int64    `yaml:"max_suitcase_size" json:"max_suitcase_size"`
 	InternalMetadataGlob  string   `yaml:"internal_metadata_glob,omitempty" json:"internal_metadata_glob,omitempty"`
+	IgnoreGlobs           []string `yaml:"ignore_globs,omitempty" json:"ignore_globs,omitempty"`
 	ExternalMetadataFiles []string `yaml:"external_metadata_files,omitempty" json:"external_metadata_files,omitempty"`
 	EncryptInner          bool     `yaml:"encrypt_inner" json:"encrypt_inner"`
 	HashInner             bool     `yaml:"hash_inner" json:"hash_inner"`
@@ -352,10 +353,16 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 				}
 				size := st.Size()
 
+				// Ignore certain items?
+				name := de.Name()
+				if helpers.FilenameMatchesGlobs(name, opts.IgnoreGlobs) {
+					log.Info().Str("path", path).Msg("Ignoring file as it matches ignore globs")
+					return nil
+				}
 				fItem := InventoryFile{
 					Path:        path,
 					Destination: strings.TrimPrefix(path, dir),
-					Name:        de.Name(),
+					Name:        name,
 					Size:        size,
 				}
 				if opts.HashInner {

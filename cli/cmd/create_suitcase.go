@@ -26,6 +26,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmdhelpers"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/gpg"
@@ -65,8 +66,11 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 			var inventoryD *inventory.DirectoryInventory
 			if inventoryFile == "" {
 				log.Info().Msg("No inventory file specified, we're going to go ahead and create one")
-				inventoryOpts, err := cmdhelpers.NewDirectoryInventoryOptionsWithCmd(cmd, args)
-				checkErr(err, "Could not get inventory options from cmd and args")
+				// inventoryOpts, err := cmdhelpers.NewDirectoryInventoryOptionsWithCmd(cmd, args)
+				// log.Warn().Msgf("This is a beta feature, and may not work as expected: %+v", userOverrides.AllSettings())
+				inventoryOpts, err := cmdhelpers.NewDirectoryInventoryOptionsWithViper(userOverrides, args)
+				log.Debug().Msgf("inventoryOpts: %+v", inventoryOpts)
+				checkErr(err, "Could not get inventory options from viper and args")
 
 				// Create the inventory
 				inventoryD, err = inventory.NewDirectoryInventory(inventoryOpts)
@@ -160,6 +164,33 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 			hashes = []helpers.HashSet{}
 			// Set up new CLI meta stuff
 			cliMeta = cmdhelpers.NewCLIMeta(args, cmd)
+
+			// Set up some user overrides
+			userOverrides = viper.New()
+			userOverrides.SetConfigName("suitcasectl")
+			userOverrides.ReadInConfig()
+			for _, dir := range args {
+				log.Info().Str("dir", dir).Msg("Adding target dir to user overrides")
+				userOverrides.AddConfigPath(dir)
+			}
+			if err := userOverrides.ReadInConfig(); err == nil {
+				log.Info().Str("override-file", userOverrides.ConfigFileUsed()).Msg("Found user overrides, using them")
+			}
+			fields := []string{
+				"ignore-glob",
+				"inventory-format",
+				"internal-metadata-glob",
+				"max-suitcase-size",
+				"prefix",
+				"user",
+				"suitcase-format",
+			}
+			for _, field := range fields {
+				err = userOverrides.BindPFlag(field, cmd.PersistentFlags().Lookup(field))
+				checkErr(err, fmt.Sprintf("Could not bind '%v' flag", field))
+			}
+			c := userOverrides.AllSettings()
+			cliMeta.ViperConfig = c
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
 			metaF, err := cliMeta.Complete(outDir)
@@ -186,9 +217,9 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 			}
 
 			// stats.Runtime = stats.End.Sub(stats.Start)
-			log.Info().Str("log-file", logFile).Msg("Log File written")
-			// log.Info().Str("log-file", logFile).Msg("Switching back to stderr logger and closing the multi log writer so we can hash it")
-			// setupLogging(os.Stderr)
+			log.Info().Str("log-file", logFile).Msg("Switching back to stderr logger and closing the multi log writer so we can hash it")
+			setupLogging(os.Stderr)
+			logF.Close()
 			log.Info().
 				// Dur("runtime", stats.Runtime).
 				Str("runtime", cliMeta.CompletedAt.Sub(*cliMeta.StartedAt).String()).
@@ -203,6 +234,7 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 	cmd.PersistentFlags().String("max-suitcase-size", "0", "Maximum size for the set of suitcases generated. If no unit is specified, 'bytes' is assumed. 0 means no limit.")
 	cmd.PersistentFlags().String("internal-metadata-glob", "suitcase-meta*", "Glob pattern for internal metadata files. This should be directly under the top level directories of the targets that are being packaged up. Multiple matches will be included if found.")
 	cmd.PersistentFlags().StringArray("external-metadata-file", []string{}, "Additional files to include as metadata in the inventory. This should NOT be part of the suitcase target directories...use internal-metadata-glob for those")
+	cmd.PersistentFlags().StringArray("ignore-glob", []string{}, "Ignore files matching this glob pattern. Can be specified multiple times")
 	cmd.PersistentFlags().Bool("hash-inner", false, "Create SHA256 hashes for the inner contents of the suitcase")
 	cmd.PersistentFlags().Bool("hash-outer", false, "Create SHA256 hashes for the container and metadata files")
 	cmd.PersistentFlags().Bool("encrypt-inner", false, "Encrypt files within the suitcase")
@@ -210,7 +242,9 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 	cmd.PersistentFlags().Int("limit-file-count", 0, "Limit the number of files to include in the inventory. If 0, no limit is applied. Should only be used for debugging")
 	cmd.PersistentFlags().String("suitcase-format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")
 	cmd.PersistentFlags().String("user", "", "Username to insert into the suitcase filename. If omitted, we'll try and detect from the current user")
-	cmd.PersistentFlags().String("prefix", "suitcase", "Prefex to insert into the suitcase filename")
+
+	// Prefix will be the first part of the suitcase name
+	cmd.PersistentFlags().String("prefix", "suitcase", "Prefix to insert into the suitcase filename")
 	cmd.PersistentFlags().StringArrayP("public-key", "p", []string{}, "Public keys to use for encryption")
 	cmd.PersistentFlags().Bool("exclude-systems-pubkeys", false, "By default, we will include the systems teams pubkeys, unless this option is specified")
 	cmd.PersistentFlags().Bool("only-inventory", false, "Only generate the inventory file, skip the actual suitcase archive creation")
