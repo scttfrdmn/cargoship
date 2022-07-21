@@ -21,6 +21,7 @@ type CLIMeta struct {
 	Arguments    []string               `yaml:"arguments"`
 	ActiveFlags  map[string]interface{} `yaml:"active_flags"`
 	DefaultFlags map[string]interface{} `yaml:"default_flags"`
+	ViperConfig  map[string]interface{} `yaml:"viper_config"`
 	Version      string                 `yaml:"version"`
 }
 

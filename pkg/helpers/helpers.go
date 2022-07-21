@@ -85,3 +85,13 @@ func WriteHashFile(hs []HashSet, o io.Writer) error {
 	w.Flush()
 	return nil
 }
+
+// Check if a filename matches a set of globs
+func FilenameMatchesGlobs(filename string, globs []string) bool {
+	for _, glob := range globs {
+		if ok, _ := filepath.Match(glob, filename); ok {
+			return true
+		}
+	}
+	return false
+}

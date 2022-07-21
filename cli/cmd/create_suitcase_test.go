@@ -6,12 +6,14 @@ import (
 	"path"
 	"testing"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmdhelpers"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
 )
 
+/*
 func TestNewDirectoryInventoryOptionsWithCmd(t *testing.T) {
 	testD := t.TempDir()
 	// cmd := NewCreateSuitcaseCmd()
@@ -31,6 +33,13 @@ func TestNewDirectoryInventoryOptionsWithCmd(t *testing.T) {
 		}
 	}
 }
+*/
+
+func TestNewDirectoryInventoryOptionsWithViper(t *testing.T) {
+	v := viper.New()
+	_, err := cmdhelpers.NewDirectoryInventoryOptionsWithViper(v, nil)
+	assert.NoError(t, err)
+}
 
 func TestNewSuitcaseWithDir(t *testing.T) {
 	testD := t.TempDir()
@@ -38,6 +47,28 @@ func TestNewSuitcaseWithDir(t *testing.T) {
 	cmd.SetArgs([]string{"create", "suitcase", testD})
 	err := cmd.Execute()
 	require.NoError(t, err)
+}
+
+func TestNewSuitcaseWithViper(t *testing.T) {
+	// testD := t.TempDir()
+	testD := os.TempDir()
+	defer os.RemoveAll(testD)
+	cmd := NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{"create", "suitcase", "-o", testD, "../../pkg/testdata/viper-enabled-target"})
+	err := cmd.Execute()
+	require.NoError(t, err)
+	require.FileExists(t, path.Join(testD, "snakey-thing-joebob-01-of-01.tar.gz"))
+}
+
+// Ensure that if we set a value on the CLI that it gets preference over whatever is in the user overrides
+func TestNewSuitcaseWithViperFlag(t *testing.T) {
+	testD := os.TempDir()
+	defer os.RemoveAll(testD)
+	cmd := NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{"create", "suitcase", "-o", testD, "--user", "darcy", "../../pkg/testdata/viper-enabled-target"})
+	err := cmd.Execute()
+	require.NoError(t, err)
+	require.FileExists(t, path.Join(testD, "snakey-thing-darcy-01-of-01.tar.gz"))
 }
 
 func TestNewSuitcaseWithInventory(t *testing.T) {
