@@ -177,6 +177,7 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 				log.Info().Str("override-file", userOverrides.ConfigFileUsed()).Msg("Found user overrides, using them")
 			}
 			fields := []string{
+				"follow-symlinks",
 				"ignore-glob",
 				"inventory-format",
 				"internal-metadata-glob",
@@ -238,6 +239,7 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 	cmd.PersistentFlags().Bool("hash-inner", false, "Create SHA256 hashes for the inner contents of the suitcase")
 	cmd.PersistentFlags().Bool("hash-outer", false, "Create SHA256 hashes for the container and metadata files")
 	cmd.PersistentFlags().Bool("encrypt-inner", false, "Encrypt files within the suitcase")
+	cmd.PersistentFlags().Bool("follow-symlinks", false, "Follow symlinks when traversing the target directories and files")
 	cmd.PersistentFlags().Int("buffer-size", 1024, "Buffer size if using a YAML inventory.")
 	cmd.PersistentFlags().Int("limit-file-count", 0, "Limit the number of files to include in the inventory. If 0, no limit is applied. Should only be used for debugging")
 	cmd.PersistentFlags().String("suitcase-format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")

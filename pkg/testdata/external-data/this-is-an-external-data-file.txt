@@ -1,0 +1,1 @@
+Use this as a test for symlink targets

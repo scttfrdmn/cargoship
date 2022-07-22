@@ -50,6 +50,7 @@ type DirectoryInventoryOptions struct {
 	LimitFileCount        int      `yaml:"limit_file_count" json:"limit_file_count"`
 	SuitcaseFormat        string   `yaml:"suitcase_format" json:"suitcase_format"`
 	InventoryFormat       string   `yaml:"inventory_format" json:"inventory_format"`
+	FollowSymlinks        bool     `yaml:"follow_symlinks" json:"follow_symlinks"`
 }
 
 /*
@@ -328,8 +329,11 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 		// func(path string, info os.FileInfo, err error) error {
 		var addedCount int
 		err := godirwalk.Walk(dir, &godirwalk.Options{
+			FollowSymbolicLinks: opts.FollowSymlinks,
 			Callback: func(path string, de *godirwalk.Dirent) error {
 				// Skip top level directories from inventory
+				// We may need the original path again for a symlink later on
+				ogPath := path
 				var err error
 				/*
 					if path == dir {
@@ -340,11 +344,38 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 					return nil
 				}
 
-				// No symlink dirs
+				// No symlink...dirs?
 				if de.IsSymlink() {
 					// return godirwalk.SkipThis
-					return nil
+					// target, err := os.Readlink(path)
+					target, err := filepath.EvalSymlinks(path)
+					if err != nil {
+						return err
+					}
+					/*
+						target, err = filepath.Abs(target)
+						if err != nil {
+							return err
+						}
+					*/
+					s, err := os.Stat(target)
+					if err != nil {
+						log.Warn().Err(err).Msg("Error stating file")
+						return err
+					}
+					// Finally, if a link to a dir...skip it always
+					if s.IsDir() {
+						return nil
+					}
+					// Finally...
+					if opts.FollowSymlinks {
+						ogPath = path
+						path = target
+					} else {
+						return nil
+					}
 				}
+				// if de.Mode()&os.ModeSymlink != 0 {
 
 				// Finally look at the size
 				st, err := os.Stat(path)
@@ -361,7 +392,7 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 				}
 				fItem := InventoryFile{
 					Path:        path,
-					Destination: strings.TrimPrefix(path, dir),
+					Destination: strings.TrimPrefix(ogPath, dir),
 					Name:        name,
 					Size:        size,
 				}

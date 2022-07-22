@@ -108,6 +108,7 @@ func ProcessLogging(po *ProcessOpts) ([]string, error) {
 	return ret, nil
 }
 
+/*
 func NewDirectoryInventoryOptionsWithCmd(cmd *cobra.Command, args []string) (*inventory.DirectoryInventoryOptions, error) {
 	var err error
 
@@ -209,6 +210,7 @@ func NewDirectoryInventoryOptionsWithCmd(cmd *cobra.Command, args []string) (*in
 	// checkErr(err, "Could not get inventory format")
 	return opt, nil
 }
+*/
 
 func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*inventory.DirectoryInventoryOptions, error) {
 	var err error
@@ -272,6 +274,9 @@ func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*inve
 
 	// Set the stuff to be encrypted?
 	opt.EncryptInner = v.GetBool("encrypt-inner")
+
+	// Symlinks?
+	opt.FollowSymlinks = v.GetBool("follow-symlinks")
 
 	// Do we want to skip hashes?
 	opt.HashInner = v.GetBool("hash-inner")
