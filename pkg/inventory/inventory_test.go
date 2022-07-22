@@ -187,3 +187,29 @@ func TestNewSuitcaseWithIgnoreGlobs(t *testing.T) {
 		require.NotContains(t, f.Name, ".out")
 	}
 }
+
+func TestNewSuitcaseWithFollowSymlinks(t *testing.T) {
+	i, err := NewDirectoryInventory(&DirectoryInventoryOptions{
+		TopLevelDirectories: []string{"../testdata/fake-dir"},
+		FollowSymlinks:      true,
+	})
+	require.NoError(t, err)
+	paths := []string{}
+	for _, f := range i.Files {
+		paths = append(paths, f.Path)
+	}
+	require.Contains(t, paths, "../testdata/fake-dir/external-symlink/this-is-an-external-data-file.txt")
+}
+
+func TestNewSuitcaseWithNoFollowSymlinks(t *testing.T) {
+	i, err := NewDirectoryInventory(&DirectoryInventoryOptions{
+		TopLevelDirectories: []string{"../testdata/fake-dir"},
+		FollowSymlinks:      false,
+	})
+	require.NoError(t, err)
+	paths := []string{}
+	for _, f := range i.Files {
+		paths = append(paths, f.Path)
+	}
+	require.NotContains(t, paths, "../testdata/fake-dir/external-symlink/this-is-an-external-data-file.txt")
+}
