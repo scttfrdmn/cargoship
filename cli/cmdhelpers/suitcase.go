@@ -2,21 +2,17 @@ package cmdhelpers
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
-	"os/user"
-	"strings"
 	"sync"
 	"sync/atomic"
 
-	"github.com/dustin/go-humanize"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase"
 )
@@ -212,6 +208,7 @@ func NewDirectoryInventoryOptionsWithCmd(cmd *cobra.Command, args []string) (*in
 }
 */
 
+/*
 func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*inventory.DirectoryInventoryOptions, error) {
 	var err error
 
@@ -289,4 +286,22 @@ func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*inve
 	}
 
 	return opt, nil
+}
+*/
+
+func ValidateCmdArgs(inventoryFile string, onlyInventory bool, args []string) error {
+	// Figure out if we are using an inventory file, or creating one
+	if inventoryFile != "" && len(args) > 0 {
+		return errors.New("Error: You can't specify an inventory file and target dir arguments at the same time")
+	}
+
+	// Make sure we are actually using either an inventory file or target dirs
+	if inventoryFile == "" && len(args) == 0 {
+		return errors.New("Error: You must specify an inventory file or target dirs")
+	}
+
+	if onlyInventory && inventoryFile != "" {
+		return errors.New("You can't specify an inventory file and only-inventory at the same time")
+	}
+	return nil
 }

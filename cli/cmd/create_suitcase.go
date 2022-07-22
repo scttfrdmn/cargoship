@@ -16,7 +16,6 @@ limitations under the License.
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -46,47 +45,27 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Figure out if we are using an inventory file, or creating one
 			inventoryFile, err := cmd.Flags().GetString("inventory-file")
-			checkErr(err, "Error getting inventory file")
-			if inventoryFile != "" && len(args) > 0 {
-				return errors.New("Error: You can't specify an inventory file and target dir arguments at the same time")
-			}
-
-			// Make sure we are actually using either an inventory file or target dirs
-			if inventoryFile == "" && len(args) == 0 {
-				log.Fatal().Msg("Error: You must specify an inventory file or target dirs")
-			}
+			checkErr(err, "Error getting inventory file CLI opt")
 
 			onlyInventory, err := cmd.Flags().GetBool("only-inventory")
-			checkErr(err, "")
-			if onlyInventory && inventoryFile != "" {
-				log.Fatal().Msg("You can't specify an inventory file and only-inventory at the same time")
+			checkErr(err, "Error getting inventory file CLI opt")
+
+			// Return the error here for use in testing, vs just barfing with checkErr
+			err = cmdhelpers.ValidateCmdArgs(inventoryFile, onlyInventory, args)
+			if err != nil {
+				return err
 			}
 
 			// Create an inventory file if one isn't specified
 			var inventoryD *inventory.DirectoryInventory
 			if inventoryFile == "" {
 				log.Info().Msg("No inventory file specified, we're going to go ahead and create one")
-				// inventoryOpts, err := cmdhelpers.NewDirectoryInventoryOptionsWithCmd(cmd, args)
-				// log.Warn().Msgf("This is a beta feature, and may not work as expected: %+v", userOverrides.AllSettings())
-				inventoryOpts, err := cmdhelpers.NewDirectoryInventoryOptionsWithViper(userOverrides, args)
-				log.Debug().Msgf("inventoryOpts: %+v", inventoryOpts)
-				checkErr(err, "Could not get inventory options from viper and args")
 
-				// Create the inventory
-				inventoryD, err = inventory.NewDirectoryInventory(inventoryOpts)
-				checkErr(err, "Could not create the inventory")
-
-				// Add filenames to the inventory
-				log.Info().Msg("Now that we have the inventory, sub in the real suitcase names")
-				err = inventory.ExpandSuitcaseNames(inventoryD)
-				checkErr(err, "")
-
-				outF, err := os.Create(path.Join(outDir, fmt.Sprintf("inventory.%v", inventoryOpts.InventoryFormat)))
-				checkErr(err, "Could not create inventory file")
-				ir, err := inventory.NewInventoryerWithFilename(outF.Name())
-				checkErr(err, "")
-				err = ir.Write(outF, inventoryD)
-				checkErr(err, "")
+				var outF *os.File
+				inventoryD, outF, err = inventory.WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(userOverrides, args, outDir)
+				if err != nil {
+					return err
+				}
 				log.Info().Str("file", outF.Name()).Msg("Created inventory file")
 			} else {
 				ib, err := ioutil.ReadFile(inventoryFile)

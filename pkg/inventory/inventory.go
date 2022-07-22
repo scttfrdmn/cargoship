@@ -6,10 +6,15 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"os/user"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/dustin/go-humanize"
+	"github.com/spf13/viper"
 
 	"github.com/karrick/godirwalk"
 	"github.com/rs/zerolog/log"
@@ -52,109 +57,6 @@ type DirectoryInventoryOptions struct {
 	InventoryFormat       string   `yaml:"inventory_format" json:"inventory_format"`
 	FollowSymlinks        bool     `yaml:"follow_symlinks" json:"follow_symlinks"`
 }
-
-/*
-func NewDirectoryInventoryOptionsWithCmd(cmd *cobra.Command, args []string) (*DirectoryInventoryOptions, error) {
-	var err error
-	opt := &DirectoryInventoryOptions{
-		TopLevelDirectories: args,
-	}
-	opt.TopLevelDirectories, err = helpers.ConvertDirsToAboluteDirs(args)
-	if err != nil {
-		return nil, err
-	}
-
-	// User can specify a human readable string here. We will convert it to bytes for them
-	mssF, err := cmd.Flags().GetString("max-suitcase-size")
-	if err != nil {
-		return nil, err
-	}
-	mssU, err := humanize.ParseBytes(mssF)
-	if err != nil {
-		return nil, err
-	}
-	opt.MaxSuitcaseSize = int64(mssU)
-
-	// Get the internal and external metadata glob patterns
-	opt.InternalMetadataGlob, err = cmd.Flags().GetString("internal-metadata-glob")
-	if err != nil {
-		return nil, err
-	}
-
-	// External metadata file here
-	opt.ExternalMetadataFiles, err = cmd.Flags().GetStringArray("external-metadata-file")
-	if err != nil {
-		return nil, err
-	}
-
-	// We may want to limit the number of files in the total
-	// inventory, mainly to help with debugging, but store that here
-	opt.LimitFileCount, err = cmd.Flags().GetInt("limit-file-count")
-	if err != nil {
-		return nil, err
-	}
-
-	// Format for the archive/suitcase
-	opt.SuitcaseFormat, err = cmd.Flags().GetString("suitcase-format")
-	if err != nil {
-		return nil, err
-	}
-	opt.SuitcaseFormat = strings.TrimPrefix(opt.SuitcaseFormat, ".")
-
-	// Inventory file format (yaml or json)
-	opt.InventoryFormat, err = cmd.Flags().GetString("inventory-format")
-	if err != nil {
-		return nil, err
-	}
-	opt.InventoryFormat = strings.TrimPrefix(opt.InventoryFormat, ".")
-
-	// We want a username so we can shove it in the suitcase name
-	opt.User, err = cmd.Flags().GetString("user")
-	if err != nil {
-		return nil, err
-	}
-
-	if opt.User == "" {
-		log.Info().Msg("No user specified, using current user")
-		currentUser, err := user.Current()
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to get current user")
-		}
-		opt.User = currentUser.Username
-	}
-
-	opt.Prefix, err = cmd.Flags().GetString("prefix")
-	if err != nil {
-		return nil, err
-	}
-
-	// Set the stuff to be encrypted?
-	opt.EncryptInner, err = cmd.Flags().GetBool("encrypt-inner")
-	if err != nil {
-		return nil, err
-	}
-
-	// Do we want to skip hashes?
-	opt.HashInner, err = cmd.Flags().GetBool("hash-inner")
-	if err != nil {
-		return nil, err
-	}
-	if opt.HashInner {
-		log.Warn().
-			Msg("Generating file hashes. This will will likely increase the inventory generation time.")
-	} else {
-		log.Warn().
-			Msg("Skipping file hashes. This will increase the speed of the inventory, but will not be able to verify the integrity of the files.")
-	}
-
-	// optbufferSize, err = cmd.Flags().GetInt("buffer-size")
-	// checkErr(err, "Could not get buffer size")
-
-	// inventoryFormat, err := cmd.Flags().GetString("inventory-format")
-	// checkErr(err, "Could not get inventory format")
-	return opt, nil
-}
-*/
 
 type InventoryFile struct {
 	Path        string `yaml:"path" json:"path"`
@@ -272,6 +174,50 @@ func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
 	}
 	inventory.TotalIndexes = numCases
 	return nil
+}
+
+func WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, args []string, outDir string) (*DirectoryInventory, *os.File, error) {
+	i, f, ir, err := NewDirectoryInventoryAndFileAndInventoyerWithViper(v, args, outDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = ir.Write(f, i)
+	if err != nil {
+		return nil, nil, err
+	}
+	return i, f, nil
+}
+
+func NewDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, args []string, outDir string) (*DirectoryInventory, *os.File, Inventoryer, error) {
+	i, f, err := NewDirectoryInventoryAndFileWithViper(v, args, outDir)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	ir, err := NewInventoryerWithFilename(f.Name())
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return i, f, ir, nil
+}
+
+func NewDirectoryInventoryAndFileWithViper(v *viper.Viper, args []string, outDir string) (*DirectoryInventory, *os.File, error) {
+	i, err := NewDirectoryInventoryWithViper(v, args)
+	if err != nil {
+		return nil, nil, err
+	}
+	outF, err := os.Create(path.Join(outDir, fmt.Sprintf("inventory.%v", i.Options.InventoryFormat)))
+	if err != nil {
+		return nil, nil, err
+	}
+	return i, outF, nil
+}
+
+func NewDirectoryInventoryWithViper(v *viper.Viper, args []string) (*DirectoryInventory, error) {
+	inventoryOpts, err := NewDirectoryInventoryOptionsWithViper(v, args)
+	if err != nil {
+		return nil, err
+	}
+	return NewDirectoryInventory(inventoryOpts)
 }
 
 func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory, error) {
@@ -446,6 +392,11 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 	if err != nil {
 		return nil, err
 	}
+
+	err = ExpandSuitcaseNames(ret)
+	if err != nil {
+		return nil, err
+	}
 	return ret, nil
 }
 
@@ -502,4 +453,86 @@ func NewInventoryerWithFilename(filename string) (Inventoryer, error) {
 		return nil, fmt.Errorf("unsupported file extension %s", ext)
 	}
 	return ir, nil
+}
+
+func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*DirectoryInventoryOptions, error) {
+	var err error
+
+	opt := &DirectoryInventoryOptions{
+		TopLevelDirectories: args,
+	}
+	opt.TopLevelDirectories, err = helpers.ConvertDirsToAboluteDirs(args)
+	if err != nil {
+		return nil, err
+	}
+
+	// User can specify a human readable string here. We will convert it to bytes for them
+	mssF := v.GetString("max-suitcase-size")
+	if mssF == "" {
+		mssF = "0"
+	}
+	mssU, err := humanize.ParseBytes(mssF)
+	if err != nil {
+		return nil, err
+	}
+	opt.MaxSuitcaseSize = int64(mssU)
+
+	// Get the internal and external metadata glob patterns
+	opt.InternalMetadataGlob = v.GetString("internal-metadata-glob")
+
+	// External metadata file here
+	opt.ExternalMetadataFiles = v.GetStringSlice("external-metadata-file")
+
+	// Globs to ignore
+	opt.IgnoreGlobs = v.GetStringSlice("ignore-glob")
+
+	// We may want to limit the number of files in the total
+	// inventory, mainly to help with debugging, but store that here
+	opt.LimitFileCount = v.GetInt("limit-file-count")
+
+	// Format for the archive/suitcase
+	opt.SuitcaseFormat = v.GetString("suitcase-format")
+	opt.SuitcaseFormat = strings.TrimPrefix(opt.SuitcaseFormat, ".")
+
+	// Inventory file format (yaml or json)
+	opt.InventoryFormat = v.GetString("inventory-format")
+	opt.InventoryFormat = strings.TrimPrefix(opt.InventoryFormat, ".")
+	if opt.InventoryFormat == "" {
+		opt.InventoryFormat = "yaml"
+	}
+
+	// We want a username so we can shove it in the suitcase name
+	opt.User = v.GetString("user")
+	if err != nil {
+		return nil, err
+	}
+
+	if opt.User == "" {
+		log.Info().Msg("No user specified, using current user")
+		currentUser, err := user.Current()
+		if err != nil {
+			return nil, err
+		}
+		opt.User = currentUser.Username
+	}
+
+	opt.Prefix = v.GetString("prefix")
+
+	// Set the stuff to be encrypted?
+	opt.EncryptInner = v.GetBool("encrypt-inner")
+
+	// Symlinks?
+	opt.FollowSymlinks = v.GetBool("follow-symlinks")
+
+	// Do we want to skip hashes?
+	opt.HashInner = v.GetBool("hash-inner")
+	if opt.HashInner {
+		log.Warn().
+			Msg("Generating file hashes. This will will likely increase the inventory generation time.")
+	} else {
+		log.Warn().
+			Msg("Skipping file hashes. This will increase the speed of the inventory, but will not be able to verify the integrity of the files.")
+	}
+
+	return opt, nil
 }
