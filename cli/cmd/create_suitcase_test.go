@@ -7,10 +7,7 @@ import (
 	"path"
 	"testing"
 
-	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmdhelpers"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
 )
 
@@ -35,12 +32,6 @@ func TestNewDirectoryInventoryOptionsWithCmd(t *testing.T) {
 	}
 }
 */
-
-func TestNewDirectoryInventoryOptionsWithViper(t *testing.T) {
-	v := viper.New()
-	_, err := cmdhelpers.NewDirectoryInventoryOptionsWithViper(v, nil)
-	assert.NoError(t, err)
-}
 
 func TestNewSuitcaseWithDir(t *testing.T) {
 	testD := t.TempDir()
@@ -102,6 +93,6 @@ func TestNewSuitcaseWithInventoryAndDir(t *testing.T) {
 	cmd := NewRootCmd(io.Discard)
 	cmd.SetArgs([]string{"create", "suitcase", "-o", fakeTemp, "--inventory-file", "doesnt-matter", fakeDir})
 	err := cmd.Execute()
-	require.Error(t, err)
-	require.EqualError(t, err, "Error: You can't specify an inventory file and target dir arguments at the same time")
+	require.Error(t, err, "Did NOT get an error when executing command")
+	require.EqualError(t, err, "Error: You can't specify an inventory file and target dir arguments at the same time", "Got an unexpected error")
 }

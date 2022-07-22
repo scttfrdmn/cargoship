@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/viper"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -212,4 +214,19 @@ func TestNewSuitcaseWithNoFollowSymlinks(t *testing.T) {
 		paths = append(paths, f.Path)
 	}
 	require.NotContains(t, paths, "../testdata/fake-dir/external-symlink/this-is-an-external-data-file.txt")
+}
+
+func TestNewDirectoryInventoryOptionsWithViper(t *testing.T) {
+	v := viper.New()
+	_, err := NewDirectoryInventoryWithViper(v, []string{"../testdata/fake-dir"})
+	require.NoError(t, err)
+}
+
+func TestWriteOutDirectoryInventoryAndFileAndInventoyerWithViper(t *testing.T) {
+	f := t.TempDir()
+	v := viper.New()
+	i, gf, err := WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v, []string{"../testdata/fake-dir"}, f)
+	require.NoError(t, err)
+	require.FileExists(t, gf.Name())
+	require.NotNil(t, i)
 }
