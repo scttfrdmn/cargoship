@@ -39,8 +39,7 @@ brews:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     description: "Data Suitcase Suitcase Controller"
     name: "suitcasectl"
-    homepage: >
-      https://gitlab.oit.duke.edu/devil-ops
+    homepage: https://gitlab.oit.duke.edu/devil-ops
     install: |
       bin.install "suitcasectl"
 nfpms:
