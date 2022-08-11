@@ -16,7 +16,7 @@ require (
 	github.com/spf13/viper v1.12.0
 	github.com/stretchr/testify v1.8.0
 	github.com/vjorlikowski/yaml v0.1.0
-	golang.org/x/tools v0.1.11
+	golang.org/x/tools v0.1.12
 )
 
 require (
