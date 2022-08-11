@@ -2,6 +2,7 @@
 gitlab_urls:
   api: https://gitlab.oit.duke.edu/api/v4/
   download: https://gitlab.oit.duke.edu
+  use_package_registry: true
 env:
   - VAULT_ADDR={{ .Env.VAULT_ADDR }}
   - TRANSIT_SECRET_ENGINE_PATH=ssi-systems/transit
@@ -80,5 +81,5 @@ uploads:
       - debs
 signs:
 - cmd: cosign
-  args: ["sign-blob", "--key=hashivault://package-signing", "--output=${signature}", "${artifact}"]
+  args: ["sign-blob", "--key=hashivault://package-signing", "--output-signature=${signature}", "${artifact}"]
   artifacts: all
