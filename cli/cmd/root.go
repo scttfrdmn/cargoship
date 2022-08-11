@@ -51,9 +51,9 @@ var (
 // var rootCmd = &cobra.Command{
 func NewRootCmd(lo io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "suitcase",
-		Short:   "Used for creating encrypted blobs of files and directories for cold storage",
-		Version: version,
+		Use:   "suitcase",
+		Short: "Used for creating encrypted blobs of files and directories for cold storage",
+		// Version: version,
 		Long: `This tool generates a blob of encrypted files and directories that can be later
 trasnfered to cheap archive storage. Along with the blob, an unencrypted
 manifest file is generated. This manifest can be used to track down the blob at
@@ -72,6 +72,7 @@ a future point in time`,
 	// cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")
 	cmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
 	cmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
+	// cmd.SetVersionTemplate("{{ .Version }}\n")
 
 	return cmd
 }
@@ -81,7 +82,6 @@ a future point in time`,
 func Execute() {
 	// rootCmd = NewRootCmd()
 	rootCmd = NewRootCmd(nil)
-	rootCmd.SetVersionTemplate("{{ .Version }}\n")
 	cobra.CheckErr(rootCmd.Execute())
 }
 
