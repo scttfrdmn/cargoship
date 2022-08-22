@@ -1,7 +1,7 @@
 package targzgpg
 
 import (
-	"compress/gzip"
+	gzip "github.com/klauspost/pgzip"
 	"errors"
 	"io"
 
