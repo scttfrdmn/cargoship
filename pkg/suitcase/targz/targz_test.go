@@ -2,7 +2,7 @@ package targz
 
 import (
 	"archive/tar"
-	"compress/gzip"
+	gzip "github.com/klauspost/pgzip"
 	"io"
 	"io/ioutil"
 	"os"

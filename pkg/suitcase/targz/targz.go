@@ -1,7 +1,7 @@
 package targz
 
 import (
-	"compress/gzip"
+	gzip "github.com/klauspost/pgzip"
 	"io"
 
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
