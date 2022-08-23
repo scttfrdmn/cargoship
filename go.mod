@@ -8,6 +8,7 @@ require (
 	github.com/dustin/go-humanize v1.0.0
 	github.com/go-git/go-git/v5 v5.4.2
 	github.com/karrick/godirwalk v1.17.0
+	github.com/klauspost/pgzip v1.2.5
 	github.com/mailru/easyjson v0.7.7
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/rs/zerolog v1.27.0
@@ -36,7 +37,6 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/compress v1.15.9 // indirect
-	github.com/klauspost/pgzip v1.2.5 // indirect
 	github.com/magiconair/properties v1.8.6 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
