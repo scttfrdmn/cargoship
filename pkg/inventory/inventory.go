@@ -37,8 +37,9 @@ type DirectoryInventory struct {
 }
 
 type IndexSummary struct {
-	Count uint  `yaml:"count"`
-	Size  int64 `yaml:"size"`
+	Count     uint   `yaml:"count"`
+	Size      int64  `yaml:"size"`
+	HumanSize string `yaml:"human_size"`
 }
 
 type DirectoryInventoryOptions struct {
@@ -171,6 +172,10 @@ func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
 		s.Count += 1
 		s.Size += item.Size
 
+	}
+	// Generate human readable total sizes
+	for _, v := range inventory.IndexSummaries {
+		v.HumanSize = humanize.Bytes(uint64(v.Size))
 	}
 	inventory.TotalIndexes = numCases
 	return nil
