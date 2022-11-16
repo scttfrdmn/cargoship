@@ -108,9 +108,10 @@ func FormatSuitcaseName(p, u string, i, t int, ext string) string {
 }
 
 func ExtractSuitcaseNames(di *DirectoryInventory) []string {
-	ret := []string{}
-	for _, f := range di.Files {
-		ret = append(ret, f.SuitcaseName)
+	ret := make([]string, len(di.Files))
+
+	for idx, f := range di.Files {
+		ret[idx] = f.SuitcaseName
 	}
 	return ret
 }
