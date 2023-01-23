@@ -38,7 +38,6 @@ func NewOutDirWithCmd(cmd *cobra.Command) (string, error) {
 }
 
 func ProcessLogging(po *ProcessOpts) ([]string, error) {
-	// var sm sync.Map
 	ret := make([]string, po.Inventory.TotalIndexes)
 	guard := make(chan struct{}, po.Concurrency)
 	var wg sync.WaitGroup
@@ -78,7 +77,6 @@ func ProcessLogging(po *ProcessOpts) ([]string, error) {
 				defer hf.Close()
 				hf.Write([]byte(sumS))
 			}
-			// sm.Store(i, createdF)
 			ret[i-1] = createdF
 			<-guard // release the guard channel
 		}(i)
@@ -97,14 +95,6 @@ func ProcessLogging(po *ProcessOpts) ([]string, error) {
 		}
 	}
 	wg.Wait()
-	/*
-		sm.Range(func(key, value any) bool {
-			ret = append(ret, value.(string))
-			return true
-		})
-	*/
-
-	log.Warn().Msgf("RET IS: %+v", ret)
 	return ret, nil
 }
 

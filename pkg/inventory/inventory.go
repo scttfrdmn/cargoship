@@ -287,11 +287,6 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 				// We may need the original path again for a symlink later on
 				ogPath := path
 				var err error
-				/*
-					if path == dir {
-						return nil
-					}
-				*/
 				if de.IsDir() {
 					return nil
 				}
@@ -304,12 +299,6 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 					if err != nil {
 						return err
 					}
-					/*
-						target, err = filepath.Abs(target)
-						if err != nil {
-							return err
-						}
-					*/
 					s, err := os.Stat(target)
 					if err != nil {
 						log.Warn().Err(err).Msg("Error stating file")
@@ -348,14 +337,6 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 					Name:        name,
 					Size:        size,
 				}
-				if opts.HashInner {
-					/*
-						fItem.SHA256, err = helpers.GetSha256(path)
-						if err != nil {
-							log.Warn().Err(err).Str("path", path).Msg("error getting sha256 hash")
-						}
-					*/
-				}
 				ret.Files = append(ret.Files, &fItem)
 				addedCount++
 
@@ -379,11 +360,6 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 				if err == errHalt {
 					return godirwalk.Halt
 				}
-
-				// Currently correct way.
-				// if err.Error() == errHalt.Error() {
-				// 	return godirwalk.Halt
-				// }
 
 				return godirwalk.SkipNode
 			},
