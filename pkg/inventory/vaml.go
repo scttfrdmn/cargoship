@@ -23,6 +23,7 @@ func (r *VAMLer) Write(w io.Writer, i *DirectoryInventory) error {
 	if i == nil {
 		return errors.New("inventory is nil")
 	}
+
 	log.Debug().Msg("About to encode inventory in to yaml file")
 	writer := bufio.NewWriterSize(w, 10240)
 	defer writer.Flush()

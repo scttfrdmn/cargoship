@@ -225,7 +225,7 @@ func TestNewDirectoryInventoryOptionsWithViper(t *testing.T) {
 func TestWriteOutDirectoryInventoryAndFileAndInventoyerWithViper(t *testing.T) {
 	f := t.TempDir()
 	v := viper.New()
-	i, gf, err := WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v, []string{"../testdata/fake-dir"}, f)
+	i, gf, err := WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v, []string{"../testdata/fake-dir"}, f, "testing")
 	require.NoError(t, err)
 	require.FileExists(t, gf.Name())
 	require.NotNil(t, i)

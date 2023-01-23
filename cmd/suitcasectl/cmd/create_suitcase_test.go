@@ -45,7 +45,7 @@ func TestNewSuitcaseWithViper(t *testing.T) {
 	// testD := t.TempDir()
 	testD := t.TempDir()
 	cmd := NewRootCmd(io.Discard)
-	cmd.SetArgs([]string{"create", "suitcase", "-o", testD, "../../pkg/testdata/viper-enabled-target"})
+	cmd.SetArgs([]string{"create", "suitcase", "-o", testD, "../../../pkg/testdata/viper-enabled-target"})
 	err := cmd.Execute()
 	require.NoError(t, err)
 	require.FileExists(t, path.Join(testD, "snakey-thing-joebob-01-of-01.tar.gz"))
@@ -57,7 +57,7 @@ func TestNewSuitcaseWithViperFlag(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(testD)
 	cmd := NewRootCmd(io.Discard)
-	cmd.SetArgs([]string{"create", "suitcase", "-o", testD, "--user", "darcy", "../../pkg/testdata/viper-enabled-target"})
+	cmd.SetArgs([]string{"create", "suitcase", "-o", testD, "--user", "darcy", "../../../pkg/testdata/viper-enabled-target"})
 	err = cmd.Execute()
 	require.NoError(t, err)
 	require.FileExists(t, path.Join(testD, "snakey-thing-darcy-01-of-01.tar.gz"))
@@ -68,7 +68,7 @@ func TestNewSuitcaseWithInventory(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(outDir)
 	i, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
-		TopLevelDirectories: []string{"../../pkg/testdata/fake-dir"},
+		TopLevelDirectories: []string{"../../../pkg/testdata/fake-dir"},
 		SuitcaseFormat:      "tar",
 		InventoryFormat:     "yaml",
 	})

@@ -7,6 +7,7 @@ require (
 	github.com/ProtonMail/gopenpgp/v2 v2.4.10
 	github.com/dustin/go-humanize v1.0.0
 	github.com/go-git/go-git/v5 v5.4.2
+	github.com/invopop/jsonschema v0.7.0
 	github.com/karrick/godirwalk v1.17.0
 	github.com/klauspost/pgzip v1.2.5
 	github.com/mailru/easyjson v0.7.7
@@ -31,6 +32,7 @@ require (
 	github.com/go-git/gcfg v1.5.0 // indirect
 	github.com/go-git/go-billy/v5 v5.3.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
+	github.com/iancoleman/orderedmap v0.0.0-20190318233801-ac98e3ecb4b0 // indirect
 	github.com/imdario/mergo v0.3.13 // indirect
 	github.com/inconshreveable/mousetrap v1.0.1 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect

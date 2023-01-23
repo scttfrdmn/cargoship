@@ -1,0 +1,16 @@
+package main
+
+import (
+	"os"
+
+	"github.com/rs/zerolog/log"
+
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cmd/suitcasectl/cmd"
+)
+
+func main() {
+	err := cmd.NewRootCmd(os.Stderr).Execute()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Error executing command")
+	}
+}

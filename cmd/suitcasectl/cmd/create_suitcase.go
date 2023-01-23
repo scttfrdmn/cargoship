@@ -1,18 +1,3 @@
-/*
-Copyright © 2022 NAME HERE <EMAIL ADDRESS>
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
 package cmd
 
 import (
@@ -26,7 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cli/cmdhelpers"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cmd/suitcasectl/cmdhelpers"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/gpg"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
@@ -62,7 +47,7 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 				log.Info().Msg("No inventory file specified, we're going to go ahead and create one")
 
 				var outF *os.File
-				inventoryD, outF, err = inventory.WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(userOverrides, args, outDir)
+				inventoryD, outF, err = inventory.WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(userOverrides, args, outDir, version)
 				if err != nil {
 					return err
 				}

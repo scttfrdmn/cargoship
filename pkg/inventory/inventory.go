@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/viper"
@@ -34,12 +35,18 @@ type DirectoryInventory struct {
 	IndexSummaries   map[int]*IndexSummary      `yaml:"index_summaries" json:"index_summaries"`
 	InternalMetadata map[string]string          `yaml:"internal_metadata" json:"internal_metadata"`
 	ExternalMetadata map[string]string          `yaml:"external_metadata" json:"external_metadata"`
+	CLIMeta          CLIMeta                    `yaml:"cli_meta" json:"cli_meta"`
 }
 
 type IndexSummary struct {
 	Count     uint   `yaml:"count"`
 	Size      int64  `yaml:"size"`
 	HumanSize string `yaml:"human_size"`
+}
+
+type CLIMeta struct {
+	Date    *time.Time `yaml:"date" json:"date"`
+	Version string     `yaml:"version" json:"version"`
 }
 
 type DirectoryInventoryOptions struct {
@@ -60,17 +67,10 @@ type DirectoryInventoryOptions struct {
 }
 
 type InventoryFile struct {
-	Path        string `yaml:"path" json:"path"`
-	Destination string `yaml:"destination" json:"destination"`
-	Name        string `yaml:"name" json:"name"`
-	Size        int64  `yaml:"size" json:"size"`
-	/*
-		Mode          os.FileMode `yaml:"mode,omitempty" json:"mode,omitempty"`
-		ModTime       time.Time   `yaml:"mod_time,omitempty" json:"mod_time,omitempty"`
-		IsDir         bool        `yaml:"is_dir" json:"is_dir"`
-		SHA256        string      `yaml:"sha256,omitempty" json:"sha256,omitempty"`
-		Encrypt       bool        `yaml:"encrypt,omitempty" json:"encrypt,omitempty"`
-	*/
+	Path          string `yaml:"path" json:"path"`
+	Destination   string `yaml:"destination" json:"destination"`
+	Name          string `yaml:"name" json:"name"`
+	Size          int64  `yaml:"size" json:"size"`
 	SuitcaseIndex int    `yaml:"suitcase_index,omitempty" json:"suitcase_index,omitempty"`
 	SuitcaseName  string `yaml:"suitcase_name,omitempty" json:"suitcase_name,omitempty"`
 }
@@ -182,11 +182,14 @@ func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
 	return nil
 }
 
-func WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, args []string, outDir string) (*DirectoryInventory, *os.File, error) {
+func WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, args []string, outDir, version string) (*DirectoryInventory, *os.File, error) {
 	i, f, ir, err := NewDirectoryInventoryAndFileAndInventoyerWithViper(v, args, outDir)
 	if err != nil {
 		return nil, nil, err
 	}
+	now := time.Now()
+	i.CLIMeta.Date = &now
+	i.CLIMeta.Version = version
 	err = ir.Write(f, i)
 	if err != nil {
 		return nil, nil, err
@@ -414,7 +417,7 @@ func GetMetadataWithFiles(files []string) (map[string]string, error) {
 func printMemUsage() {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	log.Info().
+	log.Debug().
 		Uint64("allocated", m.Alloc).
 		Uint64("total-allocated", m.TotalAlloc).
 		Float64("allocated-percent", (float64(m.Alloc)/float64(m.TotalAlloc))*float64(100)).
