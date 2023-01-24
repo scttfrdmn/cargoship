@@ -1,9 +1,13 @@
+/*
+Package targzgpg provides gpg encrypted tar.gz suitcases
+*/
 package targzgpg
 
 import (
-	gzip "github.com/klauspost/pgzip"
 	"errors"
 	"io"
+
+	"github.com/klauspost/pgzip"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
@@ -12,11 +16,11 @@ import (
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/tar"
 )
 
-// Archive as tar.
+// Suitcase holds all the pieces
 type Suitcase struct {
 	tw     *tar.Suitcase
 	cw     *io.WriteCloser
-	gw     *gzip.Writer
+	gw     *pgzip.Writer
 	opts   *config.SuitCaseOpts
 	hashes []helpers.HashSet
 }
@@ -29,7 +33,7 @@ func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
 	cw, _ := openpgp.Encrypt(target, *opts.EncryptTo, nil, &openpgp.FileHints{
 		IsBinary: true,
 	}, nil)
-	gw, _ := gzip.NewWriterLevel(cw, gzip.BestCompression)
+	gw, _ := pgzip.NewWriterLevel(cw, pgzip.BestCompression)
 	tw := tar.New(gw, opts)
 	// tw := tar.New(cw, opts)
 	return Suitcase{
@@ -40,10 +44,12 @@ func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
 	}
 }
 
+// Config returns configuration options
 func (s Suitcase) Config() *config.SuitCaseOpts {
 	return s.opts
 }
 
+// GetHashes returns hashses
 func (s Suitcase) GetHashes() []helpers.HashSet {
 	return s.hashes
 }
@@ -73,11 +79,11 @@ func (s Suitcase) Close() error {
 }
 
 // Add file to the archive.
-func (s Suitcase) Add(f inventory.InventoryFile) (*helpers.HashSet, error) {
+func (s Suitcase) Add(f inventory.File) (*helpers.HashSet, error) {
 	return s.tw.Add(f)
 }
 
-// Add and encrypt file to the archive.
-func (s Suitcase) AddEncrypt(f inventory.InventoryFile) error {
+// AddEncrypt Add and encrypt file to the archive.
+func (s Suitcase) AddEncrypt(f inventory.File) error {
 	return errors.New("file encryption not supported on already encrypted archives")
 }

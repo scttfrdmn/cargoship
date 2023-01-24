@@ -24,7 +24,7 @@ func TestNewDirectoryInventory(t *testing.T) {
 
 func TestIndexInventory(t *testing.T) {
 	i := &DirectoryInventory{
-		Files: []*InventoryFile{
+		Files: []*File{
 			{
 				Path: "small-file-1",
 				Size: 1,
@@ -50,7 +50,7 @@ func TestExpandInventoryWithNames(t *testing.T) {
 			Prefix: "foo",
 			User:   "bar",
 		},
-		Files: []*InventoryFile{
+		Files: []*File{
 			{
 				Path: "small-file-1",
 				Size: 1,
@@ -76,7 +76,7 @@ func TestExpandInventoryWithNames(t *testing.T) {
 
 func TestIndexInventoryTooBig(t *testing.T) {
 	i := &DirectoryInventory{
-		Files: []*InventoryFile{
+		Files: []*File{
 			{
 				Path: "small-file-1",
 				Size: 1,
@@ -92,7 +92,7 @@ func TestIndexInventoryTooBig(t *testing.T) {
 		},
 	}
 	err := IndexInventory(i, 3)
-	require.EqualError(t, err, "index containes at least one file that is too large")
+	require.EqualError(t, err, "index contains at least one file that is too large")
 	require.Equal(t, 0, i.TotalIndexes)
 }
 
@@ -108,11 +108,12 @@ func TestGetMetadataGlob(t *testing.T) {
 	require.NoError(t, err)
 	require.IsType(t, map[string]string{}, got)
 	for title, content := range got {
-		if strings.HasSuffix(title, "/suitcase-meta.txt") {
+		switch {
+		case strings.HasSuffix(title, "/suitcase-meta.txt"):
 			require.Equal(t, "Text metadata\n", content)
-		} else if strings.HasSuffix(title, "/suitcase-meta.md") {
+		case strings.HasSuffix(title, "/suitcase-meta.md"):
 			require.Equal(t, "# Markdown Metadata\n", content)
-		} else {
+		default:
 			require.Fail(t, "unexpected title: %s", title)
 		}
 	}
@@ -123,11 +124,12 @@ func TestGetMetadataFiles(t *testing.T) {
 	require.NoError(t, err)
 	require.IsType(t, map[string]string{}, got)
 	for title, content := range got {
-		if strings.HasSuffix(title, "/suitcase-meta.txt") {
+		switch {
+		case strings.HasSuffix(title, "/suitcase-meta.txt"):
 			require.Equal(t, "Text metadata\n", content)
-		} else if strings.HasSuffix(title, "/suitcase-meta.md") {
+		case strings.HasSuffix(title, "/suitcase-meta.md"):
 			require.Equal(t, "# Markdown Metadata\n", content)
-		} else {
+		default:
 			require.Fail(t, "unexpected title: %s", title)
 		}
 	}

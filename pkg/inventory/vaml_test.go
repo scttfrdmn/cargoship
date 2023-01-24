@@ -9,24 +9,21 @@ import (
 )
 
 func TestVamlerWriteNil(t *testing.T) {
-	var v Inventoryer
-	v = &VAMLer{}
+	v := &VAMLer{}
 	err := v.Write(nil, nil)
 	require.Error(t, err)
 	require.EqualError(t, err, "writer is nil")
 }
 
 func TestVamlerWriteNilInv(t *testing.T) {
-	var v Inventoryer
-	v = &VAMLer{}
+	v := &VAMLer{}
 	err := v.Write(io.Discard, nil)
 	require.Error(t, err)
 	require.EqualError(t, err, "inventory is nil")
 }
 
 func TestVamlerWrite(t *testing.T) {
-	var v Inventoryer
-	v = &VAMLer{}
+	v := &VAMLer{}
 	i := &DirectoryInventory{}
 	var w bytes.Buffer
 	err := v.Write(&w, i)
@@ -35,15 +32,13 @@ func TestVamlerWrite(t *testing.T) {
 }
 
 func TestVamlerReadNil(t *testing.T) {
-	var v Inventoryer
-	v = &VAMLer{}
+	v := &VAMLer{}
 	_, err := v.Read(nil)
 	require.NoError(t, err)
 }
 
 func TestVamlerRead(t *testing.T) {
-	var v Inventoryer
-	v = &VAMLer{}
+	v := &VAMLer{}
 	d := []byte(`
 ---
 total_indexes: 5
@@ -61,8 +56,7 @@ files:
 }
 
 func TestVamlerReadBadYAML(t *testing.T) {
-	var v Inventoryer
-	v = &VAMLer{}
+	v := &VAMLer{}
 	d := []byte(`
 ---
 total_indexes: 5

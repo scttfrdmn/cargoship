@@ -1,3 +1,6 @@
+/*
+Package cmd is the command line utility
+*/
 package cmd
 
 import (
@@ -5,7 +8,7 @@ import (
 	"io"
 	"os"
 	"path"
-	"runtime"
+	"reflect"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -19,8 +22,9 @@ import (
 )
 
 var (
-	version       = "dev"
-	cfgFile       string
+	version = "dev"
+	cfgFile string
+	// Verbose uses lots more verbosity for output and logging and such
 	Verbose       bool
 	trace         bool
 	cliMeta       *cmdhelpers.CLIMeta
@@ -32,8 +36,7 @@ var (
 	userOverrides *viper.Viper
 )
 
-// rootCmd represents the base command when called without any subcommands
-// var rootCmd = &cobra.Command{
+// NewRootCmd represents the base command when called without any subcommands
 func NewRootCmd(lo io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "suitcase",
@@ -105,11 +108,13 @@ func initConfig() {
 	// We want a specific viper instance for these user overrides
 }
 
+/*
 type runStats struct {
 	Start   time.Time
 	End     time.Time
 	Runtime time.Duration
 }
+*/
 
 func checkErr(err error, msg string) {
 	if msg == "" {
@@ -120,6 +125,7 @@ func checkErr(err error, msg string) {
 	}
 }
 
+/*
 func printMemUsage() {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
@@ -131,6 +137,7 @@ func printMemUsage() {
 		Uint64("gc-count", uint64(m.NumGC)).
 		Msg("Memory Usage in MB")
 }
+*/
 
 func setupLogging(lo io.Writer) {
 	if lo == nil {
@@ -169,12 +176,53 @@ func setupMultiLogging(o string) {
 	}
 	logFile = path.Join(o, "suitcasectl.log")
 	var err error
-	logF, err = os.Create(logFile)
+	logF, err = os.Create(logFile) // nolint:gosec
 	checkErr(err, "Error Creating log file")
 	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr}, logF)
 	if trace {
 		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
 	} else {
 		log.Logger = zerolog.New(multi).With().Timestamp().Logger()
+	}
+}
+
+// mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command
+func mustGetCmd[T []int | int | string | bool | time.Duration](cmd *cobra.Command, s string) T {
+	switch any(new(T)).(type) {
+	case *int:
+		item, err := cmd.Flags().GetInt(s)
+		panicIfErr(err)
+		return any(item).(T)
+	case *string:
+		item, err := cmd.Flags().GetString(s)
+		panicIfErr(err)
+		return any(item).(T)
+	case *bool:
+		item, err := cmd.Flags().GetBool(s)
+		panicIfErr(err)
+		return any(item).(T)
+	case *[]int:
+		item, err := cmd.Flags().GetIntSlice(s)
+		panicIfErr(err)
+		return any(item).(T)
+	case *time.Time:
+		item, err := cmd.Flags().GetDuration(s)
+		panicIfErr(err)
+		return any(item).(T)
+	default:
+		panic(fmt.Sprintf("unexpected use of mustGetCmd: %v", reflect.TypeOf(s)))
+	}
+}
+
+func panicIfErr(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+func dclose(c io.Closer) {
+	err := c.Close()
+	if err != nil {
+		log.Warn().Err(err).Send()
 	}
 }

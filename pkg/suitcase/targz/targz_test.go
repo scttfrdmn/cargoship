@@ -2,12 +2,12 @@ package targz
 
 import (
 	"archive/tar"
-	gzip "github.com/klauspost/pgzip"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
+
+	gzip "github.com/klauspost/pgzip"
 
 	"github.com/stretchr/testify/require"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
@@ -25,12 +25,12 @@ func TestTarGzFile(t *testing.T) {
 	})
 	defer archive.Close() // nolint: errcheck
 
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../testdata/never-exist.txt",
 		Destination: "never-exist.txt",
 	})
 	require.Error(t, err)
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
 	})
@@ -59,10 +59,9 @@ func TestTarGzFile(t *testing.T) {
 		require.NoError(t, err)
 
 		if next.Name == "name.txt" {
-			d, err := ioutil.ReadAll(r)
+			d, err := io.ReadAll(r)
 			require.NoError(t, err)
 			require.Equal(t, "Joe the user\n", string(d))
 		}
-
 	}
 }

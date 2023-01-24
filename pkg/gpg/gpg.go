@@ -1,3 +1,6 @@
+/*
+Package gpg provides encrypted files
+*/
 package gpg
 
 import (
@@ -5,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -20,6 +22,7 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 )
 
+// EncryptToWithCmd uses a cobra.Command to create an EntityList
 func EncryptToWithCmd(cmd *cobra.Command) (*openpgp.EntityList, error) {
 	pubKeyFiles, err := cmd.Flags().GetStringArray("public-key")
 	if err != nil {
@@ -51,7 +54,7 @@ func EncryptToWithCmd(cmd *cobra.Command) (*openpgp.EntityList, error) {
 // Encrypt the provided bytes for the provided encryption
 // keys recipients. Returns the encrypted content bytes.
 func Encrypt(d []byte, encryptionKeys *openpgp.EntityList, useArmor bool) ([]byte, error) {
-	var buffer *bytes.Buffer = &bytes.Buffer{}
+	buffer := &bytes.Buffer{}
 	var armoredWriter io.WriteCloser
 	var cipheredWriter io.WriteCloser
 	var err error
@@ -61,16 +64,16 @@ func Encrypt(d []byte, encryptionKeys *openpgp.EntityList, useArmor bool) ([]byt
 	if useArmor {
 		armoredWriter, err = armor.Encode(buffer, "PGP MESSAGE", nil)
 		if err != nil {
-			return nil, errors.New("Bad Writer")
+			return nil, errors.New("bad Writer")
 		}
 		cipheredWriter, err = openpgp.Encrypt(armoredWriter, *encryptionKeys, nil, nil, nil)
 		if err != nil {
-			return nil, errors.New("Bad Cipher")
+			return nil, errors.New("bad Cipher")
 		}
 	} else {
 		cipheredWriter, err = openpgp.Encrypt(buffer, *encryptionKeys, nil, nil, nil)
 		if err != nil {
-			return nil, errors.New("Bad Cipher")
+			return nil, errors.New("bad Cipher")
 		}
 	}
 
@@ -80,7 +83,7 @@ func Encrypt(d []byte, encryptionKeys *openpgp.EntityList, useArmor bool) ([]byt
 	// cipheredWriter
 	_, err = cipheredWriter.Write(d)
 	if err != nil {
-		return nil, errors.New("Bad Ciphered Writer")
+		return nil, errors.New("bad ciphered writer")
 	}
 
 	err = cipheredWriter.Close()
@@ -97,12 +100,18 @@ func Encrypt(d []byte, encryptionKeys *openpgp.EntityList, useArmor bool) ([]byt
 	return buffer.Bytes(), nil
 }
 
+// ReadEntity returns an Entity from a string
 func ReadEntity(name string) (*openpgp.Entity, error) {
-	f, err := os.Open(name)
+	f, err := os.Open(name) // nolint:gosec
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		cerr := f.Close()
+		if cerr != nil {
+			panic(cerr)
+		}
+	}()
 	block, err := armor.Decode(f)
 	if err != nil {
 		return nil, err
@@ -110,19 +119,25 @@ func ReadEntity(name string) (*openpgp.Entity, error) {
 	return openpgp.ReadEntity(packet.NewReader(block.Body))
 }
 
+// CollectGPGPubKeys returns an EntityList from a place of pub keys
 func CollectGPGPubKeys(fp string) (*openpgp.EntityList, error) {
 	var els openpgp.EntityList
 
 	if fp == "" {
-		gitlabKeysUrl := "https://gitlab.oit.duke.edu/oit-ssi-systems/staff-public-keys.git"
+		gitlabKeysURL := "https://gitlab.oit.duke.edu/oit-ssi-systems/staff-public-keys.git"
 		subDir := "linux"
-		tmpdir, err := ioutil.TempDir("", "gpg-pub-tmpdir")
-		defer os.RemoveAll(tmpdir)
+		tmpdir, err := os.MkdirTemp("", "gpg-pub-tmpdir")
 		if err != nil {
 			return nil, err
 		}
+		defer func() {
+			rerr := os.RemoveAll(tmpdir)
+			if rerr != nil {
+				panic(rerr)
+			}
+		}()
 		_, err = git.PlainClone(tmpdir, false, &git.CloneOptions{
-			URL:               gitlabKeysUrl,
+			URL:               gitlabKeysURL,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 		})
 		if err != nil {
@@ -130,7 +145,7 @@ func CollectGPGPubKeys(fp string) (*openpgp.EntityList, error) {
 		}
 		fp = path.Join(tmpdir, subDir)
 		log.Info().
-			Str("url", gitlabKeysUrl).
+			Str("url", gitlabKeysURL).
 			Str("subdir", subDir).
 			Msg("Cloned GPG keys from Git")
 	}
@@ -150,38 +165,48 @@ func CollectGPGPubKeys(fp string) (*openpgp.EntityList, error) {
 		els = append(els, e)
 	}
 	if len(els) == 0 {
-		return nil, errors.New("No gpg keys found")
+		return nil, errors.New("no gpg keys found")
 	}
 	return &els, nil
 }
 
-type GPGFileInfo struct {
+// FileInfo is information about a GPGFile
+type FileInfo struct {
 	FileName         string
 	Data             []byte
 	OriginalFileInfo os.FileInfo
 	IsDirectory      bool
 }
 
-func (gfi GPGFileInfo) Name() string { return gfi.FileName }
-func (gfi GPGFileInfo) Size() int64 {
+// Name is the name of a file
+func (gfi FileInfo) Name() string { return gfi.FileName }
+
+// Size is the size of a file in bytes
+func (gfi FileInfo) Size() int64 {
 	return int64(len(gfi.Data))
 }
 
-func (gfi GPGFileInfo) Mode() os.FileMode {
+// Mode returns the file mode
+func (gfi FileInfo) Mode() os.FileMode {
 	return gfi.OriginalFileInfo.Mode()
 }
 
-func (gfi GPGFileInfo) ModTime() time.Time {
+// ModTime returns the files modification time
+func (gfi FileInfo) ModTime() time.Time {
 	return gfi.OriginalFileInfo.ModTime()
 }
 
-func (gfi GPGFileInfo) IsDir() bool {
+// IsDir returns a boolean representing if the file is also a Dir
+func (gfi FileInfo) IsDir() bool {
 	return gfi.IsDirectory
 }
-func (gfi GPGFileInfo) Sys() interface{} { return nil }
 
-func NewGPGFileInfo(data []byte, ogi os.FileInfo) (*GPGFileInfo, error) {
-	ret := &GPGFileInfo{
+// Sys is just a placeholder right now
+func (gfi FileInfo) Sys() interface{} { return nil }
+
+// NewFileInfo returns a new FileInfo
+func NewFileInfo(data []byte, ogi os.FileInfo) (*FileInfo, error) {
+	ret := &FileInfo{
 		FileName:         fmt.Sprintf("%s.gpg", ogi.Name()),
 		Data:             data,
 		OriginalFileInfo: ogi,

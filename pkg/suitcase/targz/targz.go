@@ -1,8 +1,12 @@
+/*
+Package targz creates tar.gz files
+*/
 package targz
 
 import (
-	gzip "github.com/klauspost/pgzip"
 	"io"
+
+	gzip "github.com/klauspost/pgzip"
 
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
@@ -10,7 +14,7 @@ import (
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/tar"
 )
 
-// Archive as tar.
+// Suitcase represents everything needef for a tar.gz suitcase
 type Suitcase struct {
 	tw     *tar.Suitcase
 	gw     *gzip.Writer
@@ -41,20 +45,22 @@ func (s Suitcase) Close() error {
 	return s.gw.Close()
 }
 
+// Config returns the config options
 func (s Suitcase) Config() *config.SuitCaseOpts {
 	return s.opts
 }
 
+// GetHashes returns the hashes
 func (s Suitcase) GetHashes() []helpers.HashSet {
 	return s.hashes
 }
 
 // Add file to the archive.
-func (s Suitcase) Add(f inventory.InventoryFile) (*helpers.HashSet, error) {
+func (s Suitcase) Add(f inventory.File) (*helpers.HashSet, error) {
 	return s.tw.Add(f)
 }
 
-// Add and encrypt file to the archive.
-func (s Suitcase) AddEncrypt(f inventory.InventoryFile) error {
+// AddEncrypt Adds and encrypt file to the archive.
+func (s Suitcase) AddEncrypt(f inventory.File) error {
 	return s.tw.AddEncrypt(f)
 }

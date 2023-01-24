@@ -3,7 +3,6 @@ package targpg
 import (
 	"archive/tar"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,13 +27,13 @@ func TestTarGPGFileCorrupt(t *testing.T) {
 	})
 	defer archive.Close() // nolint: errcheck
 
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../testdata/never-exist.txt",
 		Destination: "never-exist.txt",
 	})
 
 	require.Error(t, err)
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
 	})
@@ -55,7 +54,7 @@ func TestTarGPGFileCorrupt(t *testing.T) {
 		}
 		require.EqualError(t, err, "archive/tar: invalid tar header")
 
-		break
+		break // nolint need to do something better here
 	}
 	// require.Equal(t, []string{"name.txt"}, paths)
 }
@@ -74,12 +73,12 @@ func TestTarGPGFileWithTar(t *testing.T) {
 	})
 	defer archive.Close() // nolint: errcheck
 
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../testdata/never-exist.txt",
 		Destination: "never-exist.txt",
 	})
 	require.Error(t, err)
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
 	})
@@ -101,7 +100,7 @@ func TestTarGPGFileWithTar(t *testing.T) {
 		}
 		require.EqualError(t, err, "archive/tar: invalid tar header")
 
-		break
+		break // nolint need to do something better here
 	}
 }
 
@@ -120,12 +119,12 @@ func TestTarGPGFile(t *testing.T) {
 	})
 	defer archive.Close() // nolint: errcheck
 
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../testdata/never-exist.txt",
 		Destination: "never-exist.txt",
 	})
 	require.Error(t, err)
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
 	})
@@ -157,10 +156,9 @@ func TestTarGPGFile(t *testing.T) {
 		require.NoError(t, err)
 
 		if next.Name == "name.txt" {
-			d, err := ioutil.ReadAll(r)
+			d, err := io.ReadAll(r)
 			require.NoError(t, err)
 			require.Equal(t, "Joe the user\n", string(d))
 		}
-
 	}
 }
