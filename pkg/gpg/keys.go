@@ -2,12 +2,13 @@ package gpg
 
 import (
 	"errors"
-	"io/ioutil"
+	"os"
 	"path"
 
 	"github.com/ProtonMail/gopenpgp/v2/crypto"
 )
 
+// KeyOpts is options for a gpg key
 type KeyOpts struct {
 	Name       string
 	Email      string
@@ -16,17 +17,19 @@ type KeyOpts struct {
 	Passphrase []byte
 }
 
+// KeyPair represents both the public and private keys
 type KeyPair struct {
 	Private string
 	Public  string
 }
 
+// NewKeyPair generates a new gpg private and public key
 func NewKeyPair(opts *KeyOpts) (*KeyPair, error) {
 	if opts.Name == "" {
-		return nil, errors.New("Name is required")
+		return nil, errors.New("name is required")
 	}
 	if opts.Email == "" {
-		return nil, errors.New("Email is required")
+		return nil, errors.New("email is required")
 	}
 	if opts.KeyType == "" {
 		opts.KeyType = "rsa"
@@ -53,11 +56,12 @@ func NewKeyPair(opts *KeyOpts) (*KeyPair, error) {
 	return kp, nil
 }
 
-// Given a keypair object, write the contents to a public and private key file, returning those paths
+// NewKeyFilesWithPair Given a keypair object, write the contents to a public
+// and private key file, returning those paths
 func NewKeyFilesWithPair(kp *KeyPair, dest string) ([]string, error) {
 	var err error
 	if dest == "" {
-		dest, err = ioutil.TempDir("", "gpg-keys")
+		dest, err = os.MkdirTemp("", "gpg-keys")
 		if err != nil {
 			return nil, err
 		}
@@ -65,11 +69,11 @@ func NewKeyFilesWithPair(kp *KeyPair, dest string) ([]string, error) {
 	privPath := path.Join(dest, "private.key")
 	pubPath := path.Join(dest, "public.key")
 
-	err = ioutil.WriteFile(privPath, []byte(kp.Private), 0o600)
+	err = os.WriteFile(privPath, []byte(kp.Private), 0o600)
 	if err != nil {
 		return nil, err
 	}
-	err = ioutil.WriteFile(pubPath, []byte(kp.Public), 0o644)
+	err = os.WriteFile(pubPath, []byte(kp.Public), 0o600)
 	if err != nil {
 		return nil, err
 	}

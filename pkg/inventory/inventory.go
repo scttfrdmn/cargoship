@@ -1,10 +1,12 @@
+/*
+Package inventory provides the needed pieces to correctly create an Inventory of a directory
+*/
 package inventory
 
 import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/user"
 	"path"
@@ -12,6 +14,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/viper"
@@ -22,26 +25,59 @@ import (
 	"golang.org/x/tools/godoc/util"
 )
 
+// Inventoryer is an interface to define what an Inventory Operator does
 type Inventoryer interface {
 	Write(io.Writer, *DirectoryInventory) error
 	Read([]byte) (*DirectoryInventory, error)
 }
 
+// DirectoryInventory is the inventory of a set of suitcases
 type DirectoryInventory struct {
-	Files            []*InventoryFile           `yaml:"files" json:"files"`
+	Files            []*File                    `yaml:"files" json:"files"`
 	Options          *DirectoryInventoryOptions `yaml:"options" json:"options"`
 	TotalIndexes     int                        `yaml:"total_indexes" json:"total_indexes"`
 	IndexSummaries   map[int]*IndexSummary      `yaml:"index_summaries" json:"index_summaries"`
 	InternalMetadata map[string]string          `yaml:"internal_metadata" json:"internal_metadata"`
 	ExternalMetadata map[string]string          `yaml:"external_metadata" json:"external_metadata"`
+	CLIMeta          CLIMeta                    `yaml:"cli_meta" json:"cli_meta"`
 }
 
+// SummaryLog logs out a summary of the suitcase data
+func (di DirectoryInventory) SummaryLog() {
+	// Print some summary info about the index
+	var totalC uint
+	var totalS int64
+	for k, item := range di.IndexSummaries {
+		totalC += item.Count
+		totalS += item.Size
+		log.Info().
+			Int("index", k).
+			Uint("file-count", item.Count).
+			Int64("file-size", item.Size).
+			Str("file-size-human", humanize.Bytes(uint64(item.Size))).
+			Msg("Individual Suitcase Data")
+	}
+	log.Info().
+		Uint("file-count", totalC).
+		Int64("file-size", totalS).
+		Str("file-size-human", humanize.Bytes(uint64(totalS))).
+		Msg("Total Suitcase Data")
+}
+
+// IndexSummary will give an overall summary to a set of suitcases
 type IndexSummary struct {
 	Count     uint   `yaml:"count"`
 	Size      int64  `yaml:"size"`
 	HumanSize string `yaml:"human_size"`
 }
 
+// CLIMeta is the meta information about the cli tool that generated an inventory
+type CLIMeta struct {
+	Date    *time.Time `yaml:"date" json:"date"`
+	Version string     `yaml:"version" json:"version"`
+}
+
+// DirectoryInventoryOptions are the options used to create a DirectoryInventory
 type DirectoryInventoryOptions struct {
 	User                  string   `yaml:"user" json:"user"`
 	Prefix                string   `yaml:"prefix" json:"prefix"`
@@ -59,28 +95,24 @@ type DirectoryInventoryOptions struct {
 	FollowSymlinks        bool     `yaml:"follow_symlinks" json:"follow_symlinks"`
 }
 
-type InventoryFile struct {
-	Path        string `yaml:"path" json:"path"`
-	Destination string `yaml:"destination" json:"destination"`
-	Name        string `yaml:"name" json:"name"`
-	Size        int64  `yaml:"size" json:"size"`
-	/*
-		Mode          os.FileMode `yaml:"mode,omitempty" json:"mode,omitempty"`
-		ModTime       time.Time   `yaml:"mod_time,omitempty" json:"mod_time,omitempty"`
-		IsDir         bool        `yaml:"is_dir" json:"is_dir"`
-		SHA256        string      `yaml:"sha256,omitempty" json:"sha256,omitempty"`
-		Encrypt       bool        `yaml:"encrypt,omitempty" json:"encrypt,omitempty"`
-	*/
+// File is a file item inside an inventory
+type File struct {
+	Path          string `yaml:"path" json:"path"`
+	Destination   string `yaml:"destination" json:"destination"`
+	Name          string `yaml:"name" json:"name"`
+	Size          int64  `yaml:"size" json:"size"`
 	SuitcaseIndex int    `yaml:"suitcase_index,omitempty" json:"suitcase_index,omitempty"`
 	SuitcaseName  string `yaml:"suitcase_name,omitempty" json:"suitcase_name,omitempty"`
 }
 
+// FileBucket describes what a filebucket state is
 type FileBucket struct {
 	Free int64
 }
 
 var errHalt = errors.New("halt")
 
+// ExpandSuitcaseNames will fill in suitcase names for a given inventory
 func ExpandSuitcaseNames(di *DirectoryInventory) error {
 	var extension string
 	if di.Options == nil || di.Options.SuitcaseFormat == "" {
@@ -97,6 +129,7 @@ func ExpandSuitcaseNames(di *DirectoryInventory) error {
 	return nil
 }
 
+// FormatSuitcaseName provides the proper formatting for a suitcase name
 func FormatSuitcaseName(p, u string, i, t int, ext string) string {
 	if u == "" {
 		u = "unknown-user"
@@ -107,19 +140,19 @@ func FormatSuitcaseName(p, u string, i, t int, ext string) string {
 	return fmt.Sprintf("%v-%v-%02d-of-%02d.%v", p, u, i, t, ext)
 }
 
+// ExtractSuitcaseNames returns a list of suitcase strings
 func ExtractSuitcaseNames(di *DirectoryInventory) []string {
-	ret := []string{}
-	for _, f := range di.Files {
-		ret = append(ret, f.SuitcaseName)
+	ret := make([]string, len(di.Files))
+
+	for idx, f := range di.Files {
+		ret[idx] = f.SuitcaseName
 	}
 	return ret
 }
 
-// Loop through inventory and assign suitcase indexes
+// IndexInventory Loops through inventory and assign suitcase indexes
 func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
-	caseSet := map[int]int64{
-		1: maxSize,
-	}
+	caseSet := NewCaseSet(maxSize)
 	numCases := 1
 	// Sort by descending size
 	sort.Slice(inventory.Files, func(i, j int) bool {
@@ -131,13 +164,9 @@ func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
 		if maxSize == 0 {
 			item.SuitcaseIndex = 1
 		} else {
-			if item.Size > maxSize {
-				log.Warn().
-					Str("path", item.Path).
-					Int64("size", item.Size).
-					Int64("maxSize", maxSize).
-					Msg("file is too large for suitcase")
-				return errors.New("index containes at least one file that is too large")
+			err := checkItemSize(item, maxSize)
+			if err != nil {
+				return err
 			}
 			// for loop := true; loop; {
 			var sorted bool
@@ -150,12 +179,12 @@ func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
 				}
 			}
 			if !sorted {
-				log.Info().
+				log.Debug().
 					Str("path", item.Path).
 					Int64("size", item.Size).
 					Int("numCases", numCases).
 					Msg("index is full, adding new index")
-				numCases += 1
+				numCases++
 				caseSet[numCases] = maxSize - item.Size
 				item.SuitcaseIndex = numCases
 			}
@@ -169,9 +198,8 @@ func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
 			inventory.IndexSummaries[item.SuitcaseIndex] = &IndexSummary{}
 		}
 		s := inventory.IndexSummaries[item.SuitcaseIndex]
-		s.Count += 1
+		s.Count++
 		s.Size += item.Size
-
 	}
 	// Generate human readable total sizes
 	for _, v := range inventory.IndexSummaries {
@@ -181,11 +209,15 @@ func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
 	return nil
 }
 
-func WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, args []string, outDir string) (*DirectoryInventory, *os.File, error) {
+// WriteOutDirectoryInventoryAndFileAndInventoyerWithViper uses viper to write out an inventory file
+func WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, args []string, outDir, version string) (*DirectoryInventory, *os.File, error) {
 	i, f, ir, err := NewDirectoryInventoryAndFileAndInventoyerWithViper(v, args, outDir)
 	if err != nil {
 		return nil, nil, err
 	}
+	now := time.Now()
+	i.CLIMeta.Date = &now
+	i.CLIMeta.Version = version
 	err = ir.Write(f, i)
 	if err != nil {
 		return nil, nil, err
@@ -193,6 +225,7 @@ func WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, arg
 	return i, f, nil
 }
 
+// NewDirectoryInventoryAndFileAndInventoyerWithViper does the interface with viper
 func NewDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, args []string, outDir string) (*DirectoryInventory, *os.File, Inventoryer, error) {
 	i, f, err := NewDirectoryInventoryAndFileWithViper(v, args, outDir)
 	if err != nil {
@@ -205,18 +238,20 @@ func NewDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, args []s
 	return i, f, ir, nil
 }
 
+// NewDirectoryInventoryAndFileWithViper creates a new inventory with viper
 func NewDirectoryInventoryAndFileWithViper(v *viper.Viper, args []string, outDir string) (*DirectoryInventory, *os.File, error) {
 	i, err := NewDirectoryInventoryWithViper(v, args)
 	if err != nil {
 		return nil, nil, err
 	}
-	outF, err := os.Create(path.Join(outDir, fmt.Sprintf("inventory.%v", i.Options.InventoryFormat)))
+	outF, err := os.Create(path.Join(outDir, fmt.Sprintf("inventory.%v", i.Options.InventoryFormat))) // nolint:gosec
 	if err != nil {
 		return nil, nil, err
 	}
 	return i, outF, nil
 }
 
+// NewDirectoryInventoryWithViper new DirectoryInventory with Viper
 func NewDirectoryInventoryWithViper(v *viper.Viper, args []string) (*DirectoryInventory, error) {
 	inventoryOpts, err := NewDirectoryInventoryOptionsWithViper(v, args)
 	if err != nil {
@@ -225,6 +260,7 @@ func NewDirectoryInventoryWithViper(v *viper.Viper, args []string) (*DirectoryIn
 	return NewDirectoryInventory(inventoryOpts)
 }
 
+// NewDirectoryInventory creates a new DirectoryInventory using options
 func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory, error) {
 	ret := &DirectoryInventory{
 		Options: opts,
@@ -240,17 +276,11 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 		return nil, fmt.Errorf("must specify at least one top level directory")
 	}
 	// First up, slurp in that yummy metadata
-	internalMeta := map[string]string{}
-	for _, dir := range opts.TopLevelDirectories {
-		data, err := GetMetadataWithGlob(fmt.Sprintf("%v/%v", dir, opts.InternalMetadataGlob))
-		if err != nil {
-			return nil, err
-		}
-		for k, v := range data {
-			internalMeta[k] = v
-		}
+	var imerr error
+	ret.InternalMetadata, imerr = getInternalMeta(opts)
+	if imerr != nil {
+		return nil, imerr
 	}
-	ret.InternalMetadata = internalMeta
 
 	// Mmm...internal metadata is tasty, but I'm still hungry for some of that external metadata
 	externalMeta := map[string]string{}
@@ -276,136 +306,23 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 		log.Info().
 			Str("dir", dir).
 			Msg("walking directory")
-		// err := filepath.Walk(dir,
-		// func(path string, info os.FileInfo, err error) error {
-		var addedCount int
-		err := godirwalk.Walk(dir, &godirwalk.Options{
-			FollowSymbolicLinks: opts.FollowSymlinks,
-			Callback: func(path string, de *godirwalk.Dirent) error {
-				// Skip top level directories from inventory
-				// We may need the original path again for a symlink later on
-				ogPath := path
-				var err error
-				/*
-					if path == dir {
-						return nil
-					}
-				*/
-				if de.IsDir() {
-					return nil
-				}
-
-				// No symlink...dirs?
-				if de.IsSymlink() {
-					// return godirwalk.SkipThis
-					// target, err := os.Readlink(path)
-					target, err := filepath.EvalSymlinks(path)
-					if err != nil {
-						return err
-					}
-					/*
-						target, err = filepath.Abs(target)
-						if err != nil {
-							return err
-						}
-					*/
-					s, err := os.Stat(target)
-					if err != nil {
-						log.Warn().Err(err).Msg("Error stating file")
-						return err
-					}
-					// Finally, if a link to a dir...skip it always
-					if s.IsDir() {
-						return nil
-					}
-					// Finally...
-					if opts.FollowSymlinks {
-						ogPath = path
-						path = target
-					} else {
-						return nil
-					}
-				}
-				// if de.Mode()&os.ModeSymlink != 0 {
-
-				// Finally look at the size
-				st, err := os.Stat(path)
-				if err != nil {
-					return err
-				}
-				size := st.Size()
-
-				// Ignore certain items?
-				name := de.Name()
-				if helpers.FilenameMatchesGlobs(name, opts.IgnoreGlobs) {
-					log.Info().Str("path", path).Msg("Ignoring file as it matches ignore globs")
-					return nil
-				}
-				fItem := InventoryFile{
-					Path:        path,
-					Destination: strings.TrimPrefix(ogPath, dir),
-					Name:        name,
-					Size:        size,
-				}
-				if opts.HashInner {
-					/*
-						fItem.SHA256, err = helpers.GetSha256(path)
-						if err != nil {
-							log.Warn().Err(err).Str("path", path).Msg("error getting sha256 hash")
-						}
-					*/
-				}
-				ret.Files = append(ret.Files, &fItem)
-				addedCount++
-
-				if addedCount%1000 == 0 {
-					log.Debug().
-						Int("count", addedCount).
-						Msg("Added files to inventory")
-					printMemUsage()
-				}
-
-				if opts.LimitFileCount > 0 && addedCount >= opts.LimitFileCount {
-					log.Warn().Msg("Reached file count limit, stopping walk")
-					return errHalt
-
-				}
-				return nil
-			},
-			Unsorted: true,
-			ErrorCallback: func(osPathname string, err error) godirwalk.ErrorAction {
-				// Desired way, but currently wrong (not halting) due to different error types.
-				if err == errHalt {
-					return godirwalk.Halt
-				}
-
-				// Currently correct way.
-				// if err.Error() == errHalt.Error() {
-				// 	return godirwalk.Halt
-				// }
-
-				return godirwalk.SkipNode
-			},
-		})
+		err := walkDir(dir, opts, ret)
 		if err != nil {
-			log.Warn().Err(err).Int("files", addedCount).Msg("error walking directory")
-		} else {
-			log.Info().Int("files", addedCount).Msg("Finished walking directory")
+			return nil, err
 		}
+		log.Info().Str("path", dir).Msg("Ignoring file as it matches ignore globs")
 	}
-	err := IndexInventory(ret, opts.MaxSuitcaseSize)
-	if err != nil {
-		return nil, err
+	if ierr := IndexInventory(ret, opts.MaxSuitcaseSize); ierr != nil {
+		return nil, ierr
 	}
 
-	err = ExpandSuitcaseNames(ret)
-	if err != nil {
-		return nil, err
+	if eserr := ExpandSuitcaseNames(ret); eserr != nil {
+		return nil, eserr
 	}
 	return ret, nil
 }
 
-// Given a file path with a glob, return metadata. The metadata is a map of filename to data
+// GetMetadataWithGlob Given a file path with a glob, return metadata. The metadata is a map of filename to data
 func GetMetadataWithGlob(fpg string) (map[string]string, error) {
 	matches, err := filepath.Glob(fpg)
 	if err != nil {
@@ -414,6 +331,7 @@ func GetMetadataWithGlob(fpg string) (map[string]string, error) {
 	return GetMetadataWithFiles(matches)
 }
 
+// GetMetadataWithFiles returns the metadata for a set of files
 func GetMetadataWithFiles(files []string) (map[string]string, error) {
 	ret := map[string]string{}
 	var err error
@@ -422,7 +340,7 @@ func GetMetadataWithFiles(files []string) (map[string]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		data, err := ioutil.ReadFile(f)
+		data, err := os.ReadFile(f) // nolint:gosec
 		if err != nil {
 			return nil, err
 		}
@@ -437,7 +355,7 @@ func GetMetadataWithFiles(files []string) (map[string]string, error) {
 func printMemUsage() {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	log.Info().
+	log.Debug().
 		Uint64("allocated", m.Alloc).
 		Uint64("total-allocated", m.TotalAlloc).
 		Float64("allocated-percent", (float64(m.Alloc)/float64(m.TotalAlloc))*float64(100)).
@@ -446,6 +364,25 @@ func printMemUsage() {
 		Msg("Memory Usage in MB")
 }
 
+// NewInventoryWithFilename returns a new DirectoryInventory from an inventory File
+func NewInventoryWithFilename(s string) (*DirectoryInventory, error) {
+	ib, err := os.ReadFile(s) // nolint:gosec
+	if err != nil {
+		return nil, err
+	}
+	ir, err := NewInventoryerWithFilename(s)
+	if err != nil {
+		return nil, err
+	}
+
+	inventoryD, err := ir.Read(ib)
+	if err != nil {
+		return nil, err
+	}
+	return inventoryD, nil
+}
+
+// NewInventoryerWithFilename creates a new inventoryer with a filename
 func NewInventoryerWithFilename(filename string) (Inventoryer, error) {
 	ext := filepath.Ext(filename)
 	var ir Inventoryer
@@ -460,11 +397,20 @@ func NewInventoryerWithFilename(filename string) (Inventoryer, error) {
 	return ir, nil
 }
 
+// NewDirectoryInventoryOptionsWithViper creates new inventory options with viper
 func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*DirectoryInventoryOptions, error) {
 	var err error
 
 	opt := &DirectoryInventoryOptions{
-		TopLevelDirectories: args,
+		TopLevelDirectories:   args,
+		InternalMetadataGlob:  v.GetString("internal-metadata-glob"),
+		ExternalMetadataFiles: v.GetStringSlice("external-metadata-file"),
+		IgnoreGlobs:           v.GetStringSlice("ignore-glob"),
+		LimitFileCount:        v.GetInt("limit-file-count"),
+		SuitcaseFormat:        strings.TrimPrefix(v.GetString("suitcase-format"), "."),
+		Prefix:                v.GetString("prefix"),
+		EncryptInner:          v.GetBool("encrypt-inner"),
+		FollowSymlinks:        v.GetBool("follow-symlinks"),
 	}
 	opt.TopLevelDirectories, err = helpers.ConvertDirsToAboluteDirs(args)
 	if err != nil {
@@ -482,36 +428,14 @@ func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*Dire
 	}
 	opt.MaxSuitcaseSize = int64(mssU)
 
-	// Get the internal and external metadata glob patterns
-	opt.InternalMetadataGlob = v.GetString("internal-metadata-glob")
-
-	// External metadata file here
-	opt.ExternalMetadataFiles = v.GetStringSlice("external-metadata-file")
-
-	// Globs to ignore
-	opt.IgnoreGlobs = v.GetStringSlice("ignore-glob")
-
-	// We may want to limit the number of files in the total
-	// inventory, mainly to help with debugging, but store that here
-	opt.LimitFileCount = v.GetInt("limit-file-count")
-
-	// Format for the archive/suitcase
-	opt.SuitcaseFormat = v.GetString("suitcase-format")
-	opt.SuitcaseFormat = strings.TrimPrefix(opt.SuitcaseFormat, ".")
-
 	// Inventory file format (yaml or json)
-	opt.InventoryFormat = v.GetString("inventory-format")
-	opt.InventoryFormat = strings.TrimPrefix(opt.InventoryFormat, ".")
+	opt.InventoryFormat = strings.TrimPrefix(v.GetString("inventory-format"), ".")
 	if opt.InventoryFormat == "" {
 		opt.InventoryFormat = "yaml"
 	}
 
 	// We want a username so we can shove it in the suitcase name
 	opt.User = v.GetString("user")
-	if err != nil {
-		return nil, err
-	}
-
 	if opt.User == "" {
 		log.Info().Msg("No user specified, using current user")
 		currentUser, err := user.Current()
@@ -520,14 +444,6 @@ func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*Dire
 		}
 		opt.User = currentUser.Username
 	}
-
-	opt.Prefix = v.GetString("prefix")
-
-	// Set the stuff to be encrypted?
-	opt.EncryptInner = v.GetBool("encrypt-inner")
-
-	// Symlinks?
-	opt.FollowSymlinks = v.GetBool("follow-symlinks")
 
 	// Do we want to skip hashes?
 	opt.HashInner = v.GetBool("hash-inner")
@@ -540,4 +456,172 @@ func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*Dire
 	}
 
 	return opt, nil
+}
+
+// CaseSet is just a holder for case sizes
+type CaseSet map[int]int64
+
+// NewCaseSet returns a new set of suitcase params
+// This is used to keep track of sizing
+func NewCaseSet(maxSize int64) CaseSet {
+	return map[int]int64{
+		1: maxSize,
+	}
+}
+
+// CreateOrReadInventory will either create a new inventory (if given an empty string), or read an existing one
+func CreateOrReadInventory(inventoryFile string, v *viper.Viper, args []string, outDir string, version string) (*DirectoryInventory, error) {
+	// Create an inventory file if one isn't specified
+	var inventoryD *DirectoryInventory
+	if inventoryFile == "" {
+		log.Info().Msg("No inventory file specified, we're going to go ahead and create one")
+		var outF *os.File
+		var err error
+		inventoryD, outF, err = WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v, args, outDir, version)
+		if err != nil {
+			return nil, err
+		}
+		log.Info().Str("file", outF.Name()).Msg("Created inventory file")
+	} else {
+		var err error
+		inventoryD, err = NewInventoryWithFilename(inventoryFile)
+		if err != nil {
+			return nil, err
+		}
+	}
+	inventoryD.SummaryLog()
+	return inventoryD, nil
+}
+
+func checkItemSize(item *File, maxSize int64) error {
+	if item.Size > maxSize {
+		log.Warn().
+			Str("path", item.Path).
+			Int64("size", item.Size).
+			Int64("maxSize", maxSize).
+			Msg("file is too large for suitcase")
+		return errors.New("index contains at least one file that is too large")
+	}
+	return nil
+}
+
+func errCallback(osPathname string, err error) godirwalk.ErrorAction {
+	// Desired way, but currently wrong (not halting) due to different error types.
+	if err == errHalt {
+		return godirwalk.Halt
+	}
+	return godirwalk.SkipNode
+}
+
+func getInternalMeta(opts *DirectoryInventoryOptions) (map[string]string, error) {
+	internalMeta := map[string]string{}
+	for _, dir := range opts.TopLevelDirectories {
+		data, err := GetMetadataWithGlob(fmt.Sprintf("%v/%v", dir, opts.InternalMetadataGlob))
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range data {
+			internalMeta[k] = v
+		}
+	}
+	return internalMeta, nil
+}
+
+func printMemUsageIncr(addedCount, div int) {
+	if addedCount%div == 0 {
+		log.Debug().
+			Int("count", addedCount).
+			Msg("Added files to inventory")
+		printMemUsage()
+	}
+}
+
+func walkDir(dir string, opts *DirectoryInventoryOptions, ret *DirectoryInventory) error {
+	var addedCount int
+	err := godirwalk.Walk(dir, &godirwalk.Options{
+		FollowSymbolicLinks: opts.FollowSymlinks,
+		Callback: func(path string, de *godirwalk.Dirent) error {
+			// Skip top level directories from inventory
+			// var err error
+			if de.IsDir() {
+				return nil
+			}
+
+			// We may need the original path again for a symlink later on
+			ogPath := path
+			// No symlink...dirs?
+			if de.IsSymlink() {
+				target, skip := shouldSkipSymlink(path)
+				if skip {
+					return nil
+				}
+				// Finally...
+				if !opts.FollowSymlinks {
+					return nil
+				}
+				path = target
+			}
+
+			// Finally look at the size
+			st, err := os.Stat(path)
+			if err != nil {
+				return err
+			}
+
+			// Ignore certain items?
+			name := de.Name()
+			if helpers.FilenameMatchesGlobs(name, opts.IgnoreGlobs) {
+				return nil
+			}
+			ret.Files = append(ret.Files, &File{
+				Path:        path,
+				Destination: strings.TrimPrefix(ogPath, dir),
+				Name:        name,
+				Size:        st.Size(),
+			})
+			addedCount++
+
+			// Print memory usage every X files
+			printMemUsageIncr(addedCount, 1000)
+
+			if herr := haltIfLimit(opts, addedCount); herr != nil {
+				return herr
+			}
+
+			return nil
+		},
+		Unsorted:      true,
+		ErrorCallback: errCallback,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// shouldSkipSymlink returns the target of the symlink and a boolean on if it should be skipped
+func shouldSkipSymlink(path string) (string, bool) {
+	target, eerr := filepath.EvalSymlinks(path)
+	if eerr != nil {
+		log.Debug().Err(eerr).Msg("error evaluating symlink")
+		return target, true
+	}
+	s, serr := os.Stat(target)
+	if serr != nil {
+		log.Warn().Err(serr).Msg("Error stating file")
+		return target, true
+	}
+	// Finally, if a link to a dir...skip it always
+	if s.IsDir() {
+		return target, true
+	}
+	return target, false
+}
+
+func haltIfLimit(opts *DirectoryInventoryOptions, addedCount int) error {
+	if opts.LimitFileCount > 0 && addedCount >= opts.LimitFileCount {
+		log.Warn().Msg("Reached file count limit, stopping walk")
+		return errHalt
+	}
+	return nil
 }

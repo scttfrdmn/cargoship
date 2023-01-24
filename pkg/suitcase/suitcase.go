@@ -1,3 +1,6 @@
+/*
+Package suitcase holds all the stuff necessary for a suitecase generation
+*/
 package suitcase
 
 import (
@@ -19,14 +22,16 @@ import (
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/targzgpg"
 )
 
+// Suitcase is the interface that describes what a Suitcase does
 type Suitcase interface {
 	Close() error
-	Add(inventory.InventoryFile) (*helpers.HashSet, error)
-	AddEncrypt(f inventory.InventoryFile) error
+	Add(inventory.File) (*helpers.HashSet, error)
+	AddEncrypt(f inventory.File) error
 	Config() *config.SuitCaseOpts
 }
 
-type SuitcaseFillState struct {
+// FillState is the current state of a suitcase file
+type FillState struct {
 	Current        uint
 	Total          uint
 	Completed      bool
@@ -34,7 +39,7 @@ type SuitcaseFillState struct {
 	Index          int
 }
 
-// Create a new suitcase
+// New Create a new suitcase
 func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 	// Decide if we are encrypting the whole shebang or not
 	if strings.HasSuffix(opts.Format, ".gpg") {
@@ -61,7 +66,8 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 	return nil, fmt.Errorf("invalid archive format: %s", opts.Format)
 }
 
-func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int, stateC chan SuitcaseFillState) ([]helpers.HashSet, error) {
+// FillWithInventoryIndex fills up a suitcase using the given inventory
+func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int, stateC chan FillState) ([]helpers.HashSet, error) {
 	if i == nil {
 		return nil, errors.New("inventory is nil")
 	}
@@ -109,32 +115,41 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 
 		cur++
 		if stateC != nil {
-			stateC <- SuitcaseFillState{
+			stateC <- FillState{
 				Current:        cur,
 				Total:          total,
 				Index:          index,
 				CurrentPercent: float64(cur) / float64(total) * 100,
 			}
 		}
-
 	}
 	return suitcaseHashes, nil
 }
 
-func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory, index int, stateC chan SuitcaseFillState) (string, error) {
-	// targetF := path.Join(so.Destination, fmt.Sprintf("%v-%d.%v", i.Options.Name, index, so.Format))
-	targetF := path.Join(so.Destination, fmt.Sprintf(inventory.FormatSuitcaseName(i.Options.Prefix, i.Options.User, index, i.TotalIndexes, so.Format)))
-	target, err := os.Create(targetF)
+// WriteSuitcaseFile will write out the suitcase
+func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory, index int, stateC chan FillState) (string, error) {
+	targetF := path.Join(so.Destination, inventory.FormatSuitcaseName(i.Options.Prefix, i.Options.User, index, i.TotalIndexes, so.Format))
+	target, err := os.Create(targetF) // nolint:gosec
 	if err != nil {
 		return "", err
 	}
-	defer target.Close()
+	defer func() {
+		terr := target.Close()
+		if terr != nil {
+			panic(terr)
+		}
+	}()
 
 	s, err := New(target, so)
 	if err != nil {
 		return "", err
 	}
-	defer s.Close()
+	defer func() {
+		serr := s.Close()
+		if serr != nil {
+			panic(serr)
+		}
+	}()
 
 	log.Info().
 		Str("destination", targetF).
@@ -148,7 +163,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 	}
 
 	if stateC != nil {
-		stateC <- SuitcaseFillState{
+		stateC <- FillState{
 			Completed: true,
 			Index:     index,
 		}
@@ -157,11 +172,16 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 	if so.HashInner {
 		hashFN := fmt.Sprintf("%v.sha256", targetF)
 		log.Info().Str("file", hashFN).Msgf("Creating hashes file")
-		hashF, err := os.Create(hashFN)
+		hashF, err := os.Create(hashFN) // nolint:gosec
 		if err != nil {
 			return "", err
 		}
-		defer hashF.Close()
+		defer func() {
+			herr := hashF.Close()
+			if herr != nil {
+				panic(herr)
+			}
+		}()
 		err = helpers.WriteHashFile(hashes, hashF)
 		if err != nil {
 			return "", err
@@ -170,9 +190,10 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 	return targetF, nil
 }
 
+// PostProcess executes post processing commands
 func PostProcess(s Suitcase) error {
 	c := s.Config()
-	cmd := exec.Command(c.PostProcessScript)
+	cmd := exec.Command(c.PostProcessScript) // nolint:gosec
 	cmd.Env = append(cmd.Env, "SUITCASE_DESTINATION="+c.Destination)
 	err := cmd.Run()
 	if err != nil {

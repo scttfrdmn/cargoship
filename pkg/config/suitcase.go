@@ -1,9 +1,17 @@
+/*
+Package config holds configuration options for suitcases
+*/
 package config
 
 import (
+	"strings"
+
 	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/spf13/cobra"
+	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/gpg"
 )
 
+// SuitCaseOpts is options for a given suitcase
 type SuitCaseOpts struct {
 	Format            string
 	Destination       string
@@ -15,4 +23,17 @@ type SuitCaseOpts struct {
 	PostProcessScript string
 	PostProcessEnv    map[string]string
 	// MaxBytes     uint64 // Maximum size per suitecase
+}
+
+// EncryptToCobra fills in the EncryptTo option using cobra.Command options
+func (s *SuitCaseOpts) EncryptToCobra(cmd *cobra.Command) error {
+	// Gather EncryptTo if we need it
+	if strings.HasSuffix(s.Format, ".gpg") || s.EncryptInner {
+		var err error
+		s.EncryptTo, err = gpg.EncryptToWithCmd(cmd)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

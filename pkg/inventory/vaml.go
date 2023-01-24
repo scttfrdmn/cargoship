@@ -14,8 +14,10 @@ import (
 	"github.com/vjorlikowski/yaml"
 )
 
+// VAMLer is the Victor YAML for operator
 type VAMLer struct{}
 
+// Write will write the inventory out to an io.Writer
 func (r *VAMLer) Write(w io.Writer, i *DirectoryInventory) error {
 	if w == nil {
 		return errors.New("writer is nil")
@@ -23,9 +25,15 @@ func (r *VAMLer) Write(w io.Writer, i *DirectoryInventory) error {
 	if i == nil {
 		return errors.New("inventory is nil")
 	}
+
 	log.Debug().Msg("About to encode inventory in to yaml file")
 	writer := bufio.NewWriterSize(w, 10240)
-	defer writer.Flush()
+	defer func() {
+		err := writer.Flush()
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	// Pass the buffered IO writer to the encoder
 	printMemUsage()
@@ -34,6 +42,7 @@ func (r *VAMLer) Write(w io.Writer, i *DirectoryInventory) error {
 	return enc.Encode(i)
 }
 
+// Read will ready byte in to an inventory
 func (r VAMLer) Read(b []byte) (*DirectoryInventory, error) {
 	var inventory DirectoryInventory
 	err := yaml.Unmarshal(b, &inventory)

@@ -1,3 +1,6 @@
+/*
+Package tar provides simple tar suitcases
+*/
 package tar
 
 import (
@@ -6,17 +9,17 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
+	"github.com/rs/zerolog/log"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/gpg"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
 )
 
-// Archive as tar.
+// Suitcase as tar.
 type Suitcase struct {
 	tw   *tar.Writer
 	opts *config.SuitCaseOpts
@@ -30,8 +33,9 @@ func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
 	}
 }
 
-func (s Suitcase) Config() *config.SuitCaseOpts {
-	return s.opts
+// Config is the configuration for a suitcase
+func (a Suitcase) Config() *config.SuitCaseOpts {
+	return a.opts
 }
 
 // Close all closeables.
@@ -40,7 +44,7 @@ func (a Suitcase) Close() error {
 }
 
 // Add file to the archive.
-func (a Suitcase) Add(f inventory.InventoryFile) (*helpers.HashSet, error) {
+func (a Suitcase) Add(f inventory.File) (*helpers.HashSet, error) {
 	info, err := os.Lstat(f.Path) // #nosec
 	if err != nil {
 		return nil, err
@@ -58,11 +62,6 @@ func (a Suitcase) Add(f inventory.InventoryFile) (*helpers.HashSet, error) {
 		return nil, err
 	}
 	header.Name = f.Destination
-	/*
-		if !f.ModTime.IsZero() {
-			header.ModTime = f.ModTime
-		}
-	*/
 	if err = a.tw.WriteHeader(header); err != nil {
 		return nil, err
 	}
@@ -70,19 +69,20 @@ func (a Suitcase) Add(f inventory.InventoryFile) (*helpers.HashSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+
+	defer dclose(file)
 	var hs *helpers.HashSet
 	if a.opts.HashInner {
-		absPath, err := filepath.Abs(f.Path)
-		if err != nil {
-			return nil, err
+		absPath, ferr := filepath.Abs(f.Path)
+		if ferr != nil {
+			return nil, ferr
 		}
 
 		// Get the contents in a temp buffer that we can calculate the hash on
 		buf := bytes.NewBuffer(nil)
-		io.Copy(buf, file)
-		if err != nil {
-			return nil, err
+		_, cerr := io.Copy(buf, file)
+		if cerr != nil {
+			return nil, cerr
 		}
 
 		// Calculate and return the hash
@@ -92,14 +92,17 @@ func (a Suitcase) Add(f inventory.InventoryFile) (*helpers.HashSet, error) {
 			Hash:     fmt.Sprintf("%x", h),
 		}
 		// Reset the cursor so it can go back in the archive
-		file.Seek(0, 0)
+		_, serr := file.Seek(0, 0)
+		if serr != nil {
+			return nil, serr
+		}
 	}
 	_, err = io.Copy(a.tw, file)
 	return hs, err
 }
 
-// Add and encrypt file to the archive.
-func (a Suitcase) AddEncrypt(f inventory.InventoryFile) error {
+// AddEncrypt adds and encrypts file to the archive.
+func (a Suitcase) AddEncrypt(f inventory.File) error {
 	info, err := os.Lstat(f.Path) // #nosec
 	if err != nil {
 		return err
@@ -113,7 +116,7 @@ func (a Suitcase) AddEncrypt(f inventory.InventoryFile) error {
 	}
 	dest := fmt.Sprintf("%v.gpg", f.Destination)
 
-	unencryptedData, err := ioutil.ReadFile(f.Path)
+	unencryptedData, err := os.ReadFile(f.Path)
 	if err != nil {
 		return err
 	}
@@ -123,7 +126,7 @@ func (a Suitcase) AddEncrypt(f inventory.InventoryFile) error {
 		return err
 	}
 
-	eInfo := gpg.GPGFileInfo{
+	eInfo := gpg.FileInfo{
 		FileName:         dest,
 		Data:             encryptedD,
 		OriginalFileInfo: info,
@@ -145,4 +148,11 @@ func (a Suitcase) AddEncrypt(f inventory.InventoryFile) error {
 	}
 	_, err = io.Copy(a.tw, bytes.NewReader(encryptedD))
 	return err
+}
+
+func dclose(c io.Closer) {
+	err := c.Close()
+	if err != nil {
+		log.Warn().Interface("closer", c).Msg("error closing file")
+	}
 }

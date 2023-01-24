@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 
-	easyjson "github.com/mailru/easyjson"
+	"github.com/mailru/easyjson"
 	"github.com/rs/zerolog/log"
 )
 
@@ -12,8 +12,10 @@ import (
 Inventoryer using EasyJSON to encode and decode the inventory.
 */
 
+// EJSONer is the easy json operator
 type EJSONer struct{}
 
+// Write writes out an inventory file
 func (r *EJSONer) Write(w io.Writer, i *DirectoryInventory) error {
 	if w == nil {
 		return errors.New("writer is nil")
@@ -26,6 +28,7 @@ func (r *EJSONer) Write(w io.Writer, i *DirectoryInventory) error {
 	return err
 }
 
+// Read reads the bytes and returns an inventory
 func (r EJSONer) Read(b []byte) (*DirectoryInventory, error) {
 	if b == nil {
 		return nil, errors.New("bytes is nil")

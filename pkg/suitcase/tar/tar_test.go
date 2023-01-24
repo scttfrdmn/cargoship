@@ -3,7 +3,6 @@ package tar
 import (
 	"archive/tar"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,12 +24,12 @@ func TestTarFile(t *testing.T) {
 	})
 	defer archive.Close() // nolint: errcheck
 
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../testdata/never-exist.txt",
 		Destination: "never-exist.txt",
 	})
 	require.Error(t, err)
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
 	})
@@ -52,7 +51,7 @@ func TestTarFile(t *testing.T) {
 		require.NoError(t, err)
 
 		if next.Name == "name.txt" {
-			d, err := ioutil.ReadAll(r)
+			d, err := io.ReadAll(r)
 			require.NoError(t, err)
 			require.Equal(t, "Joe the user\n", string(d))
 		}
@@ -73,7 +72,7 @@ func TestTarFileAddHash(t *testing.T) {
 	})
 	defer archive.Close() // nolint: errcheck
 
-	hs, err := archive.Add(inventory.InventoryFile{
+	hs, err := archive.Add(inventory.File{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
 	})

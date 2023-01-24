@@ -1,3 +1,7 @@
+/*
+Package helpers is just some helper utils. Arguably this should be moved out of
+it's own package in to the appropriate main packages
+*/
 package helpers
 
 import (
@@ -9,8 +13,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
+// ConvertDirsToAboluteDirs turns directories in to absolute path directories
 func ConvertDirsToAboluteDirs(orig []string) ([]string, error) {
 	ret := []string{}
 	for _, item := range orig {
@@ -23,13 +30,18 @@ func ConvertDirsToAboluteDirs(orig []string) ([]string, error) {
 	return ret, nil
 }
 
-// Get sha256 hash from a file
+// GetSha256 Get sha256 hash from a file
 func GetSha256(file string) (string, error) {
-	f, err := os.Open(file)
+	f, err := os.Open(file) // nolint:gosec
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() {
+		cerr := f.Close()
+		if err != nil {
+			panic(cerr)
+		}
+	}()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
@@ -39,6 +51,7 @@ func GetSha256(file string) (string, error) {
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
+// MustGetSha256 panics if a Sha256 cannot be generated
 func MustGetSha256(file string) string {
 	hash, err := GetSha256(file)
 	if err != nil {
@@ -47,6 +60,7 @@ func MustGetSha256(file string) string {
 	return hash
 }
 
+// SuitcaseFormatWithFilename detects the format of a suitcase from the given filename
 func SuitcaseFormatWithFilename(filename string) (string, error) {
 	switch {
 	case strings.HasSuffix(filename, ".tar"):
@@ -58,9 +72,10 @@ func SuitcaseFormatWithFilename(filename string) (string, error) {
 	case strings.HasSuffix(filename, ".tar.gz.gpg"):
 		return "tar.gz.gpg", nil
 	}
-	return "", errors.New("Unknown archive format")
+	return "", errors.New("unknown archive format")
 }
 
+// IsDirectory returns a bool if a file is a directory
 func IsDirectory(path string) bool {
 	fileInfo, err := os.Stat(path)
 	if err != nil {
@@ -69,11 +84,13 @@ func IsDirectory(path string) bool {
 	return fileInfo.IsDir()
 }
 
+// HashSet is a combination Filename and Hash
 type HashSet struct {
 	Filename string
 	Hash     string
 }
 
+// WriteHashFile  writes out the hashset array to an io.Writer
 func WriteHashFile(hs []HashSet, o io.Writer) error {
 	w := bufio.NewWriter(o)
 	for _, hs := range hs {
@@ -82,14 +99,18 @@ func WriteHashFile(hs []HashSet, o io.Writer) error {
 			return err
 		}
 	}
-	w.Flush()
+	err := w.Flush()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-// Check if a filename matches a set of globs
+// FilenameMatchesGlobs Check if a filename matches a set of globs
 func FilenameMatchesGlobs(filename string, globs []string) bool {
 	for _, glob := range globs {
 		if ok, _ := filepath.Match(glob, filename); ok {
+			log.Debug().Str("path", filename).Msg("matched on file globbing")
 			return true
 		}
 	}

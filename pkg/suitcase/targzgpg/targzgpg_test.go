@@ -2,12 +2,12 @@ package targzgpg
 
 import (
 	"archive/tar"
-	gzip "github.com/klauspost/pgzip"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/klauspost/pgzip"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/stretchr/testify/require"
@@ -36,7 +36,7 @@ func TestTarGPGFileCorrupt(t *testing.T) {
 		})
 		require.Error(t, err)
 	*/
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
 	})
@@ -57,7 +57,7 @@ func TestTarGPGFileCorrupt(t *testing.T) {
 		}
 		require.EqualError(t, err, "archive/tar: invalid tar header")
 
-		break
+		break // nolint removing this is bad...
 	}
 	// require.Equal(t, []string{"name.txt"}, paths)
 }
@@ -76,12 +76,12 @@ func TestTarGPGFileWithTar(t *testing.T) {
 	})
 	defer archive.Close() // nolint: errcheck
 
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../testdata/never-exist.txt",
 		Destination: "never-exist.txt",
 	})
 	require.Error(t, err)
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
 	})
@@ -103,7 +103,7 @@ func TestTarGPGFileWithTar(t *testing.T) {
 		}
 		require.EqualError(t, err, "archive/tar: invalid tar header")
 
-		break
+		break // nolint removing this is bad...
 	}
 }
 
@@ -122,12 +122,12 @@ func TestTarGZGPGFile(t *testing.T) {
 	})
 	defer archive.Close() // nolint: errcheck
 
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../testdata/never-exist.txt",
 		Destination: "never-exist.txt",
 	})
 	require.Error(t, err)
-	_, err = archive.Add(inventory.InventoryFile{
+	_, err = archive.Add(inventory.File{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
 	})
@@ -149,7 +149,7 @@ func TestTarGZGPGFile(t *testing.T) {
 	md, err := openpgp.ReadMessage(f, entityList, nil, nil)
 	require.NoError(t, err)
 
-	g, err := gzip.NewReader(md.UnverifiedBody)
+	g, err := pgzip.NewReader(md.UnverifiedBody)
 	require.NoError(t, err)
 	// Make sure a normal tar reader can't actually open this
 	r := tar.NewReader(g)
@@ -161,10 +161,9 @@ func TestTarGZGPGFile(t *testing.T) {
 		require.NoError(t, err)
 
 		if next.Name == "name.txt" {
-			d, err := ioutil.ReadAll(r)
+			d, err := io.ReadAll(r)
 			require.NoError(t, err)
 			require.Equal(t, "Joe the user\n", string(d))
 		}
-
 	}
 }

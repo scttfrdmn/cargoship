@@ -1,3 +1,6 @@
+/*
+Package cmdhelpers is helpers to the CLI tool. This should probably be moved to the cmd package
+*/
 package cmdhelpers
 
 import (
@@ -13,6 +16,7 @@ import (
 	"github.com/vjorlikowski/yaml"
 )
 
+// CLIMeta is the command line meta information generated on a run
 type CLIMeta struct {
 	Username     string                 `yaml:"username"`
 	Hostname     string                 `yaml:"hostname"`
@@ -25,6 +29,16 @@ type CLIMeta struct {
 	Version      string                 `yaml:"version"`
 }
 
+// MustComplete returns the completed file or panics if an error occurs
+func (c *CLIMeta) MustComplete(od string) string {
+	got, err := c.Complete(od)
+	if err != nil {
+		panic(err)
+	}
+	return got
+}
+
+// Complete is the final method for a CLI meta thing
 func (c *CLIMeta) Complete(od string) (string, error) {
 	n := time.Now()
 	c.CompletedAt = &n
@@ -37,17 +51,23 @@ func (c *CLIMeta) Complete(od string) (string, error) {
 		w = os.Stdout
 	} else {
 		mf = path.Join(od, "suitcasectl-invocation-meta.yaml")
-		w, err = os.Create(mf)
+		w, err = os.Create(mf) // nolint:gosec
 		if err != nil {
 			return "", err
 		}
 		log.Info().Str("meta-file", mf).Msg("Created CLI meta file")
 	}
-	defer w.Close()
+	defer func() {
+		err := w.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
 	c.Print(w)
 	return mf, nil
 }
 
+// Print writes the CLIMeta to an io.Writer
 func (c *CLIMeta) Print(w io.Writer) {
 	if w == nil {
 		w = os.Stdout
@@ -64,6 +84,7 @@ func (c *CLIMeta) Print(w io.Writer) {
 	}
 }
 
+// NewCLIMeta returns a new CLIMeta option
 func NewCLIMeta(args []string, cmd *cobra.Command) *CLIMeta {
 	start := time.Now()
 	m := &CLIMeta{
@@ -97,6 +118,7 @@ func NewCLIMeta(args []string, cmd *cobra.Command) *CLIMeta {
 	return m
 }
 
+// GetCurrentUser just returns the current user and an error if one occurred
 func GetCurrentUser() (string, error) {
 	u, err := user.Current()
 	if err != nil {

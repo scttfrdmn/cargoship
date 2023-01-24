@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"testing"
@@ -10,28 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
 )
-
-/*
-func TestNewDirectoryInventoryOptionsWithCmd(t *testing.T) {
-	testD := t.TempDir()
-	// cmd := NewCreateSuitcaseCmd()
-	cmd := NewRootCmd(io.Discard)
-	cmd.SetArgs([]string{"create", "suitcase", testD})
-	err := cmd.Execute()
-	require.NoError(t, err)
-	// This is really gross 🤮. What's a better way to get the subcommand yoinked out of root?
-	for _, ccmd := range cmd.Commands() {
-		if ccmd.Name() == "create" {
-			for _, cccmd := range ccmd.Commands() {
-				if cccmd.Name() == "suitcase" {
-					_, err = cmdhelpers.NewDirectoryInventoryOptionsWithCmd(cccmd, nil)
-					assert.NoError(t, err)
-				}
-			}
-		}
-	}
-}
-*/
 
 func TestNewSuitcaseWithDir(t *testing.T) {
 	testD := t.TempDir()
@@ -45,7 +22,7 @@ func TestNewSuitcaseWithViper(t *testing.T) {
 	// testD := t.TempDir()
 	testD := t.TempDir()
 	cmd := NewRootCmd(io.Discard)
-	cmd.SetArgs([]string{"create", "suitcase", "-o", testD, "../../pkg/testdata/viper-enabled-target"})
+	cmd.SetArgs([]string{"create", "suitcase", "-o", testD, "../../../pkg/testdata/viper-enabled-target"})
 	err := cmd.Execute()
 	require.NoError(t, err)
 	require.FileExists(t, path.Join(testD, "snakey-thing-joebob-01-of-01.tar.gz"))
@@ -53,22 +30,22 @@ func TestNewSuitcaseWithViper(t *testing.T) {
 
 // Ensure that if we set a value on the CLI that it gets preference over whatever is in the user overrides
 func TestNewSuitcaseWithViperFlag(t *testing.T) {
-	testD, err := ioutil.TempDir("", "")
+	testD, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
 	defer os.RemoveAll(testD)
 	cmd := NewRootCmd(io.Discard)
-	cmd.SetArgs([]string{"create", "suitcase", "-o", testD, "--user", "darcy", "../../pkg/testdata/viper-enabled-target"})
+	cmd.SetArgs([]string{"create", "suitcase", "-o", testD, "--user", "darcy", "../../../pkg/testdata/viper-enabled-target"})
 	err = cmd.Execute()
 	require.NoError(t, err)
 	require.FileExists(t, path.Join(testD, "snakey-thing-darcy-01-of-01.tar.gz"))
 }
 
 func TestNewSuitcaseWithInventory(t *testing.T) {
-	outDir, err := ioutil.TempDir("", "")
+	outDir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
 	defer os.RemoveAll(outDir)
 	i, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
-		TopLevelDirectories: []string{"../../pkg/testdata/fake-dir"},
+		TopLevelDirectories: []string{"../../../pkg/testdata/fake-dir"},
 		SuitcaseFormat:      "tar",
 		InventoryFormat:     "yaml",
 	})
@@ -94,5 +71,5 @@ func TestNewSuitcaseWithInventoryAndDir(t *testing.T) {
 	cmd.SetArgs([]string{"create", "suitcase", "-o", fakeTemp, "--inventory-file", "doesnt-matter", fakeDir})
 	err := cmd.Execute()
 	require.Error(t, err, "Did NOT get an error when executing command")
-	require.EqualError(t, err, "Error: You can't specify an inventory file and target dir arguments at the same time", "Got an unexpected error")
+	require.EqualError(t, err, "error: You can't specify an inventory file and target dir arguments at the same time", "Got an unexpected error")
 }

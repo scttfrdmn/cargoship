@@ -3,7 +3,6 @@ package suitcase
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -31,12 +30,12 @@ func TestNewSuitcase(t *testing.T) {
 			t.Cleanup(func() {
 				require.NoError(t, archive.Close())
 			})
-			_, err = archive.Add(inventory.InventoryFile{
+			_, err = archive.Add(inventory.File{
 				Path:        empty.Name(),
 				Destination: "empty.txt",
 			})
 			require.NoError(t, err)
-			_, err = archive.Add(inventory.InventoryFile{
+			_, err = archive.Add(inventory.File{
 				Path:        empty.Name() + "_nope",
 				Destination: "dont.txt",
 			})
@@ -73,12 +72,12 @@ func TestNewGPGSuitcase(t *testing.T) {
 			t.Cleanup(func() {
 				require.NoError(t, archive.Close())
 			})
-			_, err = archive.Add(inventory.InventoryFile{
+			_, err = archive.Add(inventory.File{
 				Path:        empty.Name(),
 				Destination: "empty.txt",
 			})
 			require.NoError(t, err)
-			_, err = archive.Add(inventory.InventoryFile{
+			_, err = archive.Add(inventory.File{
 				Path:        empty.Name() + "_nope",
 				Destination: "dont.txt",
 			})
@@ -139,7 +138,7 @@ func TestFillFileWithInventoryIndexHashInner(t *testing.T) {
 	require.NoError(t, err)
 	require.FileExists(t, sfs)
 
-	c, err := ioutil.ReadFile(sfs)
+	c, err := os.ReadFile(sfs)
 	require.NoError(t, err)
 	// Make sure our known hash file is up in here
 	require.Contains(t, string(c), "ef3d6ae3230876bc9d15b3df72b89797ce8be0dd872315b78c0be72a4600d466")

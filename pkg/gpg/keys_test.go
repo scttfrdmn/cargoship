@@ -28,17 +28,18 @@ func TestNewKeyPairErrors(t *testing.T) {
 				Email:   "foo@bar.com",
 				KeyType: "rsa",
 			},
-			err: errors.New("Name is required"),
+			err: errors.New("name is required"),
 		},
 		"missing email": {
 			opts: &KeyOpts{
 				Name:    "foo",
 				KeyType: "rsa",
 			},
-			err: errors.New("Email is required"),
+			err: errors.New("email is required"),
 		},
 	}
 	for name, test := range tests {
+		test := test
 		t.Run(name, func(t *testing.T) {
 			_, err := NewKeyPair(test.opts)
 			require.Equal(t, test.err, err)

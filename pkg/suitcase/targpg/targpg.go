@@ -1,3 +1,6 @@
+/*
+Package targpg works the tar.gpg suitcases
+*/
 package targpg
 
 import (
@@ -12,7 +15,7 @@ import (
 	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/tar"
 )
 
-// Archive as tar.
+// Suitcase as a tar.gpg
 type Suitcase struct {
 	tw     *tar.Suitcase
 	cw     *io.WriteCloser
@@ -36,10 +39,12 @@ func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
 	}
 }
 
+// Config is the configuration for a suitcase
 func (s Suitcase) Config() *config.SuitCaseOpts {
 	return s.opts
 }
 
+// GetHashes returns all the hashes
 func (s Suitcase) GetHashes() []helpers.HashSet {
 	return s.hashes
 }
@@ -65,11 +70,11 @@ func (s Suitcase) Close() error {
 }
 
 // Add file to the archive.
-func (s Suitcase) Add(f inventory.InventoryFile) (*helpers.HashSet, error) {
+func (s Suitcase) Add(f inventory.File) (*helpers.HashSet, error) {
 	return s.tw.Add(f)
 }
 
-// Add encrypted file to the archive.
-func (s Suitcase) AddEncrypt(f inventory.InventoryFile) error {
+// AddEncrypt Add encrypted file to the archive.
+func (s Suitcase) AddEncrypt(f inventory.File) error {
 	return errors.New("file encryption not supported on already encrypted archives")
 }
