@@ -11,17 +11,20 @@ import (
 
 // schemaCmd represents the schema command
 var schemaCmd = &cobra.Command{
-	Use:   "schema",
-	Short: "Generate json schema for current inventory definition",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		schema := jsonschema.Reflect(&inventory.DirectoryInventory{})
-		bts, err := json.MarshalIndent(schema, "  ", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to create jsonschema: %w", err)
-		}
-		fmt.Println(string(bts))
-		return nil
-	},
+	Use:    "schema",
+	Short:  "Generate json schema for current inventory definition",
+	Hidden: true,
+	RunE:   schemaRunE,
+}
+
+func schemaRunE(cmd *cobra.Command, args []string) error {
+	schema := jsonschema.Reflect(&inventory.DirectoryInventory{})
+	bts, err := json.MarshalIndent(schema, "  ", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to create jsonschema: %w", err)
+	}
+	fmt.Println(string(bts))
+	return nil
 }
 
 func init() {

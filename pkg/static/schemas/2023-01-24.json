@@ -1,0 +1,199 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory/directory-inventory",
+    "$ref": "#/$defs/DirectoryInventory",
+    "$defs": {
+      "CLIMeta": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "date",
+          "version"
+        ]
+      },
+      "DirectoryInventory": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/$defs/File"
+            },
+            "type": "array"
+          },
+          "options": {
+            "$ref": "#/$defs/DirectoryInventoryOptions"
+          },
+          "total_indexes": {
+            "type": "integer"
+          },
+          "index_summaries": {
+            "patternProperties": {
+              "^[0-9]+$": {
+                "$ref": "#/$defs/IndexSummary"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object"
+          },
+          "internal_metadata": {
+            "patternProperties": {
+              ".*": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "external_metadata": {
+            "patternProperties": {
+              ".*": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "cli_meta": {
+            "$ref": "#/$defs/CLIMeta"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "files",
+          "options",
+          "total_indexes",
+          "index_summaries",
+          "internal_metadata",
+          "external_metadata",
+          "cli_meta"
+        ]
+      },
+      "DirectoryInventoryOptions": {
+        "properties": {
+          "user": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "top_level_directories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "size_considered_large": {
+            "type": "integer"
+          },
+          "max_suitcase_size": {
+            "type": "integer"
+          },
+          "internal_metadata_glob": {
+            "type": "string"
+          },
+          "ignore_globs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "external_metadata_files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "encrypt_inner": {
+            "type": "boolean"
+          },
+          "hash_inner": {
+            "type": "boolean"
+          },
+          "limit_file_count": {
+            "type": "integer"
+          },
+          "suitcase_format": {
+            "type": "string"
+          },
+          "inventory_format": {
+            "type": "string"
+          },
+          "follow_symlinks": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user",
+          "prefix",
+          "top_level_directories",
+          "size_considered_large",
+          "max_suitcase_size",
+          "encrypt_inner",
+          "hash_inner",
+          "limit_file_count",
+          "suitcase_format",
+          "inventory_format",
+          "follow_symlinks"
+        ]
+      },
+      "File": {
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "suitcase_index": {
+            "type": "integer"
+          },
+          "suitcase_name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "destination",
+          "name",
+          "size"
+        ]
+      },
+      "IndexSummary": {
+        "properties": {
+          "Count": {
+            "type": "integer"
+          },
+          "Size": {
+            "type": "integer"
+          },
+          "HumanSize": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "Count",
+          "Size",
+          "HumanSize"
+        ]
+      }
+    }
+  }
