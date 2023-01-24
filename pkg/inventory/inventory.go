@@ -164,13 +164,9 @@ func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
 		if maxSize == 0 {
 			item.SuitcaseIndex = 1
 		} else {
-			if item.Size > maxSize {
-				log.Warn().
-					Str("path", item.Path).
-					Int64("size", item.Size).
-					Int64("maxSize", maxSize).
-					Msg("file is too large for suitcase")
-				return errors.New("index contains at least one file that is too large")
+			err := checkItemSize(item, maxSize)
+			if err != nil {
+				return err
 			}
 			// for loop := true; loop; {
 			var sorted bool
@@ -183,7 +179,7 @@ func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
 				}
 			}
 			if !sorted {
-				log.Info().
+				log.Debug().
 					Str("path", item.Path).
 					Int64("size", item.Size).
 					Int("numCases", numCases).
@@ -280,17 +276,11 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 		return nil, fmt.Errorf("must specify at least one top level directory")
 	}
 	// First up, slurp in that yummy metadata
-	internalMeta := map[string]string{}
-	for _, dir := range opts.TopLevelDirectories {
-		data, err := GetMetadataWithGlob(fmt.Sprintf("%v/%v", dir, opts.InternalMetadataGlob))
-		if err != nil {
-			return nil, err
-		}
-		for k, v := range data {
-			internalMeta[k] = v
-		}
+	var imerr error
+	ret.InternalMetadata, imerr = getInternalMeta(opts)
+	if imerr != nil {
+		return nil, imerr
 	}
-	ret.InternalMetadata = internalMeta
 
 	// Mmm...internal metadata is tasty, but I'm still hungry for some of that external metadata
 	externalMeta := map[string]string{}
@@ -316,108 +306,18 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 		log.Info().
 			Str("dir", dir).
 			Msg("walking directory")
-		// err := filepath.Walk(dir,
-		// func(path string, info os.FileInfo, err error) error {
-		var addedCount int
-		// Needed for range loops
-		dir := dir
-		err := godirwalk.Walk(dir, &godirwalk.Options{
-			FollowSymbolicLinks: opts.FollowSymlinks,
-			Callback: func(path string, de *godirwalk.Dirent) error {
-				// Skip top level directories from inventory
-				// We may need the original path again for a symlink later on
-				ogPath := path
-				var err error
-				if de.IsDir() {
-					return nil
-				}
-
-				// No symlink...dirs?
-				if de.IsSymlink() {
-					// return godirwalk.SkipThis
-					// target, err := os.Readlink(path)
-					target, eerr := filepath.EvalSymlinks(path)
-					if eerr != nil {
-						return eerr
-					}
-					s, serr := os.Stat(target)
-					if serr != nil {
-						log.Warn().Err(serr).Msg("Error stating file")
-						return err
-					}
-					// Finally, if a link to a dir...skip it always
-					if s.IsDir() {
-						return nil
-					}
-					// Finally...
-					if opts.FollowSymlinks {
-						ogPath = path
-						path = target
-					} else {
-						return nil
-					}
-				}
-				// if de.Mode()&os.ModeSymlink != 0 {
-
-				// Finally look at the size
-				st, err := os.Stat(path)
-				if err != nil {
-					return err
-				}
-				size := st.Size()
-
-				// Ignore certain items?
-				name := de.Name()
-				if helpers.FilenameMatchesGlobs(name, opts.IgnoreGlobs) {
-					log.Info().Str("path", path).Msg("Ignoring file as it matches ignore globs")
-					return nil
-				}
-				fItem := File{
-					Path:        path,
-					Destination: strings.TrimPrefix(ogPath, dir),
-					Name:        name,
-					Size:        size,
-				}
-				ret.Files = append(ret.Files, &fItem)
-				addedCount++
-
-				if addedCount%1000 == 0 {
-					log.Debug().
-						Int("count", addedCount).
-						Msg("Added files to inventory")
-					printMemUsage()
-				}
-
-				if opts.LimitFileCount > 0 && addedCount >= opts.LimitFileCount {
-					log.Warn().Msg("Reached file count limit, stopping walk")
-					return errHalt
-				}
-				return nil
-			},
-			Unsorted: true,
-			ErrorCallback: func(osPathname string, err error) godirwalk.ErrorAction {
-				// Desired way, but currently wrong (not halting) due to different error types.
-				if err == errHalt {
-					return godirwalk.Halt
-				}
-
-				return godirwalk.SkipNode
-			},
-		})
+		err := walkDir(dir, opts, ret)
 		if err != nil {
-			log.Warn().Err(err).Int("files", addedCount).Msg("error walking directory")
-		} else {
-			log.Info().Int("files", addedCount).Msg("Finished walking directory")
+			return nil, err
 		}
+		log.Info().Str("path", dir).Msg("Ignoring file as it matches ignore globs")
 	}
-	err := IndexInventory(ret, opts.MaxSuitcaseSize)
-	if err != nil {
-		return nil, err
+	if ierr := IndexInventory(ret, opts.MaxSuitcaseSize); ierr != nil {
+		return nil, ierr
 	}
 
-	err = ExpandSuitcaseNames(ret)
-	if err != nil {
-		return nil, err
+	if eserr := ExpandSuitcaseNames(ret); eserr != nil {
+		return nil, eserr
 	}
 	return ret, nil
 }
@@ -558,11 +458,12 @@ func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*Dire
 	return opt, nil
 }
 
-type caseSet map[int]int64
+// CaseSet is just a holder for case sizes
+type CaseSet map[int]int64
 
 // NewCaseSet returns a new set of suitcase params
 // This is used to keep track of sizing
-func NewCaseSet(maxSize int64) caseSet {
+func NewCaseSet(maxSize int64) CaseSet {
 	return map[int]int64{
 		1: maxSize,
 	}
@@ -590,4 +491,137 @@ func CreateOrReadInventory(inventoryFile string, v *viper.Viper, args []string, 
 	}
 	inventoryD.SummaryLog()
 	return inventoryD, nil
+}
+
+func checkItemSize(item *File, maxSize int64) error {
+	if item.Size > maxSize {
+		log.Warn().
+			Str("path", item.Path).
+			Int64("size", item.Size).
+			Int64("maxSize", maxSize).
+			Msg("file is too large for suitcase")
+		return errors.New("index contains at least one file that is too large")
+	}
+	return nil
+}
+
+func errCallback(osPathname string, err error) godirwalk.ErrorAction {
+	// Desired way, but currently wrong (not halting) due to different error types.
+	if err == errHalt {
+		return godirwalk.Halt
+	}
+	return godirwalk.SkipNode
+}
+
+func getInternalMeta(opts *DirectoryInventoryOptions) (map[string]string, error) {
+	internalMeta := map[string]string{}
+	for _, dir := range opts.TopLevelDirectories {
+		data, err := GetMetadataWithGlob(fmt.Sprintf("%v/%v", dir, opts.InternalMetadataGlob))
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range data {
+			internalMeta[k] = v
+		}
+	}
+	return internalMeta, nil
+}
+
+func printMemUsageIncr(addedCount, div int) {
+	if addedCount%div == 0 {
+		log.Debug().
+			Int("count", addedCount).
+			Msg("Added files to inventory")
+		printMemUsage()
+	}
+}
+
+func walkDir(dir string, opts *DirectoryInventoryOptions, ret *DirectoryInventory) error {
+	var addedCount int
+	err := godirwalk.Walk(dir, &godirwalk.Options{
+		FollowSymbolicLinks: opts.FollowSymlinks,
+		Callback: func(path string, de *godirwalk.Dirent) error {
+			// Skip top level directories from inventory
+			// var err error
+			if de.IsDir() {
+				return nil
+			}
+
+			// We may need the original path again for a symlink later on
+			ogPath := path
+			// No symlink...dirs?
+			if de.IsSymlink() {
+				target, skip := shouldSkipSymlink(path)
+				if skip {
+					return nil
+				}
+				// Finally...
+				if !opts.FollowSymlinks {
+					return nil
+				}
+				path = target
+			}
+
+			// Finally look at the size
+			st, err := os.Stat(path)
+			if err != nil {
+				return err
+			}
+
+			// Ignore certain items?
+			name := de.Name()
+			if helpers.FilenameMatchesGlobs(name, opts.IgnoreGlobs) {
+				return nil
+			}
+			ret.Files = append(ret.Files, &File{
+				Path:        path,
+				Destination: strings.TrimPrefix(ogPath, dir),
+				Name:        name,
+				Size:        st.Size(),
+			})
+			addedCount++
+
+			// Print memory usage every X files
+			printMemUsageIncr(addedCount, 1000)
+
+			if herr := haltIfLimit(opts, addedCount); herr != nil {
+				return herr
+			}
+
+			return nil
+		},
+		Unsorted:      true,
+		ErrorCallback: errCallback,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// shouldSkipSymlink returns the target of the symlink and a boolean on if it should be skipped
+func shouldSkipSymlink(path string) (string, bool) {
+	target, eerr := filepath.EvalSymlinks(path)
+	if eerr != nil {
+		log.Debug().Err(eerr).Msg("error evaluating symlink")
+		return target, true
+	}
+	s, serr := os.Stat(target)
+	if serr != nil {
+		log.Warn().Err(serr).Msg("Error stating file")
+		return target, true
+	}
+	// Finally, if a link to a dir...skip it always
+	if s.IsDir() {
+		return target, true
+	}
+	return target, false
+}
+
+func haltIfLimit(opts *DirectoryInventoryOptions, addedCount int) error {
+	if opts.LimitFileCount > 0 && addedCount >= opts.LimitFileCount {
+		log.Warn().Msg("Reached file count limit, stopping walk")
+		return errHalt
+	}
+	return nil
 }

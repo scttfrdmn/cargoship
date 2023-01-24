@@ -29,6 +29,15 @@ type CLIMeta struct {
 	Version      string                 `yaml:"version"`
 }
 
+// MustComplete returns the completed file or panics if an error occurs
+func (c *CLIMeta) MustComplete(od string) string {
+	got, err := c.Complete(od)
+	if err != nil {
+		panic(err)
+	}
+	return got
+}
+
 // Complete is the final method for a CLI meta thing
 func (c *CLIMeta) Complete(od string) (string, error) {
 	n := time.Now()

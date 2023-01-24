@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
 // ConvertDirsToAboluteDirs turns directories in to absolute path directories
@@ -108,6 +110,7 @@ func WriteHashFile(hs []HashSet, o io.Writer) error {
 func FilenameMatchesGlobs(filename string, globs []string) bool {
 	for _, glob := range globs {
 		if ok, _ := filepath.Match(glob, filename); ok {
+			log.Debug().Str("path", filename).Msg("matched on file globbing")
 			return true
 		}
 	}

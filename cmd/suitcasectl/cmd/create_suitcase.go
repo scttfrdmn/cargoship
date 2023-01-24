@@ -17,104 +17,15 @@ import (
 // NewCreateSuitcaseCmd represents the createSuitcase command
 func NewCreateSuitcaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "suitcase [--inventory-file=INVENTORY_FILE | TARGET_DIR...]",
-		Short:   "Create a suitcase",
-		Long:    "Create a suitcase from either an inventory file or multiple target directories.",
-		Args:    cobra.ArbitraryArgs,
-		Aliases: []string{"suitecase"}, // Encouraging bad habits
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Get option bits
-			inventoryFile, onlyInventory, err := inventoryOptsWithCobra(cmd, args)
-			if err != nil {
-				return err
-			}
-
-			// Create an inventory file if one isn't specified
-			inventoryD, err := inventory.CreateOrReadInventory(inventoryFile, userOverrides, args, outDir, version)
-			if err != nil {
-				return err
-			}
-
-			if !onlyInventory {
-				opts := &config.SuitCaseOpts{
-					Destination:  outDir,
-					EncryptInner: inventoryD.Options.EncryptInner,
-					HashInner:    inventoryD.Options.HashInner,
-					Format:       inventoryD.Options.SuitcaseFormat,
-				}
-				err := opts.EncryptToCobra(cmd)
-				if err != nil {
-					return err
-				}
-
-				po := &cmdhelpers.ProcessOpts{
-					Inventory:    inventoryD,
-					SuitcaseOpts: opts,
-					Concurrency:  mustGetCmd[int](cmd, "concurrency"),
-				}
-				createdFiles, err := cmdhelpers.ProcessLogging(po)
-				if err != nil {
-					return err
-				}
-				hashes = createHashes(createdFiles)
-				return nil
-			}
-			log.Warn().Msg("Only creating inventory file, no suitcase archives")
-			return nil
-		},
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			// Get this first, it'll be important
-			var err error
-			outDir, err = cmdhelpers.NewOutDirWithCmd(cmd)
-			checkErr(err, "Could not figure out the output directory")
-
-			setupMultiLogging(outDir)
-			hashes = []helpers.HashSet{}
-			cliMeta = cmdhelpers.NewCLIMeta(args, cmd)
-
-			userOverrides, err = userOverridesWithCobra(cmd, args)
-			checkErr(err, "")
-			cliMeta.ViperConfig = userOverrides.AllSettings()
-		},
-		PersistentPostRun: func(cmd *cobra.Command, args []string) {
-			metaF, err := cliMeta.Complete(outDir)
-			checkErr(err, "")
-
-			log.Info().Str("file", metaF).Msg("Created meta file")
-
-			// Hash the outer items if asked
-			hashOuter, err := cmd.Flags().GetBool("hash-outer")
-			checkErr(err, "")
-			if hashOuter {
-				hashes = append(hashes, helpers.HashSet{
-					Filename: strings.TrimPrefix(metaF, outDir+"/"),
-					Hash:     helpers.MustGetSha256(metaF),
-				})
-
-				hashFile := path.Join(outDir, "suitcasectl.sha256")
-				log.Info().Str("hash-file", hashFile).Msg("Creating hashes")
-				hashF, err := os.Create(hashFile) // nolint:gosec
-				checkErr(err, "")
-				defer dclose(hashF)
-				err = helpers.WriteHashFile(hashes, hashF)
-				checkErr(err, "")
-			}
-
-			// stats.Runtime = stats.End.Sub(stats.Start)
-			log.Info().Str("log-file", logFile).Msg("Switching back to stderr logger and closing the multi log writer so we can hash it")
-			setupLogging(os.Stderr)
-			cerr := logF.Close()
-			checkErr(cerr, "Could not close file...does this really matter?")
-
-			log.Info().
-				// Dur("runtime", stats.Runtime).
-				Str("runtime", cliMeta.CompletedAt.Sub(*cliMeta.StartedAt).String()).
-				Str("start", cliMeta.StartedAt.String()).
-				Str("end", cliMeta.CompletedAt.String()).
-				Msg("Completed")
-		},
+		Use:               "suitcase [--inventory-file=INVENTORY_FILE | TARGET_DIR...]",
+		Short:             "Create a suitcase",
+		Long:              "Create a suitcase from either an inventory file or multiple target directories.",
+		Args:              cobra.ArbitraryArgs,
+		Aliases:           []string{"suitecase"}, // Encouraging bad habits
+		RunE:              createRunE,
+		PersistentPreRun:  createPreRun,
+		PersistentPostRun: createPostRun,
 	}
-
 	bindInventoryCmd(cmd)
 
 	return cmd
@@ -197,4 +108,102 @@ func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, er
 		}
 	}
 	return userOverrides, nil
+}
+
+func writeHashFile() error {
+	hashFile := path.Join(outDir, "suitcasectl.sha256")
+	log.Info().Str("hash-file", hashFile).Msg("Creating hashes")
+	hashF, err := os.Create(hashFile) // nolint:gosec
+	if err != nil {
+		return err
+	}
+	defer dclose(hashF)
+	err = helpers.WriteHashFile(hashes, hashF)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func createPostRun(cmd *cobra.Command, args []string) {
+	metaF := cliMeta.MustComplete(outDir)
+	log.Info().Str("file", metaF).Msg("Created meta file")
+
+	// Hash the outer items if asked
+	if mustGetCmd[bool](cmd, "hash-outer") {
+		hashes = append(hashes, helpers.HashSet{
+			Filename: strings.TrimPrefix(metaF, outDir+"/"),
+			Hash:     helpers.MustGetSha256(metaF),
+		})
+		err := writeHashFile()
+		checkErr(err, "")
+	}
+
+	// stats.Runtime = stats.End.Sub(stats.Start)
+	log.Info().Str("log-file", logFile).Msg("Switching back to stderr logger and closing the multi log writer so we can hash it")
+	setupLogging(os.Stderr)
+	// Do we really care if this closes? maybe...
+	_ = logF.Close()
+
+	log.Info().
+		Str("runtime", cliMeta.CompletedAt.Sub(*cliMeta.StartedAt).String()).
+		Time("start", *cliMeta.StartedAt).
+		Time("end", *cliMeta.CompletedAt).
+		Msg("Completed")
+}
+
+func createPreRun(cmd *cobra.Command, args []string) {
+	// Get this first, it'll be important
+	var err error
+	outDir, err = cmdhelpers.NewOutDirWithCmd(cmd)
+	checkErr(err, "Could not figure out the output directory")
+
+	setupMultiLogging(outDir)
+	hashes = []helpers.HashSet{}
+	cliMeta = cmdhelpers.NewCLIMeta(args, cmd)
+
+	userOverrides, err = userOverridesWithCobra(cmd, args)
+	checkErr(err, "")
+	cliMeta.ViperConfig = userOverrides.AllSettings()
+}
+
+func createRunE(cmd *cobra.Command, args []string) error {
+	// Get option bits
+	inventoryFile, onlyInventory, err := inventoryOptsWithCobra(cmd, args)
+	if err != nil {
+		return err
+	}
+
+	// Create an inventory file if one isn't specified
+	inventoryD, err := inventory.CreateOrReadInventory(inventoryFile, userOverrides, args, outDir, version)
+	if err != nil {
+		return err
+	}
+
+	if !onlyInventory {
+		opts := &config.SuitCaseOpts{
+			Destination:  outDir,
+			EncryptInner: inventoryD.Options.EncryptInner,
+			HashInner:    inventoryD.Options.HashInner,
+			Format:       inventoryD.Options.SuitcaseFormat,
+		}
+		err := opts.EncryptToCobra(cmd)
+		if err != nil {
+			return err
+		}
+
+		po := &cmdhelpers.ProcessOpts{
+			Inventory:    inventoryD,
+			SuitcaseOpts: opts,
+			Concurrency:  mustGetCmd[int](cmd, "concurrency"),
+		}
+		createdFiles, err := cmdhelpers.ProcessLogging(po)
+		if err != nil {
+			return err
+		}
+		hashes = createHashes(createdFiles)
+		return nil
+	}
+	log.Warn().Msg("Only creating inventory file, no suitcase archives")
+	return nil
 }
