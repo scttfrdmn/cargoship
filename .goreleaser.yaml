@@ -11,15 +11,15 @@ env:
 builds:
   - env:
       - CGO_ENABLED=0
-    main: ./cli
+    main: ./cmd/suitcasectl
     mod_timestamp: '{{ .CommitTimestamp }}'
     flags:
       - -trimpath
     ldflags: |
       -s -w
-      -X {{ .ModulePath }}/cli/cmd.date={{ .CommitTimestamp }}
-      -X {{ .ModulePath }}/cli/cmd.version={{ .Tag }}
-      -X {{ .ModulePath }}/cli/cmd.commit={{ .ShortCommit }}
+      -X {{ .ModulePath }}/cmd/suitcasectl/cmd.date={{ .CommitTimestamp }}
+      -X {{ .ModulePath }}/cmd/suitcasectl/cmd.version={{ .Tag }}
+      -X {{ .ModulePath }}/cmd/suitcasectl/cmd.commit={{ .ShortCommit }}
     goos:
       - linux
       - darwin
