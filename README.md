@@ -1,14 +1,40 @@
 # Overview
 
-[![pipeline status](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/badges/main/pipeline.svg)](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/commits/main) [![coverage report](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/badges/main/coverage.svg)](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/commits/main) [![Latest Release](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/-/badges/release.svg)](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/releases)
+[![Go Reference](https://pkg.go.dev/badge/gitlab.oit.duke.edu/devil-ops/suitcasectl.svg)](https://pkg.go.dev/gitlab.oit.duke.edu/devil-ops/suitcasectl)
+[![pipeline status](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/badges/main/pipeline.svg)](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/commits/main)
+[![coverage report](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/badges/main/coverage.svg)](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/commits/main)
+[![Latest Release](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/-/badges/release.svg)](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/releases)
+
+SuitcaseCTL is a tool for packaging up research data in a standardized format (tar, tar.gz) with the following additional features:
+
+* Optional GPG encryption, either on the archive itself, or the files within the archive
+* Splitting a single directory in to multiple tar files. This allows for smaller files to be transported to the cloud, and allows for faster archive creation since the multiple archives are created in parallel
+* “Inventory” file which contains hashes and locations of all files in the archives, along with optional metadata
+* CLI metadata file that contains the options the archive was created with
 
 ## Installation
+
+### Prebuilt Binaries
+
+Prebuilt binaries are the preferred and easiest way to get suitcasectl on your
+host. If there is no available prebuilt option for your OS, please [create a new
+issue](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/-/issues/new) and we'll
+get it in there!
 
 Download a package from the
 [releases](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/releases) page,
 or use the [devil-ops
 package](https://gitlab.oit.duke.edu/devil-ops/installing-devil-ops-packages)
 for homebrew, yum, etc.
+
+### Local builds
+
+You can also use `go install` to download and build the latest commits to `main` (Or any other branch/tag)
+
+```bash
+$ go install gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl@main
+...
+```
 
 ## Global Flags
 
