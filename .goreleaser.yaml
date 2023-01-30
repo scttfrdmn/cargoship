@@ -3,6 +3,7 @@ gitlab_urls:
   api: https://gitlab.oit.duke.edu/api/v4/
   download: https://gitlab.oit.duke.edu
   use_package_registry: true
+  use_job_token: true
 env:
   - VAULT_ADDR={{ .Env.VAULT_ADDR }}
   - TRANSIT_SECRET_ENGINE_PATH=ssi-systems/transit
@@ -52,6 +53,9 @@ nfpms:
     priority: optional
     maintainer: Drew Stinnett <drew.stinnett@duke.edu>
     homepage: https://gitlab.oit.duke.edu/devil-ops/suitcasectl
+    rpm:
+      signature:
+        key_file: "{{ .Env.GPG_KEY_PATH }}"
     formats:
       - rpm
   - id: debs
