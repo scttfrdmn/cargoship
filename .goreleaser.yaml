@@ -51,7 +51,7 @@ nfpms:
     section: admin
     priority: optional
     maintainer: Drew Stinnett <drew.stinnett@duke.edu>
-    homepage: https://gitlab.oit.duke.edu/devil-ops/data-suitcase
+    homepage: https://gitlab.oit.duke.edu/devil-ops/suitcasectl
     formats:
       - rpm
   - id: debs
@@ -60,7 +60,7 @@ nfpms:
     vendor: Duke University
     section: admin
     priority: optional
-    homepage: https://gitlab.oit.duke.edu/devil-ops/data-suitcase
+    homepage: https://gitlab.oit.duke.edu/devil-ops/suitcasectl
     maintainer: Drew Stinnett <drew.stinnett@duke.edu>
     formats:
       - deb
