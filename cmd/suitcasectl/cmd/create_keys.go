@@ -3,7 +3,7 @@ package cmd
 import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/gpg"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/gpg"
 )
 
 // createKeysCmd represents the createKeys command

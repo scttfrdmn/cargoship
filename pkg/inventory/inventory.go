@@ -21,7 +21,7 @@ import (
 
 	"github.com/karrick/godirwalk"
 	"github.com/rs/zerolog/log"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
 	"golang.org/x/tools/godoc/util"
 )
 

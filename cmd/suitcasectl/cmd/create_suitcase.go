@@ -8,10 +8,10 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cmd/suitcasectl/cmdhelpers"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmdhelpers"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 )
 
 // NewCreateSuitcaseCmd represents the createSuitcase command

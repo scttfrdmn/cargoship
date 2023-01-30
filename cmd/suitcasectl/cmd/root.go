@@ -14,8 +14,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cmd/suitcasectl/cmdhelpers"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmdhelpers"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"

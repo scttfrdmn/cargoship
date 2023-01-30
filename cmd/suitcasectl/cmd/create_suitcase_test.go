@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 )
 
 func TestNewSuitcaseWithDir(t *testing.T) {

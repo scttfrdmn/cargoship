@@ -8,7 +8,7 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/spf13/cobra"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/gpg"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/gpg"
 )
 
 // SuitCaseOpts is options for a given suitcase

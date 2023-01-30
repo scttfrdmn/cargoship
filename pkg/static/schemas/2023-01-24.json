@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory/directory-inventory",
+    "$id": "https://gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory/directory-inventory",
     "$ref": "#/$defs/DirectoryInventory",
     "$defs": {
       "CLIMeta": {

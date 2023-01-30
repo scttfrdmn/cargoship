@@ -5,7 +5,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/cmd/suitcasectl/cmd"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd"
 )
 
 func main() {
