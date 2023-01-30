@@ -70,4 +70,4 @@ release:
 security:
   stage: test
   script:
-    - govulncheck ./..
+    - govulncheck ./...
