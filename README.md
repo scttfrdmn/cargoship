@@ -20,6 +20,13 @@ or use the [devil-ops
 package](https://gitlab.oit.duke.edu/devil-ops/installing-devil-ops-packages)
 for homebrew, yum, etc.
 
+You can also use `go install` to download and build the latest commits to `main` (Or any other branch/tag)
+
+```bash
+$ go install gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl@main
+...
+```
+
 ## Global Flags
 
 `-v` or `--verbose` : Enable debug logs.
