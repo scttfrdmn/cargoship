@@ -66,3 +66,8 @@ release:
   retry:
     max: 2
     when: runner_system_failure
+## security looks for common security issues
+security:
+  stage: test
+  script:
+    - govulncheck ./..
