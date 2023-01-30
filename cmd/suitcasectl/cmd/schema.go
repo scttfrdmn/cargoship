@@ -6,7 +6,7 @@ import (
 
 	"github.com/invopop/jsonschema"
 	"github.com/spf13/cobra"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 )
 
 // schemaCmd represents the schema command

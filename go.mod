@@ -1,4 +1,4 @@
-module gitlab.oit.duke.edu/devil-ops/data-suitcase
+module gitlab.oit.duke.edu/devil-ops/suitcasectl
 
 go 1.19
 

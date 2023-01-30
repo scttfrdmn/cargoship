@@ -13,13 +13,13 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/tar"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/targpg"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/targz"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/targzgpg"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/tar"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/targpg"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/targz"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/targzgpg"
 )
 
 // Suitcase is the interface that describes what a Suitcase does

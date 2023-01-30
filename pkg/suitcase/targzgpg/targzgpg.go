@@ -10,10 +10,10 @@ import (
 	"github.com/klauspost/pgzip"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/helpers"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/inventory"
-	"gitlab.oit.duke.edu/devil-ops/data-suitcase/pkg/suitcase/tar"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/tar"
 )
 
 // Suitcase holds all the pieces
