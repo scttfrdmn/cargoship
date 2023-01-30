@@ -20,11 +20,8 @@ builds:
       -X {{ .ModulePath }}/cmd/suitcasectl/cmd.date={{ .CommitTimestamp }}
       -X {{ .ModulePath }}/cmd/suitcasectl/cmd.version={{ .Tag }}
       -X {{ .ModulePath }}/cmd/suitcasectl/cmd.commit={{ .ShortCommit }}
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
+    targets:
+      - go_first_class
     binary: 'suitcasectl'
 archives:
   - format: tar.gz
