@@ -48,14 +48,13 @@ check-release:
     - /scripts/packaging-validation.sh
     - eval $(/scripts/vault-env.sh ssi-systems-${CI_PROJECT_NAME}-packaging)
     - goreleaser check
+  rules:
+    - if: '$CI_COMMIT_TAG !~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
   retry:
     max: 2
     when: runner_system_failure
 release:
   stage: release
-  image:
-    name: gitlab-registry.oit.duke.edu/devil-ops/goreleaser:v0-1-8
-    entrypoint: ['']
   rules:
     - if: '$CI_COMMIT_TAG =~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
   variables:
@@ -71,3 +70,5 @@ security:
   stage: test
   script:
     - govulncheck ./...
+  rules:
+    - if: '$CI_COMMIT_TAG !~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
