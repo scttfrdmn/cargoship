@@ -148,3 +148,10 @@ We will try to keep the inventory as standardized as possible, with that said,
 we are tracking schema changes inside of `pkg/static/schemas`. These files
 represent the schema at a given time. This can be generated using a hidden
 subcommand: `suitcasectl schema > pkg/static/schemas/YYYY-MM-DD.json`
+
+### CLI Completion
+
+If you are using either our homebrew or deb/rpm packages, command line
+completion is enabled by default. If you aren't using one of these packages, you
+can enable completion using `suitcasectl completion ...`. See `suitcasectl
+completion $YOUR_SHELL -h` for help on your specific shell.
