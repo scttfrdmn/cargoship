@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/karrick/godirwalk"
@@ -24,6 +25,61 @@ import (
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
 	"golang.org/x/tools/godoc/util"
 )
+
+// Format is the format the inventory will use, such as yaml, json, etc
+type Format int
+
+const (
+	// NullFormat is the unset value for this type
+	NullFormat = iota
+	// YAMLFormat is for yaml
+	YAMLFormat
+	// JSONFormat is for yaml
+	JSONFormat
+)
+
+// DefaultSuitcaseFormat is just the default format we're going to use for a
+// suitcase. Hopefully this fits for most use cases, but can always be
+// overridden
+const DefaultSuitcaseFormat string = "tar.gz"
+
+var formatMap map[string]Format = map[string]Format{
+	"yaml": YAMLFormat,
+	"json": JSONFormat,
+	"":     NullFormat,
+}
+
+// FormatCompletion returns shell completion
+func FormatCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	return nonEmptyKeys(formatMap), cobra.ShellCompDirectiveNoFileComp
+}
+
+func (f Format) String() string {
+	m := reverseMap(formatMap)
+	if v, ok := m[f]; ok {
+		return v
+	}
+	panic("invalid format")
+}
+
+// Type satisfies part of the pflags.Value interface
+func (f Format) Type() string {
+	return "Format"
+}
+
+// Set helps fulfill the pflag.Value interface
+func (f *Format) Set(v string) error {
+	if v, ok := formatMap[v]; ok {
+		*f = v
+		return nil
+	}
+	return fmt.Errorf("ProductionLevel should be one of: %v", nonEmptyKeys(formatMap))
+}
+
+// MarshalJSON ensures that json conversions use the string value here, not the int value
+func (f *Format) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%v\"", f.String())), nil
+}
 
 // Inventoryer is an interface to define what an Inventory Operator does
 type Inventoryer interface {
@@ -397,17 +453,26 @@ func NewInventoryerWithFilename(filename string) (Inventoryer, error) {
 	return ir, nil
 }
 
+func suitcaseFormatWithViper(v *viper.Viper) string {
+	f := strings.TrimPrefix(v.GetString("suitcase-format"), ".")
+	if f != "" {
+		return f
+	}
+	return DefaultSuitcaseFormat
+}
+
 // NewDirectoryInventoryOptionsWithViper creates new inventory options with viper
 func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*DirectoryInventoryOptions, error) {
 	var err error
 
+	log.Warn().Interface("v", v.AllSettings()).Send()
 	opt := &DirectoryInventoryOptions{
 		TopLevelDirectories:   args,
 		InternalMetadataGlob:  v.GetString("internal-metadata-glob"),
 		ExternalMetadataFiles: v.GetStringSlice("external-metadata-file"),
 		IgnoreGlobs:           v.GetStringSlice("ignore-glob"),
 		LimitFileCount:        v.GetInt("limit-file-count"),
-		SuitcaseFormat:        strings.TrimPrefix(v.GetString("suitcase-format"), "."),
+		SuitcaseFormat:        suitcaseFormatWithViper(v),
 		Prefix:                v.GetString("prefix"),
 		EncryptInner:          v.GetBool("encrypt-inner"),
 		FollowSymlinks:        v.GetBool("follow-symlinks"),
@@ -624,4 +689,25 @@ func haltIfLimit(opts *DirectoryInventoryOptions, addedCount int) error {
 		return errHalt
 	}
 	return nil
+}
+
+// nonEmptyKeys returns the non-empty keys of a map in an array
+func nonEmptyKeys[V any](m map[string]V) []string {
+	var ret []string
+	for k := range m {
+		if k != "" {
+			ret = append(ret, k)
+		}
+	}
+	sort.Strings(ret)
+	return ret
+}
+
+// reverseMap takes a map[k]v and returns a map[v]k
+func reverseMap[K string, V string | Format](m map[K]V) map[V]K {
+	ret := make(map[V]K, len(m))
+	for k, v := range m {
+		ret[v] = k
+	}
+	return ret
 }

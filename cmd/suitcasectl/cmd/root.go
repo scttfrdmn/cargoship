@@ -8,8 +8,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"reflect"
-	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -160,7 +158,7 @@ func setupLogging(lo io.Writer) {
 	}
 }
 
-func setupMultiLogging(o string) {
+func setupMultiLogging(o string) error {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
 	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -177,52 +175,14 @@ func setupMultiLogging(o string) {
 	logFile = path.Join(o, "suitcasectl.log")
 	var err error
 	logF, err = os.Create(logFile) // nolint:gosec
-	checkErr(err, "Error Creating log file")
+	if err != nil {
+		return err
+	}
 	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr}, logF)
 	if trace {
 		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
 	} else {
 		log.Logger = zerolog.New(multi).With().Timestamp().Logger()
 	}
-}
-
-// mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command
-func mustGetCmd[T []int | int | string | bool | time.Duration](cmd *cobra.Command, s string) T {
-	switch any(new(T)).(type) {
-	case *int:
-		item, err := cmd.Flags().GetInt(s)
-		panicIfErr(err)
-		return any(item).(T)
-	case *string:
-		item, err := cmd.Flags().GetString(s)
-		panicIfErr(err)
-		return any(item).(T)
-	case *bool:
-		item, err := cmd.Flags().GetBool(s)
-		panicIfErr(err)
-		return any(item).(T)
-	case *[]int:
-		item, err := cmd.Flags().GetIntSlice(s)
-		panicIfErr(err)
-		return any(item).(T)
-	case *time.Time:
-		item, err := cmd.Flags().GetDuration(s)
-		panicIfErr(err)
-		return any(item).(T)
-	default:
-		panic(fmt.Sprintf("unexpected use of mustGetCmd: %v", reflect.TypeOf(s)))
-	}
-}
-
-func panicIfErr(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
-func dclose(c io.Closer) {
-	err := c.Close()
-	if err != nil {
-		log.Warn().Err(err).Send()
-	}
+	return nil
 }
