@@ -39,7 +39,7 @@ var (
 // NewRootCmd represents the base command when called without any subcommands
 func NewRootCmd(lo io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "suitcase",
+		Use:     "suitcasectl",
 		Short:   "Used for creating encrypted blobs of files and directories for cold storage",
 		Version: version,
 		Long: `This tool generates a blob of encrypted files and directories that can be later
