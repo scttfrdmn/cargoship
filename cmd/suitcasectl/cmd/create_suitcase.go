@@ -121,7 +121,6 @@ func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, er
 		log.Info().Str("override-file", userOverrides.ConfigFileUsed()).Msg("Found user overrides, using them")
 	}
 	for _, field := range []string{"follow-symlinks", "ignore-glob", "inventory-format", "internal-metadata-glob", "max-suitcase-size", "prefix", "user", "suitcase-format"} {
-		log.Warn().Str("field", field).Send()
 		err := userOverrides.BindPFlag(field, cmd.PersistentFlags().Lookup(field))
 		if err != nil {
 			return nil, err

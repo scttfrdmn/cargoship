@@ -465,7 +465,6 @@ func suitcaseFormatWithViper(v *viper.Viper) string {
 func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*DirectoryInventoryOptions, error) {
 	var err error
 
-	log.Warn().Interface("v", v.AllSettings()).Send()
 	opt := &DirectoryInventoryOptions{
 		TopLevelDirectories:   args,
 		InternalMetadataGlob:  v.GetString("internal-metadata-glob"),
