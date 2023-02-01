@@ -79,5 +79,5 @@ benchmarks:
     - if: '$CI_COMMIT_TAG !~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
   script:
    - ./scripts/setup_benchmarks.sh
-   - go test -run=^$ -count=5 -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd'
-   - go test -run=^$ -count=5 -benchmem=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd'
+   - go test -run=^$ -count=5 -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd
+   - go test -run=^$ -count=5 -benchmem=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd
