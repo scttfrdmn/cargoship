@@ -11,6 +11,7 @@ if [[ ! -d American-Gut ]]; then
 fi
 
 if [[ ! -d BBBC005_v1_images ]]; then
-  wget https://data.broadinstitute.org/bbbc/BBBC005/BBBC005_v1_images.zip
-  unzip BBBC005_v1_images.zip
+  wget -q https://data.broadinstitute.org/bbbc/BBBC005/BBBC005_v1_images.zip
+  unzip -q BBBC005_v1_images.zip
+  rm -f BBBC005_v1_images.zip
 fi
