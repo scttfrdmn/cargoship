@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
@@ -21,21 +20,6 @@ type ProcessOpts struct {
 	Concurrency  int
 	Inventory    *inventory.DirectoryInventory
 	SuitcaseOpts *config.SuitCaseOpts
-}
-
-// NewOutDirWithCmd generates a new output directory using cobra.Command options
-func NewOutDirWithCmd(cmd *cobra.Command) (string, error) {
-	o, err := cmd.Flags().GetString("output-dir")
-	if err != nil {
-		return "", err
-	}
-	if o == "" {
-		o, err = os.MkdirTemp("", "suitcasectl-")
-		if err != nil {
-			return "", err
-		}
-	}
-	return o, nil
 }
 
 // ProcessLogging processes logging for a run

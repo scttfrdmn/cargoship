@@ -15,7 +15,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/gpg"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 )
 
@@ -44,7 +43,7 @@ func (a Suitcase) Close() error {
 }
 
 // Add file to the archive.
-func (a Suitcase) Add(f inventory.File) (*helpers.HashSet, error) {
+func (a Suitcase) Add(f inventory.File) (*inventory.HashSet, error) {
 	info, err := os.Lstat(f.Path) // #nosec
 	if err != nil {
 		return nil, err
@@ -71,7 +70,7 @@ func (a Suitcase) Add(f inventory.File) (*helpers.HashSet, error) {
 	}
 
 	defer dclose(file)
-	var hs *helpers.HashSet
+	var hs *inventory.HashSet
 	if a.opts.HashInner {
 		absPath, ferr := filepath.Abs(f.Path)
 		if ferr != nil {
@@ -87,7 +86,7 @@ func (a Suitcase) Add(f inventory.File) (*helpers.HashSet, error) {
 
 		// Calculate and return the hash
 		h := sha256.Sum256(buf.Bytes())
-		hs = &helpers.HashSet{
+		hs = &inventory.HashSet{
 			Filename: absPath,
 			Hash:     fmt.Sprintf("%x", h),
 		}

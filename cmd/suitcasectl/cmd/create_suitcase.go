@@ -10,8 +10,13 @@ import (
 	"github.com/spf13/viper"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmdhelpers"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
+)
+
+var (
+	inventoryFormat inventory.Format
+	suitcaseFormat  suitcase.Format
 )
 
 // NewCreateSuitcaseCmd represents the createSuitcase command
@@ -55,13 +60,13 @@ func inventoryOptsWithCobra(cmd *cobra.Command, args []string) (string, bool, er
 	return inventoryFile, onlyInventory, nil
 }
 
-func createHashes(s []string) []helpers.HashSet {
-	var hs []helpers.HashSet
+func createHashes(s []string) []inventory.HashSet {
+	var hs []inventory.HashSet
 	for _, f := range s {
 		log.Info().Str("file", f).Msg("Created file")
-		hs = append(hs, helpers.HashSet{
+		hs = append(hs, inventory.HashSet{
 			Filename: strings.TrimPrefix(f, outDir+"/"),
-			Hash:     helpers.MustGetSha256(f),
+			Hash:     mustGetSha256(f),
 		})
 	}
 	return hs
@@ -70,7 +75,14 @@ func createHashes(s []string) []helpers.HashSet {
 func bindInventoryCmd(cmd *cobra.Command) {
 	cmd.PersistentFlags().Int("concurrency", 10, "Number of concurrent files to create")
 	cmd.PersistentFlags().String("inventory-file", "", "Use the given inventory file to create the suitcase")
-	cmd.PersistentFlags().String("inventory-format", "yaml", "Format for the inventory. Should be 'yaml' or 'json'")
+
+	// Inventory Format needs some extra love for auto complete
+	cmd.PersistentFlags().Var(&inventoryFormat, "inventory-format", "Format for the inventory. Should be 'yaml' or 'json'")
+	if err := cmd.RegisterFlagCompletionFunc("inventory-format", inventory.FormatCompletion); err != nil {
+		panic(err)
+	}
+	cmd.PersistentFlags().Lookup("inventory-format").DefValue = "yaml"
+
 	cmd.PersistentFlags().String("max-suitcase-size", "0", "Maximum size for the set of suitcases generated. If no unit is specified, 'bytes' is assumed. 0 means no limit.")
 	cmd.PersistentFlags().String("internal-metadata-glob", "suitcase-meta*", "Glob pattern for internal metadata files. This should be directly under the top level directories of the targets that are being packaged up. Multiple matches will be included if found.")
 	cmd.PersistentFlags().StringArray("external-metadata-file", []string{}, "Additional files to include as metadata in the inventory. This should NOT be part of the suitcase target directories...use internal-metadata-glob for those")
@@ -81,10 +93,16 @@ func bindInventoryCmd(cmd *cobra.Command) {
 	cmd.PersistentFlags().Bool("follow-symlinks", false, "Follow symlinks when traversing the target directories and files")
 	cmd.PersistentFlags().Int("buffer-size", 1024, "Buffer size if using a YAML inventory.")
 	cmd.PersistentFlags().Int("limit-file-count", 0, "Limit the number of files to include in the inventory. If 0, no limit is applied. Should only be used for debugging")
-	cmd.PersistentFlags().String("suitcase-format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")
-	cmd.PersistentFlags().String("user", "", "Username to insert into the suitcase filename. If omitted, we'll try and detect from the current user")
 
-	// Prefix will be the first part of the suitcase name
+	// cmd.PersistentFlags().String("suitcase-format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")
+	// Inventory Format needs some extra love for auto complete
+	cmd.PersistentFlags().Var(&suitcaseFormat, "suitcase-format", "Format for the suitcase. Should be 'tar', 'tar.gpg', 'tar.gz' or 'tar.gz.gpg'")
+	if err := cmd.RegisterFlagCompletionFunc("suitcase-format", suitcase.FormatCompletion); err != nil {
+		panic(err)
+	}
+	cmd.PersistentFlags().Lookup("suitcase-format").DefValue = inventory.DefaultSuitcaseFormat
+
+	cmd.PersistentFlags().String("user", "", "Username to insert into the suitcase filename. If omitted, we'll try and detect from the current user")
 	cmd.PersistentFlags().String("prefix", "suitcase", "Prefix to insert into the suitcase filename")
 	cmd.PersistentFlags().StringArrayP("public-key", "p", []string{}, "Public keys to use for encryption")
 	cmd.PersistentFlags().Bool("exclude-systems-pubkeys", false, "By default, we will include the systems teams pubkeys, unless this option is specified")
@@ -118,7 +136,7 @@ func writeHashFile() error {
 		return err
 	}
 	defer dclose(hashF)
-	err = helpers.WriteHashFile(hashes, hashF)
+	err = inventory.WriteHashFile(hashes, hashF)
 	if err != nil {
 		return err
 	}
@@ -131,9 +149,9 @@ func createPostRun(cmd *cobra.Command, args []string) {
 
 	// Hash the outer items if asked
 	if mustGetCmd[bool](cmd, "hash-outer") {
-		hashes = append(hashes, helpers.HashSet{
+		hashes = append(hashes, inventory.HashSet{
 			Filename: strings.TrimPrefix(metaF, outDir+"/"),
-			Hash:     helpers.MustGetSha256(metaF),
+			Hash:     mustGetSha256(metaF),
 		})
 		err := writeHashFile()
 		checkErr(err, "")
@@ -155,11 +173,14 @@ func createPostRun(cmd *cobra.Command, args []string) {
 func createPreRun(cmd *cobra.Command, args []string) {
 	// Get this first, it'll be important
 	var err error
-	outDir, err = cmdhelpers.NewOutDirWithCmd(cmd)
+	outDir, err = newOutDirWithCmd(cmd)
 	checkErr(err, "Could not figure out the output directory")
 
-	setupMultiLogging(outDir)
-	hashes = []helpers.HashSet{}
+	err = setupMultiLogging(outDir)
+	if err != nil {
+		panic(err)
+	}
+	hashes = []inventory.HashSet{}
 	cliMeta = cmdhelpers.NewCLIMeta(args, cmd)
 
 	userOverrides, err = userOverridesWithCobra(cmd, args)

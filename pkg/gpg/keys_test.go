@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,4 +60,13 @@ func TestNewKeyFilesWithPair(t *testing.T) {
 	got, err := NewKeyFilesWithPair(gotKp, "")
 	require.NoError(t, err)
 	require.Equal(t, 2, len(got))
+}
+
+func TestProductionKeyTypeCompletion(t *testing.T) {
+	got, _ := KeyTypeCompletion(&cobra.Command{}, []string{}, "")
+	require.Equal(
+		t,
+		[]string{"rsa", "x25519"},
+		got,
+	)
 }

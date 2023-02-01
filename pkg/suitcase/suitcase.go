@@ -10,11 +10,12 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/tar"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/targpg"
@@ -22,10 +23,66 @@ import (
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/targzgpg"
 )
 
+// Format is the format the inventory will use, such as yaml, json, etc
+type Format int
+
+const (
+	// NullFormat is the unset value for this type
+	NullFormat = iota
+	// TarFormat is for tar
+	TarFormat
+	// TarGzFormat is for tar.gz
+	TarGzFormat
+	// TarGzGpgFormat is for encrypted tar.gz (tar.gz.gpg)
+	TarGzGpgFormat
+	// TarGpgFormat is for encrypted tar.gz (tar.gpg)
+	TarGpgFormat
+)
+
+var formatMap map[string]Format = map[string]Format{
+	"tar":        TarFormat,
+	"tar.gpg":    TarGpgFormat,
+	"tar.gz":     TarGzFormat,
+	"tar.gz.gpg": TarGzGpgFormat,
+	"":           NullFormat,
+}
+
+// FormatCompletion returns shell completion
+func FormatCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	return nonEmptyKeys(formatMap), cobra.ShellCompDirectiveNoFileComp
+}
+
+func (f Format) String() string {
+	m := reverseMap(formatMap)
+	if v, ok := m[f]; ok {
+		return v
+	}
+	panic("invalid format")
+}
+
+// Type satisfies part of the pflags.Value interface
+func (f Format) Type() string {
+	return "Format"
+}
+
+// Set helps fulfill the pflag.Value interface
+func (f *Format) Set(v string) error {
+	if v, ok := formatMap[v]; ok {
+		*f = v
+		return nil
+	}
+	return fmt.Errorf("ProductionLevel should be one of: %v", nonEmptyKeys(formatMap))
+}
+
+// MarshalJSON ensures that json conversions use the string value here, not the int value
+func (f *Format) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%v\"", f.String())), nil
+}
+
 // Suitcase is the interface that describes what a Suitcase does
 type Suitcase interface {
 	Close() error
-	Add(inventory.File) (*helpers.HashSet, error)
+	Add(inventory.File) (*inventory.HashSet, error)
 	AddEncrypt(f inventory.File) error
 	Config() *config.SuitCaseOpts
 }
@@ -67,7 +124,7 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 }
 
 // FillWithInventoryIndex fills up a suitcase using the given inventory
-func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int, stateC chan FillState) ([]helpers.HashSet, error) {
+func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int, stateC chan FillState) ([]inventory.HashSet, error) {
 	if i == nil {
 		return nil, errors.New("inventory is nil")
 	}
@@ -82,7 +139,7 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 		total = uint(len(i.Files))
 	}
 	cur := uint(0)
-	var suitcaseHashes []helpers.HashSet
+	var suitcaseHashes []inventory.HashSet
 
 	for _, f := range i.Files {
 		l := log.With().
@@ -182,7 +239,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 				panic(herr)
 			}
 		}()
-		err = helpers.WriteHashFile(hashes, hashF)
+		err = inventory.WriteHashFile(hashes, hashF)
 		if err != nil {
 			return "", err
 		}
@@ -200,4 +257,25 @@ func PostProcess(s Suitcase) error {
 		return err
 	}
 	return nil
+}
+
+// nonEmptyKeys returns the non-empty keys of a map in an array
+func nonEmptyKeys[V any](m map[string]V) []string {
+	var ret []string
+	for k := range m {
+		if k != "" {
+			ret = append(ret, k)
+		}
+	}
+	sort.Strings(ret)
+	return ret
+}
+
+// reverseMap takes a map[k]v and returns a map[v]k
+func reverseMap[K string, V string | Format](m map[K]V) map[V]K {
+	ret := make(map[V]K, len(m))
+	for k, v := range m {
+		ret[v] = k
+	}
+	return ret
 }

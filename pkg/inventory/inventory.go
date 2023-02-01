@@ -4,6 +4,7 @@ Package inventory provides the needed pieces to correctly create an Inventory of
 package inventory
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -17,13 +18,79 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/karrick/godirwalk"
 	"github.com/rs/zerolog/log"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
 	"golang.org/x/tools/godoc/util"
 )
+
+// Format is the format the inventory will use, such as yaml, json, etc
+type Format int
+
+const (
+	// NullFormat is the unset value for this type
+	NullFormat = iota
+	// YAMLFormat is for yaml
+	YAMLFormat
+	// JSONFormat is for yaml
+	JSONFormat
+)
+
+// DefaultSuitcaseFormat is just the default format we're going to use for a
+// suitcase. Hopefully this fits for most use cases, but can always be
+// overridden
+const DefaultSuitcaseFormat string = "tar.gz"
+
+var formatMap map[string]Format = map[string]Format{
+	"yaml": YAMLFormat,
+	"json": JSONFormat,
+	"":     NullFormat,
+}
+
+var formatHelp map[string]string = map[string]string{
+	"yaml": "YAML is the preferred format. It allows for easy human readable inventories that can also be easily parsed by machines",
+	"json": "JSON inventory is not very readable, but could allow for faster machine parsing under certain conditions",
+}
+
+// FormatCompletion returns shell completion
+func FormatCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	help := []string{}
+	for _, format := range nonEmptyKeys(formatMap) {
+		if strings.Contains(format, toComplete) {
+			help = append(help, fmt.Sprintf("%v\t%v", format, formatHelp[format]))
+		}
+	}
+	return help, cobra.ShellCompDirectiveNoFileComp
+}
+
+func (f Format) String() string {
+	m := reverseMap(formatMap)
+	if v, ok := m[f]; ok {
+		return v
+	}
+	panic("invalid format")
+}
+
+// Type satisfies part of the pflags.Value interface
+func (f Format) Type() string {
+	return "Format"
+}
+
+// Set helps fulfill the pflag.Value interface
+func (f *Format) Set(v string) error {
+	if v, ok := formatMap[v]; ok {
+		*f = v
+		return nil
+	}
+	return fmt.Errorf("ProductionLevel should be one of: %v", nonEmptyKeys(formatMap))
+}
+
+// MarshalJSON ensures that json conversions use the string value here, not the int value
+func (f *Format) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%v\"", f.String())), nil
+}
 
 // Inventoryer is an interface to define what an Inventory Operator does
 type Inventoryer interface {
@@ -297,7 +364,7 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 	}
 
 	for _, dir := range opts.TopLevelDirectories {
-		if !helpers.IsDirectory(dir) {
+		if !isDirectory(dir) {
 			log.Warn().
 				Str("path", dir).
 				Msg("top level directory does not exist")
@@ -397,6 +464,14 @@ func NewInventoryerWithFilename(filename string) (Inventoryer, error) {
 	return ir, nil
 }
 
+func suitcaseFormatWithViper(v *viper.Viper) string {
+	f := strings.TrimPrefix(v.GetString("suitcase-format"), ".")
+	if f != "" {
+		return f
+	}
+	return DefaultSuitcaseFormat
+}
+
 // NewDirectoryInventoryOptionsWithViper creates new inventory options with viper
 func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*DirectoryInventoryOptions, error) {
 	var err error
@@ -407,12 +482,12 @@ func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*Dire
 		ExternalMetadataFiles: v.GetStringSlice("external-metadata-file"),
 		IgnoreGlobs:           v.GetStringSlice("ignore-glob"),
 		LimitFileCount:        v.GetInt("limit-file-count"),
-		SuitcaseFormat:        strings.TrimPrefix(v.GetString("suitcase-format"), "."),
+		SuitcaseFormat:        suitcaseFormatWithViper(v),
 		Prefix:                v.GetString("prefix"),
 		EncryptInner:          v.GetBool("encrypt-inner"),
 		FollowSymlinks:        v.GetBool("follow-symlinks"),
 	}
-	opt.TopLevelDirectories, err = helpers.ConvertDirsToAboluteDirs(args)
+	opt.TopLevelDirectories, err = convertDirsToAboluteDirs(args)
 	if err != nil {
 		return nil, err
 	}
@@ -570,7 +645,7 @@ func walkDir(dir string, opts *DirectoryInventoryOptions, ret *DirectoryInventor
 
 			// Ignore certain items?
 			name := de.Name()
-			if helpers.FilenameMatchesGlobs(name, opts.IgnoreGlobs) {
+			if filenameMatchesGlobs(name, opts.IgnoreGlobs) {
 				return nil
 			}
 			ret.Files = append(ret.Files, &File{
@@ -622,6 +697,82 @@ func haltIfLimit(opts *DirectoryInventoryOptions, addedCount int) error {
 	if opts.LimitFileCount > 0 && addedCount >= opts.LimitFileCount {
 		log.Warn().Msg("Reached file count limit, stopping walk")
 		return errHalt
+	}
+	return nil
+}
+
+// nonEmptyKeys returns the non-empty keys of a map in an array
+func nonEmptyKeys[V any](m map[string]V) []string {
+	var ret []string
+	for k := range m {
+		if k != "" {
+			ret = append(ret, k)
+		}
+	}
+	sort.Strings(ret)
+	return ret
+}
+
+// reverseMap takes a map[k]v and returns a map[v]k
+func reverseMap[K string, V string | Format](m map[K]V) map[V]K {
+	ret := make(map[V]K, len(m))
+	for k, v := range m {
+		ret[v] = k
+	}
+	return ret
+}
+
+// convertDirsToAboluteDirs turns directories in to absolute path directories
+func convertDirsToAboluteDirs(orig []string) ([]string, error) {
+	ret := []string{}
+	for _, item := range orig {
+		abs, err := filepath.Abs(item)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, fmt.Sprintf("%s/", abs))
+	}
+	return ret, nil
+}
+
+// isDirectory returns a bool if a file is a directory
+func isDirectory(path string) bool {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return fileInfo.IsDir()
+}
+
+// filenameMatchesGlobs Check if a filename matches a set of globs
+func filenameMatchesGlobs(filename string, globs []string) bool {
+	for _, glob := range globs {
+		if ok, _ := filepath.Match(glob, filename); ok {
+			log.Debug().Str("path", filename).Msg("matched on file globbing")
+			return true
+		}
+	}
+	return false
+}
+
+// HashSet is a combination Filename and Hash
+type HashSet struct {
+	Filename string
+	Hash     string
+}
+
+// WriteHashFile  writes out the hashset array to an io.Writer
+func WriteHashFile(hs []HashSet, o io.Writer) error {
+	w := bufio.NewWriter(o)
+	for _, hs := range hs {
+		_, err := w.WriteString(fmt.Sprintf("%s\t%s\n", hs.Filename, hs.Hash))
+		if err != nil {
+			return err
+		}
+	}
+	err := w.Flush()
+	if err != nil {
+		return err
 	}
 	return nil
 }
