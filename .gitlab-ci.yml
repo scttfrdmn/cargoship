@@ -82,6 +82,7 @@ benchmarks:
   variables:
     BENCHMARK_DATA_DIR: "/benchmark_data/"
   script:
+    - go install golang.org/x/perf/cmd/benchstat@latest
     - go mod tidy
     - go test -run=^$ -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd | tee /tmp/my-commit.txt
     - git fetch origin main
