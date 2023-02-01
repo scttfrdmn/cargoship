@@ -16,7 +16,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/tar"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/targpg"
@@ -83,7 +82,7 @@ func (f *Format) MarshalJSON() ([]byte, error) {
 // Suitcase is the interface that describes what a Suitcase does
 type Suitcase interface {
 	Close() error
-	Add(inventory.File) (*helpers.HashSet, error)
+	Add(inventory.File) (*inventory.HashSet, error)
 	AddEncrypt(f inventory.File) error
 	Config() *config.SuitCaseOpts
 }
@@ -125,7 +124,7 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 }
 
 // FillWithInventoryIndex fills up a suitcase using the given inventory
-func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int, stateC chan FillState) ([]helpers.HashSet, error) {
+func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int, stateC chan FillState) ([]inventory.HashSet, error) {
 	if i == nil {
 		return nil, errors.New("inventory is nil")
 	}
@@ -140,7 +139,7 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 		total = uint(len(i.Files))
 	}
 	cur := uint(0)
-	var suitcaseHashes []helpers.HashSet
+	var suitcaseHashes []inventory.HashSet
 
 	for _, f := range i.Files {
 		l := log.With().
@@ -240,7 +239,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 				panic(herr)
 			}
 		}()
-		err = helpers.WriteHashFile(hashes, hashF)
+		err = inventory.WriteHashFile(hashes, hashF)
 		if err != nil {
 			return "", err
 		}

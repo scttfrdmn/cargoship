@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/viper"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmdhelpers"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
 )
@@ -61,13 +60,13 @@ func inventoryOptsWithCobra(cmd *cobra.Command, args []string) (string, bool, er
 	return inventoryFile, onlyInventory, nil
 }
 
-func createHashes(s []string) []helpers.HashSet {
-	var hs []helpers.HashSet
+func createHashes(s []string) []inventory.HashSet {
+	var hs []inventory.HashSet
 	for _, f := range s {
 		log.Info().Str("file", f).Msg("Created file")
-		hs = append(hs, helpers.HashSet{
+		hs = append(hs, inventory.HashSet{
 			Filename: strings.TrimPrefix(f, outDir+"/"),
-			Hash:     helpers.MustGetSha256(f),
+			Hash:     mustGetSha256(f),
 		})
 	}
 	return hs
@@ -137,7 +136,7 @@ func writeHashFile() error {
 		return err
 	}
 	defer dclose(hashF)
-	err = helpers.WriteHashFile(hashes, hashF)
+	err = inventory.WriteHashFile(hashes, hashF)
 	if err != nil {
 		return err
 	}
@@ -150,9 +149,9 @@ func createPostRun(cmd *cobra.Command, args []string) {
 
 	// Hash the outer items if asked
 	if mustGetCmd[bool](cmd, "hash-outer") {
-		hashes = append(hashes, helpers.HashSet{
+		hashes = append(hashes, inventory.HashSet{
 			Filename: strings.TrimPrefix(metaF, outDir+"/"),
-			Hash:     helpers.MustGetSha256(metaF),
+			Hash:     mustGetSha256(metaF),
 		})
 		err := writeHashFile()
 		checkErr(err, "")
@@ -181,7 +180,7 @@ func createPreRun(cmd *cobra.Command, args []string) {
 	if err != nil {
 		panic(err)
 	}
-	hashes = []helpers.HashSet{}
+	hashes = []inventory.HashSet{}
 	cliMeta = cmdhelpers.NewCLIMeta(args, cmd)
 
 	userOverrides, err = userOverridesWithCobra(cmd, args)

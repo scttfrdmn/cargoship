@@ -11,7 +11,6 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/tar"
 )
@@ -22,7 +21,7 @@ type Suitcase struct {
 	cw     *io.WriteCloser
 	gw     *pgzip.Writer
 	opts   *config.SuitCaseOpts
-	hashes []helpers.HashSet
+	hashes []inventory.HashSet
 }
 
 // New tar archive.
@@ -50,7 +49,7 @@ func (s Suitcase) Config() *config.SuitCaseOpts {
 }
 
 // GetHashes returns hashses
-func (s Suitcase) GetHashes() []helpers.HashSet {
+func (s Suitcase) GetHashes() []inventory.HashSet {
 	return s.hashes
 }
 
@@ -79,7 +78,7 @@ func (s Suitcase) Close() error {
 }
 
 // Add file to the archive.
-func (s Suitcase) Add(f inventory.File) (*helpers.HashSet, error) {
+func (s Suitcase) Add(f inventory.File) (*inventory.HashSet, error) {
 	return s.tw.Add(f)
 }
 

@@ -4,6 +4,7 @@ Package inventory provides the needed pieces to correctly create an Inventory of
 package inventory
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -22,7 +23,6 @@ import (
 
 	"github.com/karrick/godirwalk"
 	"github.com/rs/zerolog/log"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
 	"golang.org/x/tools/godoc/util"
 )
 
@@ -353,7 +353,7 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 	}
 
 	for _, dir := range opts.TopLevelDirectories {
-		if !helpers.IsDirectory(dir) {
+		if !isDirectory(dir) {
 			log.Warn().
 				Str("path", dir).
 				Msg("top level directory does not exist")
@@ -476,7 +476,7 @@ func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*Dire
 		EncryptInner:          v.GetBool("encrypt-inner"),
 		FollowSymlinks:        v.GetBool("follow-symlinks"),
 	}
-	opt.TopLevelDirectories, err = helpers.ConvertDirsToAboluteDirs(args)
+	opt.TopLevelDirectories, err = convertDirsToAboluteDirs(args)
 	if err != nil {
 		return nil, err
 	}
@@ -634,7 +634,7 @@ func walkDir(dir string, opts *DirectoryInventoryOptions, ret *DirectoryInventor
 
 			// Ignore certain items?
 			name := de.Name()
-			if helpers.FilenameMatchesGlobs(name, opts.IgnoreGlobs) {
+			if filenameMatchesGlobs(name, opts.IgnoreGlobs) {
 				return nil
 			}
 			ret.Files = append(ret.Files, &File{
@@ -709,4 +709,59 @@ func reverseMap[K string, V string | Format](m map[K]V) map[V]K {
 		ret[v] = k
 	}
 	return ret
+}
+
+// convertDirsToAboluteDirs turns directories in to absolute path directories
+func convertDirsToAboluteDirs(orig []string) ([]string, error) {
+	ret := []string{}
+	for _, item := range orig {
+		abs, err := filepath.Abs(item)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, fmt.Sprintf("%s/", abs))
+	}
+	return ret, nil
+}
+
+// isDirectory returns a bool if a file is a directory
+func isDirectory(path string) bool {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return fileInfo.IsDir()
+}
+
+// filenameMatchesGlobs Check if a filename matches a set of globs
+func filenameMatchesGlobs(filename string, globs []string) bool {
+	for _, glob := range globs {
+		if ok, _ := filepath.Match(glob, filename); ok {
+			log.Debug().Str("path", filename).Msg("matched on file globbing")
+			return true
+		}
+	}
+	return false
+}
+
+// HashSet is a combination Filename and Hash
+type HashSet struct {
+	Filename string
+	Hash     string
+}
+
+// WriteHashFile  writes out the hashset array to an io.Writer
+func WriteHashFile(hs []HashSet, o io.Writer) error {
+	w := bufio.NewWriter(o)
+	for _, hs := range hs {
+		_, err := w.WriteString(fmt.Sprintf("%s\t%s\n", hs.Filename, hs.Hash))
+		if err != nil {
+			return err
+		}
+	}
+	err := w.Flush()
+	if err != nil {
+		return err
+	}
+	return nil
 }

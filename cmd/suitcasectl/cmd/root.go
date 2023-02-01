@@ -13,7 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmdhelpers"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/helpers"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
@@ -29,7 +29,7 @@ var (
 	outDir        string
 	logFile       string
 	logF          *os.File
-	hashes        []helpers.HashSet
+	hashes        []inventory.HashSet
 	rootCmd       *cobra.Command
 	userOverrides *viper.Viper
 )

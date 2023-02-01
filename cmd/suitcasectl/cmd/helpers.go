@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -85,4 +86,34 @@ func panicIfErr(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+// getSha256 Get sha256 hash from a file
+func getSha256(file string) (string, error) {
+	f, err := os.Open(file) // nolint:gosec
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		cerr := f.Close()
+		if err != nil {
+			panic(cerr)
+		}
+	}()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// mustGetSha256 panics if a Sha256 cannot be generated
+func mustGetSha256(file string) string {
+	hash, err := getSha256(file)
+	if err != nil {
+		panic(err)
+	}
+	return hash
 }
