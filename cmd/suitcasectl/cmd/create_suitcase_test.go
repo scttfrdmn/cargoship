@@ -109,20 +109,38 @@ func BenchmarkSuitcaseCreate(b *testing.B) {
 			format:  "tar",
 			tarargs: "c",
 		},
+		"targz": {
+			format:  "tar.gz",
+			tarargs: "cz",
+		},
 	}
 	cmd := NewRootCmd(io.Discard)
 	// formats := []string{"tar", "tar.gz"}
-	testSet := "../../../benchmark_data/American-Gut/"
+	datasets := map[string]struct {
+		path string
+	}{
+		"672M-american-gut": {
+			path: "American-Gut",
+		},
+		"3.3G-Synthetic-cell-images": {
+			path: "BBBC005_v1_images",
+		},
+	}
 	for desc, opts := range benchmarks {
 		opts := opts
-		b.Run(fmt.Sprintf("suitcase_format_golang_%v", desc), func(b *testing.B) {
-			out := b.TempDir()
-			cmd.SetArgs([]string{"create", "suitcase", testSet, "--destination", out, "--suitcase-format", opts.format})
-			cmd.Execute()
-		})
-		b.Run(fmt.Sprintf("suitcase_format_gnutar_%v", desc), func(b *testing.B) {
-			out := b.TempDir()
-			exec.Command("tar", fmt.Sprintf("%vf", opts.tarargs), path.Join(out, fmt.Sprintf("gnutar.%v", opts.format)), testSet).Output()
-		})
+		for dataDesc, dataSet := range datasets {
+			location := path.Join("../../../benchmark_data/", dataSet.path)
+			if _, err := os.Stat(location); err == nil {
+				b.Run(fmt.Sprintf("suitcase_format_golang_%v_%v", dataDesc, desc), func(b *testing.B) {
+					out := b.TempDir()
+					cmd.SetArgs([]string{"create", "suitcase", location, "--destination", out, "--suitcase-format", opts.format})
+					cmd.Execute()
+				})
+				b.Run(fmt.Sprintf("suitcase_format_gtar_%v_%v", dataDesc, desc), func(b *testing.B) {
+					out := b.TempDir()
+					exec.Command("tar", fmt.Sprintf("%vvf", opts.tarargs), path.Join(out, fmt.Sprintf("gnutar.%v", opts.format)), location).Output()
+				})
+			}
+		}
 	}
 }

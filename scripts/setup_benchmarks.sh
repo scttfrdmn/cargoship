@@ -9,3 +9,8 @@ cd benchmark_data/
 if [[ ! -d American-Gut ]]; then
   git clone --depth=1  https://github.com/biocore/American-Gut
 fi
+
+if [[ ! -d BBBC005_v1_images ]]; then
+  wget https://data.broadinstitute.org/bbbc/BBBC005/BBBC005_v1_images.zip
+  unzip BBBC005_v1_images.zip
+fi
