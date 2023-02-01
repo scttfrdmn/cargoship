@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path"
 	"testing"
 
@@ -140,10 +139,10 @@ func BenchmarkSuitcaseCreate(b *testing.B) {
 					cmd.SetArgs([]string{"create", "suitcase", location, "--destination", out, "--suitcase-format", opts.format})
 					cmd.Execute()
 				})
-				b.Run(fmt.Sprintf("suitcase_format_gtar_%v_%v", dataDesc, desc), func(b *testing.B) {
-					out := b.TempDir()
-					exec.Command("tar", fmt.Sprintf("%vvf", opts.tarargs), path.Join(out, fmt.Sprintf("gnutar.%v", opts.format)), location).Output()
-				})
+				//				b.Run(fmt.Sprintf("suitcase_format_gtar_%v_%v", dataDesc, desc), func(b *testing.B) {
+				//				out := b.TempDir()
+				//			exec.Command("tar", fmt.Sprintf("%vvf", opts.tarargs), path.Join(out, fmt.Sprintf("gnutar.%v", opts.format)), location).Output()
+				//	})
 			}
 		}
 	}
