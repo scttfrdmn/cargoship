@@ -126,10 +126,14 @@ func BenchmarkSuitcaseCreate(b *testing.B) {
 			path: "BBBC005_v1_images",
 		},
 	}
+	bdd := os.Getenv("BENCHMARK_DATA_DIR")
+	if bdd == "" {
+		bdd = "../../../benchmark_data/"
+	}
 	for desc, opts := range benchmarks {
 		opts := opts
 		for dataDesc, dataSet := range datasets {
-			location := path.Join("../../../benchmark_data/", dataSet.path)
+			location := path.Join(bdd, dataSet.path)
 			if _, err := os.Stat(location); err == nil {
 				b.Run(fmt.Sprintf("suitcase_format_golang_%v_%v", dataDesc, desc), func(b *testing.B) {
 					out := b.TempDir()
