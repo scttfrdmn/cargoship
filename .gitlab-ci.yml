@@ -88,8 +88,9 @@ benchmarks:
     - git fetch origin main
     - git checkout main
     - go test -run=^$ -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd | tee /tmp/main.txt
+    - ls
     - mkdir reports/
     - benchstat /tmp/my-commit.txt /tmp/main.txt | tee ./reports/benchstat.txt
   artifacts:
     expose_as: 'benchmark compared to main'
-    paths: ['./reports/benchstat.txt'] 
+    paths: ['reports/benchstat.txt']
