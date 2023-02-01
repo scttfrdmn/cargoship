@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -68,10 +69,9 @@ func TestNewSuitcaseWithInventory(t *testing.T) {
 }
 
 func TestNewSuitcaseWithInventoryAndDir(t *testing.T) {
-	fakeDir := t.TempDir()
-	fakeTemp := t.TempDir()
 	cmd := NewRootCmd(io.Discard)
-	cmd.SetArgs([]string{"create", "suitcase", "--destination", fakeTemp, "--inventory-file", "doesnt-matter", fakeDir})
+	cmd.SetOut(io.Discard)
+	cmd.SetArgs([]string{"create", "suitcase", "--destination", t.TempDir(), "--inventory-file", "doesnt-matter", t.TempDir()})
 	err := cmd.Execute()
 	require.Error(t, err, "Did NOT get an error when executing command")
 	require.EqualError(t, err, "error: You can't specify an inventory file and target dir arguments at the same time", "Got an unexpected error")
@@ -97,4 +97,18 @@ func TestSuitcaseFormatComplete(t *testing.T) {
 	err := cmd.Execute()
 	require.NoError(t, err)
 	require.Equal(t, "tar\ntar.gpg\ntar.gz\ntar.gz.gpg\n:4\n", b.String())
+}
+
+func BenchmarkSuitcaseCreate(b *testing.B) {
+	cmd := NewRootCmd(io.Discard)
+	formats := []string{"tar", "tar.gz"}
+	testSet := "./benchmark_data/American-Gut/"
+	for _, format := range formats {
+		format := format
+		b.Run(fmt.Sprintf("suitcase_format_%v", format), func(b *testing.B) {
+			out := b.TempDir()
+			cmd.SetArgs([]string{"create", "suitcase", testSet, "--destination", out, "--suitcase-format", format})
+			cmd.Execute()
+		})
+	}
 }
