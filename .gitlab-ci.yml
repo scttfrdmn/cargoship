@@ -79,4 +79,8 @@ benchmarks:
     - if: '$CI_COMMIT_TAG !~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
   script:
    - ./scripts/setup_benchmarks.sh
-   - go test -run=^$ -benchtime=10x -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd
+   - go test -run=^$ -benchtime=10x -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd > /tmp/commit.txt
+   - git checkout main
+   - ./scripts/setup_benchmarks.sh
+   - go test -run=^$ -benchtime=10x -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd > /tmp/main.txt
+   - benchstat /tmp/commit.txt /tmp/main.txt
