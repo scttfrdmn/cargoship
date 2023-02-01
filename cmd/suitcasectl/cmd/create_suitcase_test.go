@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"testing"
 
@@ -68,10 +70,9 @@ func TestNewSuitcaseWithInventory(t *testing.T) {
 }
 
 func TestNewSuitcaseWithInventoryAndDir(t *testing.T) {
-	fakeDir := t.TempDir()
-	fakeTemp := t.TempDir()
 	cmd := NewRootCmd(io.Discard)
-	cmd.SetArgs([]string{"create", "suitcase", "--destination", fakeTemp, "--inventory-file", "doesnt-matter", fakeDir})
+	cmd.SetOut(io.Discard)
+	cmd.SetArgs([]string{"create", "suitcase", "--destination", t.TempDir(), "--inventory-file", "doesnt-matter", t.TempDir()})
 	err := cmd.Execute()
 	require.Error(t, err, "Did NOT get an error when executing command")
 	require.EqualError(t, err, "error: You can't specify an inventory file and target dir arguments at the same time", "Got an unexpected error")
@@ -97,4 +98,49 @@ func TestSuitcaseFormatComplete(t *testing.T) {
 	err := cmd.Execute()
 	require.NoError(t, err)
 	require.Equal(t, "tar\ntar.gpg\ntar.gz\ntar.gz.gpg\n:4\n", b.String())
+}
+
+func BenchmarkSuitcaseCreate(b *testing.B) {
+	benchmarks := map[string]struct {
+		format  string
+		tarargs string
+	}{
+		"tar": {
+			format:  "tar",
+			tarargs: "c",
+		},
+		"targz": {
+			format:  "tar.gz",
+			tarargs: "cz",
+		},
+	}
+	cmd := NewRootCmd(io.Discard)
+	// formats := []string{"tar", "tar.gz"}
+	datasets := map[string]struct {
+		path string
+	}{
+		"672M-american-gut": {
+			path: "American-Gut",
+		},
+		"3.3G-Synthetic-cell-images": {
+			path: "BBBC005_v1_images",
+		},
+	}
+	for desc, opts := range benchmarks {
+		opts := opts
+		for dataDesc, dataSet := range datasets {
+			location := path.Join("../../../benchmark_data/", dataSet.path)
+			if _, err := os.Stat(location); err == nil {
+				b.Run(fmt.Sprintf("suitcase_format_golang_%v_%v", dataDesc, desc), func(b *testing.B) {
+					out := b.TempDir()
+					cmd.SetArgs([]string{"create", "suitcase", location, "--destination", out, "--suitcase-format", opts.format})
+					cmd.Execute()
+				})
+				b.Run(fmt.Sprintf("suitcase_format_gtar_%v_%v", dataDesc, desc), func(b *testing.B) {
+					out := b.TempDir()
+					exec.Command("tar", fmt.Sprintf("%vvf", opts.tarargs), path.Join(out, fmt.Sprintf("gnutar.%v", opts.format)), location).Output()
+				})
+			}
+		}
+	}
 }

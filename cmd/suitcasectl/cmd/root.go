@@ -62,6 +62,7 @@ a future point in time`,
 	cmd.AddCommand(createCmd)
 
 	cmd.AddCommand(schemaCmd)
+	cmd.SetOut(lo)
 
 	return cmd
 }
@@ -158,6 +159,40 @@ func setupLogging(lo io.Writer) {
 	}
 }
 
+func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+
+	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	if Verbose {
+		log.Info().Msg("Verbose output enabled")
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	}
+	// If we have an outDir, also write the logs to a file
+	var multi io.Writer
+	// o := mustGetCmd[string](cmd, "destination")
+	o, err := getDestination(cmd)
+	if err != nil {
+		return err
+	}
+	if o == "" {
+		log.Fatal().Msg("No output directory specified")
+	}
+	logFile = path.Join(o, "suitcasectl.log")
+	logF, err = os.Create(logFile) // nolint:gosec
+	if err != nil {
+		return err
+	}
+	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}, logF)
+	if trace {
+		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
+	} else {
+		log.Logger = zerolog.New(multi).With().Timestamp().Logger()
+	}
+	return nil
+}
+
+/*
 func setupMultiLogging(o string) error {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
@@ -186,3 +221,4 @@ func setupMultiLogging(o string) error {
 	}
 	return nil
 }
+*/

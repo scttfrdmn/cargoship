@@ -28,7 +28,7 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 		Args:              cobra.ArbitraryArgs,
 		Aliases:           []string{"suitecase"}, // Encouraging bad habits
 		RunE:              createRunE,
-		PersistentPreRun:  createPreRun,
+		PersistentPreRunE: createPreRunE,
 		PersistentPostRun: createPostRun,
 	}
 	bindInventoryCmd(cmd)
@@ -159,7 +159,7 @@ func createPostRun(cmd *cobra.Command, args []string) {
 
 	// stats.Runtime = stats.End.Sub(stats.Start)
 	log.Info().Str("log-file", logFile).Msg("Switching back to stderr logger and closing the multi log writer so we can hash it")
-	setupLogging(os.Stderr)
+	setupLogging(cmd.OutOrStderr())
 	// Do we really care if this closes? maybe...
 	_ = logF.Close()
 
@@ -170,15 +170,15 @@ func createPostRun(cmd *cobra.Command, args []string) {
 		Msg("Completed")
 }
 
-func createPreRun(cmd *cobra.Command, args []string) {
+func createPreRunE(cmd *cobra.Command, args []string) error {
 	// Get this first, it'll be important
 	var err error
 	outDir, err = newOutDirWithCmd(cmd)
 	checkErr(err, "Could not figure out the output directory")
 
-	err = setupMultiLogging(outDir)
+	err = setupMultiLoggingWithCmd(cmd)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	hashes = []inventory.HashSet{}
 	cliMeta = cmdhelpers.NewCLIMeta(args, cmd)
@@ -186,6 +186,7 @@ func createPreRun(cmd *cobra.Command, args []string) {
 	userOverrides, err = userOverridesWithCobra(cmd, args)
 	checkErr(err, "")
 	cliMeta.ViperConfig = userOverrides.AllSettings()
+	return nil
 }
 
 func createRunE(cmd *cobra.Command, args []string) error {

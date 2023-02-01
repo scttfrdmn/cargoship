@@ -4,3 +4,5 @@ gl-code-quality-report.json
 coverage.txt
 coverage.xml
 go-carpet*
+benchmark_data/
+*.swp
