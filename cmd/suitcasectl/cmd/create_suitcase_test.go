@@ -102,7 +102,7 @@ func TestSuitcaseFormatComplete(t *testing.T) {
 func BenchmarkSuitcaseCreate(b *testing.B) {
 	cmd := NewRootCmd(io.Discard)
 	formats := []string{"tar", "tar.gz"}
-	testSet := "./benchmark_data/American-Gut/"
+	testSet := "../../../benchmark_data/American-Gut/"
 	for _, format := range formats {
 		format := format
 		b.Run(fmt.Sprintf("suitcase_format_%v", format), func(b *testing.B) {
