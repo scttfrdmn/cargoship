@@ -1,5 +1,9 @@
 ---
 image: gitlab-registry.oit.duke.edu/devil-ops/goreleaser:v0.4.3
+default:
+  retry:
+    max: 2
+    when: runner_system_failure
 stages:
   - test
   - release
@@ -50,9 +54,6 @@ check-release:
     - goreleaser check
   rules:
     - if: '$CI_COMMIT_TAG !~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
-  retry:
-    max: 2
-    when: runner_system_failure
 release:
   stage: release
   rules:
@@ -62,9 +63,6 @@ release:
   script:
     - eval $(/scripts/vault-env.sh ssi-systems-${CI_PROJECT_NAME}-packaging)
     - goreleaser release --rm-dist
-  retry:
-    max: 2
-    when: runner_system_failure
 ## security looks for common security issues
 security:
   stage: test
