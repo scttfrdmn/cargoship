@@ -80,7 +80,9 @@ benchmarks:
   script:
    - ./scripts/setup_benchmarks.sh
    - go test -run=^$ -benchtime=10x -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd > /tmp/commit.txt
-   - git checkout main
+   - |
+     git fetch origin main
+     git checkout main
    - ./scripts/setup_benchmarks.sh
    - go test -run=^$ -benchtime=10x -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd > /tmp/main.txt
    - benchstat /tmp/commit.txt /tmp/main.txt
