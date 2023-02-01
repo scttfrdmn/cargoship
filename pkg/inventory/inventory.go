@@ -49,9 +49,20 @@ var formatMap map[string]Format = map[string]Format{
 	"":     NullFormat,
 }
 
+var formatHelp map[string]string = map[string]string{
+	"yaml": "YAML is the preferred format. It allows for easy human readable inventories that can also be easily parsed by machines",
+	"json": "JSON inventory is not very readable, but could allow for faster machine parsing under certain conditions",
+}
+
 // FormatCompletion returns shell completion
 func FormatCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	return nonEmptyKeys(formatMap), cobra.ShellCompDirectiveNoFileComp
+	help := []string{}
+	for _, format := range nonEmptyKeys(formatMap) {
+		if strings.Contains(format, toComplete) {
+			help = append(help, fmt.Sprintf("%v\t%v", format, formatHelp[format]))
+		}
+	}
+	return help, cobra.ShellCompDirectiveNoFileComp
 }
 
 func (f Format) String() string {

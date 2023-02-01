@@ -84,7 +84,7 @@ func TestInventoryFormatComplete(t *testing.T) {
 	cmd.SetArgs([]string{"__complete", "create", "suitcase", "--inventory-format", ""})
 	err := cmd.Execute()
 	require.NoError(t, err)
-	require.Equal(t, "json\nyaml\n:4\n", b.String())
+	require.Equal(t, "json\tJSON inventory is not very readable, but could allow for faster machine parsing under certain conditions\nyaml\tYAML is the preferred format. It allows for easy human readable inventories that can also be easily parsed by machines\n:4\n", b.String())
 }
 
 func TestSuitcaseFormatComplete(t *testing.T) {
