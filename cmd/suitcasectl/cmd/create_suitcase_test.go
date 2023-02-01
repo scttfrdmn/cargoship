@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"testing"
 
@@ -100,15 +101,28 @@ func TestSuitcaseFormatComplete(t *testing.T) {
 }
 
 func BenchmarkSuitcaseCreate(b *testing.B) {
+	benchmarks := map[string]struct {
+		format  string
+		tarargs string
+	}{
+		"tar": {
+			format:  "tar",
+			tarargs: "c",
+		},
+	}
 	cmd := NewRootCmd(io.Discard)
-	formats := []string{"tar", "tar.gz"}
+	// formats := []string{"tar", "tar.gz"}
 	testSet := "../../../benchmark_data/American-Gut/"
-	for _, format := range formats {
-		format := format
-		b.Run(fmt.Sprintf("suitcase_format_%v", format), func(b *testing.B) {
+	for desc, opts := range benchmarks {
+		opts := opts
+		b.Run(fmt.Sprintf("suitcase_format_golang_%v", desc), func(b *testing.B) {
 			out := b.TempDir()
-			cmd.SetArgs([]string{"create", "suitcase", testSet, "--destination", out, "--suitcase-format", format})
+			cmd.SetArgs([]string{"create", "suitcase", testSet, "--destination", out, "--suitcase-format", opts.format})
 			cmd.Execute()
+		})
+		b.Run(fmt.Sprintf("suitcase_format_gnutar_%v", desc), func(b *testing.B) {
+			out := b.TempDir()
+			exec.Command("tar", fmt.Sprintf("%vf", opts.tarargs), path.Join(out, fmt.Sprintf("gnutar.%v", opts.format)), testSet).Output()
 		})
 	}
 }
