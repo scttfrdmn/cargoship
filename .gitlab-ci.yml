@@ -75,14 +75,16 @@ security:
     - if: '$CI_COMMIT_TAG !~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
 benchmarks:
   stage: test
+  tags:
+    - suitcase-benchmark
   rules:
     - if: '$CI_COMMIT_TAG !~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
   script:
    - ./scripts/setup_benchmarks.sh
-   - go test -run=^$ -benchtime=10x -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd > /tmp/commit.txt
+   - go test -run=^$ -benchtime=10x -count=10 -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd > /tmp/commit.txt
    - |
      git fetch origin main
      git checkout main
    - ./scripts/setup_benchmarks.sh
-   - go test -run=^$ -benchtime=10x -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd > /tmp/main.txt
+   - go test -run=^$ -benchtime=10x -count=10 -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd > /tmp/main.txt
    - benchstat /tmp/commit.txt /tmp/main.txt
