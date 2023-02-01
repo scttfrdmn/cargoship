@@ -82,10 +82,10 @@ benchmarks:
   variables:
     BENCHMARK_DATA_DIR: "/benchmark_data/"
   script:
-   - go test -run=^$ -benchtime=10x -count=10 -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd > /tmp/my-commit.txt
-   - |
-     git fetch origin main
-     git checkout main
-   - ./scripts/setup_benchmarks.sh
-   - go test -run=^$ -benchtime=10x -count=10 -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd > /tmp/main.txt
-   - benchstat /tmp/commit.txt /tmp/main.txt
+    - go mod tidy
+    - go test -run=^$ -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd > /tmp/my-commit.txt
+    - git fetch origin main
+    - git checkout main
+    - ./scripts/setup_benchmarks.sh
+    - go test -run=^$ -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd > /tmp/main.txt
+    - benchstat /tmp/commit.txt /tmp/main.txt
