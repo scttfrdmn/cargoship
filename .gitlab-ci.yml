@@ -79,6 +79,7 @@ benchmarks:
     - suitcase-benchmark
   rules:
     - if: '$CI_COMMIT_TAG !~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
   variables:
     BENCHMARK_DATA_DIR: "/benchmark_data/"
   script:
@@ -86,9 +87,9 @@ benchmarks:
     - go test -run=^$ -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd | tee /tmp/my-commit.txt
     - git fetch origin main
     - git checkout main
-    - ./scripts/setup_benchmarks.sh
     - go test -run=^$ -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd | tee /tmp/main.txt
-    - benchstat /tmp/my-commit.txt /tmp/main.txt | tee /tmp/benchstat.txt
+    - mkdir reports/
+    - benchstat /tmp/my-commit.txt /tmp/main.txt | tee ./reports/benchstat.txt
   artifacts:
     expose_as: 'benchmark compared to main'
-    paths: ['/tmp/benchstat.txt'] 
+    paths: ['./reports/benchstat.txt'] 
