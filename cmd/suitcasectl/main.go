@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	err := cmd.NewRootCmd(os.Stderr).Execute()
+	err := cmd.NewRootCmd(os.Stdout).Execute()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Error executing command")
 	}
