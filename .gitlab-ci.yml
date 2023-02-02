@@ -73,16 +73,23 @@ security:
     - govulncheck ./...
   rules:
     - if: '$CI_COMMIT_TAG !~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
-.benchmarks:
+benchmarks:
   stage: test
-  rules:
-    - if: '$CI_COMMIT_TAG !~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
+  tags:
+    - suitcase-benchmark
+  only:
+    - merge_requests
+  variables:
+    BENCHMARK_DATA_DIR: "/benchmark_data/"
   script:
-   - ./scripts/setup_benchmarks.sh
-   - go test -run=^$ -benchtime=10x -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd > /tmp/commit.txt
-   - |
-     git fetch origin main
-     git checkout main
-   - ./scripts/setup_benchmarks.sh
-   - go test -run=^$ -benchtime=10x -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd > /tmp/main.txt
-   - benchstat /tmp/commit.txt /tmp/main.txt
+    - go install golang.org/x/perf/cmd/benchstat@latest
+    - go mod tidy
+    - mkdir reports/
+    - go test -run=^$ -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd | tee reports/my-commit.txt
+    - git fetch origin main
+    - git checkout main
+    - go test -run=^$ -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd | tee reports/main.txt
+    - benchstat ./reports/main.txt ./reports/my-commit.txt | tee ./reports/benchstat.txt
+  artifacts:
+    expose_as: 'benchmark reports'
+    paths: ['reports/']

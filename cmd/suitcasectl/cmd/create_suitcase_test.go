@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path"
 	"testing"
 
@@ -126,20 +125,24 @@ func BenchmarkSuitcaseCreate(b *testing.B) {
 			path: "BBBC005_v1_images",
 		},
 	}
+	bdd := os.Getenv("BENCHMARK_DATA_DIR")
+	if bdd == "" {
+		bdd = "../../../benchmark_data/"
+	}
 	for desc, opts := range benchmarks {
 		opts := opts
 		for dataDesc, dataSet := range datasets {
-			location := path.Join("../../../benchmark_data/", dataSet.path)
+			location := path.Join(bdd, dataSet.path)
 			if _, err := os.Stat(location); err == nil {
 				b.Run(fmt.Sprintf("suitcase_format_golang_%v_%v", dataDesc, desc), func(b *testing.B) {
 					out := b.TempDir()
 					cmd.SetArgs([]string{"create", "suitcase", location, "--destination", out, "--suitcase-format", opts.format})
 					cmd.Execute()
 				})
-				b.Run(fmt.Sprintf("suitcase_format_gtar_%v_%v", dataDesc, desc), func(b *testing.B) {
-					out := b.TempDir()
-					exec.Command("tar", fmt.Sprintf("%vvf", opts.tarargs), path.Join(out, fmt.Sprintf("gnutar.%v", opts.format)), location).Output()
-				})
+				//				b.Run(fmt.Sprintf("suitcase_format_gtar_%v_%v", dataDesc, desc), func(b *testing.B) {
+				//				out := b.TempDir()
+				//			exec.Command("tar", fmt.Sprintf("%vvf", opts.tarargs), path.Join(out, fmt.Sprintf("gnutar.%v", opts.format)), location).Output()
+				//	})
 			}
 		}
 	}
