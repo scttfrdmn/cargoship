@@ -34,10 +34,9 @@ func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
 	}, nil)
 	gw, _ := pgzip.NewWriterLevel(cw, pgzip.BestCompression)
 	tw := tar.New(gw, opts)
-	// tw := tar.New(cw, opts)
 	return Suitcase{
 		cw:   &cw,
-		tw:   &tw,
+		tw:   tw,
 		gw:   gw,
 		opts: opts,
 	}

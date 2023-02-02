@@ -33,7 +33,7 @@ func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
 	tw := tar.New(cw, opts)
 	return Suitcase{
 		cw:   &cw,
-		tw:   &tw,
+		tw:   tw,
 		opts: opts,
 	}
 }

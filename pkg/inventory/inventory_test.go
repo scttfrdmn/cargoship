@@ -2,10 +2,13 @@ package inventory
 
 import (
 	"fmt"
+	"os"
+	"path"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
 
 	"github.com/stretchr/testify/require"
@@ -20,6 +23,41 @@ func TestNewDirectoryInventory(t *testing.T) {
 	require.IsType(t, &DirectoryInventory{}, got)
 
 	require.Greater(t, len(got.Files), 0)
+}
+
+func BenchmarkNewDirectoryInventory(b *testing.B) {
+	datasets := map[string]struct {
+		path string
+	}{
+		"672M-american-gut": {
+			path: "American-Gut",
+		},
+		"3.3G-Synthetic-cell-images": {
+			path: "BBBC005_v1_images",
+		},
+	}
+	bdd := os.Getenv("BENCHMARK_DATA_DIR")
+	if bdd == "" {
+		bdd = "../../benchmark_data/"
+	}
+
+	zerolog.SetGlobalLevel(zerolog.FatalLevel)
+	for desc, dataset := range datasets {
+		location := path.Join(bdd, dataset.path)
+		if _, err := os.Stat(location); err == nil {
+			for _, format := range []string{"yaml", "json"} {
+				format := format
+				b.Run(fmt.Sprintf("suitcase_new_inventory_%v_%v", format, desc), func(b *testing.B) {
+					got, err := NewDirectoryInventory(&DirectoryInventoryOptions{
+						TopLevelDirectories: []string{location},
+						InventoryFormat:     format,
+					})
+					require.NoError(b, err)
+					require.NotNil(b, got)
+				})
+			}
+		}
+	}
 }
 
 func TestIndexInventory(t *testing.T) {
