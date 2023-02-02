@@ -91,5 +91,6 @@ benchmarks:
     - go test -run=^$ -benchmem -bench=. gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd | tee reports/main.txt
     - benchstat ./reports/main.txt ./reports/my-commit.txt | tee ./reports/benchstat.txt
   artifacts:
+    expire_in: 1 week
     expose_as: 'benchmark reports'
-    paths: ['reports/']
+    paths: ['reports/benchstat.txt']
