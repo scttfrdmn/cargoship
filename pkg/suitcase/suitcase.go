@@ -18,9 +18,11 @@ import (
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/tar"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/tarbz2"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/targpg"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/targz"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/targzgpg"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/tarzstd"
 )
 
 // Format is the format the inventory will use, such as yaml, json, etc
@@ -37,14 +39,20 @@ const (
 	TarGzGpgFormat
 	// TarGpgFormat is for encrypted tar.gz (tar.gpg)
 	TarGpgFormat
+	// TarZstFormat uses the zstd compression engine (tar.zst)
+	TarZstFormat
+	// TarZstGpgFormat uses the zstd compression engine with Gpg (tar.zst.gpg)
+	TarZstGpgFormat
 )
 
 var formatMap map[string]Format = map[string]Format{
-	"tar":        TarFormat,
-	"tar.gpg":    TarGpgFormat,
-	"tar.gz":     TarGzFormat,
-	"tar.gz.gpg": TarGzGpgFormat,
-	"":           NullFormat,
+	"tar":         TarFormat,
+	"tar.gpg":     TarGpgFormat,
+	"tar.gz":      TarGzFormat,
+	"tar.gz.gpg":  TarGzGpgFormat,
+	"tar.zst":     TarZstFormat,
+	"tar.zst.gpg": TarZstGpgFormat,
+	"":            NullFormat,
 }
 
 // FormatCompletion returns shell completion
@@ -119,6 +127,10 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 		return targz.New(w, opts), nil
 	case "tar.gz.gpg":
 		return targzgpg.New(w, opts), nil
+	case "tar.zst":
+		return tarzstd.New(w, opts), nil
+	case "tar.bz2":
+		return tarbz2.New(w, opts), nil
 	}
 	return nil, fmt.Errorf("invalid archive format: %s", opts.Format)
 }

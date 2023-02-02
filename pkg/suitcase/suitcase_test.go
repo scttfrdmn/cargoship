@@ -22,7 +22,7 @@ func TestNewSuitcase(t *testing.T) {
 	require.NoError(t, empty.Close())
 	require.NoError(t, os.Mkdir(folder+"/folder-inside", 0o755))
 
-	for _, format := range []string{"tar", "tar.gz"} {
+	for _, format := range []string{"tar", "tar.gz", "tar.zst"} {
 		format := format
 		t.Run(format, func(t *testing.T) {
 			archive, err := New(io.Discard, &config.SuitCaseOpts{
@@ -173,7 +173,7 @@ func BenchmarkNewSuitcase(b *testing.B) {
 				})
 				require.NoError(b, err)
 				require.NotNil(b, inventory)
-				for _, af := range []string{"tar", "tar.gz"} {
+				for _, af := range []string{"tar", "tar.gz", "tar.zst", "tar.bz2"} {
 					af := af
 					b.Run(fmt.Sprintf("suitcase_create_%v_%v", desc, af), func(b *testing.B) {
 						out := b.TempDir()
