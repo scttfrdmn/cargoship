@@ -30,6 +30,10 @@ builds:
 archives:
   - format: tar.gz
     name_template: '{{ .ProjectName }}-{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files:
+      - README.md
+      - LICENSE
+      - completions/*
 checksum:
   name_template: '{{ .ProjectName }}-{{ .Version }}_SHA256SUMS'
   algorithm: sha256
