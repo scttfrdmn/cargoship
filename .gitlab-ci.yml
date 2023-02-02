@@ -65,7 +65,7 @@ release:
     GIT_DEPTH: 0
   script:
     - eval $(/scripts/vault-env.sh ssi-systems-${CI_PROJECT_NAME}-packaging)
-    - goreleaser release --rm-dist
+    - goreleaser release --clean
 ## security looks for common security issues
 security:
   stage: test
