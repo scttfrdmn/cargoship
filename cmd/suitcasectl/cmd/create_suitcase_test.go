@@ -96,7 +96,7 @@ func TestSuitcaseFormatComplete(t *testing.T) {
 	cmd.SetArgs([]string{"__complete", "create", "suitcase", "--suitcase-format", ""})
 	err := cmd.Execute()
 	require.NoError(t, err)
-	require.Equal(t, "tar\ntar.gpg\ntar.gz\ntar.gz.gpg\ntar.zst\n:4\n", b.String())
+	require.Equal(t, "tar\ntar.gpg\ntar.gz\ntar.gz.gpg\ntar.zst\ntar.zst.gpg\n:4\n", b.String())
 }
 
 func BenchmarkSuitcaseCreate(b *testing.B) {
