@@ -65,6 +65,8 @@ a future point in time`,
 	cmd.SetVersionTemplate("{{ .Version }}\n")
 	cmd.AddCommand(createCmd)
 
+	cmd.AddCommand(completionCmd)
+
 	cmd.AddCommand(schemaCmd)
 	cmd.SetOut(lo)
 
