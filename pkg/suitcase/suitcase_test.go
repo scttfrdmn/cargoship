@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"testing"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/gpg"
@@ -142,4 +144,48 @@ func TestFillFileWithInventoryIndexHashInner(t *testing.T) {
 	require.NoError(t, err)
 	// Make sure our known hash file is up in here
 	require.Contains(t, string(c), "ef3d6ae3230876bc9d15b3df72b89797ce8be0dd872315b78c0be72a4600d466")
+}
+
+func BenchmarkNewSuitcase(b *testing.B) {
+	datasets := map[string]struct {
+		path string
+	}{
+		"672M-american-gut": {
+			path: "American-Gut",
+		},
+		"3.3G-Synthetic-cell-images": {
+			path: "BBBC005_v1_images",
+		},
+	}
+	bdd := os.Getenv("BENCHMARK_DATA_DIR")
+	if bdd == "" {
+		bdd = "../../benchmark_data/"
+	}
+
+	zerolog.SetGlobalLevel(zerolog.FatalLevel)
+	for desc, dataset := range datasets {
+		location := path.Join(bdd, dataset.path)
+		if _, err := os.Stat(location); err == nil {
+			desc := desc
+			b.Run(fmt.Sprintf("suitcase_inventory_%v", desc), func(b *testing.B) {
+				inventory, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
+					TopLevelDirectories: []string{location},
+				})
+				require.NoError(b, err)
+				require.NotNil(b, inventory)
+				for _, af := range []string{"tar", "tar.gz"} {
+					af := af
+					b.Run(fmt.Sprintf("suitcase_create_%v_%v", desc, af), func(b *testing.B) {
+						out := b.TempDir()
+						sn, err := WriteSuitcaseFile(&config.SuitCaseOpts{
+							Format:      af,
+							Destination: out,
+						}, inventory, 1, nil)
+						require.NoError(b, err)
+						require.NotEmpty(b, sn)
+					})
+				}
+			})
+		}
+	}
 }

@@ -45,13 +45,17 @@ func BenchmarkNewDirectoryInventory(b *testing.B) {
 	for desc, dataset := range datasets {
 		location := path.Join(bdd, dataset.path)
 		if _, err := os.Stat(location); err == nil {
-			b.Run(fmt.Sprintf("suitcase_format_golang_%v", desc), func(b *testing.B) {
-				got, err := NewDirectoryInventory(&DirectoryInventoryOptions{
-					TopLevelDirectories: []string{location},
+			for _, format := range []string{"yaml", "json"} {
+				format := format
+				b.Run(fmt.Sprintf("suitcase_new_inventory_%v_%v", format, desc), func(b *testing.B) {
+					got, err := NewDirectoryInventory(&DirectoryInventoryOptions{
+						TopLevelDirectories: []string{location},
+						InventoryFormat:     format,
+					})
+					require.NoError(b, err)
+					require.NotNil(b, got)
 				})
-				require.NoError(b, err)
-				require.NotNil(b, got)
-			})
+			}
 		}
 	}
 }

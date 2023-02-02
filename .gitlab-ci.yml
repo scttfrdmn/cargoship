@@ -93,4 +93,4 @@ benchmarks:
   artifacts:
     expire_in: 1 week
     expose_as: 'benchmark reports'
-    paths: ['reports/benchstat.txt']
+    paths: ['reports/']

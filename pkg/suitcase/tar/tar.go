@@ -25,8 +25,8 @@ type Suitcase struct {
 }
 
 // New tar archive.
-func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
-	return Suitcase{
+func New(target io.Writer, opts *config.SuitCaseOpts) *Suitcase {
+	return &Suitcase{
 		tw:   tar.NewWriter(target),
 		opts: opts,
 	}

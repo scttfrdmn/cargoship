@@ -27,10 +27,9 @@ func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
 	if err != nil {
 		panic("UGH NO GZIP WRITER!!")
 	}
-	tw := tar.New(gw, opts)
 	return Suitcase{
 		gw:   gw,
-		tw:   &tw,
+		tw:   tar.New(gw, opts),
 		opts: opts,
 	}
 }
