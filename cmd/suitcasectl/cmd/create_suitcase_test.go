@@ -20,6 +20,15 @@ func TestNewSuitcaseWithDir(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestNewSuitcaseWithProfiling(t *testing.T) {
+	testD := t.TempDir()
+	cmd := NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{"create", "suitcase", testD, "--profile"})
+	err := cmd.Execute()
+	require.NoError(t, err)
+	require.FileExists(t, cpufile.Name())
+}
+
 func TestNewSuitcaseWithViper(t *testing.T) {
 	// testD := t.TempDir()
 	testD := t.TempDir()
