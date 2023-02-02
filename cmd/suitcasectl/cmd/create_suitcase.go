@@ -22,14 +22,14 @@ var (
 // NewCreateSuitcaseCmd represents the createSuitcase command
 func NewCreateSuitcaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:               "suitcase [--inventory-file=INVENTORY_FILE | TARGET_DIR...]",
-		Short:             "Create a suitcase",
-		Long:              "Create a suitcase from either an inventory file or multiple target directories.",
-		Args:              cobra.ArbitraryArgs,
-		Aliases:           []string{"suitecase"}, // Encouraging bad habits
-		RunE:              createRunE,
-		PersistentPreRunE: createPreRunE,
-		PersistentPostRun: createPostRun,
+		Use:                "suitcase [--inventory-file=INVENTORY_FILE | TARGET_DIR...]",
+		Short:              "Create a suitcase",
+		Long:               "Create a suitcase from either an inventory file or multiple target directories.",
+		Args:               cobra.ArbitraryArgs,
+		Aliases:            []string{"suitecase"}, // Encouraging bad habits
+		RunE:               createRunE,
+		PersistentPreRunE:  createPreRunE,
+		PersistentPostRunE: createPostRunE,
 	}
 	bindInventoryCmd(cmd)
 
@@ -143,7 +143,7 @@ func writeHashFile() error {
 	return nil
 }
 
-func createPostRun(cmd *cobra.Command, args []string) {
+func createPostRunE(cmd *cobra.Command, args []string) error {
 	metaF := cliMeta.MustComplete(outDir)
 	log.Info().Str("file", metaF).Msg("Created meta file")
 
@@ -168,6 +168,9 @@ func createPostRun(cmd *cobra.Command, args []string) {
 		Time("start", *cliMeta.StartedAt).
 		Time("end", *cliMeta.CompletedAt).
 		Msg("Completed")
+
+	globalPersistentPostRun(cmd, args)
+	return nil
 }
 
 func createPreRunE(cmd *cobra.Command, args []string) error {

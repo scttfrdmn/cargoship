@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"runtime/pprof"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -23,8 +24,13 @@ var (
 	version = "dev"
 	cfgFile string
 	// Verbose uses lots more verbosity for output and logging and such
-	Verbose       bool
-	trace         bool
+	Verbose bool
+	trace   bool
+
+	// Profiling data
+	profile bool
+	cpufile *os.File
+
 	cliMeta       *cmdhelpers.CLIMeta
 	outDir        string
 	logFile       string
@@ -50,14 +56,12 @@ a future point in time`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			setupLogging(lo)
 		},
-		PersistentPostRun: func(cmd *cobra.Command, args []string) {
-			// log.Info().Str("log-file", logFile).Msg("Log File written")
-			// stats.Runtime = stats.End.Sub(stats.Start)
-		},
+		PersistentPostRun: globalPersistentPostRun,
 	}
 	// cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")
 	cmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
 	cmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
+	cmd.PersistentFlags().BoolVar(&profile, "profile", false, "Enable performance profiling. This will generate profile files in a temp directory")
 	cmd.SetVersionTemplate("{{ .Version }}\n")
 	cmd.AddCommand(createCmd)
 
@@ -104,7 +108,19 @@ func initConfig() {
 	if err := viper.ReadInConfig(); err == nil {
 		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
 	}
-	// We want a specific viper instance for these user overrides
+
+	if profile {
+		log.Info().Msg("Enabling cpu profiling")
+		var err error
+		cpufile, err = os.CreateTemp("", "cpuprofile")
+		if err != nil {
+			panic(err)
+		}
+		err = pprof.StartCPUProfile(cpufile)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 /*
@@ -123,20 +139,6 @@ func checkErr(err error, msg string) {
 		log.Fatal().Err(err).Msg(msg)
 	}
 }
-
-/*
-func printMemUsage() {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	log.Debug().
-		Uint64("allocated", m.Alloc).
-		Uint64("total-allocated", m.TotalAlloc).
-		Uint64("allocated-percent", (m.Alloc/m.TotalAlloc)*100).
-		Uint64("system", m.Sys).
-		Uint64("gc-count", uint64(m.NumGC)).
-		Msg("Memory Usage in MB")
-}
-*/
 
 func setupLogging(lo io.Writer) {
 	if lo == nil {
@@ -192,33 +194,13 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 	return nil
 }
 
-/*
-func setupMultiLogging(o string) error {
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-
-	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	if Verbose {
-		log.Info().Msg("Verbose output enabled")
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+func globalPersistentPostRun(cmd *cobra.Command, args []string) { // nolint:unparam
+	if profile {
+		pprof.StopCPUProfile()
+		err := cpufile.Close()
+		if err != nil {
+			log.Warn().Err(err).Str("cpu-profile", cpufile.Name()).Msg("error closing cpu profiler")
+		}
+		log.Info().Str("cpu-profile", cpufile.Name()).Msg("CPU Profile Created")
 	}
-	// If we have an outDir, also write the logs to a file
-	var multi io.Writer
-	if o == "" {
-		log.Fatal().Msg("No output directory specified")
-	}
-	logFile = path.Join(o, "suitcasectl.log")
-	var err error
-	logF, err = os.Create(logFile) // nolint:gosec
-	if err != nil {
-		return err
-	}
-	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: os.Stderr}, logF)
-	if trace {
-		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
-	} else {
-		log.Logger = zerolog.New(multi).With().Timestamp().Logger()
-	}
-	return nil
 }
-*/
