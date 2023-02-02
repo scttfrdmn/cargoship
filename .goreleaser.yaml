@@ -57,6 +57,8 @@ nfpms:
     priority: optional
     maintainer: Drew Stinnett <drew.stinnett@duke.edu>
     homepage: https://gitlab.oit.duke.edu/devil-ops/suitcasectl
+    replaces:
+      - data-suitcase
     rpm:
       signature:
         key_file: "{{ .Env.GPG_KEY_PATH }}"
@@ -83,6 +85,8 @@ nfpms:
     priority: optional
     homepage: https://gitlab.oit.duke.edu/devil-ops/suitcasectl
     maintainer: Drew Stinnett <drew.stinnett@duke.edu>
+    replaces:
+      - data-suitcase
     formats:
       - deb
     contents:
