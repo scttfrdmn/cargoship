@@ -50,9 +50,6 @@ func NewRootCmd(lo io.Writer) *cobra.Command {
 trasnfered to cheap archive storage. Along with the blob, an unencrypted
 manifest file is generated. This manifest can be used to track down the blob at
 a future point in time`,
-		// Uncomment the following line if your bare application
-		// has an action associated with it:
-		// Run: func(cmd *cobra.Command, args []string) { },
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			setupLogging(lo)
 		},
@@ -148,7 +145,6 @@ func setupLogging(lo io.Writer) {
 	}
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
-	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	if Verbose {
 		log.Info().Msg("Verbose output enabled")
@@ -166,7 +162,6 @@ func setupLogging(lo io.Writer) {
 func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
-	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	if Verbose {
 		log.Info().Msg("Verbose output enabled")
