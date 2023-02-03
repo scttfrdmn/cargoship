@@ -28,6 +28,7 @@ const (
 	logFileKey
 	hashesKey
 	userOverrideKey
+	cliMetaKey
 )
 
 // newOutDirWithCmd generates a new output directory using cobra.Command options

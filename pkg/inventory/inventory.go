@@ -26,6 +26,8 @@ import (
 	"golang.org/x/tools/godoc/util"
 )
 
+var errHalt = errors.New("halt")
+
 // Format is the format the inventory will use, such as yaml, json, etc
 type Format int
 
@@ -176,8 +178,6 @@ type File struct {
 type FileBucket struct {
 	Free int64
 }
-
-var errHalt = errors.New("halt")
 
 // ExpandSuitcaseNames will fill in suitcase names for a given inventory
 func ExpandSuitcaseNames(di *DirectoryInventory) error {

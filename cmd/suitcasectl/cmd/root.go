@@ -28,12 +28,6 @@ var (
 	// Profiling data
 	profile bool
 	cpufile *os.File
-
-	cliMeta *CLIMeta
-	// logFile       string
-	// logF          *os.File
-	// hashes        []inventory.HashSet
-	// userOverrides *viper.Viper
 )
 
 // NewRootCmd represents the base command when called without any subcommands
@@ -56,14 +50,21 @@ a future point in time`,
 	cmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
 	cmd.PersistentFlags().BoolVar(&profile, "profile", false, "Enable performance profiling. This will generate profile files in a temp directory")
 	cmd.SetVersionTemplate("{{ .Version }}\n")
+
+	// Create stuff
+	createCmd := NewCreateCmd()
+
+	createCmd.PersistentFlags().StringP("destination", "d", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
+	if oerr := createCmd.MarkPersistentFlagDirname("destination"); oerr != nil {
+		panic(oerr)
+	}
+	createSuitcaseCmd := NewCreateSuitcaseCmd()
+	createCmd.AddCommand(createSuitcaseCmd)
 	cmd.AddCommand(createCmd)
 
-	cmd.AddCommand(completionCmd)
-
-	cmd.AddCommand(schemaCmd)
+	cmd.AddCommand(NewCompletionCmd())
+	cmd.AddCommand(NewSchemaCmd())
 	cmd.SetOut(lo)
-
-	// context.WithValue(cmd.Context(), hashesKey, []inventory.HashSet{})
 
 	return cmd
 }

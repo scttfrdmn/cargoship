@@ -37,11 +37,6 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 	return cmd
 }
 
-func init() {
-	createSuitcaseCmd := NewCreateSuitcaseCmd()
-	createCmd.AddCommand(createSuitcaseCmd)
-}
-
 // ValidateCmdArgs ensures we are passing valid arguments in
 func ValidateCmdArgs(inventoryFile string, onlyInventory bool, args []string) error {
 	// Figure out if we are using an inventory file, or creating one
@@ -166,6 +161,7 @@ func writeHashFile(cmd *cobra.Command) error {
 }
 
 func createPostRunE(cmd *cobra.Command, args []string) error {
+	cliMeta := cmd.Context().Value(cliMetaKey).(*CLIMeta)
 	metaF := cliMeta.MustComplete(cmd.Context().Value(destinationKey).(string))
 	log.Info().Str("file", metaF).Msg("Created meta file")
 
@@ -209,11 +205,13 @@ func createPreRunE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	cliMeta = NewCLIMeta(args, cmd)
 
 	userOverrides, err := userOverridesWithCobra(cmd, args)
 	checkErr(err, "")
+	cliMeta := NewCLIMeta(args, cmd)
 	cliMeta.ViperConfig = userOverrides.AllSettings()
+
+	cmd.SetContext(context.WithValue(cmd.Context(), cliMetaKey, cliMeta))
 	return nil
 }
 

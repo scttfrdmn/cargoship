@@ -9,12 +9,14 @@ import (
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 )
 
-// schemaCmd represents the schema command
-var schemaCmd = &cobra.Command{
-	Use:    "schema",
-	Short:  "Generate json schema for current inventory definition",
-	Hidden: true,
-	RunE:   schemaRunE,
+// NewSchemaCmd represents the schema command
+func NewSchemaCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "schema",
+		Short:  "Generate json schema for current inventory definition",
+		Hidden: true,
+		RunE:   schemaRunE,
+	}
 }
 
 func schemaRunE(cmd *cobra.Command, args []string) error {
