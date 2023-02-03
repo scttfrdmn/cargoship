@@ -13,7 +13,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmdhelpers"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
@@ -30,11 +29,11 @@ var (
 	profile bool
 	cpufile *os.File
 
-	cliMeta *cmdhelpers.CLIMeta
+	cliMeta *CLIMeta
 	// logFile       string
 	// logF          *os.File
 	// hashes        []inventory.HashSet
-	userOverrides *viper.Viper
+	// userOverrides *viper.Viper
 )
 
 // NewRootCmd represents the base command when called without any subcommands

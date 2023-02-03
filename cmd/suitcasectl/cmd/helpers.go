@@ -27,6 +27,7 @@ const (
 	destinationKey contextKey = iota
 	logFileKey
 	hashesKey
+	userOverrideKey
 )
 
 // newOutDirWithCmd generates a new output directory using cobra.Command options

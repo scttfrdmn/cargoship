@@ -10,7 +10,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmdhelpers"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
@@ -130,7 +129,7 @@ func bindInventoryCmd(cmd *cobra.Command) {
 }
 
 func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, error) {
-	userOverrides = viper.New()
+	userOverrides := viper.New()
 	userOverrides.SetConfigName("suitcasectl")
 	for _, dir := range args {
 		log.Info().Str("dir", dir).Msg("Adding target dir to user overrides")
@@ -145,6 +144,9 @@ func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, er
 			return nil, err
 		}
 	}
+
+	// Store in context for later retrieval
+	cmd.SetContext(context.WithValue(cmd.Context(), userOverrideKey, userOverrides))
 	return userOverrides, nil
 }
 
@@ -207,9 +209,9 @@ func createPreRunE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	cliMeta = cmdhelpers.NewCLIMeta(args, cmd)
+	cliMeta = NewCLIMeta(args, cmd)
 
-	userOverrides, err = userOverridesWithCobra(cmd, args)
+	userOverrides, err := userOverridesWithCobra(cmd, args)
 	checkErr(err, "")
 	cliMeta.ViperConfig = userOverrides.AllSettings()
 	return nil
@@ -223,7 +225,8 @@ func createRunE(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create an inventory file if one isn't specified
-	inventoryD, err := inventory.CreateOrReadInventory(inventoryFile, userOverrides, args, cmd.Context().Value(destinationKey).(string), version)
+	// inventoryD, err := inventory.CreateOrReadInventory(inventoryFile, userOverrides, args, cmd.Context().Value(destinationKey).(string), version)
+	inventoryD, err := inventory.CreateOrReadInventory(inventoryFile, cmd.Context().Value(userOverrideKey).(*viper.Viper), args, cmd.Context().Value(destinationKey).(string), version)
 	if err != nil {
 		return err
 	}
