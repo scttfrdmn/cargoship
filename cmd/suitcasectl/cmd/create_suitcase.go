@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 	"path"
 	"strings"
@@ -41,6 +42,24 @@ func init() {
 	createCmd.AddCommand(createSuitcaseCmd)
 }
 
+// ValidateCmdArgs ensures we are passing valid arguments in
+func ValidateCmdArgs(inventoryFile string, onlyInventory bool, args []string) error {
+	// Figure out if we are using an inventory file, or creating one
+	if inventoryFile != "" && len(args) > 0 {
+		return errors.New("error: You can't specify an inventory file and target dir arguments at the same time")
+	}
+
+	// Make sure we are actually using either an inventory file or target dirs
+	if inventoryFile == "" && len(args) == 0 {
+		return errors.New("error: You must specify an inventory file or target dirs")
+	}
+
+	if onlyInventory && inventoryFile != "" {
+		return errors.New("you can't specify an inventory file and only-inventory at the same time")
+	}
+	return nil
+}
+
 func inventoryOptsWithCobra(cmd *cobra.Command, args []string) (string, bool, error) {
 	inventoryFile, err := cmd.Flags().GetString("inventory-file")
 	if err != nil {
@@ -53,7 +72,7 @@ func inventoryOptsWithCobra(cmd *cobra.Command, args []string) (string, bool, er
 	}
 
 	// Return the error here for use in testing, vs just barfing with checkErr
-	if cerr := cmdhelpers.ValidateCmdArgs(inventoryFile, onlyInventory, args); cerr != nil {
+	if cerr := ValidateCmdArgs(inventoryFile, onlyInventory, args); cerr != nil {
 		return "", false, cerr
 	}
 
@@ -217,15 +236,12 @@ func createRunE(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		po := &cmdhelpers.ProcessOpts{
+		po := &processOpts{
 			Inventory:    inventoryD,
 			SuitcaseOpts: opts,
 			Concurrency:  mustGetCmd[int](cmd, "concurrency"),
 		}
-		createdFiles, err := cmdhelpers.ProcessLogging(po)
-		if err != nil {
-			return err
-		}
+		createdFiles := processLogging(po)
 		hashes = createHashes(createdFiles)
 		return nil
 	}

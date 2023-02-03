@@ -270,3 +270,12 @@ func TestWriteOutDirectoryInventoryAndFileAndInventoyerWithViper(t *testing.T) {
 	require.FileExists(t, gf.Name())
 	require.NotNil(t, i)
 }
+
+func TestWalkDirLimit(t *testing.T) {
+	i := DirectoryInventory{}
+	err := walkDir("../testdata/limit-dir", &DirectoryInventoryOptions{
+		LimitFileCount: 10,
+	}, &i)
+	require.Equal(t, 10, len(i.Files))
+	require.EqualError(t, err, "halt")
+}

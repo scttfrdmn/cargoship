@@ -20,6 +20,17 @@ func TestNewSuitcaseWithDir(t *testing.T) {
 	require.NoError(t, err)
 }
 
+/*
+func TestNewSuitcaseWithLimit(t *testing.T) {
+	testD := t.TempDir()
+	tcmd := NewRootCmd(io.Discard)
+	// cmd.SetArgs([]string{"create", "suitcase", "../../../pkg/testdata/limit-dir/", "--only-inventory", "--destination", testD})
+	tcmd.SetArgs([]string{"create", "suitcase", "../../../pkg/testdata/limit-dir/", "--destination", testD})
+	err := tcmd.Execute()
+	require.NoError(t, err)
+}
+*/
+
 func TestNewSuitcaseWithProfiling(t *testing.T) {
 	testD := t.TempDir()
 	cmd := NewRootCmd(io.Discard)

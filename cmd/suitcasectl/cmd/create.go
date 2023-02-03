@@ -17,14 +17,6 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
-	// rootCmd.AddCommand(createCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// createCmd.PersistentFlags().String("foo", "", "A help for foo")
-	// createCmd.PersistentFlags().StringP("output-dir", "o", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
 	createCmd.PersistentFlags().StringVarP(&outDir, "output-dir", "o", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
 	if derr := createCmd.PersistentFlags().MarkDeprecated("output-dir", "Please use --destination instead of --output-dir"); derr != nil {
 		panic(derr)

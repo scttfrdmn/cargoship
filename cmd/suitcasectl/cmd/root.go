@@ -36,7 +36,6 @@ var (
 	logFile       string
 	logF          *os.File
 	hashes        []inventory.HashSet
-	rootCmd       *cobra.Command
 	userOverrides *viper.Viper
 )
 
@@ -74,8 +73,8 @@ a future point in time`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	// rootCmd = NewRootCmd()
-	rootCmd = NewRootCmd(nil)
-	cobra.CheckErr(rootCmd.Execute())
+	cobra.CheckErr(NewRootCmd(nil).Execute())
+	// cobra.CheckErr(rootCmd.Execute())
 }
 
 func init() {
@@ -200,4 +199,13 @@ func globalPersistentPostRun(cmd *cobra.Command, args []string) { // nolint:unpa
 		}
 		log.Info().Str("cpu-profile", cpufile.Name()).Msg("CPU Profile Created")
 	}
+
+	// Empty out the outDir so multiple runs can happen
+	// outDir = ""
+	// cliMeta = nil
+	// outDir = ""
+	// logFile = ""
+	// logF = nil
+	// hashes = nil
+	// userOverrides = nil
 }
