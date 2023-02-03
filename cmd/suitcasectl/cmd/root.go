@@ -4,17 +4,16 @@ Package cmd is the command line utility
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"runtime/pprof"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmdhelpers"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
@@ -31,11 +30,10 @@ var (
 	profile bool
 	cpufile *os.File
 
-	cliMeta       *cmdhelpers.CLIMeta
-	outDir        string
-	logFile       string
-	logF          *os.File
-	hashes        []inventory.HashSet
+	cliMeta *cmdhelpers.CLIMeta
+	// logFile       string
+	// logF          *os.File
+	// hashes        []inventory.HashSet
 	userOverrides *viper.Viper
 )
 
@@ -65,6 +63,8 @@ a future point in time`,
 
 	cmd.AddCommand(schemaCmd)
 	cmd.SetOut(lo)
+
+	// context.WithValue(cmd.Context(), hashesKey, []inventory.HashSet{})
 
 	return cmd
 }
@@ -168,20 +168,21 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 	}
 	// If we have an outDir, also write the logs to a file
 	var multi io.Writer
-	// o := mustGetCmd[string](cmd, "destination")
 	o, err := getDestination(cmd)
 	if err != nil {
 		return err
 	}
 	if o == "" {
-		log.Fatal().Msg("No output directory specified")
+		log.Warn().Msg("No output directory specified")
+		return errors.New("no output directory specified")
 	}
-	logFile = path.Join(o, "suitcasectl.log")
-	logF, err = os.Create(logFile) // nolint:gosec
-	if err != nil {
-		return err
-	}
-	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}, logF)
+	/*
+		logF, err = os.Create(cmd.Context().Value(logFileKey).(*os.File).Name()) // nolint:gosec
+		if err != nil {
+			return err
+		}
+	*/
+	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}, cmd.Context().Value(logFileKey).(*os.File))
 	if trace {
 		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
 	} else {

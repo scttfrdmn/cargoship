@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -19,6 +21,14 @@ import (
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
 )
 
+type contextKey int
+
+const (
+	destinationKey contextKey = iota
+	logFileKey
+	hashesKey
+)
+
 // newOutDirWithCmd generates a new output directory using cobra.Command options
 func newOutDirWithCmd(cmd *cobra.Command) (string, error) {
 	o, err := getDestination(cmd)
@@ -31,6 +41,10 @@ func newOutDirWithCmd(cmd *cobra.Command) (string, error) {
 			return "", err
 		}
 	}
+
+	// Also shove this in to the context. We'll use it later there.
+	ctx := context.WithValue(cmd.Context(), destinationKey, o)
+	cmd.SetContext(ctx)
 	return o, nil
 }
 
@@ -42,23 +56,25 @@ func dclose(c io.Closer) {
 }
 
 func getDestination(cmd *cobra.Command) (string, error) {
-	d, err := cmd.Flags().GetString("destination")
+	d := mustGetCmd[string](cmd, "destination")
+	if d == "" {
+		var err error
+		d, err = os.MkdirTemp("", "suitcasectl")
+		if err != nil {
+			return "", err
+		}
+	}
+
+	// Set for later use
+	cmd.SetContext(context.WithValue(cmd.Context(), destinationKey, d))
+	logPath := path.Join(d, "suitcasectl.log")
+	lf, err := os.Create(logPath) // nolint:gosec
 	if err != nil {
 		return "", err
 	}
-	if d != "" {
-		return d, nil
-	}
+	cmd.SetContext(context.WithValue(cmd.Context(), logFileKey, lf))
 
-	// Fall back to output-dir for now
-	o, oerr := cmd.Flags().GetString("output-dir")
-	if oerr != nil {
-		return "", nil
-	}
-	if o != "" {
-		return o, nil
-	}
-	return "", nil
+	return d, nil
 }
 
 // mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command

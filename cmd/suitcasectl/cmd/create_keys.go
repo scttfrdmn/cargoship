@@ -13,14 +13,13 @@ var createKeysCmd = &cobra.Command{
 	Use:   "keys",
 	Short: "Create a new private and public key pair",
 	Run: func(cmd *cobra.Command, args []string) {
-		var err error
 		keyOpts := &gpg.KeyOpts{
 			Name:  mustGetCmd[string](cmd, "name"),
 			Email: mustGetCmd[string](cmd, "email"),
 			Bits:  mustGetCmd[int](cmd, "bits"),
 		}
 
-		outDir, err = getDestination(cmd)
+		outDir, err := getDestination(cmd)
 		checkErr(err, "")
 
 		kp, err := gpg.NewKeyPair(keyOpts)
@@ -36,11 +35,6 @@ var createKeysCmd = &cobra.Command{
 
 func init() {
 	createCmd.AddCommand(createKeysCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
 	createKeysCmd.PersistentFlags().StringP("name", "n", "", "Name of the key")
 	err := createKeysCmd.MarkPersistentFlagRequired("name")
 	checkErr(err, "")

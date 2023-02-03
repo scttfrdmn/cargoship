@@ -17,10 +17,12 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
-	createCmd.PersistentFlags().StringVarP(&outDir, "output-dir", "o", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
-	if derr := createCmd.PersistentFlags().MarkDeprecated("output-dir", "Please use --destination instead of --output-dir"); derr != nil {
-		panic(derr)
-	}
+	/*
+		createCmd.PersistentFlags().StringVarP(&outDir, "output-dir", "o", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
+		if derr := createCmd.PersistentFlags().MarkDeprecated("output-dir", "Please use --destination instead of --output-dir"); derr != nil {
+			panic(derr)
+		}
+	*/
 
 	createCmd.PersistentFlags().StringP("destination", "d", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
 	if oerr := createCmd.MarkPersistentFlagDirname("destination"); oerr != nil {
