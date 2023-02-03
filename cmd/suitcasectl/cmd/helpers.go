@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"time"
 
+	// "github.com/minio/sha256-simd"
+
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -101,12 +103,21 @@ func getSha256(file string) (string, error) {
 		}
 	}()
 
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
+	/*
+		h := sha256.New()
+		if _, err := io.Copy(h, f); err != nil {
+			return "", err
+		}
+	*/
+
+	b, err := io.ReadAll(f)
+	if err != nil {
 		return "", err
 	}
 
-	return fmt.Sprintf("%x", h.Sum(nil)), nil
+	sum := sha256.Sum256(b)
+
+	return fmt.Sprintf("%x", sum), nil
 }
 
 // mustGetSha256 panics if a Sha256 cannot be generated
