@@ -26,6 +26,21 @@ import (
 	"golang.org/x/tools/godoc/util"
 )
 
+type contextKey int
+
+const (
+	// DestinationKey is the key for the target diretory of a suitcase operation
+	DestinationKey contextKey = iota
+	// LogFileKey is the detination of the log file
+	LogFileKey
+	// HashesKey is the location of the hashes
+	HashesKey
+	// UserOverrideKey is where the user overrides live
+	UserOverrideKey
+	// CLIMetaKey is where the CLI metadata lives
+	CLIMetaKey
+)
+
 var errHalt = errors.New("halt")
 
 // Format is the format the inventory will use, such as yaml, json, etc
@@ -277,8 +292,11 @@ func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
 }
 
 // WriteOutDirectoryInventoryAndFileAndInventoyerWithViper uses viper to write out an inventory file
-func WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, args []string, outDir, version string) (*DirectoryInventory, *os.File, error) {
-	i, f, ir, err := NewDirectoryInventoryAndFileAndInventoyerWithViper(v, args, outDir)
+func WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, cmd *cobra.Command, args []string, outDir, version string) (*DirectoryInventory, *os.File, error) {
+	if v == nil {
+		panic("must pass viper to WriteOutDirectoryInventoryAndFileAndInventoyerWithViper")
+	}
+	i, f, ir, err := NewDirectoryInventoryAndFileAndInventoyerWithViper(v, cmd, args, outDir)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -293,8 +311,11 @@ func WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, arg
 }
 
 // NewDirectoryInventoryAndFileAndInventoyerWithViper does the interface with viper
-func NewDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, args []string, outDir string) (*DirectoryInventory, *os.File, Inventoryer, error) {
-	i, f, err := NewDirectoryInventoryAndFileWithViper(v, args, outDir)
+func NewDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, cmd *cobra.Command, args []string, outDir string) (*DirectoryInventory, *os.File, Inventoryer, error) {
+	if v == nil {
+		panic("must pass viper to NewDirectoryInventoryAndFileAndInventoyerWithViper")
+	}
+	i, f, err := NewDirectoryInventoryAndFileWithViper(v, cmd, args, outDir)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -306,8 +327,11 @@ func NewDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, args []s
 }
 
 // NewDirectoryInventoryAndFileWithViper creates a new inventory with viper
-func NewDirectoryInventoryAndFileWithViper(v *viper.Viper, args []string, outDir string) (*DirectoryInventory, *os.File, error) {
-	i, err := NewDirectoryInventoryWithViper(v, args)
+func NewDirectoryInventoryAndFileWithViper(v *viper.Viper, cmd *cobra.Command, args []string, outDir string) (*DirectoryInventory, *os.File, error) {
+	if v == nil {
+		panic("must pass viper to NewDirectoryInventoryAndFileWithViper")
+	}
+	i, err := NewDirectoryInventoryWithViper(v, cmd, args)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -319,12 +343,24 @@ func NewDirectoryInventoryAndFileWithViper(v *viper.Viper, args []string, outDir
 }
 
 // NewDirectoryInventoryWithViper new DirectoryInventory with Viper
-func NewDirectoryInventoryWithViper(v *viper.Viper, args []string) (*DirectoryInventory, error) {
-	inventoryOpts, err := NewDirectoryInventoryOptionsWithViper(v, args)
+func NewDirectoryInventoryWithViper(v *viper.Viper, cmd *cobra.Command, args []string) (*DirectoryInventory, error) {
+	if v == nil {
+		panic("must set viper in NewDirectoryInventoryWithViper")
+	}
+	inventoryOpts, err := NewDirectoryInventoryOptionsWithViper(v, cmd, args)
 	if err != nil {
 		return nil, err
 	}
 	return NewDirectoryInventory(inventoryOpts)
+}
+
+// NewOptions uses functional options to generatea DirectoryInventoryOptions object
+func NewOptions(options ...func(*DirectoryInventoryOptions)) *DirectoryInventoryOptions {
+	dio := &DirectoryInventoryOptions{}
+	for _, opt := range options {
+		opt(dio)
+	}
+	return dio
 }
 
 // NewDirectoryInventory creates a new DirectoryInventory using options
@@ -375,7 +411,9 @@ func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory
 			Msg("walking directory")
 		err := walkDir(dir, opts, ret)
 		if err != nil {
-			return nil, err
+			if err.Error() != "halt" {
+				return nil, err
+			}
 		}
 		log.Info().Str("path", dir).Msg("Ignoring file as it matches ignore globs")
 	}
@@ -473,20 +511,21 @@ func suitcaseFormatWithViper(v *viper.Viper) string {
 }
 
 // NewDirectoryInventoryOptionsWithViper creates new inventory options with viper
-func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, args []string) (*DirectoryInventoryOptions, error) {
+func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, cmd *cobra.Command, args []string) (*DirectoryInventoryOptions, error) {
 	var err error
-
-	opt := &DirectoryInventoryOptions{
-		TopLevelDirectories:   args,
-		InternalMetadataGlob:  v.GetString("internal-metadata-glob"),
-		ExternalMetadataFiles: v.GetStringSlice("external-metadata-file"),
-		IgnoreGlobs:           v.GetStringSlice("ignore-glob"),
-		LimitFileCount:        v.GetInt("limit-file-count"),
-		SuitcaseFormat:        suitcaseFormatWithViper(v),
-		Prefix:                v.GetString("prefix"),
-		EncryptInner:          v.GetBool("encrypt-inner"),
-		FollowSymlinks:        v.GetBool("follow-symlinks"),
+	if v == nil {
+		panic("must pass viper in")
 	}
+	opt := &DirectoryInventoryOptions{}
+	opt.TopLevelDirectories = args
+	opt.InternalMetadataGlob = v.GetString("internal-metadata-glob")
+	opt.ExternalMetadataFiles = v.GetStringSlice("external-metadata-file")
+	opt.IgnoreGlobs = v.GetStringSlice("ignore-glob")
+	opt.LimitFileCount, _ = cmd.Flags().GetInt("limit-file-count")
+	opt.SuitcaseFormat = suitcaseFormatWithViper(v)
+	opt.Prefix = v.GetString("prefix")
+	opt.EncryptInner = v.GetBool("encrypt-inner")
+	opt.FollowSymlinks = v.GetBool("follow-symlinks")
 	opt.TopLevelDirectories, err = convertDirsToAboluteDirs(args)
 	if err != nil {
 		return nil, err
@@ -544,15 +583,49 @@ func NewCaseSet(maxSize int64) CaseSet {
 	}
 }
 
+// UserOverrideWithCobra returns a user override viper object from a cmd
+func UserOverrideWithCobra(cmd *cobra.Command) *viper.Viper {
+	if cmd.Context() == nil {
+		return &viper.Viper{}
+	}
+	v := cmd.Context().Value(UserOverrideKey)
+	if v == nil {
+		return &viper.Viper{}
+	}
+	vi, ok := v.(*viper.Viper)
+	if !ok {
+		return &viper.Viper{}
+	}
+	return vi
+}
+
+// DestinationWithCobra returns a destination string from a cmd
+func DestinationWithCobra(cmd *cobra.Command) string {
+	if cmd.Context() == nil {
+		return ""
+	}
+	v := cmd.Context().Value(DestinationKey)
+	if v == nil {
+		return ""
+	}
+	d, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return d
+}
+
 // CreateOrReadInventory will either create a new inventory (if given an empty string), or read an existing one
-func CreateOrReadInventory(inventoryFile string, v *viper.Viper, args []string, outDir string, version string) (*DirectoryInventory, error) {
+func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []string, version string) (*DirectoryInventory, error) {
 	// Create an inventory file if one isn't specified
 	var inventoryD *DirectoryInventory
 	if inventoryFile == "" {
 		log.Info().Msg("No inventory file specified, we're going to go ahead and create one")
 		var outF *os.File
 		var err error
-		inventoryD, outF, err = WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v, args, outDir, version)
+		v := UserOverrideWithCobra(cmd)
+		outDir := DestinationWithCobra(cmd)
+		inventoryD, outF, err = WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v, cmd, args, outDir, version)
 		if err != nil {
 			return nil, err
 		}
@@ -694,6 +767,7 @@ func shouldSkipSymlink(path string) (string, bool) {
 }
 
 func haltIfLimit(opts *DirectoryInventoryOptions, addedCount int) error {
+	log.Warn().Int("limit", opts.LimitFileCount).Int("added", addedCount)
 	if opts.LimitFileCount > 0 && addedCount >= opts.LimitFileCount {
 		log.Warn().Msg("Reached file count limit, stopping walk")
 		return errHalt

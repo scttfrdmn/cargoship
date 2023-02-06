@@ -14,21 +14,12 @@ import (
 
 	// "github.com/minio/sha256-simd"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
-)
-
-type contextKey int
-
-const (
-	destinationKey contextKey = iota
-	logFileKey
-	hashesKey
-	userOverrideKey
-	cliMetaKey
 )
 
 // newOutDirWithCmd generates a new output directory using cobra.Command options
@@ -45,7 +36,7 @@ func newOutDirWithCmd(cmd *cobra.Command) (string, error) {
 	}
 
 	// Also shove this in to the context. We'll use it later there.
-	ctx := context.WithValue(cmd.Context(), destinationKey, o)
+	ctx := context.WithValue(cmd.Context(), inventory.DestinationKey, o)
 	cmd.SetContext(ctx)
 	return o, nil
 }
@@ -68,13 +59,13 @@ func getDestination(cmd *cobra.Command) (string, error) {
 	}
 
 	// Set for later use
-	cmd.SetContext(context.WithValue(cmd.Context(), destinationKey, d))
+	cmd.SetContext(context.WithValue(cmd.Context(), inventory.DestinationKey, d))
 	logPath := path.Join(d, "suitcasectl.log")
 	lf, err := os.Create(logPath) // nolint:gosec
 	if err != nil {
 		return "", err
 	}
-	cmd.SetContext(context.WithValue(cmd.Context(), logFileKey, lf))
+	cmd.SetContext(context.WithValue(cmd.Context(), inventory.LogFileKey, lf))
 
 	return d, nil
 }
@@ -155,6 +146,7 @@ func mustGetSha256(file string) string {
 // ProcessOpts defines the process options
 type processOpts struct {
 	Concurrency  int
+	SampleEvery  int
 	Inventory    *inventory.DirectoryInventory
 	SuitcaseOpts *config.SuitCaseOpts
 }
@@ -167,6 +159,7 @@ func processLogging(po *processOpts) []string {
 	wg.Add(po.Inventory.TotalIndexes)
 	state := make(chan suitcase.FillState, 1)
 	processed := int32(0)
+	sampled := log.Sample(&zerolog.BasicSampler{N: uint32(po.SampleEvery)})
 	for i := 1; i <= po.Inventory.TotalIndexes; i++ {
 		guard <- struct{}{} // would block if guard channel is already filled
 
@@ -205,7 +198,7 @@ func processLogging(po *processOpts) []string {
 		if st.Completed {
 			atomic.AddInt32(&processed, 1)
 		}
-		log.Debug().
+		sampled.Debug().
 			Int("index", st.Index).
 			Uint("current", st.Current).
 			Uint("total", st.Total).

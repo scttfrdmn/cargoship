@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
@@ -182,7 +183,7 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 			return err
 		}
 	*/
-	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}, cmd.Context().Value(logFileKey).(*os.File))
+	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}, cmd.Context().Value(inventory.LogFileKey).(*os.File))
 	if trace {
 		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
 	} else {

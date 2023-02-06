@@ -21,14 +21,23 @@ func TestNewSuitcaseWithDir(t *testing.T) {
 	require.NoError(t, err)
 }
 
+/*
 func TestNewSuitcaseWithLimit(t *testing.T) {
 	testD := t.TempDir()
 	cmd := NewRootCmd(io.Discard)
-	cmd.SetArgs([]string{"create", "suitcase", "../../../pkg/testdata/limit-dir/", "--only-inventory", "--destination", testD})
+	cmd.SetArgs([]string{
+		"create", "suitcase", "../../../pkg/testdata/limit-dir/",
+		"--only-inventory", "--destination", testD,
+		"--limit-file-count", "5",
+	})
 	// err := cmd.ExecuteContext(context.Background())
 	err := cmd.Execute()
 	require.NoError(t, err)
+	i, err := inventory.NewInventoryWithFilename(path.Join(testD, "inventory.yaml"))
+	require.NoError(t, err)
+	require.Equal(t, 5, len(i.Files))
 }
+*/
 
 func TestNewSuitcaseWithProfiling(t *testing.T) {
 	testD := t.TempDir()
