@@ -8,39 +8,36 @@ import (
 
 var gpgKeyType gpg.KeyType
 
-// createKeysCmd represents the createKeys command
-var createKeysCmd = &cobra.Command{
-	Use:   "keys",
-	Short: "Create a new private and public key pair",
-	Run: func(cmd *cobra.Command, args []string) {
-		var err error
-		keyOpts := &gpg.KeyOpts{
-			Name:  mustGetCmd[string](cmd, "name"),
-			Email: mustGetCmd[string](cmd, "email"),
-			Bits:  mustGetCmd[int](cmd, "bits"),
-		}
+// NewCreateKeysCmd generates a new subcommand for creating key pairs
+func NewCreateKeysCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "keys",
+		Short: "Create a new private and public key pair",
+		Run: func(cmd *cobra.Command, args []string) {
+			keyOpts := &gpg.KeyOpts{
+				Name:  mustGetCmd[string](cmd, "name"),
+				Email: mustGetCmd[string](cmd, "email"),
+				Bits:  mustGetCmd[int](cmd, "bits"),
+			}
 
-		outDir, err = getDestination(cmd)
-		checkErr(err, "")
+			outDir, err := getDestination(cmd)
+			checkErr(err, "")
 
-		kp, err := gpg.NewKeyPair(keyOpts)
-		checkErr(err, "")
+			kp, err := gpg.NewKeyPair(keyOpts)
+			checkErr(err, "")
 
-		created, err := gpg.NewKeyFilesWithPair(kp, outDir)
-		checkErr(err, "")
-		log.Info().
-			Strs("created", created).
-			Msg("Create key files")
-	},
+			created, err := gpg.NewKeyFilesWithPair(kp, outDir)
+			checkErr(err, "")
+			log.Info().
+				Strs("created", created).
+				Msg("Create key files")
+		},
+	}
 }
 
-func init() {
+func bindCreateKeys(createCmd *cobra.Command) {
+	createKeysCmd := NewCreateKeysCmd()
 	createCmd.AddCommand(createKeysCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
 	createKeysCmd.PersistentFlags().StringP("name", "n", "", "Name of the key")
 	err := createKeysCmd.MarkPersistentFlagRequired("name")
 	checkErr(err, "")
@@ -70,8 +67,4 @@ func init() {
 	}); berr != nil {
 		panic(berr)
 	}
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// createKeysCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

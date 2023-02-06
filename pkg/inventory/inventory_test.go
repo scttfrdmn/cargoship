@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/stretchr/testify/require"
@@ -258,15 +259,30 @@ func TestNewSuitcaseWithNoFollowSymlinks(t *testing.T) {
 
 func TestNewDirectoryInventoryOptionsWithViper(t *testing.T) {
 	v := viper.New()
-	_, err := NewDirectoryInventoryWithViper(v, []string{"../testdata/fake-dir"})
+	_, err := NewDirectoryInventoryWithViper(v, &cobra.Command{}, []string{"../testdata/fake-dir"})
 	require.NoError(t, err)
 }
 
 func TestWriteOutDirectoryInventoryAndFileAndInventoyerWithViper(t *testing.T) {
 	f := t.TempDir()
 	v := viper.New()
-	i, gf, err := WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v, []string{"../testdata/fake-dir"}, f, "testing")
+	i, gf, err := WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v, &cobra.Command{}, []string{"../testdata/fake-dir"}, f, "testing")
 	require.NoError(t, err)
 	require.FileExists(t, gf.Name())
 	require.NotNil(t, i)
+}
+
+func TestWalkDirLimit(t *testing.T) {
+	i := DirectoryInventory{}
+	err := walkDir("../testdata/limit-dir", &DirectoryInventoryOptions{
+		LimitFileCount: 10,
+	}, &i)
+	require.Equal(t, 10, len(i.Files))
+	require.EqualError(t, err, "halt")
+}
+
+func TestCreateOrReadInventory(t *testing.T) {
+	got, err := CreateOrReadInventory("", &cobra.Command{}, []string{"../testdata/limit-dir"}, "dev")
+	require.NoError(t, err)
+	require.NotNil(t, got)
 }

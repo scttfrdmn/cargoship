@@ -1,7 +1,4 @@
-/*
-Package cmdhelpers is helpers to the CLI tool. This should probably be moved to the cmd package
-*/
-package cmdhelpers
+package cmd
 
 import (
 	"io"

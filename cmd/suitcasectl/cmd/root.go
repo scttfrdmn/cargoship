@@ -4,16 +4,15 @@ Package cmd is the command line utility
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"runtime/pprof"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmdhelpers"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 
 	homedir "github.com/mitchellh/go-homedir"
@@ -30,14 +29,6 @@ var (
 	// Profiling data
 	profile bool
 	cpufile *os.File
-
-	cliMeta       *cmdhelpers.CLIMeta
-	outDir        string
-	logFile       string
-	logF          *os.File
-	hashes        []inventory.HashSet
-	rootCmd       *cobra.Command
-	userOverrides *viper.Viper
 )
 
 // NewRootCmd represents the base command when called without any subcommands
@@ -60,11 +51,20 @@ a future point in time`,
 	cmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
 	cmd.PersistentFlags().BoolVar(&profile, "profile", false, "Enable performance profiling. This will generate profile files in a temp directory")
 	cmd.SetVersionTemplate("{{ .Version }}\n")
+
+	// Create stuff
+	createCmd := NewCreateCmd()
+
+	createCmd.PersistentFlags().StringP("destination", "d", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
+	if oerr := createCmd.MarkPersistentFlagDirname("destination"); oerr != nil {
+		panic(oerr)
+	}
+	createSuitcaseCmd := NewCreateSuitcaseCmd()
+	createCmd.AddCommand(createSuitcaseCmd)
 	cmd.AddCommand(createCmd)
 
-	cmd.AddCommand(completionCmd)
-
-	cmd.AddCommand(schemaCmd)
+	cmd.AddCommand(NewCompletionCmd())
+	cmd.AddCommand(NewSchemaCmd())
 	cmd.SetOut(lo)
 
 	return cmd
@@ -74,8 +74,8 @@ a future point in time`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	// rootCmd = NewRootCmd()
-	rootCmd = NewRootCmd(nil)
-	cobra.CheckErr(rootCmd.Execute())
+	cobra.CheckErr(NewRootCmd(nil).Execute())
+	// cobra.CheckErr(rootCmd.Execute())
 }
 
 func init() {
@@ -169,20 +169,21 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 	}
 	// If we have an outDir, also write the logs to a file
 	var multi io.Writer
-	// o := mustGetCmd[string](cmd, "destination")
 	o, err := getDestination(cmd)
 	if err != nil {
 		return err
 	}
 	if o == "" {
-		log.Fatal().Msg("No output directory specified")
+		log.Warn().Msg("No output directory specified")
+		return errors.New("no output directory specified")
 	}
-	logFile = path.Join(o, "suitcasectl.log")
-	logF, err = os.Create(logFile) // nolint:gosec
-	if err != nil {
-		return err
-	}
-	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}, logF)
+	/*
+		logF, err = os.Create(cmd.Context().Value(logFileKey).(*os.File).Name()) // nolint:gosec
+		if err != nil {
+			return err
+		}
+	*/
+	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}, cmd.Context().Value(inventory.LogFileKey).(*os.File))
 	if trace {
 		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
 	} else {
@@ -200,4 +201,13 @@ func globalPersistentPostRun(cmd *cobra.Command, args []string) { // nolint:unpa
 		}
 		log.Info().Str("cpu-profile", cpufile.Name()).Msg("CPU Profile Created")
 	}
+
+	// Empty out the outDir so multiple runs can happen
+	// outDir = ""
+	// cliMeta = nil
+	// outDir = ""
+	// logFile = ""
+	// logF = nil
+	// hashes = nil
+	// userOverrides = nil
 }
