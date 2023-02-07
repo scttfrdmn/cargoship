@@ -117,13 +117,13 @@ type Inventoryer interface {
 
 // DirectoryInventory is the inventory of a set of suitcases
 type DirectoryInventory struct {
-	Files            []*File                    `yaml:"files" json:"files"`
-	Options          *DirectoryInventoryOptions `yaml:"options" json:"options"`
-	TotalIndexes     int                        `yaml:"total_indexes" json:"total_indexes"`
-	IndexSummaries   map[int]*IndexSummary      `yaml:"index_summaries" json:"index_summaries"`
-	InternalMetadata map[string]string          `yaml:"internal_metadata" json:"internal_metadata"`
-	ExternalMetadata map[string]string          `yaml:"external_metadata" json:"external_metadata"`
-	CLIMeta          CLIMeta                    `yaml:"cli_meta" json:"cli_meta"`
+	Files            []*File               `yaml:"files" json:"files"`
+	Options          *Options              `yaml:"options" json:"options"`
+	TotalIndexes     int                   `yaml:"total_indexes" json:"total_indexes"`
+	IndexSummaries   map[int]*IndexSummary `yaml:"index_summaries" json:"index_summaries"`
+	InternalMetadata map[string]string     `yaml:"internal_metadata" json:"internal_metadata"`
+	ExternalMetadata map[string]string     `yaml:"external_metadata" json:"external_metadata"`
+	CLIMeta          CLIMeta               `yaml:"cli_meta" json:"cli_meta"`
 }
 
 // SummaryLog logs out a summary of the suitcase data
@@ -161,8 +161,8 @@ type CLIMeta struct {
 	Version string     `yaml:"version" json:"version"`
 }
 
-// DirectoryInventoryOptions are the options used to create a DirectoryInventory
-type DirectoryInventoryOptions struct {
+// Options are the options used to create a DirectoryInventory
+type Options struct {
 	User                  string   `yaml:"user" json:"user"`
 	Prefix                string   `yaml:"prefix" json:"prefix"`
 	TopLevelDirectories   []string `yaml:"top_level_directories" json:"top_level_directories"`
@@ -177,6 +177,43 @@ type DirectoryInventoryOptions struct {
 	SuitcaseFormat        string   `yaml:"suitcase_format" json:"suitcase_format"`
 	InventoryFormat       string   `yaml:"inventory_format" json:"inventory_format"`
 	FollowSymlinks        bool     `yaml:"follow_symlinks" json:"follow_symlinks"`
+}
+
+// WithLimitFileCount sets the number of files to process before stopping. 0 means process them all
+func WithLimitFileCount(c int) func(*Options) {
+	return func(o *Options) {
+		o.LimitFileCount = c
+	}
+}
+
+// WithMaxSuitcaseSize sets the maximum size for any of the generated suitcases
+func WithMaxSuitcaseSize(s int64) func(*Options) {
+	return func(o *Options) {
+		o.MaxSuitcaseSize = s
+	}
+}
+
+// WithUser sets the user for an inventory option
+func WithUser(u string) func(*Options) {
+	return func(o *Options) {
+		o.User = u
+	}
+}
+
+// WithPrefix sets the prefix for an inventory
+func WithPrefix(p string) func(*Options) {
+	return func(o *Options) {
+		o.Prefix = p
+	}
+}
+
+// NewOptions uses functional options to generatea DirectoryInventoryOptions object
+func NewOptions(options ...func(*Options)) *Options {
+	dio := &Options{}
+	for _, opt := range options {
+		opt(dio)
+	}
+	return dio
 }
 
 // File is a file item inside an inventory
@@ -354,17 +391,8 @@ func NewDirectoryInventoryWithViper(v *viper.Viper, cmd *cobra.Command, args []s
 	return NewDirectoryInventory(inventoryOpts)
 }
 
-// NewOptions uses functional options to generatea DirectoryInventoryOptions object
-func NewOptions(options ...func(*DirectoryInventoryOptions)) *DirectoryInventoryOptions {
-	dio := &DirectoryInventoryOptions{}
-	for _, opt := range options {
-		opt(dio)
-	}
-	return dio
-}
-
 // NewDirectoryInventory creates a new DirectoryInventory using options
-func NewDirectoryInventory(opts *DirectoryInventoryOptions) (*DirectoryInventory, error) {
+func NewDirectoryInventory(opts *Options) (*DirectoryInventory, error) {
 	ret := &DirectoryInventory{
 		Options: opts,
 	}
@@ -511,12 +539,12 @@ func suitcaseFormatWithViper(v *viper.Viper) string {
 }
 
 // NewDirectoryInventoryOptionsWithViper creates new inventory options with viper
-func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, cmd *cobra.Command, args []string) (*DirectoryInventoryOptions, error) {
+func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, cmd *cobra.Command, args []string) (*Options, error) {
 	var err error
 	if v == nil {
 		panic("must pass viper in")
 	}
-	opt := &DirectoryInventoryOptions{}
+	opt := &Options{}
 	opt.TopLevelDirectories = args
 	opt.InternalMetadataGlob = v.GetString("internal-metadata-glob")
 	opt.ExternalMetadataFiles = v.GetStringSlice("external-metadata-file")
@@ -661,7 +689,7 @@ func errCallback(osPathname string, err error) godirwalk.ErrorAction {
 	return godirwalk.SkipNode
 }
 
-func getInternalMeta(opts *DirectoryInventoryOptions) (map[string]string, error) {
+func getInternalMeta(opts *Options) (map[string]string, error) {
 	internalMeta := map[string]string{}
 	for _, dir := range opts.TopLevelDirectories {
 		data, err := GetMetadataWithGlob(fmt.Sprintf("%v/%v", dir, opts.InternalMetadataGlob))
@@ -684,7 +712,7 @@ func printMemUsageIncr(addedCount, div int) {
 	}
 }
 
-func walkDir(dir string, opts *DirectoryInventoryOptions, ret *DirectoryInventory) error {
+func walkDir(dir string, opts *Options, ret *DirectoryInventory) error {
 	var addedCount int
 	err := godirwalk.Walk(dir, &godirwalk.Options{
 		FollowSymbolicLinks: opts.FollowSymlinks,
@@ -766,7 +794,7 @@ func shouldSkipSymlink(path string) (string, bool) {
 	return target, false
 }
 
-func haltIfLimit(opts *DirectoryInventoryOptions, addedCount int) error {
+func haltIfLimit(opts *Options, addedCount int) error {
 	log.Warn().Int("limit", opts.LimitFileCount).Int("added", addedCount)
 	if opts.LimitFileCount > 0 && addedCount >= opts.LimitFileCount {
 		log.Warn().Msg("Reached file count limit, stopping walk")

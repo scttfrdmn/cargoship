@@ -15,8 +15,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestNewOptions(t *testing.T) {
+	o := NewOptions(
+		WithUser("foo"),
+		WithPrefix("pre"),
+		WithMaxSuitcaseSize(500),
+		WithLimitFileCount(10),
+	)
+	require.Equal(t, "foo", o.User)
+	require.Equal(t, "pre", o.Prefix)
+	require.Equal(t, 10, o.LimitFileCount)
+	require.Equal(t, int64(500), o.MaxSuitcaseSize)
+}
+
 func TestNewDirectoryInventory(t *testing.T) {
-	got, err := NewDirectoryInventory(&DirectoryInventoryOptions{
+	got, err := NewDirectoryInventory(&Options{
 		TopLevelDirectories: []string{"../testdata/fake-dir"},
 	})
 
@@ -49,7 +62,7 @@ func BenchmarkNewDirectoryInventory(b *testing.B) {
 			for _, format := range []string{"yaml", "json"} {
 				format := format
 				b.Run(fmt.Sprintf("suitcase_new_inventory_%v_%v", format, desc), func(b *testing.B) {
-					got, err := NewDirectoryInventory(&DirectoryInventoryOptions{
+					got, err := NewDirectoryInventory(&Options{
 						TopLevelDirectories: []string{location},
 						InventoryFormat:     format,
 					})
@@ -85,7 +98,7 @@ func TestIndexInventory(t *testing.T) {
 
 func TestExpandInventoryWithNames(t *testing.T) {
 	i := &DirectoryInventory{
-		Options: &DirectoryInventoryOptions{
+		Options: &Options{
 			Prefix: "foo",
 			User:   "bar",
 		},
@@ -136,7 +149,7 @@ func TestIndexInventoryTooBig(t *testing.T) {
 }
 
 func TestNewDirectoryInventoryMissingTopDirs(t *testing.T) {
-	_, err := NewDirectoryInventory(&DirectoryInventoryOptions{
+	_, err := NewDirectoryInventory(&Options{
 		TopLevelDirectories: []string{},
 	})
 	require.Error(t, err)
@@ -221,7 +234,7 @@ func TestNewInventoryerWithBadFilename(t *testing.T) {
 }
 
 func TestNewSuitcaseWithIgnoreGlobs(t *testing.T) {
-	i, err := NewDirectoryInventory(&DirectoryInventoryOptions{
+	i, err := NewDirectoryInventory(&Options{
 		TopLevelDirectories: []string{"../testdata/fake-dir"},
 		IgnoreGlobs:         []string{"*.out"},
 	})
@@ -232,7 +245,7 @@ func TestNewSuitcaseWithIgnoreGlobs(t *testing.T) {
 }
 
 func TestNewSuitcaseWithFollowSymlinks(t *testing.T) {
-	i, err := NewDirectoryInventory(&DirectoryInventoryOptions{
+	i, err := NewDirectoryInventory(&Options{
 		TopLevelDirectories: []string{"../testdata/fake-dir"},
 		FollowSymlinks:      true,
 	})
@@ -245,7 +258,7 @@ func TestNewSuitcaseWithFollowSymlinks(t *testing.T) {
 }
 
 func TestNewSuitcaseWithNoFollowSymlinks(t *testing.T) {
-	i, err := NewDirectoryInventory(&DirectoryInventoryOptions{
+	i, err := NewDirectoryInventory(&Options{
 		TopLevelDirectories: []string{"../testdata/fake-dir"},
 		FollowSymlinks:      false,
 	})
@@ -274,15 +287,18 @@ func TestWriteOutDirectoryInventoryAndFileAndInventoyerWithViper(t *testing.T) {
 
 func TestWalkDirLimit(t *testing.T) {
 	i := DirectoryInventory{}
-	err := walkDir("../testdata/limit-dir", &DirectoryInventoryOptions{
+	err := walkDir("../testdata/limit-dir", &Options{
 		LimitFileCount: 10,
 	}, &i)
 	require.Equal(t, 10, len(i.Files))
 	require.EqualError(t, err, "halt")
 }
 
+/*
+This is dumping a new inventory.yaml in the pkg directory...figure that out before re-enabling this test
 func TestCreateOrReadInventory(t *testing.T) {
 	got, err := CreateOrReadInventory("", &cobra.Command{}, []string{"../testdata/limit-dir"}, "dev")
 	require.NoError(t, err)
 	require.NotNil(t, got)
 }
+*/

@@ -73,7 +73,7 @@ func TestNewSuitcaseWithViperFlag(t *testing.T) {
 
 func TestNewSuitcaseWithInventory(t *testing.T) {
 	toutDir := t.TempDir()
-	i, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
+	i, err := inventory.NewDirectoryInventory(&inventory.Options{
 		TopLevelDirectories: []string{"../../../pkg/testdata/fake-dir"},
 		SuitcaseFormat:      "tar",
 		InventoryFormat:     "yaml",

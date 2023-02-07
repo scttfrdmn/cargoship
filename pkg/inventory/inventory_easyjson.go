@@ -258,7 +258,7 @@ func (v *FileBucket) UnmarshalJSON(data []byte) error {
 func (v *FileBucket) UnmarshalEasyJSON(l *jlexer.Lexer) {
 	easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory2(l, v)
 }
-func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(in *jlexer.Lexer, out *DirectoryInventoryOptions) {
+func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(in *jlexer.Lexer, out *Options) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -353,7 +353,7 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(in 
 		in.Consumed()
 	}
 }
-func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(out *jwriter.Writer, in DirectoryInventoryOptions) {
+func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(out *jwriter.Writer, in Options) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -441,26 +441,26 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(out
 }
 
 // MarshalJSON supports json.Marshaler interface
-func (v DirectoryInventoryOptions) MarshalJSON() ([]byte, error) {
+func (v Options) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
 	easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
-func (v DirectoryInventoryOptions) MarshalEasyJSON(w *jwriter.Writer) {
+func (v Options) MarshalEasyJSON(w *jwriter.Writer) {
 	easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
-func (v *DirectoryInventoryOptions) UnmarshalJSON(data []byte) error {
+func (v *Options) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
 	easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
-func (v *DirectoryInventoryOptions) UnmarshalEasyJSON(l *jlexer.Lexer) {
+func (v *Options) UnmarshalEasyJSON(l *jlexer.Lexer) {
 	easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(l, v)
 }
 func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(in *jlexer.Lexer, out *DirectoryInventory) {
@@ -519,7 +519,7 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(in 
 				out.Options = nil
 			} else {
 				if out.Options == nil {
-					out.Options = new(DirectoryInventoryOptions)
+					out.Options = new(Options)
 				}
 				(*out.Options).UnmarshalEasyJSON(in)
 			}

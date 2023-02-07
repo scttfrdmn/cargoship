@@ -93,7 +93,7 @@ func TestFillWithInventoryIndex(t *testing.T) {
 		Format: "tar",
 	})
 	require.NoError(t, err)
-	i, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
+	i, err := inventory.NewDirectoryInventory(&inventory.Options{
 		TopLevelDirectories: []string{"../testdata/fake-dir"},
 	})
 	require.NoError(t, err)
@@ -102,7 +102,7 @@ func TestFillWithInventoryIndex(t *testing.T) {
 }
 
 func TestFillWithInventoryIndexMissingDir(t *testing.T) {
-	_, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
+	_, err := inventory.NewDirectoryInventory(&inventory.Options{
 		TopLevelDirectories: []string{"../testdata/never-exist"},
 	})
 	require.EqualError(t, err, "not a directory")
@@ -114,7 +114,7 @@ func TestFillFileWithInventoryIndex(t *testing.T) {
 		Format:      "tar",
 		Destination: d,
 	}
-	i, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
+	i, err := inventory.NewDirectoryInventory(&inventory.Options{
 		TopLevelDirectories: []string{"../testdata/fake-dir"},
 	})
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestFillFileWithInventoryIndexHashInner(t *testing.T) {
 		Destination: d,
 		HashInner:   true,
 	}
-	i, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
+	i, err := inventory.NewDirectoryInventory(&inventory.Options{
 		TopLevelDirectories: []string{"../testdata/fake-dir"},
 	})
 	require.NoError(t, err)
@@ -168,7 +168,7 @@ func BenchmarkNewSuitcase(b *testing.B) {
 		if _, err := os.Stat(location); err == nil {
 			desc := desc
 			b.Run(fmt.Sprintf("suitcase_inventory_%v", desc), func(b *testing.B) {
-				inventory, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
+				inventory, err := inventory.NewDirectoryInventory(&inventory.Options{
 					TopLevelDirectories: []string{location},
 				})
 				require.NoError(b, err)

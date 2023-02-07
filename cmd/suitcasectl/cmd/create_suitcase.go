@@ -253,8 +253,10 @@ func createRunE(cmd *cobra.Command, args []string) error {
 			Concurrency:  mustGetCmd[int](cmd, "concurrency"),
 		}
 		createdFiles := processLogging(po)
-		hashes := createHashes(createdFiles, cmd)
-		cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashesKey, hashes))
+		if mustGetCmd[bool](cmd, "hash-outer") {
+			hashes := createHashes(createdFiles, cmd)
+			cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashesKey, hashes))
+		}
 		return nil
 	}
 	log.Warn().Msg("Only creating inventory file, no suitcase archives")
