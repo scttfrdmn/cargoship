@@ -5,6 +5,7 @@ package inventory
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -58,7 +59,7 @@ const (
 // DefaultSuitcaseFormat is just the default format we're going to use for a
 // suitcase. Hopefully this fits for most use cases, but can always be
 // overridden
-const DefaultSuitcaseFormat string = "tar.gz"
+const DefaultSuitcaseFormat string = "tar.zst"
 
 var formatMap map[string]Format = map[string]Format{
 	"yaml": YAMLFormat,
@@ -165,7 +166,7 @@ type CLIMeta struct {
 type Options struct {
 	User                  string   `yaml:"user" json:"user"`
 	Prefix                string   `yaml:"prefix" json:"prefix"`
-	TopLevelDirectories   []string `yaml:"top_level_directories" json:"top_level_directories"`
+	Directories           []string `yaml:"top_level_directories" json:"top_level_directories"`
 	SizeConsideredLarge   int64    `yaml:"size_considered_large" json:"size_considered_large"`
 	MaxSuitcaseSize       int64    `yaml:"max_suitcase_size" json:"max_suitcase_size"`
 	InternalMetadataGlob  string   `yaml:"internal_metadata_glob,omitempty" json:"internal_metadata_glob,omitempty"`
@@ -177,6 +178,54 @@ type Options struct {
 	SuitcaseFormat        string   `yaml:"suitcase_format" json:"suitcase_format"`
 	InventoryFormat       string   `yaml:"inventory_format" json:"inventory_format"`
 	FollowSymlinks        bool     `yaml:"follow_symlinks" json:"follow_symlinks"`
+}
+
+// AbsoluteDirectories converts the Directories entries to absolute paths
+func (o *Options) AbsoluteDirectories() error {
+	ad, err := convertDirsToAboluteDirs(o.Directories)
+	if err != nil {
+		return err
+	}
+	o.Directories = ad
+	return nil
+}
+
+// WithIgnoreGlobs sets the IgnoreGlobs strings
+func WithIgnoreGlobs(g []string) func(*Options) {
+	return func(o *Options) {
+		o.IgnoreGlobs = g
+	}
+}
+
+// WithFollowSymlinks sets the FollowSymlinks option to true
+func WithFollowSymlinks() func(*Options) {
+	return func(o *Options) {
+		o.FollowSymlinks = true
+	}
+}
+
+// WithDirectories sets the top level directories to be suitcased up
+func WithDirectories(d []string) func(*Options) {
+	return func(o *Options) {
+		o.Directories = d
+	}
+}
+
+// WithInventoryFormat sets the format for the suitcases that will be generated
+func WithInventoryFormat(f string) func(*Options) {
+	return func(o *Options) {
+		o.InventoryFormat = f
+	}
+}
+
+// WithSuitcaseFormat sets the format for the suitcases that will be generated
+func WithSuitcaseFormat(f string) func(*Options) {
+	format := strings.TrimPrefix(f, ".")
+	return func(o *Options) {
+		if f != "" {
+			o.SuitcaseFormat = format
+		}
+	}
 }
 
 // WithLimitFileCount sets the number of files to process before stopping. 0 means process them all
@@ -196,7 +245,9 @@ func WithMaxSuitcaseSize(s int64) func(*Options) {
 // WithUser sets the user for an inventory option
 func WithUser(u string) func(*Options) {
 	return func(o *Options) {
-		o.User = u
+		if u != "" {
+			o.User = u
+		}
 	}
 }
 
@@ -209,9 +260,21 @@ func WithPrefix(p string) func(*Options) {
 
 // NewOptions uses functional options to generatea DirectoryInventoryOptions object
 func NewOptions(options ...func(*Options)) *Options {
-	dio := &Options{}
+	currentUser, err := user.Current()
+	if err != nil {
+		panic(err)
+	}
+	dio := &Options{
+		SuitcaseFormat:  DefaultSuitcaseFormat,
+		InventoryFormat: "yaml",
+		User:            currentUser.Username,
+	}
 	for _, opt := range options {
 		opt(dio)
+	}
+	err = dio.AbsoluteDirectories()
+	if err != nil {
+		panic(err)
 	}
 	return dio
 }
@@ -328,11 +391,11 @@ func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
 	return nil
 }
 
-// WriteOutDirectoryInventoryAndFileAndInventoyerWithViper uses viper to write out an inventory file
-func WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, cmd *cobra.Command, args []string, outDir, version string) (*DirectoryInventory, *os.File, error) {
-	if v == nil {
-		panic("must pass viper to WriteOutDirectoryInventoryAndFileAndInventoyerWithViper")
-	}
+// WriteInventoryAndFileWithViper uses viper to write out an inventory file
+func WriteInventoryAndFileWithViper(
+	v *viper.Viper, cmd *cobra.Command, args []string, version string,
+) (*DirectoryInventory, *os.File, error) {
+	outDir := DestinationWithCobra(cmd)
 	i, f, ir, err := NewDirectoryInventoryAndFileAndInventoyerWithViper(v, cmd, args, outDir)
 	if err != nil {
 		return nil, nil, err
@@ -365,9 +428,6 @@ func NewDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, cmd *cob
 
 // NewDirectoryInventoryAndFileWithViper creates a new inventory with viper
 func NewDirectoryInventoryAndFileWithViper(v *viper.Viper, cmd *cobra.Command, args []string, outDir string) (*DirectoryInventory, *os.File, error) {
-	if v == nil {
-		panic("must pass viper to NewDirectoryInventoryAndFileWithViper")
-	}
 	i, err := NewDirectoryInventoryWithViper(v, cmd, args)
 	if err != nil {
 		return nil, nil, err
@@ -381,13 +441,10 @@ func NewDirectoryInventoryAndFileWithViper(v *viper.Viper, cmd *cobra.Command, a
 
 // NewDirectoryInventoryWithViper new DirectoryInventory with Viper
 func NewDirectoryInventoryWithViper(v *viper.Viper, cmd *cobra.Command, args []string) (*DirectoryInventory, error) {
-	if v == nil {
-		panic("must set viper in NewDirectoryInventoryWithViper")
-	}
-	inventoryOpts, err := NewDirectoryInventoryOptionsWithViper(v, cmd, args)
-	if err != nil {
-		return nil, err
-	}
+	inventoryOpts := NewOptions(
+		WithViper(v),
+		WithCobra(cmd, args),
+	)
 	return NewDirectoryInventory(inventoryOpts)
 }
 
@@ -403,7 +460,7 @@ func NewDirectoryInventory(opts *Options) (*DirectoryInventory, error) {
 		opts.InternalMetadataGlob = "suitcase-meta*"
 	}
 	// Need at least 1 directory
-	if len(opts.TopLevelDirectories) == 0 {
+	if len(opts.Directories) == 0 {
 		return nil, fmt.Errorf("must specify at least one top level directory")
 	}
 	// First up, slurp in that yummy metadata
@@ -423,11 +480,11 @@ func NewDirectoryInventory(opts *Options) (*DirectoryInventory, error) {
 		log.Warn().
 			Str("internal-glob", opts.InternalMetadataGlob).
 			Strs("external-files", opts.ExternalMetadataFiles).
-			Strs("topLevelDirectories", opts.TopLevelDirectories).
+			Strs("topLevelDirectories", opts.Directories).
 			Msg("no metadata found")
 	}
 
-	for _, dir := range opts.TopLevelDirectories {
+	for _, dir := range opts.Directories {
 		if !isDirectory(dir) {
 			log.Warn().
 				Str("path", dir).
@@ -530,75 +587,83 @@ func NewInventoryerWithFilename(filename string) (Inventoryer, error) {
 	return ir, nil
 }
 
-func suitcaseFormatWithViper(v *viper.Viper) string {
-	f := strings.TrimPrefix(v.GetString("suitcase-format"), ".")
-	if f != "" {
-		return f
+// WithViper applies options from a Viper instance for options
+// gocognit needs improvement here, but unsure how to do that...
+func WithViper(v *viper.Viper) func(*Options) { // nolint:gocognit
+	if v == nil {
+		return func(*Options) {}
 	}
-	return DefaultSuitcaseFormat
+	return func(o *Options) {
+		if got := v.GetString("internal-metadata-glob"); got != "" {
+			o.InternalMetadataGlob = got
+		}
+		if got := v.GetString("prefix"); got != "" {
+			o.Prefix = got
+		}
+		if got := v.GetStringSlice("ignore-glob"); got != nil {
+			o.IgnoreGlobs = got
+		}
+		if got := v.GetStringSlice("external-metadata-file"); got != nil {
+			o.ExternalMetadataFiles = got
+		}
+		if v.IsSet("encrypt-inner") {
+			o.EncryptInner = v.GetBool("encrypt-inner")
+		}
+		if v.IsSet("hash-inner") {
+			o.HashInner = v.GetBool("hash-inner")
+		}
+		if v.IsSet("follow-symlinks") {
+			o.FollowSymlinks = v.GetBool("follow-symlinks")
+		}
+		// Strip out leading dots
+		format := strings.TrimPrefix(v.GetString("suitcase-format"), ".")
+		if format != "" {
+			o.SuitcaseFormat = format
+		}
+		iformat := strings.TrimPrefix(v.GetString("inventory-format"), ".")
+		if iformat != "" {
+			o.InventoryFormat = iformat
+		}
+		if v.IsSet("max-suitcase-size") {
+			o.MaxSuitcaseSize = mustBytesFromHuman(v.GetString("max-suitcase-size"))
+		}
+		if v.IsSet("user") {
+			o.User = v.GetString("user")
+		}
+	}
+}
+
+func mustBytesFromHuman(h string) int64 {
+	b, err := humanize.ParseBytes(h)
+	if err != nil {
+		panic(err)
+	}
+	return int64(b)
+}
+
+// WithCobra applies options using a cobra Command and args
+func WithCobra(cmd *cobra.Command, args []string) func(*Options) {
+	return func(o *Options) {
+		if cmd.Flags().Changed("limit-file-count") {
+			o.LimitFileCount, _ = cmd.Flags().GetInt("limit-file-count")
+		}
+		if len(args) > 0 {
+			o.Directories = args
+		}
+	}
 }
 
 // NewDirectoryInventoryOptionsWithViper creates new inventory options with viper
-func NewDirectoryInventoryOptionsWithViper(v *viper.Viper, cmd *cobra.Command, args []string) (*Options, error) {
-	var err error
-	if v == nil {
-		panic("must pass viper in")
-	}
-	opt := &Options{}
-	opt.TopLevelDirectories = args
-	opt.InternalMetadataGlob = v.GetString("internal-metadata-glob")
-	opt.ExternalMetadataFiles = v.GetStringSlice("external-metadata-file")
-	opt.IgnoreGlobs = v.GetStringSlice("ignore-glob")
-	opt.LimitFileCount, _ = cmd.Flags().GetInt("limit-file-count")
-	opt.SuitcaseFormat = suitcaseFormatWithViper(v)
-	opt.Prefix = v.GetString("prefix")
-	opt.EncryptInner = v.GetBool("encrypt-inner")
-	opt.FollowSymlinks = v.GetBool("follow-symlinks")
-	opt.TopLevelDirectories, err = convertDirsToAboluteDirs(args)
-	if err != nil {
-		return nil, err
-	}
-
-	// User can specify a human readable string here. We will convert it to bytes for them
-	mssF := v.GetString("max-suitcase-size")
-	if mssF == "" {
-		mssF = "0"
-	}
-	mssU, err := humanize.ParseBytes(mssF)
-	if err != nil {
-		return nil, err
-	}
-	opt.MaxSuitcaseSize = int64(mssU)
-
-	// Inventory file format (yaml or json)
-	opt.InventoryFormat = strings.TrimPrefix(v.GetString("inventory-format"), ".")
-	if opt.InventoryFormat == "" {
-		opt.InventoryFormat = "yaml"
-	}
-
-	// We want a username so we can shove it in the suitcase name
-	opt.User = v.GetString("user")
-	if opt.User == "" {
-		log.Info().Msg("No user specified, using current user")
-		currentUser, err := user.Current()
-		if err != nil {
-			return nil, err
-		}
-		opt.User = currentUser.Username
-	}
-
-	// Do we want to skip hashes?
-	opt.HashInner = v.GetBool("hash-inner")
-	if opt.HashInner {
-		log.Warn().
-			Msg("Generating file hashes. This will will likely increase the inventory generation time.")
-	} else {
-		log.Warn().
-			Msg("Skipping file hashes. This will increase the speed of the inventory, but will not be able to verify the integrity of the files.")
-	}
+/*
+func NewDirectoryInventoryOptionsWithViper(userOver *viper.Viper, cmd *cobra.Command, args []string) (*Options, error) {
+	opt := NewOptions(
+		WithViper(userOver),
+		WithCobra(cmd, args),
+	)
 
 	return opt, nil
 }
+*/
 
 // CaseSet is just a holder for case sizes
 type CaseSet map[int]int64
@@ -630,11 +695,19 @@ func UserOverrideWithCobra(cmd *cobra.Command) *viper.Viper {
 // DestinationWithCobra returns a destination string from a cmd
 func DestinationWithCobra(cmd *cobra.Command) string {
 	if cmd.Context() == nil {
-		return ""
+		tmp, err := os.MkdirTemp("", "suitcasectl")
+		if err != nil {
+			panic(err)
+		}
+		return tmp
 	}
 	v := cmd.Context().Value(DestinationKey)
 	if v == nil {
-		return ""
+		tmp, err := os.MkdirTemp("", "suitcasectl")
+		if err != nil {
+			panic(err)
+		}
+		return tmp
 	}
 	d, ok := v.(string)
 	if !ok {
@@ -653,7 +726,22 @@ func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []stri
 		var err error
 		v := UserOverrideWithCobra(cmd)
 		outDir := DestinationWithCobra(cmd)
-		inventoryD, outF, err = WriteOutDirectoryInventoryAndFileAndInventoyerWithViper(v, cmd, args, outDir, version)
+		if outDir == "" {
+			outDir, err = os.MkdirTemp("", "suitcasectl")
+			if err != nil {
+				return nil, err
+			}
+			var ctx context.Context
+			if cmd.Context() == nil {
+				ctx = context.Background()
+			} else {
+				ctx = cmd.Context()
+			}
+
+			cmd.SetContext(context.WithValue(ctx, DestinationKey, outDir))
+		}
+		// inventoryD, outF, err = WriteInventoryAndFileWithViper(v, cmd, args, outDir, version)
+		inventoryD, outF, err = WriteInventoryAndFileWithViper(v, cmd, args, version)
 		if err != nil {
 			return nil, err
 		}
@@ -691,7 +779,7 @@ func errCallback(osPathname string, err error) godirwalk.ErrorAction {
 
 func getInternalMeta(opts *Options) (map[string]string, error) {
 	internalMeta := map[string]string{}
-	for _, dir := range opts.TopLevelDirectories {
+	for _, dir := range opts.Directories {
 		data, err := GetMetadataWithGlob(fmt.Sprintf("%v/%v", dir, opts.InternalMetadataGlob))
 		if err != nil {
 			return nil, err

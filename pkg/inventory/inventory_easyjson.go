@@ -284,22 +284,22 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(in 
 		case "top_level_directories":
 			if in.IsNull() {
 				in.Skip()
-				out.TopLevelDirectories = nil
+				out.Directories = nil
 			} else {
 				in.Delim('[')
-				if out.TopLevelDirectories == nil {
+				if out.Directories == nil {
 					if !in.IsDelim(']') {
-						out.TopLevelDirectories = make([]string, 0, 4)
+						out.Directories = make([]string, 0, 4)
 					} else {
-						out.TopLevelDirectories = []string{}
+						out.Directories = []string{}
 					}
 				} else {
-					out.TopLevelDirectories = (out.TopLevelDirectories)[:0]
+					out.Directories = (out.Directories)[:0]
 				}
 				for !in.IsDelim(']') {
 					var v1 string
 					v1 = string(in.String())
-					out.TopLevelDirectories = append(out.TopLevelDirectories, v1)
+					out.Directories = append(out.Directories, v1)
 					in.WantComma()
 				}
 				in.Delim(']')
@@ -370,11 +370,11 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(out
 	{
 		const prefix string = ",\"top_level_directories\":"
 		out.RawString(prefix)
-		if in.TopLevelDirectories == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
+		if in.Directories == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v3, v4 := range in.TopLevelDirectories {
+			for v3, v4 := range in.Directories {
 				if v3 > 0 {
 					out.RawByte(',')
 				}

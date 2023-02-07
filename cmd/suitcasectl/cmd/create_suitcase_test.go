@@ -55,7 +55,7 @@ func TestNewSuitcaseWithViper(t *testing.T) {
 	cmd.SetArgs([]string{"create", "suitcase", "--destination", testD, "../../../pkg/testdata/viper-enabled-target"})
 	err := cmd.ExecuteContext(context.Background())
 	require.NoError(t, err)
-	require.FileExists(t, path.Join(testD, "snakey-thing-joebob-01-of-01.tar.gz"))
+	require.FileExists(t, path.Join(testD, "snakey-thing-joebob-01-of-01.tar.zst"))
 }
 
 // Ensure that if we set a value on the CLI that it gets preference over whatever is in the user overrides
@@ -68,16 +68,15 @@ func TestNewSuitcaseWithViperFlag(t *testing.T) {
 	cmd.SetArgs([]string{"create", "suitcase", "--destination", testD, "--user", "darcy", "../../../pkg/testdata/viper-enabled-target"})
 	err := cmd.ExecuteContext(context.Background())
 	require.NoError(t, err)
-	require.FileExists(t, path.Join(testD, "snakey-thing-darcy-01-of-01.tar.gz"))
+	require.FileExists(t, path.Join(testD, "snakey-thing-darcy-01-of-01.tar.zst"))
 }
 
 func TestNewSuitcaseWithInventory(t *testing.T) {
 	toutDir := t.TempDir()
-	i, err := inventory.NewDirectoryInventory(&inventory.Options{
-		TopLevelDirectories: []string{"../../../pkg/testdata/fake-dir"},
-		SuitcaseFormat:      "tar",
-		InventoryFormat:     "yaml",
-	})
+	i, err := inventory.NewDirectoryInventory(inventory.NewOptions(
+		inventory.WithDirectories([]string{"../../../pkg/testdata/fake-dir"}),
+		inventory.WithSuitcaseFormat("tar"),
+	))
 	require.NoError(t, err)
 	outF, err := os.Create(path.Join(toutDir, "inventory.yaml"))
 	require.NoError(t, err)
