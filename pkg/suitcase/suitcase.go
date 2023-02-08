@@ -240,7 +240,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 	}
 
 	if so.HashInner {
-		hashFN := fmt.Sprintf("%v.sha256", fp)
+		hashFN := fmt.Sprintf("%v.%v", fp, i.Options.HashAlgorithm)
 		log.Debug().Str("file", hashFN).Msgf("Creating hashes file")
 		hashF, err := os.Create(hashFN) // nolint:gosec
 		if err != nil {

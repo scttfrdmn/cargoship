@@ -1,9 +1,15 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
+	"crypto/md5"  // nolint:gosec
+	"crypto/sha1" // nolint:gosec
 	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"path"
@@ -110,19 +116,7 @@ func getSha256(file string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer func() {
-		cerr := f.Close()
-		if err != nil {
-			panic(cerr)
-		}
-	}()
-
-	/*
-		h := sha256.New()
-		if _, err := io.Copy(h, f); err != nil {
-			return "", err
-		}
-	*/
+	defer dclose(f)
 
 	b, err := io.ReadAll(f)
 	if err != nil {
@@ -135,6 +129,7 @@ func getSha256(file string) (string, error) {
 }
 
 // mustGetSha256 panics if a Sha256 cannot be generated
+/*
 func mustGetSha256(file string) string {
 	hash, err := getSha256(file)
 	if err != nil {
@@ -142,6 +137,7 @@ func mustGetSha256(file string) string {
 	}
 	return hash
 }
+*/
 
 // ProcessOpts defines the process options
 type processOpts struct {
@@ -180,7 +176,7 @@ func processSuitcases(po *processOpts) []string {
 				if _, cperr := io.Copy(h, sf); cperr != nil {
 					log.Warn().Err(cperr).Msg("Error copying hash data")
 				}
-				hashF := fmt.Sprintf("%v.sha256", createdF)
+				hashF := fmt.Sprintf("%v.%v", createdF, hashAlgo.String())
 				sumS := fmt.Sprintf("%x", h.Sum(nil))
 				log.Info().Msgf("Writing hash to %x", []byte(sumS))
 				hf, err := os.Create(hashF) // nolint:gosec
@@ -222,4 +218,24 @@ func panicOnError(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func calculateHash(rd io.Reader, ht string) string {
+	reader := bufio.NewReaderSize(rd, os.Getpagesize())
+	var dst hash.Hash
+	switch ht {
+	case "md5":
+		dst = md5.New() // nolint:gosec
+	case "sha1":
+		dst = sha1.New() // nolint:gosec
+	case "sha256":
+		dst = sha256.New()
+	case "sha512":
+		dst = sha512.New()
+	default:
+		panic(fmt.Sprintf("unexpected hash type: %v", ht))
+	}
+	_, err := io.Copy(dst, reader)
+	panicIfErr(err)
+	return hex.EncodeToString(dst.Sum(nil))
 }

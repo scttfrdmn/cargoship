@@ -136,7 +136,7 @@ func TestFillFileWithInventoryIndexHashInner(t *testing.T) {
 	))
 	require.NoError(t, err)
 	sf, err := WriteSuitcaseFile(so, i, 1, nil)
-	sfs := fmt.Sprintf("%v.sha256", sf)
+	sfs := fmt.Sprintf("%v.sha1", sf)
 	require.NoError(t, err)
 	require.FileExists(t, sfs)
 

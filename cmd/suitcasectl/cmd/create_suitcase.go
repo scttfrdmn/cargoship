@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -18,16 +19,21 @@ import (
 var (
 	inventoryFormat inventory.Format
 	suitcaseFormat  suitcase.Format
+	hashAlgo        inventory.HashAlgorithm = inventory.SHA1Hash
 )
 
 // NewCreateSuitcaseCmd represents the createSuitcase command
 func NewCreateSuitcaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:                "suitcase [--inventory-file=INVENTORY_FILE | TARGET_DIR...]",
-		Short:              "Create a suitcase",
-		Long:               "Create a suitcase from either an inventory file or multiple target directories.",
-		Args:               cobra.ArbitraryArgs,
-		Aliases:            []string{"suitecase"}, // Encouraging bad habits
+		Use:   "suitcase [--inventory-file=INVENTORY_FILE | TARGET_DIR...]",
+		Short: "Create a suitcase",
+		Long:  "Create a suitcase from either an inventory file or multiple target directories.",
+		Args:  cobra.ArbitraryArgs,
+		Aliases: []string{
+			"suitecase", // Encouraging bad habits
+			"s",
+			"sc",
+		},
 		RunE:               createRunE,
 		PersistentPreRunE:  createPreRunE,
 		PersistentPostRunE: createPostRunE,
@@ -77,10 +83,14 @@ func inventoryOptsWithCobra(cmd *cobra.Command, args []string) (string, bool, er
 func createHashes(s []string, cmd *cobra.Command) []config.HashSet {
 	var hs []config.HashSet
 	for _, f := range s {
+		fh, err := os.Open(f) // nolint:gosec
+		panicIfErr(err)
+		defer dclose(fh)
 		log.Info().Str("file", f).Msg("Created file")
 		hs = append(hs, config.HashSet{
 			Filename: strings.TrimPrefix(f, cmd.Context().Value(inventory.DestinationKey).(string)+"/"),
-			Hash:     mustGetSha256(f),
+			Hash:     calculateHash(fh, hashAlgo.String()),
+			// Hash:     mustGetSha256(f),
 		})
 	}
 	return hs
@@ -94,6 +104,13 @@ func bindInventoryCmd(cmd *cobra.Command) {
 		panic(err)
 	}
 	cmd.PersistentFlags().Lookup("inventory-format").DefValue = "yaml"
+
+	// Hashing Algorithms
+	cmd.PersistentFlags().Var(&hashAlgo, "hash-algorithm", "Hashing Algorithm for signatures")
+	if err := cmd.RegisterFlagCompletionFunc("hash-algorithm", inventory.HashCompletion); err != nil {
+		panic(err)
+	}
+	cmd.PersistentFlags().Lookup("hash-algorithm").DefValue = "sha1"
 
 	// cmd.PersistentFlags().String("suitcase-format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")
 	// Inventory Format needs some extra love for auto complete
@@ -127,7 +144,7 @@ func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, er
 }
 
 func writeHashFile(cmd *cobra.Command) error {
-	hashFile := path.Join(cmd.Context().Value(inventory.DestinationKey).(string), "suitcasectl.sha256")
+	hashFile := path.Join(cmd.Context().Value(inventory.DestinationKey).(string), fmt.Sprintf("suitcasectl.%v", hashAlgo.String()))
 	log.Info().Str("hash-file", hashFile).Msg("Creating hashes")
 	hashF, err := os.Create(hashFile) // nolint:gosec
 	if err != nil {
@@ -149,12 +166,17 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 	// Hash the outer items if asked
 	if mustGetCmd[bool](cmd, "hash-outer") {
 		hashes := cmd.Context().Value(inventory.HashesKey).([]config.HashSet)
+		metaFh, err := os.Open(metaF) // nolint:gosec
+		if err != nil {
+			return err
+		}
+		defer dclose(metaFh)
 		hashes = append(hashes, config.HashSet{
 			Filename: strings.TrimPrefix(metaF, cmd.Context().Value(inventory.DestinationKey).(string)+"/"),
-			Hash:     mustGetSha256(metaF),
+			Hash:     calculateHash(metaFh, hashAlgo.String()),
 		})
 		cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashesKey, hashes))
-		err := writeHashFile(cmd)
+		err = writeHashFile(cmd)
 		checkErr(err, "Could not write out the hashfile")
 	}
 
@@ -181,7 +203,9 @@ func createPreRunE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// log.Fatal().Msgf("ALGO: %+v\n", hashAlgo)
 	cmd.SetContext(context.WithValue(cmd.Context(), inventory.DestinationKey, outDir))
+	// cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashTypeKey, hashAlgo))
 
 	err = setupMultiLoggingWithCmd(cmd)
 	if err != nil {
