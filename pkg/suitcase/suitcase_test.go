@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -161,6 +162,9 @@ func BenchmarkNewSuitcase(b *testing.B) {
 	if bdd == "" {
 		bdd = "../../benchmark_data/"
 	}
+	var err error
+	bdd, err = filepath.Abs(bdd)
+	require.NoError(b, err)
 
 	zerolog.SetGlobalLevel(zerolog.FatalLevel)
 	for desc, dataset := range datasets {

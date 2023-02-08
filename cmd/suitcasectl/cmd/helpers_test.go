@@ -2,12 +2,11 @@ package cmd
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"testing"
 
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,40 +52,33 @@ func TestCalculateHash(t *testing.T) {
 }
 
 func BenchmarkCalculateHashes(b *testing.B) {
-	datasets := map[string]struct {
-		path string
-	}{
-		"672M-american-gut": {
-			path: "American-Gut",
-		},
-		"3.3G-Synthetic-cell-images": {
-			path: "BBBC005_v1_images",
-		},
-	}
 	bdd := os.Getenv("BENCHMARK_DATA_DIR")
 	if bdd == "" {
 		bdd = "../../../benchmark_data/"
 	}
 
-	for desc, dataset := range datasets {
-		location := path.Join(bdd, dataset.path)
-		if _, err := os.Stat(location); err == nil {
-			for _, format := range []string{"md5", "sha1", "sha256", "sha512"} {
-				format := format
-				location := location
-				b.Run(fmt.Sprintf("suitcase_calculate_hashes_%v_%v", format, desc), func(b *testing.B) {
-					err = filepath.Walk(location+"/", func(path string, info fs.FileInfo, err error) error {
-						if info.IsDir() {
-							return filepath.SkipDir
-						}
-						fh, oerr := os.Open(location)
-						require.NoError(b, oerr)
-						defer fh.Close()
-						calculateHash(fh, format)
-						return nil
-					})
-				})
-			}
+	var allFiles []string
+	err := filepath.Walk(bdd, func(p string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			allFiles = append(allFiles, p)
 		}
+		return nil
+	})
+	require.NoError(b, err)
+
+	if _, err := os.Stat(bdd); err == nil {
+		for _, format := range []string{"md5", "sha1", "sha256", "sha512"} {
+			format := format
+			b.Run(fmt.Sprintf("suitcase_calculate_hashes_%v", format), func(b *testing.B) {
+				for _, location := range allFiles {
+					fh, oerr := os.Open(location)
+					require.NoError(b, oerr)
+					defer fh.Close()
+					calculateHash(fh, format)
+				}
+			})
+		}
+	} else {
+		log.Warn().Err(err).Send()
 	}
 }
