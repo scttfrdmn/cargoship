@@ -176,6 +176,7 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 
 func createPreRunE(cmd *cobra.Command, args []string) error {
 	// Get this first, it'll be important
+	globalPersistentPreRun(cmd, args)
 	outDir, err := newOutDirWithCmd(cmd)
 	if err != nil {
 		return err

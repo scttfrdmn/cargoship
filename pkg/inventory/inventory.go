@@ -40,6 +40,8 @@ const (
 	UserOverrideKey
 	// CLIMetaKey is where the CLI metadata lives
 	CLIMetaKey
+	// LogWriterKey is where the log writer goes
+	LogWriterKey
 )
 
 var errHalt = errors.New("halt")

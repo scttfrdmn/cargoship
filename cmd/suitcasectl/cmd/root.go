@@ -4,6 +4,7 @@ Package cmd is the command line utility
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -41,11 +42,10 @@ func NewRootCmd(lo io.Writer) *cobra.Command {
 trasnfered to cheap archive storage. Along with the blob, an unencrypted
 manifest file is generated. This manifest can be used to track down the blob at
 a future point in time`,
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			setupLogging(lo)
-		},
+		PersistentPreRun:  globalPersistentPreRun,
 		PersistentPostRun: globalPersistentPostRun,
 	}
+	cmd.SetContext(context.WithValue(context.Background(), inventory.LogWriterKey, lo))
 	// cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")
 	cmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
 	cmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
@@ -106,19 +106,6 @@ func initConfig() {
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
 		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
-	}
-
-	if profile {
-		log.Info().Msg("Enabling cpu profiling")
-		var err error
-		cpufile, err = os.CreateTemp("", "cpuprofile")
-		if err != nil {
-			panic(err)
-		}
-		err = pprof.StartCPUProfile(cpufile)
-		if err != nil {
-			panic(err)
-		}
 	}
 }
 
@@ -190,6 +177,26 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 		log.Logger = zerolog.New(multi).With().Timestamp().Logger()
 	}
 	return nil
+}
+
+func globalPersistentPreRun(cmd *cobra.Command, args []string) {
+	lo, ok := cmd.Context().Value(inventory.LogWriterKey).(io.Writer)
+	if ok {
+		setupLogging(lo)
+	}
+	// log.Fatal().Msgf("Profile is set to %+v", profile)
+	if profile {
+		log.Info().Msg("Enabling cpu profiling")
+		var err error
+		cpufile, err = os.CreateTemp("", "cpuprofile")
+		if err != nil {
+			panic(err)
+		}
+		err = pprof.StartCPUProfile(cpufile)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 func globalPersistentPostRun(cmd *cobra.Command, args []string) { // nolint:unparam
