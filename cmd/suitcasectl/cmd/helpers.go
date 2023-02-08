@@ -128,17 +128,6 @@ func getSha256(file string) (string, error) {
 	return fmt.Sprintf("%x", sum), nil
 }
 
-// mustGetSha256 panics if a Sha256 cannot be generated
-/*
-func mustGetSha256(file string) string {
-	hash, err := getSha256(file)
-	if err != nil {
-		panic(err)
-	}
-	return hash
-}
-*/
-
 // ProcessOpts defines the process options
 type processOpts struct {
 	Concurrency  int
@@ -172,12 +161,15 @@ func processSuitcases(po *processOpts) []string {
 					return
 				}
 				defer dclose(sf)
-				h := sha256.New()
-				if _, cperr := io.Copy(h, sf); cperr != nil {
+				/*
+					 h := sha256.New()
+					if _, cperr := io.Copy(h, sf); cperr != nil {
 					log.Warn().Err(cperr).Msg("Error copying hash data")
-				}
+					}
+				*/
 				hashF := fmt.Sprintf("%v.%v", createdF, hashAlgo.String())
-				sumS := fmt.Sprintf("%x", h.Sum(nil))
+				// sumS := fmt.Sprintf("%x", h.Sum(nil))
+				sumS := calculateHash(sf, hashAlgo.String())
 				log.Info().Msgf("Writing hash to %x", []byte(sumS))
 				hf, err := os.Create(hashF) // nolint:gosec
 				panicOnError(err)
