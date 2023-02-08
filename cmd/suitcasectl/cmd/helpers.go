@@ -153,30 +153,26 @@ func processSuitcases(po *processOpts) []string {
 			createdF, err := suitcase.WriteSuitcaseFile(po.SuitcaseOpts, po.Inventory, i, state)
 			panicOnError(err)
 			// if po.Inventory.Options.Hash
-			if po.SuitcaseOpts.HashOuter {
-				log.Info().Msg("Generating a hash of the suitcase")
-				sf, err := os.Open(createdF) // nolint:gosec
-				if err != nil {
-					log.Warn().Err(err).Msg("Error writing hash file")
-					return
-				}
-				defer dclose(sf)
-				/*
-					 h := sha256.New()
-					if _, cperr := io.Copy(h, sf); cperr != nil {
-					log.Warn().Err(cperr).Msg("Error copying hash data")
+			/*
+				if po.SuitcaseOpts.HashOuter {
+					log.Info().Msg("Generating a hash of the suitcase")
+					sf, err := os.Open(createdF) // nolint:gosec
+					if err != nil {
+						log.Warn().Err(err).Msg("Error writing hash file")
+						return
 					}
-				*/
-				hashF := fmt.Sprintf("%v.%v", createdF, hashAlgo.String())
-				// sumS := fmt.Sprintf("%x", h.Sum(nil))
-				sumS := calculateHash(sf, hashAlgo.String())
-				log.Info().Msgf("Writing hash to %x", []byte(sumS))
-				hf, err := os.Create(hashF) // nolint:gosec
-				panicOnError(err)
-				defer dclose(hf)
-				_, werr := hf.Write([]byte(sumS))
-				warnOnError(werr, "error writing file")
-			}
+					defer dclose(sf)
+					hashF := fmt.Sprintf("%v.%v", createdF, hashAlgo.String())
+					// sumS := fmt.Sprintf("%x", h.Sum(nil))
+					sumS := calculateHash(sf, hashAlgo.String())
+					log.Fatal().Msgf("Writing hash to %x", []byte(sumS))
+					hf, err := os.Create(hashF) // nolint:gosec
+					panicOnError(err)
+					defer dclose(hf)
+					_, werr := hf.Write([]byte(sumS))
+					warnOnError(werr, "error writing file")
+				}
+			*/
 			ret[i-1] = createdF
 			<-guard // release the guard channel
 		}(i)
@@ -196,6 +192,7 @@ func processSuitcases(po *processOpts) []string {
 	return ret
 }
 
+/*
 func warnOnError(err error, msg string) {
 	if err != nil {
 		if msg != "" {
@@ -205,6 +202,7 @@ func warnOnError(err error, msg string) {
 		}
 	}
 }
+*/
 
 func panicOnError(err error) {
 	if err != nil {
