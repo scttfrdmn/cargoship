@@ -43,7 +43,7 @@ func (a Suitcase) Close() error {
 }
 
 // Add file to the archive.
-func (a Suitcase) Add(f inventory.File) (*inventory.HashSet, error) {
+func (a Suitcase) Add(f inventory.File) (*config.HashSet, error) {
 	info, err := os.Lstat(f.Path) // #nosec
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func (a Suitcase) Add(f inventory.File) (*inventory.HashSet, error) {
 	}
 
 	defer dclose(file)
-	var hs *inventory.HashSet
+	var hs *config.HashSet
 	if a.opts.HashInner {
 		absPath, ferr := filepath.Abs(f.Path)
 		if ferr != nil {
@@ -86,7 +86,7 @@ func (a Suitcase) Add(f inventory.File) (*inventory.HashSet, error) {
 
 		// Calculate and return the hash
 		h := sha256.Sum256(buf.Bytes())
-		hs = &inventory.HashSet{
+		hs = &config.HashSet{
 			Filename: absPath,
 			Hash:     fmt.Sprintf("%x", h),
 		}

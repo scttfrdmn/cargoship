@@ -258,7 +258,7 @@ func (v *FileBucket) UnmarshalJSON(data []byte) error {
 func (v *FileBucket) UnmarshalEasyJSON(l *jlexer.Lexer) {
 	easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory2(l, v)
 }
-func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(in *jlexer.Lexer, out *DirectoryInventoryOptions) {
+func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(in *jlexer.Lexer, out *Options) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -284,22 +284,22 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(in 
 		case "top_level_directories":
 			if in.IsNull() {
 				in.Skip()
-				out.TopLevelDirectories = nil
+				out.Directories = nil
 			} else {
 				in.Delim('[')
-				if out.TopLevelDirectories == nil {
+				if out.Directories == nil {
 					if !in.IsDelim(']') {
-						out.TopLevelDirectories = make([]string, 0, 4)
+						out.Directories = make([]string, 0, 4)
 					} else {
-						out.TopLevelDirectories = []string{}
+						out.Directories = []string{}
 					}
 				} else {
-					out.TopLevelDirectories = (out.TopLevelDirectories)[:0]
+					out.Directories = (out.Directories)[:0]
 				}
 				for !in.IsDelim(']') {
 					var v1 string
 					v1 = string(in.String())
-					out.TopLevelDirectories = append(out.TopLevelDirectories, v1)
+					out.Directories = append(out.Directories, v1)
 					in.WantComma()
 				}
 				in.Delim(']')
@@ -353,7 +353,7 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(in 
 		in.Consumed()
 	}
 }
-func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(out *jwriter.Writer, in DirectoryInventoryOptions) {
+func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(out *jwriter.Writer, in Options) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -370,11 +370,11 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(out
 	{
 		const prefix string = ",\"top_level_directories\":"
 		out.RawString(prefix)
-		if in.TopLevelDirectories == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
+		if in.Directories == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v3, v4 := range in.TopLevelDirectories {
+			for v3, v4 := range in.Directories {
 				if v3 > 0 {
 					out.RawByte(',')
 				}
@@ -441,26 +441,26 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(out
 }
 
 // MarshalJSON supports json.Marshaler interface
-func (v DirectoryInventoryOptions) MarshalJSON() ([]byte, error) {
+func (v Options) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
 	easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
-func (v DirectoryInventoryOptions) MarshalEasyJSON(w *jwriter.Writer) {
+func (v Options) MarshalEasyJSON(w *jwriter.Writer) {
 	easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
-func (v *DirectoryInventoryOptions) UnmarshalJSON(data []byte) error {
+func (v *Options) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
 	easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
-func (v *DirectoryInventoryOptions) UnmarshalEasyJSON(l *jlexer.Lexer) {
+func (v *Options) UnmarshalEasyJSON(l *jlexer.Lexer) {
 	easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(l, v)
 }
 func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(in *jlexer.Lexer, out *DirectoryInventory) {
@@ -519,7 +519,7 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(in 
 				out.Options = nil
 			} else {
 				if out.Options == nil {
-					out.Options = new(DirectoryInventoryOptions)
+					out.Options = new(Options)
 				}
 				(*out.Options).UnmarshalEasyJSON(in)
 			}

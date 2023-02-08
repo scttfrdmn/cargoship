@@ -151,8 +151,8 @@ type processOpts struct {
 	SuitcaseOpts *config.SuitCaseOpts
 }
 
-// processLogging processes logging for a run
-func processLogging(po *processOpts) []string {
+// processSuitcases processes the suitcases
+func processSuitcases(po *processOpts) []string {
 	ret := make([]string, po.Inventory.TotalIndexes)
 	guard := make(chan struct{}, po.Concurrency)
 	var wg sync.WaitGroup

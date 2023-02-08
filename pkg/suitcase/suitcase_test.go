@@ -93,18 +93,18 @@ func TestFillWithInventoryIndex(t *testing.T) {
 		Format: "tar",
 	})
 	require.NoError(t, err)
-	i, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
-		TopLevelDirectories: []string{"../testdata/fake-dir"},
-	})
+	i, err := inventory.NewDirectoryInventory(inventory.NewOptions(
+		inventory.WithDirectories([]string{"../testdata/fake-dir"}),
+	))
 	require.NoError(t, err)
 	_, err = FillWithInventoryIndex(s, i, 0, nil)
 	require.NoError(t, err)
 }
 
 func TestFillWithInventoryIndexMissingDir(t *testing.T) {
-	_, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
-		TopLevelDirectories: []string{"../testdata/never-exist"},
-	})
+	_, err := inventory.NewDirectoryInventory(inventory.NewOptions(
+		inventory.WithDirectories([]string{"../testdata/never-exist"}),
+	))
 	require.EqualError(t, err, "not a directory")
 }
 
@@ -114,9 +114,9 @@ func TestFillFileWithInventoryIndex(t *testing.T) {
 		Format:      "tar",
 		Destination: d,
 	}
-	i, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
-		TopLevelDirectories: []string{"../testdata/fake-dir"},
-	})
+	i, err := inventory.NewDirectoryInventory(inventory.NewOptions(
+		inventory.WithDirectories([]string{"../testdata/fake-dir"}),
+	))
 	require.NoError(t, err)
 	sf, err := WriteSuitcaseFile(so, i, 1, nil)
 	// err = FillWithInventoryIndex(s, i, 0, nil)
@@ -131,9 +131,9 @@ func TestFillFileWithInventoryIndexHashInner(t *testing.T) {
 		Destination: d,
 		HashInner:   true,
 	}
-	i, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
-		TopLevelDirectories: []string{"../testdata/fake-dir"},
-	})
+	i, err := inventory.NewDirectoryInventory(inventory.NewOptions(
+		inventory.WithDirectories([]string{"../testdata/fake-dir"}),
+	))
 	require.NoError(t, err)
 	sf, err := WriteSuitcaseFile(so, i, 1, nil)
 	sfs := fmt.Sprintf("%v.sha256", sf)
@@ -168,9 +168,9 @@ func BenchmarkNewSuitcase(b *testing.B) {
 		if _, err := os.Stat(location); err == nil {
 			desc := desc
 			b.Run(fmt.Sprintf("suitcase_inventory_%v", desc), func(b *testing.B) {
-				inventory, err := inventory.NewDirectoryInventory(&inventory.DirectoryInventoryOptions{
-					TopLevelDirectories: []string{location},
-				})
+				inventory, err := inventory.NewDirectoryInventory(inventory.NewOptions(
+					inventory.WithDirectories([]string{location}),
+				))
 				require.NoError(b, err)
 				require.NotNil(b, inventory)
 				for _, af := range []string{"tar", "tar.gz", "tar.zst", "tar.bz2"} {

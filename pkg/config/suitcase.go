@@ -37,3 +37,9 @@ func (s *SuitCaseOpts) EncryptToCobra(cmd *cobra.Command) error {
 	}
 	return nil
 }
+
+// HashSet is a combination Filename and Hash
+type HashSet struct {
+	Filename string
+	Hash     string
+}

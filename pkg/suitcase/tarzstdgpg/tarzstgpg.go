@@ -20,7 +20,7 @@ type Suitcase struct {
 	cw     *io.WriteCloser
 	gw     *zstd.Encoder
 	opts   *config.SuitCaseOpts
-	hashes []inventory.HashSet
+	hashes []config.HashSet
 }
 
 // New tar archive.
@@ -50,7 +50,7 @@ func (s Suitcase) Config() *config.SuitCaseOpts {
 }
 
 // GetHashes returns hashses
-func (s Suitcase) GetHashes() []inventory.HashSet {
+func (s Suitcase) GetHashes() []config.HashSet {
 	return s.hashes
 }
 
@@ -79,7 +79,7 @@ func (s Suitcase) Close() error {
 }
 
 // Add file to the archive.
-func (s Suitcase) Add(f inventory.File) (*inventory.HashSet, error) {
+func (s Suitcase) Add(f inventory.File) (*config.HashSet, error) {
 	return s.tw.Add(f)
 }
 
