@@ -18,7 +18,7 @@ type Suitcase struct {
 	tw     *tar.Suitcase
 	gw     *gzip.Writer
 	opts   *config.SuitCaseOpts
-	hashes []inventory.HashSet
+	hashes []config.HashSet
 }
 
 // New tar archive.
@@ -49,12 +49,12 @@ func (s Suitcase) Config() *config.SuitCaseOpts {
 }
 
 // GetHashes returns the hashes
-func (s Suitcase) GetHashes() []inventory.HashSet {
+func (s Suitcase) GetHashes() []config.HashSet {
 	return s.hashes
 }
 
 // Add file to the archive.
-func (s Suitcase) Add(f inventory.File) (*inventory.HashSet, error) {
+func (s Suitcase) Add(f inventory.File) (*config.HashSet, error) {
 	return s.tw.Add(f)
 }
 

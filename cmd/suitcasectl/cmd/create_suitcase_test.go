@@ -52,7 +52,7 @@ func TestNewSuitcaseWithViper(t *testing.T) {
 	// testD := t.TempDir()
 	testD := t.TempDir()
 	cmd := NewRootCmd(io.Discard)
-	cmd.SetArgs([]string{"create", "suitcase", "--destination", testD, "../../../pkg/testdata/viper-enabled-target"})
+	cmd.SetArgs([]string{"create", "suitcase", "--destination", testD, "../../../pkg/testdata/viper-enabled-target", "--user", "joebob"})
 	err := cmd.ExecuteContext(context.Background())
 	require.NoError(t, err)
 	require.FileExists(t, path.Join(testD, "snakey-thing-joebob-01-of-01.tar.zst"))

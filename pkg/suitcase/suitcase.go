@@ -4,6 +4,7 @@ Package suitcase holds all the stuff necessary for a suitecase generation
 package suitcase
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -90,7 +91,7 @@ func (f *Format) MarshalJSON() ([]byte, error) {
 // Suitcase is the interface that describes what a Suitcase does
 type Suitcase interface {
 	Close() error
-	Add(inventory.File) (*inventory.HashSet, error)
+	Add(inventory.File) (*config.HashSet, error)
 	AddEncrypt(f inventory.File) error
 	Config() *config.SuitCaseOpts
 }
@@ -136,7 +137,7 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 }
 
 // FillWithInventoryIndex fills up a suitcase using the given inventory
-func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int, stateC chan FillState) ([]inventory.HashSet, error) {
+func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int, stateC chan FillState) ([]config.HashSet, error) {
 	if i == nil {
 		return nil, errors.New("inventory is nil")
 	}
@@ -151,7 +152,7 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 		total = uint(len(i.Files))
 	}
 	cur := uint(0)
-	var suitcaseHashes []inventory.HashSet
+	var suitcaseHashes []config.HashSet
 
 	for _, f := range i.Files {
 		l := log.With().
@@ -197,8 +198,8 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 
 // WriteSuitcaseFile will write out the suitcase
 func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory, index int, stateC chan FillState) (string, error) {
-	targetF := path.Join(so.Destination, inventory.FormatSuitcaseName(i.Options.Prefix, i.Options.User, index, i.TotalIndexes, so.Format))
-	target, err := os.Create(targetF) // nolint:gosec
+	target, err := os.Create(path.Join(so.Destination, i.SuitcaseNameWithIndex(index))) // nolint:gosec
+	fp := target.Name()
 	if err != nil {
 		return "", err
 	}
@@ -221,7 +222,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 	}()
 
 	log.Info().
-		Str("destination", targetF).
+		Str("destination", fp).
 		Str("format", so.Format).
 		Bool("encryptInner", so.EncryptInner).
 		Int("index", index).
@@ -239,8 +240,8 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 	}
 
 	if so.HashInner {
-		hashFN := fmt.Sprintf("%v.sha256", targetF)
-		log.Info().Str("file", hashFN).Msgf("Creating hashes file")
+		hashFN := fmt.Sprintf("%v.sha256", fp)
+		log.Debug().Str("file", hashFN).Msgf("Creating hashes file")
 		hashF, err := os.Create(hashFN) // nolint:gosec
 		if err != nil {
 			return "", err
@@ -251,12 +252,12 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 				panic(herr)
 			}
 		}()
-		err = inventory.WriteHashFile(hashes, hashF)
+		err = WriteHashFile(hashes, hashF)
 		if err != nil {
 			return "", err
 		}
 	}
-	return targetF, nil
+	return fp, nil
 }
 
 // PostProcess executes post processing commands
@@ -290,4 +291,20 @@ func reverseMap[K string, V string | Format](m map[K]V) map[V]K {
 		ret[v] = k
 	}
 	return ret
+}
+
+// WriteHashFile  writes out the hashset array to an io.Writer
+func WriteHashFile(hs []config.HashSet, o io.Writer) error {
+	w := bufio.NewWriter(o)
+	for _, hs := range hs {
+		_, err := w.WriteString(fmt.Sprintf("%s\t%s\n", hs.Filename, hs.Hash))
+		if err != nil {
+			return err
+		}
+	}
+	err := w.Flush()
+	if err != nil {
+		return err
+	}
+	return nil
 }

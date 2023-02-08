@@ -87,21 +87,13 @@ func BenchmarkNewDirectoryInventory(b *testing.B) {
 func TestIndexInventory(t *testing.T) {
 	i := &DirectoryInventory{
 		Files: []*File{
-			{
-				Path: "small-file-1",
-				Size: 1,
-			},
-			{
-				Path: "small-file-2",
-				Size: 2,
-			},
-			{
-				Path: "big-file-1",
-				Size: 3,
-			},
+			{Path: "small-file-1", Size: 1},
+			{Path: "small-file-2", Size: 2},
+			{Path: "big-file-1", Size: 3},
 		},
+		Options: &Options{},
 	}
-	err := IndexInventory(i, 3)
+	err := i.IndexWithSize(3)
 	require.NoError(t, err)
 	require.Equal(t, 2, i.TotalIndexes)
 }
@@ -128,13 +120,13 @@ func TestExpandInventoryWithNames(t *testing.T) {
 			},
 		},
 	}
-	err := IndexInventory(i, 3)
+	err := i.IndexWithSize(3)
 	require.NoError(t, err)
 	require.Equal(t, 2, i.TotalIndexes)
 
-	err = ExpandSuitcaseNames(i)
+	i.expandSuitcaseNames()
 	require.NoError(t, err)
-	require.Equal(t, ExtractSuitcaseNames(i), []string{"foo-bar-01-of-02.tar", "foo-bar-02-of-02.tar", "foo-bar-02-of-02.tar"})
+	require.Equal(t, i.SuitcaseNames(), []string{"foo-bar-01-of-02.tar", "foo-bar-02-of-02.tar", "foo-bar-02-of-02.tar"})
 }
 
 func TestIndexInventoryTooBig(t *testing.T) {
@@ -154,7 +146,7 @@ func TestIndexInventoryTooBig(t *testing.T) {
 			},
 		},
 	}
-	err := IndexInventory(i, 3)
+	err := i.IndexWithSize(3)
 	require.EqualError(t, err, "index contains at least one file that is too large")
 	require.Equal(t, 0, i.TotalIndexes)
 }
@@ -285,7 +277,10 @@ func TestNewSuitcaseWithNoFollowSymlinks(t *testing.T) {
 
 func TestNewDirectoryInventoryOptionsWithViper(t *testing.T) {
 	v := viper.New()
-	_, err := NewDirectoryInventoryWithViper(v, &cobra.Command{}, []string{"../testdata/fake-dir"})
+	cmd := &cobra.Command{}
+	BindCobra(cmd)
+	cmd.Execute()
+	_, err := NewDirectoryInventoryWithViper(v, cmd, []string{"../testdata/fake-dir"})
 	require.NoError(t, err)
 }
 
@@ -295,7 +290,9 @@ func TestWriteOutDirectoryInventoryAndFileAndInventoyerWithViper(t *testing.T) {
 	c := &cobra.Command{}
 	ctx := context.WithValue(context.Background(), DestinationKey, f)
 	c.SetContext(ctx)
-	i, gf, err := WriteInventoryAndFileWithViper(v, &cobra.Command{}, []string{"../testdata/fake-dir"}, "testing")
+	cmd := newInventoryCmd()
+	cmd.Execute()
+	i, gf, err := WriteInventoryAndFileWithViper(v, cmd, []string{"../testdata/fake-dir"}, "testing")
 	require.NoError(t, err)
 	require.FileExists(t, gf.Name())
 	require.NotNil(t, i)
@@ -310,13 +307,13 @@ func TestWalkDirLimit(t *testing.T) {
 	require.EqualError(t, err, "halt")
 }
 
-/*
 func TestCreateOrReadInventory(t *testing.T) {
-	got, err := CreateOrReadInventory("", &cobra.Command{}, []string{"../testdata/limit-dir"}, "dev")
+	cmd := newInventoryCmd()
+	cmd.Execute()
+	got, err := CreateOrReadInventory("", cmd, []string{"../testdata/limit-dir"}, "dev")
 	require.NoError(t, err)
 	require.NotNil(t, got)
 }
-*/
 
 func TestWithViper(t *testing.T) {
 	v := viper.New()
@@ -341,4 +338,23 @@ func TestWithViper(t *testing.T) {
 	require.True(t, got.FollowSymlinks)
 	require.Equal(t, "tar.gz", got.SuitcaseFormat)
 	require.Equal(t, int64(2684354560), got.MaxSuitcaseSize)
+}
+
+func TestGenericSetUser(t *testing.T) {
+	// Test with cobra command
+	cmd := &cobra.Command{}
+	BindCobra(cmd)
+	cmd.SetArgs([]string{"--user", "cobra-user"})
+	err := cmd.Execute()
+	require.NoError(t, err)
+	o := NewOptions()
+	setUser(*cmd, o)
+	require.Equal(t, "cobra-user", o.User)
+
+	// Test with viper
+	o = NewOptions()
+	v := viper.New()
+	v.Set("user", "viper-user")
+	setUser(*v, o)
+	require.Equal(t, "viper-user", o.User)
 }

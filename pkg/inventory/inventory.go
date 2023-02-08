@@ -4,7 +4,6 @@ Package inventory provides the needed pieces to correctly create an Inventory of
 package inventory
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 	"os/user"
 	"path"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -294,36 +294,17 @@ type FileBucket struct {
 	Free int64
 }
 
-// ExpandSuitcaseNames will fill in suitcase names for a given inventory
-func ExpandSuitcaseNames(di *DirectoryInventory) error {
-	var extension string
-	if di.Options == nil || di.Options.SuitcaseFormat == "" {
-		extension = "tar"
-	} else {
-		extension = di.Options.SuitcaseFormat
-	}
+// expandSuitcaseNames will fill in suitcase names for a given inventory
+func (di *DirectoryInventory) expandSuitcaseNames() {
 	for _, f := range di.Files {
 		if f.SuitcaseName == "" {
-			n := FormatSuitcaseName(di.Options.Prefix, di.Options.User, f.SuitcaseIndex, di.TotalIndexes, extension)
-			f.SuitcaseName = n
+			f.SuitcaseName = di.SuitcaseNameWithIndex(f.SuitcaseIndex)
 		}
 	}
-	return nil
 }
 
-// FormatSuitcaseName provides the proper formatting for a suitcase name
-func FormatSuitcaseName(p, u string, i, t int, ext string) string {
-	if u == "" {
-		u = "unknown-user"
-	}
-	if p == "" {
-		u = "unknown-prefix"
-	}
-	return fmt.Sprintf("%v-%v-%02d-of-%02d.%v", p, u, i, t, ext)
-}
-
-// ExtractSuitcaseNames returns a list of suitcase strings
-func ExtractSuitcaseNames(di *DirectoryInventory) []string {
+// SuitcaseNames returns a list of suitcase names as strings
+func (di DirectoryInventory) SuitcaseNames() []string {
 	ret := make([]string, len(di.Files))
 
 	for idx, f := range di.Files {
@@ -332,15 +313,16 @@ func ExtractSuitcaseNames(di *DirectoryInventory) []string {
 	return ret
 }
 
-// IndexInventory Loops through inventory and assign suitcase indexes
-func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
+// IndexWithSize Loops through inventory and assign suitcase indexes based on a
+// given max size
+func (di *DirectoryInventory) IndexWithSize(maxSize int64) error {
 	caseSet := NewCaseSet(maxSize)
 	numCases := 1
 	// Sort by descending size
-	sort.Slice(inventory.Files, func(i, j int) bool {
-		return inventory.Files[i].Size > inventory.Files[j].Size
+	sort.Slice(di.Files, func(i, j int) bool {
+		return di.Files[i].Size > di.Files[j].Size
 	})
-	for _, item := range inventory.Files {
+	for _, item := range di.Files {
 		// Implementation requires that maxSize is greater than or equal to the size of the largest file
 		// If maxSize == 0, everything goes in the same suitcase
 		if maxSize == 0 {
@@ -372,22 +354,23 @@ func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
 			}
 		}
 		// Write up summary
-		if inventory.IndexSummaries == nil {
-			inventory.IndexSummaries = map[int]*IndexSummary{}
+		if di.IndexSummaries == nil {
+			di.IndexSummaries = map[int]*IndexSummary{}
 		}
 
-		if _, ok := inventory.IndexSummaries[item.SuitcaseIndex]; !ok {
-			inventory.IndexSummaries[item.SuitcaseIndex] = &IndexSummary{}
+		if _, ok := di.IndexSummaries[item.SuitcaseIndex]; !ok {
+			di.IndexSummaries[item.SuitcaseIndex] = &IndexSummary{}
 		}
-		s := inventory.IndexSummaries[item.SuitcaseIndex]
+		s := di.IndexSummaries[item.SuitcaseIndex]
 		s.Count++
 		s.Size += item.Size
 	}
 	// Generate human readable total sizes
-	for _, v := range inventory.IndexSummaries {
+	for _, v := range di.IndexSummaries {
 		v.HumanSize = humanize.Bytes(uint64(v.Size))
 	}
-	inventory.TotalIndexes = numCases
+	di.TotalIndexes = numCases
+	di.expandSuitcaseNames()
 	return nil
 }
 
@@ -395,7 +378,7 @@ func IndexInventory(inventory *DirectoryInventory, maxSize int64) error {
 func WriteInventoryAndFileWithViper(
 	v *viper.Viper, cmd *cobra.Command, args []string, version string,
 ) (*DirectoryInventory, *os.File, error) {
-	outDir := DestinationWithCobra(cmd)
+	outDir := destinationWithCobra(cmd)
 	i, f, ir, err := NewDirectoryInventoryAndFileAndInventoyerWithViper(v, cmd, args, outDir)
 	if err != nil {
 		return nil, nil, err
@@ -502,12 +485,8 @@ func NewDirectoryInventory(opts *Options) (*DirectoryInventory, error) {
 		}
 		log.Info().Str("path", dir).Msg("Ignoring file as it matches ignore globs")
 	}
-	if ierr := IndexInventory(ret, opts.MaxSuitcaseSize); ierr != nil {
+	if ierr := ret.IndexWithSize(opts.MaxSuitcaseSize); ierr != nil {
 		return nil, ierr
-	}
-
-	if eserr := ExpandSuitcaseNames(ret); eserr != nil {
-		return nil, eserr
 	}
 	return ret, nil
 }
@@ -588,33 +567,24 @@ func NewInventoryerWithFilename(filename string) (Inventoryer, error) {
 }
 
 // WithViper applies options from a Viper instance for options
-// gocognit needs improvement here, but unsure how to do that...
-func WithViper(v *viper.Viper) func(*Options) { // nolint:gocognit
+func WithViper(v *viper.Viper) func(*Options) {
 	if v == nil {
 		return func(*Options) {}
 	}
 	return func(o *Options) {
-		if got := v.GetString("internal-metadata-glob"); got != "" {
-			o.InternalMetadataGlob = got
-		}
-		if got := v.GetString("prefix"); got != "" {
-			o.Prefix = got
-		}
-		if got := v.GetStringSlice("ignore-glob"); got != nil {
-			o.IgnoreGlobs = got
-		}
-		if got := v.GetStringSlice("external-metadata-file"); got != nil {
-			o.ExternalMetadataFiles = got
-		}
-		if v.IsSet("encrypt-inner") {
-			o.EncryptInner = v.GetBool("encrypt-inner")
-		}
-		if v.IsSet("hash-inner") {
-			o.HashInner = v.GetBool("hash-inner")
-		}
-		if v.IsSet("follow-symlinks") {
-			o.FollowSymlinks = v.GetBool("follow-symlinks")
-		}
+		// Helper commands to work with both viper and cmd args
+		setLimitFileCount(*v, o)
+		setInternalMetadataGlob(*v, o)
+		setPrefix(*v, o)
+		setIgnoreGlobs(*v, o)
+		setExternalMetadataFiles(*v, o)
+		setEncryptInner(*v, o)
+		setHashInner(*v, o)
+		setFollowSymlinks(*v, o)
+		setMaxSuitcaseSize(*v, o)
+		setUser(*v, o)
+
+		// Formats are a little funky...should we set them special?
 		// Strip out leading dots
 		format := strings.TrimPrefix(v.GetString("suitcase-format"), ".")
 		if format != "" {
@@ -624,12 +594,180 @@ func WithViper(v *viper.Viper) func(*Options) { // nolint:gocognit
 		if iformat != "" {
 			o.InventoryFormat = iformat
 		}
-		if v.IsSet("max-suitcase-size") {
-			o.MaxSuitcaseSize = mustBytesFromHuman(v.GetString("max-suitcase-size"))
+	}
+}
+
+func setInternalMetadataGlob[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "internal-metadata-glob"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			o.InternalMetadataGlob = vi.GetString(k)
 		}
-		if v.IsSet("user") {
-			o.User = v.GetString("user")
+	case *cobra.Command:
+		ci := mustGetCommand(v)
+		if ci.Flags().Changed(k) {
+			o.InternalMetadataGlob = mustGetCmd[string](ci, k)
 		}
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
+	}
+}
+
+func setLimitFileCount[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "limit-file-count"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			o.LimitFileCount = vi.GetInt(k)
+		}
+	case *cobra.Command:
+		ci := mustGetCommand(v)
+		if ci.Flags().Changed(k) {
+			o.LimitFileCount = mustGetCmd[int](ci, k)
+		}
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
+	}
+}
+
+func setPrefix[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "prefix"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			o.Prefix = vi.GetString(k)
+		}
+	case *cobra.Command:
+		ci := mustGetCommand(v)
+		if ci.Flags().Changed(k) {
+			o.Prefix = mustGetCmd[string](ci, k)
+		}
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
+	}
+}
+
+func setIgnoreGlobs[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "ignore-glob"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			o.IgnoreGlobs = vi.GetStringSlice(k)
+		}
+	case *cobra.Command:
+		ci := mustGetCommand(v)
+		if ci.Flags().Changed(k) {
+			o.IgnoreGlobs = mustGetCmd[[]string](ci, k)
+		}
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
+	}
+}
+
+func setExternalMetadataFiles[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "external-metadata-file"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			o.ExternalMetadataFiles = vi.GetStringSlice(k)
+		}
+	case *cobra.Command:
+		ci := mustGetCommand(v)
+		if ci.Flags().Changed(k) {
+			o.ExternalMetadataFiles = mustGetCmd[[]string](ci, k)
+		}
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
+	}
+}
+
+func setEncryptInner[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "encrypt-inner"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			o.EncryptInner = vi.GetBool(k)
+		}
+	case *cobra.Command:
+		ci := mustGetCommand(v)
+		if ci.Flags().Changed(k) {
+			o.EncryptInner = mustGetCmd[bool](ci, k)
+		}
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
+	}
+}
+
+func setHashInner[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "hash-inner"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			o.HashInner = vi.GetBool(k)
+		}
+	case *cobra.Command:
+		ci := mustGetCommand(v)
+		if ci.Flags().Changed(k) {
+			o.HashInner = mustGetCmd[bool](ci, k)
+		}
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
+	}
+}
+
+func setFollowSymlinks[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "follow-symlinks"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			o.FollowSymlinks = vi.GetBool(k)
+		}
+	case *cobra.Command:
+		ci := mustGetCommand(v)
+		if ci.Flags().Changed(k) {
+			o.FollowSymlinks = mustGetCmd[bool](ci, k)
+		}
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
+	}
+}
+
+func setMaxSuitcaseSize[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "max-suitcase-size"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			o.MaxSuitcaseSize = mustBytesFromHuman(vi.GetString(k))
+		}
+	case *cobra.Command:
+		o.MaxSuitcaseSize = mustBytesFromHuman(mustGetCmd[string](mustGetCommand(v), k))
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
+	}
+}
+
+func setUser[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "user"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			o.User = vi.GetString(k)
+		}
+	case *cobra.Command:
+		o.User = mustGetCmd[string](mustGetCommand(v), k)
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
 	}
 }
 
@@ -644,26 +782,22 @@ func mustBytesFromHuman(h string) int64 {
 // WithCobra applies options using a cobra Command and args
 func WithCobra(cmd *cobra.Command, args []string) func(*Options) {
 	return func(o *Options) {
-		if cmd.Flags().Changed("limit-file-count") {
-			o.LimitFileCount, _ = cmd.Flags().GetInt("limit-file-count")
-		}
+		setMaxSuitcaseSize(*cmd, o)
+		setUser(*cmd, o)
+		setFollowSymlinks(*cmd, o)
+		setHashInner(*cmd, o)
+		setEncryptInner(*cmd, o)
+		setExternalMetadataFiles(*cmd, o)
+		setIgnoreGlobs(*cmd, o)
+		setPrefix(*cmd, o)
+		setInternalMetadataGlob(*cmd, o)
+		setLimitFileCount(*cmd, o)
+
 		if len(args) > 0 {
 			o.Directories = args
 		}
 	}
 }
-
-// NewDirectoryInventoryOptionsWithViper creates new inventory options with viper
-/*
-func NewDirectoryInventoryOptionsWithViper(userOver *viper.Viper, cmd *cobra.Command, args []string) (*Options, error) {
-	opt := NewOptions(
-		WithViper(userOver),
-		WithCobra(cmd, args),
-	)
-
-	return opt, nil
-}
-*/
 
 // CaseSet is just a holder for case sizes
 type CaseSet map[int]int64
@@ -676,8 +810,8 @@ func NewCaseSet(maxSize int64) CaseSet {
 	}
 }
 
-// UserOverrideWithCobra returns a user override viper object from a cmd
-func UserOverrideWithCobra(cmd *cobra.Command) *viper.Viper {
+// userOverrideWithCobra returns a user override viper object from a cmd
+func userOverrideWithCobra(cmd *cobra.Command) *viper.Viper {
 	if cmd.Context() == nil {
 		return &viper.Viper{}
 	}
@@ -692,22 +826,14 @@ func UserOverrideWithCobra(cmd *cobra.Command) *viper.Viper {
 	return vi
 }
 
-// DestinationWithCobra returns a destination string from a cmd
-func DestinationWithCobra(cmd *cobra.Command) string {
+// destinationWithCobra returns a destination string from a cmd
+func destinationWithCobra(cmd *cobra.Command) string {
 	if cmd.Context() == nil {
-		tmp, err := os.MkdirTemp("", "suitcasectl")
-		if err != nil {
-			panic(err)
-		}
-		return tmp
+		return mustTempDir()
 	}
 	v := cmd.Context().Value(DestinationKey)
 	if v == nil {
-		tmp, err := os.MkdirTemp("", "suitcasectl")
-		if err != nil {
-			panic(err)
-		}
-		return tmp
+		return mustTempDir()
 	}
 	d, ok := v.(string)
 	if !ok {
@@ -724,13 +850,10 @@ func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []stri
 		log.Info().Msg("No inventory file specified, we're going to go ahead and create one")
 		var outF *os.File
 		var err error
-		v := UserOverrideWithCobra(cmd)
-		outDir := DestinationWithCobra(cmd)
+		v := userOverrideWithCobra(cmd)
+		outDir := destinationWithCobra(cmd)
 		if outDir == "" {
-			outDir, err = os.MkdirTemp("", "suitcasectl")
-			if err != nil {
-				return nil, err
-			}
+			outDir = mustTempDir()
 			var ctx context.Context
 			if cmd.Context() == nil {
 				ctx = context.Background()
@@ -755,6 +878,14 @@ func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []stri
 	}
 	inventoryD.SummaryLog()
 	return inventoryD, nil
+}
+
+func mustTempDir() string {
+	o, err := os.MkdirTemp("", "suitcasectl")
+	if err != nil {
+		panic(err)
+	}
+	return o
 }
 
 func checkItemSize(item *File, maxSize int64) error {
@@ -945,24 +1076,105 @@ func filenameMatchesGlobs(filename string, globs []string) bool {
 	return false
 }
 
-// HashSet is a combination Filename and Hash
-type HashSet struct {
-	Filename string
-	Hash     string
+// SuitcaseNameWithIndex gives what the name of a suitcase file will be, given
+// the index number
+func (di *DirectoryInventory) SuitcaseNameWithIndex(i int) string {
+	return fmt.Sprintf("%v-%v-%02d-of-%02d.%v", di.Options.Prefix, di.Options.User, i, di.TotalIndexes, di.Options.SuitcaseFormat)
 }
 
-// WriteHashFile  writes out the hashset array to an io.Writer
-func WriteHashFile(hs []HashSet, o io.Writer) error {
-	w := bufio.NewWriter(o)
-	for _, hs := range hs {
-		_, err := w.WriteString(fmt.Sprintf("%s\t%s\n", hs.Filename, hs.Hash))
-		if err != nil {
-			return err
+func newInventoryCmd() *cobra.Command {
+	cmd := &cobra.Command{}
+	BindCobra(cmd)
+	return cmd
+}
+
+// BindCobra binds the needed inventory bits to a cobra.Command
+func BindCobra(cmd *cobra.Command) {
+	cmd.PersistentFlags().Int("concurrency", 10, "Number of concurrent files to create")
+	cmd.PersistentFlags().String("inventory-file", "", "Use the given inventory file to create the suitcase")
+	cmd.PersistentFlags().String("max-suitcase-size", "0", "Maximum size for the set of suitcases generated. If no unit is specified, 'bytes' is assumed. 0 means no limit.")
+	cmd.PersistentFlags().String("internal-metadata-glob", "suitcase-meta*", "Glob pattern for internal metadata files. This should be directly under the top level directories of the targets that are being packaged up. Multiple matches will be included if found.")
+	cmd.PersistentFlags().StringArray("external-metadata-file", []string{}, "Additional files to include as metadata in the inventory. This should NOT be part of the suitcase target directories...use internal-metadata-glob for those")
+	cmd.PersistentFlags().StringArray("ignore-glob", []string{}, "Ignore files matching this glob pattern. Can be specified multiple times")
+	cmd.PersistentFlags().Bool("hash-inner", false, "Create SHA256 hashes for the inner contents of the suitcase")
+	cmd.PersistentFlags().Bool("hash-outer", false, "Create SHA256 hashes for the container and metadata files")
+	cmd.PersistentFlags().Bool("encrypt-inner", false, "Encrypt files within the suitcase")
+	cmd.PersistentFlags().Bool("follow-symlinks", false, "Follow symlinks when traversing the target directories and files")
+	cmd.PersistentFlags().Int("buffer-size", 1024, "Buffer size if using a YAML inventory.")
+	cmd.PersistentFlags().Int("limit-file-count", 0, "Limit the number of files to include in the inventory. If 0, no limit is applied. Should only be used for debugging")
+	cmd.PersistentFlags().String("user", "", "Username to insert into the suitcase filename. If omitted, we'll try and detect from the current user")
+	cmd.PersistentFlags().String("prefix", "suitcase", "Prefix to insert into the suitcase filename")
+	cmd.PersistentFlags().StringArrayP("public-key", "p", []string{}, "Public keys to use for encryption")
+	cmd.PersistentFlags().Bool("exclude-systems-pubkeys", false, "By default, we will include the systems teams pubkeys, unless this option is specified")
+	cmd.PersistentFlags().Bool("only-inventory", false, "Only generate the inventory file, skip the actual suitcase archive creation")
+
+	/*
+		// Could we get these in here??
+		cmd.PersistentFlags().Var(&suitcaseFormat, "suitcase-format", "Format for the suitcase. Should be 'tar', 'tar.gpg', 'tar.gz' or 'tar.gz.gpg'")
+		if err := cmd.RegisterFlagCompletionFunc("suitcase-format", suitcase.FormatCompletion); err != nil {
+			panic(err)
 		}
+		cmd.PersistentFlags().Lookup("suitcase-format").DefValue = inventory.DefaultSuitcaseFormat
+
+		// Inventory Format needs some extra love for auto complete
+		cmd.PersistentFlags().Var(&inventoryFormat, "inventory-format", "Format for the inventory. Should be 'yaml' or 'json'")
+		if err := cmd.RegisterFlagCompletionFunc("inventory-format", inventory.FormatCompletion); err != nil {
+			panic(err)
+		}
+		cmd.PersistentFlags().Lookup("inventory-format").DefValue = "yaml"
+	*/
+}
+
+// mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command
+func mustGetCmd[T []int | int | []string | string | bool | time.Duration](cmd cobra.Command, s string) T {
+	switch any(new(T)).(type) {
+	case *int:
+		item, err := cmd.Flags().GetInt(s)
+		panicIfErr(err)
+		return any(item).(T)
+	case *string:
+		item, err := cmd.Flags().GetString(s)
+		panicIfErr(err)
+		return any(item).(T)
+	case *[]string:
+		item, err := cmd.Flags().GetStringSlice(s)
+		panicIfErr(err)
+		return any(item).(T)
+	case *bool:
+		item, err := cmd.Flags().GetBool(s)
+		panicIfErr(err)
+		return any(item).(T)
+	case *[]int:
+		item, err := cmd.Flags().GetIntSlice(s)
+		panicIfErr(err)
+		return any(item).(T)
+	case *time.Time:
+		item, err := cmd.Flags().GetDuration(s)
+		panicIfErr(err)
+		return any(item).(T)
+	default:
+		panic(fmt.Sprintf("unexpected use of mustGetCmd: %v", reflect.TypeOf(s)))
 	}
-	err := w.Flush()
+}
+
+func panicIfErr(err error) {
 	if err != nil {
-		return err
+		panic(err)
 	}
-	return nil
+}
+
+func mustGetViper(v any) viper.Viper {
+	vi, ok := v.(viper.Viper)
+	if !ok {
+		panic("error getting viper.Viper from generic")
+	}
+	return vi
+}
+
+func mustGetCommand(v any) cobra.Command {
+	ci, ok := v.(cobra.Command)
+	if !ok {
+		panic("error getting cobra.Command from generic")
+	}
+	return ci
 }
