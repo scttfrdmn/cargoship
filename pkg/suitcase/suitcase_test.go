@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -136,7 +137,7 @@ func TestFillFileWithInventoryIndexHashInner(t *testing.T) {
 	))
 	require.NoError(t, err)
 	sf, err := WriteSuitcaseFile(so, i, 1, nil)
-	sfs := fmt.Sprintf("%v.sha256", sf)
+	sfs := fmt.Sprintf("%v.sha1", sf)
 	require.NoError(t, err)
 	require.FileExists(t, sfs)
 
@@ -161,6 +162,9 @@ func BenchmarkNewSuitcase(b *testing.B) {
 	if bdd == "" {
 		bdd = "../../benchmark_data/"
 	}
+	var err error
+	bdd, err = filepath.Abs(bdd)
+	require.NoError(b, err)
 
 	zerolog.SetGlobalLevel(zerolog.FatalLevel)
 	for desc, dataset := range datasets {

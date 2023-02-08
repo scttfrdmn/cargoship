@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,7 +22,6 @@ func TestNewSuitcaseWithDir(t *testing.T) {
 	require.NoError(t, err)
 }
 
-/*
 func TestNewSuitcaseWithLimit(t *testing.T) {
 	testD := t.TempDir()
 	cmd := NewRootCmd(io.Discard)
@@ -37,7 +37,21 @@ func TestNewSuitcaseWithLimit(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 5, len(i.Files))
 }
-*/
+
+func TestNewSuitcaseOuterHash(t *testing.T) {
+	testD := t.TempDir()
+	cmd := NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{
+		"create", "suitcase", "../../../pkg/testdata/limit-dir/",
+		"--destination", testD,
+		"--user", "kimuser",
+		"--hash-outer",
+		"--hash-algorithm", "sha1",
+	})
+	err := cmd.Execute()
+	require.NoError(t, err)
+	require.FileExists(t, filepath.Join(testD, "suitcasectl.sha1"))
+}
 
 func TestNewSuitcaseWithProfiling(t *testing.T) {
 	testD := t.TempDir()

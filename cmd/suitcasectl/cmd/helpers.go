@@ -1,9 +1,15 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
+	"crypto/md5"  // nolint:gosec
+	"crypto/sha1" // nolint:gosec
 	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"path"
@@ -110,19 +116,7 @@ func getSha256(file string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer func() {
-		cerr := f.Close()
-		if err != nil {
-			panic(cerr)
-		}
-	}()
-
-	/*
-		h := sha256.New()
-		if _, err := io.Copy(h, f); err != nil {
-			return "", err
-		}
-	*/
+	defer dclose(f)
 
 	b, err := io.ReadAll(f)
 	if err != nil {
@@ -132,15 +126,6 @@ func getSha256(file string) (string, error) {
 	sum := sha256.Sum256(b)
 
 	return fmt.Sprintf("%x", sum), nil
-}
-
-// mustGetSha256 panics if a Sha256 cannot be generated
-func mustGetSha256(file string) string {
-	hash, err := getSha256(file)
-	if err != nil {
-		panic(err)
-	}
-	return hash
 }
 
 // ProcessOpts defines the process options
@@ -168,27 +153,26 @@ func processSuitcases(po *processOpts) []string {
 			createdF, err := suitcase.WriteSuitcaseFile(po.SuitcaseOpts, po.Inventory, i, state)
 			panicOnError(err)
 			// if po.Inventory.Options.Hash
-			if po.SuitcaseOpts.HashOuter {
-				log.Info().Msg("Generating a hash of the suitcase")
-				sf, err := os.Open(createdF) // nolint:gosec
-				if err != nil {
-					log.Warn().Err(err).Msg("Error writing hash file")
-					return
+			/*
+				if po.SuitcaseOpts.HashOuter {
+					log.Info().Msg("Generating a hash of the suitcase")
+					sf, err := os.Open(createdF) // nolint:gosec
+					if err != nil {
+						log.Warn().Err(err).Msg("Error writing hash file")
+						return
+					}
+					defer dclose(sf)
+					hashF := fmt.Sprintf("%v.%v", createdF, hashAlgo.String())
+					// sumS := fmt.Sprintf("%x", h.Sum(nil))
+					sumS := calculateHash(sf, hashAlgo.String())
+					log.Fatal().Msgf("Writing hash to %x", []byte(sumS))
+					hf, err := os.Create(hashF) // nolint:gosec
+					panicOnError(err)
+					defer dclose(hf)
+					_, werr := hf.Write([]byte(sumS))
+					warnOnError(werr, "error writing file")
 				}
-				defer dclose(sf)
-				h := sha256.New()
-				if _, cperr := io.Copy(h, sf); cperr != nil {
-					log.Warn().Err(cperr).Msg("Error copying hash data")
-				}
-				hashF := fmt.Sprintf("%v.sha256", createdF)
-				sumS := fmt.Sprintf("%x", h.Sum(nil))
-				log.Info().Msgf("Writing hash to %x", []byte(sumS))
-				hf, err := os.Create(hashF) // nolint:gosec
-				panicOnError(err)
-				defer dclose(hf)
-				_, werr := hf.Write([]byte(sumS))
-				warnOnError(werr, "error writing file")
-			}
+			*/
 			ret[i-1] = createdF
 			<-guard // release the guard channel
 		}(i)
@@ -208,6 +192,7 @@ func processSuitcases(po *processOpts) []string {
 	return ret
 }
 
+/*
 func warnOnError(err error, msg string) {
 	if err != nil {
 		if msg != "" {
@@ -217,9 +202,30 @@ func warnOnError(err error, msg string) {
 		}
 	}
 }
+*/
 
 func panicOnError(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func calculateHash(rd io.Reader, ht string) string {
+	reader := bufio.NewReaderSize(rd, os.Getpagesize())
+	var dst hash.Hash
+	switch ht {
+	case "md5":
+		dst = md5.New() // nolint:gosec
+	case "sha1":
+		dst = sha1.New() // nolint:gosec
+	case "sha256":
+		dst = sha256.New()
+	case "sha512":
+		dst = sha512.New()
+	default:
+		panic(fmt.Sprintf("unexpected hash type: %v", ht))
+	}
+	_, err := io.Copy(dst, reader)
+	panicIfErr(err)
+	return hex.EncodeToString(dst.Sum(nil))
 }

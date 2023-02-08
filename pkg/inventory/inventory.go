@@ -27,6 +27,11 @@ import (
 	"golang.org/x/tools/godoc/util"
 )
 
+// DefaultSuitcaseFormat is just the default format we're going to use for a
+// suitcase. Hopefully this fits for most use cases, but can always be
+// overridden
+const DefaultSuitcaseFormat string = "tar.zst"
+
 type contextKey int
 
 const (
@@ -36,6 +41,8 @@ const (
 	LogFileKey
 	// HashesKey is the location of the hashes
 	HashesKey
+	// HashTypeKey is the location for a given hash type (sha1, md5, etc)
+	HashTypeKey
 	// UserOverrideKey is where the user overrides live
 	UserOverrideKey
 	// CLIMetaKey is where the CLI metadata lives
@@ -45,6 +52,76 @@ const (
 )
 
 var errHalt = errors.New("halt")
+
+// HashAlgorithm is the hashing algorithm used for calculating file signatures
+type HashAlgorithm int
+
+const (
+	// NullHash represents no hashing
+	NullHash HashAlgorithm = iota
+	// MD5Hash uses and md5 checksum
+	MD5Hash
+	// SHA1Hash is the sha-1 version of a signature
+	SHA1Hash
+	// SHA256Hash is the more secure sha-256 version of a signature
+	SHA256Hash
+	// SHA512Hash is most secure, but super slow, probably not useful here
+	SHA512Hash
+)
+
+var hashMap map[string]HashAlgorithm = map[string]HashAlgorithm{
+	"md5":    MD5Hash,
+	"sha1":   SHA1Hash,
+	"sha256": SHA256Hash,
+	"sha512": SHA512Hash,
+	"":       NullHash,
+}
+
+var hashHelp map[string]string = map[string]string{
+	"md5":    "Fast but older hashing method, but usually fine for signatures",
+	"sha1":   "Less intensive on CPUs than sha256, and more secure than md5",
+	"sha256": "CPU intensive but very secure signature hashing",
+	"sha512": "CPU intensive but very VERY secure signature hashing",
+}
+
+// HashCompletion returns shell completion
+func HashCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	help := []string{}
+	for _, format := range nonEmptyKeys(hashMap) {
+		if strings.Contains(format, toComplete) {
+			help = append(help, fmt.Sprintf("%v\t%v", format, hashHelp[format]))
+		}
+	}
+	return help, cobra.ShellCompDirectiveNoFileComp
+}
+
+// String satisfies the pflags interface
+func (h HashAlgorithm) String() string {
+	m := reverseMap(hashMap)
+	if v, ok := m[h]; ok {
+		return v
+	}
+	panic("invalid hash algorithm")
+}
+
+// Type satisfies part of the pflags.Value interface
+func (h HashAlgorithm) Type() string {
+	return "HashAlgorithm"
+}
+
+// Set helps fulfill the pflag.Value interface
+func (h *HashAlgorithm) Set(v string) error {
+	if v, ok := hashMap[v]; ok {
+		*h = v
+		return nil
+	}
+	return fmt.Errorf("HashAlgorithm should be one of: %v", nonEmptyKeys(hashMap))
+}
+
+// MarshalJSON ensures that json conversions use the string value here, not the int value
+func (h *HashAlgorithm) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%v\"", h.String())), nil
+}
 
 // Format is the format the inventory will use, such as yaml, json, etc
 type Format int
@@ -57,11 +134,6 @@ const (
 	// JSONFormat is for yaml
 	JSONFormat
 )
-
-// DefaultSuitcaseFormat is just the default format we're going to use for a
-// suitcase. Hopefully this fits for most use cases, but can always be
-// overridden
-const DefaultSuitcaseFormat string = "tar.zst"
 
 var formatMap map[string]Format = map[string]Format{
 	"yaml": YAMLFormat,
@@ -166,20 +238,21 @@ type CLIMeta struct {
 
 // Options are the options used to create a DirectoryInventory
 type Options struct {
-	User                  string   `yaml:"user" json:"user"`
-	Prefix                string   `yaml:"prefix" json:"prefix"`
-	Directories           []string `yaml:"top_level_directories" json:"top_level_directories"`
-	SizeConsideredLarge   int64    `yaml:"size_considered_large" json:"size_considered_large"`
-	MaxSuitcaseSize       int64    `yaml:"max_suitcase_size" json:"max_suitcase_size"`
-	InternalMetadataGlob  string   `yaml:"internal_metadata_glob,omitempty" json:"internal_metadata_glob,omitempty"`
-	IgnoreGlobs           []string `yaml:"ignore_globs,omitempty" json:"ignore_globs,omitempty"`
-	ExternalMetadataFiles []string `yaml:"external_metadata_files,omitempty" json:"external_metadata_files,omitempty"`
-	EncryptInner          bool     `yaml:"encrypt_inner" json:"encrypt_inner"`
-	HashInner             bool     `yaml:"hash_inner" json:"hash_inner"`
-	LimitFileCount        int      `yaml:"limit_file_count" json:"limit_file_count"`
-	SuitcaseFormat        string   `yaml:"suitcase_format" json:"suitcase_format"`
-	InventoryFormat       string   `yaml:"inventory_format" json:"inventory_format"`
-	FollowSymlinks        bool     `yaml:"follow_symlinks" json:"follow_symlinks"`
+	User                  string        `yaml:"user" json:"user"`
+	Prefix                string        `yaml:"prefix" json:"prefix"`
+	Directories           []string      `yaml:"top_level_directories" json:"top_level_directories"`
+	SizeConsideredLarge   int64         `yaml:"size_considered_large" json:"size_considered_large"`
+	MaxSuitcaseSize       int64         `yaml:"max_suitcase_size" json:"max_suitcase_size"`
+	InternalMetadataGlob  string        `yaml:"internal_metadata_glob,omitempty" json:"internal_metadata_glob,omitempty"`
+	IgnoreGlobs           []string      `yaml:"ignore_globs,omitempty" json:"ignore_globs,omitempty"`
+	ExternalMetadataFiles []string      `yaml:"external_metadata_files,omitempty" json:"external_metadata_files,omitempty"`
+	EncryptInner          bool          `yaml:"encrypt_inner" json:"encrypt_inner"`
+	HashInner             bool          `yaml:"hash_inner" json:"hash_inner"`
+	LimitFileCount        int           `yaml:"limit_file_count" json:"limit_file_count"`
+	SuitcaseFormat        string        `yaml:"suitcase_format" json:"suitcase_format"`
+	InventoryFormat       string        `yaml:"inventory_format" json:"inventory_format"`
+	FollowSymlinks        bool          `yaml:"follow_symlinks" json:"follow_symlinks"`
+	HashAlgorithm         HashAlgorithm `yaml:"hash_algorithm" json:"hash_algorithm"`
 }
 
 // AbsoluteDirectories converts the Directories entries to absolute paths
@@ -260,6 +333,13 @@ func WithPrefix(p string) func(*Options) {
 	}
 }
 
+// WithHashAlgorithms sets the hashing algorithms to use for signatures
+func WithHashAlgorithms(a HashAlgorithm) func(*Options) {
+	return func(o *Options) {
+		o.HashAlgorithm = a
+	}
+}
+
 // NewOptions uses functional options to generatea DirectoryInventoryOptions object
 func NewOptions(options ...func(*Options)) *Options {
 	currentUser, err := user.Current()
@@ -270,6 +350,7 @@ func NewOptions(options ...func(*Options)) *Options {
 		SuitcaseFormat:  DefaultSuitcaseFormat,
 		InventoryFormat: "yaml",
 		User:            currentUser.Username,
+		HashAlgorithm:   SHA1Hash,
 	}
 	for _, opt := range options {
 		opt(dio)
@@ -767,7 +848,10 @@ func setUser[T viper.Viper | cobra.Command](v T, o *Options) {
 			o.User = vi.GetString(k)
 		}
 	case *cobra.Command:
-		o.User = mustGetCmd[string](mustGetCommand(v), k)
+		ci := mustGetCommand(v)
+		if ci.Flags().Changed(k) {
+			o.User = mustGetCmd[string](ci, k)
+		}
 	default:
 		panic(fmt.Sprintf("unexpected use of set %v", k))
 	}
@@ -1037,7 +1121,7 @@ func nonEmptyKeys[V any](m map[string]V) []string {
 }
 
 // reverseMap takes a map[k]v and returns a map[v]k
-func reverseMap[K string, V string | Format](m map[K]V) map[V]K {
+func reverseMap[K string, V string | Format | HashAlgorithm](m map[K]V) map[V]K {
 	ret := make(map[V]K, len(m))
 	for k, v := range m {
 		ret[v] = k
