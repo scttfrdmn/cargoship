@@ -8,6 +8,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/drewstinnett/gout/v2"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -119,13 +120,16 @@ func bindInventoryCmd(cmd *cobra.Command) {
 		panic(err)
 	}
 	cmd.PersistentFlags().Lookup("suitcase-format").DefValue = inventory.DefaultSuitcaseFormat
+
+	// Get some exclusivity goin'
+	cmd.MarkFlagsMutuallyExclusive("only-inventory", "hash-outer")
 }
 
 func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, error) {
 	userOverrides := viper.New()
 	userOverrides.SetConfigName("suitcasectl")
 	for _, dir := range args {
-		log.Info().Str("dir", dir).Msg("Adding target dir to user overrides")
+		log.Debug().Str("dir", dir).Msg("Adding target dir")
 		userOverrides.AddConfigPath(dir)
 	}
 	if rerr := userOverrides.ReadInConfig(); rerr == nil {
@@ -161,7 +165,7 @@ func writeHashFile(cmd *cobra.Command) error {
 func createPostRunE(cmd *cobra.Command, args []string) error {
 	cliMeta := cmd.Context().Value(inventory.CLIMetaKey).(*CLIMeta)
 	metaF := cliMeta.MustComplete(cmd.Context().Value(inventory.DestinationKey).(string))
-	log.Info().Str("file", metaF).Msg("Created meta file")
+	log.Debug().Str("file", metaF).Msg("Created meta file")
 
 	// Hash the outer items if asked
 	if mustGetCmd[bool](cmd, "hash-outer") {
@@ -180,8 +184,7 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		checkErr(err, "Could not write out the hashfile")
 	}
 
-	// stats.Runtime = stats.End.Sub(stats.Start)
-	log.Info().Str("log-file", cmd.Context().Value(inventory.LogFileKey).(*os.File).Name()).Msg("Switching back to stderr logger and closing the multi log writer so we can hash it")
+	log.Debug().Str("log-file", cmd.Context().Value(inventory.LogFileKey).(*os.File).Name()).Msg("Switching back to stderr logger and closing the multi log writer so we can hash it")
 	setupLogging(cmd.OutOrStderr())
 	// Do we really care if this closes? maybe...
 	_ = cmd.Context().Value(inventory.LogFileKey).(*os.File).Close()
@@ -190,10 +193,30 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		Str("runtime", cliMeta.CompletedAt.Sub(*cliMeta.StartedAt).String()).
 		Time("start", *cliMeta.StartedAt).
 		Time("end", *cliMeta.CompletedAt).
-		Msg("Completed")
+		Msg("🧳 Completed")
 
+	inv := inventory.WithCmd(cmd)
+	opts := suitcase.OptsWithCmd(cmd)
+	gout.MustPrint(runsum{
+		Destination: opts.Destination,
+		Suitcases:   inv.UniqueSuitcaseNames(),
+		Directories: inv.Options.Directories,
+		MetaFiles: []string{
+			"inventory.yaml",
+			"suitcasectl.log",
+			"suitcasectl-invocation-meta.yaml",
+		},
+	})
 	globalPersistentPostRun(cmd, args)
 	return nil
+}
+
+type runsum struct {
+	Directories []string
+	Suitcases   []string
+	Destination string
+	MetaFiles   []string
+	Hashes      []config.HashSet
 }
 
 func createPreRunE(cmd *cobra.Command, args []string) error {
@@ -240,29 +263,33 @@ func createRunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// We need options even if we already have the inventory
+	opts := &config.SuitCaseOpts{
+		Destination:  cmd.Context().Value(inventory.DestinationKey).(string),
+		EncryptInner: inventoryD.Options.EncryptInner,
+		HashInner:    inventoryD.Options.HashInner,
+		Format:       inventoryD.Options.SuitcaseFormat,
+	}
+	// Store in context for later
+	cmd.SetContext(context.WithValue(cmd.Context(), inventory.SuitcaseOptionsKey, opts))
+
 	if !onlyInventory {
-		opts := &config.SuitCaseOpts{
-			Destination:  cmd.Context().Value(inventory.DestinationKey).(string),
-			EncryptInner: inventoryD.Options.EncryptInner,
-			HashInner:    inventoryD.Options.HashInner,
-			Format:       inventoryD.Options.SuitcaseFormat,
-		}
-		err := opts.EncryptToCobra(cmd)
-		if err != nil {
+		if err := opts.EncryptToCobra(cmd); err != nil {
 			return err
 		}
 
-		po := &processOpts{
+		createdFiles := processSuitcases(&processOpts{
 			Inventory:    inventoryD,
 			SuitcaseOpts: opts,
 			SampleEvery:  100,
 			Concurrency:  mustGetCmd[int](cmd, "concurrency"),
-		}
-		createdFiles := processSuitcases(po)
+		})
+
 		if mustGetCmd[bool](cmd, "hash-outer") {
 			hashes := createHashes(createdFiles, cmd)
 			cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashesKey, hashes))
 		}
+
 		return nil
 	}
 	log.Warn().Msg("Only creating inventory file, no suitcase archives")
