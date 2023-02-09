@@ -35,8 +35,12 @@ const DefaultSuitcaseFormat string = "tar.zst"
 type contextKey int
 
 const (
+	// InventoryKey is where the inventory lives. Hoping to get rid of most (if not all) other keys
+	InventoryKey contextKey = iota
+	// SuitcaseOptionsKey is the location for suitcase options
+	SuitcaseOptionsKey
 	// DestinationKey is the key for the target diretory of a suitcase operation
-	DestinationKey contextKey = iota
+	DestinationKey
 	// LogFileKey is the detination of the log file
 	LogFileKey
 	// HashesKey is the location of the hashes
@@ -214,13 +218,13 @@ func (di DirectoryInventory) SummaryLog() {
 			Uint("file-count", item.Count).
 			Int64("file-size", item.Size).
 			Str("file-size-human", humanize.Bytes(uint64(item.Size))).
-			Msg("Individual Suitcase Data")
+			Msg("🧳 suitcase archive created")
 	}
 	log.Info().
 		Uint("file-count", totalC).
 		Int64("file-size", totalS).
 		Str("file-size-human", humanize.Bytes(uint64(totalS))).
-		Msg("Total Suitcase Data")
+		Msg("🧳 total suitcase archives")
 }
 
 // IndexSummary will give an overall summary to a set of suitcases
@@ -396,6 +400,16 @@ func (di DirectoryInventory) SuitcaseNames() []string {
 	return ret
 }
 
+// UniqueSuitcaseNames returns a list of suitcase names as strings
+func (di DirectoryInventory) UniqueSuitcaseNames() []string {
+	ret := make([]string, di.TotalIndexes)
+
+	for i := 0; i < di.TotalIndexes; i++ {
+		ret[i] = di.SuitcaseNameWithIndex(i + 1)
+	}
+	return ret
+}
+
 // IndexWithSize Loops through inventory and assign suitcase indexes based on a
 // given max size
 func (di *DirectoryInventory) IndexWithSize(maxSize int64) error {
@@ -552,21 +566,16 @@ func NewDirectoryInventory(opts *Options) (*DirectoryInventory, error) {
 
 	for _, dir := range opts.Directories {
 		if !isDirectory(dir) {
-			log.Warn().
-				Str("path", dir).
-				Msg("top level directory does not exist")
+			log.Warn().Str("path", dir).Msg("top level directory does not exist")
 			return nil, errors.New("not a directory")
 		}
-		log.Info().
-			Str("dir", dir).
-			Msg("walking directory")
+		log.Debug().Str("dir", dir).Msg("walking directory")
 		err := walkDir(dir, opts, ret)
 		if err != nil {
 			if err.Error() != "halt" {
 				return nil, err
 			}
 		}
-		log.Info().Str("path", dir).Msg("Ignoring file as it matches ignore globs")
 	}
 	if ierr := ret.IndexWithSize(opts.MaxSuitcaseSize); ierr != nil {
 		return nil, ierr
@@ -933,7 +942,7 @@ func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []stri
 	// Create an inventory file if one isn't specified
 	var inventoryD *DirectoryInventory
 	if inventoryFile == "" {
-		log.Info().Msg("No inventory file specified, we're going to go ahead and create one")
+		log.Debug().Msg("No inventory file specified, we're going to go ahead and create one")
 		var outF *os.File
 		var err error
 		v := userOverrideWithCobra(cmd)
@@ -954,7 +963,7 @@ func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []stri
 		if err != nil {
 			return nil, err
 		}
-		log.Info().Str("file", outF.Name()).Msg("Created inventory file")
+		log.Debug().Str("file", outF.Name()).Msg("Created inventory file")
 	} else {
 		var err error
 		inventoryD, err = NewInventoryWithFilename(inventoryFile)
@@ -962,6 +971,8 @@ func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []stri
 			return nil, err
 		}
 	}
+	// Store the inventory in context, so we can access it in the other run stages
+	cmd.SetContext(context.WithValue(cmd.Context(), InventoryKey, inventoryD))
 	inventoryD.SummaryLog()
 	return inventoryD, nil
 }
@@ -1263,4 +1274,13 @@ func mustGetCommand(v any) cobra.Command {
 		panic("error getting cobra.Command from generic")
 	}
 	return ci
+}
+
+// WithCmd returns the inventory object from a cobra command context
+func WithCmd(cmd *cobra.Command) *DirectoryInventory {
+	inv, ok := cmd.Context().Value(InventoryKey).(*DirectoryInventory)
+	if !ok {
+		panic("could not get inventory")
+	}
+	return inv
 }

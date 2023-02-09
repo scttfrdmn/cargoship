@@ -221,7 +221,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 		}
 	}()
 
-	log.Info().
+	log.Debug().
 		Str("destination", fp).
 		Str("format", so.Format).
 		Bool("encryptInner", so.EncryptInner).
@@ -307,4 +307,14 @@ func WriteHashFile(hs []config.HashSet, o io.Writer) error {
 		return err
 	}
 	return nil
+}
+
+// OptsWithCmd returns suitcase options givena  cobra command
+func OptsWithCmd(cmd *cobra.Command) *config.SuitCaseOpts {
+	opts, ok := cmd.Context().Value(inventory.SuitcaseOptionsKey).(*config.SuitCaseOpts)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "%+v", cmd.Context().Value(inventory.SuitcaseOptionsKey))
+		panic("could not get suitcase options with cmd")
+	}
+	return opts
 }

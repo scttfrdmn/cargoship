@@ -54,12 +54,13 @@ func dclose(c io.Closer) {
 	}
 }
 
+// This needs some work. Why do we need it's own context entry instead of just
+// using the SuitcaseOpts, which already has it
 func getDestination(cmd *cobra.Command) (string, error) {
 	d := mustGetCmd[string](cmd, "destination")
 	if d == "" {
 		var err error
-		d, err = os.MkdirTemp("", "suitcasectl")
-		if err != nil {
+		if d, err = os.MkdirTemp("", "suitcasectl"); err != nil {
 			return "", err
 		}
 	}
@@ -191,18 +192,6 @@ func processSuitcases(po *processOpts) []string {
 	wg.Wait()
 	return ret
 }
-
-/*
-func warnOnError(err error, msg string) {
-	if err != nil {
-		if msg != "" {
-			log.Warn().Err(err).Msg(msg)
-		} else {
-			log.Warn().Err(err).Send()
-		}
-	}
-}
-*/
 
 func panicOnError(err error) {
 	if err != nil {

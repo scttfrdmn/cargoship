@@ -52,7 +52,7 @@ func (c *CLIMeta) Complete(od string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		log.Info().Str("meta-file", mf).Msg("Created CLI meta file")
+		log.Debug().Str("meta-file", mf).Msg("Created CLI meta file")
 	}
 	defer func() {
 		err := w.Close()

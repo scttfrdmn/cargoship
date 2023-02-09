@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 
 	"github.com/stretchr/testify/require"
 )
@@ -127,6 +128,7 @@ func TestExpandInventoryWithNames(t *testing.T) {
 	i.expandSuitcaseNames()
 	require.NoError(t, err)
 	require.Equal(t, i.SuitcaseNames(), []string{"foo-bar-01-of-02.tar", "foo-bar-02-of-02.tar", "foo-bar-02-of-02.tar"})
+	require.Equal(t, i.UniqueSuitcaseNames(), []string{"foo-bar-01-of-02.tar", "foo-bar-02-of-02.tar"})
 }
 
 func TestIndexInventoryTooBig(t *testing.T) {
@@ -288,7 +290,10 @@ func TestWriteOutDirectoryInventoryAndFileAndInventoyerWithViper(t *testing.T) {
 	f := t.TempDir()
 	v := viper.New()
 	c := &cobra.Command{}
-	ctx := context.WithValue(context.Background(), DestinationKey, f)
+	opts := &config.SuitCaseOpts{
+		Destination: f,
+	}
+	ctx := context.WithValue(context.Background(), SuitcaseOptionsKey, opts)
 	c.SetContext(ctx)
 	cmd := newInventoryCmd()
 	cmd.Execute()
@@ -357,4 +362,17 @@ func TestGenericSetUser(t *testing.T) {
 	v.Set("user", "viper-user")
 	setUser(*v, o)
 	require.Equal(t, "viper-user", o.User)
+}
+
+func TestNewInventoryWithFilename(t *testing.T) {
+	testD := t.TempDir()
+	invf := filepath.Join(testD, "inventory.yaml")
+	fh, err := os.Create(invf)
+	require.NoError(t, err)
+	err = fh.Close()
+	require.NoError(t, err)
+	i, err := NewInventoryWithFilename(invf)
+	require.NoError(t, err)
+	require.NotNil(t, i)
+	// require.Equal(t, 5, len(i.Files))
 }
