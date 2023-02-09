@@ -363,3 +363,16 @@ func TestGenericSetUser(t *testing.T) {
 	setUser(*v, o)
 	require.Equal(t, "viper-user", o.User)
 }
+
+func TestNewInventoryWithFilename(t *testing.T) {
+	testD := t.TempDir()
+	invf := filepath.Join(testD, "inventory.yaml")
+	fh, err := os.Create(invf)
+	require.NoError(t, err)
+	err = fh.Close()
+	require.NoError(t, err)
+	i, err := NewInventoryWithFilename(invf)
+	require.NoError(t, err)
+	require.NotNil(t, i)
+	// require.Equal(t, 5, len(i.Files))
+}
