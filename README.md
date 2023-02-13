@@ -133,8 +133,8 @@ This will return both files that contain the pattern, and directory summaries co
 $ suitcasectl find SOME_PATTERN SOME_INDEX.yaml
 files:
     - path: /Users/drews/Desktop/Almost Garbage/godoc/src/runtime/cgo/libcgo_windows.h?m=text
-      destination: godoc/src/runtime/cgo/libcgo_windows.h?m=text
-      name: libcgo_windows.h?m=text
+      destination: godoc/src/runtime/cgo/libcgo_windows.h
+      name: libcgo_windows.h
       size: 258
       suitcase_index: 5
       suitcase_name: suitcase-drews-05-of-05.tar.zst
