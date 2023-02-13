@@ -63,6 +63,8 @@ a future point in time`,
 	createCmd.AddCommand(createSuitcaseCmd)
 	cmd.AddCommand(createCmd)
 
+	cmd.AddCommand(NewFindCmd())
+
 	cmd.AddCommand(NewCompletionCmd())
 	cmd.AddCommand(NewSchemaCmd())
 	cmd.SetOut(lo)
@@ -146,7 +148,7 @@ func setupLogging(lo io.Writer) {
 	}
 }
 
-func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
+func setupSingleLoggingWithCmd(cmd *cobra.Command) {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
@@ -154,6 +156,20 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 		log.Info().Msg("Verbose output enabled")
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
+	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}).With().Logger()
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: cmd.ErrOrStderr()}).With().Logger()
+}
+
+func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
+	/*
+		zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		if Verbose {
+			log.Info().Msg("Verbose output enabled")
+			zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		}
+	*/
 	// If we have an outDir, also write the logs to a file
 	var multi io.Writer
 	o, err := getDestination(cmd)
@@ -164,12 +180,6 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 		log.Warn().Msg("No output directory specified")
 		return errors.New("no output directory specified")
 	}
-	/*
-		logF, err = os.Create(cmd.Context().Value(logFileKey).(*os.File).Name()) // nolint:gosec
-		if err != nil {
-			return err
-		}
-	*/
 	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}, cmd.Context().Value(inventory.LogFileKey).(*os.File))
 	if trace {
 		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
@@ -180,6 +190,9 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 }
 
 func globalPersistentPreRun(cmd *cobra.Command, args []string) {
+	// Set up single logging first
+	setupSingleLoggingWithCmd(cmd)
+
 	lo, ok := cmd.Context().Value(inventory.LogWriterKey).(io.Writer)
 	if ok {
 		setupLogging(lo)

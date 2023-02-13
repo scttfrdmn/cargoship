@@ -376,3 +376,69 @@ func TestNewInventoryWithFilename(t *testing.T) {
 	require.NotNil(t, i)
 	// require.Equal(t, 5, len(i.Files))
 }
+
+func TestInventorySearch(t *testing.T) {
+	i := DirectoryInventory{
+		Files: []*File{
+			{
+				Path:         "/foo/bar/baz/thing.txt",
+				Destination:  "bar/baz/thing.txt",
+				Name:         "thing.txt",
+				Size:         1000,
+				SuitcaseName: "suitcase-foo-01-of-05.tar.tsz",
+			},
+			{
+				Path:         "/foo/bar/baz/another.txt",
+				Destination:  "bar/baz/another.txt",
+				Name:         "another.txt",
+				Size:         2000,
+				SuitcaseName: "suitcase-foo-02-of-05.tar.tsz",
+			},
+			{
+				Path:         "/foo/bar/qux/another.txt",
+				Destination:  "bar/qux/another.txt",
+				Name:         "another.txt",
+				Size:         3000,
+				SuitcaseName: "suitcase-foo-01-of-05.tar.tsz",
+			},
+		},
+	}
+	got := i.Search("thing")
+	require.Equal(t, got.Files, SearchFileMatches{
+		{
+			Path:         "/foo/bar/baz/thing.txt",
+			Destination:  "bar/baz/thing.txt",
+			Name:         "thing.txt",
+			Size:         1000,
+			SuitcaseName: "suitcase-foo-01-of-05.tar.tsz",
+		},
+	})
+	got = i.Search("baz/")
+	require.Equal(t, got.Directories, SearchDirMatches{
+		{
+			Directory:   "bar/baz",
+			TotalSize:   3000,
+			TotalSizeHR: "3.0 kB",
+			Suitcases: []string{
+				"suitcase-foo-01-of-05.tar.tsz",
+				"suitcase-foo-02-of-05.tar.tsz",
+			},
+		},
+	})
+}
+
+func TestUniqueDirs(t *testing.T) {
+	test := []string{
+		"foo/bar/baz/thing.txt",
+		"quux/bar/bing/thing.txt",
+		"foo/bar/quux/thing.txt",
+	}
+	require.Equal(
+		t,
+		[]string{
+			"foo/bar",
+			"quux/bar",
+		},
+		uniqDirs(test, "bar/"),
+	)
+}
