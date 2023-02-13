@@ -26,6 +26,7 @@ func schemaRunE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create jsonschema: %w", err)
 	}
 	fmt.Println(string(bts))
+
 	return nil
 }
 

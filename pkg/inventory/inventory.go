@@ -1284,3 +1284,108 @@ func WithCmd(cmd *cobra.Command) *DirectoryInventory {
 	}
 	return inv
 }
+
+// SearchFileMatches is a listing of files that match a given search
+type SearchFileMatches []File
+
+type (
+	// SearchDirMatches is a recursive listing of what is contained in a directory
+	SearchDirMatches []SearchDirMatch
+	// SearchDirMatch is a single directory match
+	SearchDirMatch struct {
+		Directory   string
+		TotalSize   uint64
+		TotalSizeHR string
+		Suitcases   []string
+	}
+)
+
+// SearchResults is all the stuff that a given search gets back
+type SearchResults struct {
+	Files       SearchFileMatches
+	Directories SearchDirMatches
+}
+
+// Search iterates through files inside of an inventory and returns a set of
+// results
+func (di DirectoryInventory) Search(p string) SearchResults {
+	r := SearchResults{}
+	// First check files
+	fm := SearchFileMatches{}
+	var possibleDirs []File
+	for _, f := range di.Files {
+		dirName, fileName := filepath.Split(f.Destination)
+		if strings.Contains(strings.ToLower(fileName), strings.ToLower(p)) {
+			fm = append(fm, *f)
+		}
+
+		// Now look at dirs
+		if strings.Contains(strings.ToLower(dirName), strings.ToLower(p)) {
+			possibleDirs = append(possibleDirs, *f)
+		}
+	}
+	r.Files = fm
+
+	md := uniqDirsWithFiles(possibleDirs, p)
+	for _, pos := range md {
+		size, suitcases := dirSummary(possibleDirs, pos)
+		r.Directories = append(r.Directories, SearchDirMatch{
+			// Directory:   strings.TrimSuffix(pos[0:strings.Index(pos, p)+len(p)], "/"),
+			Directory:   pos,
+			TotalSize:   size,
+			TotalSizeHR: humanize.Bytes(size),
+			Suitcases:   suitcases,
+		})
+		humanize.Bytes(size)
+	}
+
+	return r
+}
+
+// Return total size and suitcases for a given directory
+func dirSummary(all []File, p string) (uint64, []string) {
+	var s uint64
+	var scs []string
+	for _, f := range all {
+		if strings.HasPrefix(f.Destination, p) {
+			s += uint64(f.Size)
+			if !containsString(scs, f.SuitcaseName) {
+				scs = append(scs, f.SuitcaseName)
+			}
+		}
+	}
+	return s, scs
+}
+
+func uniqDirsWithFiles(files []File, p string) []string {
+	all := []string{}
+	for _, f := range files {
+		all = append(all, f.Destination)
+	}
+	return uniqDirs(all, p)
+}
+
+// Given a set of directories, return the unique prefixes
+func uniqDirs(dirs []string, p string) []string {
+	sort.Slice(dirs, func(i, j int) bool {
+		return len(dirs[i]) < len(dirs[j])
+	})
+
+	res := []string{}
+	for _, cd := range dirs {
+		m := strings.TrimSuffix(cd[0:strings.Index(cd, p)+len(p)], "/")
+		if !containsString(res, m) {
+			res = append(res, m)
+		}
+	}
+	return res
+}
+
+func containsString(s []string, e string) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
+}
