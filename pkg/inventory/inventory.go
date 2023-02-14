@@ -1067,18 +1067,14 @@ func walkDir(dir string, opts *Options, ret *DirectoryInventory) error {
 	if err := godirwalk.Walk(dir, &godirwalk.Options{
 		FollowSymbolicLinks: opts.FollowSymlinks,
 		Callback: func(path string, de *godirwalk.Dirent) error {
-			// Skip top level directories from inventory
-			if de.IsDir() {
+			if de.IsDir() { // Skip top level directories from inventory
 				return nil
 			}
 
 			ogPath := path
 			if de.IsSymlink() {
 				target, skip := shouldSkipSymlink(path)
-				if skip {
-					return nil
-				}
-				if !opts.FollowSymlinks {
+				if skip || !opts.FollowSymlinks {
 					return nil
 				}
 				path = target
