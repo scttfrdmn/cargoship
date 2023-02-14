@@ -312,6 +312,31 @@ func TestWalkDirLimit(t *testing.T) {
 	require.EqualError(t, err, "halt")
 }
 
+func TestWalkDirExpandArchives(t *testing.T) {
+	i := DirectoryInventory{}
+	err := walkDir("../testdata/archives", NewOptions(
+		WithArchiveTOC(),
+	), &i)
+	require.NoError(t, err)
+	require.Contains(
+		t,
+		i.Files,
+		&File{
+			Path:        "../testdata/archives/archive.tar.gz",
+			Destination: "/archive.tar.gz",
+			Name:        "archive.tar.gz",
+			Size:        193,
+			ArchiveTOC: []string{
+				"archives/file1.txt",
+				"archives/sub/file2.txt",
+				"archives/thing.png",
+			},
+			SuitcaseIndex: 0,
+			SuitcaseName:  "",
+		},
+	)
+}
+
 func TestCreateOrReadInventory(t *testing.T) {
 	cmd := newInventoryCmd()
 	cmd.Execute()
@@ -441,4 +466,17 @@ func TestUniqueDirs(t *testing.T) {
 		},
 		uniqDirs(test, "bar/"),
 	)
+}
+
+func TestArchiveTOC(t *testing.T) {
+	// Good archive
+	got, err := archiveTOC("../testdata/archives/archive.tar.gz")
+	require.NoError(t, err)
+	require.Equal(t, []string{"archives/file1.txt", "archives/sub/file2.txt", "archives/thing.png"}, got)
+
+	// Not an archive
+	got, err = archiveTOC("../testdata/archives/thing.png")
+	require.Error(t, err)
+	require.EqualError(t, err, "could not scan a non archive file")
+	require.Nil(t, got)
 }
