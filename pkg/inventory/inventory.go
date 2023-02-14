@@ -1068,33 +1068,24 @@ func walkDir(dir string, opts *Options, ret *DirectoryInventory) error {
 		FollowSymbolicLinks: opts.FollowSymlinks,
 		Callback: func(path string, de *godirwalk.Dirent) error {
 			// Skip top level directories from inventory
-			// var err error
 			if de.IsDir() {
 				return nil
 			}
 
-			// We may need the original path again for a symlink later on
 			ogPath := path
-			// No symlink...dirs?
 			if de.IsSymlink() {
 				target, skip := shouldSkipSymlink(path)
 				if skip {
 					return nil
 				}
-				// Finally...
 				if !opts.FollowSymlinks {
 					return nil
 				}
 				path = target
 			}
 
-			// Finally look at the size
-			st, err := os.Stat(path)
-			if err != nil {
-				return err
-			}
+			st := mustStat(path)
 
-			// Ignore certain items?
 			name := de.Name()
 			if filenameMatchesGlobs(name, opts.IgnoreGlobs) {
 				return nil
@@ -1107,9 +1098,9 @@ func walkDir(dir string, opts *Options, ret *DirectoryInventory) error {
 				Size:        st.Size(),
 			}
 			if opts.IncludeArchiveTOC {
-				invf.ArchiveTOC, err = archiveTOC(path)
-				if err != nil {
-					log.Debug().Err(err).Str("path", path).Msg("error attempting to look at table of contents in file")
+				var aerr error
+				if invf.ArchiveTOC, aerr = archiveTOC(path); aerr != nil {
+					log.Debug().Err(aerr).Str("path", path).Msg("error attempting to look at table of contents in file")
 				}
 			}
 
@@ -1462,3 +1453,9 @@ func mustArchiveTOC(fn string) []string {
 	return got
 }
 */
+
+func mustStat(path string) fs.FileInfo {
+	st, err := os.Stat(path)
+	panicIfErr(err)
+	return st
+}
