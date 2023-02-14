@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/user"
 	"path"
@@ -17,6 +18,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/mholt/archiver/v4"
 
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
@@ -257,6 +260,7 @@ type Options struct {
 	InventoryFormat       string        `yaml:"inventory_format" json:"inventory_format"`
 	FollowSymlinks        bool          `yaml:"follow_symlinks" json:"follow_symlinks"`
 	HashAlgorithm         HashAlgorithm `yaml:"hash_algorithm" json:"hash_algorithm"`
+	IncludeArchiveTOC     bool          `yaml:"include_archive_toc" json:"include_archive_toc"`
 }
 
 // AbsoluteDirectories converts the Directories entries to absolute paths
@@ -267,6 +271,13 @@ func (o *Options) AbsoluteDirectories() error {
 	}
 	o.Directories = ad
 	return nil
+}
+
+// WithArchiveTOC enables table of contents in the archive file inventory
+func WithArchiveTOC() func(*Options) {
+	return func(o *Options) {
+		o.IncludeArchiveTOC = true
+	}
 }
 
 // WithIgnoreGlobs sets the IgnoreGlobs strings
@@ -368,12 +379,13 @@ func NewOptions(options ...func(*Options)) *Options {
 
 // File is a file item inside an inventory
 type File struct {
-	Path          string `yaml:"path" json:"path"`
-	Destination   string `yaml:"destination" json:"destination"`
-	Name          string `yaml:"name" json:"name"`
-	Size          int64  `yaml:"size" json:"size"`
-	SuitcaseIndex int    `yaml:"suitcase_index,omitempty" json:"suitcase_index,omitempty"`
-	SuitcaseName  string `yaml:"suitcase_name,omitempty" json:"suitcase_name,omitempty"`
+	Path          string   `yaml:"path" json:"path"`
+	Destination   string   `yaml:"destination" json:"destination"`
+	Name          string   `yaml:"name" json:"name"`
+	Size          int64    `yaml:"size" json:"size"`
+	ArchiveTOC    []string `yaml:"archive_toc,omitempty" json:"archive_toc,omitempty"`
+	SuitcaseIndex int      `yaml:"suitcase_index,omitempty" json:"suitcase_index,omitempty"`
+	SuitcaseName  string   `yaml:"suitcase_name,omitempty" json:"suitcase_name,omitempty"`
 }
 
 // FileBucket describes what a filebucket state is
@@ -672,6 +684,7 @@ func WithViper(v *viper.Viper) func(*Options) {
 		setExternalMetadataFiles(*v, o)
 		setEncryptInner(*v, o)
 		setHashInner(*v, o)
+		setArchiveTOC(*v, o)
 		setFollowSymlinks(*v, o)
 		setMaxSuitcaseSize(*v, o)
 		setUser(*v, o)
@@ -797,6 +810,24 @@ func setEncryptInner[T viper.Viper | cobra.Command](v T, o *Options) {
 	}
 }
 
+func setArchiveTOC[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "archive-toc"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			o.IncludeArchiveTOC = vi.GetBool(k)
+		}
+	case *cobra.Command:
+		ci := mustGetCommand(v)
+		if ci.Flags().Changed(k) {
+			o.IncludeArchiveTOC = mustGetCmd[bool](ci, k)
+		}
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
+	}
+}
+
 func setHashInner[T viper.Viper | cobra.Command](v T, o *Options) {
 	k := "hash-inner"
 	switch any(new(T)).(type) {
@@ -881,6 +912,7 @@ func WithCobra(cmd *cobra.Command, args []string) func(*Options) {
 		setUser(*cmd, o)
 		setFollowSymlinks(*cmd, o)
 		setHashInner(*cmd, o)
+		setArchiveTOC(*cmd, o)
 		setEncryptInner(*cmd, o)
 		setExternalMetadataFiles(*cmd, o)
 		setIgnoreGlobs(*cmd, o)
@@ -1019,6 +1051,7 @@ func getInternalMeta(opts *Options) (map[string]string, error) {
 	return internalMeta, nil
 }
 
+/*
 func printMemUsageIncr(addedCount, div int) {
 	if addedCount%div == 0 {
 		log.Debug().
@@ -1027,54 +1060,52 @@ func printMemUsageIncr(addedCount, div int) {
 		printMemUsage()
 	}
 }
+*/
 
 func walkDir(dir string, opts *Options, ret *DirectoryInventory) error {
 	var addedCount int
-	err := godirwalk.Walk(dir, &godirwalk.Options{
+	if err := godirwalk.Walk(dir, &godirwalk.Options{
 		FollowSymbolicLinks: opts.FollowSymlinks,
 		Callback: func(path string, de *godirwalk.Dirent) error {
 			// Skip top level directories from inventory
-			// var err error
 			if de.IsDir() {
 				return nil
 			}
 
-			// We may need the original path again for a symlink later on
 			ogPath := path
-			// No symlink...dirs?
 			if de.IsSymlink() {
 				target, skip := shouldSkipSymlink(path)
 				if skip {
 					return nil
 				}
-				// Finally...
 				if !opts.FollowSymlinks {
 					return nil
 				}
 				path = target
 			}
 
-			// Finally look at the size
-			st, err := os.Stat(path)
-			if err != nil {
-				return err
-			}
+			st := mustStat(path)
 
-			// Ignore certain items?
 			name := de.Name()
 			if filenameMatchesGlobs(name, opts.IgnoreGlobs) {
 				return nil
 			}
-			ret.Files = append(ret.Files, &File{
+
+			invf := &File{
 				Path:        path,
 				Destination: strings.TrimPrefix(ogPath, dir),
 				Name:        name,
 				Size:        st.Size(),
-			})
-			addedCount++
+			}
+			if opts.IncludeArchiveTOC {
+				var aerr error
+				if invf.ArchiveTOC, aerr = archiveTOC(path); aerr != nil {
+					log.Debug().Err(aerr).Str("path", path).Msg("error attempting to look at table of contents in file")
+				}
+			}
 
-			// Print memory usage every X files
-			printMemUsageIncr(addedCount, 1000)
+			ret.Files = append(ret.Files, invf)
+			addedCount++
 
 			if herr := haltIfLimit(opts, addedCount); herr != nil {
 				return herr
@@ -1084,8 +1115,7 @@ func walkDir(dir string, opts *Options, ret *DirectoryInventory) error {
 		},
 		Unsorted:      true,
 		ErrorCallback: errCallback,
-	})
-	if err != nil {
+	}); err != nil {
 		return err
 	}
 	return nil
@@ -1204,22 +1234,7 @@ func BindCobra(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringArrayP("public-key", "p", []string{}, "Public keys to use for encryption")
 	cmd.PersistentFlags().Bool("exclude-systems-pubkeys", false, "By default, we will include the systems teams pubkeys, unless this option is specified")
 	cmd.PersistentFlags().Bool("only-inventory", false, "Only generate the inventory file, skip the actual suitcase archive creation")
-
-	/*
-		// Could we get these in here??
-		cmd.PersistentFlags().Var(&suitcaseFormat, "suitcase-format", "Format for the suitcase. Should be 'tar', 'tar.gpg', 'tar.gz' or 'tar.gz.gpg'")
-		if err := cmd.RegisterFlagCompletionFunc("suitcase-format", suitcase.FormatCompletion); err != nil {
-			panic(err)
-		}
-		cmd.PersistentFlags().Lookup("suitcase-format").DefValue = inventory.DefaultSuitcaseFormat
-
-		// Inventory Format needs some extra love for auto complete
-		cmd.PersistentFlags().Var(&inventoryFormat, "inventory-format", "Format for the inventory. Should be 'yaml' or 'json'")
-		if err := cmd.RegisterFlagCompletionFunc("inventory-format", inventory.FormatCompletion); err != nil {
-			panic(err)
-		}
-		cmd.PersistentFlags().Lookup("inventory-format").DefValue = "yaml"
-	*/
+	cmd.PersistentFlags().Bool("archive-toc", false, "Also include the Table-of-Contents for supported archives, such as zip, tar, etc in the inventory")
 }
 
 // mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command
@@ -1319,6 +1334,14 @@ func (di DirectoryInventory) Search(p string) SearchResults {
 			fm = append(fm, *f)
 		}
 
+		// How about table of contents files?
+		for _, toc := range f.ArchiveTOC {
+			if strings.Contains(strings.ToLower(toc), strings.ToLower(p)) {
+				fm = append(fm, *f)
+				break
+			}
+		}
+
 		// Now look at dirs
 		if strings.Contains(strings.ToLower(dirName), strings.ToLower(p)) {
 			possibleDirs = append(possibleDirs, *f)
@@ -1388,4 +1411,51 @@ func containsString(s []string, e string) bool {
 		}
 	}
 	return false
+}
+
+func archiveTOC(fn string) ([]string, error) {
+	fsys, err := archiver.FileSystem(fn)
+	if err != nil {
+		return nil, err
+	}
+	ret := []string{}
+
+	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			ret = append(ret, path)
+			return nil
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Junky way to check this...
+	if (len(ret) == 1) && (ret[0] == ".") {
+		return nil, errors.New("could not scan a non archive file")
+	}
+
+	// I think we want to do this...
+	sort.Strings(ret)
+	return ret, nil
+}
+
+/*
+func mustArchiveTOC(fn string) []string {
+	got, err := archiveTOC(fn)
+	if err != nil {
+		panic(err)
+	}
+	return got
+}
+*/
+
+func mustStat(path string) fs.FileInfo {
+	st, err := os.Stat(path)
+	panicIfErr(err)
+	return st
 }
