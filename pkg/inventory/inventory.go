@@ -208,6 +208,44 @@ type DirectoryInventory struct {
 	CLIMeta          CLIMeta               `yaml:"cli_meta" json:"cli_meta"`
 }
 
+// Analysis is some useful information about a given inventory
+type Analysis struct {
+	LargestFileSize   int64
+	LargestFileSizeHR string
+	FileCount         uint
+	AverageFileSize   int64
+	AverageFileSizeHR string
+}
+
+// Analyze examines an inventory and returns an Analysis object
+func (di DirectoryInventory) Analyze() Analysis {
+	if len(di.Files) == 0 {
+		return Analysis{}
+	}
+	// Find biggest
+	var largest File
+	var fc uint  // file count
+	var ts int64 // total size
+	// allSizes := make([]int64, len(di.Files))
+	for _, f := range di.Files {
+		// allSizes[idx] = f.Size
+		fc++
+		ts += f.Size
+		if f.Size > largest.Size {
+			largest = *f
+		}
+	}
+
+	avg := ts / int64(len(di.Files))
+	return Analysis{
+		LargestFileSize:   largest.Size,
+		LargestFileSizeHR: humanize.Bytes(uint64(largest.Size)),
+		FileCount:         fc,
+		AverageFileSize:   avg,
+		AverageFileSizeHR: humanize.Bytes(uint64(avg)),
+	}
+}
+
 // SummaryLog logs out a summary of the suitcase data
 func (di DirectoryInventory) SummaryLog() {
 	// Print some summary info about the index
@@ -569,7 +607,7 @@ func NewDirectoryInventory(opts *Options) (*DirectoryInventory, error) {
 	}
 
 	if len(ret.InternalMetadata) == 0 && len(ret.ExternalMetadata) == 0 {
-		log.Warn().
+		log.Debug().
 			Str("internal-glob", opts.InternalMetadataGlob).
 			Strs("external-files", opts.ExternalMetadataFiles).
 			Strs("topLevelDirectories", opts.Directories).
