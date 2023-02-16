@@ -215,6 +215,8 @@ type Analysis struct {
 	FileCount         uint
 	AverageFileSize   int64
 	AverageFileSizeHR string
+	TotalFileSize     int64
+	TotalFileSizeHR   string
 }
 
 // Analyze examines an inventory and returns an Analysis object
@@ -243,6 +245,8 @@ func (di DirectoryInventory) Analyze() Analysis {
 		FileCount:         fc,
 		AverageFileSize:   avg,
 		AverageFileSizeHR: humanize.Bytes(uint64(avg)),
+		TotalFileSize:     ts,
+		TotalFileSizeHR:   humanize.Bytes(uint64(ts)),
 	}
 }
 

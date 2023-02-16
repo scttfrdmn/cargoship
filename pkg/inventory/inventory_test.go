@@ -506,6 +506,8 @@ func TestAnalysis(t *testing.T) {
 			FileCount:         4,
 			AverageFileSize:   2,
 			AverageFileSizeHR: "2 B",
+			TotalFileSize:     9,
+			TotalFileSizeHR:   "9 B",
 		},
 		i.Analyze(),
 	)
