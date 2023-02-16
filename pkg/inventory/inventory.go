@@ -1455,3 +1455,27 @@ func mustStat(path string) fs.FileInfo {
 	panicIfErr(err)
 	return st
 }
+
+// Collection is map of inventory paths to Inventory objects
+type Collection map[string]DirectoryInventory
+
+// CollectionWithDirs returns a Collection of inventories using a list of directories
+func CollectionWithDirs(d []string) (*Collection, error) {
+	ret := Collection{}
+	for _, di := range d {
+		err := filepath.WalkDir(di, func(path string, di fs.DirEntry, err error) error {
+			if strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml") {
+				i, err := NewInventoryWithFilename(path)
+				if err != nil {
+					log.Debug().Str("path", path).Msg("Ignoring file as it did not load as an inventory")
+				}
+				ret[path] = *i
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &ret, nil
+}

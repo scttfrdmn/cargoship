@@ -13,22 +13,22 @@ func NewFindCmd() *cobra.Command {
 		Use:     "find PATTERN INVENTORY.yaml",
 		Short:   "Find where a file or directory lives from an inventory file",
 		Aliases: []string{"search"},
-		Args:    cobra.ExactArgs(2),
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			pattern := args[0]
-			inventoryF := args[1]
-			log.Info().Str("pattern", pattern).Str("inventory", inventoryF).Msg("find running")
-
-			i, err := inventory.NewInventoryWithFilename(inventoryF)
-			if err != nil {
-				return err
+			searchD, err := cmd.Flags().GetStringArray("inventory-directory")
+			checkErr(err, "")
+			collection, err := inventory.CollectionWithDirs(searchD)
+			checkErr(err, "")
+			for inventoryF, i := range *collection {
+				log.Info().Str("pattern", pattern).Str("inventory", inventoryF).Msg("find running")
+				results := i.Search(pattern)
+				gout.MustPrint(results)
 			}
-
-			results := i.Search(pattern)
-
-			gout.MustPrint(results)
 			return nil
 		},
 	}
+
+	cmd.PersistentFlags().StringArray("inventory-directory", []string{"."}, "Directory containing inventories to search. Can be specified multiple times for multiple directories.")
 	return cmd
 }
