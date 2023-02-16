@@ -488,3 +488,25 @@ func TestCollectionWithDirs(t *testing.T) {
 	require.Contains(t, *got, "../testdata/inventories/inventory1.yaml")
 	require.Contains(t, *got, "../testdata/inventories/sub/inventory2.yaml")
 }
+
+func TestAnalysis(t *testing.T) {
+	i := DirectoryInventory{
+		Files: []*File{
+			{Size: 1},
+			{Size: 5},
+			{Size: 2},
+			{Size: 1},
+		},
+	}
+	require.Equal(
+		t,
+		Analysis{
+			LargestFileSize:   5,
+			LargestFileSizeHR: "5 B",
+			FileCount:         4,
+			AverageFileSize:   2,
+			AverageFileSizeHR: "2 B",
+		},
+		i.Analyze(),
+	)
+}

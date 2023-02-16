@@ -64,6 +64,7 @@ a future point in time`,
 	cmd.AddCommand(createCmd)
 
 	cmd.AddCommand(NewFindCmd())
+	cmd.AddCommand(NewAnalyzeCmd())
 
 	cmd.AddCommand(NewCompletionCmd())
 	cmd.AddCommand(NewSchemaCmd())
