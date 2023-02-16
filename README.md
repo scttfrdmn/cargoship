@@ -130,7 +130,7 @@ Given an inventory, you can search across files.
 This will return both files that contain the pattern, and directory summaries containing the pattern, example:
 
 ```bash
-$ suitcasectl find SOME_PATTERN SOME_INDEX.yaml
+$ suitcasectl find SOME_PATTERN
 files:
     - path: /Users/drews/Desktop/Almost Garbage/godoc/src/runtime/cgo/libcgo_windows.h?m=text
       destination: godoc/src/runtime/cgo/libcgo_windows.h
@@ -148,6 +148,10 @@ directories:
         - suitcase-drews-05-of-05.tar.zst
 ...
 ```
+
+By default, suitcasectl will recursively search the current directory for yaml
+inventories. To specify other directories, use the `--inventory-directory` flag.
+This flag can be specified multiple times for multiple directories.
 
 ## Advanced
 
