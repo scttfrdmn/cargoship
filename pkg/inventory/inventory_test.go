@@ -480,3 +480,11 @@ func TestArchiveTOC(t *testing.T) {
 	require.EqualError(t, err, "could not scan a non archive file")
 	require.Nil(t, got)
 }
+
+func TestCollectionWithDirs(t *testing.T) {
+	got, err := CollectionWithDirs([]string{"../testdata/inventories/"})
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Contains(t, *got, "../testdata/inventories/inventory1.yaml")
+	require.Contains(t, *got, "../testdata/inventories/sub/inventory2.yaml")
+}
