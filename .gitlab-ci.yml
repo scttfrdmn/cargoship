@@ -1,9 +1,15 @@
 ---
-image: gitlab-registry.oit.duke.edu/devil-ops/goreleaser:v0.6.0
+image: gitlab-registry.oit.duke.edu/devil-ops/goreleaser:v0.6.1
 default:
   retry:
     max: 2
     when: runner_system_failure
+  tags:
+    - oit-shared-unprivileged
+variables:
+  GOCACHE: /tmp/
+  GOPATH: /tmp/
+  GOLANGCI_LINT_CACHE: /tmp/
 stages:
   - test
   - release
