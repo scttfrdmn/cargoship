@@ -4,6 +4,12 @@ default:
   retry:
     max: 2
     when: runner_system_failure
+  tags:
+    - oit-shared-unprivileged
+variables:
+  GOCACHE: /tmp/
+  GOPATH: /tmp/
+  GOLANGCI_LINT_CACHE: /tmp/
 stages:
   - test
   - release
