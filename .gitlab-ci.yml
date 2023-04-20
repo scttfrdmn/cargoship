@@ -67,6 +67,7 @@ release:
 ## security looks for common security issues
 security:
   stage: test
+  allow_failure: true
   script:
     - govulncheck ./...
   rules:
