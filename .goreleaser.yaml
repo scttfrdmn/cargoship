@@ -107,6 +107,17 @@ nfpms:
         dst:  /usr/share/zsh/vendor-completions/_suitcasectl
         file_info:
           mode: 0644
+  - id: apks
+    bindir: /usr/bin
+    license: MIT
+    description: Package up research files for distribution
+    vendor: Duke University
+    section: admin
+    priority: optional
+    homepage: https://gitlab.oit.duke.edu/devil-ops/suitcasectl
+    maintainer: Drew Stinnett <drew.stinnett@duke.edu>
+    formats:
+      - apk
 uploads:
   - name: productionrpm
     target: https://oneget.oit.duke.edu/rpm/devil-ops-rpms/
