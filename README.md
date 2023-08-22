@@ -1,9 +1,9 @@
 # Overview
 
 [![Go Reference](https://pkg.go.dev/badge/gitlab.oit.duke.edu/devil-ops/suitcasectl.svg)](https://pkg.go.dev/gitlab.oit.duke.edu/devil-ops/suitcasectl)
-[![pipeline status](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/badges/main/pipeline.svg)](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/commits/main)
-[![coverage report](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/badges/main/coverage.svg)](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/commits/main)
-[![Latest Release](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/-/badges/release.svg)](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/releases)
+[![pipeline status](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/badges/main/pipeline.svg)](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/-/commits/main)
+[![coverage report](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/badges/main/coverage.svg)](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/-/commits/main)
+[![Latest Release](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/-/badges/release.svg)](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/-/releases)
 
 SuitcaseCTL is a tool for packaging up research data in a standardized format (tar, tar.gz) with the following additional features:
 
@@ -22,7 +22,7 @@ issue](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/-/issues/new) and we'll
 get it in there!
 
 Download a package from the
-[releases](https://gitlab.oit.duke.edu/devil-ops/data-suitcase/-/releases) page,
+[releases](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/-/releases) page,
 or use the [devil-ops
 package](https://gitlab.oit.duke.edu/devil-ops/installing-devil-ops-packages)
 for homebrew, yum, etc.
@@ -100,7 +100,7 @@ arguments are:
 ### Generic Example
 
 ```bash
-❯ suitcasectl create suitcase ~/Desktop/example-suitcase/ -o /tmp --suitcase-format ".tar.gpg" --max-suitcase-size="3.5Mb" --user=foo
+❯ suitcasectl create suitcase ~/Desktop/example-suitcase/ -d /tmp --suitcase-format ".tar.gpg" --max-suitcase-size="3.5Mb" --user=foo
 5:35PM INF No inventory file specified, we're going to go ahead and create one
 5:35PM WRN Skipping file hashes. This will increase the speed of the inventory, but will not be able to verify the integrity of the files.
 5:35PM INF walking directory dir=/Users/drews/Desktop/example-suitcase/
