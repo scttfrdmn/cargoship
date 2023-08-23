@@ -30,7 +30,6 @@ builds:
 archives:
   - format: tar.gz
     name_template: '{{ .ProjectName }}-{{ .Version }}_{{ .Os }}_{{ .Arch }}'
-    rlcp: true
     files:
       - README.md
       - LICENSE
