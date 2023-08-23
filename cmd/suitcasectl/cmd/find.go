@@ -10,8 +10,11 @@ import (
 // NewFindCmd creates a new 'find' command
 func NewFindCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "find PATTERN INVENTORY.yaml",
-		Short:   "Find where a file or directory lives from an inventory file",
+		Use:   "find PATTERN",
+		Short: "Find where a file or directory lives",
+		Long: `By default, we'll search your current directory for yaml
+files, and treat them as inventory. This can be changed using
+the --inventory-directory flag.`,
 		Aliases: []string{"search"},
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

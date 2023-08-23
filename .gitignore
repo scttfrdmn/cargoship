@@ -6,3 +6,5 @@ coverage.xml
 go-carpet*
 benchmark_data/
 *.swp
+TODO
+coverage-all.txt

@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"runtime/pprof"
 
+	"github.com/dustin/go-humanize"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -50,6 +52,7 @@ a future point in time`,
 	cmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
 	cmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
 	cmd.PersistentFlags().BoolVar(&profile, "profile", false, "Enable performance profiling. This will generate profile files in a temp directory")
+	cmd.PersistentFlags().String("memory-limit", "", "Set a memory limit for the run. This will slow things down, but will less likely to OOM in certain situations. Avoid this unless you are having memory issues.")
 	cmd.SetVersionTemplate("{{ .Version }}\n")
 
 	// Create stuff
@@ -197,6 +200,13 @@ func globalPersistentPreRun(cmd *cobra.Command, args []string) {
 	lo, ok := cmd.Context().Value(inventory.LogWriterKey).(io.Writer)
 	if ok {
 		setupLogging(lo)
+	}
+	memLimit, err := cmd.Flags().GetString("memory-limit")
+	checkErr(err, "Could not find memory limit")
+	if memLimit != "" {
+		memLimitB, merr := humanize.ParseBytes(memLimit)
+		checkErr(merr, fmt.Sprintf("could not convert %v to bytes", memLimit))
+		debug.SetMemoryLimit(int64(memLimitB))
 	}
 	// log.Fatal().Msgf("Profile is set to %+v", profile)
 	if profile {

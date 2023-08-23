@@ -1452,7 +1452,7 @@ func containsString(s []string, e string) bool {
 }
 
 func archiveTOC(fn string) ([]string, error) {
-	fsys, err := archiver.FileSystem(fn)
+	fsys, err := archiver.FileSystem(context.Background(), fn)
 	if err != nil {
 		return nil, err
 	}
