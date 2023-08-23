@@ -202,13 +202,12 @@ func globalPersistentPreRun(cmd *cobra.Command, args []string) {
 		setupLogging(lo)
 	}
 	memLimit, err := cmd.Flags().GetString("memory-limit")
+	checkErr(err, "Could not find memory limit")
 	if memLimit != "" {
 		memLimitB, merr := humanize.ParseBytes(memLimit)
 		checkErr(merr, fmt.Sprintf("could not convert %v to bytes", memLimit))
 		debug.SetMemoryLimit(int64(memLimitB))
 	}
-	checkErr(err, "Could not find memory limit")
-	log.Fatal().Str("limit", memLimit).Msg("Memory Limit")
 	// log.Fatal().Msgf("Profile is set to %+v", profile)
 	if profile {
 		log.Info().Msg("Enabling cpu profiling")
