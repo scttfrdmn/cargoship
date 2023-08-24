@@ -303,6 +303,7 @@ type Options struct {
 	FollowSymlinks        bool          `yaml:"follow_symlinks" json:"follow_symlinks"`
 	HashAlgorithm         HashAlgorithm `yaml:"hash_algorithm" json:"hash_algorithm"`
 	IncludeArchiveTOC     bool          `yaml:"include_archive_toc" json:"include_archive_toc"`
+	IncludeArchiveTOCDeep bool          `yaml:"include_archive_toc_deep" json:"include_archive_toc_deep"`
 }
 
 // AbsoluteDirectories converts the Directories entries to absolute paths
@@ -315,10 +316,17 @@ func (o *Options) AbsoluteDirectories() error {
 	return nil
 }
 
-// WithArchiveTOC enables table of contents in the archive file inventory
+// WithArchiveTOC enables table of contents in the archive file inventory. This only checks files with a known archive extension.
 func WithArchiveTOC() func(*Options) {
 	return func(o *Options) {
 		o.IncludeArchiveTOC = true
+	}
+}
+
+// WithArchiveTOCDeep enables table of contents in the archive file inventory. This checks every file, regardless of extension.
+func WithArchiveTOCDeep() func(*Options) {
+	return func(o *Options) {
+		o.IncludeArchiveTOCDeep = true
 	}
 }
 
@@ -727,6 +735,7 @@ func WithViper(v *viper.Viper) func(*Options) {
 		setEncryptInner(*v, o)
 		setHashInner(*v, o)
 		setArchiveTOC(*v, o)
+		setArchiveTOCDeep(*v, o)
 		setFollowSymlinks(*v, o)
 		setMaxSuitcaseSize(*v, o)
 		setUser(*v, o)
@@ -852,6 +861,24 @@ func setEncryptInner[T viper.Viper | cobra.Command](v T, o *Options) {
 	}
 }
 
+func setArchiveTOCDeep[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "archive-toc-deep"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			o.IncludeArchiveTOCDeep = vi.GetBool(k)
+		}
+	case *cobra.Command:
+		ci := mustGetCommand(v)
+		if ci.Flags().Changed(k) {
+			o.IncludeArchiveTOCDeep = mustGetCmd[bool](ci, k)
+		}
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
+	}
+}
+
 func setArchiveTOC[T viper.Viper | cobra.Command](v T, o *Options) {
 	k := "archive-toc"
 	switch any(new(T)).(type) {
@@ -955,6 +982,7 @@ func WithCobra(cmd *cobra.Command, args []string) func(*Options) {
 		setFollowSymlinks(*cmd, o)
 		setHashInner(*cmd, o)
 		setArchiveTOC(*cmd, o)
+		setArchiveTOCDeep(*cmd, o)
 		setEncryptInner(*cmd, o)
 		setExternalMetadataFiles(*cmd, o)
 		setIgnoreGlobs(*cmd, o)
@@ -1135,7 +1163,8 @@ func walkDir(dir string, opts *Options, ret *DirectoryInventory) error {
 				Name:        name,
 				Size:        st.Size(),
 			}
-			if opts.IncludeArchiveTOC {
+			// if opts.IncludeArchiveTOC || opts.IncludeArchiveTOCDeep {
+			if opts.IncludeArchiveTOCDeep || (opts.IncludeArchiveTOC && isTOCAble(path)) {
 				var aerr error
 				if invf.ArchiveTOC, aerr = archiveTOC(path); aerr != nil {
 					log.Debug().Err(aerr).Str("path", path).Msg("error attempting to look at table of contents in file")
@@ -1273,6 +1302,7 @@ func BindCobra(cmd *cobra.Command) {
 	cmd.PersistentFlags().Bool("exclude-systems-pubkeys", false, "By default, we will include the systems teams pubkeys, unless this option is specified")
 	cmd.PersistentFlags().Bool("only-inventory", false, "Only generate the inventory file, skip the actual suitcase archive creation")
 	cmd.PersistentFlags().Bool("archive-toc", false, "Also include the Table-of-Contents for supported archives, such as zip, tar, etc in the inventory")
+	cmd.PersistentFlags().Bool("archive-toc-deep", false, "Also include the Table-of-Contents for supported archives. This will look at any file, regardless of extension")
 }
 
 // mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command
@@ -1520,4 +1550,18 @@ func CollectionWithDirs(d []string) (*Collection, error) {
 		}
 	}
 	return &ret, nil
+}
+
+var tocExts = []string{
+	".tar", ".br", ".bz2", ".zip", ".gz", ".lz4",
+	".sz", ".xz", ".zz", ".zst", ".rar", ".7z",
+}
+
+func isTOCAble(s string) bool {
+	for _, ext := range tocExts {
+		if strings.HasSuffix(s, ext) {
+			return true
+		}
+	}
+	return false
 }
