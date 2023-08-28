@@ -38,6 +38,21 @@ func TestNewSuitcaseWithLimit(t *testing.T) {
 	require.Equal(t, 5, len(i.Files))
 }
 
+func TestNewSuitcaseOverflow(t *testing.T) {
+	testD := t.TempDir()
+	cmd := NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{
+		"create", "suitcase", "../../../pkg/testdata/overflow-queue/",
+		"--max-suitcase-size", "2.1Mb", "--concurrency", "1", "--destination", testD,
+	})
+	// err := cmd.ExecuteContext(context.Background())
+	err := cmd.Execute()
+	require.NoError(t, err)
+	i, err := inventory.NewInventoryWithFilename(path.Join(testD, "inventory.yaml"))
+	require.NoError(t, err)
+	require.Equal(t, 2, len(i.Files))
+}
+
 func TestNewSuitcaseOuterHash(t *testing.T) {
 	testD := t.TempDir()
 	cmd := NewRootCmd(io.Discard)

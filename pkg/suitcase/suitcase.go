@@ -233,6 +233,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.Inventory, index in
 	}
 
 	if stateC != nil {
+		// This is hanging...
 		stateC <- FillState{
 			Completed: true,
 			Index:     index,

@@ -14,7 +14,6 @@ import (
 	"os"
 	"path"
 	"reflect"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,6 +21,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/sourcegraph/conc/pool"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
@@ -140,11 +140,49 @@ type processOpts struct {
 // processSuitcases processes the suitcases
 func processSuitcases(po *processOpts) []string {
 	ret := make([]string, po.Inventory.TotalIndexes)
+	p := pool.New().WithMaxGoroutines(po.Concurrency)
+	log.Warn().Int("concurrency", po.Concurrency).Msg("Setting pool guard")
+	// state := make(chan suitcase.FillState, 1)
+	state := make(chan suitcase.FillState, po.Inventory.TotalIndexes)
+	sampled := log.Sample(&zerolog.BasicSampler{N: uint32(po.SampleEvery)})
+	for i := 1; i <= po.Inventory.TotalIndexes; i++ {
+		i := i
+		p.Go(func() {
+			// defer wg.Done()
+			// fmt.Fprintf(os.Stderr, "HELO: %+v\n", ret)
+			createdF, err := suitcase.WriteSuitcaseFile(po.SuitcaseOpts, po.Inventory, i, state)
+			if err != nil {
+				log.Warn().Err(err).Str("file", createdF).Msg("error creating suitcase file, please investigate")
+			} else {
+				// Put Transport plugin here!!
+				ret[i-1] = createdF
+			}
+		})
+	}
+	processed := int32(0)
+	for processed < int32(po.Inventory.TotalIndexes) {
+		st := <-state
+		if st.Completed {
+			atomic.AddInt32(&processed, 1)
+		}
+		sampled.Debug().
+			Int("index", st.Index).
+			Uint("current", st.Current).
+			Uint("total", st.Total).
+			Msg("Progress")
+	}
+	p.Wait()
+	return ret
+}
+
+/*
+// processSuitcases processes the suitcases
+func processSuitcasesX(po *processOpts) []string {
+	ret := make([]string, po.Inventory.TotalIndexes)
 	guard := make(chan struct{}, po.Concurrency)
 	var wg sync.WaitGroup
 	wg.Add(po.Inventory.TotalIndexes)
 	state := make(chan suitcase.FillState, 1)
-	processed := int32(0)
 	sampled := log.Sample(&zerolog.BasicSampler{N: uint32(po.SampleEvery)})
 	for i := 1; i <= po.Inventory.TotalIndexes; i++ {
 		guard <- struct{}{} // would block if guard channel is already filled
@@ -161,6 +199,11 @@ func processSuitcases(po *processOpts) []string {
 			<-guard // release the guard channel
 		}(i)
 	}
+	// Use this to prevent deadlocks
+	go func() {
+		wg.Wait()
+	}()
+	processed := int32(0)
 	for processed < int32(po.Inventory.TotalIndexes) {
 		st := <-state
 		if st.Completed {
@@ -172,9 +215,9 @@ func processSuitcases(po *processOpts) []string {
 			Uint("total", st.Total).
 			Msg("Progress")
 	}
-	wg.Wait()
 	return ret
 }
+*/
 
 func calculateHash(rd io.Reader, ht string) string {
 	reader := bufio.NewReaderSize(rd, os.Getpagesize())

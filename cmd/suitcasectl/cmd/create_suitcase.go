@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/drewstinnett/gout/v2"
@@ -278,10 +279,16 @@ func createRunE(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
+		sample := os.Getenv("SAMPLE_EVERY")
+		if sample == "" {
+			sample = "100"
+		}
+		sampleI, err := strconv.Atoi(sample)
+		panicIfErr(err)
 		createdFiles := processSuitcases(&processOpts{
 			Inventory:    inventoryD,
 			SuitcaseOpts: opts,
-			SampleEvery:  100,
+			SampleEvery:  sampleI,
 			Concurrency:  mustGetCmd[int](cmd, "concurrency"),
 		})
 
