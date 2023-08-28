@@ -193,12 +193,12 @@ func (f *Format) MarshalJSON() ([]byte, error) {
 
 // Inventoryer is an interface to define what an Inventory Operator does
 type Inventoryer interface {
-	Write(io.Writer, *DirectoryInventory) error
-	Read([]byte) (*DirectoryInventory, error)
+	Write(io.Writer, *Inventory) error
+	Read([]byte) (*Inventory, error)
 }
 
-// DirectoryInventory is the inventory of a set of suitcases
-type DirectoryInventory struct {
+// Inventory is the inventory of a set of suitcases
+type Inventory struct {
 	Files            []*File               `yaml:"files" json:"files"`
 	Options          *Options              `yaml:"options" json:"options"`
 	TotalIndexes     int                   `yaml:"total_indexes" json:"total_indexes"`
@@ -220,7 +220,7 @@ type Analysis struct {
 }
 
 // Analyze examines an inventory and returns an Analysis object
-func (di DirectoryInventory) Analyze() Analysis {
+func (di Inventory) Analyze() Analysis {
 	if len(di.Files) == 0 {
 		return Analysis{}
 	}
@@ -251,7 +251,7 @@ func (di DirectoryInventory) Analyze() Analysis {
 }
 
 // SummaryLog logs out a summary of the suitcase data
-func (di DirectoryInventory) SummaryLog() {
+func (di Inventory) SummaryLog() {
 	// Print some summary info about the index
 	var totalC uint
 	var totalS int64
@@ -444,7 +444,7 @@ type FileBucket struct {
 }
 
 // expandSuitcaseNames will fill in suitcase names for a given inventory
-func (di *DirectoryInventory) expandSuitcaseNames() {
+func (di *Inventory) expandSuitcaseNames() {
 	for _, f := range di.Files {
 		if f.SuitcaseName == "" {
 			f.SuitcaseName = di.SuitcaseNameWithIndex(f.SuitcaseIndex)
@@ -453,7 +453,7 @@ func (di *DirectoryInventory) expandSuitcaseNames() {
 }
 
 // SuitcaseNames returns a list of suitcase names as strings
-func (di DirectoryInventory) SuitcaseNames() []string {
+func (di Inventory) SuitcaseNames() []string {
 	ret := make([]string, len(di.Files))
 
 	for idx, f := range di.Files {
@@ -463,7 +463,7 @@ func (di DirectoryInventory) SuitcaseNames() []string {
 }
 
 // UniqueSuitcaseNames returns a list of suitcase names as strings
-func (di DirectoryInventory) UniqueSuitcaseNames() []string {
+func (di Inventory) UniqueSuitcaseNames() []string {
 	ret := make([]string, di.TotalIndexes)
 
 	for i := 0; i < di.TotalIndexes; i++ {
@@ -474,7 +474,7 @@ func (di DirectoryInventory) UniqueSuitcaseNames() []string {
 
 // IndexWithSize Loops through inventory and assign suitcase indexes based on a
 // given max size
-func (di *DirectoryInventory) IndexWithSize(maxSize int64) error {
+func (di *Inventory) IndexWithSize(maxSize int64) error {
 	caseSet := NewCaseSet(maxSize)
 	numCases := 1
 	// Sort by descending size
@@ -536,7 +536,7 @@ func (di *DirectoryInventory) IndexWithSize(maxSize int64) error {
 // WriteInventoryAndFileWithViper uses viper to write out an inventory file
 func WriteInventoryAndFileWithViper(
 	v *viper.Viper, cmd *cobra.Command, args []string, version string,
-) (*DirectoryInventory, *os.File, error) {
+) (*Inventory, *os.File, error) {
 	outDir := destinationWithCobra(cmd)
 	i, f, ir, err := NewDirectoryInventoryAndFileAndInventoyerWithViper(v, cmd, args, outDir)
 	if err != nil {
@@ -553,7 +553,7 @@ func WriteInventoryAndFileWithViper(
 }
 
 // NewDirectoryInventoryAndFileAndInventoyerWithViper does the interface with viper
-func NewDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, cmd *cobra.Command, args []string, outDir string) (*DirectoryInventory, *os.File, Inventoryer, error) {
+func NewDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, cmd *cobra.Command, args []string, outDir string) (*Inventory, *os.File, Inventoryer, error) {
 	if v == nil {
 		panic("must pass viper to NewDirectoryInventoryAndFileAndInventoyerWithViper")
 	}
@@ -569,7 +569,7 @@ func NewDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, cmd *cob
 }
 
 // NewDirectoryInventoryAndFileWithViper creates a new inventory with viper
-func NewDirectoryInventoryAndFileWithViper(v *viper.Viper, cmd *cobra.Command, args []string, outDir string) (*DirectoryInventory, *os.File, error) {
+func NewDirectoryInventoryAndFileWithViper(v *viper.Viper, cmd *cobra.Command, args []string, outDir string) (*Inventory, *os.File, error) {
 	i, err := NewDirectoryInventoryWithViper(v, cmd, args)
 	if err != nil {
 		return nil, nil, err
@@ -582,7 +582,7 @@ func NewDirectoryInventoryAndFileWithViper(v *viper.Viper, cmd *cobra.Command, a
 }
 
 // NewDirectoryInventoryWithViper new DirectoryInventory with Viper
-func NewDirectoryInventoryWithViper(v *viper.Viper, cmd *cobra.Command, args []string) (*DirectoryInventory, error) {
+func NewDirectoryInventoryWithViper(v *viper.Viper, cmd *cobra.Command, args []string) (*Inventory, error) {
 	inventoryOpts := NewOptions(
 		WithViper(v),
 		WithCobra(cmd, args),
@@ -591,8 +591,8 @@ func NewDirectoryInventoryWithViper(v *viper.Viper, cmd *cobra.Command, args []s
 }
 
 // NewDirectoryInventory creates a new DirectoryInventory using options
-func NewDirectoryInventory(opts *Options) (*DirectoryInventory, error) {
-	ret := &DirectoryInventory{
+func NewDirectoryInventory(opts *Options) (*Inventory, error) {
+	ret := &Inventory{
 		Options: opts,
 	}
 	if opts.Prefix == "" {
@@ -688,7 +688,7 @@ func printMemUsage() {
 }
 
 // NewInventoryWithFilename returns a new DirectoryInventory from an inventory File
-func NewInventoryWithFilename(s string) (*DirectoryInventory, error) {
+func NewInventoryWithFilename(s string) (*Inventory, error) {
 	ib, err := os.ReadFile(s) // nolint:gosec
 	if err != nil {
 		return nil, err
@@ -1040,9 +1040,9 @@ func destinationWithCobra(cmd *cobra.Command) string {
 }
 
 // CreateOrReadInventory will either create a new inventory (if given an empty string), or read an existing one
-func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []string, version string) (*DirectoryInventory, error) {
+func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []string, version string) (*Inventory, error) {
 	// Create an inventory file if one isn't specified
-	var inventoryD *DirectoryInventory
+	var inventoryD *Inventory
 	if inventoryFile == "" {
 		log.Debug().Msg("No inventory file specified, we're going to go ahead and create one")
 		var outF *os.File
@@ -1132,7 +1132,7 @@ func printMemUsageIncr(addedCount, div int) {
 }
 */
 
-func walkDir(dir string, opts *Options, ret *DirectoryInventory) error {
+func walkDir(dir string, opts *Options, ret *Inventory) error {
 	var addedCount int
 	if err := godirwalk.Walk(dir, &godirwalk.Options{
 		FollowSymbolicLinks: opts.FollowSymlinks,
@@ -1272,7 +1272,7 @@ func filenameMatchesGlobs(filename string, globs []string) bool {
 
 // SuitcaseNameWithIndex gives what the name of a suitcase file will be, given
 // the index number
-func (di *DirectoryInventory) SuitcaseNameWithIndex(i int) string {
+func (di *Inventory) SuitcaseNameWithIndex(i int) string {
 	return fmt.Sprintf("%v-%v-%02d-of-%02d.%v", di.Options.Prefix, di.Options.User, i, di.TotalIndexes, di.Options.SuitcaseFormat)
 }
 
@@ -1360,8 +1360,8 @@ func mustGetCommand(v any) cobra.Command {
 }
 
 // WithCmd returns the inventory object from a cobra command context
-func WithCmd(cmd *cobra.Command) *DirectoryInventory {
-	inv, ok := cmd.Context().Value(InventoryKey).(*DirectoryInventory)
+func WithCmd(cmd *cobra.Command) *Inventory {
+	inv, ok := cmd.Context().Value(InventoryKey).(*Inventory)
 	if !ok {
 		panic("could not get inventory")
 	}
@@ -1391,7 +1391,7 @@ type SearchResults struct {
 
 // Search iterates through files inside of an inventory and returns a set of
 // results
-func (di DirectoryInventory) Search(p string) SearchResults {
+func (di Inventory) Search(p string) SearchResults {
 	r := SearchResults{}
 	// First check files
 	fm := SearchFileMatches{}
@@ -1529,7 +1529,7 @@ func mustStat(path string) fs.FileInfo {
 }
 
 // Collection is map of inventory paths to Inventory objects
-type Collection map[string]DirectoryInventory
+type Collection map[string]Inventory
 
 // CollectionWithDirs returns a Collection of inventories using a list of directories
 func CollectionWithDirs(d []string) (*Collection, error) {

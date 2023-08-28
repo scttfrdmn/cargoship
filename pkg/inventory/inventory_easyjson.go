@@ -463,7 +463,7 @@ func (v *Options) UnmarshalJSON(data []byte) error {
 func (v *Options) UnmarshalEasyJSON(l *jlexer.Lexer) {
 	easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory3(l, v)
 }
-func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(in *jlexer.Lexer, out *DirectoryInventory) {
+func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(in *jlexer.Lexer, out *Inventory) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -591,7 +591,7 @@ func easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(in 
 		in.Consumed()
 	}
 }
-func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(out *jwriter.Writer, in DirectoryInventory) {
+func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(out *jwriter.Writer, in Inventory) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -700,25 +700,25 @@ func easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(out
 }
 
 // MarshalJSON supports json.Marshaler interface
-func (v DirectoryInventory) MarshalJSON() ([]byte, error) {
+func (v Inventory) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
 	easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
-func (v DirectoryInventory) MarshalEasyJSON(w *jwriter.Writer) {
+func (v Inventory) MarshalEasyJSON(w *jwriter.Writer) {
 	easyjson6f8bf452EncodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
-func (v *DirectoryInventory) UnmarshalJSON(data []byte) error {
+func (v *Inventory) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
 	easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
-func (v *DirectoryInventory) UnmarshalEasyJSON(l *jlexer.Lexer) {
+func (v *Inventory) UnmarshalEasyJSON(l *jlexer.Lexer) {
 	easyjson6f8bf452DecodeGitlabOitDukeEduDevilOpsDataSuitcasePkgInventory4(l, v)
 }

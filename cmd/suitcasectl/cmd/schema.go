@@ -20,7 +20,7 @@ func NewSchemaCmd() *cobra.Command {
 }
 
 func schemaRunE(cmd *cobra.Command, args []string) error {
-	schema := jsonschema.Reflect(&inventory.DirectoryInventory{})
+	schema := jsonschema.Reflect(&inventory.Inventory{})
 	bts, err := json.MarshalIndent(schema, "  ", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to create jsonschema: %w", err)

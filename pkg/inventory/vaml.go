@@ -18,7 +18,7 @@ import (
 type VAMLer struct{}
 
 // Write will write the inventory out to an io.Writer
-func (r *VAMLer) Write(w io.Writer, i *DirectoryInventory) error {
+func (r *VAMLer) Write(w io.Writer, i *Inventory) error {
 	if w == nil {
 		return errors.New("writer is nil")
 	}
@@ -43,8 +43,8 @@ func (r *VAMLer) Write(w io.Writer, i *DirectoryInventory) error {
 }
 
 // Read will ready byte in to an inventory
-func (r VAMLer) Read(b []byte) (*DirectoryInventory, error) {
-	var inventory DirectoryInventory
+func (r VAMLer) Read(b []byte) (*Inventory, error) {
+	var inventory Inventory
 	err := yaml.Unmarshal(b, &inventory)
 	if err != nil {
 		return nil, err

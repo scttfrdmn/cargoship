@@ -137,7 +137,7 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 }
 
 // FillWithInventoryIndex fills up a suitcase using the given inventory
-func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index int, stateC chan FillState) ([]config.HashSet, error) {
+func FillWithInventoryIndex(s Suitcase, i *inventory.Inventory, index int, stateC chan FillState) ([]config.HashSet, error) {
 	if i == nil {
 		return nil, errors.New("inventory is nil")
 	}
@@ -197,7 +197,7 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.DirectoryInventory, index i
 }
 
 // WriteSuitcaseFile will write out the suitcase
-func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory, index int, stateC chan FillState) (string, error) {
+func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.Inventory, index int, stateC chan FillState) (string, error) {
 	target, err := os.Create(path.Join(so.Destination, i.SuitcaseNameWithIndex(index))) // nolint:gosec
 	fp := target.Name()
 	if err != nil {
@@ -233,6 +233,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.DirectoryInventory,
 	}
 
 	if stateC != nil {
+		// This is hanging...
 		stateC <- FillState{
 			Completed: true,
 			Index:     index,
