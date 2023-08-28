@@ -182,6 +182,7 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.Inventory, index int, state
 				suitcaseHashes = append(suitcaseHashes, *hs)
 			}
 		}
+		// fmt.Fprintf(os.Stderr, "DDIIIIING\n")
 
 		cur++
 		if stateC != nil {
@@ -233,7 +234,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.Inventory, index in
 	}
 
 	if stateC != nil {
-		// This is hanging...
+		// This is hanging... maybe?
 		stateC <- FillState{
 			Completed: true,
 			Index:     index,

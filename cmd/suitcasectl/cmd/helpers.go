@@ -14,7 +14,6 @@ import (
 	"os"
 	"path"
 	"reflect"
-	"sync/atomic"
 	"time"
 
 	// "github.com/minio/sha256-simd"
@@ -143,13 +142,25 @@ func processSuitcases(po *processOpts) []string {
 	p := pool.New().WithMaxGoroutines(po.Concurrency)
 	log.Warn().Int("concurrency", po.Concurrency).Msg("Setting pool guard")
 	// state := make(chan suitcase.FillState, 1)
-	state := make(chan suitcase.FillState, po.Inventory.TotalIndexes)
+	// state := make(chan suitcase.FillState, po.Inventory.TotalIndexes)
+	state := make(chan suitcase.FillState)
+	// state := make(chan suitcase.FillState, 2*po.Inventory.TotalIndexes)
 	sampled := log.Sample(&zerolog.BasicSampler{N: uint32(po.SampleEvery)})
+
+	// Read in and log state here
+	go func() {
+		for {
+			st := <-state
+			sampled.Debug().
+				Int("index", st.Index).
+				Uint("current", st.Current).
+				Uint("total", st.Total).
+				Msg("Progress")
+		}
+	}()
 	for i := 1; i <= po.Inventory.TotalIndexes; i++ {
 		i := i
 		p.Go(func() {
-			// defer wg.Done()
-			// fmt.Fprintf(os.Stderr, "HELO: %+v\n", ret)
 			createdF, err := suitcase.WriteSuitcaseFile(po.SuitcaseOpts, po.Inventory, i, state)
 			if err != nil {
 				log.Warn().Err(err).Str("file", createdF).Msg("error creating suitcase file, please investigate")
@@ -158,18 +169,6 @@ func processSuitcases(po *processOpts) []string {
 				ret[i-1] = createdF
 			}
 		})
-	}
-	processed := int32(0)
-	for processed < int32(po.Inventory.TotalIndexes) {
-		st := <-state
-		if st.Completed {
-			atomic.AddInt32(&processed, 1)
-		}
-		sampled.Debug().
-			Int("index", st.Index).
-			Uint("current", st.Current).
-			Uint("total", st.Total).
-			Msg("Progress")
 	}
 	p.Wait()
 	return ret
