@@ -24,7 +24,7 @@ func TestVamlerWriteNilInv(t *testing.T) {
 
 func TestVamlerWrite(t *testing.T) {
 	v := &VAMLer{}
-	i := &DirectoryInventory{}
+	i := &Inventory{}
 	var w bytes.Buffer
 	err := v.Write(&w, i)
 	require.NoError(t, err)

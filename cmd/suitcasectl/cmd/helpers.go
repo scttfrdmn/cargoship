@@ -133,7 +133,7 @@ func getSha256(file string) (string, error) {
 type processOpts struct {
 	Concurrency  int
 	SampleEvery  int
-	Inventory    *inventory.DirectoryInventory
+	Inventory    *inventory.Inventory
 	SuitcaseOpts *config.SuitCaseOpts
 }
 
@@ -152,29 +152,12 @@ func processSuitcases(po *processOpts) []string {
 		go func(i int) {
 			defer wg.Done()
 			createdF, err := suitcase.WriteSuitcaseFile(po.SuitcaseOpts, po.Inventory, i, state)
-			panicOnError(err)
-			// if po.Inventory.Options.Hash
-			/*
-				if po.SuitcaseOpts.HashOuter {
-					log.Info().Msg("Generating a hash of the suitcase")
-					sf, err := os.Open(createdF) // nolint:gosec
-					if err != nil {
-						log.Warn().Err(err).Msg("Error writing hash file")
-						return
-					}
-					defer dclose(sf)
-					hashF := fmt.Sprintf("%v.%v", createdF, hashAlgo.String())
-					// sumS := fmt.Sprintf("%x", h.Sum(nil))
-					sumS := calculateHash(sf, hashAlgo.String())
-					log.Fatal().Msgf("Writing hash to %x", []byte(sumS))
-					hf, err := os.Create(hashF) // nolint:gosec
-					panicOnError(err)
-					defer dclose(hf)
-					_, werr := hf.Write([]byte(sumS))
-					warnOnError(werr, "error writing file")
-				}
-			*/
-			ret[i-1] = createdF
+			if err != nil {
+				log.Warn().Err(err).Str("file", createdF).Msg("error creating suitcase file, please investigate")
+			} else {
+				// Put Transport plugin here!!
+				ret[i-1] = createdF
+			}
 			<-guard // release the guard channel
 		}(i)
 	}
@@ -191,12 +174,6 @@ func processSuitcases(po *processOpts) []string {
 	}
 	wg.Wait()
 	return ret
-}
-
-func panicOnError(err error) {
-	if err != nil {
-		panic(err)
-	}
 }
 
 func calculateHash(rd io.Reader, ht string) string {

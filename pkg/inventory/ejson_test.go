@@ -24,7 +24,7 @@ func TestEjsonerWriteNilInv(t *testing.T) {
 
 func TestEjsonerWrite(t *testing.T) {
 	v := &EJSONer{}
-	i := &DirectoryInventory{}
+	i := &Inventory{}
 	var w bytes.Buffer
 	err := v.Write(&w, i)
 	require.NoError(t, err)

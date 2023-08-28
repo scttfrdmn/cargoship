@@ -45,7 +45,7 @@ func TestNewDirectoryInventory(t *testing.T) {
 	got, err := NewDirectoryInventory(NewOptions(WithDirectories([]string{"../testdata/fake-dir"})))
 
 	require.NoError(t, err)
-	require.IsType(t, &DirectoryInventory{}, got)
+	require.IsType(t, &Inventory{}, got)
 
 	require.Greater(t, len(got.Files), 0)
 }
@@ -86,7 +86,7 @@ func BenchmarkNewDirectoryInventory(b *testing.B) {
 }
 
 func TestIndexInventory(t *testing.T) {
-	i := &DirectoryInventory{
+	i := &Inventory{
 		Files: []*File{
 			{Path: "small-file-1", Size: 1},
 			{Path: "small-file-2", Size: 2},
@@ -100,7 +100,7 @@ func TestIndexInventory(t *testing.T) {
 }
 
 func TestExpandInventoryWithNames(t *testing.T) {
-	i := &DirectoryInventory{
+	i := &Inventory{
 		Options: NewOptions(
 			WithPrefix("foo"),
 			WithUser("bar"),
@@ -132,7 +132,7 @@ func TestExpandInventoryWithNames(t *testing.T) {
 }
 
 func TestIndexInventoryTooBig(t *testing.T) {
-	i := &DirectoryInventory{
+	i := &Inventory{
 		Files: []*File{
 			{
 				Path: "small-file-1",
@@ -304,7 +304,7 @@ func TestWriteOutDirectoryInventoryAndFileAndInventoyerWithViper(t *testing.T) {
 }
 
 func TestWalkDirLimit(t *testing.T) {
-	i := DirectoryInventory{}
+	i := Inventory{}
 	err := walkDir("../testdata/limit-dir", NewOptions(
 		WithLimitFileCount(10),
 	), &i)
@@ -313,7 +313,7 @@ func TestWalkDirLimit(t *testing.T) {
 }
 
 func TestWalkDirExpandArchives(t *testing.T) {
-	i := DirectoryInventory{}
+	i := Inventory{}
 	err := walkDir("../testdata/archives", NewOptions(
 		WithArchiveTOC(),
 	), &i)
@@ -338,7 +338,7 @@ func TestWalkDirExpandArchives(t *testing.T) {
 }
 
 func TestWalkDirExpandArchivesDeep(t *testing.T) {
-	i := DirectoryInventory{}
+	i := Inventory{}
 	err := walkDir("../testdata/archives", NewOptions(
 		WithArchiveTOCDeep(),
 	), &i)
@@ -428,7 +428,7 @@ func TestNewInventoryWithFilename(t *testing.T) {
 }
 
 func TestInventorySearch(t *testing.T) {
-	i := DirectoryInventory{
+	i := Inventory{
 		Files: []*File{
 			{
 				Path:         "/foo/bar/baz/thing.txt",
@@ -515,7 +515,7 @@ func TestCollectionWithDirs(t *testing.T) {
 }
 
 func TestAnalysis(t *testing.T) {
-	i := DirectoryInventory{
+	i := Inventory{
 		Files: []*File{
 			{Size: 1},
 			{Size: 5},
