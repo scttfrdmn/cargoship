@@ -200,10 +200,10 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.Inventory, index int, state
 // WriteSuitcaseFile will write out the suitcase
 func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.Inventory, index int, stateC chan FillState) (string, error) {
 	target, err := os.Create(path.Join(so.Destination, i.SuitcaseNameWithIndex(index))) // nolint:gosec
-	fp := target.Name()
 	if err != nil {
 		return "", err
 	}
+	fp := target.Name()
 	defer func() {
 		terr := target.Close()
 		if terr != nil {
@@ -215,12 +215,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.Inventory, index in
 	if err != nil {
 		return "", err
 	}
-	defer func() {
-		serr := s.Close()
-		if serr != nil {
-			panic(serr)
-		}
-	}()
+	defer dclose(s)
 
 	log.Debug().
 		Str("destination", fp).
@@ -319,4 +314,11 @@ func OptsWithCmd(cmd *cobra.Command) *config.SuitCaseOpts {
 		panic("could not get suitcase options with cmd")
 	}
 	return opts
+}
+
+func dclose(c io.Closer) {
+	err := c.Close()
+	if err != nil {
+		log.Warn().Err(err).Send()
+	}
 }
