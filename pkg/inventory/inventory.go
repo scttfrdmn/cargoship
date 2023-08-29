@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"os/user"
 	"path"
 	"path/filepath"
@@ -1541,6 +1542,33 @@ func archiveTOC(fn string) ([]string, error) {
 }
 */
 
+/*
+func archiveTOCBuiltIn(fn string) ([]string, error) {
+	return nil, nil
+}
+*/
+
+func archiveTOCExternal(fn string) ([]string, error) {
+	// Handle Tar here
+	extMapping := map[string]string{
+		".tar.gz":  "tz",
+		".tar.bz2": "tj",
+		".tar":     "t",
+	}
+	for ext, flags := range extMapping {
+		if strings.HasSuffix(fn, ext) {
+			out, err := exec.Command("tar", flags+"f", fn).Output() // nolint
+			if err != nil {
+				return nil, err
+			}
+			lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+
+			return lines, nil
+		}
+	}
+	return nil, fmt.Errorf("could not find a way to handle this file: %v", fn)
+}
+
 // archiveTOC is a v4 TOC generator for archiver
 func archiveTOC(fn string) ([]string, error) {
 	fsys, err := archiver.FileSystem(context.Background(), fn)
@@ -1552,7 +1580,7 @@ func archiveTOC(fn string) ([]string, error) {
 	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		// Handle: https://github.com/mholt/archiver/issues/383
 		if (path == ".") && d.Name() == "." && strings.Contains(fn, ".tar") {
-			log.Warn().Str("archive", fn).Msg("this archive is not properly handled, skipping")
+			log.Debug().Str("archive", fn).Msg("this archive is not properly handled, falling back to external lookup")
 			return fs.ErrInvalid
 		}
 		if err != nil {
@@ -1564,7 +1592,9 @@ func archiveTOC(fn string) ([]string, error) {
 		}
 		return nil
 	})
-	if err != nil {
+	if err == fs.ErrInvalid {
+		return archiveTOCExternal(fn)
+	} else if err != nil {
 		return nil, err
 	}
 

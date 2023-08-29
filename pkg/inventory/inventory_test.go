@@ -312,6 +312,17 @@ func TestWalkDirLimit(t *testing.T) {
 	require.EqualError(t, err, "halt")
 }
 
+func TestExternalTOC(t *testing.T) {
+	got, err := archiveTOCExternal("../testdata/archives/archive.tar.gz")
+	require.NoError(t, err)
+	require.Equal(t, []string{"archives/file1.txt", "archives/sub/", "archives/sub/file2.txt", "archives/thing.png"}, got)
+
+	// Test one of these wonky tars
+	got, err = archiveTOCExternal("../testdata/archives/self-tarred.tar")
+	require.NoError(t, err)
+	require.Equal(t, []string{"./", "./1mb", "./2mb"}, got)
+}
+
 func TestWalkDirExpandArchives(t *testing.T) {
 	i := Inventory{}
 	err := walkDir("../testdata/archives", NewOptions(
