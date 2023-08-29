@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
 )
 
@@ -140,7 +141,7 @@ type processOpts struct {
 func processSuitcases(po *processOpts) []string {
 	ret := make([]string, po.Inventory.TotalIndexes)
 	p := pool.New().WithMaxGoroutines(po.Concurrency)
-	log.Warn().Int("concurrency", po.Concurrency).Msg("Setting pool guard")
+	log.Debug().Int("concurrency", po.Concurrency).Msg("Setting pool guard")
 	// state := make(chan suitcase.FillState, 1)
 	// state := make(chan suitcase.FillState, po.Inventory.TotalIndexes)
 	state := make(chan suitcase.FillState)
@@ -165,8 +166,19 @@ func processSuitcases(po *processOpts) []string {
 			if err != nil {
 				log.Warn().Err(err).Str("file", createdF).Msg("error creating suitcase file, please investigate")
 			} else {
-				// Put Transport plugin here!!
 				ret[i-1] = createdF
+				// Put Transport plugin here!!
+				if po.Inventory.Options.TransportPlugin != nil {
+					// First check...
+					err := po.Inventory.Options.TransportPlugin.Check()
+					panicIfErr(err)
+
+					// Then end
+					serr := po.Inventory.Options.TransportPlugin.Send(transporters.Config{
+						Source: createdF,
+					})
+					panicIfErr(serr)
+				}
 			}
 		})
 	}

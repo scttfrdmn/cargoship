@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/mholt/archiver/v4"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/shell"
 
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
@@ -287,23 +289,24 @@ type CLIMeta struct {
 
 // Options are the options used to create a DirectoryInventory
 type Options struct {
-	User                  string        `yaml:"user" json:"user"`
-	Prefix                string        `yaml:"prefix" json:"prefix"`
-	Directories           []string      `yaml:"top_level_directories" json:"top_level_directories"`
-	SizeConsideredLarge   int64         `yaml:"size_considered_large" json:"size_considered_large"`
-	MaxSuitcaseSize       int64         `yaml:"max_suitcase_size" json:"max_suitcase_size"`
-	InternalMetadataGlob  string        `yaml:"internal_metadata_glob,omitempty" json:"internal_metadata_glob,omitempty"`
-	IgnoreGlobs           []string      `yaml:"ignore_globs,omitempty" json:"ignore_globs,omitempty"`
-	ExternalMetadataFiles []string      `yaml:"external_metadata_files,omitempty" json:"external_metadata_files,omitempty"`
-	EncryptInner          bool          `yaml:"encrypt_inner" json:"encrypt_inner"`
-	HashInner             bool          `yaml:"hash_inner" json:"hash_inner"`
-	LimitFileCount        int           `yaml:"limit_file_count" json:"limit_file_count"`
-	SuitcaseFormat        string        `yaml:"suitcase_format" json:"suitcase_format"`
-	InventoryFormat       string        `yaml:"inventory_format" json:"inventory_format"`
-	FollowSymlinks        bool          `yaml:"follow_symlinks" json:"follow_symlinks"`
-	HashAlgorithm         HashAlgorithm `yaml:"hash_algorithm" json:"hash_algorithm"`
-	IncludeArchiveTOC     bool          `yaml:"include_archive_toc" json:"include_archive_toc"`
-	IncludeArchiveTOCDeep bool          `yaml:"include_archive_toc_deep" json:"include_archive_toc_deep"`
+	User                  string                   `yaml:"user" json:"user"`
+	Prefix                string                   `yaml:"prefix" json:"prefix"`
+	Directories           []string                 `yaml:"top_level_directories" json:"top_level_directories"`
+	SizeConsideredLarge   int64                    `yaml:"size_considered_large" json:"size_considered_large"`
+	MaxSuitcaseSize       int64                    `yaml:"max_suitcase_size" json:"max_suitcase_size"`
+	InternalMetadataGlob  string                   `yaml:"internal_metadata_glob,omitempty" json:"internal_metadata_glob,omitempty"`
+	IgnoreGlobs           []string                 `yaml:"ignore_globs,omitempty" json:"ignore_globs,omitempty"`
+	ExternalMetadataFiles []string                 `yaml:"external_metadata_files,omitempty" json:"external_metadata_files,omitempty"`
+	EncryptInner          bool                     `yaml:"encrypt_inner" json:"encrypt_inner"`
+	HashInner             bool                     `yaml:"hash_inner" json:"hash_inner"`
+	LimitFileCount        int                      `yaml:"limit_file_count" json:"limit_file_count"`
+	SuitcaseFormat        string                   `yaml:"suitcase_format" json:"suitcase_format"`
+	InventoryFormat       string                   `yaml:"inventory_format" json:"inventory_format"`
+	FollowSymlinks        bool                     `yaml:"follow_symlinks" json:"follow_symlinks"`
+	HashAlgorithm         HashAlgorithm            `yaml:"hash_algorithm" json:"hash_algorithm"`
+	IncludeArchiveTOC     bool                     `yaml:"include_archive_toc" json:"include_archive_toc"`
+	IncludeArchiveTOCDeep bool                     `yaml:"include_archive_toc_deep" json:"include_archive_toc_deep"`
+	TransportPlugin       transporters.Transporter `yaml:"transport_plugin" json:"transport_plugin"`
 }
 
 // AbsoluteDirectories converts the Directories entries to absolute paths
@@ -739,6 +742,7 @@ func WithViper(v *viper.Viper) func(*Options) {
 		setFollowSymlinks(*v, o)
 		setMaxSuitcaseSize(*v, o)
 		setUser(*v, o)
+		setTransportPlugin(*v, o)
 
 		// Formats are a little funky...should we set them special?
 		// Strip out leading dots
@@ -915,6 +919,33 @@ func setHashInner[T viper.Viper | cobra.Command](v T, o *Options) {
 	}
 }
 
+func setTransportPlugin[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "transport-plugin"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			if vi.GetString(k) == "shell" {
+				o.TransportPlugin = &shell.Transporter{}
+			} else {
+				panic("unknown transport plugin")
+			}
+		}
+	case *cobra.Command:
+		ci := mustGetCommand(v)
+		if ci.Flags().Changed(k) {
+			// o.HashInner = mustGetCmd[bool](ci, k)
+			if mustGetCmd[string](ci, k) == "shell" {
+				o.TransportPlugin = &shell.Transporter{}
+			} else {
+				panic("unknown transport plugin")
+			}
+		}
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
+	}
+}
+
 func setFollowSymlinks[T viper.Viper | cobra.Command](v T, o *Options) {
 	k := "follow-symlinks"
 	switch any(new(T)).(type) {
@@ -989,6 +1020,7 @@ func WithCobra(cmd *cobra.Command, args []string) func(*Options) {
 		setPrefix(*cmd, o)
 		setInternalMetadataGlob(*cmd, o)
 		setLimitFileCount(*cmd, o)
+		setTransportPlugin(*cmd, o)
 
 		if len(args) > 0 {
 			o.Directories = args
@@ -1303,6 +1335,7 @@ func BindCobra(cmd *cobra.Command) {
 	cmd.PersistentFlags().Bool("only-inventory", false, "Only generate the inventory file, skip the actual suitcase archive creation")
 	cmd.PersistentFlags().Bool("archive-toc", false, "Also include the Table-of-Contents for supported archives, such as zip, tar, etc in the inventory")
 	cmd.PersistentFlags().Bool("archive-toc-deep", false, "Also include the Table-of-Contents for supported archives. This will look at any file, regardless of extension")
+	cmd.PersistentFlags().String("transport-plugin", "", "Transport plugin to use (if any). Options: shell, rclone...")
 }
 
 // mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command

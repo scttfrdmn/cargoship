@@ -10,9 +10,9 @@ import (
 
 // Transporter describes how items that meet a Transporter behaves
 type Transporter interface {
-	Configure(c Config) error
+	// Configure(c Config) error
 	Check() error
-	Send() error
+	Send(Config) error
 }
 
 // Config is everything a transporter needs to be configured
@@ -22,7 +22,7 @@ type Config struct {
 }
 
 // ToEnv sets interesting info in a Key/Value format
-func (c Config) ToEnv() {
+func (c Config) ToEnv() error {
 	prefix := "SUITCASECTL_"
 	env := map[string]string{
 		fmt.Sprintf("%vFILE", prefix): c.Source,
@@ -30,7 +30,8 @@ func (c Config) ToEnv() {
 	for k, v := range env {
 		err := os.Setenv(k, v)
 		if err != nil {
-			panic(err)
+			return err
 		}
 	}
+	return nil
 }
