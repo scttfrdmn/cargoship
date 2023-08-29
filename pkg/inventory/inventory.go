@@ -1514,6 +1514,34 @@ func containsString(s []string, e string) bool {
 	return false
 }
 
+// archiveTOC is a v3 TOC generator for archiver
+/*
+func archiveTOC(fn string) ([]string, error) {
+	ret := []string{}
+	err := archiver.Walk(fn, func(f archiver.File) error {
+		if !f.IsDir() {
+			// ret = append(ret, f.FileInfo.
+			return nil
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Junky way to check this...
+	if (len(ret) == 1) && (ret[0] == ".") {
+		return nil, errors.New("could not scan a non archive file")
+	}
+
+	// I think we want to do this...
+	sort.Strings(ret)
+	return ret, nil
+}
+*/
+
+// archiveTOC is a v4 TOC generator for archiver
 func archiveTOC(fn string) ([]string, error) {
 	fsys, err := archiver.FileSystem(context.Background(), fn)
 	if err != nil {
@@ -1522,6 +1550,11 @@ func archiveTOC(fn string) ([]string, error) {
 	ret := []string{}
 
 	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+		// Handle: https://github.com/mholt/archiver/issues/383
+		if (path == ".") && d.Name() == "." && strings.Contains(fn, ".tar") {
+			log.Warn().Str("archive", fn).Msg("this archive is not properly handled, skipping")
+			return fs.ErrInvalid
+		}
 		if err != nil {
 			return err
 		}
