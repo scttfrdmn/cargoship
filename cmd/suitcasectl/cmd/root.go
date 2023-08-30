@@ -66,8 +66,6 @@ a future point in time`,
 	createCmd.AddCommand(createSuitcaseCmd)
 	cmd.AddCommand(createCmd)
 	rcloneCmd := NewRcloneCmd()
-	rcloneCmd.PersistentFlags().StringP("destination", "d", "", "Target to rclone to")
-	rcloneCmd.PersistentFlags().StringP("source", "s", "", "Source directory")
 	cmd.AddCommand(rcloneCmd)
 
 	cmd.AddCommand(NewFindCmd())

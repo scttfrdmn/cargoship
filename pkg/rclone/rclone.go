@@ -6,7 +6,8 @@ package rclone
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -16,11 +17,45 @@ import (
 	"github.com/rclone/rclone/librclone/librclone"
 )
 
-type syncRequest struct {
-	SrcFs string `json:"srcFs"`
-	DstFs string `json:"dstFs"`
-	Group string `json:"_group"`
-	Async bool   `json:"_async"`
+// cloneRequest can be either a sync
+type cloneRequest struct {
+	SrcFs     string `json:"srcFs,omitempty"`
+	DstFs     string `json:"dstFs,omitempty"`
+	SrcRemote string `json:"srcRemote,omitempty"`
+	DstRemote string `json:"dstRemote,omitempty"`
+	Group     string `json:"_group"`
+	Async     bool   `json:"_async"`
+}
+
+type rpcOutput struct {
+	Duration  float64    `json:"duration,omitempty"`
+	EndTime   *time.Time `json:"endTime,omitempty"`
+	Error     string     `json:"error,omitempty"`
+	Finished  bool       `json:"finished,omitempty"`
+	Group     string     `json:"group,omitempty"`
+	ID        float64    `json:"id,omitempty"`
+	Output    any        `json:"output,omitempty"` // Not sure what this actually is for...
+	StartTime *time.Time `json:"startTime,omitempty"`
+	Success   bool       `json:"success,omitempty"`
+}
+
+func newRPCOutput(s string) rpcOutput {
+	var r rpcOutput
+	err := json.Unmarshal([]byte(s), &r)
+	if err != nil {
+		panic(err)
+	}
+	return r
+}
+
+// JSON returns the json representation in string format. Panic on error. I
+// don't _think_ there's a way this actually errors, so feels safe
+func (s cloneRequest) JSONString() string {
+	js, err := json.Marshal(s)
+	if err != nil {
+		panic(err)
+	}
+	return string(js)
 }
 
 type syncResponse struct {
@@ -29,6 +64,16 @@ type syncResponse struct {
 
 type statusRequest struct {
 	JobID int64 `json:"jobid"`
+}
+
+// JSON returns the json representation in string format. Panic on error. I
+// don't _think_ there's a way this actually errors, so feels safe
+func (s statusRequest) JSONString() string {
+	js, err := json.Marshal(s)
+	if err != nil {
+		panic(err)
+	}
+	return string(js)
 }
 
 type statusResponse struct {
@@ -40,12 +85,109 @@ type statsRequest struct {
 	Group string `json:"group"`
 }
 
+// JSON returns the json representation in string format. Panic on error. I
+// don't _think_ there's a way this actually errors, so feels safe
+func (s statsRequest) JSONString() string {
+	js, err := json.Marshal(s)
+	if err != nil {
+		panic(err)
+	}
+	return string(js)
+}
+
 type statsResponse struct {
 	Bytes       int64   `json:"bytes"`
 	Speed       float64 `json:"speed"`
 	Transfers   int64   `json:"transfers"`
 	ElapsedTime float64 `json:"elapsedTime"`
 	Errors      int64   `json:"errors"`
+}
+
+func mustNewCloneRequest(options ...func(*cloneRequest)) *cloneRequest {
+	got, err := newCloneRequest(options...)
+	if err != nil {
+		panic(err)
+	}
+	return got
+}
+
+func withSrcFs(s string) func(*cloneRequest) {
+	return func(r *cloneRequest) {
+		r.SrcFs = s
+	}
+}
+
+func withDstFs(s string) func(*cloneRequest) {
+	return func(r *cloneRequest) {
+		r.DstFs = s
+	}
+}
+
+func withSrcRemote(s string) func(*cloneRequest) {
+	return func(r *cloneRequest) {
+		r.SrcRemote = s
+	}
+}
+
+func withDstRemote(s string) func(*cloneRequest) {
+	return func(r *cloneRequest) {
+		r.DstRemote = s
+	}
+}
+
+/* Commenting out until we have a use case for this one
+func withGroup(s string) func(*cloneRequest) {
+	return func(r *cloneRequest) {
+		r.Group = s
+	}
+}
+*/
+
+func newCloneRequest(options ...func(*cloneRequest)) (*cloneRequest, error) {
+	r := &cloneRequest{
+		Group: "MyTransfer",
+		Async: true,
+	}
+	for _, opt := range options {
+		opt(r)
+	}
+
+	if r.SrcFs == "" && r.SrcRemote == "" {
+		return nil, errors.New("must set at least SrcFs or SrcRemote")
+	}
+	if r.DstFs == "" && r.SrcFs == "" {
+		return nil, errors.New("must set at least DstFs or DstRemote")
+	}
+	return r, nil
+}
+
+// newCloneRequestWithSrcDest returns the RPC operation string, appropriate json request, and an error
+func newCloneRequestWithSrcDst(source, destination string) (string, *cloneRequest, error) {
+	sourceStat, err := os.Stat(source)
+	if err != nil {
+		return "", nil, err
+	}
+	var cloneAction string
+	var sreq *cloneRequest
+	if sourceStat.IsDir() {
+		log.Info().Msg("Using sync")
+		cloneAction = "sync/sync"
+		sreq = mustNewCloneRequest(
+			withSrcFs(source),
+			withDstFs(destination),
+		)
+	} else {
+		log.Info().Msg("Using copyfile")
+		cloneAction = "operations/copyfile"
+		sourceB := filepath.Base(source)
+		sreq = mustNewCloneRequest(
+			withSrcFs(filepath.Dir(source)),
+			withSrcRemote(sourceB),
+			withDstFs(destination),
+			withDstRemote(sourceB),
+		)
+	}
+	return cloneAction, sreq, nil
 }
 
 // Clone mimics rclonse 'clone' option, given a source and destination
@@ -55,22 +197,21 @@ func Clone(source string, destination string) error {
 	// breaks the shell completion pieces, as all shells expect them on
 	// stdout. Hopefully cobra will be able to have multiple outputs at some
 	// point
+	log := log.With().Str("source", source).Str("destination", destination).Logger()
+
 	librclone.Initialize()
-	sreq := syncRequest{
-		SrcFs: source,
-		DstFs: destination,
-		Group: "MyTransfer",
-		Async: true,
+
+	cloneAction, sreq, err := newCloneRequestWithSrcDst(source, destination)
+	if err != nil {
+		return err
+	}
+	log.Debug().Interface("request", sreq).Send()
+
+	out, status := librclone.RPC(cloneAction, sreq.JSONString())
+	if status != 200 {
+		log.Info().Interface("out", out).Msg("clone request status failed")
 	}
 
-	syncRequestJSON, err := json.Marshal(sreq)
-	if err != nil {
-		log.Warn().Err(err).Msg("error marshaling syncRequest")
-	}
-	out, status := librclone.RPC("sync/sync", string(syncRequestJSON))
-	if status != 200 {
-		log.Info().Interface("out", out).Msg("clone request status succeeded")
-	}
 	var sres syncResponse
 	if jerr := json.Unmarshal([]byte(out), &sres); jerr != nil {
 		return errors.New("error unmarshalling syncResponse")
@@ -78,49 +219,46 @@ func Clone(source string, destination string) error {
 
 	log.Info().Int64("id", sres.JobID).Msg("job id of async job")
 
-	statusReq := statusRequest{JobID: sres.JobID} // nolint // DS - I dunno why this is triggering...
-	statusRequestJSON, err := json.Marshal(statusReq)
+	statusResp, err := waitForFinished(statusRequest{JobID: sres.JobID}) // nolint // DS - I dunno why this is triggering S1016...
 	if err != nil {
-		log.Warn().Err(err).Msg("issue unmarshalling status request")
+		return err
 	}
-	var statusResp statusResponse
-
-	statusTries := 0
-	for !statusResp.Finished {
-		cout, status := librclone.RPC("job/status", string(statusRequestJSON))
-		fmt.Println(cout)
-		if status == 404 {
-			log.Warn().Msg("job not found!")
-			break
-		}
-		err = json.Unmarshal([]byte(cout), &statusResp)
-		if err != nil {
-			log.Warn().Err(err).Msg("issue unmarshalling status response")
-			break
-		}
-		time.Sleep(time.Second)
-		statusTries++
-		log.Info().Int64("job", statusReq.JobID).Int("tries", statusTries).Msg("polling status")
-	}
-
 	if !statusResp.Success {
 		return errors.New("job finished but did not have status success")
 	}
 
-	statsReq := statsRequest{Group: "MyTransfer"}
+	out, _ = librclone.RPC("core/stats", statsRequest{Group: "MyTransfer"}.JSONString())
 
-	statsRequestJSON, err := json.Marshal(statsReq)
-	if err != nil {
-		return err
-	}
-
-	out, _ = librclone.RPC("core/stats", string(statsRequestJSON))
 	var stats statsResponse
-
 	if err := json.Unmarshal([]byte(out), &stats); err != nil {
 		return err
 	}
+
 	log.Info().Int64("bytes", stats.Bytes).Int64("files", stats.Transfers).Msg("transfer complete")
 
 	return nil
+}
+
+func waitForFinished(statusReq statusRequest) (*statusResponse, error) {
+	var statusResp statusResponse
+	var statusTries int
+	for !statusResp.Finished {
+		cout, status := librclone.RPC("job/status", statusReq.JSONString())
+		coutO := newRPCOutput(cout)
+		if coutO.Error != "" {
+			log.Warn().Err(errors.New(coutO.Error)).Send()
+		}
+		if status == 404 {
+			return nil, errors.New("job not found")
+		}
+
+		err := json.Unmarshal([]byte(cout), &statusResp)
+		if err != nil {
+			return nil, errors.New("issue unmarshalling status response")
+		}
+		time.Sleep(time.Second)
+		statusTries++
+		log.Debug().Int64("job", statusReq.JobID).Int("tries", statusTries).Msg("checking status")
+	}
+	return &statusResp, nil
 }

@@ -9,14 +9,19 @@ import (
 // NewRcloneCmd returns a new cobra.Command for Rclone
 func NewRcloneCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "rclone",
-		Short:   "Execute an rclone (sync) from src to dct",
+		Use:   "rclone",
+		Short: "Execute an rclone (sync) from src to dst",
+		Long: `rclone - Sync data out to the cloud (or elsewhere!) using an embedded version
+of rclone.
+		
+src should be a local directory or file.
+
+dst should be a valid rclone endpoint. This will be ready by your local rclone
+config, but does not require the rclone binary to be present on your host.`,
 		Aliases: []string{"r"},
-		// Args:    cobra.ExactArgs(1),
+		Args:    cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			src, _ := cmd.Flags().GetString("source")
-			destination, _ := cmd.Flags().GetString("destination")
-			err := rclone.Clone(src, destination)
+			err := rclone.Clone(args[0], args[1])
 			if err != nil {
 				log.Fatal().Err(err).Send()
 			}
