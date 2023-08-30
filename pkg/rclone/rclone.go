@@ -5,8 +5,11 @@ package rclone
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	_ "github.com/rclone/rclone/backend/all" // import all backend
 	_ "github.com/rclone/rclone/fs/sync"     // import the file sync bits
@@ -46,7 +49,7 @@ type statsResponse struct {
 }
 
 // Clone mimics rclonse 'clone' option, given a source and destination
-func Clone(source string, destination string) {
+func Clone(source string, destination string) error {
 	// We are pushing all the usage to Stdout instead of Stderr. I would
 	// like to eventually get this back to stderr, however currently that
 	// breaks the shell completion pieces, as all shells expect them on
@@ -62,25 +65,23 @@ func Clone(source string, destination string) {
 
 	syncRequestJSON, err := json.Marshal(sreq)
 	if err != nil {
-		fmt.Println(err)
+		log.Warn().Err(err).Msg("error marshaling syncRequest")
 	}
 	out, status := librclone.RPC("sync/sync", string(syncRequestJSON))
 	if status != 200 {
-		fmt.Printf("Error: Got status : %d and output %q", status, out)
+		log.Info().Interface("out", out).Msg("clone request status succeeded")
 	}
 	var sres syncResponse
-	err = json.Unmarshal([]byte(out), &sres)
-	if err != nil {
-		fmt.Println(err)
-		return
+	if jerr := json.Unmarshal([]byte(out), &sres); jerr != nil {
+		return errors.New("error unmarshalling syncResponse")
 	}
 
-	fmt.Printf("Job Id of Async Job: %d\n", sres.JobID)
+	log.Info().Int64("id", sres.JobID).Msg("job id of async job")
 
-	statusReq := statusRequest{JobID: sres.JobID}
+	statusReq := statusRequest{JobID: sres.JobID} // nolint // DS - I dunno why this is triggering...
 	statusRequestJSON, err := json.Marshal(statusReq)
 	if err != nil {
-		fmt.Println(err)
+		log.Warn().Err(err).Msg("issue unmarshalling status request")
 	}
 	var statusResp statusResponse
 
@@ -89,37 +90,37 @@ func Clone(source string, destination string) {
 		cout, status := librclone.RPC("job/status", string(statusRequestJSON))
 		fmt.Println(cout)
 		if status == 404 {
-			fmt.Println("Job not found!")
+			log.Warn().Msg("job not found!")
 			break
 		}
 		err = json.Unmarshal([]byte(cout), &statusResp)
 		if err != nil {
-			fmt.Println(err)
+			log.Warn().Err(err).Msg("issue unmarshalling status response")
 			break
 		}
 		time.Sleep(time.Second)
 		statusTries++
-		fmt.Printf("Polled status of job %d, %d times\n", statusReq.JobID, statusTries)
+		log.Info().Int64("job", statusReq.JobID).Int("tries", statusTries).Msg("polling status")
 	}
 
 	if !statusResp.Success {
-		fmt.Println("Job finished but did not have status success.")
-		return
+		return errors.New("job finished but did not have status success")
 	}
 
 	statsReq := statsRequest{Group: "MyTransfer"}
 
 	statsRequestJSON, err := json.Marshal(statsReq)
 	if err != nil {
-		fmt.Println(err)
+		return err
 	}
 
 	out, _ = librclone.RPC("core/stats", string(statsRequestJSON))
 	var stats statsResponse
 
-	err = json.Unmarshal([]byte(out), &stats)
-	if err != nil {
-		fmt.Println(err)
+	if err := json.Unmarshal([]byte(out), &stats); err != nil {
+		return err
 	}
-	fmt.Printf("Transferred %d bytes and %d files\n", stats.Bytes, stats.Transfers)
+	log.Info().Int64("bytes", stats.Bytes).Int64("files", stats.Transfers).Msg("transfer complete")
+
+	return nil
 }
