@@ -16,6 +16,7 @@ require (
 	github.com/mailru/easyjson v0.7.7
 	github.com/mholt/archiver/v4 v4.0.0-alpha.8
 	github.com/mitchellh/go-homedir v1.1.0
+	github.com/rclone/rclone v1.63.1
 	github.com/rs/zerolog v1.30.0
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/cobra v1.7.0
@@ -27,7 +28,6 @@ require (
 )
 
 require (
-	bazil.org/fuse v0.0.0-20221209211307-2abb8038c751 // indirect
 	cloud.google.com/go/compute v1.19.0 // indirect
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	dario.cat/mergo v1.0.0 // indirect
@@ -45,7 +45,6 @@ require (
 	github.com/abbot/go-http-auth v0.4.0 // indirect
 	github.com/acomagu/bufpipe v1.0.4 // indirect
 	github.com/andybalholm/brotli v1.0.5 // indirect
-	github.com/artyom/mtab v1.0.0 // indirect
 	github.com/aws/aws-sdk-go v1.44.246 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bodgit/plumbing v1.3.0 // indirect
@@ -78,7 +77,6 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
 	github.com/googleapis/gax-go/v2 v2.8.0 // indirect
-	github.com/hanwen/go-fuse/v2 v2.2.1-0.20230410213758-80c1c8221982 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
@@ -132,7 +130,6 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/putdotio/go-putio/putio v0.0.0-20200123120452-16d982cac2b8 // indirect
 	github.com/rclone/ftp v0.0.0-20230327202000-dadc1f64e87d // indirect
-	github.com/rclone/rclone v1.63.1 // indirect
 	github.com/rfjakob/eme v1.1.2 // indirect
 	github.com/sergi/go-diff v1.3.1 // indirect
 	github.com/shirou/gopsutil/v3 v3.23.5 // indirect
@@ -140,6 +137,7 @@ require (
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/skeema/knownhosts v1.2.0 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
+	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/sony/gobreaker v0.5.0 // indirect
 	github.com/spacemonkeygo/monkit/v3 v3.0.19 // indirect
 	github.com/spf13/afero v1.9.5 // indirect
@@ -152,7 +150,6 @@ require (
 	github.com/tklauser/numcpus v0.6.0 // indirect
 	github.com/ulikunitz/xz v0.5.11 // indirect
 	github.com/vivint/infectious v0.0.0-20200605153912-25a574ae18a3 // indirect
-	github.com/winfsp/cgofuse v1.5.1-0.20221118130120-84c0898ad2e0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a // indirect
 	github.com/yunify/qingstor-sdk-go/v3 v3.2.0 // indirect
