@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gosimple/slug"
 	"github.com/rs/zerolog/log"
 
 	_ "github.com/rclone/rclone/backend/all" // import all backend
@@ -149,17 +150,15 @@ func withDstRemote(s string) func(*cloneRequest) {
 	}
 }
 
-/* Commenting out until we have a use case for this one
 func withGroup(s string) func(*cloneRequest) {
 	return func(r *cloneRequest) {
 		r.Group = s
 	}
 }
-*/
 
 func newCloneRequest(options ...func(*cloneRequest)) (*cloneRequest, error) {
 	r := &cloneRequest{
-		Group: "MyTransfer",
+		Group: "SuitcaseCTLTransfer",
 		Async: true,
 	}
 	for _, opt := range options {
@@ -189,6 +188,7 @@ func newCloneRequestWithSrcDst(source, destination string) (string, *cloneReques
 		sreq = mustNewCloneRequest(
 			withSrcFs(source),
 			withDstFs(destination),
+			withGroup(slug.Make(source)),
 		)
 	} else {
 		log.Info().Msg("Using copyfile cloud method")
@@ -199,6 +199,7 @@ func newCloneRequestWithSrcDst(source, destination string) (string, *cloneReques
 			withSrcRemote(sourceB),
 			withDstFs(destination),
 			withDstRemote(sourceB),
+			withGroup(slug.Make(source)),
 		)
 	}
 	return cloneAction, sreq, nil
@@ -243,7 +244,7 @@ func Exists(d string) bool {
 }
 
 // Clone mimics rclonse 'clone' option, given a source and destination
-func Clone(source string, destination string) error {
+func Clone(source, destination, uid string) error {
 	// We are pushing all the usage to Stdout instead of Stderr. I would
 	// like to eventually get this back to stderr, however currently that
 	// breaks the shell completion pieces, as all shells expect them on

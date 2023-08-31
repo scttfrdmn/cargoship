@@ -29,7 +29,7 @@ func (t *Transporter) Check() error {
 
 // Send the data on up
 func (t Transporter) Send(s string) error {
-	return rclone.Clone(s, t.Config.Destination)
+	return rclone.Clone(s, t.Config.Destination, "")
 }
 
 // Validate this meets the Transporter interface

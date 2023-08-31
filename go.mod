@@ -10,6 +10,7 @@ require (
 	github.com/dsnet/compress v0.0.2-0.20210315054119-f66993602bf5
 	github.com/dustin/go-humanize v1.0.1
 	github.com/go-git/go-git/v5 v5.8.1
+	github.com/gosimple/slug v1.13.1
 	github.com/invopop/jsonschema v0.7.0
 	github.com/karrick/godirwalk v1.17.0
 	github.com/klauspost/compress v1.16.7
@@ -79,6 +80,7 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
 	github.com/googleapis/gax-go/v2 v2.8.0 // indirect
+	github.com/gosimple/unidecode v1.0.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
