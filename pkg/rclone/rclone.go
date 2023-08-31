@@ -155,7 +155,7 @@ func newCloneRequest(options ...func(*cloneRequest)) (*cloneRequest, error) {
 	if r.SrcFs == "" && r.SrcRemote == "" {
 		return nil, errors.New("must set at least SrcFs or SrcRemote")
 	}
-	if r.DstFs == "" && r.SrcFs == "" {
+	if r.DstFs == "" && r.DstRemote == "" {
 		return nil, errors.New("must set at least DstFs or DstRemote")
 	}
 	return r, nil
@@ -256,9 +256,9 @@ func waitForFinished(statusReq statusRequest) (*statusResponse, error) {
 		if err != nil {
 			return nil, errors.New("issue unmarshalling status response")
 		}
+		log.Debug().Int64("job", statusReq.JobID).Int("tries", statusTries).Msg("checking status")
 		time.Sleep(time.Second)
 		statusTries++
-		log.Debug().Int64("job", statusReq.JobID).Int("tries", statusTries).Msg("checking status")
 	}
 	return &statusResp, nil
 }
