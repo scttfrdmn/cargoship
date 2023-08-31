@@ -22,7 +22,7 @@ import (
 
 	"github.com/mholt/archiver/v4"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/shell"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/cloud"
 
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
@@ -743,7 +743,8 @@ func WithViper(v *viper.Viper) func(*Options) {
 		setFollowSymlinks(*v, o)
 		setMaxSuitcaseSize(*v, o)
 		setUser(*v, o)
-		setTransportPlugin(*v, o)
+		// setTransportPlugin(*v, o)
+		setCloudDestination(*v, o)
 
 		// Formats are a little funky...should we set them special?
 		// Strip out leading dots
@@ -920,6 +921,25 @@ func setHashInner[T viper.Viper | cobra.Command](v T, o *Options) {
 	}
 }
 
+func setCloudDestination[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "cloud-destination"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			o.TransportPlugin = &cloud.Transporter{Config: transporters.Config{Destination: vi.GetString(k)}}
+		}
+	case *cobra.Command:
+		ci := mustGetCommand(v)
+		if ci.Flags().Changed(k) {
+			o.TransportPlugin = &cloud.Transporter{Config: transporters.Config{Destination: mustGetCmd[string](ci, k)}}
+		}
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
+	}
+}
+
+/*
 func setTransportPlugin[T viper.Viper | cobra.Command](v T, o *Options) {
 	k := "transport-plugin"
 	switch any(new(T)).(type) {
@@ -927,7 +947,9 @@ func setTransportPlugin[T viper.Viper | cobra.Command](v T, o *Options) {
 		vi := mustGetViper(v)
 		if vi.IsSet(k) {
 			if vi.GetString(k) == "shell" {
-				o.TransportPlugin = &shell.Transporter{}
+				o.TransportPlugin = &shell.Transporter{
+					Config: transporters.Config{},
+				}
 			} else {
 				panic("unknown transport plugin")
 			}
@@ -936,9 +958,10 @@ func setTransportPlugin[T viper.Viper | cobra.Command](v T, o *Options) {
 		ci := mustGetCommand(v)
 		if ci.Flags().Changed(k) {
 			// o.HashInner = mustGetCmd[bool](ci, k)
-			if mustGetCmd[string](ci, k) == "shell" {
+			switch mustGetCmd[string](ci, k) {
+			case "shell":
 				o.TransportPlugin = &shell.Transporter{}
-			} else {
+			default:
 				panic("unknown transport plugin")
 			}
 		}
@@ -946,6 +969,7 @@ func setTransportPlugin[T viper.Viper | cobra.Command](v T, o *Options) {
 		panic(fmt.Sprintf("unexpected use of set %v", k))
 	}
 }
+*/
 
 func setFollowSymlinks[T viper.Viper | cobra.Command](v T, o *Options) {
 	k := "follow-symlinks"
@@ -1021,7 +1045,8 @@ func WithCobra(cmd *cobra.Command, args []string) func(*Options) {
 		setPrefix(*cmd, o)
 		setInternalMetadataGlob(*cmd, o)
 		setLimitFileCount(*cmd, o)
-		setTransportPlugin(*cmd, o)
+		// setTransportPlugin(*cmd, o)
+		setCloudDestination(*cmd, o)
 
 		if len(args) > 0 {
 			o.Directories = args
@@ -1336,7 +1361,8 @@ func BindCobra(cmd *cobra.Command) {
 	cmd.PersistentFlags().Bool("only-inventory", false, "Only generate the inventory file, skip the actual suitcase archive creation")
 	cmd.PersistentFlags().Bool("archive-toc", false, "Also include the Table-of-Contents for supported archives, such as zip, tar, etc in the inventory")
 	cmd.PersistentFlags().Bool("archive-toc-deep", false, "Also include the Table-of-Contents for supported archives. This will look at any file, regardless of extension")
-	cmd.PersistentFlags().String("transport-plugin", "", "Transport plugin to use (if any). Options: shell, rclone...")
+	// cmd.PersistentFlags().String("transport-plugin", "", "Transport plugin to use (if any). Options: shell, rclone...")
+	cmd.PersistentFlags().String("cloud-destination", "", "Send files to this cloud destination after creation. Destination must be a valid rclone location.")
 }
 
 // mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command

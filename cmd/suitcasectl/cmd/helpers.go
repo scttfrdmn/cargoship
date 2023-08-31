@@ -24,7 +24,6 @@ import (
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
 )
 
@@ -174,9 +173,7 @@ func processSuitcases(po *processOpts) []string {
 					panicIfErr(err)
 
 					// Then end
-					serr := po.Inventory.Options.TransportPlugin.Send(transporters.Config{
-						Source: createdF,
-					})
+					serr := po.Inventory.Options.TransportPlugin.Send(createdF)
 					panicIfErr(serr)
 				}
 			}

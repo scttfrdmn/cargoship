@@ -15,7 +15,11 @@ func TestNewCloneRequest(t *testing.T) {
 
 	got, err := newCloneRequest(withSrcFs("foo"), withDstRemote("bar"))
 	require.NoError(t, err)
-	require.Equal(t, got, &cloneRequest{SrcFs: "foo", DstFs: "", SrcRemote: "", DstRemote: "bar", Group: "MyTransfer", Async: true})
+	require.Equal(t, got, &cloneRequest{SrcFs: "foo", DstFs: "", SrcRemote: "", DstRemote: "bar", Group: "SuitcaseCTLTransfer", Async: true})
+
+	got, err = newCloneRequest(withSrcFs("foo"), withDstRemote("bar"), withGroup("FakeGroup"))
+	require.NoError(t, err)
+	require.Equal(t, got, &cloneRequest{SrcFs: "foo", DstFs: "", SrcRemote: "", DstRemote: "bar", Group: "FakeGroup", Async: true})
 }
 
 func TestNewCloneRequestWithSrcDst(t *testing.T) {
@@ -23,13 +27,13 @@ func TestNewCloneRequestWithSrcDst(t *testing.T) {
 	gotS, gotR, err := newCloneRequestWithSrcDst("testdata/fake-dir", "fake-dest:/")
 	require.NoError(t, err)
 	require.Equal(t, "sync/sync", gotS)
-	require.Equal(t, &cloneRequest{SrcFs: "testdata/fake-dir", DstFs: "fake-dest:/", SrcRemote: "", DstRemote: "", Group: "MyTransfer", Async: true}, gotR)
+	require.Equal(t, &cloneRequest{SrcFs: "testdata/fake-dir", DstFs: "fake-dest:/", SrcRemote: "", DstRemote: "", Group: "testdata-fake-dir", Async: true}, gotR)
 
 	// Test with a file
 	gotS, gotR, err = newCloneRequestWithSrcDst("testdata/fake-dir/thing.txt", "fake-dest:/")
 	require.NoError(t, err)
 	require.Equal(t, "operations/copyfile", gotS)
-	require.Equal(t, &cloneRequest{SrcFs: "testdata/fake-dir", DstFs: "fake-dest:/", SrcRemote: "thing.txt", DstRemote: "thing.txt", Group: "MyTransfer", Async: true}, gotR)
+	require.Equal(t, &cloneRequest{SrcFs: "testdata/fake-dir", DstFs: "fake-dest:/", SrcRemote: "thing.txt", DstRemote: "thing.txt", Group: "testdata-fake-dir-thing-txt", Async: true}, gotR)
 
 	// With something that doesn't exit
 	_, _, err = newCloneRequestWithSrcDst("testdata/never-exists.txt", "fake-dest:/")

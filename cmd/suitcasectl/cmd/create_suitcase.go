@@ -11,6 +11,7 @@ import (
 
 	"github.com/drewstinnett/gout/v2"
 	"github.com/rs/zerolog/log"
+	"github.com/sourcegraph/conc"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
@@ -148,19 +149,19 @@ func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, er
 	return userOverrides, nil
 }
 
-func writeHashFile(cmd *cobra.Command) error {
+func writeHashFile(cmd *cobra.Command) (string, error) {
 	hashFile := path.Join(cmd.Context().Value(inventory.DestinationKey).(string), fmt.Sprintf("suitcasectl.%v", hashAlgo.String()))
 	log.Info().Str("hash-file", hashFile).Msg("Creating hashes")
 	hashF, err := os.Create(hashFile) // nolint:gosec
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer dclose(hashF)
 	err = suitcase.WriteHashFile(cmd.Context().Value(inventory.HashesKey).([]config.HashSet), hashF)
 	if err != nil {
-		return err
+		return "", err
 	}
-	return nil
+	return hashF.Name(), nil
 }
 
 func createPostRunE(cmd *cobra.Command, args []string) error {
@@ -169,8 +170,10 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 	log.Debug().Str("file", metaF).Msg("Created meta file")
 
 	// Hash the outer items if asked
+	var hashes []config.HashSet
+	var hashFn string
 	if mustGetCmd[bool](cmd, "hash-outer") {
-		hashes := cmd.Context().Value(inventory.HashesKey).([]config.HashSet)
+		hashes = cmd.Context().Value(inventory.HashesKey).([]config.HashSet)
 		metaFh, err := os.Open(metaF) // nolint:gosec
 		if err != nil {
 			return err
@@ -181,7 +184,7 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 			Hash:     calculateHash(metaFh, hashAlgo.String()),
 		})
 		cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashesKey, hashes))
-		err = writeHashFile(cmd)
+		hashFn, err = writeHashFile(cmd)
 		checkErr(err, "Could not write out the hashfile")
 	}
 
@@ -198,6 +201,15 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 
 	inv := inventory.WithCmd(cmd)
 	opts := suitcase.OptsWithCmd(cmd)
+	// Copy files up if needed
+	if inv.Options.TransportPlugin != nil {
+		items := []string{"inventory.yaml", "suitcasectl.log", "suitcasectl-invocation-meta.yaml"}
+		if hashFn != "" {
+			items = append(items, path.Base(hashFn))
+		}
+		shipMetadata(items, opts, inv)
+	}
+
 	gout.MustPrint(runsum{
 		Destination: opts.Destination,
 		Suitcases:   inv.UniqueSuitcaseNames(),
@@ -207,17 +219,32 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 			"suitcasectl.log",
 			"suitcasectl-invocation-meta.yaml",
 		},
+		Hashes: hashes,
 	})
 	globalPersistentPostRun(cmd, args)
 	return nil
 }
 
+func shipMetadata(items []string, opts *config.SuitCaseOpts, inv *inventory.Inventory) {
+	var wg conc.WaitGroup
+	for _, fn := range items {
+		fn := fn
+		wg.Go(func() {
+			item := path.Join(opts.Destination, fn)
+			if err := inv.Options.TransportPlugin.Send(item); err != nil {
+				log.Warn().Err(err).Str("file", item).Msg("error copying file")
+			}
+		})
+	}
+	wg.Wait()
+}
+
 type runsum struct {
-	Directories []string
-	Suitcases   []string
-	Destination string
-	MetaFiles   []string
-	Hashes      []config.HashSet
+	Directories []string         `yaml:"directories"`
+	Suitcases   []string         `yaml:"suitcases"`
+	Destination string           `yaml:"destination"`
+	MetaFiles   []string         `yaml:"meta_files"`
+	Hashes      []config.HashSet `yaml:"hashes,omitempty"`
 }
 
 func createPreRunE(cmd *cobra.Command, args []string) error {
@@ -245,7 +272,21 @@ func createPreRunE(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func envOr(e, d string) string {
+	got := os.Getenv(e)
+	if got == "" {
+		return d
+	}
+	return got
+}
+
 func createRunE(cmd *cobra.Command, args []string) error {
+	// Try to print any panics in mostly sane way
+	defer func() {
+		if err := recover(); err != nil {
+			log.Fatal().Msg(fmt.Sprint(err))
+		}
+	}()
 	// Get option bits
 	inventoryFile, onlyInventory, err := inventoryOptsWithCobra(cmd, args)
 	if err != nil {
@@ -279,11 +320,7 @@ func createRunE(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		sample := os.Getenv("SAMPLE_EVERY")
-		if sample == "" {
-			sample = "100"
-		}
-		sampleI, err := strconv.Atoi(sample)
+		sampleI, err := strconv.Atoi(envOr("SAMPLE_EVERY", "100"))
 		panicIfErr(err)
 		createdFiles := processSuitcases(&processOpts{
 			Inventory:    inventoryD,

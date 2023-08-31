@@ -21,7 +21,7 @@ config, but does not require the rclone binary to be present on your host.`,
 		Aliases: []string{"r"},
 		Args:    cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			err := rclone.Clone(args[0], args[1])
+			err := rclone.Clone(args[0], args[1], "")
 			if err != nil {
 				log.Fatal().Err(err).Send()
 			}
