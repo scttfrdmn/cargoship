@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 	"runtime/pprof"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/dustin/go-humanize"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -37,10 +38,12 @@ var (
 // NewRootCmd represents the base command when called without any subcommands
 func NewRootCmd(lo io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:               "suitcasectl",
-		Short:             "Used blobs of files and directories for cold storage",
-		Version:           version,
-		Long:              paragraph(fmt.Sprintf(`The %v 🧳 tool generates bundles of files and directories that can be transferred off to remote storage. Files will be packaged by the maximum size of a suitcase. Use %v to limit how many suitcases are created at once.`, important("suitcasectl"), keyword("--concurrency"))),
+		Use:     "suitcasectl",
+		Short:   "Used blobs of files and directories for cold storage",
+		Version: version,
+		Long: paragraph(fmt.Sprintf(`The %s 🧳 tool generates bundles of files and directories that can be transferred off to remote storage. Files will be packaged by the maximum size of a suitcase.`,
+			makeGradientText(lipgloss.NewStyle(), "suitcasectl"),
+		)),
 		PersistentPreRun:  globalPersistentPreRun,
 		PersistentPostRun: globalPersistentPostRun,
 	}

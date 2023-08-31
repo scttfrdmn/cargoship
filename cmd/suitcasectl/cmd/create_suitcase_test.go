@@ -22,6 +22,14 @@ func TestNewSuitcaseWithDir(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestNewSuitcaseDuplicateDir(t *testing.T) {
+	testD := t.TempDir()
+	cmd := NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{"create", "suitcase", testD, testD})
+	err := cmd.ExecuteContext(context.Background())
+	require.EqualError(t, err, "duplicate path found in arguments")
+}
+
 func TestNewSuitcaseWithLimit(t *testing.T) {
 	testD := t.TempDir()
 	cmd := NewRootCmd(io.Discard)
