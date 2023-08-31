@@ -15,8 +15,9 @@ require (
 	github.com/karrick/godirwalk v1.17.0
 	github.com/klauspost/compress v1.16.7
 	github.com/klauspost/pgzip v1.2.6
+	github.com/lucasb-eyer/go-colorful v1.2.0
 	github.com/mailru/easyjson v0.7.7
-	github.com/mholt/archiver/v4 v4.0.0-alpha.8
+	github.com/mholt/archiver/v4 v4.0.0-alpha.8.0.20230831060951-e2261a1bb41f
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/rclone/rclone v1.63.1
 	github.com/rs/zerolog v1.30.0
@@ -107,7 +108,6 @@ require (
 	github.com/koofr/go-koofrclient v0.0.0-20221207135200-cbd7fc9ad6a6 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect

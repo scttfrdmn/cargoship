@@ -287,6 +287,10 @@ func createRunE(cmd *cobra.Command, args []string) error {
 			log.Fatal().Msg(fmt.Sprint(err))
 		}
 	}()
+
+	if hasDuplicates(args) {
+		return errors.New("duplicate path found in arguments")
+	}
 	// Get option bits
 	inventoryFile, onlyInventory, err := inventoryOptsWithCobra(cmd, args)
 	if err != nil {
@@ -316,26 +320,42 @@ func createRunE(cmd *cobra.Command, args []string) error {
 	cmd.SetContext(context.WithValue(cmd.Context(), inventory.SuitcaseOptionsKey, opts))
 
 	if !onlyInventory {
-		if err := opts.EncryptToCobra(cmd); err != nil {
-			return err
-		}
-
-		sampleI, err := strconv.Atoi(envOr("SAMPLE_EVERY", "100"))
-		panicIfErr(err)
-		createdFiles := processSuitcases(&processOpts{
-			Inventory:    inventoryD,
-			SuitcaseOpts: opts,
-			SampleEvery:  sampleI,
-			Concurrency:  mustGetCmd[int](cmd, "concurrency"),
-		})
-
-		if mustGetCmd[bool](cmd, "hash-outer") {
-			hashes := createHashes(createdFiles, cmd)
-			cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashesKey, hashes))
-		}
-
-		return nil
+		return createSuitcases(cmd, opts, inventoryD)
 	}
 	log.Warn().Msg("Only creating inventory file, no suitcase archives")
 	return nil
+}
+
+func createSuitcases(cmd *cobra.Command, opts *config.SuitCaseOpts, inventoryD *inventory.Inventory) error {
+	if err := opts.EncryptToCobra(cmd); err != nil {
+		return err
+	}
+
+	sampleI, err := strconv.Atoi(envOr("SAMPLE_EVERY", "100"))
+	if err != nil {
+		log.Warn().Err(err).Msg("could not set sampling")
+	}
+	createdFiles := processSuitcases(&processOpts{
+		Inventory:    inventoryD,
+		SuitcaseOpts: opts,
+		SampleEvery:  sampleI,
+		Concurrency:  mustGetCmd[int](cmd, "concurrency"),
+	})
+
+	if mustGetCmd[bool](cmd, "hash-outer") {
+		cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashesKey, createHashes(createdFiles, cmd)))
+	}
+
+	return nil
+}
+
+func hasDuplicates(strArr []string) bool {
+	seen := make(map[string]bool)
+	for _, str := range strArr {
+		if seen[str] {
+			return true
+		}
+		seen[str] = true
+	}
+	return false
 }

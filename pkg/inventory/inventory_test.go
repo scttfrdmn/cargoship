@@ -312,17 +312,15 @@ func TestWalkDirLimit(t *testing.T) {
 	require.EqualError(t, err, "halt")
 }
 
-func TestExternalTOC(t *testing.T) {
-	got, err := archiveTOCExternal("../testdata/archives/archive.tar.gz")
+func TestWonkyTOC(t *testing.T) {
+	got, err := archiveTOC("../testdata/archives/archive.tar.gz")
 	require.NoError(t, err)
-	require.Equal(t, []string{"archives/file1.txt", "archives/sub/", "archives/sub/file2.txt", "archives/thing.png"}, got)
+	require.Equal(t, []string{"archives/file1.txt", "archives/sub/file2.txt", "archives/thing.png"}, got)
 
 	// Test one of these wonky tars
-	/* This doesn't work because tar on the CI boxes is different than my local tar
-	got, err = archiveTOCExternal("../testdata/archives/self-tarred.tar")
+	got, err = archiveTOC("../testdata/archives/self-tarred.tar")
 	require.NoError(t, err)
-	require.Equal(t, []string{"./", "./1mb", "./2mb"}, got)
-	*/
+	require.Equal(t, []string{"._.", "._1mb", "._2mb", "1mb", "2mb"}, got)
 }
 
 func TestWalkDirExpandArchives(t *testing.T) {
