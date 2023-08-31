@@ -57,6 +57,9 @@ check-release:
     - if: '$CI_COMMIT_TAG !~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
 release:
   stage: release
+  # Use oit-shared instead of the unprived runner as this eats up a lot of resources
+  tags:
+      - oit-shared
   rules:
     - if: '$CI_COMMIT_TAG =~ /v[0-9]+\.[0-9]+\.[0-9]+/ '
   variables:
