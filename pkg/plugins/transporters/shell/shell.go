@@ -18,6 +18,7 @@ import (
 type Transporter struct {
 	checkScript string
 	sendScript  string
+	Config      transporters.Config
 }
 
 // Configure shell transporter
@@ -55,7 +56,10 @@ func (t *Transporter) Check() error {
 }
 
 // Send data using shell transporter
-func (t Transporter) Send(c transporters.Config) error {
+func (t Transporter) Send(s string) error {
+	if err := os.Setenv("SUITCASECTL_FILE", s); err != nil {
+		return err
+	}
 	log.Info().Str("cmd", t.sendScript).Msg("running send command")
 	rcmd := exec.Command(t.sendScript) // nolint
 	var stdBuffer bytes.Buffer

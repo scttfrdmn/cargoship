@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -60,6 +61,19 @@ func (s cloneRequest) JSONString() string {
 
 type syncResponse struct {
 	JobID int64 `json:"jobid"`
+}
+
+type statResponse struct {
+	Item *statResponseItem `json:"item,omitempty"`
+}
+
+type statResponseItem struct {
+	IsDir    bool
+	MimeType string
+	ModTime  string
+	Name     string
+	Path     string
+	Size     int64
 }
 
 type statusRequest struct {
@@ -170,14 +184,14 @@ func newCloneRequestWithSrcDst(source, destination string) (string, *cloneReques
 	var cloneAction string
 	var sreq *cloneRequest
 	if sourceStat.IsDir() {
-		log.Info().Msg("Using sync")
+		log.Debug().Msg("Using sync cloud method")
 		cloneAction = "sync/sync"
 		sreq = mustNewCloneRequest(
 			withSrcFs(source),
 			withDstFs(destination),
 		)
 	} else {
-		log.Info().Msg("Using copyfile")
+		log.Info().Msg("Using copyfile cloud method")
 		cloneAction = "operations/copyfile"
 		sourceB := filepath.Base(source)
 		sreq = mustNewCloneRequest(
@@ -190,6 +204,44 @@ func newCloneRequestWithSrcDst(source, destination string) (string, *cloneReques
 	return cloneAction, sreq, nil
 }
 
+type aboutRequest struct {
+	Fs     string `json:"fs"`
+	Remote string `json:"remote"`
+}
+
+// JSONString returns the json representation in string format. Panic on error. I
+// don't _think_ there's a way this actually errors, so feels safe
+func (a aboutRequest) JSONString() string {
+	js, err := json.Marshal(a)
+	if err != nil {
+		panic(err)
+	}
+	return string(js)
+}
+
+// Exists checks to see if a destination exists. This is useful as a pre-flight check
+func Exists(d string) bool {
+	librclone.Initialize()
+	pieces := strings.Split(d, ":")
+	if len(pieces) != 2 {
+		panic("Unknown type of destination")
+	}
+
+	ar := aboutRequest{
+		Fs:     pieces[0] + ":",
+		Remote: strings.TrimPrefix(pieces[1], "/"),
+	}
+
+	out, status := librclone.RPC("operations/stat", ar.JSONString())
+	_ = status
+	var sr statResponse
+	err := json.Unmarshal([]byte(out), &sr)
+	if err != nil {
+		panic(err)
+	}
+	return sr.Item != nil
+}
+
 // Clone mimics rclonse 'clone' option, given a source and destination
 func Clone(source string, destination string) error {
 	// We are pushing all the usage to Stdout instead of Stderr. I would
@@ -198,6 +250,9 @@ func Clone(source string, destination string) error {
 	// stdout. Hopefully cobra will be able to have multiple outputs at some
 	// point
 	log := log.With().Str("source", source).Str("destination", destination).Logger()
+	if !Exists(destination) {
+		log.Warn().Msg("destination does not exist, it may be created during the run")
+	}
 
 	librclone.Initialize()
 

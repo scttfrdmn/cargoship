@@ -246,6 +246,12 @@ func createPreRunE(cmd *cobra.Command, args []string) error {
 }
 
 func createRunE(cmd *cobra.Command, args []string) error {
+	// Try to print any panics in mostly sane way
+	defer func() {
+		if err := recover(); err != nil {
+			log.Fatal().Msg(fmt.Sprint(err))
+		}
+	}()
 	// Get option bits
 	inventoryFile, onlyInventory, err := inventoryOptsWithCobra(cmd, args)
 	if err != nil {
