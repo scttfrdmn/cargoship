@@ -22,6 +22,7 @@ import (
 	"github.com/mholt/archiver/v4"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/cloud"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/shell"
 
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
@@ -744,6 +745,7 @@ func WithViper(v *viper.Viper) func(*Options) {
 		setUser(*v, o)
 		// setTransportPlugin(*v, o)
 		setCloudDestination(*v, o)
+		setShellDestination(*v, o)
 
 		// Formats are a little funky...should we set them special?
 		// Strip out leading dots
@@ -938,6 +940,24 @@ func setCloudDestination[T viper.Viper | cobra.Command](v T, o *Options) {
 	}
 }
 
+func setShellDestination[T viper.Viper | cobra.Command](v T, o *Options) {
+	k := "shell-destination"
+	switch any(new(T)).(type) {
+	case *viper.Viper:
+		vi := mustGetViper(v)
+		if vi.IsSet(k) {
+			o.TransportPlugin = &shell.Transporter{Config: transporters.Config{Destination: vi.GetString(k)}}
+		}
+	case *cobra.Command:
+		ci := mustGetCommand(v)
+		if ci.Flags().Changed(k) {
+			o.TransportPlugin = &shell.Transporter{Config: transporters.Config{Destination: mustGetCmd[string](ci, k)}}
+		}
+	default:
+		panic(fmt.Sprintf("unexpected use of set %v", k))
+	}
+}
+
 /*
 func setTransportPlugin[T viper.Viper | cobra.Command](v T, o *Options) {
 	k := "transport-plugin"
@@ -1046,6 +1066,7 @@ func WithCobra(cmd *cobra.Command, args []string) func(*Options) {
 		setLimitFileCount(*cmd, o)
 		// setTransportPlugin(*cmd, o)
 		setCloudDestination(*cmd, o)
+		setShellDestination(*cmd, o)
 
 		if len(args) > 0 {
 			o.Directories = args
@@ -1362,6 +1383,7 @@ func BindCobra(cmd *cobra.Command) {
 	cmd.PersistentFlags().Bool("archive-toc-deep", false, "Also include the Table-of-Contents for supported archives. This will look at any file, regardless of extension")
 	// cmd.PersistentFlags().String("transport-plugin", "", "Transport plugin to use (if any). Options: shell, rclone...")
 	cmd.PersistentFlags().String("cloud-destination", "", "Send files to this cloud destination after creation. Destination must be a valid rclone location.")
+	cmd.PersistentFlags().String("shell-destination", "", "Send files through this shell destination after creation.")
 }
 
 // mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command

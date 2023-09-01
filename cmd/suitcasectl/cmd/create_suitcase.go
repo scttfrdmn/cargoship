@@ -11,7 +11,6 @@ import (
 
 	"github.com/drewstinnett/gout/v2"
 	"github.com/rs/zerolog/log"
-	"github.com/sourcegraph/conc"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
@@ -226,17 +225,17 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 }
 
 func shipMetadata(items []string, opts *config.SuitCaseOpts, inv *inventory.Inventory) {
-	var wg conc.WaitGroup
+	// Running in to a loop issue while this is concurrent
+	// var wg conc.WaitGroup
 	for _, fn := range items {
-		fn := fn
-		wg.Go(func() {
-			item := path.Join(opts.Destination, fn)
-			if err := inv.Options.TransportPlugin.Send(item); err != nil {
-				log.Warn().Err(err).Str("file", item).Msg("error copying file")
-			}
-		})
+		// wg.Go(func() {
+		item := path.Join(opts.Destination, fn)
+		if err := inv.Options.TransportPlugin.Send(item); err != nil {
+			log.Warn().Err(err).Str("file", item).Msg("error copying file")
+		}
+		// })
 	}
-	wg.Wait()
+	// wg.Wait()
 }
 
 type runsum struct {
