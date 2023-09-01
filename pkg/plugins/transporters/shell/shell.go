@@ -17,7 +17,6 @@ import (
 // Transporter is the main struct for this plugin
 type Transporter struct {
 	checkScript string
-	sendScript  string
 	Config      transporters.Config
 }
 
@@ -28,13 +27,13 @@ func (t *Transporter) Configure(c transporters.Config) error {
 
 // Check shell transporter
 func (t *Transporter) Check() error {
-	t.checkScript = os.Getenv("SUITCASECTL_CHECK")
-	t.sendScript = os.Getenv("SUITCASECTL_SEND")
-	if t.checkScript == "" {
-		return errors.New("must set SUITCASECTL_CHECK to the shell script to do a sanity check")
+	if t.Config.Destination == "" {
+		return errors.New("must set a non empty destination")
 	}
-	if t.sendScript == "" {
-		return errors.New("must set SUITCASECTL_SEND to the shell script to send the file off")
+
+	if t.checkScript == "" {
+		log.Debug().Msg("no checker script specified")
+		return nil
 	}
 
 	rcmd := exec.Command(t.checkScript) // nolint
@@ -45,12 +44,10 @@ func (t *Transporter) Check() error {
 	rcmd.Stderr = mw
 
 	// Execute the command
-	log.Info().Msg("running shell transporter")
+	log.Info().Msg("running shell transporter check")
 	if err := rcmd.Run(); err != nil {
 		return err
 	}
-	// retCode := rcmd.ProcessState.ExitCode()
-	// fmt.Fprintf(os.Stderr, "EXIT: %v\n", retCode)
 
 	return nil
 }
@@ -60,8 +57,8 @@ func (t Transporter) Send(s string) error {
 	if err := os.Setenv("SUITCASECTL_FILE", s); err != nil {
 		return err
 	}
-	log.Info().Str("cmd", t.sendScript).Msg("running send command")
-	rcmd := exec.Command(t.sendScript) // nolint
+	log.Info().Str("cmd", t.Config.Destination).Msg("running send command")
+	rcmd := exec.Command(t.Config.Destination) // nolint
 	var stdBuffer bytes.Buffer
 	mw := io.MultiWriter(os.Stdout, &stdBuffer)
 
@@ -73,8 +70,6 @@ func (t Transporter) Send(s string) error {
 	if err := rcmd.Run(); err != nil {
 		return err
 	}
-	// retCode := rcmd.ProcessState.ExitCode()
-	// fmt.Fprintf(os.Stderr, "EXIT: %v\n", retCode)
 
 	return nil
 }

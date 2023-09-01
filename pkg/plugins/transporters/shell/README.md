@@ -1,12 +1,6 @@
 # Shell Transport Plugin
 
-Use `--transport-plugin=shell`, and then specify a couple things in the env:
-
-```bash
-$ export SUITCASECTL_SEND=$PWD/scripts/example-shell-transport.sh
-$ export SUITCASECTL_CHECK=$PWD/some-preflight-check.sh
-...
-```
+Use `--shell-destination=$YOUR_SHELL_SCRIPT`
 
 The file to copy will be accessible with the `$SUITCASECTL_FILE` variable, and can be used in a script like this:
 
