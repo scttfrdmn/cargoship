@@ -184,7 +184,7 @@ func newCloneRequestWithSrcDst(source, destination string) (string, *cloneReques
 	var sreq *cloneRequest
 	if sourceStat.IsDir() {
 		log.Debug().Msg("Using sync cloud method")
-		cloneAction = "sync/sync"
+		cloneAction = "sync/copy"
 		sreq = mustNewCloneRequest(
 			withSrcFs(source),
 			withDstFs(destination),

@@ -26,7 +26,7 @@ func TestNewCloneRequestWithSrcDst(t *testing.T) {
 	// Test with directory
 	gotS, gotR, err := newCloneRequestWithSrcDst("testdata/fake-dir", "fake-dest:/")
 	require.NoError(t, err)
-	require.Equal(t, "sync/sync", gotS)
+	require.Equal(t, "sync/copy", gotS)
 	require.Equal(t, &cloneRequest{SrcFs: "testdata/fake-dir", DstFs: "fake-dest:/", SrcRemote: "", DstRemote: "", Group: "testdata-fake-dir", Async: true}, gotR)
 
 	// Test with a file
