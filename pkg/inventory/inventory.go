@@ -922,7 +922,7 @@ func setHashInner[T viper.Viper | cobra.Command](v T, o *Options) {
 	}
 }
 
-func setCloudDestination[T viper.Viper | cobra.Command](v T, o *Options) {
+func setCloudDestination[T viper.Viper | cobra.Command](v T, o *Options) { //nolint:dupl
 	k := "cloud-destination"
 	switch any(new(T)).(type) {
 	case *viper.Viper:
@@ -940,7 +940,7 @@ func setCloudDestination[T viper.Viper | cobra.Command](v T, o *Options) {
 	}
 }
 
-func setShellDestination[T viper.Viper | cobra.Command](v T, o *Options) {
+func setShellDestination[T viper.Viper | cobra.Command](v T, o *Options) { // nolint:dupl
 	k := "shell-destination"
 	switch any(new(T)).(type) {
 	case *viper.Viper:

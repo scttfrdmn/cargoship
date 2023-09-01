@@ -234,6 +234,28 @@ to ensure the destination already exists. If it does not, the command will fail
 before anything is created. Using this option also uploads all relevant
 metadata that is created with the suitcases.
 
+### Shell Script Execution
+
+Use `--shell-destination=$YOUR_SHELL_SCRIPT`
+
+The file to copy will be accessible with the `$SUITCASECTL_FILE` variable, and can be used in a script like this:
+
+```bash
+#!/usr/bin/env bash
+
+if [[ -z "${SUITCASECTL_FILE}" ]]; then
+    echo "must set SUITCASECTL_FILE" before running 1>&2
+    exit 2
+fi
+
+if [[ ! -e "${SUITCASECTL_FILE}" ]]; then
+    echo "SUITCASECTL_FILE must be a file" 2>&2
+    exit 3
+fi
+
+rsync -va "${SUITCASECTL_FILE}" foo:/bar/
+```
+
 ### Performance and Benchmarking
 
 Benchmarking can be done in a number of ways. You can run our built in Go
