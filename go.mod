@@ -19,6 +19,7 @@ require (
 	github.com/mailru/easyjson v0.7.7
 	github.com/mholt/archiver/v4 v4.0.0-alpha.8.0.20230831060951-e2261a1bb41f
 	github.com/mitchellh/go-homedir v1.1.0
+	github.com/oklog/ulid/v2 v2.1.0
 	github.com/rclone/rclone v1.63.1
 	github.com/rs/zerolog v1.30.0
 	github.com/sourcegraph/conc v0.3.0
