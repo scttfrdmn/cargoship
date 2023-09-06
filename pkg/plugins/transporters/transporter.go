@@ -6,6 +6,9 @@ package transporters
 import (
 	"fmt"
 	"os"
+	"path"
+
+	"github.com/oklog/ulid/v2"
 )
 
 // Transporter describes how items that meet a Transporter behaves
@@ -34,4 +37,10 @@ func (c Config) ToEnv() error {
 		}
 	}
 	return nil
+}
+
+// UniquifyDest turns a string in to a unique string, by appending a ULID
+func UniquifyDest(s string) string {
+	u := ulid.Make()
+	return path.Join(s, u.String())
 }

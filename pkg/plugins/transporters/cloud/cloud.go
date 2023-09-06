@@ -5,7 +5,6 @@ package cloud
 
 import (
 	"errors"
-	"fmt"
 
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
@@ -21,15 +20,12 @@ func (t *Transporter) Check() error {
 	if t.Config.Destination == "" {
 		return errors.New("destination is not set")
 	}
-	if !rclone.Exists(t.Config.Destination) {
-		return fmt.Errorf("destination does not exist: %v", t.Config.Destination)
-	}
 	return nil
 }
 
 // Send the data on up
 func (t Transporter) Send(s string) error {
-	return rclone.Clone(s, t.Config.Destination, "")
+	return rclone.Clone(s, t.Config.Destination)
 }
 
 // Validate this meets the Transporter interface

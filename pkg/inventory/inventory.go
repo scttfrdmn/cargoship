@@ -928,12 +928,14 @@ func setCloudDestination[T viper.Viper | cobra.Command](v T, o *Options) { //nol
 	case *viper.Viper:
 		vi := mustGetViper(v)
 		if vi.IsSet(k) {
-			o.TransportPlugin = &cloud.Transporter{Config: transporters.Config{Destination: vi.GetString(k)}}
+			o.TransportPlugin = &cloud.Transporter{
+				Config: transporters.Config{Destination: transporters.UniquifyDest(vi.GetString(k))},
+			}
 		}
 	case *cobra.Command:
 		ci := mustGetCommand(v)
 		if ci.Flags().Changed(k) {
-			o.TransportPlugin = &cloud.Transporter{Config: transporters.Config{Destination: mustGetCmd[string](ci, k)}}
+			o.TransportPlugin = &cloud.Transporter{Config: transporters.Config{Destination: transporters.UniquifyDest(mustGetCmd[string](ci, k))}}
 		}
 	default:
 		panic(fmt.Sprintf("unexpected use of set %v", k))

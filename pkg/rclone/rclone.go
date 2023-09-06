@@ -6,6 +6,7 @@ package rclone
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -243,8 +244,42 @@ func Exists(d string) bool {
 	return sr.Item != nil
 }
 
+type commandReq struct {
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Opts    map[string]string `json:"opts"`
+}
+
+// JSON returns the json representation in string format. Panic on error. I
+// don't _think_ there's a way this actually errors, so feels safe
+func (c commandReq) JSONString() string {
+	js, err := json.Marshal(c)
+	if err != nil {
+		panic(err)
+	}
+	return string(js)
+}
+
+// Command uses the rc core/command RPC call to run arbitrary rclone operations
+func Command(command string, args []string, opts map[string]string) error {
+	librclone.Initialize()
+
+	req := commandReq{
+		Command: command,
+		Args:    args,
+		Opts:    opts,
+	}
+
+	out, status := librclone.RPC("core/command", req.JSONString())
+	if status != 200 {
+		log.Info().Interface("out", out).Msg("command request status failed")
+	}
+	fmt.Fprintf(os.Stderr, "CMD OUT: %+v\n", out)
+	return nil
+}
+
 // Clone mimics rclonse 'clone' option, given a source and destination
-func Clone(source, destination, uid string) error {
+func Clone(source, destination string) error {
 	// We are pushing all the usage to Stdout instead of Stderr. I would
 	// like to eventually get this back to stderr, however currently that
 	// breaks the shell completion pieces, as all shells expect them on
@@ -252,7 +287,7 @@ func Clone(source, destination, uid string) error {
 	// point
 	log := log.With().Str("source", source).Str("destination", destination).Logger()
 	if !Exists(destination) {
-		log.Warn().Msg("destination does not exist, it may be created during the run")
+		log.Debug().Msg("destination does not exist, it may be created during the run")
 	}
 
 	librclone.Initialize()

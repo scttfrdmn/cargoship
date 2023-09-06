@@ -68,6 +68,8 @@ func NewRootCmd(lo io.Writer) *cobra.Command {
 	rcloneCmd := NewRcloneCmd()
 	cmd.AddCommand(rcloneCmd)
 
+	cmd.AddCommand(NewRetierCmd())
+
 	cmd.AddCommand(NewFindCmd())
 	cmd.AddCommand(NewAnalyzeCmd())
 
