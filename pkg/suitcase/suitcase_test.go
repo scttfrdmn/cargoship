@@ -137,7 +137,7 @@ func TestFillFileWithInventoryIndexHashInner(t *testing.T) {
 	))
 	require.NoError(t, err)
 	sf, err := WriteSuitcaseFile(so, i, 1, nil)
-	sfs := fmt.Sprintf("%v.sha1", sf)
+	sfs := fmt.Sprintf("%v.md5", sf)
 	require.NoError(t, err)
 	require.FileExists(t, sfs)
 
@@ -192,4 +192,12 @@ func BenchmarkNewSuitcase(b *testing.B) {
 			})
 		}
 	}
+}
+
+func TestHexToBin(t *testing.T) {
+	require.Equal(
+		t,
+		"kOKOhBhQjtnw9B7gDxYcCw==",
+		hexToBin("90e28e8418508ed9f0f41ee00f161c0b"),
+	)
 }
