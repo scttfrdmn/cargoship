@@ -3,6 +3,7 @@ package cmd
 import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
 )
 
@@ -22,7 +23,7 @@ host.`,
 		Aliases: []string{"r"},
 		Args:    cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			err := rclone.Clone(args[0], args[1])
+			err := rclone.Clone(args[0], transporters.UniquifyDest(args[1]))
 			if err != nil {
 				log.Fatal().Err(err).Send()
 			}
