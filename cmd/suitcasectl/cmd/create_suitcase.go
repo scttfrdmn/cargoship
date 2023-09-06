@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"strconv"
@@ -21,7 +22,7 @@ import (
 var (
 	inventoryFormat inventory.Format
 	suitcaseFormat  suitcase.Format
-	hashAlgo        inventory.HashAlgorithm = inventory.SHA1Hash
+	hashAlgo        inventory.HashAlgorithm = inventory.MD5Hash
 )
 
 // NewCreateSuitcaseCmd represents the createSuitcase command
@@ -112,7 +113,7 @@ func bindInventoryCmd(cmd *cobra.Command) {
 	if err := cmd.RegisterFlagCompletionFunc("hash-algorithm", inventory.HashCompletion); err != nil {
 		panic(err)
 	}
-	cmd.PersistentFlags().Lookup("hash-algorithm").DefValue = "sha1"
+	cmd.PersistentFlags().Lookup("hash-algorithm").DefValue = "md5"
 
 	// cmd.PersistentFlags().String("suitcase-format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")
 	// Inventory Format needs some extra love for auto complete
@@ -148,19 +149,65 @@ func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, er
 	return userOverrides, nil
 }
 
-func writeHashFile(cmd *cobra.Command) (string, error) {
-	hashFile := path.Join(cmd.Context().Value(inventory.DestinationKey).(string), fmt.Sprintf("suitcasectl.%v", hashAlgo.String()))
+type hashFileCreator func([]config.HashSet, io.Writer) error
+
+func writeHashFile(cmd *cobra.Command, hfc hashFileCreator, ext string) (string, error) {
+	hashFile := path.Join(cmd.Context().Value(inventory.DestinationKey).(string), fmt.Sprintf("suitcasectl.%v", hashAlgo.String()+ext))
 	log.Info().Str("hash-file", hashFile).Msg("Creating hashes")
 	hashF, err := os.Create(hashFile) // nolint:gosec
 	if err != nil {
 		return "", err
 	}
 	defer dclose(hashF)
-	err = suitcase.WriteHashFile(cmd.Context().Value(inventory.HashesKey).([]config.HashSet), hashF)
+	err = hfc(cmd.Context().Value(inventory.HashesKey).([]config.HashSet), hashF)
 	if err != nil {
 		return "", err
 	}
 	return hashF.Name(), nil
+}
+
+// This is the binary version of the hash, usually recreated with xxd -r -p on the CLI
+/*
+func writeHashFileBin(cmd *cobra.Command) (string, error) {
+	hashFile := path.Join(cmd.Context().Value(inventory.DestinationKey).(string), fmt.Sprintf("suitcasectl.%vbin", hashAlgo.String()))
+	log.Info().Str("hash-file", hashFile).Msg("Creating hashes")
+	hashF, err := os.Create(hashFile) // nolint:gosec
+	if err != nil {
+		return "", err
+	}
+	defer dclose(hashF)
+	err = suitcase.WriteHashFileBin(cmd.Context().Value(inventory.HashesKey).([]config.HashSet), hashF)
+	if err != nil {
+		return "", err
+	}
+	return hashF.Name(), nil
+}
+*/
+
+// setOuterHashes returns a HashSet, hashFileName, hashFileNameBinary and error
+func setOuterHashes(cmd *cobra.Command, metaF string) ([]config.HashSet, string, string, error) {
+	hashes, ok := cmd.Context().Value(inventory.HashesKey).([]config.HashSet)
+	if !ok {
+		return nil, "", "", errors.New("could not find inventory.HashesKey in context")
+	}
+	// hashes = cmd.Context().Value(inventory.HashesKey).([]config.HashSet)
+	metaFh, err := os.Open(metaF) // nolint:gosec
+	if err != nil {
+		return nil, "", "", err
+	}
+	defer dclose(metaFh)
+	hashes = append(hashes, config.HashSet{
+		Filename: strings.TrimPrefix(metaF, cmd.Context().Value(inventory.DestinationKey).(string)+"/"),
+		Hash:     calculateHash(metaFh, hashAlgo.String()),
+	})
+
+	cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashesKey, hashes))
+	hashFn, err := writeHashFile(cmd, suitcase.WriteHashFile, "")
+	checkErr(err, "Could not write out the hashfile")
+
+	hashFnBin, err := writeHashFile(cmd, suitcase.WriteHashFileBin, "bin")
+	checkErr(err, "Could not write out the binary hashfile")
+	return hashes, hashFn, hashFnBin, nil
 }
 
 func createPostRunE(cmd *cobra.Command, args []string) error {
@@ -170,20 +217,10 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 
 	// Hash the outer items if asked
 	var hashes []config.HashSet
-	var hashFn string
-	if mustGetCmd[bool](cmd, "hash-outer") {
-		hashes = cmd.Context().Value(inventory.HashesKey).([]config.HashSet)
-		metaFh, err := os.Open(metaF) // nolint:gosec
-		if err != nil {
-			return err
-		}
-		defer dclose(metaFh)
-		hashes = append(hashes, config.HashSet{
-			Filename: strings.TrimPrefix(metaF, cmd.Context().Value(inventory.DestinationKey).(string)+"/"),
-			Hash:     calculateHash(metaFh, hashAlgo.String()),
-		})
-		cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashesKey, hashes))
-		hashFn, err = writeHashFile(cmd)
+	var hashFn, hashFnBin string
+	if mustGetCmd[bool](cmd, "hash-outer") && !mustGetCmd[bool](cmd, "only-inventory") {
+		var err error
+		hashes, hashFn, hashFnBin, err = setOuterHashes(cmd, metaF)
 		checkErr(err, "Could not write out the hashfile")
 	}
 
@@ -201,24 +238,27 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 	inv := inventory.WithCmd(cmd)
 	opts := suitcase.OptsWithCmd(cmd)
 	// Copy files up if needed
+	mfiles := []string{
+		"inventory.yaml",
+		"suitcasectl.log",
+		"suitcasectl-invocation-meta.yaml",
+	}
+	if hashFn != "" {
+		mfiles = append(mfiles, path.Base(hashFn))
+	}
+	if hashFnBin != "" {
+		mfiles = append(mfiles, path.Base(hashFnBin))
+	}
 	if inv.Options.TransportPlugin != nil {
-		items := []string{"inventory.yaml", "suitcasectl.log", "suitcasectl-invocation-meta.yaml"}
-		if hashFn != "" {
-			items = append(items, path.Base(hashFn))
-		}
-		shipMetadata(items, opts, inv)
+		shipMetadata(mfiles, opts, inv)
 	}
 
 	gout.MustPrint(runsum{
 		Destination: opts.Destination,
 		Suitcases:   inv.UniqueSuitcaseNames(),
 		Directories: inv.Options.Directories,
-		MetaFiles: []string{
-			"inventory.yaml",
-			"suitcasectl.log",
-			"suitcasectl-invocation-meta.yaml",
-		},
-		Hashes: hashes,
+		MetaFiles:   mfiles,
+		Hashes:      hashes,
 	})
 	globalPersistentPostRun(cmd, args)
 	return nil

@@ -74,6 +74,19 @@ func TestNewSuitcaseOuterHash(t *testing.T) {
 	err := cmd.Execute()
 	require.NoError(t, err)
 	require.FileExists(t, filepath.Join(testD, "suitcasectl.sha1"))
+
+	// Try md5
+	cmd = NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{
+		"create", "suitcase", "../../../pkg/testdata/limit-dir/",
+		"--destination", testD,
+		"--user", "kimuser",
+		"--hash-outer",
+		"--hash-algorithm", "md5",
+	})
+	err = cmd.Execute()
+	require.NoError(t, err)
+	require.FileExists(t, filepath.Join(testD, "suitcasectl.md5"))
 }
 
 func TestNewSuitcaseWithProfiling(t *testing.T) {

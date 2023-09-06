@@ -19,6 +19,7 @@ type SuitCaseOpts struct {
 	EncryptOuter      bool // Encrypt the archive itself
 	HashInner         bool // Hash files inside the archive
 	HashOuter         bool // Hash the archive itself
+	HashAlgorithm     string
 	EncryptTo         *openpgp.EntityList
 	PostProcessScript string
 	PostProcessEnv    map[string]string

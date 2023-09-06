@@ -5,6 +5,8 @@ package suitcase
 
 import (
 	"bufio"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -288,6 +290,30 @@ func reverseMap[K string, V string | Format](m map[K]V) map[V]K {
 		ret[v] = k
 	}
 	return ret
+}
+
+func hexToBin(s string) string {
+	data, err := hex.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	return base64.StdEncoding.EncodeToString(data)
+}
+
+// WriteHashFileBin  writes out the hashset array to an io.Writer
+func WriteHashFileBin(hs []config.HashSet, o io.Writer) error {
+	w := bufio.NewWriter(o)
+	for _, hs := range hs {
+		_, err := w.WriteString(fmt.Sprintf("%s\t%s\n", hs.Filename, hexToBin(hs.Hash)))
+		if err != nil {
+			return err
+		}
+	}
+	err := w.Flush()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // WriteHashFile  writes out the hashset array to an io.Writer

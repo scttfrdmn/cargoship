@@ -419,7 +419,7 @@ func NewOptions(options ...func(*Options)) *Options {
 		SuitcaseFormat:  DefaultSuitcaseFormat,
 		InventoryFormat: "yaml",
 		User:            currentUser.Username,
-		HashAlgorithm:   SHA1Hash,
+		HashAlgorithm:   MD5Hash,
 	}
 	for _, opt := range options {
 		opt(dio)
@@ -1370,8 +1370,8 @@ func BindCobra(cmd *cobra.Command) {
 	cmd.PersistentFlags().String("internal-metadata-glob", "suitcase-meta*", "Glob pattern for internal metadata files. This should be directly under the top level directories of the targets that are being packaged up. Multiple matches will be included if found.")
 	cmd.PersistentFlags().StringArray("external-metadata-file", []string{}, "Additional files to include as metadata in the inventory. This should NOT be part of the suitcase target directories...use internal-metadata-glob for those")
 	cmd.PersistentFlags().StringArray("ignore-glob", []string{}, "Ignore files matching this glob pattern. Can be specified multiple times")
-	cmd.PersistentFlags().Bool("hash-inner", false, "Create SHA256 hashes for the inner contents of the suitcase")
-	cmd.PersistentFlags().Bool("hash-outer", false, "Create SHA256 hashes for the container and metadata files")
+	cmd.PersistentFlags().Bool("hash-inner", false, "Create hashes for the inner contents of the suitcase")
+	cmd.PersistentFlags().Bool("hash-outer", true, "Create hashes for the container and metadata files. Disable with --hash-outer=false")
 	cmd.PersistentFlags().Bool("encrypt-inner", false, "Encrypt files within the suitcase")
 	cmd.PersistentFlags().Bool("follow-symlinks", false, "Follow symlinks when traversing the target directories and files")
 	cmd.PersistentFlags().Int("buffer-size", 1024, "Buffer size if using a YAML inventory.")
