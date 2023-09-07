@@ -137,7 +137,7 @@ type processOpts struct {
 }
 
 // processSuitcases processes the suitcases
-func processSuitcases(po *processOpts) []string {
+func processSuitcases(po *processOpts, cmd *cobra.Command) []string {
 	ret := make([]string, po.Inventory.TotalIndexes)
 	p := pool.New().WithMaxGoroutines(po.Concurrency)
 	log.Debug().Int("concurrency", po.Concurrency).Msg("Setting pool guard")
@@ -173,7 +173,7 @@ func processSuitcases(po *processOpts) []string {
 					panicIfErr(err)
 
 					// Then end
-					serr := po.Inventory.Options.TransportPlugin.Send(createdF)
+					serr := po.Inventory.Options.TransportPlugin.Send(createdF, cmd.Context().Value(inventory.InventoryHash).(string))
 					panicIfErr(serr)
 				}
 			}

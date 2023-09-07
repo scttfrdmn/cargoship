@@ -151,6 +151,7 @@ func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, er
 
 type hashFileCreator func([]config.HashSet, io.Writer) error
 
+// This could definitely be cleaner...
 func writeHashFile(cmd *cobra.Command, hfc hashFileCreator, ext string) (string, error) {
 	hashFile := path.Join(cmd.Context().Value(inventory.DestinationKey).(string), fmt.Sprintf("suitcasectl.%v", hashAlgo.String()+ext))
 	log.Info().Str("hash-file", hashFile).Msg("Creating hashes")
@@ -165,24 +166,6 @@ func writeHashFile(cmd *cobra.Command, hfc hashFileCreator, ext string) (string,
 	}
 	return hashF.Name(), nil
 }
-
-// This is the binary version of the hash, usually recreated with xxd -r -p on the CLI
-/*
-func writeHashFileBin(cmd *cobra.Command) (string, error) {
-	hashFile := path.Join(cmd.Context().Value(inventory.DestinationKey).(string), fmt.Sprintf("suitcasectl.%vbin", hashAlgo.String()))
-	log.Info().Str("hash-file", hashFile).Msg("Creating hashes")
-	hashF, err := os.Create(hashFile) // nolint:gosec
-	if err != nil {
-		return "", err
-	}
-	defer dclose(hashF)
-	err = suitcase.WriteHashFileBin(cmd.Context().Value(inventory.HashesKey).([]config.HashSet), hashF)
-	if err != nil {
-		return "", err
-	}
-	return hashF.Name(), nil
-}
-*/
 
 // setOuterHashes returns a HashSet, hashFileName, hashFileNameBinary and error
 func setOuterHashes(cmd *cobra.Command, metaF string) ([]config.HashSet, string, string, error) {
@@ -250,7 +233,7 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		mfiles = append(mfiles, path.Base(hashFnBin))
 	}
 	if inv.Options.TransportPlugin != nil {
-		shipMetadata(mfiles, opts, inv)
+		shipMetadata(mfiles, opts, inv, cmd.Context().Value(inventory.InventoryHash).(string))
 	}
 
 	gout.MustPrint(runsum{
@@ -264,13 +247,13 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func shipMetadata(items []string, opts *config.SuitCaseOpts, inv *inventory.Inventory) {
+func shipMetadata(items []string, opts *config.SuitCaseOpts, inv *inventory.Inventory, uniqDir string) {
 	// Running in to a loop issue while this is concurrent
 	// var wg conc.WaitGroup
 	for _, fn := range items {
 		// wg.Go(func() {
 		item := path.Join(opts.Destination, fn)
-		if err := inv.Options.TransportPlugin.Send(item); err != nil {
+		if err := inv.Options.TransportPlugin.Send(item, uniqDir); err != nil {
 			log.Warn().Err(err).Str("file", item).Msg("error copying file")
 		}
 		// })
@@ -379,7 +362,7 @@ func createSuitcases(cmd *cobra.Command, opts *config.SuitCaseOpts, inventoryD *
 		SuitcaseOpts: opts,
 		SampleEvery:  sampleI,
 		Concurrency:  mustGetCmd[int](cmd, "concurrency"),
-	})
+	}, cmd)
 
 	if mustGetCmd[bool](cmd, "hash-outer") {
 		cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashesKey, createHashes(createdFiles, cmd)))

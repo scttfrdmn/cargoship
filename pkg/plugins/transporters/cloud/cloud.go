@@ -5,6 +5,7 @@ package cloud
 
 import (
 	"errors"
+	"path"
 
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
@@ -24,8 +25,12 @@ func (t *Transporter) Check() error {
 }
 
 // Send the data on up
-func (t Transporter) Send(s string) error {
-	return rclone.Clone(s, t.Config.Destination)
+func (t Transporter) Send(s, u string) error {
+	dest := t.Config.Destination
+	if u != "" {
+		dest = path.Join(dest, u)
+	}
+	return rclone.Clone(s, dest)
 }
 
 // Validate this meets the Transporter interface

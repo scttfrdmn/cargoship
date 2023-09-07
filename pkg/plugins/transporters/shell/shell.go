@@ -53,7 +53,7 @@ func (t *Transporter) Check() error {
 }
 
 // Send data using shell transporter
-func (t Transporter) Send(s string) error {
+func (t Transporter) Send(s, u string) error {
 	if err := os.Setenv("SUITCASECTL_FILE", s); err != nil {
 		return err
 	}
