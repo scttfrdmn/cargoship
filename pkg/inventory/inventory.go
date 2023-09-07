@@ -5,6 +5,8 @@ package inventory
 
 import (
 	"context"
+	"crypto/md5" // nolint
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -59,6 +61,8 @@ const (
 	CLIMetaKey
 	// LogWriterKey is where the log writer goes
 	LogWriterKey
+	// InventoryHash is where the hashing of the inventory goes
+	InventoryHash
 )
 
 var errHalt = errors.New("halt")
@@ -929,13 +933,19 @@ func setCloudDestination[T viper.Viper | cobra.Command](v T, o *Options) { //nol
 		vi := mustGetViper(v)
 		if vi.IsSet(k) {
 			o.TransportPlugin = &cloud.Transporter{
-				Config: transporters.Config{Destination: transporters.UniquifyDest(vi.GetString(k))},
+				Config: transporters.Config{
+					Destination: vi.GetString(k),
+				},
 			}
 		}
 	case *cobra.Command:
 		ci := mustGetCommand(v)
 		if ci.Flags().Changed(k) {
-			o.TransportPlugin = &cloud.Transporter{Config: transporters.Config{Destination: transporters.UniquifyDest(mustGetCmd[string](ci, k))}}
+			o.TransportPlugin = &cloud.Transporter{
+				Config: transporters.Config{
+					Destination: mustGetCmd[string](ci, k),
+				},
+			}
 		}
 	default:
 		panic(fmt.Sprintf("unexpected use of set %v", k))
@@ -1145,7 +1155,8 @@ func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []stri
 		if err != nil {
 			return nil, err
 		}
-		log.Debug().Str("file", outF.Name()).Msg("Created inventory file")
+		inventoryFile = outF.Name()
+		log.Debug().Str("file", inventoryFile).Msg("Created inventory file")
 	} else {
 		var err error
 		inventoryD, err = NewInventoryWithFilename(inventoryFile)
@@ -1153,6 +1164,13 @@ func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []stri
 			return nil, err
 		}
 	}
+
+	// Calculate a hash of the inventory
+	h, err := calculateMD5Sum(inventoryFile)
+	if err != nil {
+		return nil, err
+	}
+	cmd.SetContext(context.WithValue(cmd.Context(), InventoryHash, h))
 	// Store the inventory in context, so we can access it in the other run stages
 	cmd.SetContext(context.WithValue(cmd.Context(), InventoryKey, inventoryD))
 	inventoryD.SummaryLog()
@@ -1711,4 +1729,30 @@ func isTOCAble(s string) bool {
 		}
 	}
 	return false
+}
+
+// calculateMD5Sum calculates the MD5 checksum of a file given its path.
+func calculateMD5Sum(filePath string) (string, error) {
+	file, err := os.Open(filePath) // nolint:gosec
+	if err != nil {
+		return "", err
+	}
+	defer dclose(file)
+
+	hash := md5.New() // nolint:gosec
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+
+	// Convert the MD5 hash to a hexadecimal string representation
+	checksum := hex.EncodeToString(hash.Sum(nil))
+
+	return checksum, nil
+}
+
+func dclose(c io.Closer) {
+	err := c.Close()
+	if err != nil {
+		log.Warn().Interface("closer", c).Msg("error closing file")
+	}
 }
