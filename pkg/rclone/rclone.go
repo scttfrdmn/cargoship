@@ -6,7 +6,6 @@ package rclone
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +15,8 @@ import (
 	"github.com/rs/zerolog/log"
 
 	_ "github.com/rclone/rclone/backend/all" // import all backend
-	_ "github.com/rclone/rclone/fs/sync"     // import the file sync bits
+	"github.com/rclone/rclone/fs/rc"
+	_ "github.com/rclone/rclone/fs/sync" // import the file sync bits
 	"github.com/rclone/rclone/librclone/librclone"
 )
 
@@ -244,10 +244,11 @@ func Exists(d string) bool {
 	return sr.Item != nil
 }
 
+/*
 type commandReq struct {
-	Command string            `json:"command"`
-	Args    []string          `json:"args"`
-	Opts    map[string]string `json:"opts"`
+	Command string    `json:"command"`
+	Args    []string  `json:"args"`
+	Opts    rc.Params `json:"opts"`
 }
 
 // JSON returns the json representation in string format. Panic on error. I
@@ -259,22 +260,22 @@ func (c commandReq) JSONString() string {
 	}
 	return string(js)
 }
+*/
 
-// Command uses the rc core/command RPC call to run arbitrary rclone operations
-func Command(command string, args []string, opts map[string]string) error {
+// APIOneShot is a generic way to call the API. Good for single commands to
+// send through that don't have to wait and such
+func APIOneShot(command string, params rc.Params) error {
 	librclone.Initialize()
 
-	req := commandReq{
-		Command: command,
-		Args:    args,
-		Opts:    opts,
+	paramsB, err := json.Marshal(params)
+	if err != nil {
+		return err
 	}
-
-	out, status := librclone.RPC("core/command", req.JSONString())
+	out, status := librclone.RPC(command, string(paramsB))
 	if status != 200 {
 		log.Info().Interface("out", out).Msg("command request status failed")
 	}
-	fmt.Fprintf(os.Stderr, "CMD OUT: %+v\n", out)
+	log.Info().Msg("🎊 All set! 🎊")
 	return nil
 }
 
