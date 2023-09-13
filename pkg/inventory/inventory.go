@@ -1384,7 +1384,7 @@ func newInventoryCmd() *cobra.Command {
 func BindCobra(cmd *cobra.Command) {
 	cmd.PersistentFlags().Int("concurrency", 10, "Number of concurrent files to create")
 	cmd.PersistentFlags().String("inventory-file", "", "Use the given inventory file to create the suitcase")
-	cmd.PersistentFlags().String("max-suitcase-size", "0", "Maximum size for the set of suitcases generated. If no unit is specified, 'bytes' is assumed. 0 means no limit.")
+	cmd.PersistentFlags().String("max-suitcase-size", "500GiB", "Maximum size for the set of suitcases generated. If no unit is specified, 'bytes' is assumed. 0 means no limit.")
 	cmd.PersistentFlags().String("internal-metadata-glob", "suitcase-meta*", "Glob pattern for internal metadata files. This should be directly under the top level directories of the targets that are being packaged up. Multiple matches will be included if found.")
 	cmd.PersistentFlags().StringArray("external-metadata-file", []string{}, "Additional files to include as metadata in the inventory. This should NOT be part of the suitcase target directories...use internal-metadata-glob for those")
 	cmd.PersistentFlags().StringArray("ignore-glob", []string{}, "Ignore files matching this glob pattern. Can be specified multiple times")
