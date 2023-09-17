@@ -107,13 +107,13 @@ type jobStats struct {
 	Transfers    int64          `json:"transfers,omitempty"`
 	ElapsedTime  float64        `json:"elapsedTime,omitempty"`
 	Errors       int64          `json:"errors,omitempty"`
-	ETA          int64          `json:"eta,omitempty"`
+	ETA          float64        `json:"eta,omitempty"`
 	Transferring []jobFileStats `json:"transferring,omitempty"`
 }
 
 type jobFileStats struct {
 	Bytes      int64   `json:"bytes"`
-	ETA        int64   `json:"eta,omitempty"`
+	ETA        float64 `json:"eta,omitempty"`
 	Name       string  `json:"name"`
 	Percentage int     `json:"percentage"`
 	Speed      float64 `json:"speed"`
@@ -323,7 +323,6 @@ func copyParamsWithSrcDest(source, destination string) rc.Params {
 		"_group":  sourceB,
 		"_filter": fmt.Sprintf(`{"IncludeRule":["%v"]}`, sourceB),
 	}
-	fmt.Fprintf(os.Stderr, "PARAMS: %+v\n", params)
 	return params
 }
 
@@ -375,11 +374,13 @@ func Copy(source, destination string, c chan TransferStatus) error {
 	}
 
 	// stats, err := getStats(filepath.Base(source))
-	stats, err := getStats(fmt.Sprintf("job/%v", syncR.JobID))
-	if err != nil {
-		return err
-	}
-	log.Debug().Interface("stats", stats).Send()
+	/*
+		stats, err := getStats(fmt.Sprintf("job/%v", syncR.JobID))
+		if err != nil {
+			return err
+		}
+		log.Debug().Interface("stats", stats).Send()
+	*/
 
 	// Move the file back
 	/*
@@ -473,8 +474,8 @@ func waitForFinished(statusReq statusRequest, c chan TransferStatus) (*jobStatus
 		if statusReq.Group == "" {
 			return nil, errors.New("missing group")
 		}
-		// stats, err := getStats(statusReq.Group)
-		stats, err := getStats(fmt.Sprintf("job/%v", statusReq.JobID))
+		stats, err := getStats(statusReq.Group)
+		// stats, err := getStats(fmt.Sprintf("job/%v", statusReq.JobID))
 		if err != nil {
 			return nil, err
 		}

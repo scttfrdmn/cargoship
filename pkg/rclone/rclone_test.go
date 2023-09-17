@@ -56,7 +56,7 @@ func TestCopyParamsWithSrcDest(t *testing.T) {
 				"_group":    "foo.txt",
 			},
 		*/
-		rc.Params{"_async": true, "_group": "foo.txt", "dstFs": "cloud/foo/bar/", "srcFs": "/tmp/foo.txt"},
+		rc.Params{"_async": true, "_filter": "{\"IncludeRule\":[\"foo.txt\"]}", "_group": "foo.txt", "dstFs": "cloud/foo/bar/", "srcFs": "/tmp"},
 		got,
 	)
 }
@@ -70,11 +70,6 @@ func TestCopy(t *testing.T) {
 		for {
 			item := <-c
 			status = item
-			/*
-				if item.Stats.Bytes > 0 {
-					fmt.Fprintf(os.Stderr, "ITEM::: %+v\n", item)
-				}
-			*/
 		}
 	}()
 	err := Copy("../testdata/archives/self-tarred.tar", d, c)
@@ -82,7 +77,7 @@ func TestCopy(t *testing.T) {
 	require.NoError(t, err)
 	require.FileExists(t, path.Join(d, "self-tarred.tar"))
 	close(c)
-	require.Equal(t, int64(3154625), status.Stats.TotalBytes)
+	require.Equal(t, int64(3154432), status.Stats.TotalBytes)
 }
 
 func TestCopyFail(t *testing.T) {
