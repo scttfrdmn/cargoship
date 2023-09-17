@@ -61,6 +61,18 @@ func TestNewSuitcaseOverflow(t *testing.T) {
 	require.Equal(t, 2, len(i.Files))
 }
 
+func TestNewSuitcaseCloudDest(t *testing.T) {
+	testD := t.TempDir()
+	cmd := NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{
+		"create", "suitcase", "../../../pkg/testdata/overflow-queue/",
+		"--max-suitcase-size", "2.1Mb", "--concurrency", "2", "--cloud-destination", testD,
+	})
+	// err := cmd.ExecuteContext(context.Background())
+	err := cmd.Execute()
+	require.NoError(t, err)
+}
+
 func TestNewSuitcaseOuterHash(t *testing.T) {
 	testD := t.TempDir()
 	cmd := NewRootCmd(io.Discard)

@@ -30,7 +30,24 @@ func (t Transporter) Send(s, u string) error {
 	if u != "" {
 		dest = path.Join(dest, u)
 	}
-	return rclone.Clone(s, dest)
+	/*
+		c := make(chan rclone.TransferStatus)
+
+		go func() {
+			for {
+				status := <-c
+				status.Name = filepath.Base(s)
+				if status.Stats.Bytes != 0 {
+					fmt.Fprintf(os.Stderr, "TransferStatus: %+v\n", status)
+				}
+				// log.Info().Interface("status", status).Msg("transfer status")
+			}
+		}()
+	*/
+	err := rclone.Copy(s, dest, nil)
+
+	return err
+	// return rclone.Clone(s, dest)
 }
 
 // Validate this meets the Transporter interface
