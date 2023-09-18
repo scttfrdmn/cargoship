@@ -1,0 +1,8 @@
+site_name: Documentation
+theme:
+  name: material
+  icon:
+    logo: material/bag-suitcase-outline
+  features:
+    - content.code.select
+    - content.code.copy
