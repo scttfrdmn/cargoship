@@ -12,6 +12,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
 )
 
 // Transporter is the main struct for this plugin
@@ -54,6 +55,18 @@ func (t *Transporter) Check() error {
 
 // Send data using shell transporter
 func (t Transporter) Send(s, u string) error {
+	c := make(chan rclone.TransferStatus)
+	// Just drop junk
+	go func() {
+		for {
+			<-c
+		}
+	}()
+	return t.SendWithChannel(s, u, c)
+}
+
+// SendWithChannel sends through the given channel
+func (t Transporter) SendWithChannel(s, u string, c chan rclone.TransferStatus) error {
 	if err := os.Setenv("SUITCASECTL_FILE", s); err != nil {
 		return err
 	}

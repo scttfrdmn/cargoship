@@ -23,7 +23,7 @@ host.`,
 		Aliases: []string{"r"},
 		Args:    cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			err := rclone.Clone(args[0], transporters.UniquifyDest(args[1]))
+			err := rclone.Copy(args[0], transporters.UniquifyDest(args[1]), nil)
 			if err != nil {
 				log.Fatal().Err(err).Send()
 			}

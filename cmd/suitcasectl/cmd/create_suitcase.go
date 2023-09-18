@@ -14,9 +14,11 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	porter "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/travelagent"
 )
 
 var (
@@ -42,6 +44,7 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 		PersistentPostRunE: createPostRunE,
 	}
 	bindInventoryCmd(cmd)
+	travelagent.BindCobra(cmd)
 
 	return cmd
 }
@@ -276,6 +279,9 @@ func createPreRunE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	if hasDuplicates(args) {
+		return errors.New("duplicate path found in arguments")
+	}
 	// log.Fatal().Msgf("ALGO: %+v\n", hashAlgo)
 	cmd.SetContext(context.WithValue(cmd.Context(), inventory.DestinationKey, outDir))
 	// cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashTypeKey, hashAlgo))
@@ -302,7 +308,7 @@ func envOr(e, d string) string {
 	return got
 }
 
-func createRunE(cmd *cobra.Command, args []string) error {
+func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 	// Try to print any panics in mostly sane way
 	defer func() {
 		if err := recover(); err != nil {
@@ -310,9 +316,23 @@ func createRunE(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	if hasDuplicates(args) {
-		return errors.New("duplicate path found in arguments")
+	ptr := porter.Porter{
+		Cmd:    cmd,
+		Args:   args,
+		Logger: &log.Logger,
 	}
+	var err error
+	if ptr.TravelAgent, err = travelagent.New(travelagent.WithCmd(cmd)); err != nil {
+		log.Debug().Err(err).Msg("no valid travel agent found")
+	} else {
+		log.Info().Str("url", ptr.TravelAgent.StatusURL()).Msg("Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel ☀️")
+		if serr := ptr.SendUpdate(travelagent.StatusUpdate{
+			Status: travelagent.StatusPending,
+		}); serr != nil {
+			return serr
+		}
+	}
+
 	// Get option bits
 	inventoryFile, onlyInventory, err := inventoryOptsWithCobra(cmd, args)
 	if err != nil {
@@ -321,7 +341,7 @@ func createRunE(cmd *cobra.Command, args []string) error {
 
 	// Create an inventory file if one isn't specified
 	// inventoryD, err := inventory.CreateOrReadInventory(inventoryFile, userOverrides, args, cmd.Context().Value(destinationKey).(string), version)
-	inventoryD, err := inventory.CreateOrReadInventory(
+	ptr.Inventory, err = inventory.CreateOrReadInventory(
 		inventoryFile,
 		cmd,
 		args,
@@ -331,25 +351,50 @@ func createRunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if err = ptr.SendUpdate(travelagent.StatusUpdate{
+		SuitcasectlSource:      strings.Join(args, ", "),
+		SuitcasectlDestination: cmd.Context().Value(inventory.DestinationKey).(string),
+		Metadata:               ptr.Inventory.MustJSONString(),
+		MetadataCheckSum:       cmd.Context().Value(inventory.InventoryHash).(string),
+	}); err != nil {
+		log.Warn().Err(err).Msg("error sending status update")
+	}
+
 	// We need options even if we already have the inventory
 	opts := &config.SuitCaseOpts{
 		Destination:  cmd.Context().Value(inventory.DestinationKey).(string),
-		EncryptInner: inventoryD.Options.EncryptInner,
-		HashInner:    inventoryD.Options.HashInner,
-		Format:       inventoryD.Options.SuitcaseFormat,
+		EncryptInner: ptr.Inventory.Options.EncryptInner,
+		HashInner:    ptr.Inventory.Options.HashInner,
+		Format:       ptr.Inventory.Options.SuitcaseFormat,
 	}
 	// Store in context for later
 	cmd.SetContext(context.WithValue(cmd.Context(), inventory.SuitcaseOptionsKey, opts))
 
 	if !onlyInventory {
-		return createSuitcases(cmd, opts, inventoryD)
+		// return createSuitcases(cmd, opts, ptr.Inventory)
+		err = createSuitcases(&ptr, opts)
+		if err != nil {
+			if serr := ptr.SendUpdate(travelagent.StatusUpdate{
+				Status: travelagent.StatusFailed,
+			}); serr != nil {
+				log.Warn().Err(err).Msg("failed to send final status update")
+			}
+			return err
+		}
+		if serr := ptr.SendUpdate(travelagent.StatusUpdate{
+			// Status: travelagent.StatusComplete,
+		}); serr != nil {
+			log.Warn().Err(err).Msg("failed to send final status update")
+		}
+		return nil
 	}
 	log.Warn().Msg("Only creating inventory file, no suitcase archives")
 	return nil
 }
 
-func createSuitcases(cmd *cobra.Command, opts *config.SuitCaseOpts, inventoryD *inventory.Inventory) error {
-	if err := opts.EncryptToCobra(cmd); err != nil {
+// func createSuitcases(cmd *cobra.Command, opts *config.SuitCaseOpts, inventoryD *inventory.Inventory) error {
+func createSuitcases(ptr *porter.Porter, opts *config.SuitCaseOpts) error {
+	if err := opts.EncryptToCobra(ptr.Cmd); err != nil {
 		return err
 	}
 
@@ -358,14 +403,15 @@ func createSuitcases(cmd *cobra.Command, opts *config.SuitCaseOpts, inventoryD *
 		log.Warn().Err(err).Msg("could not set sampling")
 	}
 	createdFiles := processSuitcases(&processOpts{
-		Inventory:    inventoryD,
+		// Inventory:    ptr.Inventory,
+		Porter:       ptr,
 		SuitcaseOpts: opts,
 		SampleEvery:  sampleI,
-		Concurrency:  mustGetCmd[int](cmd, "concurrency"),
-	}, cmd)
+		Concurrency:  mustGetCmd[int](ptr.Cmd, "concurrency"),
+	}, ptr.Cmd)
 
-	if mustGetCmd[bool](cmd, "hash-outer") {
-		cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashesKey, createHashes(createdFiles, cmd)))
+	if mustGetCmd[bool](ptr.Cmd, "hash-outer") {
+		ptr.Cmd.SetContext(context.WithValue(ptr.Cmd.Context(), inventory.HashesKey, createHashes(createdFiles, ptr.Cmd)))
 	}
 
 	return nil

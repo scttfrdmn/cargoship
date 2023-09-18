@@ -1,8 +1,10 @@
 package rclone
 
 import (
+	"path"
 	"testing"
 
+	"github.com/rclone/rclone/fs/rc"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,4 +40,49 @@ func TestNewCloneRequestWithSrcDst(t *testing.T) {
 	// With something that doesn't exit
 	_, _, err = newCloneRequestWithSrcDst("testdata/never-exists.txt", "fake-dest:/")
 	require.EqualError(t, err, "stat testdata/never-exists.txt: no such file or directory")
+}
+
+func TestCopyParamsWithSrcDest(t *testing.T) {
+	got := copyParamsWithSrcDest("/tmp/foo.txt", "cloud/foo/bar/")
+	require.Equal(
+		t,
+		/*
+			rc.Params{
+				"srcFs":     "/tmp",
+				"srcRemote": "foo.txt",
+				"dstFs":     "cloud/foo/bar/",
+				"dstRemote": "foo.txt",
+				"_async":    true,
+				"_group":    "foo.txt",
+			},
+		*/
+		rc.Params{"_async": true, "_filter": "{\"IncludeRule\":[\"foo.txt\"]}", "_group": "foo.txt", "dstFs": "cloud/foo/bar/", "srcFs": "/tmp"},
+		got,
+	)
+}
+
+func TestCopy(t *testing.T) {
+	d := t.TempDir()
+	// err := Copy("testdata/file-1mb.txt", d, nil)
+	c := make(chan TransferStatus)
+	var status TransferStatus
+	go func() {
+		for {
+			item := <-c
+			status = item
+		}
+	}()
+	err := Copy("../testdata/archives/self-tarred.tar", d, c)
+	// err := Copy("testdata/fake-file.txt", d, nil)
+	require.NoError(t, err)
+	require.FileExists(t, path.Join(d, "self-tarred.tar"))
+	close(c)
+	require.Equal(t, int64(3154432), status.Stats.TotalBytes)
+}
+
+func TestCopyFail(t *testing.T) {
+	err := Copy("testdata/fake-file.txt", "never-exists:/foo", nil)
+	require.Error(t, err)
+	// require.EqualError(t, err, "didn't find section in config file")
+	require.EqualError(t, err, "didn't find section in config file")
 }

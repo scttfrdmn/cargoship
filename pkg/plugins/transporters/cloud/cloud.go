@@ -24,13 +24,26 @@ func (t *Transporter) Check() error {
 	return nil
 }
 
-// Send the data on up
+// Send sends the data up
 func (t Transporter) Send(s, u string) error {
+	c := make(chan rclone.TransferStatus)
+	go func() {
+		for {
+			<-c
+		}
+	}()
+	return t.SendWithChannel(s, u, c)
+}
+
+// SendWithChannel the data on up with an optional channel
+func (t Transporter) SendWithChannel(s, u string, c chan rclone.TransferStatus) error {
 	dest := t.Config.Destination
 	if u != "" {
 		dest = path.Join(dest, u)
 	}
-	return rclone.Clone(s, dest)
+	err := rclone.Copy(s, dest, c)
+
+	return err
 }
 
 // Validate this meets the Transporter interface

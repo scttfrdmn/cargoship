@@ -6,6 +6,7 @@ package rclone
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,27 +29,7 @@ type cloneRequest struct {
 	DstRemote string `json:"dstRemote,omitempty"`
 	Group     string `json:"_group"`
 	Async     bool   `json:"_async"`
-}
-
-type rpcOutput struct {
-	Duration  float64    `json:"duration,omitempty"`
-	EndTime   *time.Time `json:"endTime,omitempty"`
-	Error     string     `json:"error,omitempty"`
-	Finished  bool       `json:"finished,omitempty"`
-	Group     string     `json:"group,omitempty"`
-	ID        float64    `json:"id,omitempty"`
-	Output    any        `json:"output,omitempty"` // Not sure what this actually is for...
-	StartTime *time.Time `json:"startTime,omitempty"`
-	Success   bool       `json:"success,omitempty"`
-}
-
-func newRPCOutput(s string) rpcOutput {
-	var r rpcOutput
-	err := json.Unmarshal([]byte(s), &r)
-	if err != nil {
-		panic(err)
-	}
-	return r
+	Filter    string `json:"_filter"`
 }
 
 // JSON returns the json representation in string format. Panic on error. I
@@ -79,7 +60,8 @@ type statResponseItem struct {
 }
 
 type statusRequest struct {
-	JobID int64 `json:"jobid"`
+	JobID int64  `json:"jobid,omitempty"`
+	Group string `json:"group,omitempty"`
 }
 
 // JSON returns the json representation in string format. Panic on error. I
@@ -92,9 +74,16 @@ func (s statusRequest) JSONString() string {
 	return string(js)
 }
 
-type statusResponse struct {
-	Finished bool `json:"finished"`
-	Success  bool `json:"success"`
+type jobStatus struct {
+	Duration  float64    `json:"duration,omitempty"`
+	StartTime *time.Time `json:"startTime,omitempty"`
+	EndTime   *time.Time `json:"endTime,omitempty"`
+	Error     string     `json:"error,omitempty"`
+	Finished  bool       `json:"finished,omitempty"`
+	Group     string     `json:"group,omitempty"`
+	ID        float64    `json:"id,omitempty"`
+	Output    any        `json:"output,omitempty"` // Not sure what this actually is for...
+	Success   bool       `json:"success,omitempty"`
 }
 
 type statsRequest struct {
@@ -111,12 +100,25 @@ func (s statsRequest) JSONString() string {
 	return string(js)
 }
 
-type statsResponse struct {
-	Bytes       int64   `json:"bytes"`
-	Speed       float64 `json:"speed"`
-	Transfers   int64   `json:"transfers"`
-	ElapsedTime float64 `json:"elapsedTime"`
-	Errors      int64   `json:"errors"`
+type jobStats struct {
+	Bytes        int64          `json:"bytes"`
+	TotalBytes   int64          `json:"totalBytes"`
+	Speed        float64        `json:"speed"`
+	Transfers    int64          `json:"transfers,omitempty"`
+	ElapsedTime  float64        `json:"elapsedTime,omitempty"`
+	Errors       int64          `json:"errors,omitempty"`
+	ETA          float64        `json:"eta,omitempty"`
+	Transferring []jobFileStats `json:"transferring,omitempty"`
+}
+
+type jobFileStats struct {
+	Bytes      int64   `json:"bytes"`
+	ETA        float64 `json:"eta,omitempty"`
+	Name       string  `json:"name"`
+	Percentage int     `json:"percentage"`
+	Speed      float64 `json:"speed"`
+	SpeedAvg   float64 `json:"speedAvg"`
+	Size       int64   `json:"size"`
 }
 
 func mustNewCloneRequest(options ...func(*cloneRequest)) *cloneRequest {
@@ -225,13 +227,18 @@ func (a aboutRequest) JSONString() string {
 func Exists(d string) bool {
 	librclone.Initialize()
 	pieces := strings.Split(d, ":")
-	if len(pieces) != 2 {
-		panic("Unknown type of destination")
+	var remote string
+	switch {
+	case len(pieces) == 1:
+		remote = pieces[0]
+	case len(pieces) == 2:
+		remote = pieces[1]
+	default:
+		panic("unknown type of destination")
 	}
-
 	ar := aboutRequest{
 		Fs:     pieces[0] + ":",
-		Remote: strings.TrimPrefix(pieces[1], "/"),
+		Remote: strings.TrimPrefix(remote, "/"),
 	}
 
 	out, status := librclone.RPC("operations/stat", ar.JSONString())
@@ -279,6 +286,130 @@ func APIOneShot(command string, params rc.Params) error {
 	return nil
 }
 
+// TransferStatus is the status of a transfer, used for reporting back to our
+// travel agent or such
+type TransferStatus struct {
+	Name   string    `json:"name,omitempty"`
+	Stats  jobStats  `json:"stats,omitempty"`
+	Status jobStatus `json:"status,omitempty"`
+}
+
+func marshalParams(p rc.Params) (string, error) {
+	b, err := json.Marshal(p)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func mustMarshalParams(p rc.Params) string {
+	s, err := marshalParams(p)
+	if err != nil {
+		panic(err)
+	}
+	return s
+}
+
+func copyParamsWithSrcDest(source, destination string) rc.Params {
+	sourceB := filepath.Base(source)
+	params := rc.Params{
+		"srcFs": filepath.Dir(source),
+		// "srcFs": source,
+		// "srcRemote": sourceB,
+		// "dstFs": path.Join(destination, sourceB),
+		"dstFs": destination,
+		// "dstRemote": sourceB,
+		"_async":  true,
+		"_group":  sourceB,
+		"_filter": fmt.Sprintf(`{"IncludeRule":["%v"]}`, sourceB),
+	}
+	return params
+}
+
+func syncResWithOut(o string) syncResponse {
+	var r syncResponse
+	err := json.Unmarshal([]byte(o), &r)
+	panicIfError(err)
+	return r
+}
+
+// Copy copies a single file to the destination
+func Copy(source, destination string, c chan TransferStatus) error {
+	log := log.With().Str("source", source).Str("destination", destination).Logger()
+	librclone.Initialize()
+
+	/*
+		// This is gross, we need to make a directory for the copy
+		tdir, err := os.MkdirTemp(filepath.Dir(source), "suitcase-tmp")
+		if err != nil {
+			return err
+		}
+		// err = os.Rename(source, path.Join(tdir, filepath.Base(source)))
+		err = os.Rename(source, path.Join(tdir, filepath.Base(source)))
+		if err != nil {
+			return err
+		}
+	*/
+
+	// params := copyParamsWithSrcDest(source, destination)
+	params := copyParamsWithSrcDest(source, destination)
+	log.Debug().Interface("params", params).Send()
+	// out, status := librclone.RPC("operations/copyfile", mustMarshalParams(params))
+	out, status := librclone.RPC("sync/copy", mustMarshalParams(params))
+	if status != 200 {
+		return errWithRPCOut(out)
+	}
+	syncR := syncResWithOut(out)
+	log.Debug().Int64("id", syncR.JobID).Msg("job id of async job")
+	statusReq := statusRequest{
+		JobID: syncR.JobID,
+		Group: filepath.Base(source),
+	}
+	statusResp, err := waitForFinished(statusReq, c)
+	if err != nil {
+		return err
+	}
+	if !statusResp.Success {
+		return errors.New("job finished but did not have status success")
+	}
+
+	// stats, err := getStats(filepath.Base(source))
+	/*
+		stats, err := getStats(fmt.Sprintf("job/%v", syncR.JobID))
+		if err != nil {
+			return err
+		}
+		log.Debug().Interface("stats", stats).Send()
+	*/
+
+	// Move the file back
+	/*
+		err = os.Rename(path.Join(tdir, filepath.Base(source)), source)
+		if err != nil {
+			return err
+		}
+		err = os.Remove(tdir)
+		if err != nil {
+			return err
+		}
+	*/
+
+	return nil
+}
+
+func getStats(id string) (*jobStats, error) {
+	// jobID := fmt.Sprintf("job/%v", id)
+	out, status := librclone.RPC("core/stats", statsRequest{Group: id}.JSONString())
+	if status != 200 {
+		return nil, errors.New("error getting stats")
+	}
+	var stats jobStats
+	if err := json.Unmarshal([]byte(out), &stats); err != nil {
+		return nil, err
+	}
+	return &stats, nil
+}
+
 // Clone mimics rclonse 'clone' option, given a source and destination
 func Clone(source, destination string) error {
 	// We are pushing all the usage to Stdout instead of Stderr. I would
@@ -311,7 +442,10 @@ func Clone(source, destination string) error {
 
 	log.Info().Int64("id", sres.JobID).Msg("job id of async job")
 
-	statusResp, err := waitForFinished(statusRequest{JobID: sres.JobID}) // nolint // DS - I dunno why this is triggering S1016...
+	statusResp, err := waitForFinished(statusRequest{
+		JobID: sres.JobID,
+		Group: filepath.Base(source),
+	}, nil) // nolint // DS - I dunno why this is triggering S1016...
 	if err != nil {
 		return err
 	}
@@ -321,7 +455,7 @@ func Clone(source, destination string) error {
 
 	out, _ = librclone.RPC("core/stats", statsRequest{Group: "MyTransfer"}.JSONString())
 
-	var stats statsResponse
+	var stats jobStats
 	if err := json.Unmarshal([]byte(out), &stats); err != nil {
 		return err
 	}
@@ -331,26 +465,85 @@ func Clone(source, destination string) error {
 	return nil
 }
 
-func waitForFinished(statusReq statusRequest) (*statusResponse, error) {
-	var statusResp statusResponse
+func waitForFinished(statusReq statusRequest, c chan TransferStatus) (*jobStatus, error) {
+	var statusResp *jobStatus
+	var statusTries int
+	for (statusResp == nil) || !statusResp.Finished {
+		var err error
+		// stats, err := getStats(fmt.Sprintf("job/%v", statusReq.JobID))
+		if statusReq.Group == "" {
+			return nil, errors.New("missing group")
+		}
+		stats, err := getStats(statusReq.Group)
+		// stats, err := getStats(fmt.Sprintf("job/%v", statusReq.JobID))
+		if err != nil {
+			return nil, err
+		}
+		statusResp, err = getJobStatus(statusReq)
+		if err != nil {
+			return nil, err
+		}
+		if c != nil {
+			c <- TransferStatus{
+				Name:   statusReq.Group,
+				Stats:  *stats,
+				Status: *statusResp,
+			}
+		}
+		time.Sleep(time.Second)
+		statusTries++
+	}
+	return statusResp, nil
+}
+
+func getJobStatus(statusReq statusRequest) (*jobStatus, error) {
+	statusS, statusCode := librclone.RPC("job/status", statusReq.JSONString())
+	if statusCode == 404 {
+		return nil, errors.New("job not found")
+	}
+	var status jobStatus
+	err := json.Unmarshal([]byte(statusS), &status)
+	if err != nil {
+		return nil, err
+	}
+	if status.Error != "" {
+		return nil, errors.New(status.Error)
+	}
+	return &status, nil
+}
+
+/*
+func waitForFinishedSimple(statusReq statusRequest) (*jobStatus, error) {
+	var statusResp *jobStatus
 	var statusTries int
 	for !statusResp.Finished {
-		cout, status := librclone.RPC("job/status", statusReq.JSONString())
-		coutO := newRPCOutput(cout)
-		if coutO.Error != "" {
-			log.Warn().Err(errors.New(coutO.Error)).Send()
-		}
-		if status == 404 {
-			return nil, errors.New("job not found")
-		}
-
-		err := json.Unmarshal([]byte(cout), &statusResp)
+		var err error
+		statusResp, err = getJobStatus(statusReq)
 		if err != nil {
-			return nil, errors.New("issue unmarshalling status response")
+			log.Warn().Err(err).Msg("error getting status")
 		}
 		log.Debug().Int64("job", statusReq.JobID).Int("tries", statusTries).Msg("checking status")
 		time.Sleep(time.Second)
 		statusTries++
 	}
-	return &statusResp, nil
+	return statusResp, nil
+}
+*/
+
+type errorOut struct {
+	Error string `json:"error,omitempty"`
+}
+
+func errWithRPCOut(o string) error {
+	var ret errorOut
+	if err := json.Unmarshal([]byte(o), &ret); err != nil {
+		return nil
+	}
+	return errors.New(ret.Error)
+}
+
+func panicIfError(err error) {
+	if err != nil {
+		panic(err)
+	}
 }
