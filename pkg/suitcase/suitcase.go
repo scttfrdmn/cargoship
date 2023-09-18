@@ -184,7 +184,6 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.Inventory, index int, state
 				suitcaseHashes = append(suitcaseHashes, *hs)
 			}
 		}
-		// fmt.Fprintf(os.Stderr, "DDIIIIING\n")
 
 		cur++
 		if stateC != nil {
@@ -336,7 +335,7 @@ func WriteHashFile(hs []config.HashSet, o io.Writer) error {
 func OptsWithCmd(cmd *cobra.Command) *config.SuitCaseOpts {
 	opts, ok := cmd.Context().Value(inventory.SuitcaseOptionsKey).(*config.SuitCaseOpts)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "%+v", cmd.Context().Value(inventory.SuitcaseOptionsKey))
+		// fmt.Fprintf(os.Stderr, "%+v", cmd.Context().Value(inventory.SuitcaseOptionsKey))
 		panic("could not get suitcase options with cmd")
 	}
 	return opts

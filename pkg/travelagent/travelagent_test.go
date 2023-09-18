@@ -46,6 +46,26 @@ func TestStatusStrings(t *testing.T) {
 	}
 }
 
+func TestStatusUpdateFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, err := io.Copy(w, bytes.NewReader([]byte(`{"errors":["suitcase cannot be updated since it is complete"]}`)))
+		panicIfErr(err)
+	}))
+	c, err := New(
+		WithToken("foo"),
+		WithURL(srv.URL),
+	)
+	require.NotNil(t, c)
+	require.NoError(t, err)
+	_, err = c.Update(StatusUpdate{
+		Status: StatusPending,
+	})
+	// require.Nil(t, update)
+	require.Error(t, err)
+	require.EqualError(t, err, "suitcase cannot be updated since it is complete")
+}
+
 func TestStatusUpdate(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := io.Copy(w, bytes.NewReader([]byte(`{"messages":["updated fields: status and updated_at"]}`)))

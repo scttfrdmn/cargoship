@@ -329,7 +329,7 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 		if serr := ptr.SendUpdate(travelagent.StatusUpdate{
 			Status: travelagent.StatusPending,
 		}); serr != nil {
-			return errors.New("could not connect to travel agent url")
+			return serr
 		}
 	}
 
@@ -359,13 +359,6 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 	}); err != nil {
 		log.Warn().Err(err).Msg("error sending status update")
 	}
-	/*
-		if ptr.TravelAgent != nil {
-			}); err != nil {
-				return err
-			}
-		}
-	*/
 
 	// We need options even if we already have the inventory
 	opts := &config.SuitCaseOpts{
@@ -387,16 +380,15 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 				log.Warn().Err(err).Msg("failed to send final status update")
 			}
 			return err
-		} else {
-			if serr := ptr.SendUpdate(travelagent.StatusUpdate{
-				Status: travelagent.StatusComplete,
-			}); serr != nil {
-				log.Warn().Err(err).Msg("failed to send final status update")
-			}
 		}
-	} else {
-		log.Warn().Msg("Only creating inventory file, no suitcase archives")
+		if serr := ptr.SendUpdate(travelagent.StatusUpdate{
+			// Status: travelagent.StatusComplete,
+		}); serr != nil {
+			log.Warn().Err(err).Msg("failed to send final status update")
+		}
+		return nil
 	}
+	log.Warn().Msg("Only creating inventory file, no suitcase archives")
 	return nil
 }
 

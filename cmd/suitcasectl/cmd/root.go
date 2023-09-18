@@ -46,6 +46,8 @@ func NewRootCmd(lo io.Writer) *cobra.Command {
 		)),
 		PersistentPreRun:  globalPersistentPreRun,
 		PersistentPostRun: globalPersistentPostRun,
+		SilenceUsage:      true, // Usage too heavy to print out every time this thing fails
+		SilenceErrors:     true, // We have a wrapper using our logger to do this
 	}
 	cmd.SetContext(context.WithValue(context.Background(), inventory.LogWriterKey, lo))
 	// cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")

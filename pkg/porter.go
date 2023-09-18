@@ -9,6 +9,8 @@ object is an attempt to simplify all those in to one cohesive bit
 package porter
 
 import (
+	"strings"
+
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
@@ -29,14 +31,20 @@ func (p Porter) SendUpdate(u travelagent.StatusUpdate) error {
 	if p.TravelAgent == nil {
 		return nil
 	}
+	log := *p.Logger
 
 	resp, err := p.TravelAgent.Update(u)
 	if err != nil {
 		return err
 	}
 	if p.Logger != nil {
+		if u.ComponentName != "" {
+			log = log.With().Str("component", u.ComponentName).Logger()
+		}
 		for _, msg := range resp.Messages {
-			p.Logger.Info().Msg(msg)
+			if strings.TrimSpace(msg) != "updated fields:" {
+				log.Info().Msg(msg)
+			}
 		}
 	}
 

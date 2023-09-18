@@ -94,19 +94,11 @@ func (t *TravelAgent) sendRequest(req *http.Request, v interface{}) (*Response, 
 
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusBadRequest {
 		var errRes ErrorResponse
-		// b, _ := io.ReadAll(res.Body)
 		if err = json.NewDecoder(res.Body).Decode(&errRes); err == nil {
-			return nil, errors.New(errRes.Message)
+			return nil, errors.New(strings.Join(errRes.Errors, ", "))
 		}
-
-		switch res.StatusCode {
-		case http.StatusTooManyRequests:
-			return nil, fmt.Errorf("too many requests.  Check rate limit and make sure the userAgent is set right")
-		case http.StatusNotFound:
-			return nil, fmt.Errorf("that entry was not found, are you sure it exists?")
-		default:
-			return nil, fmt.Errorf("error, status code: %d", res.StatusCode)
-		}
+		// If we couldn't parse the error message
+		return nil, fmt.Errorf("error, status code: %d", res.StatusCode)
 	}
 
 	b, _ := io.ReadAll(res.Body)
@@ -318,7 +310,7 @@ type StatusUpdateResponse struct {
 
 // ErrorResponse represents an error from the api
 type ErrorResponse struct {
-	Message string `json:"errors"`
+	Errors []string `json:"errors"`
 }
 
 func dclose(c io.Closer) {
