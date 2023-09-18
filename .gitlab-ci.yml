@@ -14,7 +14,7 @@ stages:
   - test
   - release
 test-docs:
-  image: image-mirror-prod-registry.cloud.duke.edu/library/squidfunk/mkdocs-material:9
+  image: image-mirror-prod-registry.cloud.duke.edu/squidfunk/mkdocs-material:9
   stage: test
   script:
   - mkdocs build --strict --verbose --site-dir test
