@@ -24,7 +24,7 @@ test-docs:
   rules:
     - if: $CI_COMMIT_REF_NAME != $CI_DEFAULT_BRANCH
 pages:
-  stage: release
+  stage: deploy
   image: image-mirror-prod-registry.cloud.duke.edu/squidfunk/mkdocs-material:9
   script:
   - mkdocs build --strict --verbose
