@@ -12,6 +12,8 @@ SuitcaseCTL is a tool for packaging up research data in a standardized format (t
 * “Inventory” file which contains hashes and locations of all files in the archives, along with optional metadata
 * CLI metadata file that contains the options the archive was created with
 
+Full documentation [here](https://devil-ops.pages.oit.duke.edu/suitcasectl/)
+
 ## Installation
 
 ### Prebuilt Binaries

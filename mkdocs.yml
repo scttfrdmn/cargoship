@@ -1,4 +1,7 @@
-site_name: Documentation
+site_name: SuitcaseCTL
+site_url: https://devil-ops.pages.oit.duke.edu/suitcasectl/
+repo_url: https://gitlab.oit.duke.edu/devil-ops/suitcasectl
+edit_uri: https://gitlab.oit.duke.edu/-/ide/project/devil-ops/suitcasectl/edit/main/-/docs/
 docs_dir: docs
 site_dir: public
 theme:
@@ -6,5 +9,41 @@ theme:
   icon:
     logo: material/bag-suitcase-outline
   features:
+    - content.action.edit
     - content.code.select
     - content.code.copy
+    - navigation.expand
+
+markdown_extensions:
+  - def_list
+  - attr_list
+  - md_in_html
+  - pymdownx.critic
+  - pymdownx.caret
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.emoji
+  - toc:
+      permalink: true
+      toc_depth: 4
+  - abbr
+  - admonition
+  - tables
+  - pymdownx.magiclink
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      # Comment below because they are not supported by mkdocs-material
+      # line_spans: __span
+      # pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      check_paths: true
+      base_path:
+        - docs
+      # Still a wip
+      # auto_append:
+      #   - _includes/snippets.md
+  - pymdownx.superfences
