@@ -29,6 +29,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/vjorlikowski/yaml v0.1.0
 	golang.org/x/tools v0.13.0
+	moul.io/http2curl v1.0.0
 )
 
 require (

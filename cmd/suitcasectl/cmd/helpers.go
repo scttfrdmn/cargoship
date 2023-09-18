@@ -22,9 +22,12 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/sourcegraph/conc/pool"
 	"github.com/spf13/cobra"
+	porter "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/travelagent"
 )
 
 // newOutDirWithCmd generates a new output directory using cobra.Command options
@@ -130,15 +133,16 @@ func getSha256(file string) (string, error) {
 
 // ProcessOpts defines the process options
 type processOpts struct {
-	Concurrency  int
-	SampleEvery  int
-	Inventory    *inventory.Inventory
+	Concurrency int
+	SampleEvery int
+	Porter      *porter.Porter
+	// Inventory    *inventory.Inventory
 	SuitcaseOpts *config.SuitCaseOpts
 }
 
 // processSuitcases processes the suitcases
 func processSuitcases(po *processOpts, cmd *cobra.Command) []string {
-	ret := make([]string, po.Inventory.TotalIndexes)
+	ret := make([]string, po.Porter.Inventory.TotalIndexes)
 	p := pool.New().WithMaxGoroutines(po.Concurrency)
 	log.Debug().Int("concurrency", po.Concurrency).Msg("Setting pool guard")
 	// state := make(chan suitcase.FillState, 1)
@@ -158,22 +162,35 @@ func processSuitcases(po *processOpts, cmd *cobra.Command) []string {
 				Msg("Progress")
 		}
 	}()
-	for i := 1; i <= po.Inventory.TotalIndexes; i++ {
+
+	statusC := make(chan rclone.TransferStatus)
+	go func() {
+		for {
+			status := <-statusC
+			log.Debug().Interface("status", status).Msgf("status update")
+			if po.Porter.TravelAgent != nil {
+				if err := po.Porter.SendUpdate(*travelagent.NewStatusUpdate(status)); err != nil {
+					log.Warn().Err(err).Msg("could not update travel agent")
+				}
+			}
+		}
+	}()
+	for i := 1; i <= po.Porter.Inventory.TotalIndexes; i++ {
 		i := i
 		p.Go(func() {
-			createdF, err := suitcase.WriteSuitcaseFile(po.SuitcaseOpts, po.Inventory, i, state)
+			createdF, err := suitcase.WriteSuitcaseFile(po.SuitcaseOpts, po.Porter.Inventory, i, state)
 			if err != nil {
 				log.Warn().Err(err).Str("file", createdF).Msg("error creating suitcase file, please investigate")
 			} else {
 				ret[i-1] = createdF
 				// Put Transport plugin here!!
-				if po.Inventory.Options.TransportPlugin != nil {
+				if po.Porter.Inventory.Options.TransportPlugin != nil {
 					// First check...
-					err := po.Inventory.Options.TransportPlugin.Check()
+					err := po.Porter.Inventory.Options.TransportPlugin.Check()
 					panicIfErr(err)
 
 					// Then end
-					serr := po.Inventory.Options.TransportPlugin.Send(createdF, cmd.Context().Value(inventory.InventoryHash).(string))
+					serr := po.Porter.Inventory.Options.TransportPlugin.SendWithChannel(createdF, cmd.Context().Value(inventory.InventoryHash).(string), statusC)
 					panicIfErr(serr)
 				}
 			}
@@ -182,50 +199,6 @@ func processSuitcases(po *processOpts, cmd *cobra.Command) []string {
 	p.Wait()
 	return ret
 }
-
-/*
-// processSuitcases processes the suitcases
-func processSuitcasesX(po *processOpts) []string {
-	ret := make([]string, po.Inventory.TotalIndexes)
-	guard := make(chan struct{}, po.Concurrency)
-	var wg sync.WaitGroup
-	wg.Add(po.Inventory.TotalIndexes)
-	state := make(chan suitcase.FillState, 1)
-	sampled := log.Sample(&zerolog.BasicSampler{N: uint32(po.SampleEvery)})
-	for i := 1; i <= po.Inventory.TotalIndexes; i++ {
-		guard <- struct{}{} // would block if guard channel is already filled
-
-		go func(i int) {
-			defer wg.Done()
-			createdF, err := suitcase.WriteSuitcaseFile(po.SuitcaseOpts, po.Inventory, i, state)
-			if err != nil {
-				log.Warn().Err(err).Str("file", createdF).Msg("error creating suitcase file, please investigate")
-			} else {
-				// Put Transport plugin here!!
-				ret[i-1] = createdF
-			}
-			<-guard // release the guard channel
-		}(i)
-	}
-	// Use this to prevent deadlocks
-	go func() {
-		wg.Wait()
-	}()
-	processed := int32(0)
-	for processed < int32(po.Inventory.TotalIndexes) {
-		st := <-state
-		if st.Completed {
-			atomic.AddInt32(&processed, 1)
-		}
-		sampled.Debug().
-			Int("index", st.Index).
-			Uint("current", st.Current).
-			Uint("total", st.Total).
-			Msg("Progress")
-	}
-	return ret
-}
-*/
 
 func calculateHash(rd io.Reader, ht string) string {
 	reader := bufio.NewReaderSize(rd, os.Getpagesize())

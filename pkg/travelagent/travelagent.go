@@ -5,6 +5,7 @@ package travelagent
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +13,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
+	"moul.io/http2curl"
 )
 
 // TravelAgent is the main object that's gonna do all this work
@@ -21,6 +27,31 @@ type TravelAgent struct {
 	Token     string
 	client    *http.Client
 	printCurl bool
+}
+
+// StatusURL is just the web url for viewing this stuff
+func (t TravelAgent) StatusURL() string {
+	pathPieces := strings.Split(t.URL.Path, "/")
+	id := pathPieces[len(pathPieces)-1]
+	return fmt.Sprintf("https://%v/suitcase_transfers/%v", t.URL.Host, id)
+}
+
+type credential struct {
+	URL   string `json:"url"`
+	Token string `json:"password"`
+}
+
+func blobToCred(b string) (*credential, error) {
+	text, err := base64.StdEncoding.DecodeString(b)
+	if err != nil {
+		return nil, err
+	}
+	var c credential
+	err = json.Unmarshal(text, &c)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
 }
 
 // Update updates the status of an agent
@@ -39,7 +70,6 @@ func (t TravelAgent) Update(s StatusUpdate) (*StatusUpdateResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Fprintf(os.Stderr, "REEEE: %+v\n", r)
 	return &r, nil
 }
 
@@ -47,6 +77,11 @@ func (t *TravelAgent) sendRequest(req *http.Request, v interface{}) (*Response, 
 	bearer := "Bearer " + t.Token
 	req.Header.Add("Authorization", bearer)
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+
+	if t.printCurl {
+		command, _ := http2curl.GetCurlCommand(req)
+		fmt.Fprintf(os.Stderr, "%v\n", command)
+	}
 
 	res, err := t.client.Do(req)
 	req.Close = true
@@ -132,6 +167,49 @@ func WithClient(c *http.Client) Option {
 	})
 }
 
+// WithCmd binds cobra args on
+func WithCmd(cmd *cobra.Command) Option {
+	credBlob, err := cmd.Flags().GetString("travel-agent")
+	if err != nil {
+		return failure(err)
+	}
+	var endpoint *url.URL
+	var token string
+	if credBlob != "" {
+		cred, err := blobToCred(credBlob)
+		if err != nil {
+			return failure(err)
+		}
+		token = cred.Token
+		endpoint, err = url.Parse(cred.URL)
+		if err != nil {
+			return failure(err)
+		}
+	} else {
+		urlS, err := cmd.Flags().GetString("travel-agent-url")
+		if err != nil {
+			return failure(err)
+		}
+		endpoint, err = url.Parse(urlS)
+		if err != nil {
+			return failure(err)
+		}
+		token, err = cmd.Flags().GetString("travel-agent-token")
+		if err != nil {
+			return failure(err)
+		}
+	}
+
+	return success(func(t *TravelAgent) {
+		if endpoint != nil {
+			t.URL = endpoint
+		}
+		if token != "" {
+			t.Token = token
+		}
+	})
+}
+
 // New returns a new TravelAgent using functional options
 func New(options ...Option) (*TravelAgent, error) {
 	ta := &TravelAgent{
@@ -143,6 +221,10 @@ func New(options ...Option) (*TravelAgent, error) {
 			return nil, err
 		}
 		opt(ta)
+	}
+
+	if os.Getenv("DEBUG_CURL") != "" {
+		ta.printCurl = true
 	}
 
 	if ta.URL == nil {
@@ -172,8 +254,31 @@ type StatusUpdate struct {
 	SuitcasectlDestination    string     `json:"suitcasectl_destination,omitempty"`
 }
 
+// NewStatusUpdate returns a new status update from an rclone.TransferStatus object
+func NewStatusUpdate(r rclone.TransferStatus) *StatusUpdate {
+	s := &StatusUpdate{}
+	if r.Name != "" {
+		s.ComponentName = r.Name
+	}
+	if r.Stats.Bytes != 0 {
+		s.ComponentTransferredBytes = r.Stats.Bytes
+	}
+	if r.Stats.TotalBytes != 0 {
+		s.ComponentSizeBytes = r.Stats.TotalBytes
+	}
+	if !r.Status.Finished {
+		s.Status = StatusInProgress
+	}
+	return s
+}
+
 // Status describes specific statuses for the updates
 type Status int
+
+// MarshalJSON handles converting the int to a string
+func (s Status) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%v\"", s.String())), nil
+}
 
 const (
 	// StatusPending has not yet started
@@ -221,4 +326,14 @@ func dclose(c io.Closer) {
 	if err != nil {
 		fmt.Fprint(os.Stderr, "error closing item")
 	}
+}
+
+// BindCobra adds the appropriate flags to use the travel agent
+func BindCobra(cmd *cobra.Command) {
+	cmd.PersistentFlags().String("travel-agent", "", "Base64 Encoded token and url for the travel agent, in json (Copy paste this from the travel agent website)")
+	cmd.PersistentFlags().String("travel-agent-url", "", "URL to use for travel agent operations")
+	cmd.PersistentFlags().String("travel-agent-token", "", "Token to use for travel agent operations")
+
+	cmd.MarkFlagsMutuallyExclusive("travel-agent", "travel-agent-url")
+	cmd.MarkFlagsMutuallyExclusive("travel-agent", "travel-agent-token")
 }

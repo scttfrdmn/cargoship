@@ -485,6 +485,7 @@ func waitForFinished(statusReq statusRequest, c chan TransferStatus) (*jobStatus
 		}
 		if c != nil {
 			c <- TransferStatus{
+				Name:   statusReq.Group,
 				Stats:  *stats,
 				Status: *statusResp,
 			}

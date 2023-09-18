@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/md5" // nolint
 	"encoding/hex"
+	json "encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -213,6 +214,24 @@ type Inventory struct {
 	InternalMetadata map[string]string     `yaml:"internal_metadata" json:"internal_metadata"`
 	ExternalMetadata map[string]string     `yaml:"external_metadata" json:"external_metadata"`
 	CLIMeta          CLIMeta               `yaml:"cli_meta" json:"cli_meta"`
+}
+
+// MustJSONString returns the json representation as a string or panic
+func (di Inventory) MustJSONString() string {
+	j, err := di.JSONString()
+	if err != nil {
+		panic(err)
+	}
+	return j
+}
+
+// JSONString returns the inventory in JSON and an optional error
+func (di Inventory) JSONString() (string, error) {
+	j, err := json.Marshal(di)
+	if err != nil {
+		return "", err
+	}
+	return string(j), nil
 }
 
 // Analysis is some useful information about a given inventory

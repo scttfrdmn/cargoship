@@ -24,30 +24,26 @@ func (t *Transporter) Check() error {
 	return nil
 }
 
-// Send the data on up
+// Send sends the data up
 func (t Transporter) Send(s, u string) error {
+	c := make(chan rclone.TransferStatus)
+	go func() {
+		for {
+			<-c
+		}
+	}()
+	return t.SendWithChannel(s, u, c)
+}
+
+// SendWithChannel the data on up with an optional channel
+func (t Transporter) SendWithChannel(s, u string, c chan rclone.TransferStatus) error {
 	dest := t.Config.Destination
 	if u != "" {
 		dest = path.Join(dest, u)
 	}
-	/*
-		c := make(chan rclone.TransferStatus)
-
-		go func() {
-			for {
-				status := <-c
-				status.Name = filepath.Base(s)
-				if status.Stats.Bytes != 0 {
-					fmt.Fprintf(os.Stderr, "TransferStatus: %+v\n", status)
-				}
-				// log.Info().Interface("status", status).Msg("transfer status")
-			}
-		}()
-	*/
-	err := rclone.Copy(s, dest, nil)
+	err := rclone.Copy(s, dest, c)
 
 	return err
-	// return rclone.Clone(s, dest)
 }
 
 // Validate this meets the Transporter interface

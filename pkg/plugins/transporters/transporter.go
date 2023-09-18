@@ -9,6 +9,7 @@ import (
 	"path"
 
 	"github.com/oklog/ulid/v2"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
 )
 
 // Transporter describes how items that meet a Transporter behaves
@@ -16,6 +17,7 @@ type Transporter interface {
 	// Configure(c Config) error
 	Check() error
 	Send(s, u string) error
+	SendWithChannel(s, u string, c chan rclone.TransferStatus) error
 }
 
 // Config is everything a transporter needs to be configured
