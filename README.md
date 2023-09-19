@@ -14,38 +14,13 @@ SuitcaseCTL is a tool for packaging up research data in a standardized format (t
 
 Full documentation [here](https://devil-ops.pages.oit.duke.edu/suitcasectl/)
 
-## Installation
+## Get Suitcasectl
 
-### Prebuilt Binaries
+* [Installation Instructions](https://devil-ops.pages.oit.duke.edu/suitcasectl/install/)
 
-Prebuilt binaries are the preferred and easiest way to get suitcasectl on your
-host. If there is no available prebuilt option for your OS, please [create a new
-issue](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/-/issues/new) and we'll
-get it in there!
+## Documentation
 
-Download a package from the
-[releases](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/-/releases) page,
-or use the [devil-ops
-package](https://gitlab.oit.duke.edu/devil-ops/installing-devil-ops-packages)
-for homebrew, yum, etc.
-
-### Local builds
-
-You can also use `go install` to download and build the latest commits to `main` (Or any other branch/tag)
-
-```bash
-$ go install gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl@main
-...
-```
-
-## Global Flags
-
-`-v` or `--verbose` : Enable debug logs.
-
-`-t` or `--trace` : Enable trace logs. This will include the file/line of the
-code that generated a given message.
-
-`--log-format` : Either `console` or `json` (Default: `console`).
+All documentation is hosted [here](https://devil-ops.pages.oit.duke.edu/suitcasectl/)
 
 ## Components
 
