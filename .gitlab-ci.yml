@@ -19,7 +19,7 @@ test-docs:
   image: $MKDOCS_IMAGE
   stage: test
   script:
-    - mkdir test
+    - mkdir -p test/CLI\ Reference
     - go run ./cmd/suitcasectl/ mddocs test/CLI\ Reference/
     - mkdocs build --strict --verbose --site-dir test
   artifacts:
@@ -31,8 +31,9 @@ pages:
   stage: deploy
   image: $MKDOCS_IMAGE
   script:
-  - go run ./cmd/suitcasectl/ mddocs docs/CLI\ Reference/
-  - mkdocs build --strict --verbose
+    - mkdir -p docs/CLI\ Reference
+    - go run ./cmd/suitcasectl/ mddocs docs/CLI\ Reference/
+    - mkdocs build --strict --verbose
   artifacts:
     paths:
     - public
