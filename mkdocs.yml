@@ -12,7 +12,11 @@ theme:
     - content.action.edit
     - content.code.select
     - content.code.copy
+    - content.tabs.link
     - navigation.expand
+plugins:
+  - awesome-pages:
+      strict: true
 
 markdown_extensions:
   - def_list
@@ -30,6 +34,8 @@ markdown_extensions:
   - abbr
   - admonition
   - tables
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.magiclink
   - pymdownx.tasklist:
       custom_checkbox: true
