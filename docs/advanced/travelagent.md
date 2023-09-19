@@ -7,6 +7,9 @@ and instructions. For example, it can be used to:
 * Store the inventory in spot that can be later searched.
 * Provide credentials and target information for a copy out to the cloud.
 
+The Duke University implementation uses RToolkits as the Travel Agent endpoint,
+however you can write your own as long as it supports the defined endoints.
+
 ## Hosting your own Travel Agent
 
 API INFO GOES HERE

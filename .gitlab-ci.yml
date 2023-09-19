@@ -97,6 +97,8 @@ release:
 security:
   stage: test
   allow_failure: true
+  tags:
+    - oit-shared
   script:
     - govulncheck ./...
   rules:
