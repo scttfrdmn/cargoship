@@ -34,6 +34,18 @@ func NewCreateSuitcaseCmd() *cobra.Command {
 		Short: "Create a suitcase",
 		Long:  "Create a suitcase from either an inventory file or multiple target directories.",
 		Args:  cobra.ArbitraryArgs,
+		Example: ` # Create a suitcase using the defaults. This will land in a new TEMPDIR on your host:
+$ suitcasectl create suitcase ~/example
+...
+
+# Specify a destination for the generated files:
+$ suitcasectl create suitcase ~/example --destination=/srv/storage
+...
+
+# Specify a maximum suitcase size:
+$ suitcasectl create suitcase ~/example --max-suitcase-size=500MiB
+...
+`,
 		Aliases: []string{
 			"suitecase", // Encouraging bad habits
 			"s",
