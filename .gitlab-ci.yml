@@ -10,12 +10,13 @@ variables:
   GOCACHE: /tmp/
   GOPATH: /tmp/
   GOLANGCI_LINT_CACHE: /tmp/
+  MKDOCS_IMAGE: gitlab-registry.oit.duke.edu/devil-ops/mkdocs-material:v0.1.0
 stages:
   - test
   - release
   - deploy
 test-docs:
-  image: image-mirror-prod-registry.cloud.duke.edu/squidfunk/mkdocs-material:9
+  image: $MKDOCS_IMAGE
   stage: test
   script:
     - mkdir test
@@ -28,7 +29,7 @@ test-docs:
     - if: $CI_COMMIT_REF_NAME != $CI_DEFAULT_BRANCH
 pages:
   stage: deploy
-  image: image-mirror-prod-registry.cloud.duke.edu/squidfunk/mkdocs-material:9
+  image: $MKDOCS_IMAGE
   script:
   - go run ./cmd/suitcasectl/ mddocs docs/CLI\ Reference/
   - mkdocs build --strict --verbose
