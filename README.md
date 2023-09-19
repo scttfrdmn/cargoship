@@ -22,6 +22,13 @@ SuitcaseCTL is a tool for packaging up research data in a standardized format (t
 
 * [Installation Instructions](https://devil-ops.pages.oit.duke.edu/suitcasectl/install/)
 
+## QuickStart
+
+```bash
+$ suitcasectl create suitcase $YOUR_DATA --destination=/srv/cold-storage/ --max-suitcase-size=50G
+...
+```
+
 ## Documentation
 
-All documentation is hosted [here](https://devil-ops.pages.oit.duke.edu/suitcasectl/)
+Check out the [Official SuitcaseCTL Documentation](https://devil-ops.pages.oit.duke.edu/suitcasectl/)!
