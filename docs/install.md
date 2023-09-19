@@ -17,10 +17,49 @@ here all the time? Use the [devil-ops
 package](https://gitlab.oit.duke.edu/devil-ops/installing-devil-ops-packages)
 for homebrew, yum, apt, etc..
 
-## Local builds
+=== "Homebrew"
 
-You can also use `go install` to download and build the latest commits to `main` (Or any other branch/tag)
+    ```plain
+    brew tap devil-ops/devil-ops https://gitlab.oit.duke.edu/devil-ops/homebrew-devil-ops.git
+    brew install suitcasectl
+    ```
 
-```plain
-go install gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl@main
-```
+=== "Yum"
+
+    ```plain
+    echo '[devil-ops]
+    name=devil-ops
+    baseurl=https://oneget.oit.duke.edu/rpm/devil-ops-rpms/
+    gpgkey=https://gitlab.oit.duke.edu/devil-ops/installing-devil-ops-packages/-/raw/main/pubkeys/RPM-GPG-KEY-DEVIL-OPS-2022-05-02
+    gpgcheck=1
+    enabled=1' | sudo tee /etc/yum.repos.d/devil-ops.repo
+    sudo yum install suitcasectl
+    ```
+
+=== "Apt"
+
+    ```plain
+    wget -qO - https://oneget.oit.duke.edu/debian-feeds/devil-ops-debs.pub | sudo gpg --dearmor -o /etc/apt/keyrings/devil-ops-debs.gpg
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/devil-ops-debs.gpg] https://oneget.oit.duke.edu/ devil-ops-debs main" | sudo tee /etc/apt/sources.list.d/devil-ops.list
+    sudo apt install suitcasectl
+    ```
+
+    Ubuntu 22.04 and later
+
+=== "Apt Legacy"
+
+    ```plain
+    wget -qO - https://oneget.oit.duke.edu/debian-feeds/devil-ops-debs.pub | sudo apt-key add -
+    echo "deb https://oneget.oit.duke.edu/ devil-ops-debs main" | sudo tee /etc/apt/sources.list.d/devil-ops.list
+    sudo apt install suitcasectl
+    ```
+
+    Ubuntu 20.04 and earlier
+
+=== "Local builds"
+
+    ```plain
+    go install gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl@main
+    ```
+
+    You can also use `go install` to download and build the latest commits to `main` (Or any other branch/tag)

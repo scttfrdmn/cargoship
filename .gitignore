@@ -8,3 +8,4 @@ benchmark_data/
 *.swp
 TODO
 coverage-all.txt
+docs/CLI Reference/

@@ -77,6 +77,7 @@ func NewRootCmd(lo io.Writer) *cobra.Command {
 
 	cmd.AddCommand(NewCompletionCmd())
 	cmd.AddCommand(NewSchemaCmd())
+	cmd.AddCommand(NewMDDocsCmd())
 	cmd.SetOut(lo)
 
 	return cmd
