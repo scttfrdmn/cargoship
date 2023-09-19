@@ -13,6 +13,14 @@ func NewAnalyzeCmd() *cobra.Command {
 		Short:   "Analyze a directory to provide some useful runtime information",
 		Aliases: []string{"a"},
 		Args:    cobra.ExactArgs(1),
+		Example: `❯ suitcasectl analyze ~/Desktop/example-suitcase
+largestfilesize: 3154432
+largestfilesizehr: 3.2 MB
+filecount: 17
+averagefilesize: 599271
+averagefilesizehr: 599 kB
+totalfilesize: 10187619
+totalfilesizehr: 10 MB`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			i, err := inventory.NewDirectoryInventory(inventory.NewOptions(inventory.WithDirectories(args)))
 			checkErr(err, "")

@@ -11,9 +11,10 @@ import (
 // NewRetierCmd represents the retier command
 func NewRetierCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "retier",
-		Short: "Change the tier of an object in cloud storage",
-		Args:  cobra.ExactArgs(2),
+		Use:     "retier",
+		Short:   "Change the tier of an object in cloud storage",
+		Args:    cobra.ExactArgs(2),
+		Example: `$ suitcasectl retier Archive suitcasectl-azure:/test`,
 		Run: func(cmd *cobra.Command, args []string) {
 			fsPieces := strings.Split(args[1], ":")
 			var fs, remote string
