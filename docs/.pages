@@ -2,5 +2,6 @@ collapse_single_pages: true
 nav:
   - Overview: index.md
   - Installation: install.md
-  - Components: components
+  - Generated Components: components
   - ...
+  - CLI Reference: "CLI Reference"

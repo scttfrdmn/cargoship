@@ -15,6 +15,23 @@ func NewFindCmd() *cobra.Command {
 		Long: `By default, we'll search your current directory for yaml
 files, and treat them as inventory. This can be changed using
 the --inventory-directory flag.`,
+		Example: `$ suitcasectl find SOME_PATTERN
+files:
+    - path: /Users/drews/Desktop/Almost Garbage/godoc/src/runtime/cgo/libcgo_windows.h?m=text
+      destination: godoc/src/runtime/cgo/libcgo_windows.h
+      name: libcgo_windows.h
+      size: 258
+      suitcase_index: 5
+      suitcase_name: suitcase-drews-05-of-05.tar.zst
+...
+directories:
+    - directory: godoc/lib
+      totalsize: 139186
+      totalsizehr: 139 kB
+      suitcases:
+	- suitcase-drews-04-of-05.tar.zst
+	- suitcase-drews-05-of-05.tar.zst
+...`,
 		Aliases: []string{"search"},
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
