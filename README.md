@@ -14,6 +14,8 @@ SuitcaseCTL is a tool for packaging up research data in a standardized format (t
 
 Full documentation [here](https://devil-ops.pages.oit.duke.edu/suitcasectl/)
 
+![demo](./vhs/demo.gif)
+
 ## Get Suitcasectl
 
 * [Installation Instructions](https://devil-ops.pages.oit.duke.edu/suitcasectl/install/)
