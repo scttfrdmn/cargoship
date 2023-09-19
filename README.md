@@ -1,3 +1,8 @@
+<p align="center">
+  <h3 align="center">SuitcaseCTL</h3>
+  <p align="center">Package and inventory your data, then send it to the cloud!</p>
+</p>
+---
 # Overview
 
 [![Go Reference](https://pkg.go.dev/badge/gitlab.oit.duke.edu/devil-ops/suitcasectl.svg)](https://pkg.go.dev/gitlab.oit.duke.edu/devil-ops/suitcasectl)
