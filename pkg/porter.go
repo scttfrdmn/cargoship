@@ -40,6 +40,7 @@ type Porter struct {
 	CLIMeta       *CLIMeta
 	TravelAgent   *travelagent.TravelAgent
 	Inventory     *inventory.Inventory
+	InventoryHash string
 	Logger        *zerolog.Logger
 	HashAlgorithm inventory.HashAlgorithm
 	Hashes        []config.HashSet
@@ -220,7 +221,8 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 	if err != nil {
 		return nil, err
 	}
-	p.Cmd.SetContext(context.WithValue(p.Cmd.Context(), inventory.InventoryHash, h))
+	p.InventoryHash = h
+	// p.Cmd.SetContext(context.WithValue(p.Cmd.Context(), inventory.InventoryHash, h))
 	// Store the inventory in context, so we can access it in the other run stages
 	p.Cmd.SetContext(context.WithValue(p.Cmd.Context(), inventory.InventoryKey, inventoryD))
 	inventoryD.SummaryLog()

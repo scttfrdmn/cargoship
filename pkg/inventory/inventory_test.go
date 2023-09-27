@@ -373,6 +373,7 @@ func TestWalkDirExpandArchivesDeep(t *testing.T) {
 	)
 }
 
+/*
 func TestCreateOrReadInventory(t *testing.T) {
 	cmd := NewInventoryCmd()
 	cmd.Execute()
@@ -380,6 +381,7 @@ func TestCreateOrReadInventory(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 }
+*/
 
 func TestWithViper(t *testing.T) {
 	v := viper.New()

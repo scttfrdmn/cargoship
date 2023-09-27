@@ -79,7 +79,6 @@ func getDestination(cmd *cobra.Command) (string, error) {
 	if ptr, err := porterWithCmd(cmd); err == nil {
 		ptr.LogFile = lf
 	}
-	// cmd.SetContext(context.WithValue(cmd.Context(), inventory.LogFileKey, lf))
 
 	return d, nil
 }
@@ -146,7 +145,7 @@ type processOpts struct {
 }
 
 // processSuitcases processes the suitcases
-func processSuitcases(po *processOpts, cmd *cobra.Command) []string {
+func processSuitcases(po *processOpts) []string {
 	ret := make([]string, po.Porter.Inventory.TotalIndexes)
 	p := pool.New().WithMaxGoroutines(po.Concurrency)
 	log.Debug().Int("concurrency", po.Concurrency).Msg("Setting pool guard")
@@ -195,7 +194,7 @@ func processSuitcases(po *processOpts, cmd *cobra.Command) []string {
 					panicIfErr(err)
 
 					// Then end
-					serr := po.Porter.Inventory.Options.TransportPlugin.SendWithChannel(createdF, cmd.Context().Value(inventory.InventoryHash).(string), statusC)
+					serr := po.Porter.Inventory.Options.TransportPlugin.SendWithChannel(createdF, po.Porter.InventoryHash, statusC)
 					panicIfErr(serr)
 				}
 			}
@@ -223,4 +222,15 @@ func calculateHash(rd io.Reader, ht string) string {
 	_, err := io.Copy(dst, reader)
 	panicIfErr(err)
 	return hex.EncodeToString(dst.Sum(nil))
+}
+
+func hasDuplicates(strArr []string) bool {
+	seen := make(map[string]bool)
+	for _, str := range strArr {
+		if seen[str] {
+			return true
+		}
+		seen[str] = true
+	}
+	return false
 }

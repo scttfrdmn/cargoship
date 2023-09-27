@@ -232,7 +232,7 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		mfiles = append(mfiles, path.Base(hashFnBin))
 	}
 	if inv.Options.TransportPlugin != nil {
-		shipMetadata(mfiles, opts, inv, cmd.Context().Value(inventory.InventoryHash).(string))
+		shipMetadata(mfiles, opts, inv, ptr.InventoryHash)
 	}
 
 	gout.MustPrint(runsum{
@@ -364,12 +364,7 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 
 	// Create an inventory file if one isn't specified
 	// inventoryD, err := inventory.CreateOrReadInventory(inventoryFile, userOverrides, args, cmd.Context().Value(destinationKey).(string), version)
-	ptr.Inventory, err = inventory.CreateOrReadInventory(
-		inventoryFile,
-		cmd,
-		args,
-		version,
-	)
+	ptr.Inventory, err = ptr.CreateOrReadInventory(inventoryFile)
 	if err != nil {
 		return err
 	}
@@ -378,7 +373,7 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 		SuitcasectlSource:      strings.Join(args, ", "),
 		SuitcasectlDestination: ptr.Destination,
 		Metadata:               ptr.Inventory.MustJSONString(),
-		MetadataCheckSum:       cmd.Context().Value(inventory.InventoryHash).(string),
+		MetadataCheckSum:       ptr.InventoryHash,
 	}); err != nil {
 		log.Warn().Err(err).Msg("error sending status update")
 	}
@@ -426,12 +421,11 @@ func createSuitcases(ptr *porter.Porter, opts *config.SuitCaseOpts) error {
 		log.Warn().Err(err).Msg("could not set sampling")
 	}
 	createdFiles := processSuitcases(&processOpts{
-		// Inventory:    ptr.Inventory,
 		Porter:       ptr,
 		SuitcaseOpts: opts,
 		SampleEvery:  sampleI,
 		Concurrency:  mustGetCmd[int](ptr.Cmd, "concurrency"),
-	}, ptr.Cmd)
+	})
 
 	if mustGetCmd[bool](ptr.Cmd, "hash-outer") {
 		ptr.Hashes, err = ptr.CreateHashes(createdFiles)
@@ -441,15 +435,4 @@ func createSuitcases(ptr *porter.Porter, opts *config.SuitCaseOpts) error {
 	}
 
 	return nil
-}
-
-func hasDuplicates(strArr []string) bool {
-	seen := make(map[string]bool)
-	for _, str := range strArr {
-		if seen[str] {
-			return true
-		}
-		seen[str] = true
-	}
-	return false
 }

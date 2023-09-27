@@ -4,9 +4,7 @@ Package inventory provides the needed pieces to correctly create an Inventory of
 package inventory
 
 import (
-	"context"
-	"crypto/md5" // nolint
-	"encoding/hex"
+	"context" // nolint
 	json "encoding/json"
 	"errors"
 	"fmt"
@@ -50,16 +48,14 @@ const (
 	SuitcaseOptionsKey
 	// DestinationKey is the key for the target diretory of a suitcase operation
 	DestinationKey
-	// LogFileKey is the detination of the log file
-	// LogFileKey
 	// HashTypeKey is the location for a given hash type (sha1, md5, etc)
 	HashTypeKey
 	// UserOverrideKey is where the user overrides live
 	UserOverrideKey
 	// LogWriterKey is where the log writer goes
 	LogWriterKey
-	// InventoryHash is where the hashing of the inventory goes
-	InventoryHash
+	// InventoryHashKey is where the hashing of the inventory goes
+	InventoryHashKey
 )
 
 var errHalt = errors.New("halt")
@@ -1146,6 +1142,7 @@ func destinationWithCobra(cmd *cobra.Command) string {
 	return d
 }
 
+/*
 // CreateOrReadInventory will either create a new inventory (if given an empty string), or read an existing one
 // Deprecated: use porter.CreateOrReadInventory instead
 func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []string, version string) (*Inventory, error) {
@@ -1194,6 +1191,7 @@ func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []stri
 	inventoryD.SummaryLog()
 	return inventoryD, nil
 }
+*/
 
 func mustTempDir() string {
 	o, err := os.MkdirTemp("", "suitcasectl")
@@ -1748,30 +1746,4 @@ func isTOCAble(s string) bool {
 		}
 	}
 	return false
-}
-
-// calculateMD5Sum calculates the MD5 checksum of a file given its path.
-func calculateMD5Sum(filePath string) (string, error) {
-	file, err := os.Open(filePath) // nolint:gosec
-	if err != nil {
-		return "", err
-	}
-	defer dclose(file)
-
-	hash := md5.New() // nolint:gosec
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", err
-	}
-
-	// Convert the MD5 hash to a hexadecimal string representation
-	checksum := hex.EncodeToString(hash.Sum(nil))
-
-	return checksum, nil
-}
-
-func dclose(c io.Closer) {
-	err := c.Close()
-	if err != nil {
-		log.Warn().Interface("closer", c).Msg("error closing file")
-	}
 }
