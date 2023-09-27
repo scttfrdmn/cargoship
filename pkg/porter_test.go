@@ -3,6 +3,7 @@ package porter
 import (
 	"testing"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
@@ -64,4 +65,19 @@ func TestCreateOrReadInventoryRead(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Equal(t, "bad.tar", got.Files[0].Name)
+}
+
+func TestWriteInventoryFile(t *testing.T) {
+	f := t.TempDir()
+	cmd := inventory.NewInventoryCmd()
+	cmd.Execute()
+	ptr := New(
+		WithDestination(f),
+		WithCmdArgs(cmd, []string{"./testdata/fake-dir"}),
+		WithUserOverrides(viper.New()),
+	)
+	i, gf, err := ptr.WriteInventory() // (v, cmd, []string{"../testdata/fake-dir"}, "testing")
+	require.NoError(t, err)
+	require.FileExists(t, gf.Name())
+	require.NotNil(t, i)
 }

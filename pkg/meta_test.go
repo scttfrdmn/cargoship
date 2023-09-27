@@ -10,7 +10,9 @@ import (
 )
 
 func TestNewCLIMeta(t *testing.T) {
-	cmd := &cobra.Command{}
+	cmd := &cobra.Command{
+		Version: "1.2.3",
+	}
 	cmd.Execute()
 
 	got := NewCLIMeta(cmd, []string{})
@@ -20,6 +22,7 @@ func TestNewCLIMeta(t *testing.T) {
 	var buf bytes.Buffer
 	got.Print(&buf)
 	require.Contains(t, buf.String(), "hostname:")
+	require.Contains(t, buf.String(), `version: 1.2.3`)
 
 	// Make sure the close works
 	tdir := t.TempDir()

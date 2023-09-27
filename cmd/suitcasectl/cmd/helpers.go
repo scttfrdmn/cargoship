@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"context"
 	"crypto/md5"  // nolint:gosec
 	"crypto/sha1" // nolint:gosec
 	"crypto/sha256"
@@ -24,7 +23,6 @@ import (
 	"github.com/spf13/cobra"
 	porter "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/travelagent"
@@ -43,9 +41,11 @@ func newOutDirWithCmd(cmd *cobra.Command) (string, error) {
 		}
 	}
 
-	// Also shove this in to the context. We'll use it later there.
-	ctx := context.WithValue(cmd.Context(), inventory.DestinationKey, o)
-	cmd.SetContext(ctx)
+	// Also shove this in to porter. We'll use it later there.
+	ptr, err := porterWithCmd(cmd)
+	if err == nil {
+		ptr.Destination = o
+	}
 	return o, nil
 }
 
@@ -68,7 +68,10 @@ func getDestination(cmd *cobra.Command) (string, error) {
 	}
 
 	// Set for later use
-	cmd.SetContext(context.WithValue(cmd.Context(), inventory.DestinationKey, d))
+	ptr, err := porterWithCmd(cmd)
+	if err == nil {
+		ptr.Destination = d
+	}
 	logPath := path.Join(d, "suitcasectl.log")
 	lf, err := os.Create(logPath) // nolint:gosec
 	if err != nil {
@@ -233,4 +236,12 @@ func hasDuplicates(strArr []string) bool {
 		seen[str] = true
 	}
 	return false
+}
+
+func mustPorterWithCmd(cmd *cobra.Command) *porter.Porter {
+	p, err := porterWithCmd(cmd)
+	if err != nil {
+		panic(err)
+	}
+	return p
 }

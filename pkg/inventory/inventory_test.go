@@ -1,7 +1,6 @@
 package inventory
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path"
@@ -13,7 +12,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 
 	"github.com/stretchr/testify/require"
 )
@@ -284,23 +282,6 @@ func TestNewDirectoryInventoryOptionsWithViper(t *testing.T) {
 	cmd.Execute()
 	_, err := NewDirectoryInventoryWithViper(v, cmd, []string{"../testdata/fake-dir"})
 	require.NoError(t, err)
-}
-
-func TestWriteOutDirectoryInventoryAndFileAndInventoyerWithViper(t *testing.T) {
-	f := t.TempDir()
-	v := viper.New()
-	c := &cobra.Command{}
-	opts := &config.SuitCaseOpts{
-		Destination: f,
-	}
-	ctx := context.WithValue(context.Background(), SuitcaseOptionsKey, opts)
-	c.SetContext(ctx)
-	cmd := NewInventoryCmd()
-	cmd.Execute()
-	i, gf, err := WriteInventoryAndFileWithViper(v, cmd, []string{"../testdata/fake-dir"}, "testing")
-	require.NoError(t, err)
-	require.FileExists(t, gf.Name())
-	require.NotNil(t, i)
 }
 
 func TestWalkDirLimit(t *testing.T) {

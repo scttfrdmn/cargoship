@@ -1,6 +1,7 @@
 package porter
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"os/user"
@@ -84,11 +85,13 @@ func (c *CLIMeta) Print(w io.Writer) {
 // NewCLIMeta returns a new CLIMeta option
 func NewCLIMeta(cmd *cobra.Command, args []string) *CLIMeta {
 	start := time.Now()
+	fmt.Fprintf(os.Stderr, "VERSION: %+v\n", cmd.Version)
 	m := &CLIMeta{
 		StartedAt:    &start,
 		Arguments:    args,
 		ActiveFlags:  map[string]interface{}{},
 		DefaultFlags: map[string]interface{}{},
+		Version:      cmd.Version,
 	}
 	// Yoink the CLI flags
 	f := cmd.Flags()

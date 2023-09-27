@@ -44,6 +44,13 @@ func TestNewSuitcaseWithLimit(t *testing.T) {
 	i, err := inventory.NewInventoryWithFilename(path.Join(testD, "inventory.yaml"))
 	require.NoError(t, err)
 	require.Equal(t, 5, len(i.Files))
+
+	// Make sure we get a logfile with actual entries
+	lfn := path.Join(testD, "suitcasectl.log")
+	require.FileExists(t, lfn)
+	lfStat, err := os.Stat(lfn)
+	require.NoError(t, err)
+	require.Greater(t, lfStat.Size(), int64(0))
 }
 
 func TestNewSuitcaseOverflow(t *testing.T) {

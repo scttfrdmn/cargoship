@@ -10,7 +10,6 @@ package porter
 
 import (
 	"bufio"
-	"context"
 	"crypto/md5"  // nolint:gosec
 	"crypto/sha1" // nolint:gosec
 	"crypto/sha256"
@@ -197,12 +196,12 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 		p.Logger.Debug().Msg("No inventory file specified, we're going to go ahead and create one")
 		var outF *os.File
 		var err error
-		v := inventory.UserOverrideWithCobra(p.Cmd)
+		p.UserOverrides = p.getUserOverrides()
 		if p.Destination == "" {
 			p.Destination = mustTempDir()
 		}
 		// inventoryD, outF, err = WriteInventoryAndFileWithViper(v, cmd, args, outDir, version)
-		inventoryD, outF, err = inventory.WriteInventoryAndFileWithViper(v, p.Cmd, p.Args, p.Version)
+		inventoryD, outF, err = p.WriteInventory()
 		if err != nil {
 			return nil, err
 		}
@@ -224,7 +223,8 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 	p.InventoryHash = h
 	// p.Cmd.SetContext(context.WithValue(p.Cmd.Context(), inventory.InventoryHash, h))
 	// Store the inventory in context, so we can access it in the other run stages
-	p.Cmd.SetContext(context.WithValue(p.Cmd.Context(), inventory.InventoryKey, inventoryD))
+	p.Inventory = inventoryD
+	// p.Cmd.SetContext(context.WithValue(p.Cmd.Context(), inventory.InventoryKey, inventoryD))
 	inventoryD.SummaryLog()
 	return inventoryD, nil
 }
@@ -262,3 +262,24 @@ const (
 	// PorterKey is where we sneak porter in to the cmd contexs.
 	PorterKey contextKey = iota
 )
+
+// UserOverrideWithCobra returns a user override viper object from a cmd
+func (p *Porter) getUserOverrides() *viper.Viper {
+	if p.UserOverrides == nil {
+		return &viper.Viper{}
+	}
+	return p.UserOverrides
+}
+
+// WriteInventory writes out an inventory file, and returns it, along with the actual Inventory
+func (p *Porter) WriteInventory() (*inventory.Inventory, *os.File, error) {
+	i, f, ir, err := inventory.NewDirectoryInventoryAndFileAndInventoyerWithViper(p.UserOverrides, p.Cmd, p.Args, p.Destination)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = ir.Write(f, i)
+	if err != nil {
+		return nil, nil, err
+	}
+	return i, f, nil
+}

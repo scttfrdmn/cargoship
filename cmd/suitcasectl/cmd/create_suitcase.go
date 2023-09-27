@@ -31,10 +31,11 @@ var (
 // NewCreateSuitcaseCmd represents the createSuitcase command
 func NewCreateSuitcaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "suitcase [--inventory-file=INVENTORY_FILE | TARGET_DIR...]",
-		Short: "Create a suitcase",
-		Long:  "Create a suitcase from either an inventory file or multiple target directories.",
-		Args:  cobra.ArbitraryArgs,
+		Use:     "suitcase [--inventory-file=INVENTORY_FILE | TARGET_DIR...]",
+		Short:   "Create a suitcase",
+		Long:    "Create a suitcase from either an inventory file or multiple target directories.",
+		Args:    cobra.ArbitraryArgs,
+		Version: version, // Needed so we can put the version in the metadata
 		Example: ` # Create a suitcase using the defaults. This will land in a new TEMPDIR on your host:
 $ suitcasectl create suitcase ~/example
 ...
@@ -146,7 +147,8 @@ func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, er
 	}
 
 	// Store in context for later retrieval
-	cmd.SetContext(context.WithValue(cmd.Context(), inventory.UserOverrideKey, userOverrides))
+	// ptr := mustPorterWithCmd(cmd)
+	// ptr.UserOverrides = userOverrides
 	return userOverrides, nil
 }
 
@@ -181,7 +183,6 @@ func setOuterHashes(ptr *porter.Porter, metaF string) ([]config.HashSet, string,
 		Hash:     calculateHash(metaFh, hashAlgo.String()),
 	})
 
-	// cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashesKey, hashes))
 	hashFn, err := writeHashFile(ptr, suitcase.WriteHashFile, "")
 	checkErr(err, "Could not write out the hashfile")
 
@@ -217,7 +218,6 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		Time("end", *ptr.CLIMeta.CompletedAt).
 		Msg("🧳 Completed")
 
-	inv := inventory.WithCmd(cmd)
 	opts := suitcase.OptsWithCmd(cmd)
 	// Copy files up if needed
 	mfiles := []string{
@@ -231,14 +231,14 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 	if hashFnBin != "" {
 		mfiles = append(mfiles, path.Base(hashFnBin))
 	}
-	if inv.Options.TransportPlugin != nil {
-		shipMetadata(mfiles, opts, inv, ptr.InventoryHash)
+	if ptr.Inventory.Options.TransportPlugin != nil {
+		shipMetadata(mfiles, opts, ptr.Inventory, ptr.InventoryHash)
 	}
 
 	gout.MustPrint(runsum{
 		Destination: opts.Destination,
-		Suitcases:   inv.UniqueSuitcaseNames(),
-		Directories: inv.Options.Directories,
+		Suitcases:   ptr.Inventory.UniqueSuitcaseNames(),
+		Directories: ptr.Inventory.Options.Directories,
 		MetaFiles:   mfiles,
 		Hashes:      hashes,
 	})
@@ -307,7 +307,6 @@ func createPreRunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// cmd.SetContext(context.WithValue(cmd.Context(), inventory.CLIMetaKey, cliMeta))
 	return nil
 }
 
@@ -317,14 +316,6 @@ func porterWithCmd(cmd *cobra.Command) (*porter.Porter, error) {
 		return nil, errors.New("could not find Porter in this context")
 	}
 	return p, nil
-}
-
-func mustPorterWithCmd(cmd *cobra.Command) *porter.Porter {
-	p, err := porterWithCmd(cmd)
-	if err != nil {
-		panic(err)
-	}
-	return p
 }
 
 func envOr(e, d string) string {
@@ -363,7 +354,6 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 	}
 
 	// Create an inventory file if one isn't specified
-	// inventoryD, err := inventory.CreateOrReadInventory(inventoryFile, userOverrides, args, cmd.Context().Value(destinationKey).(string), version)
 	ptr.Inventory, err = ptr.CreateOrReadInventory(inventoryFile)
 	if err != nil {
 		return err

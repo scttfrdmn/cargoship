@@ -42,20 +42,10 @@ const DefaultSuitcaseFormat string = "tar.zst"
 type contextKey int
 
 const (
-	// InventoryKey is where the inventory lives. Hoping to get rid of most (if not all) other keys
-	InventoryKey contextKey = iota
 	// SuitcaseOptionsKey is the location for suitcase options
-	SuitcaseOptionsKey
+	SuitcaseOptionsKey contextKey = iota
 	// DestinationKey is the key for the target diretory of a suitcase operation
-	DestinationKey
-	// HashTypeKey is the location for a given hash type (sha1, md5, etc)
-	HashTypeKey
-	// UserOverrideKey is where the user overrides live
-	UserOverrideKey
-	// LogWriterKey is where the log writer goes
-	LogWriterKey
-	// InventoryHashKey is where the hashing of the inventory goes
-	InventoryHashKey
+	// DestinationKey
 )
 
 var errHalt = errors.New("halt")
@@ -554,24 +544,26 @@ func (di *Inventory) IndexWithSize(maxSize int64) error {
 	return nil
 }
 
+/*
 // WriteInventoryAndFileWithViper uses viper to write out an inventory file
 func WriteInventoryAndFileWithViper(
-	v *viper.Viper, cmd *cobra.Command, args []string, version string,
+	v *viper.Viper,
+	cmd *cobra.Command,
+	args []string,
+	version string,
 ) (*Inventory, *os.File, error) {
 	outDir := destinationWithCobra(cmd)
 	i, f, ir, err := NewDirectoryInventoryAndFileAndInventoyerWithViper(v, cmd, args, outDir)
 	if err != nil {
 		return nil, nil, err
 	}
-	// now := time.Now()
-	// i.CLIMeta.Date = &now
-	// i.CLIMeta.Version = version
 	err = ir.Write(f, i)
 	if err != nil {
 		return nil, nil, err
 	}
 	return i, f, nil
 }
+*/
 
 // NewDirectoryInventoryAndFileAndInventoyerWithViper does the interface with viper
 func NewDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, cmd *cobra.Command, args []string, outDir string) (*Inventory, *os.File, Inventoryer, error) {
@@ -1110,22 +1102,7 @@ func NewCaseSet(maxSize int64) CaseSet {
 	}
 }
 
-// UserOverrideWithCobra returns a user override viper object from a cmd
-func UserOverrideWithCobra(cmd *cobra.Command) *viper.Viper {
-	if cmd.Context() == nil {
-		return &viper.Viper{}
-	}
-	v := cmd.Context().Value(UserOverrideKey)
-	if v == nil {
-		return &viper.Viper{}
-	}
-	vi, ok := v.(*viper.Viper)
-	if !ok {
-		return &viper.Viper{}
-	}
-	return vi
-}
-
+/*
 // destinationWithCobra returns a destination string from a cmd
 func destinationWithCobra(cmd *cobra.Command) string {
 	if cmd.Context() == nil {
@@ -1142,57 +1119,6 @@ func destinationWithCobra(cmd *cobra.Command) string {
 	return d
 }
 
-/*
-// CreateOrReadInventory will either create a new inventory (if given an empty string), or read an existing one
-// Deprecated: use porter.CreateOrReadInventory instead
-func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []string, version string) (*Inventory, error) {
-	// Create an inventory file if one isn't specified
-	var inventoryD *Inventory
-	if inventoryFile == "" {
-		log.Debug().Msg("No inventory file specified, we're going to go ahead and create one")
-		var outF *os.File
-		var err error
-		v := UserOverrideWithCobra(cmd)
-		outDir := destinationWithCobra(cmd)
-		if outDir == "" {
-			outDir = mustTempDir()
-			var ctx context.Context
-			if cmd.Context() == nil {
-				ctx = context.Background()
-			} else {
-				ctx = cmd.Context()
-			}
-
-			cmd.SetContext(context.WithValue(ctx, DestinationKey, outDir))
-		}
-		// inventoryD, outF, err = WriteInventoryAndFileWithViper(v, cmd, args, outDir, version)
-		inventoryD, outF, err = WriteInventoryAndFileWithViper(v, cmd, args, version)
-		if err != nil {
-			return nil, err
-		}
-		inventoryFile = outF.Name()
-		log.Debug().Str("file", inventoryFile).Msg("Created inventory file")
-	} else {
-		var err error
-		inventoryD, err = NewInventoryWithFilename(inventoryFile)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Calculate a hash of the inventory
-	h, err := calculateMD5Sum(inventoryFile)
-	if err != nil {
-		return nil, err
-	}
-	cmd.SetContext(context.WithValue(cmd.Context(), InventoryHash, h))
-	// Store the inventory in context, so we can access it in the other run stages
-	cmd.SetContext(context.WithValue(cmd.Context(), InventoryKey, inventoryD))
-	inventoryD.SummaryLog()
-	return inventoryD, nil
-}
-*/
-
 func mustTempDir() string {
 	o, err := os.MkdirTemp("", "suitcasectl")
 	if err != nil {
@@ -1200,6 +1126,7 @@ func mustTempDir() string {
 	}
 	return o
 }
+*/
 
 func checkItemSize(item *File, maxSize int64) error {
 	if item.Size > maxSize {
@@ -1477,6 +1404,7 @@ func mustGetCommand(v any) cobra.Command {
 	return ci
 }
 
+/*
 // WithCmd returns the inventory object from a cobra command context
 func WithCmd(cmd *cobra.Command) *Inventory {
 	inv, ok := cmd.Context().Value(InventoryKey).(*Inventory)
@@ -1485,6 +1413,7 @@ func WithCmd(cmd *cobra.Command) *Inventory {
 	}
 	return inv
 }
+*/
 
 // SearchFileMatches is a listing of files that match a given search
 type SearchFileMatches []File
