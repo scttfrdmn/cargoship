@@ -53,7 +53,6 @@ func TestNewSuitcaseOverflow(t *testing.T) {
 		"create", "suitcase", "../../../pkg/testdata/overflow-queue/",
 		"--max-suitcase-size", "2.1Mb", "--concurrency", "1", "--destination", testD,
 	})
-	// err := cmd.ExecuteContext(context.Background())
 	err := cmd.Execute()
 	require.NoError(t, err)
 	i, err := inventory.NewInventoryWithFilename(path.Join(testD, "inventory.yaml"))
@@ -232,4 +231,18 @@ func BenchmarkSuitcaseCreate(b *testing.B) {
 			}
 		}
 	}
+}
+
+func TestValidateCmdArgs(t *testing.T) {
+	require.EqualError(
+		t,
+		validateCmdArgs("", false, []string{}),
+		"error: You must specify an inventory file or target dirs",
+	)
+
+	require.EqualError(
+		t,
+		validateCmdArgs("inventory.yaml", true, []string{}),
+		"you can't specify an inventory file and only-inventory at the same time",
+	)
 }

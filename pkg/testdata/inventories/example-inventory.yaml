@@ -1,0 +1,41 @@
+files:
+    - path: /Users/drews/Desktop/example-suitcase/bad.tar
+      destination: bad.tar
+      name: bad.tar
+      size: 3154432
+      suitcase_index: 1
+      suitcase_name: demo-drews-01-of-01.tar.zst
+options:
+    user: drews
+    prefix: demo
+    top_level_directories:
+        - /Users/drews/Desktop/example-suitcase/
+    size_considered_large: 0
+    max_suitcase_size: 536870912000
+    internal_metadata_glob: suitcase-meta*
+    ignore_globs:
+        - '*.out'
+        - '*.swp'
+    encrypt_inner: false
+    hash_inner: false
+    limit_file_count: 0
+    suitcase_format: tar.zst
+    inventory_format: yaml
+    follow_symlinks: false
+    hash_algorithm: 1
+    include_archive_toc: false
+    include_archive_toc_deep: false
+    transport_plugin: null
+total_indexes: 1
+index_summaries:
+    1:
+        count: 15
+        size: 10187619
+        human_size: 10 MB
+internal_metadata:
+    /Users/drews/Desktop/example-suitcase/suitcase-meta.txt: |
+        This is a test bit of metadata
+external_metadata: {}
+cli_meta:
+    date: 2023-09-26T13:31:36.327445-04:00
+    version: v0.17.0

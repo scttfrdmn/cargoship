@@ -51,15 +51,11 @@ const (
 	// DestinationKey is the key for the target diretory of a suitcase operation
 	DestinationKey
 	// LogFileKey is the detination of the log file
-	LogFileKey
-	// HashesKey is the location of the hashes
-	HashesKey
+	// LogFileKey
 	// HashTypeKey is the location for a given hash type (sha1, md5, etc)
 	HashTypeKey
 	// UserOverrideKey is where the user overrides live
 	UserOverrideKey
-	// CLIMetaKey is where the CLI metadata lives
-	CLIMetaKey
 	// LogWriterKey is where the log writer goes
 	LogWriterKey
 	// InventoryHash is where the hashing of the inventory goes
@@ -213,7 +209,7 @@ type Inventory struct {
 	IndexSummaries   map[int]*IndexSummary `yaml:"index_summaries" json:"index_summaries"`
 	InternalMetadata map[string]string     `yaml:"internal_metadata" json:"internal_metadata"`
 	ExternalMetadata map[string]string     `yaml:"external_metadata" json:"external_metadata"`
-	CLIMeta          CLIMeta               `yaml:"cli_meta" json:"cli_meta"`
+	// CLIMeta          CLIMeta               `yaml:"cli_meta" json:"cli_meta"`
 }
 
 // MustJSONString returns the json representation as a string or panic
@@ -305,11 +301,13 @@ type IndexSummary struct {
 	HumanSize string `yaml:"human_size"`
 }
 
+/*
 // CLIMeta is the meta information about the cli tool that generated an inventory
 type CLIMeta struct {
 	Date    *time.Time `yaml:"date" json:"date"`
 	Version string     `yaml:"version" json:"version"`
 }
+*/
 
 // Options are the options used to create a DirectoryInventory
 type Options struct {
@@ -569,9 +567,9 @@ func WriteInventoryAndFileWithViper(
 	if err != nil {
 		return nil, nil, err
 	}
-	now := time.Now()
-	i.CLIMeta.Date = &now
-	i.CLIMeta.Version = version
+	// now := time.Now()
+	// i.CLIMeta.Date = &now
+	// i.CLIMeta.Version = version
 	err = ir.Write(f, i)
 	if err != nil {
 		return nil, nil, err
@@ -1116,8 +1114,8 @@ func NewCaseSet(maxSize int64) CaseSet {
 	}
 }
 
-// userOverrideWithCobra returns a user override viper object from a cmd
-func userOverrideWithCobra(cmd *cobra.Command) *viper.Viper {
+// UserOverrideWithCobra returns a user override viper object from a cmd
+func UserOverrideWithCobra(cmd *cobra.Command) *viper.Viper {
 	if cmd.Context() == nil {
 		return &viper.Viper{}
 	}
@@ -1149,6 +1147,7 @@ func destinationWithCobra(cmd *cobra.Command) string {
 }
 
 // CreateOrReadInventory will either create a new inventory (if given an empty string), or read an existing one
+// Deprecated: use porter.CreateOrReadInventory instead
 func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []string, version string) (*Inventory, error) {
 	// Create an inventory file if one isn't specified
 	var inventoryD *Inventory
@@ -1156,7 +1155,7 @@ func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []stri
 		log.Debug().Msg("No inventory file specified, we're going to go ahead and create one")
 		var outF *os.File
 		var err error
-		v := userOverrideWithCobra(cmd)
+		v := UserOverrideWithCobra(cmd)
 		outDir := destinationWithCobra(cmd)
 		if outDir == "" {
 			outDir = mustTempDir()
@@ -1393,7 +1392,8 @@ func (di *Inventory) SuitcaseNameWithIndex(i int) string {
 	return fmt.Sprintf("%v-%v-%02d-of-%02d.%v", di.Options.Prefix, di.Options.User, i, di.TotalIndexes, di.Options.SuitcaseFormat)
 }
 
-func newInventoryCmd() *cobra.Command {
+// NewInventoryCmd is a shortcut for an inventory command
+func NewInventoryCmd() *cobra.Command {
 	cmd := &cobra.Command{}
 	BindCobra(cmd)
 	return cmd

@@ -295,7 +295,7 @@ func TestWriteOutDirectoryInventoryAndFileAndInventoyerWithViper(t *testing.T) {
 	}
 	ctx := context.WithValue(context.Background(), SuitcaseOptionsKey, opts)
 	c.SetContext(ctx)
-	cmd := newInventoryCmd()
+	cmd := NewInventoryCmd()
 	cmd.Execute()
 	i, gf, err := WriteInventoryAndFileWithViper(v, cmd, []string{"../testdata/fake-dir"}, "testing")
 	require.NoError(t, err)
@@ -374,7 +374,7 @@ func TestWalkDirExpandArchivesDeep(t *testing.T) {
 }
 
 func TestCreateOrReadInventory(t *testing.T) {
-	cmd := newInventoryCmd()
+	cmd := NewInventoryCmd()
 	cmd.Execute()
 	got, err := CreateOrReadInventory("", cmd, []string{"../testdata/limit-dir"}, "dev")
 	require.NoError(t, err)

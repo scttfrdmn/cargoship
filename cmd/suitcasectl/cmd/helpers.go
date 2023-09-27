@@ -74,7 +74,12 @@ func getDestination(cmd *cobra.Command) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	cmd.SetContext(context.WithValue(cmd.Context(), inventory.LogFileKey, lf))
+
+	// If we have a porter, set the logfile here
+	if ptr, err := porterWithCmd(cmd); err == nil {
+		ptr.LogFile = lf
+	}
+	// cmd.SetContext(context.WithValue(cmd.Context(), inventory.LogFileKey, lf))
 
 	return d, nil
 }
