@@ -26,8 +26,7 @@ func TestNewCLIMeta(t *testing.T) {
 
 	// Make sure the close works
 	tdir := t.TempDir()
-	complete, err := got.Complete(tdir)
-	require.NoError(t, err)
+	complete := got.MustComplete(tdir)
 	require.Equal(t, path.Join(tdir, "suitcasectl-invocation-meta.yaml"), complete)
 	require.FileExists(t, complete)
 }

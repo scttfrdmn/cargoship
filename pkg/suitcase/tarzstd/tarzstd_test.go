@@ -13,7 +13,7 @@ import (
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 )
 
-func TestTarGzFile(t *testing.T) {
+func TestTarZstFile(t *testing.T) {
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar.zst"))
 	require.NoError(t, err)
@@ -41,10 +41,6 @@ func TestTarGzFile(t *testing.T) {
 	f, err = os.Open(f.Name())
 	require.NoError(t, err)
 
-	/*
-		md, err := openpgp.ReadMessage(f, entityList, nil, nil)
-		require.NoError(t, err)
-	*/
 	gr, err := zstd.NewReader(f)
 	require.NoError(t, err)
 
@@ -63,4 +59,6 @@ func TestTarGzFile(t *testing.T) {
 			require.Equal(t, "Joe the user\n", string(d))
 		}
 	}
+
+	require.NotNil(t, archive.GetHashes())
 }
