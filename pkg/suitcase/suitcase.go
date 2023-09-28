@@ -60,7 +60,13 @@ var formatMap map[string]Format = map[string]Format{
 
 // FormatCompletion returns shell completion
 func FormatCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	return nonEmptyKeys(formatMap), cobra.ShellCompDirectiveNoFileComp
+	ret := []string{}
+	for _, item := range nonEmptyKeys(formatMap) {
+		if strings.Contains(item, toComplete) {
+			ret = append(ret, item)
+		}
+	}
+	return ret, cobra.ShellCompDirectiveNoFileComp
 }
 
 func (f Format) String() string {
@@ -291,25 +297,35 @@ func reverseMap[K string, V string | Format](m map[K]V) map[V]K {
 	return ret
 }
 
-func hexToBin(s string) string {
-	data, err := hex.DecodeString(s)
+func mustHexToBin(s string) string {
+	got, err := hexToBin(s)
 	if err != nil {
 		panic(err)
 	}
-	return base64.StdEncoding.EncodeToString(data)
+	return got
+}
+
+func hexToBin(s string) (string, error) {
+	data, err := hex.DecodeString(s)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(data), nil
 }
 
 // WriteHashFileBin  writes out the hashset array to an io.Writer
 func WriteHashFileBin(hs []config.HashSet, o io.Writer) error {
 	w := bufio.NewWriter(o)
 	for _, hs := range hs {
-		_, err := w.WriteString(fmt.Sprintf("%s\t%s\n", hs.Filename, hexToBin(hs.Hash)))
+		hx, err := hexToBin(hs.Hash)
 		if err != nil {
 			return err
 		}
+		if _, err := w.WriteString(fmt.Sprintf("%s\t%s\n", hs.Filename, hx)); err != nil {
+			return err
+		}
 	}
-	err := w.Flush()
-	if err != nil {
+	if err := w.Flush(); err != nil {
 		return err
 	}
 	return nil
@@ -330,18 +346,6 @@ func WriteHashFile(hs []config.HashSet, o io.Writer) error {
 	}
 	return nil
 }
-
-// OptsWithCmd returns suitcase options givena  cobra command
-/*
-func OptsWithCmd(cmd *cobra.Command) *config.SuitCaseOpts {
-	opts, ok := cmd.Context().Value(inventory.SuitcaseOptionsKey).(*config.SuitCaseOpts)
-	if !ok {
-		// fmt.Fprintf(os.Stderr, "%+v", cmd.Context().Value(inventory.SuitcaseOptionsKey))
-		panic("could not get suitcase options with cmd")
-	}
-	return opts
-}
-*/
 
 func dclose(c io.Closer) {
 	err := c.Close()

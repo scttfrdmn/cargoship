@@ -277,14 +277,6 @@ type IndexSummary struct {
 	HumanSize string `yaml:"human_size"`
 }
 
-/*
-// CLIMeta is the meta information about the cli tool that generated an inventory
-type CLIMeta struct {
-	Date    *time.Time `yaml:"date" json:"date"`
-	Version string     `yaml:"version" json:"version"`
-}
-*/
-
 // Options are the options used to create a DirectoryInventory
 type Options struct {
 	User                  string                   `yaml:"user" json:"user"`

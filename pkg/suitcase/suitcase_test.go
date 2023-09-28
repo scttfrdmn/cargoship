@@ -1,6 +1,7 @@
 package suitcase
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/rs/zerolog"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/gpg"
@@ -23,7 +25,7 @@ func TestNewSuitcase(t *testing.T) {
 	require.NoError(t, empty.Close())
 	require.NoError(t, os.Mkdir(folder+"/folder-inside", 0o755))
 
-	for _, format := range []string{"tar", "tar.gz", "tar.zst"} {
+	for _, format := range []string{"tar", "tar.gz", "tar.zst", "tar.bz2"} {
 		format := format
 		t.Run(format, func(t *testing.T) {
 			archive, err := New(io.Discard, &config.SuitCaseOpts{
@@ -198,6 +200,44 @@ func TestHexToBin(t *testing.T) {
 	require.Equal(
 		t,
 		"kOKOhBhQjtnw9B7gDxYcCw==",
-		hexToBin("90e28e8418508ed9f0f41ee00f161c0b"),
+		mustHexToBin("90e28e8418508ed9f0f41ee00f161c0b"),
+	)
+}
+
+func TestFormatComplete(t *testing.T) {
+	got, _ := FormatCompletion(&cobra.Command{}, []string{}, "zst")
+	require.Contains(t, got, "tar.zst")
+	require.NotContains(t, got, "tar.gz")
+}
+
+func TestWriteHashfileBin(t *testing.T) {
+	buf := bytes.Buffer{}
+	err := WriteHashFileBin([]config.HashSet{
+		{
+			Filename: "foo",
+			Hash:     "b25f62d0856d4c81831cf701b92e3e74",
+		},
+	}, &buf)
+	require.NoError(t, err)
+	require.Equal(t, "foo\tsl9i0IVtTIGDHPcBuS4+dA==\n", buf.String())
+}
+
+func TestWriteHashfileBinFail(t *testing.T) {
+	buf := bytes.Buffer{}
+	err := WriteHashFileBin([]config.HashSet{
+		{
+			Filename: "foo",
+			Hash:     "not-a-hash",
+		},
+	}, &buf)
+	require.Error(t, err)
+	require.Equal(t, "", buf.String())
+}
+
+func TestFormatStrings(t *testing.T) {
+	require.Equal(
+		t,
+		"tar",
+		formatMap["tar"].String(),
 	)
 }

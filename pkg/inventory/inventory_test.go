@@ -541,3 +541,13 @@ func TestTOCAble(t *testing.T) {
 		require.Equal(t, tt.expect, isTOCAble(tt.fn), desc)
 	}
 }
+
+func TestHashCompletion(t *testing.T) {
+	got, _ := HashCompletion(&cobra.Command{}, []string{}, "md")
+	require.Contains(t, got[0], "md5")
+}
+
+func TestFormatCompletion(t *testing.T) {
+	got, _ := FormatCompletion(&cobra.Command{}, []string{}, "ya")
+	require.Contains(t, got[0], "yaml")
+}
