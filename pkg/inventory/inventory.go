@@ -12,7 +12,6 @@ import (
 	"io/fs"
 	"os"
 	"os/user"
-	"path"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -38,15 +37,6 @@ import (
 // suitcase. Hopefully this fits for most use cases, but can always be
 // overridden
 const DefaultSuitcaseFormat string = "tar.zst"
-
-type contextKey int
-
-const (
-	// SuitcaseOptionsKey is the location for suitcase options
-	SuitcaseOptionsKey contextKey = iota
-	// DestinationKey is the key for the target diretory of a suitcase operation
-	// DestinationKey
-)
 
 var errHalt = errors.New("halt")
 
@@ -542,65 +532,6 @@ func (di *Inventory) IndexWithSize(maxSize int64) error {
 	di.TotalIndexes = numCases
 	di.expandSuitcaseNames()
 	return nil
-}
-
-/*
-// WriteInventoryAndFileWithViper uses viper to write out an inventory file
-func WriteInventoryAndFileWithViper(
-	v *viper.Viper,
-	cmd *cobra.Command,
-	args []string,
-	version string,
-) (*Inventory, *os.File, error) {
-	outDir := destinationWithCobra(cmd)
-	i, f, ir, err := NewDirectoryInventoryAndFileAndInventoyerWithViper(v, cmd, args, outDir)
-	if err != nil {
-		return nil, nil, err
-	}
-	err = ir.Write(f, i)
-	if err != nil {
-		return nil, nil, err
-	}
-	return i, f, nil
-}
-*/
-
-// NewDirectoryInventoryAndFileAndInventoyerWithViper does the interface with viper
-func NewDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, cmd *cobra.Command, args []string, outDir string) (*Inventory, *os.File, Inventoryer, error) {
-	if v == nil {
-		panic("must pass viper to NewDirectoryInventoryAndFileAndInventoyerWithViper")
-	}
-	i, f, err := NewDirectoryInventoryAndFileWithViper(v, cmd, args, outDir)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	ir, err := NewInventoryerWithFilename(f.Name())
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	return i, f, ir, nil
-}
-
-// NewDirectoryInventoryAndFileWithViper creates a new inventory with viper
-func NewDirectoryInventoryAndFileWithViper(v *viper.Viper, cmd *cobra.Command, args []string, outDir string) (*Inventory, *os.File, error) {
-	i, err := NewDirectoryInventoryWithViper(v, cmd, args)
-	if err != nil {
-		return nil, nil, err
-	}
-	outF, err := os.Create(path.Join(outDir, fmt.Sprintf("inventory.%v", i.Options.InventoryFormat))) // nolint:gosec
-	if err != nil {
-		return nil, nil, err
-	}
-	return i, outF, nil
-}
-
-// NewDirectoryInventoryWithViper new DirectoryInventory with Viper
-func NewDirectoryInventoryWithViper(v *viper.Viper, cmd *cobra.Command, args []string) (*Inventory, error) {
-	inventoryOpts := NewOptions(
-		WithViper(v),
-		WithCobra(cmd, args),
-	)
-	return NewDirectoryInventory(inventoryOpts)
 }
 
 // NewDirectoryInventory creates a new DirectoryInventory using options
@@ -1404,17 +1335,6 @@ func mustGetCommand(v any) cobra.Command {
 	return ci
 }
 
-/*
-// WithCmd returns the inventory object from a cobra command context
-func WithCmd(cmd *cobra.Command) *Inventory {
-	inv, ok := cmd.Context().Value(InventoryKey).(*Inventory)
-	if !ok {
-		panic("could not get inventory")
-	}
-	return inv
-}
-*/
-
 // SearchFileMatches is a listing of files that match a given search
 type SearchFileMatches []File
 
@@ -1528,62 +1448,6 @@ func containsString(s []string, e string) bool {
 	return false
 }
 
-// archiveTOC is a v3 TOC generator for archiver
-/*
-func archiveTOC(fn string) ([]string, error) {
-	ret := []string{}
-	err := archiver.Walk(fn, func(f archiver.File) error {
-		if !f.IsDir() {
-			// ret = append(ret, f.FileInfo.
-			return nil
-		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Junky way to check this...
-	if (len(ret) == 1) && (ret[0] == ".") {
-		return nil, errors.New("could not scan a non archive file")
-	}
-
-	// I think we want to do this...
-	sort.Strings(ret)
-	return ret, nil
-}
-*/
-
-/*
-func archiveTOCBuiltIn(fn string) ([]string, error) {
-	return nil, nil
-}
-*/
-
-/*
-func archiveTOCExternal(fn string) ([]string, error) {
-	// Handle Tar here
-	extMapping := map[string]string{
-		".tar.gz":  "tz",
-		".tar.bz2": "tj",
-		".tar":     "t",
-	}
-	for ext, flags := range extMapping {
-		if strings.HasSuffix(fn, ext) {
-			out, err := exec.Command("tar", flags+"f", fn).Output() // nolint
-			if err != nil {
-				return nil, err
-			}
-			lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-
-			return lines, nil
-		}
-	}
-	return nil, fmt.Errorf("could not find a way to handle this file: %v", fn)
-}
-*/
-
 // archiveTOC is a v4 TOC generator for archiver
 func archiveTOC(fn string) ([]string, error) {
 	fsys, err := archiver.FileSystem(context.Background(), fn)
@@ -1594,6 +1458,7 @@ func archiveTOC(fn string) ([]string, error) {
 
 	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		// Handle: https://github.com/mholt/archiver/issues/383
+		// This should be fixed in version later than the v4.0.0-alpha.8 tag
 		/*
 			if (path == ".") && d.Name() == "." && strings.Contains(fn, ".tar") {
 				log.Debug().Str("archive", fn).Msg("this archive is not properly handled, falling back to external lookup")
@@ -1622,16 +1487,6 @@ func archiveTOC(fn string) ([]string, error) {
 	sort.Strings(ret)
 	return ret, nil
 }
-
-/*
-func mustArchiveTOC(fn string) []string {
-	got, err := archiveTOC(fn)
-	if err != nil {
-		panic(err)
-	}
-	return got
-}
-*/
 
 func mustStat(path string) fs.FileInfo {
 	st, err := os.Stat(path)

@@ -29,29 +29,20 @@ type TravelAgent struct {
 	printCurl bool
 }
 
+// TravelAgenter is the thing that describes what a travel agent is!
+type TravelAgenter interface {
+	StatusURL() string
+	Update(StatusUpdate) (*StatusUpdateResponse, error)
+}
+
+// Validate the built in TravelAgent meets the TravelAgenter interface
+var _ TravelAgenter = TravelAgent{}
+
 // StatusURL is just the web url for viewing this stuff
 func (t TravelAgent) StatusURL() string {
 	pathPieces := strings.Split(t.URL.Path, "/")
 	id := pathPieces[len(pathPieces)-1]
 	return fmt.Sprintf("https://%v/suitcase_transfers/%v", t.URL.Host, id)
-}
-
-type credential struct {
-	URL   string `json:"url"`
-	Token string `json:"password"`
-}
-
-func blobToCred(b string) (*credential, error) {
-	text, err := base64.StdEncoding.DecodeString(b)
-	if err != nil {
-		return nil, err
-	}
-	var c credential
-	err = json.Unmarshal(text, &c)
-	if err != nil {
-		return nil, err
-	}
-	return &c, nil
 }
 
 // Update updates the status of an agent
@@ -71,6 +62,24 @@ func (t TravelAgent) Update(s StatusUpdate) (*StatusUpdateResponse, error) {
 		return nil, err
 	}
 	return &r, nil
+}
+
+type credential struct {
+	URL   string `json:"url"`
+	Token string `json:"password"`
+}
+
+func blobToCred(b string) (*credential, error) {
+	text, err := base64.StdEncoding.DecodeString(b)
+	if err != nil {
+		return nil, err
+	}
+	var c credential
+	err = json.Unmarshal(text, &c)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
 }
 
 func (t *TravelAgent) sendRequest(req *http.Request, v interface{}) (*Response, error) {

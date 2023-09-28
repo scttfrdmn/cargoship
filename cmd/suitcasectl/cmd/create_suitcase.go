@@ -180,7 +180,7 @@ func setOuterHashes(ptr *porter.Porter, metaF string) ([]config.HashSet, string,
 	defer dclose(metaFh)
 	hashes = append(hashes, config.HashSet{
 		Filename: strings.TrimPrefix(metaF, ptr.Destination+"/"),
-		Hash:     calculateHash(metaFh, hashAlgo.String()),
+		Hash:     porter.MustCalculateHash(metaFh, hashAlgo.String()),
 	})
 
 	hashFn, err := writeHashFile(ptr, suitcase.WriteHashFile, "")
@@ -218,7 +218,7 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		Time("end", *ptr.CLIMeta.CompletedAt).
 		Msg("🧳 Completed")
 
-	opts := suitcase.OptsWithCmd(cmd)
+	// opts := suitcase.OptsWithCmd(cmd)
 	// Copy files up if needed
 	mfiles := []string{
 		"inventory.yaml",
@@ -232,11 +232,11 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		mfiles = append(mfiles, path.Base(hashFnBin))
 	}
 	if ptr.Inventory.Options.TransportPlugin != nil {
-		shipMetadata(mfiles, opts, ptr.Inventory, ptr.InventoryHash)
+		shipMetadata(mfiles, ptr.SuitcaseOpts, ptr.Inventory, ptr.InventoryHash)
 	}
 
 	gout.MustPrint(runsum{
-		Destination: opts.Destination,
+		Destination: ptr.SuitcaseOpts.Destination,
 		Suitcases:   ptr.Inventory.UniqueSuitcaseNames(),
 		Directories: ptr.Inventory.Options.Directories,
 		MetaFiles:   mfiles,
@@ -376,7 +376,8 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 		Format:       ptr.Inventory.Options.SuitcaseFormat,
 	}
 	// Store in context for later
-	cmd.SetContext(context.WithValue(cmd.Context(), inventory.SuitcaseOptionsKey, opts))
+	ptr.SuitcaseOpts = opts
+	// cmd.SetContext(context.WithValue(cmd.Context(), inventory.SuitcaseOptionsKey, opts))
 
 	if !onlyInventory {
 		// return createSuitcases(cmd, opts, ptr.Inventory)

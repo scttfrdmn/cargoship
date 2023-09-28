@@ -332,6 +332,7 @@ func WriteHashFile(hs []config.HashSet, o io.Writer) error {
 }
 
 // OptsWithCmd returns suitcase options givena  cobra command
+/*
 func OptsWithCmd(cmd *cobra.Command) *config.SuitCaseOpts {
 	opts, ok := cmd.Context().Value(inventory.SuitcaseOptionsKey).(*config.SuitCaseOpts)
 	if !ok {
@@ -340,6 +341,7 @@ func OptsWithCmd(cmd *cobra.Command) *config.SuitCaseOpts {
 	}
 	return opts
 }
+*/
 
 func dclose(c io.Closer) {
 	err := c.Close()

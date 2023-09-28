@@ -275,15 +275,6 @@ func TestNewSuitcaseWithNoFollowSymlinks(t *testing.T) {
 	require.NotContains(t, paths, "../testdata/fake-dir/external-symlink/this-is-an-external-data-file.txt")
 }
 
-func TestNewDirectoryInventoryOptionsWithViper(t *testing.T) {
-	v := viper.New()
-	cmd := &cobra.Command{}
-	BindCobra(cmd)
-	cmd.Execute()
-	_, err := NewDirectoryInventoryWithViper(v, cmd, []string{"../testdata/fake-dir"})
-	require.NoError(t, err)
-}
-
 func TestWalkDirLimit(t *testing.T) {
 	i := Inventory{}
 	err := walkDir("../testdata/limit-dir", NewOptions(

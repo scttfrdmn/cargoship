@@ -1,14 +1,11 @@
 package cmd
 
 import (
-	"bufio"
-	"crypto/md5"  // nolint:gosec
-	"crypto/sha1" // nolint:gosec
+
+	// nolint:gosec
+	// nolint:gosec
 	"crypto/sha256"
-	"crypto/sha512"
-	"encoding/hex"
 	"fmt"
-	"hash"
 	"io"
 	"os"
 	"path"
@@ -42,8 +39,7 @@ func newOutDirWithCmd(cmd *cobra.Command) (string, error) {
 	}
 
 	// Also shove this in to porter. We'll use it later there.
-	ptr, err := porterWithCmd(cmd)
-	if err == nil {
+	if ptr, err := porterWithCmd(cmd); err == nil {
 		ptr.Destination = o
 	}
 	return o, nil
@@ -207,7 +203,16 @@ func processSuitcases(po *processOpts) []string {
 	return ret
 }
 
-func calculateHash(rd io.Reader, ht string) string {
+/*
+func mustCalculateHash(rd io.Reader, ht string) string {
+	h, err := calculateHash(rd, ht)
+	if err != nil {
+		panic(err)
+	}
+	return h
+}
+
+func calculateHash(rd io.Reader, ht string) (string, error) {
 	reader := bufio.NewReaderSize(rd, os.Getpagesize())
 	var dst hash.Hash
 	switch ht {
@@ -223,9 +228,12 @@ func calculateHash(rd io.Reader, ht string) string {
 		panic(fmt.Sprintf("unexpected hash type: %v", ht))
 	}
 	_, err := io.Copy(dst, reader)
-	panicIfErr(err)
-	return hex.EncodeToString(dst.Sum(nil))
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(dst.Sum(nil)), nil
 }
+*/
 
 func hasDuplicates(strArr []string) bool {
 	seen := make(map[string]bool)
