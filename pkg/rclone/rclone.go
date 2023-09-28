@@ -338,19 +338,6 @@ func Copy(source, destination string, c chan TransferStatus) error {
 	log := log.With().Str("source", source).Str("destination", destination).Logger()
 	librclone.Initialize()
 
-	/*
-		// This is gross, we need to make a directory for the copy
-		tdir, err := os.MkdirTemp(filepath.Dir(source), "suitcase-tmp")
-		if err != nil {
-			return err
-		}
-		// err = os.Rename(source, path.Join(tdir, filepath.Base(source)))
-		err = os.Rename(source, path.Join(tdir, filepath.Base(source)))
-		if err != nil {
-			return err
-		}
-	*/
-
 	// params := copyParamsWithSrcDest(source, destination)
 	params := copyParamsWithSrcDest(source, destination)
 	log.Debug().Interface("params", params).Send()

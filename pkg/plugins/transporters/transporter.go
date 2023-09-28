@@ -46,16 +46,3 @@ func UniquifyDest(s string) string {
 	u := ulid.Make()
 	return path.Join(s, u.String())
 }
-
-// UniquifyDestWithInventory uses a hash of the inventory for uniqueness
-func UniquifyDestWithInventory(s string, fn string) string {
-	/*
-		b, err := yaml.Marshal(i)
-		if err != nil {
-			panic(err)
-		}
-
-		return path.Join(s, u.String())
-	*/
-	return ""
-}

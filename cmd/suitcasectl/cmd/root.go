@@ -4,7 +4,6 @@ Package cmd is the command line utility
 package cmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -17,7 +16,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
@@ -49,7 +47,7 @@ func NewRootCmd(lo io.Writer) *cobra.Command {
 		SilenceUsage:      true, // Usage too heavy to print out every time this thing fails
 		SilenceErrors:     true, // We have a wrapper using our logger to do this
 	}
-	cmd.SetContext(context.WithValue(context.Background(), inventory.LogWriterKey, lo))
+	// fmt.Fprintf(os.Stderr, "LOGTHING: %+v\n", reflect.TypeOf(lo))
 	// cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")
 	cmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
 	cmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
@@ -75,9 +73,11 @@ func NewRootCmd(lo io.Writer) *cobra.Command {
 	cmd.AddCommand(NewFindCmd())
 	cmd.AddCommand(NewAnalyzeCmd())
 
-	cmd.AddCommand(NewCompletionCmd())
+	// cmd.AddCommand(NewCompletionCmd())
 	cmd.AddCommand(NewSchemaCmd())
 	cmd.AddCommand(NewMDDocsCmd())
+
+	// cmd.SetContext(context.WithValue(context.Background(), inventory.LogWriterKey, lo))
 	cmd.SetOut(lo)
 
 	return cmd
@@ -85,11 +85,11 @@ func NewRootCmd(lo io.Writer) *cobra.Command {
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
+/*
 func Execute() {
-	// rootCmd = NewRootCmd()
 	cobra.CheckErr(NewRootCmd(nil).Execute())
-	// cobra.CheckErr(rootCmd.Execute())
 }
+*/
 
 func init() {
 	cobra.OnInitialize(initConfig)
@@ -141,7 +141,7 @@ func checkErr(err error, msg string) {
 
 func setupLogging(lo io.Writer) {
 	if lo == nil {
-		lo = os.Stderr
+		panic("must set lo")
 	}
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
@@ -152,6 +152,7 @@ func setupLogging(lo io.Writer) {
 	}
 	// If we have an outDir, also write the logs to a file
 	multi := io.MultiWriter(zerolog.ConsoleWriter{Out: lo})
+	// multi := zerolog.MultiLevelWriter(lo, zerolog.ConsoleWriter{Out: os.Stderr})
 	if trace {
 		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
 	} else {
@@ -172,15 +173,6 @@ func setupSingleLoggingWithCmd(cmd *cobra.Command) {
 }
 
 func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
-	/*
-		zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-		if Verbose {
-			log.Info().Msg("Verbose output enabled")
-			zerolog.SetGlobalLevel(zerolog.DebugLevel)
-		}
-	*/
 	// If we have an outDir, also write the logs to a file
 	var multi io.Writer
 	o, err := getDestination(cmd)
@@ -191,7 +183,8 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 		log.Warn().Msg("No output directory specified")
 		return errors.New("no output directory specified")
 	}
-	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}, cmd.Context().Value(inventory.LogFileKey).(*os.File))
+	ptr := mustPorterWithCmd(cmd)
+	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}, ptr.LogFile)
 	if trace {
 		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
 	} else {
@@ -204,10 +197,17 @@ func globalPersistentPreRun(cmd *cobra.Command, args []string) {
 	// Set up single logging first
 	setupSingleLoggingWithCmd(cmd)
 
-	lo, ok := cmd.Context().Value(inventory.LogWriterKey).(io.Writer)
-	if ok {
-		setupLogging(lo)
-	}
+	// lo := cmd.OutOrStderr()
+	// fmt.Fprintf(os.Stderr, "OUT IS: %+v\n", &lo)
+	setupLogging(cmd.OutOrStderr())
+	/*
+		lo, ok := cmd.Context().Value(inventory.LogWriterKey).(io.Writer)
+		if ok {
+			setupLogging(lo)
+		} else {
+			log.Warn().Msg("could not set up log writer")
+		}
+	*/
 	memLimit, err := cmd.Flags().GetString("memory-limit")
 	checkErr(err, "Could not find memory limit")
 	if memLimit != "" {

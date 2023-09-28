@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
@@ -22,11 +21,8 @@ rclone config, but does not require the rclone binary to be present on your
 host.`,
 		Aliases: []string{"r"},
 		Args:    cobra.ExactArgs(2),
-		Run: func(cmd *cobra.Command, args []string) {
-			err := rclone.Copy(args[0], transporters.UniquifyDest(args[1]), nil)
-			if err != nil {
-				log.Fatal().Err(err).Send()
-			}
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return rclone.Copy(args[0], transporters.UniquifyDest(args[1]), nil)
 		},
 	}
 

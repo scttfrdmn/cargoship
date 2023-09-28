@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
 	porter "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
@@ -30,10 +31,11 @@ var (
 // NewCreateSuitcaseCmd represents the createSuitcase command
 func NewCreateSuitcaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "suitcase [--inventory-file=INVENTORY_FILE | TARGET_DIR...]",
-		Short: "Create a suitcase",
-		Long:  "Create a suitcase from either an inventory file or multiple target directories.",
-		Args:  cobra.ArbitraryArgs,
+		Use:     "suitcase [--inventory-file=INVENTORY_FILE | TARGET_DIR...]",
+		Short:   "Create a suitcase",
+		Long:    "Create a suitcase from either an inventory file or multiple target directories.",
+		Args:    cobra.ArbitraryArgs,
+		Version: version, // Needed so we can put the version in the metadata
 		Example: ` # Create a suitcase using the defaults. This will land in a new TEMPDIR on your host:
 $ suitcasectl create suitcase ~/example
 ...
@@ -55,14 +57,15 @@ $ suitcasectl create suitcase ~/example --max-suitcase-size=500MiB
 		PersistentPreRunE:  createPreRunE,
 		PersistentPostRunE: createPostRunE,
 	}
-	bindInventoryCmd(cmd)
+	err := bindInventoryCmd(cmd)
+	panicIfErr(err)
 	travelagent.BindCobra(cmd)
 
 	return cmd
 }
 
-// ValidateCmdArgs ensures we are passing valid arguments in
-func ValidateCmdArgs(inventoryFile string, onlyInventory bool, args []string) error {
+// validateCmdArgs ensures we are passing valid arguments in
+func validateCmdArgs(inventoryFile string, onlyInventory bool, args []string) error {
 	// Figure out if we are using an inventory file, or creating one
 	if inventoryFile != "" && len(args) > 0 {
 		return errors.New("error: You can't specify an inventory file and target dir arguments at the same time")
@@ -91,55 +94,39 @@ func inventoryOptsWithCobra(cmd *cobra.Command, args []string) (string, bool, er
 	}
 
 	// Return the error here for use in testing, vs just barfing with checkErr
-	if cerr := ValidateCmdArgs(inventoryFile, onlyInventory, args); cerr != nil {
+	if cerr := validateCmdArgs(inventoryFile, onlyInventory, args); cerr != nil {
 		return "", false, cerr
 	}
 
 	return inventoryFile, onlyInventory, nil
 }
 
-func createHashes(s []string, cmd *cobra.Command) []config.HashSet {
-	var hs []config.HashSet
-	for _, f := range s {
-		fh, err := os.Open(f) // nolint:gosec
-		panicIfErr(err)
-		defer dclose(fh)
-		log.Info().Str("file", f).Msg("Created file")
-		hs = append(hs, config.HashSet{
-			Filename: strings.TrimPrefix(f, cmd.Context().Value(inventory.DestinationKey).(string)+"/"),
-			Hash:     calculateHash(fh, hashAlgo.String()),
-			// Hash:     mustGetSha256(f),
-		})
-	}
-	return hs
-}
-
-func bindInventoryCmd(cmd *cobra.Command) {
+func bindInventoryCmd(cmd *cobra.Command) error {
 	inventory.BindCobra(cmd)
 	// Inventory Format needs some extra love for auto complete
 	cmd.PersistentFlags().Var(&inventoryFormat, "inventory-format", "Format for the inventory. Should be 'yaml' or 'json'")
 	if err := cmd.RegisterFlagCompletionFunc("inventory-format", inventory.FormatCompletion); err != nil {
-		panic(err)
+		return err
 	}
 	cmd.PersistentFlags().Lookup("inventory-format").DefValue = "yaml"
 
 	// Hashing Algorithms
 	cmd.PersistentFlags().Var(&hashAlgo, "hash-algorithm", "Hashing Algorithm for signatures")
 	if err := cmd.RegisterFlagCompletionFunc("hash-algorithm", inventory.HashCompletion); err != nil {
-		panic(err)
+		return err
 	}
 	cmd.PersistentFlags().Lookup("hash-algorithm").DefValue = "md5"
 
-	// cmd.PersistentFlags().String("suitcase-format", "tar.gz", "Format of the suitcase. Valid options are: tar, tar.gz, tar.gpg and tar.gz.gpg")
 	// Inventory Format needs some extra love for auto complete
 	cmd.PersistentFlags().Var(&suitcaseFormat, "suitcase-format", "Format for the suitcase. Should be 'tar', 'tar.gpg', 'tar.gz' or 'tar.gz.gpg'")
 	if err := cmd.RegisterFlagCompletionFunc("suitcase-format", suitcase.FormatCompletion); err != nil {
-		panic(err)
+		return err
 	}
 	cmd.PersistentFlags().Lookup("suitcase-format").DefValue = inventory.DefaultSuitcaseFormat
 
 	// Get some exclusivity goin'
 	cmd.MarkFlagsMutuallyExclusive("only-inventory", "hash-outer")
+	return nil
 }
 
 func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, error) {
@@ -160,22 +147,23 @@ func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, er
 	}
 
 	// Store in context for later retrieval
-	cmd.SetContext(context.WithValue(cmd.Context(), inventory.UserOverrideKey, userOverrides))
+	// ptr := mustPorterWithCmd(cmd)
+	// ptr.UserOverrides = userOverrides
 	return userOverrides, nil
 }
 
 type hashFileCreator func([]config.HashSet, io.Writer) error
 
 // This could definitely be cleaner...
-func writeHashFile(cmd *cobra.Command, hfc hashFileCreator, ext string) (string, error) {
-	hashFile := path.Join(cmd.Context().Value(inventory.DestinationKey).(string), fmt.Sprintf("suitcasectl.%v", hashAlgo.String()+ext))
+func writeHashFile(ptr *porter.Porter, hfc hashFileCreator, ext string) (string, error) {
+	hashFile := path.Join(ptr.Destination, fmt.Sprintf("suitcasectl.%v", hashAlgo.String()+ext))
 	log.Info().Str("hash-file", hashFile).Msg("Creating hashes")
 	hashF, err := os.Create(hashFile) // nolint:gosec
 	if err != nil {
 		return "", err
 	}
 	defer dclose(hashF)
-	err = hfc(cmd.Context().Value(inventory.HashesKey).([]config.HashSet), hashF)
+	err = hfc(ptr.Hashes, hashF)
 	if err != nil {
 		return "", err
 	}
@@ -183,34 +171,29 @@ func writeHashFile(cmd *cobra.Command, hfc hashFileCreator, ext string) (string,
 }
 
 // setOuterHashes returns a HashSet, hashFileName, hashFileNameBinary and error
-func setOuterHashes(cmd *cobra.Command, metaF string) ([]config.HashSet, string, string, error) {
-	hashes, ok := cmd.Context().Value(inventory.HashesKey).([]config.HashSet)
-	if !ok {
-		return nil, "", "", errors.New("could not find inventory.HashesKey in context")
-	}
-	// hashes = cmd.Context().Value(inventory.HashesKey).([]config.HashSet)
+func setOuterHashes(ptr *porter.Porter, metaF string) ([]config.HashSet, string, string, error) {
+	hashes := ptr.Hashes
 	metaFh, err := os.Open(metaF) // nolint:gosec
 	if err != nil {
 		return nil, "", "", err
 	}
 	defer dclose(metaFh)
 	hashes = append(hashes, config.HashSet{
-		Filename: strings.TrimPrefix(metaF, cmd.Context().Value(inventory.DestinationKey).(string)+"/"),
-		Hash:     calculateHash(metaFh, hashAlgo.String()),
+		Filename: strings.TrimPrefix(metaF, ptr.Destination+"/"),
+		Hash:     porter.MustCalculateHash(metaFh, hashAlgo.String()),
 	})
 
-	cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashesKey, hashes))
-	hashFn, err := writeHashFile(cmd, suitcase.WriteHashFile, "")
+	hashFn, err := writeHashFile(ptr, suitcase.WriteHashFile, "")
 	checkErr(err, "Could not write out the hashfile")
 
-	hashFnBin, err := writeHashFile(cmd, suitcase.WriteHashFileBin, "bin")
+	hashFnBin, err := writeHashFile(ptr, suitcase.WriteHashFileBin, "bin")
 	checkErr(err, "Could not write out the binary hashfile")
 	return hashes, hashFn, hashFnBin, nil
 }
 
 func createPostRunE(cmd *cobra.Command, args []string) error {
-	cliMeta := cmd.Context().Value(inventory.CLIMetaKey).(*CLIMeta)
-	metaF := cliMeta.MustComplete(cmd.Context().Value(inventory.DestinationKey).(string))
+	ptr := mustPorterWithCmd(cmd)
+	metaF := ptr.CLIMeta.MustComplete(ptr.Destination)
 	log.Debug().Str("file", metaF).Msg("Created meta file")
 
 	// Hash the outer items if asked
@@ -218,23 +201,24 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 	var hashFn, hashFnBin string
 	if mustGetCmd[bool](cmd, "hash-outer") && !mustGetCmd[bool](cmd, "only-inventory") {
 		var err error
-		hashes, hashFn, hashFnBin, err = setOuterHashes(cmd, metaF)
-		checkErr(err, "Could not write out the hashfile")
+		hashes, hashFn, hashFnBin, err = setOuterHashes(ptr, metaF)
+		if err != nil {
+			return err
+		}
 	}
 
-	log.Debug().Str("log-file", cmd.Context().Value(inventory.LogFileKey).(*os.File).Name()).Msg("Switching back to stderr logger and closing the multi log writer so we can hash it")
+	log.Debug().Str("log-file", ptr.LogFile.Name()).Msg("Switching back to stderr logger and closing the multi log writer so we can hash it")
 	setupLogging(cmd.OutOrStderr())
 	// Do we really care if this closes? maybe...
-	_ = cmd.Context().Value(inventory.LogFileKey).(*os.File).Close()
+	_ = ptr.LogFile.Close()
 
 	log.Info().
-		Str("runtime", cliMeta.CompletedAt.Sub(*cliMeta.StartedAt).String()).
-		Time("start", *cliMeta.StartedAt).
-		Time("end", *cliMeta.CompletedAt).
+		Str("runtime", ptr.CLIMeta.CompletedAt.Sub(*ptr.CLIMeta.StartedAt).String()).
+		Time("start", *ptr.CLIMeta.StartedAt).
+		Time("end", *ptr.CLIMeta.CompletedAt).
 		Msg("🧳 Completed")
 
-	inv := inventory.WithCmd(cmd)
-	opts := suitcase.OptsWithCmd(cmd)
+	// opts := suitcase.OptsWithCmd(cmd)
 	// Copy files up if needed
 	mfiles := []string{
 		"inventory.yaml",
@@ -247,14 +231,14 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 	if hashFnBin != "" {
 		mfiles = append(mfiles, path.Base(hashFnBin))
 	}
-	if inv.Options.TransportPlugin != nil {
-		shipMetadata(mfiles, opts, inv, cmd.Context().Value(inventory.InventoryHash).(string))
+	if ptr.Inventory.Options.TransportPlugin != nil {
+		shipMetadata(mfiles, ptr.SuitcaseOpts, ptr.Inventory, ptr.InventoryHash)
 	}
 
 	gout.MustPrint(runsum{
-		Destination: opts.Destination,
-		Suitcases:   inv.UniqueSuitcaseNames(),
-		Directories: inv.Options.Directories,
+		Destination: ptr.SuitcaseOpts.Destination,
+		Suitcases:   ptr.Inventory.UniqueSuitcaseNames(),
+		Directories: ptr.Inventory.Options.Directories,
 		MetaFiles:   mfiles,
 		Hashes:      hashes,
 	})
@@ -287,29 +271,51 @@ type runsum struct {
 func createPreRunE(cmd *cobra.Command, args []string) error {
 	// Get this first, it'll be important
 	globalPersistentPreRun(cmd, args)
+	/*
+		outDir, err := newOutDirWithCmd(cmd)
+		if err != nil {
+			return err
+		}
+	*/
+	if hasDuplicates(args) {
+		return errors.New("duplicate path found in arguments")
+	}
+
+	userOverrides, err := userOverridesWithCobra(cmd, args)
+	checkErr(err, "")
+	cliMeta := porter.NewCLIMeta(cmd, args)
+	cliMeta.ViperConfig = userOverrides.AllSettings()
+
 	outDir, err := newOutDirWithCmd(cmd)
 	if err != nil {
 		return err
 	}
-	if hasDuplicates(args) {
-		return errors.New("duplicate path found in arguments")
-	}
-	// log.Fatal().Msgf("ALGO: %+v\n", hashAlgo)
-	cmd.SetContext(context.WithValue(cmd.Context(), inventory.DestinationKey, outDir))
-	// cmd.SetContext(context.WithValue(cmd.Context(), inventory.HashTypeKey, hashAlgo))
+
+	// Shove porter in to the cmd context so we can use it later
+	cmd.SetContext(context.WithValue(cmd.Context(), porter.PorterKey, porter.New(
+		porter.WithCmdArgs(cmd, args),
+		porter.WithLogger(&log.Logger),
+		porter.WithVersion(version),
+		porter.WithDestination(outDir),
+		porter.WithHashAlgorithm(hashAlgo),
+		porter.WithUserOverrides(userOverrides),
+		porter.WithCLIMeta(cliMeta),
+	)))
 
 	err = setupMultiLoggingWithCmd(cmd)
 	if err != nil {
 		return err
 	}
 
-	userOverrides, err := userOverridesWithCobra(cmd, args)
-	checkErr(err, "")
-	cliMeta := NewCLIMeta(args, cmd)
-	cliMeta.ViperConfig = userOverrides.AllSettings()
-
-	cmd.SetContext(context.WithValue(cmd.Context(), inventory.CLIMetaKey, cliMeta))
 	return nil
+}
+
+func porterWithCmd(cmd *cobra.Command) (*porter.Porter, error) {
+	p, ok := cmd.Context().Value(porter.PorterKey).(*porter.Porter)
+	if !ok {
+		return nil, errors.New("could not find Porter in this context")
+	}
+	return p, nil
 }
 
 func envOr(e, d string) string {
@@ -328,12 +334,8 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 		}
 	}()
 
-	ptr := porter.Porter{
-		Cmd:    cmd,
-		Args:   args,
-		Logger: &log.Logger,
-	}
 	var err error
+	ptr := mustPorterWithCmd(cmd)
 	if ptr.TravelAgent, err = travelagent.New(travelagent.WithCmd(cmd)); err != nil {
 		log.Debug().Err(err).Msg("no valid travel agent found")
 	} else {
@@ -352,39 +354,34 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 	}
 
 	// Create an inventory file if one isn't specified
-	// inventoryD, err := inventory.CreateOrReadInventory(inventoryFile, userOverrides, args, cmd.Context().Value(destinationKey).(string), version)
-	ptr.Inventory, err = inventory.CreateOrReadInventory(
-		inventoryFile,
-		cmd,
-		args,
-		version,
-	)
+	ptr.Inventory, err = ptr.CreateOrReadInventory(inventoryFile)
 	if err != nil {
 		return err
 	}
 
 	if err = ptr.SendUpdate(travelagent.StatusUpdate{
 		SuitcasectlSource:      strings.Join(args, ", "),
-		SuitcasectlDestination: cmd.Context().Value(inventory.DestinationKey).(string),
+		SuitcasectlDestination: ptr.Destination,
 		Metadata:               ptr.Inventory.MustJSONString(),
-		MetadataCheckSum:       cmd.Context().Value(inventory.InventoryHash).(string),
+		MetadataCheckSum:       ptr.InventoryHash,
 	}); err != nil {
 		log.Warn().Err(err).Msg("error sending status update")
 	}
 
 	// We need options even if we already have the inventory
 	opts := &config.SuitCaseOpts{
-		Destination:  cmd.Context().Value(inventory.DestinationKey).(string),
+		Destination:  ptr.Destination,
 		EncryptInner: ptr.Inventory.Options.EncryptInner,
 		HashInner:    ptr.Inventory.Options.HashInner,
 		Format:       ptr.Inventory.Options.SuitcaseFormat,
 	}
 	// Store in context for later
-	cmd.SetContext(context.WithValue(cmd.Context(), inventory.SuitcaseOptionsKey, opts))
+	ptr.SuitcaseOpts = opts
+	// cmd.SetContext(context.WithValue(cmd.Context(), inventory.SuitcaseOptionsKey, opts))
 
 	if !onlyInventory {
 		// return createSuitcases(cmd, opts, ptr.Inventory)
-		err = createSuitcases(&ptr, opts)
+		err = createSuitcases(ptr, opts)
 		if err != nil {
 			if serr := ptr.SendUpdate(travelagent.StatusUpdate{
 				Status: travelagent.StatusFailed,
@@ -415,27 +412,18 @@ func createSuitcases(ptr *porter.Porter, opts *config.SuitCaseOpts) error {
 		log.Warn().Err(err).Msg("could not set sampling")
 	}
 	createdFiles := processSuitcases(&processOpts{
-		// Inventory:    ptr.Inventory,
 		Porter:       ptr,
 		SuitcaseOpts: opts,
 		SampleEvery:  sampleI,
 		Concurrency:  mustGetCmd[int](ptr.Cmd, "concurrency"),
-	}, ptr.Cmd)
+	})
 
 	if mustGetCmd[bool](ptr.Cmd, "hash-outer") {
-		ptr.Cmd.SetContext(context.WithValue(ptr.Cmd.Context(), inventory.HashesKey, createHashes(createdFiles, ptr.Cmd)))
+		ptr.Hashes, err = ptr.CreateHashes(createdFiles)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
-}
-
-func hasDuplicates(strArr []string) bool {
-	seen := make(map[string]bool)
-	for _, str := range strArr {
-		if seen[str] {
-			return true
-		}
-		seen[str] = true
-	}
-	return false
 }

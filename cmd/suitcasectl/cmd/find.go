@@ -35,6 +35,7 @@ directories:
 		Aliases: []string{"search"},
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			gout.SetWriter(cmd.OutOrStdout())
 			pattern := args[0]
 			searchD, err := cmd.Flags().GetStringArray("inventory-directory")
 			checkErr(err, "")

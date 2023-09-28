@@ -4,9 +4,7 @@ Package inventory provides the needed pieces to correctly create an Inventory of
 package inventory
 
 import (
-	"context"
-	"crypto/md5" // nolint
-	"encoding/hex"
+	"context" // nolint
 	json "encoding/json"
 	"errors"
 	"fmt"
@@ -14,7 +12,6 @@ import (
 	"io/fs"
 	"os"
 	"os/user"
-	"path"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -40,31 +37,6 @@ import (
 // suitcase. Hopefully this fits for most use cases, but can always be
 // overridden
 const DefaultSuitcaseFormat string = "tar.zst"
-
-type contextKey int
-
-const (
-	// InventoryKey is where the inventory lives. Hoping to get rid of most (if not all) other keys
-	InventoryKey contextKey = iota
-	// SuitcaseOptionsKey is the location for suitcase options
-	SuitcaseOptionsKey
-	// DestinationKey is the key for the target diretory of a suitcase operation
-	DestinationKey
-	// LogFileKey is the detination of the log file
-	LogFileKey
-	// HashesKey is the location of the hashes
-	HashesKey
-	// HashTypeKey is the location for a given hash type (sha1, md5, etc)
-	HashTypeKey
-	// UserOverrideKey is where the user overrides live
-	UserOverrideKey
-	// CLIMetaKey is where the CLI metadata lives
-	CLIMetaKey
-	// LogWriterKey is where the log writer goes
-	LogWriterKey
-	// InventoryHash is where the hashing of the inventory goes
-	InventoryHash
-)
 
 var errHalt = errors.New("halt")
 
@@ -213,7 +185,7 @@ type Inventory struct {
 	IndexSummaries   map[int]*IndexSummary `yaml:"index_summaries" json:"index_summaries"`
 	InternalMetadata map[string]string     `yaml:"internal_metadata" json:"internal_metadata"`
 	ExternalMetadata map[string]string     `yaml:"external_metadata" json:"external_metadata"`
-	CLIMeta          CLIMeta               `yaml:"cli_meta" json:"cli_meta"`
+	// CLIMeta          CLIMeta               `yaml:"cli_meta" json:"cli_meta"`
 }
 
 // MustJSONString returns the json representation as a string or panic
@@ -303,12 +275,6 @@ type IndexSummary struct {
 	Count     uint   `yaml:"count"`
 	Size      int64  `yaml:"size"`
 	HumanSize string `yaml:"human_size"`
-}
-
-// CLIMeta is the meta information about the cli tool that generated an inventory
-type CLIMeta struct {
-	Date    *time.Time `yaml:"date" json:"date"`
-	Version string     `yaml:"version" json:"version"`
 }
 
 // Options are the options used to create a DirectoryInventory
@@ -558,63 +524,6 @@ func (di *Inventory) IndexWithSize(maxSize int64) error {
 	di.TotalIndexes = numCases
 	di.expandSuitcaseNames()
 	return nil
-}
-
-// WriteInventoryAndFileWithViper uses viper to write out an inventory file
-func WriteInventoryAndFileWithViper(
-	v *viper.Viper, cmd *cobra.Command, args []string, version string,
-) (*Inventory, *os.File, error) {
-	outDir := destinationWithCobra(cmd)
-	i, f, ir, err := NewDirectoryInventoryAndFileAndInventoyerWithViper(v, cmd, args, outDir)
-	if err != nil {
-		return nil, nil, err
-	}
-	now := time.Now()
-	i.CLIMeta.Date = &now
-	i.CLIMeta.Version = version
-	err = ir.Write(f, i)
-	if err != nil {
-		return nil, nil, err
-	}
-	return i, f, nil
-}
-
-// NewDirectoryInventoryAndFileAndInventoyerWithViper does the interface with viper
-func NewDirectoryInventoryAndFileAndInventoyerWithViper(v *viper.Viper, cmd *cobra.Command, args []string, outDir string) (*Inventory, *os.File, Inventoryer, error) {
-	if v == nil {
-		panic("must pass viper to NewDirectoryInventoryAndFileAndInventoyerWithViper")
-	}
-	i, f, err := NewDirectoryInventoryAndFileWithViper(v, cmd, args, outDir)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	ir, err := NewInventoryerWithFilename(f.Name())
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	return i, f, ir, nil
-}
-
-// NewDirectoryInventoryAndFileWithViper creates a new inventory with viper
-func NewDirectoryInventoryAndFileWithViper(v *viper.Viper, cmd *cobra.Command, args []string, outDir string) (*Inventory, *os.File, error) {
-	i, err := NewDirectoryInventoryWithViper(v, cmd, args)
-	if err != nil {
-		return nil, nil, err
-	}
-	outF, err := os.Create(path.Join(outDir, fmt.Sprintf("inventory.%v", i.Options.InventoryFormat))) // nolint:gosec
-	if err != nil {
-		return nil, nil, err
-	}
-	return i, outF, nil
-}
-
-// NewDirectoryInventoryWithViper new DirectoryInventory with Viper
-func NewDirectoryInventoryWithViper(v *viper.Viper, cmd *cobra.Command, args []string) (*Inventory, error) {
-	inventoryOpts := NewOptions(
-		WithViper(v),
-		WithCobra(cmd, args),
-	)
-	return NewDirectoryInventory(inventoryOpts)
 }
 
 // NewDirectoryInventory creates a new DirectoryInventory using options
@@ -1116,22 +1025,7 @@ func NewCaseSet(maxSize int64) CaseSet {
 	}
 }
 
-// userOverrideWithCobra returns a user override viper object from a cmd
-func userOverrideWithCobra(cmd *cobra.Command) *viper.Viper {
-	if cmd.Context() == nil {
-		return &viper.Viper{}
-	}
-	v := cmd.Context().Value(UserOverrideKey)
-	if v == nil {
-		return &viper.Viper{}
-	}
-	vi, ok := v.(*viper.Viper)
-	if !ok {
-		return &viper.Viper{}
-	}
-	return vi
-}
-
+/*
 // destinationWithCobra returns a destination string from a cmd
 func destinationWithCobra(cmd *cobra.Command) string {
 	if cmd.Context() == nil {
@@ -1148,54 +1042,6 @@ func destinationWithCobra(cmd *cobra.Command) string {
 	return d
 }
 
-// CreateOrReadInventory will either create a new inventory (if given an empty string), or read an existing one
-func CreateOrReadInventory(inventoryFile string, cmd *cobra.Command, args []string, version string) (*Inventory, error) {
-	// Create an inventory file if one isn't specified
-	var inventoryD *Inventory
-	if inventoryFile == "" {
-		log.Debug().Msg("No inventory file specified, we're going to go ahead and create one")
-		var outF *os.File
-		var err error
-		v := userOverrideWithCobra(cmd)
-		outDir := destinationWithCobra(cmd)
-		if outDir == "" {
-			outDir = mustTempDir()
-			var ctx context.Context
-			if cmd.Context() == nil {
-				ctx = context.Background()
-			} else {
-				ctx = cmd.Context()
-			}
-
-			cmd.SetContext(context.WithValue(ctx, DestinationKey, outDir))
-		}
-		// inventoryD, outF, err = WriteInventoryAndFileWithViper(v, cmd, args, outDir, version)
-		inventoryD, outF, err = WriteInventoryAndFileWithViper(v, cmd, args, version)
-		if err != nil {
-			return nil, err
-		}
-		inventoryFile = outF.Name()
-		log.Debug().Str("file", inventoryFile).Msg("Created inventory file")
-	} else {
-		var err error
-		inventoryD, err = NewInventoryWithFilename(inventoryFile)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Calculate a hash of the inventory
-	h, err := calculateMD5Sum(inventoryFile)
-	if err != nil {
-		return nil, err
-	}
-	cmd.SetContext(context.WithValue(cmd.Context(), InventoryHash, h))
-	// Store the inventory in context, so we can access it in the other run stages
-	cmd.SetContext(context.WithValue(cmd.Context(), InventoryKey, inventoryD))
-	inventoryD.SummaryLog()
-	return inventoryD, nil
-}
-
 func mustTempDir() string {
 	o, err := os.MkdirTemp("", "suitcasectl")
 	if err != nil {
@@ -1203,6 +1049,7 @@ func mustTempDir() string {
 	}
 	return o
 }
+*/
 
 func checkItemSize(item *File, maxSize int64) error {
 	if item.Size > maxSize {
@@ -1393,7 +1240,8 @@ func (di *Inventory) SuitcaseNameWithIndex(i int) string {
 	return fmt.Sprintf("%v-%v-%02d-of-%02d.%v", di.Options.Prefix, di.Options.User, i, di.TotalIndexes, di.Options.SuitcaseFormat)
 }
 
-func newInventoryCmd() *cobra.Command {
+// NewInventoryCmd is a shortcut for an inventory command
+func NewInventoryCmd() *cobra.Command {
 	cmd := &cobra.Command{}
 	BindCobra(cmd)
 	return cmd
@@ -1477,15 +1325,6 @@ func mustGetCommand(v any) cobra.Command {
 		panic("error getting cobra.Command from generic")
 	}
 	return ci
-}
-
-// WithCmd returns the inventory object from a cobra command context
-func WithCmd(cmd *cobra.Command) *Inventory {
-	inv, ok := cmd.Context().Value(InventoryKey).(*Inventory)
-	if !ok {
-		panic("could not get inventory")
-	}
-	return inv
 }
 
 // SearchFileMatches is a listing of files that match a given search
@@ -1601,62 +1440,6 @@ func containsString(s []string, e string) bool {
 	return false
 }
 
-// archiveTOC is a v3 TOC generator for archiver
-/*
-func archiveTOC(fn string) ([]string, error) {
-	ret := []string{}
-	err := archiver.Walk(fn, func(f archiver.File) error {
-		if !f.IsDir() {
-			// ret = append(ret, f.FileInfo.
-			return nil
-		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Junky way to check this...
-	if (len(ret) == 1) && (ret[0] == ".") {
-		return nil, errors.New("could not scan a non archive file")
-	}
-
-	// I think we want to do this...
-	sort.Strings(ret)
-	return ret, nil
-}
-*/
-
-/*
-func archiveTOCBuiltIn(fn string) ([]string, error) {
-	return nil, nil
-}
-*/
-
-/*
-func archiveTOCExternal(fn string) ([]string, error) {
-	// Handle Tar here
-	extMapping := map[string]string{
-		".tar.gz":  "tz",
-		".tar.bz2": "tj",
-		".tar":     "t",
-	}
-	for ext, flags := range extMapping {
-		if strings.HasSuffix(fn, ext) {
-			out, err := exec.Command("tar", flags+"f", fn).Output() // nolint
-			if err != nil {
-				return nil, err
-			}
-			lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-
-			return lines, nil
-		}
-	}
-	return nil, fmt.Errorf("could not find a way to handle this file: %v", fn)
-}
-*/
-
 // archiveTOC is a v4 TOC generator for archiver
 func archiveTOC(fn string) ([]string, error) {
 	fsys, err := archiver.FileSystem(context.Background(), fn)
@@ -1667,6 +1450,7 @@ func archiveTOC(fn string) ([]string, error) {
 
 	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		// Handle: https://github.com/mholt/archiver/issues/383
+		// This should be fixed in version later than the v4.0.0-alpha.8 tag
 		/*
 			if (path == ".") && d.Name() == "." && strings.Contains(fn, ".tar") {
 				log.Debug().Str("archive", fn).Msg("this archive is not properly handled, falling back to external lookup")
@@ -1695,16 +1479,6 @@ func archiveTOC(fn string) ([]string, error) {
 	sort.Strings(ret)
 	return ret, nil
 }
-
-/*
-func mustArchiveTOC(fn string) []string {
-	got, err := archiveTOC(fn)
-	if err != nil {
-		panic(err)
-	}
-	return got
-}
-*/
 
 func mustStat(path string) fs.FileInfo {
 	st, err := os.Stat(path)
@@ -1748,30 +1522,4 @@ func isTOCAble(s string) bool {
 		}
 	}
 	return false
-}
-
-// calculateMD5Sum calculates the MD5 checksum of a file given its path.
-func calculateMD5Sum(filePath string) (string, error) {
-	file, err := os.Open(filePath) // nolint:gosec
-	if err != nil {
-		return "", err
-	}
-	defer dclose(file)
-
-	hash := md5.New() // nolint:gosec
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", err
-	}
-
-	// Convert the MD5 hash to a hexadecimal string representation
-	checksum := hex.EncodeToString(hash.Sum(nil))
-
-	return checksum, nil
-}
-
-func dclose(c io.Closer) {
-	err := c.Close()
-	if err != nil {
-		log.Warn().Interface("closer", c).Msg("error closing file")
-	}
 }

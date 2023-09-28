@@ -1,15 +1,11 @@
 package cmd
 
 import (
-	"bufio"
-	"context"
-	"crypto/md5"  // nolint:gosec
-	"crypto/sha1" // nolint:gosec
+
+	// nolint:gosec
+	// nolint:gosec
 	"crypto/sha256"
-	"crypto/sha512"
-	"encoding/hex"
 	"fmt"
-	"hash"
 	"io"
 	"os"
 	"path"
@@ -24,7 +20,6 @@ import (
 	"github.com/spf13/cobra"
 	porter "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/travelagent"
@@ -43,9 +38,10 @@ func newOutDirWithCmd(cmd *cobra.Command) (string, error) {
 		}
 	}
 
-	// Also shove this in to the context. We'll use it later there.
-	ctx := context.WithValue(cmd.Context(), inventory.DestinationKey, o)
-	cmd.SetContext(ctx)
+	// Also shove this in to porter. We'll use it later there.
+	if ptr, err := porterWithCmd(cmd); err == nil {
+		ptr.Destination = o
+	}
 	return o, nil
 }
 
@@ -68,13 +64,20 @@ func getDestination(cmd *cobra.Command) (string, error) {
 	}
 
 	// Set for later use
-	cmd.SetContext(context.WithValue(cmd.Context(), inventory.DestinationKey, d))
+	ptr, err := porterWithCmd(cmd)
+	if err == nil {
+		ptr.Destination = d
+	}
 	logPath := path.Join(d, "suitcasectl.log")
 	lf, err := os.Create(logPath) // nolint:gosec
 	if err != nil {
 		return "", err
 	}
-	cmd.SetContext(context.WithValue(cmd.Context(), inventory.LogFileKey, lf))
+
+	// If we have a porter, set the logfile here
+	if ptr, err := porterWithCmd(cmd); err == nil {
+		ptr.LogFile = lf
+	}
 
 	return d, nil
 }
@@ -141,7 +144,7 @@ type processOpts struct {
 }
 
 // processSuitcases processes the suitcases
-func processSuitcases(po *processOpts, cmd *cobra.Command) []string {
+func processSuitcases(po *processOpts) []string {
 	ret := make([]string, po.Porter.Inventory.TotalIndexes)
 	p := pool.New().WithMaxGoroutines(po.Concurrency)
 	log.Debug().Int("concurrency", po.Concurrency).Msg("Setting pool guard")
@@ -190,7 +193,7 @@ func processSuitcases(po *processOpts, cmd *cobra.Command) []string {
 					panicIfErr(err)
 
 					// Then end
-					serr := po.Porter.Inventory.Options.TransportPlugin.SendWithChannel(createdF, cmd.Context().Value(inventory.InventoryHash).(string), statusC)
+					serr := po.Porter.Inventory.Options.TransportPlugin.SendWithChannel(createdF, po.Porter.InventoryHash, statusC)
 					panicIfErr(serr)
 				}
 			}
@@ -200,7 +203,16 @@ func processSuitcases(po *processOpts, cmd *cobra.Command) []string {
 	return ret
 }
 
-func calculateHash(rd io.Reader, ht string) string {
+/*
+func mustCalculateHash(rd io.Reader, ht string) string {
+	h, err := calculateHash(rd, ht)
+	if err != nil {
+		panic(err)
+	}
+	return h
+}
+
+func calculateHash(rd io.Reader, ht string) (string, error) {
 	reader := bufio.NewReaderSize(rd, os.Getpagesize())
 	var dst hash.Hash
 	switch ht {
@@ -216,6 +228,28 @@ func calculateHash(rd io.Reader, ht string) string {
 		panic(fmt.Sprintf("unexpected hash type: %v", ht))
 	}
 	_, err := io.Copy(dst, reader)
-	panicIfErr(err)
-	return hex.EncodeToString(dst.Sum(nil))
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(dst.Sum(nil)), nil
+}
+*/
+
+func hasDuplicates(strArr []string) bool {
+	seen := make(map[string]bool)
+	for _, str := range strArr {
+		if seen[str] {
+			return true
+		}
+		seen[str] = true
+	}
+	return false
+}
+
+func mustPorterWithCmd(cmd *cobra.Command) *porter.Porter {
+	p, err := porterWithCmd(cmd)
+	if err != nil {
+		panic(err)
+	}
+	return p
 }

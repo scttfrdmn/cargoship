@@ -1,7 +1,6 @@
 package inventory
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path"
@@ -13,7 +12,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 
 	"github.com/stretchr/testify/require"
 )
@@ -277,32 +275,6 @@ func TestNewSuitcaseWithNoFollowSymlinks(t *testing.T) {
 	require.NotContains(t, paths, "../testdata/fake-dir/external-symlink/this-is-an-external-data-file.txt")
 }
 
-func TestNewDirectoryInventoryOptionsWithViper(t *testing.T) {
-	v := viper.New()
-	cmd := &cobra.Command{}
-	BindCobra(cmd)
-	cmd.Execute()
-	_, err := NewDirectoryInventoryWithViper(v, cmd, []string{"../testdata/fake-dir"})
-	require.NoError(t, err)
-}
-
-func TestWriteOutDirectoryInventoryAndFileAndInventoyerWithViper(t *testing.T) {
-	f := t.TempDir()
-	v := viper.New()
-	c := &cobra.Command{}
-	opts := &config.SuitCaseOpts{
-		Destination: f,
-	}
-	ctx := context.WithValue(context.Background(), SuitcaseOptionsKey, opts)
-	c.SetContext(ctx)
-	cmd := newInventoryCmd()
-	cmd.Execute()
-	i, gf, err := WriteInventoryAndFileWithViper(v, cmd, []string{"../testdata/fake-dir"}, "testing")
-	require.NoError(t, err)
-	require.FileExists(t, gf.Name())
-	require.NotNil(t, i)
-}
-
 func TestWalkDirLimit(t *testing.T) {
 	i := Inventory{}
 	err := walkDir("../testdata/limit-dir", NewOptions(
@@ -373,13 +345,15 @@ func TestWalkDirExpandArchivesDeep(t *testing.T) {
 	)
 }
 
+/*
 func TestCreateOrReadInventory(t *testing.T) {
-	cmd := newInventoryCmd()
+	cmd := NewInventoryCmd()
 	cmd.Execute()
 	got, err := CreateOrReadInventory("", cmd, []string{"../testdata/limit-dir"}, "dev")
 	require.NoError(t, err)
 	require.NotNil(t, got)
 }
+*/
 
 func TestWithViper(t *testing.T) {
 	v := viper.New()
@@ -566,4 +540,14 @@ func TestTOCAble(t *testing.T) {
 	for desc, tt := range tests {
 		require.Equal(t, tt.expect, isTOCAble(tt.fn), desc)
 	}
+}
+
+func TestHashCompletion(t *testing.T) {
+	got, _ := HashCompletion(&cobra.Command{}, []string{}, "md")
+	require.Contains(t, got[0], "md5")
+}
+
+func TestFormatCompletion(t *testing.T) {
+	got, _ := FormatCompletion(&cobra.Command{}, []string{}, "ya")
+	require.Contains(t, got[0], "yaml")
 }
