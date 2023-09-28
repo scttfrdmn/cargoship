@@ -16,6 +16,7 @@ import (
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/gpg"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
+	"gopkg.in/yaml.v3"
 )
 
 func TestNewSuitcase(t *testing.T) {
@@ -239,5 +240,33 @@ func TestFormatStrings(t *testing.T) {
 		t,
 		"tar",
 		formatMap["tar"].String(),
+	)
+}
+
+func TestValidateSuitcase(t *testing.T) {
+	var i inventory.Inventory
+	b, err := os.ReadFile("../testdata/validations/inventory.yaml")
+	require.NoError(t, err)
+	require.NotNil(t, i)
+	err = yaml.Unmarshal(b, &i)
+	require.NoError(t, err)
+	require.True(t, validateSuitcase("../testdata/validations/complete/suitcase-joebob-01-of-01.tar.zst", i, 1))
+}
+
+func TestValidateSuitcaseInvalid(t *testing.T) {
+	var i inventory.Inventory
+	b, err := os.ReadFile("../testdata/validations/inventory.yaml")
+	require.NoError(t, err)
+	require.NotNil(t, i)
+	err = yaml.Unmarshal(b, &i)
+	require.NoError(t, err)
+	require.False(t, validateSuitcase("../testdata/validations/incomplete/suitcase-joebob-01-of-01.tar.zst", i, 1))
+}
+
+func TestInProcessName(t *testing.T) {
+	require.Equal(
+		t,
+		"/tmp/.__creating-foo.txt",
+		inProcessName("/tmp/foo.txt"),
 	)
 }

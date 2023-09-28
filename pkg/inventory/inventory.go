@@ -1130,7 +1130,7 @@ func walkDir(dir string, opts *Options, ret *Inventory) error {
 			// if opts.IncludeArchiveTOC || opts.IncludeArchiveTOCDeep {
 			if opts.IncludeArchiveTOCDeep || (opts.IncludeArchiveTOC && isTOCAble(path)) {
 				var aerr error
-				if invf.ArchiveTOC, aerr = archiveTOC(path); aerr != nil {
+				if invf.ArchiveTOC, aerr = ArchiveTOC(path); aerr != nil {
 					log.Debug().Err(aerr).Str("path", path).Msg("error attempting to look at table of contents in file")
 				}
 			}
@@ -1271,6 +1271,8 @@ func BindCobra(cmd *cobra.Command) {
 	// cmd.PersistentFlags().String("transport-plugin", "", "Transport plugin to use (if any). Options: shell, rclone...")
 	cmd.PersistentFlags().String("cloud-destination", "", "Send files to this cloud destination after creation. Destination must be a valid rclone location.")
 	cmd.PersistentFlags().String("shell-destination", "", "Send files through this shell destination after creation.")
+	cmd.PersistentFlags().Int("retry-count", 0, "Number of times to retry a failed operation.")
+	cmd.PersistentFlags().Duration("retry-interval", 5*time.Minute, "How long to wait between retries.")
 }
 
 // mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command
@@ -1440,26 +1442,28 @@ func containsString(s []string, e string) bool {
 	return false
 }
 
-// archiveTOC is a v4 TOC generator for archiver
-func archiveTOC(fn string) ([]string, error) {
+// ArchiveTOC is a v4 TOC generator for archiver
+func ArchiveTOC(fn string) ([]string, error) {
 	fsys, err := archiver.FileSystem(context.Background(), fn)
 	if err != nil {
 		return nil, err
 	}
 	ret := []string{}
+	log := log.With().Str("archive", fn).Logger()
 
 	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		// Handle: https://github.com/mholt/archiver/issues/383
 		// This should be fixed in version later than the v4.0.0-alpha.8 tag
 		/*
-			if (path == ".") && d.Name() == "." && strings.Contains(fn, ".tar") {
-				log.Debug().Str("archive", fn).Msg("this archive is not properly handled, falling back to external lookup")
-				return fs.ErrInvalid
+				if (path == ".") && d.Name() == "." && strings.Contains(fn, ".tar") {
+					log.Debug().Str("archive", fn).Msg("this archive is not properly handled, falling back to external lookup")
+					return fs.ErrInvalid
+				}
+			if err != nil {
+				return err
 			}
 		*/
-		if err != nil {
-			return err
-		}
+		log.Debug().Str("path", path).Msg("examing")
 		if !d.IsDir() {
 			ret = append(ret, path)
 			return nil

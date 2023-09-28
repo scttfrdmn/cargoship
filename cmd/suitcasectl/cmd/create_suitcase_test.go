@@ -79,6 +79,25 @@ func TestNewSuitcaseCloudDest(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestMultiCreateRuns(t *testing.T) {
+	testD := t.TempDir()
+	cmd := NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{
+		"create", "suitcase", "../../../pkg/testdata/limit-dir/",
+		"--destination", testD,
+	})
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	cmd = NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{
+		"create", "suitcase", "../../../pkg/testdata/limit-dir/",
+		"--destination", testD,
+	})
+	err = cmd.Execute()
+	require.NoError(t, err)
+}
+
 func TestNewSuitcaseOuterHash(t *testing.T) {
 	testD := t.TempDir()
 	cmd := NewRootCmd(io.Discard)
@@ -94,6 +113,7 @@ func TestNewSuitcaseOuterHash(t *testing.T) {
 	require.FileExists(t, filepath.Join(testD, "suitcasectl.sha1"))
 
 	// Try md5
+	testD = t.TempDir()
 	cmd = NewRootCmd(io.Discard)
 	cmd.SetArgs([]string{
 		"create", "suitcase", "../../../pkg/testdata/limit-dir/",

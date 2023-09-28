@@ -29,6 +29,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/vjorlikowski/yaml v0.1.0
 	golang.org/x/tools v0.13.0
+	gopkg.in/yaml.v3 v3.0.1
 	moul.io/http2curl v1.0.0
 )
 
@@ -208,7 +209,6 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	storj.io/common v0.0.0-20230602145716-d6ea82d58b3d // indirect
 	storj.io/drpc v0.0.33 // indirect
 	storj.io/picobuf v0.0.1 // indirect

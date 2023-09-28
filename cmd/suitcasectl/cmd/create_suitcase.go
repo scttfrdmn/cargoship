@@ -9,6 +9,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/drewstinnett/gout/v2"
 	"github.com/rs/zerolog/log"
@@ -412,10 +413,12 @@ func createSuitcases(ptr *porter.Porter, opts *config.SuitCaseOpts) error {
 		log.Warn().Err(err).Msg("could not set sampling")
 	}
 	createdFiles := processSuitcases(&processOpts{
-		Porter:       ptr,
-		SuitcaseOpts: opts,
-		SampleEvery:  sampleI,
-		Concurrency:  mustGetCmd[int](ptr.Cmd, "concurrency"),
+		Porter:        ptr,
+		SuitcaseOpts:  opts,
+		SampleEvery:   sampleI,
+		Concurrency:   mustGetCmd[int](ptr.Cmd, "concurrency"),
+		RetryCount:    mustGetCmd[int](ptr.Cmd, "retry-count"),
+		RetryInterval: mustGetCmd[time.Duration](ptr.Cmd, "retry-interval"),
 	})
 
 	if mustGetCmd[bool](ptr.Cmd, "hash-outer") {
