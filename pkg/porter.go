@@ -22,6 +22,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/spf13/viper"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/travelagent"
 )
 
@@ -72,6 +74,13 @@ func WithUserOverrides(o *viper.Viper) func(*Porter) {
 	}
 }
 
+// WithInventory sets the inventory at create time
+func WithInventory(i *inventory.Inventory) func(*Porter) {
+	return func(p *Porter) {
+		p.Inventory = i
+	}
+}
+
 // SetTravelAgent sets the travel agent property
 func (p *Porter) SetTravelAgent(t travelagent.TravelAgenter) {
 	p.TravelAgent = t
@@ -81,7 +90,8 @@ func (p *Porter) SetTravelAgent(t travelagent.TravelAgenter) {
 // WithTravelAgent sets the travel agent at create time
 func WithTravelAgent(t travelagent.TravelAgenter) func(*Porter) {
 	return func(p *Porter) {
-		p.SetTravelAgent(t)
+		p.hasTravelAgent = true
+		p.TravelAgent = t
 	}
 }
 
@@ -163,10 +173,9 @@ func (p Porter) SendUpdate(u travelagent.StatusUpdate) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "DIIIING\n")
 	if p.Logger != nil {
-		if u.ComponentName != "" {
-			log = log.With().Str("component", u.ComponentName).Logger()
+		if u.Name != "" {
+			log = log.With().Str("component", u.Name).Logger()
 		}
 		for _, msg := range resp.Messages {
 			if strings.TrimSpace(msg) != "updated fields:" {
@@ -344,4 +353,31 @@ func (p *Porter) inventoryGeneration() (*inventory.Inventory, *os.File, error) {
 		return nil, nil, err
 	}
 	return i, outF, nil
+}
+
+// RetryTransport does some retries when doing a transport push
+func (p *Porter) RetryTransport(f string, statusC chan rclone.TransferStatus, retryCount int, retryInterval time.Duration) error {
+	if p.Inventory == nil {
+		return errors.New("must have set Inventory")
+	}
+	if err := p.Inventory.Options.TransportPlugin.Check(); err != nil {
+		return err
+	}
+
+	// Then end
+	var created bool
+	attempt := 1
+	for (!created && attempt == 1) || attempt <= retryCount {
+		if serr := p.Inventory.Options.TransportPlugin.SendWithChannel(f, p.InventoryHash, statusC); serr != nil {
+			log.Warn().Str("retry-interval", retryInterval.String()).Msg("suitcase transport failed, sleeping, then will retry")
+			time.Sleep(retryInterval)
+		} else {
+			created = true
+		}
+		attempt++
+	}
+	if !created {
+		return errors.New("could not transport suitcasefile even with retries")
+	}
+	return nil
 }

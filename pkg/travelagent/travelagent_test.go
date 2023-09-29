@@ -124,13 +124,14 @@ func TestBindCmd(t *testing.T) {
 	require.Equal(t, ta.URL.String(), "https://www.example.com/api/v1/suitcase_transfers/2")
 	require.Equal(t, ta.Token, "another-token")
 	require.Equal(t, "https://www.example.com/suitcase_transfers/2", ta.StatusURL())
+	require.Equal(t, "https://www.example.com/api/v1/suitcase_transfers/2/suitcase_components/foo", ta.componentURL("foo"))
 }
 
 func TestNewStatusUpdate(t *testing.T) {
 	got := NewStatusUpdate(rclone.TransferStatus{
 		Name: "foo",
 	})
-	require.Equal(t, "foo", got.ComponentName)
+	require.Equal(t, "foo", got.Name)
 }
 
 /*

@@ -337,9 +337,16 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 
 	var err error
 	ptr := mustPorterWithCmd(cmd)
-	if ptr.TravelAgent, err = travelagent.New(travelagent.WithCmd(cmd)); err != nil {
-		log.Debug().Err(err).Msg("no valid travel agent found")
+	taOpts := []travelagent.Option{
+		travelagent.WithCmd(cmd),
+	}
+	if Verbose {
+		taOpts = append(taOpts, travelagent.WithPrintCurl())
+	}
+	if ta, terr := travelagent.New(taOpts...); terr != nil {
+		log.Debug().Err(terr).Msg("no valid travel agent found")
 	} else {
+		ptr.SetTravelAgent(ta)
 		log.Info().Str("url", ptr.TravelAgent.StatusURL()).Msg("Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel ☀️")
 		if serr := ptr.SendUpdate(travelagent.StatusUpdate{
 			Status: travelagent.StatusPending,
@@ -362,6 +369,7 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 
 	if err = ptr.SendUpdate(travelagent.StatusUpdate{
 		SuitcasectlSource:      strings.Join(args, ", "),
+		Status:                 travelagent.StatusInProgress,
 		SuitcasectlDestination: ptr.Destination,
 		Metadata:               ptr.Inventory.MustJSONString(),
 		MetadataCheckSum:       ptr.InventoryHash,
@@ -370,19 +378,16 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 	}
 
 	// We need options even if we already have the inventory
-	opts := &config.SuitCaseOpts{
+	ptr.SuitcaseOpts = &config.SuitCaseOpts{
 		Destination:  ptr.Destination,
 		EncryptInner: ptr.Inventory.Options.EncryptInner,
 		HashInner:    ptr.Inventory.Options.HashInner,
 		Format:       ptr.Inventory.Options.SuitcaseFormat,
 	}
-	// Store in context for later
-	ptr.SuitcaseOpts = opts
-	// cmd.SetContext(context.WithValue(cmd.Context(), inventory.SuitcaseOptionsKey, opts))
 
 	if !onlyInventory {
 		// return createSuitcases(cmd, opts, ptr.Inventory)
-		err = createSuitcases(ptr, opts)
+		err = createSuitcases(ptr, ptr.SuitcaseOpts)
 		if err != nil {
 			if serr := ptr.SendUpdate(travelagent.StatusUpdate{
 				Status: travelagent.StatusFailed,
@@ -392,7 +397,7 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 			return err
 		}
 		if serr := ptr.SendUpdate(travelagent.StatusUpdate{
-			// Status: travelagent.StatusComplete,
+			Status: travelagent.StatusComplete,
 		}); serr != nil {
 			log.Warn().Err(err).Msg("failed to send final status update")
 		}

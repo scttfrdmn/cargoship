@@ -189,12 +189,8 @@ func processSuitcases(po *processOpts) []string {
 				// Put Transport plugin here!!
 				if po.Porter.Inventory.Options.TransportPlugin != nil {
 					// First check...
-					err := po.Porter.Inventory.Options.TransportPlugin.Check()
+					err := po.Porter.RetryTransport(createdF, statusC, po.RetryCount, po.RetryInterval)
 					panicIfErr(err)
-
-					// Then end
-					serr := po.Porter.Inventory.Options.TransportPlugin.SendWithChannel(createdF, po.Porter.InventoryHash, statusC)
-					panicIfErr(serr)
 				}
 			}
 		})
@@ -226,9 +222,9 @@ func retryWriteSuitcase(po *processOpts, i int, state chan suitcase.FillState) (
 	var err error
 	var createdF string
 	var created bool
-	attempt := 0
+	attempt := 1
 	log := log.With().Int("index", i).Logger()
-	for !created || (attempt <= po.RetryCount) {
+	for (!created && attempt == 1) || (attempt <= po.RetryCount) {
 		log.Debug().Msg("about to write out suitcase file")
 		createdF, err = suitcase.WriteSuitcaseFile(po.SuitcaseOpts, po.Porter.Inventory, i, state)
 		if err != nil {
