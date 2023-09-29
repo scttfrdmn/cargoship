@@ -204,16 +204,61 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.Inventory, index int, state
 	return suitcaseHashes, nil
 }
 
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
+// validateSuitcase checks a suitcase file against an inventory, and ensures it is up to date
+func validateSuitcase(s string, i inventory.Inventory, idx int) bool {
+	log := log.With().Str("suitcase", s).Logger()
+	reqFiles := map[string]bool{}
+	for _, item := range i.Files {
+		if item.SuitcaseIndex == idx {
+			reqFiles[item.Destination] = false
+		}
+	}
+	log.Debug().Msg("about to get TOC")
+	toc, err := inventory.ArchiveTOC(s)
+	if err != nil {
+		log.Debug().Str("suitcase", s).Msg("file appears to be corrupted, we'll recreate it if needed")
+		return false
+	}
+	for _, item := range toc {
+		reqFiles[item] = true
+	}
+
+	for k, v := range reqFiles {
+		if !v {
+			log.Debug().Str("suitcase", s).Str("file", k).Msg("found suitcase but appears to be incomplete, we'll recreate it if needed")
+			return false
+		}
+	}
+	return true
+}
+
+func inProcessName(s string) string {
+	return path.Join(path.Dir(s), fmt.Sprintf(".__creating-%v", path.Base(s)))
+}
+
 // WriteSuitcaseFile will write out the suitcase
 func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.Inventory, index int, stateC chan FillState) (string, error) {
-	target, err := os.Create(path.Join(so.Destination, i.SuitcaseNameWithIndex(index))) // nolint:gosec
+	targetFn := path.Join(so.Destination, i.SuitcaseNameWithIndex(index))
+	log := log.With().Str("suitcase", targetFn).Logger()
+	if fileExists(targetFn) {
+		return targetFn, nil
+	}
+
+	tmpTargetFn := inProcessName(targetFn)
+	target, err := os.Create(tmpTargetFn) // nolint:gosec
 	if err != nil {
 		return "", err
 	}
-	fp := target.Name()
 	defer func() {
-		terr := target.Close()
-		if terr != nil {
+		if terr := target.Close(); terr != nil {
 			panic(terr)
 		}
 	}()
@@ -224,12 +269,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.Inventory, index in
 	}
 	defer dclose(s)
 
-	log.Debug().
-		Str("destination", fp).
-		Str("format", so.Format).
-		Bool("encryptInner", so.EncryptInner).
-		Int("index", index).
-		Msg("Filling suitcase")
+	log.Debug().Str("destination", targetFn).Str("format", so.Format).Bool("encryptInner", so.EncryptInner).Int("index", index).Msg("Filling suitcase")
 	hashes, err := FillWithInventoryIndex(s, i, index, stateC)
 	if err != nil {
 		return "", err
@@ -244,24 +284,32 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.Inventory, index in
 	}
 
 	if so.HashInner {
-		hashFN := fmt.Sprintf("%v.%v", fp, i.Options.HashAlgorithm)
-		log.Debug().Str("file", hashFN).Msgf("Creating hashes file")
-		hashF, err := os.Create(hashFN) // nolint:gosec
-		if err != nil {
-			return "", err
-		}
-		defer func() {
-			herr := hashF.Close()
-			if herr != nil {
-				panic(herr)
-			}
-		}()
-		err = WriteHashFile(hashes, hashF)
-		if err != nil {
+		if err := hashInner(targetFn, i.Options.HashAlgorithm, hashes); err != nil {
 			return "", err
 		}
 	}
-	return fp, nil
+
+	if err := os.Rename(tmpTargetFn, targetFn); err != nil {
+		return "", err
+	}
+
+	return targetFn, nil
+}
+
+func hashInner(targetFn string, ha inventory.HashAlgorithm, hashes []config.HashSet) error {
+	hashF, err := os.Create(fmt.Sprintf("%v.%v", targetFn, ha)) // nolint:gosec
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if herr := hashF.Close(); herr != nil {
+			panic(herr)
+		}
+	}()
+	if err := WriteHashFile(hashes, hashF); err != nil {
+		return err
+	}
+	return nil
 }
 
 // PostProcess executes post processing commands

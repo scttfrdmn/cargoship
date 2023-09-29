@@ -5,6 +5,7 @@ import (
 	// nolint:gosec
 	// nolint:gosec
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -101,7 +102,7 @@ func mustGetCmd[T []int | int | string | bool | time.Duration](cmd *cobra.Comman
 		item, err := cmd.Flags().GetIntSlice(s)
 		panicIfErr(err)
 		return any(item).(T)
-	case *time.Time:
+	case *time.Duration:
 		item, err := cmd.Flags().GetDuration(s)
 		panicIfErr(err)
 		return any(item).(T)
@@ -136,11 +137,12 @@ func getSha256(file string) (string, error) {
 
 // ProcessOpts defines the process options
 type processOpts struct {
-	Concurrency int
-	SampleEvery int
-	Porter      *porter.Porter
-	// Inventory    *inventory.Inventory
-	SuitcaseOpts *config.SuitCaseOpts
+	Concurrency   int
+	SampleEvery   int
+	Porter        *porter.Porter
+	SuitcaseOpts  *config.SuitCaseOpts
+	RetryCount    int
+	RetryInterval time.Duration
 }
 
 // processSuitcases processes the suitcases
@@ -148,8 +150,6 @@ func processSuitcases(po *processOpts) []string {
 	ret := make([]string, po.Porter.Inventory.TotalIndexes)
 	p := pool.New().WithMaxGoroutines(po.Concurrency)
 	log.Debug().Int("concurrency", po.Concurrency).Msg("Setting pool guard")
-	// state := make(chan suitcase.FillState, 1)
-	// state := make(chan suitcase.FillState, po.Inventory.TotalIndexes)
 	state := make(chan suitcase.FillState)
 	// state := make(chan suitcase.FillState, 2*po.Inventory.TotalIndexes)
 	sampled := log.Sample(&zerolog.BasicSampler{N: uint32(po.SampleEvery)})
@@ -181,7 +181,7 @@ func processSuitcases(po *processOpts) []string {
 	for i := 1; i <= po.Porter.Inventory.TotalIndexes; i++ {
 		i := i
 		p.Go(func() {
-			createdF, err := suitcase.WriteSuitcaseFile(po.SuitcaseOpts, po.Porter.Inventory, i, state)
+			createdF, err := retryWriteSuitcase(po, i, state)
 			if err != nil {
 				log.Warn().Err(err).Str("file", createdF).Msg("error creating suitcase file, please investigate")
 			} else {
@@ -203,38 +203,6 @@ func processSuitcases(po *processOpts) []string {
 	return ret
 }
 
-/*
-func mustCalculateHash(rd io.Reader, ht string) string {
-	h, err := calculateHash(rd, ht)
-	if err != nil {
-		panic(err)
-	}
-	return h
-}
-
-func calculateHash(rd io.Reader, ht string) (string, error) {
-	reader := bufio.NewReaderSize(rd, os.Getpagesize())
-	var dst hash.Hash
-	switch ht {
-	case "md5":
-		dst = md5.New() // nolint:gosec
-	case "sha1":
-		dst = sha1.New() // nolint:gosec
-	case "sha256":
-		dst = sha256.New()
-	case "sha512":
-		dst = sha512.New()
-	default:
-		panic(fmt.Sprintf("unexpected hash type: %v", ht))
-	}
-	_, err := io.Copy(dst, reader)
-	if err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(dst.Sum(nil)), nil
-}
-*/
-
 func hasDuplicates(strArr []string) bool {
 	seen := make(map[string]bool)
 	for _, str := range strArr {
@@ -252,4 +220,27 @@ func mustPorterWithCmd(cmd *cobra.Command) *porter.Porter {
 		panic(err)
 	}
 	return p
+}
+
+func retryWriteSuitcase(po *processOpts, i int, state chan suitcase.FillState) (string, error) {
+	var err error
+	var createdF string
+	var created bool
+	attempt := 0
+	log := log.With().Int("index", i).Logger()
+	for !created || (attempt <= po.RetryCount) {
+		log.Debug().Msg("about to write out suitcase file")
+		createdF, err = suitcase.WriteSuitcaseFile(po.SuitcaseOpts, po.Porter.Inventory, i, state)
+		if err != nil {
+			log.Warn().Str("retry-interval", po.RetryInterval.String()).Msg("suitcase creation failed, sleeping, then will retry")
+			time.Sleep(po.RetryInterval)
+		} else {
+			created = true
+		}
+		attempt++
+	}
+	if !created {
+		return "", errors.New("could not create suitcasefile even with retries")
+	}
+	return createdF, nil
 }

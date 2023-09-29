@@ -285,12 +285,12 @@ func TestWalkDirLimit(t *testing.T) {
 }
 
 func TestWonkyTOC(t *testing.T) {
-	got, err := archiveTOC("../testdata/archives/archive.tar.gz")
+	got, err := ArchiveTOC("../testdata/archives/archive.tar.gz")
 	require.NoError(t, err)
 	require.Equal(t, []string{"archives/file1.txt", "archives/sub/file2.txt", "archives/thing.png"}, got)
 
 	// Test one of these wonky tars
-	got, err = archiveTOC("../testdata/archives/self-tarred.tar")
+	got, err = ArchiveTOC("../testdata/archives/self-tarred.tar")
 	require.NoError(t, err)
 	require.Equal(t, []string{"._.", "._1mb", "._2mb", "1mb", "2mb"}, got)
 }
@@ -480,12 +480,12 @@ func TestUniqueDirs(t *testing.T) {
 
 func TestArchiveTOC(t *testing.T) {
 	// Good archive
-	got, err := archiveTOC("../testdata/archives/archive.tar.gz")
+	got, err := ArchiveTOC("../testdata/archives/archive.tar.gz")
 	require.NoError(t, err)
 	require.Equal(t, []string{"archives/file1.txt", "archives/sub/file2.txt", "archives/thing.png"}, got)
 
 	// Not an archive
-	got, err = archiveTOC("../testdata/archives/thing.png")
+	got, err = ArchiveTOC("../testdata/archives/thing.png")
 	require.Error(t, err)
 	require.EqualError(t, err, "could not scan a non archive file")
 	require.Nil(t, got)

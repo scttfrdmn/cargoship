@@ -1,0 +1,42 @@
+files:
+    - path: /Users/joebob/src/gitlab.example.com/devil-ops/suitcasectl/pkg/testdata/validations/test-data/foo.txt
+      destination: foo.txt
+      name: foo.txt
+      size: 29
+      suitcase_index: 1
+      suitcase_name: suitcase-joebob-01-of-01.tar.zst
+    - path: /Users/joebob/src/gitlab.example.com/devil-ops/suitcasectl/pkg/testdata/validations/test-data/bar.txt
+      destination: bar.txt
+      name: bar.txt
+      size: 29
+      suitcase_index: 1
+      suitcase_name: suitcase-joebob-01-of-01.tar.zst
+options:
+    user: joebob
+    prefix: suitcase
+    top_level_directories:
+        - /Users/joebob/src/gitlab.example.com/devil-ops/suitcasectl/pkg/testdata/validations/test-data/
+    size_considered_large: 0
+    max_suitcase_size: 536870912000
+    internal_metadata_glob: suitcase-meta*
+    encrypt_inner: false
+    hash_inner: false
+    limit_file_count: 0
+    suitcase_format: tar.zst
+    inventory_format: yaml
+    follow_symlinks: false
+    hash_algorithm: 1
+    include_archive_toc: false
+    include_archive_toc_deep: false
+    transport_plugin: null
+total_indexes: 1
+index_summaries:
+    1:
+        count: 2
+        size: 58
+        human_size: 58 B
+internal_metadata: {}
+external_metadata: {}
+cli_meta:
+    date: 2023-09-28T10:36:50.247826-04:00
+    version: v0.17.0
