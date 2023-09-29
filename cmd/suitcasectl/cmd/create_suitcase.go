@@ -282,6 +282,11 @@ func createPreRunE(cmd *cobra.Command, args []string) error {
 		return errors.New("duplicate path found in arguments")
 	}
 
+	// Check to see if prefix has a slash
+	if strings.Contains(mustGetCmd[string](cmd, "prefix"), "/") {
+		return errors.New("prefix cannot contain a /")
+	}
+
 	userOverrides, err := userOverridesWithCobra(cmd, args)
 	checkErr(err, "")
 	cliMeta := porter.NewCLIMeta(cmd, args)
