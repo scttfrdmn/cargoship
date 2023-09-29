@@ -23,16 +23,32 @@ import (
 
 // TravelAgent is the main object that's gonna do all this work
 type TravelAgent struct {
-	URL       *url.URL
-	Token     string
-	client    *http.Client
-	printCurl bool
+	URL          *url.URL
+	Token        string
+	client       *http.Client
+	printCurl    bool
+	skipFinalize bool
 }
 
 // TravelAgenter is the thing that describes what a travel agent is!
 type TravelAgenter interface {
 	StatusURL() string
 	Update(StatusUpdate) (*StatusUpdateResponse, error)
+}
+
+// StatusUpdate is a little structure that gives our TravelAgent more info on
+// where we are in the process
+type StatusUpdate struct {
+	Status                 Status     `json:"status,omitempty"`
+	SizeBytes              int64      `json:"size_bytes,omitempty"`
+	TransferredBytes       int64      `json:"transferred_bytes,omitempty"`
+	Name                   string     `json:"-"`
+	StartedAt              *time.Time `json:"started_at,omitempty"`
+	CompletedAt            *time.Time `json:"completed_at,omitempty"`
+	MetadataCheckSum       string     `json:"metadata_checksum,omitempty"`
+	Metadata               string     `json:"metadata,omitempty"`
+	SuitcasectlSource      string     `json:"suitcasectl_source,omitempty"`
+	SuitcasectlDestination string     `json:"suitcasectl_destination,omitempty"`
 }
 
 // Validate the built in TravelAgent meets the TravelAgenter interface
@@ -45,14 +61,30 @@ func (t TravelAgent) StatusURL() string {
 	return fmt.Sprintf("https://%v/suitcase_transfers/%v", t.URL.Host, id)
 }
 
+// componentURL is the endpoint for a given component to send to
+func (t TravelAgent) componentURL(n string) string {
+	return fmt.Sprintf("%v/suitcase_components/%v", t.URL, n)
+}
+
 // Update updates the status of an agent
 func (t TravelAgent) Update(s StatusUpdate) (*StatusUpdateResponse, error) {
+	// Just skip
+	if t.skipFinalize && (s.Status == StatusComplete) {
+		return &StatusUpdateResponse{
+			Messages: []string{"doing a fake complete since we said skip-finalize"},
+		}, nil
+	}
 	var r StatusUpdateResponse
 	body, err := json.Marshal(s)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest("PATCH", t.URL.String(), bytes.NewReader(body))
+	var req *http.Request
+	if s.Name != "" {
+		req, err = http.NewRequest("PATCH", t.componentURL(s.Name), bytes.NewReader(body))
+	} else {
+		req, err = http.NewRequest("PATCH", t.URL.String(), bytes.NewReader(body))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -201,6 +233,11 @@ func WithCmd(cmd *cobra.Command) Option {
 		}
 	}
 
+	skipFinalize, serr := cmd.Flags().GetBool("travel-agent-skip-finalize")
+	if serr != nil {
+		return failure(serr)
+	}
+
 	return success(func(t *TravelAgent) {
 		if endpoint != nil {
 			t.URL = endpoint
@@ -208,6 +245,7 @@ func WithCmd(cmd *cobra.Command) Option {
 		if token != "" {
 			t.Token = token
 		}
+		t.skipFinalize = skipFinalize
 	})
 }
 
@@ -238,34 +276,17 @@ func New(options ...Option) (*TravelAgent, error) {
 	return ta, nil
 }
 
-// StatusUpdate is a little structure that gives our TravelAgent more info on
-// where we are in the process
-type StatusUpdate struct {
-	Status                    Status     `json:"status,omitempty"`
-	SizeBytes                 int64      `json:"size_bytes,omitempty"`
-	TransferredBytes          int64      `json:"transferred_bytes,omitempty"`
-	ComponentName             string     `json:"component_name,omitempty"`
-	ComponentSizeBytes        int64      `json:"component_size_bytes,omitempty"`
-	ComponentTransferredBytes int64      `json:"component_transferred_bytes,omitempty"`
-	StartedAt                 *time.Time `json:"started_at,omitempty"`
-	CompletedAt               *time.Time `json:"completed_at,omitempty"`
-	MetadataCheckSum          string     `json:"metadata_checksum,omitempty"`
-	Metadata                  string     `json:"metadata,omitempty"`
-	SuitcasectlSource         string     `json:"suitcasectl_source,omitempty"`
-	SuitcasectlDestination    string     `json:"suitcasectl_destination,omitempty"`
-}
-
 // NewStatusUpdate returns a new status update from an rclone.TransferStatus object
 func NewStatusUpdate(r rclone.TransferStatus) *StatusUpdate {
 	s := &StatusUpdate{}
 	if r.Name != "" {
-		s.ComponentName = r.Name
+		s.Name = r.Name
 	}
 	if r.Stats.Bytes != 0 {
-		s.ComponentTransferredBytes = r.Stats.Bytes
+		s.TransferredBytes = r.Stats.Bytes
 	}
 	if r.Stats.TotalBytes != 0 {
-		s.ComponentSizeBytes = r.Stats.TotalBytes
+		s.SizeBytes = r.Stats.TotalBytes
 	}
 	if !r.Status.Finished {
 		s.Status = StatusInProgress
@@ -334,6 +355,7 @@ func BindCobra(cmd *cobra.Command) {
 	cmd.PersistentFlags().String("travel-agent", "", "Base64 Encoded token and url for the travel agent, in json (Copy paste this from the travel agent website)")
 	cmd.PersistentFlags().String("travel-agent-url", "", "URL to use for travel agent operations")
 	cmd.PersistentFlags().String("travel-agent-token", "", "Token to use for travel agent operations")
+	cmd.PersistentFlags().Bool("travel-agent-skip-finalize", false, "Use this to prevent a 'complete' status from being sent. Useful for debugging")
 
 	cmd.MarkFlagsMutuallyExclusive("travel-agent", "travel-agent-url")
 	cmd.MarkFlagsMutuallyExclusive("travel-agent", "travel-agent-token")

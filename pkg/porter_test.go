@@ -2,13 +2,16 @@ package porter
 
 import (
 	"bytes"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/travelagent"
 )
 
@@ -127,6 +130,65 @@ func (f fakeTa) Update(s travelagent.StatusUpdate) (*travelagent.StatusUpdateRes
 			"updated fields: some_fake_field",
 		},
 	}, nil
+}
+
+type fakeTrans struct {
+	attempt int
+}
+
+func (ft fakeTrans) Check() error {
+	return nil
+}
+
+func (ft *fakeTrans) Send(s, u string) error {
+	if ft.attempt == 3 {
+		return nil
+	}
+	ft.attempt++
+	return errors.New("some fake error")
+}
+
+func (ft *fakeTrans) SendWithChannel(s, u string, c chan rclone.TransferStatus) error {
+	if ft.attempt == 3 {
+		return nil
+	}
+	ft.attempt++
+	return errors.New("some fake error")
+}
+
+func TestRetryTransport(t *testing.T) {
+	i, err := inventory.NewDirectoryInventory(&inventory.Options{
+		Directories:     []string{"testdata/archives"},
+		TransportPlugin: &fakeTrans{},
+	})
+	require.NoError(t, err)
+	p := New(
+		WithTravelAgent(fakeTa{}),
+		WithInventory(i),
+	)
+	c := make(chan rclone.TransferStatus)
+	go func() {
+		for {
+			<-c
+		}
+	}()
+	// Make sure that it still fails when retry count is zero
+	require.EqualError(
+		t,
+		p.RetryTransport("testdata/archives/archive.tar.gz", c, 0, time.Millisecond*1),
+		"could not transport suitcasefile even with retries",
+	)
+	// Make sure that it still fails on just 2 attempts
+	require.EqualError(
+		t,
+		p.RetryTransport("testdata/archives/archive.tar.gz", c, 2, time.Millisecond*1),
+		"could not transport suitcasefile even with retries",
+	)
+	// Make sure it DOES work on 3 attempts
+	require.NoError(
+		t,
+		p.RetryTransport("testdata/archives/archive.tar.gz", c, 3, time.Millisecond*1),
+	)
 }
 
 func TestSendUpdate(t *testing.T) {
