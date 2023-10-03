@@ -348,38 +348,18 @@ func Copy(source, destination string, c chan TransferStatus) error {
 	}
 	syncR := syncResWithOut(out)
 	log.Debug().Int64("id", syncR.JobID).Msg("job id of async job")
-	statusReq := statusRequest{
-		JobID: syncR.JobID,
-		Group: filepath.Base(source),
-	}
-	statusResp, err := waitForFinished(statusReq, c)
+	statusResp, err := waitForFinished(
+		statusRequest{
+			JobID: syncR.JobID,
+			Group: filepath.Base(source),
+		}, c,
+	)
 	if err != nil {
 		return err
 	}
 	if !statusResp.Success {
 		return errors.New("job finished but did not have status success")
 	}
-
-	// stats, err := getStats(filepath.Base(source))
-	/*
-		stats, err := getStats(fmt.Sprintf("job/%v", syncR.JobID))
-		if err != nil {
-			return err
-		}
-		log.Debug().Interface("stats", stats).Send()
-	*/
-
-	// Move the file back
-	/*
-		err = os.Rename(path.Join(tdir, filepath.Base(source)), source)
-		if err != nil {
-			return err
-		}
-		err = os.Remove(tdir)
-		if err != nil {
-			return err
-		}
-	*/
 
 	return nil
 }
@@ -455,15 +435,14 @@ func Clone(source, destination string) error {
 func waitForFinished(statusReq statusRequest, c chan TransferStatus) (*jobStatus, error) {
 	var statusResp *jobStatus
 	var statusTries int
+	var stats *jobStats
 	for (statusResp == nil) || !statusResp.Finished {
 		var err error
 		// stats, err := getStats(fmt.Sprintf("job/%v", statusReq.JobID))
 		if statusReq.Group == "" {
 			return nil, errors.New("missing group")
 		}
-		stats, err := getStats(statusReq.Group)
-		// stats, err := getStats(fmt.Sprintf("job/%v", statusReq.JobID))
-		if err != nil {
+		if stats, err = getStats(statusReq.Group); err != nil {
 			return nil, err
 		}
 		statusResp, err = getJobStatus(statusReq)
@@ -479,6 +458,14 @@ func waitForFinished(statusReq statusRequest, c chan TransferStatus) (*jobStatus
 		}
 		time.Sleep(time.Second)
 		statusTries++
+	}
+	// Send one last entry in
+	if c != nil {
+		c <- TransferStatus{
+			Name:   statusReq.Group,
+			Stats:  *stats,
+			Status: *statusResp,
+		}
 	}
 	return statusResp, nil
 }
@@ -498,24 +485,6 @@ func getJobStatus(statusReq statusRequest) (*jobStatus, error) {
 	}
 	return &status, nil
 }
-
-/*
-func waitForFinishedSimple(statusReq statusRequest) (*jobStatus, error) {
-	var statusResp *jobStatus
-	var statusTries int
-	for !statusResp.Finished {
-		var err error
-		statusResp, err = getJobStatus(statusReq)
-		if err != nil {
-			log.Warn().Err(err).Msg("error getting status")
-		}
-		log.Debug().Int64("job", statusReq.JobID).Int("tries", statusTries).Msg("checking status")
-		time.Sleep(time.Second)
-		statusTries++
-	}
-	return statusResp, nil
-}
-*/
 
 type errorOut struct {
 	Error string `json:"error,omitempty"`

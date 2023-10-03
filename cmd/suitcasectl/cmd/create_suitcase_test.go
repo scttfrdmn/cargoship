@@ -22,6 +22,14 @@ func TestNewSuitcaseWithDir(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestNewSuitcaseWithBadPrefix(t *testing.T) {
+	testD := t.TempDir()
+	cmd := NewRootCmd(io.Discard)
+	cmd.SetArgs([]string{"create", "suitcase", testD, "--prefix=foo/bar"})
+	err := cmd.ExecuteContext(context.Background())
+	require.EqualError(t, err, "prefix cannot contain a /")
+}
+
 func TestNewSuitcaseDuplicateDir(t *testing.T) {
 	testD := t.TempDir()
 	cmd := NewRootCmd(io.Discard)

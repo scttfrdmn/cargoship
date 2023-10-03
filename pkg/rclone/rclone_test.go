@@ -63,7 +63,6 @@ func TestCopyParamsWithSrcDest(t *testing.T) {
 
 func TestCopy(t *testing.T) {
 	d := t.TempDir()
-	// err := Copy("testdata/file-1mb.txt", d, nil)
 	c := make(chan TransferStatus)
 	var status TransferStatus
 	go func() {
@@ -73,7 +72,6 @@ func TestCopy(t *testing.T) {
 		}
 	}()
 	err := Copy("../testdata/archives/self-tarred.tar", d, c)
-	// err := Copy("testdata/fake-file.txt", d, nil)
 	require.NoError(t, err)
 	require.FileExists(t, path.Join(d, "self-tarred.tar"))
 	close(c)
@@ -83,6 +81,5 @@ func TestCopy(t *testing.T) {
 func TestCopyFail(t *testing.T) {
 	err := Copy("testdata/fake-file.txt", "never-exists:/foo", nil)
 	require.Error(t, err)
-	// require.EqualError(t, err, "didn't find section in config file")
 	require.EqualError(t, err, "didn't find section in config file")
 }

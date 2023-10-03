@@ -381,3 +381,53 @@ func (p *Porter) RetryTransport(f string, statusC chan rclone.TransferStatus, re
 	}
 	return nil
 }
+
+// ShipItems sends items through a transporter and optionally reports them to the Travel Agent
+func (p *Porter) ShipItems(items []string, uniqDir string) {
+	// Running in to a loop issue while this is concurrent
+	// var wg conc.WaitGroup
+	c := make(chan rclone.TransferStatus)
+	go func() {
+		for {
+			status := <-c
+			log.Debug().Interface("status", status).Msgf("status update")
+			if p.TravelAgent != nil {
+				if err := p.SendUpdate(*travelagent.NewStatusUpdate(status)); err != nil {
+					log.Warn().Err(err).Msg("could not update travel agent")
+				}
+			}
+		}
+	}()
+
+	for _, fn := range items {
+		item := path.Join(p.Destination, fn)
+		if err := p.Inventory.Options.TransportPlugin.SendWithChannel(item, uniqDir, c); err != nil {
+			log.Warn().Err(err).Str("file", item).Msg("error copying file")
+		}
+	}
+}
+
+func copy(src, dst string) error {
+	sourceFileStat, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	if !sourceFileStat.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", src)
+	}
+
+	source, err := os.Open(src) // nolint:gosec
+	if err != nil {
+		return err
+	}
+	defer dclose(source)
+
+	destination, err := os.Create(dst) // nolint:gosec
+	if err != nil {
+		return err
+	}
+	defer dclose(destination)
+	_, err = io.Copy(destination, source)
+	return err
+}

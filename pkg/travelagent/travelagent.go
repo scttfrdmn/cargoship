@@ -68,11 +68,9 @@ func (t TravelAgent) componentURL(n string) string {
 
 // Update updates the status of an agent
 func (t TravelAgent) Update(s StatusUpdate) (*StatusUpdateResponse, error) {
-	// Just skip
+	// In case we don't wanna truly finalize...
 	if t.skipFinalize && (s.Status == StatusComplete) {
-		return &StatusUpdateResponse{
-			Messages: []string{"doing a fake complete since we said skip-finalize"},
-		}, nil
+		s.Status = StatusInProgress
 	}
 	var r StatusUpdateResponse
 	body, err := json.Marshal(s)
@@ -278,7 +276,9 @@ func New(options ...Option) (*TravelAgent, error) {
 
 // NewStatusUpdate returns a new status update from an rclone.TransferStatus object
 func NewStatusUpdate(r rclone.TransferStatus) *StatusUpdate {
-	s := &StatusUpdate{}
+	s := &StatusUpdate{
+		StartedAt: r.Status.StartTime,
+	}
 	if r.Name != "" {
 		s.Name = r.Name
 	}
@@ -288,8 +288,22 @@ func NewStatusUpdate(r rclone.TransferStatus) *StatusUpdate {
 	if r.Stats.TotalBytes != 0 {
 		s.SizeBytes = r.Stats.TotalBytes
 	}
-	if !r.Status.Finished {
+
+	switch {
+	case !r.Status.Finished:
 		s.Status = StatusInProgress
+	case r.Status.Finished && r.Status.Success:
+		now := time.Now()
+		s.CompletedAt = &now
+		s.Status = StatusComplete
+	case r.Status.Finished && !r.Status.Success:
+		s.Status = StatusFailed
+	default:
+		panic("how did we get here??")
+	}
+
+	if (r.Status.EndTime != nil) && !r.Status.EndTime.IsZero() {
+		s.CompletedAt = r.Status.EndTime
 	}
 	return s
 }
