@@ -148,8 +148,6 @@ func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, er
 	}
 
 	// Store in context for later retrieval
-	// ptr := mustPorterWithCmd(cmd)
-	// ptr.UserOverrides = userOverrides
 	return userOverrides, nil
 }
 
@@ -233,7 +231,15 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		mfiles = append(mfiles, path.Base(hashFnBin))
 	}
 	if ptr.Inventory.Options.TransportPlugin != nil {
-		shipMetadata(mfiles, ptr.SuitcaseOpts, ptr.Inventory, ptr.InventoryHash)
+		ptr.ShipItems(mfiles, ptr.InventoryHash)
+
+		now := time.Now()
+		if serr := ptr.SendUpdate(travelagent.StatusUpdate{
+			Status:      travelagent.StatusComplete,
+			CompletedAt: &now,
+		}); serr != nil {
+			log.Warn().Err(serr).Msg("failed to send final status update")
+		}
 	}
 
 	gout.MustPrint(runsum{
@@ -247,19 +253,31 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func shipMetadata(items []string, opts *config.SuitCaseOpts, inv *inventory.Inventory, uniqDir string) {
+/*
+func shipMetadata(po *porter.Porter, items []string, uniqDir string) {
 	// Running in to a loop issue while this is concurrent
 	// var wg conc.WaitGroup
+	c := make(chan rclone.TransferStatus)
+	go func() {
+		for {
+			status := <-c
+			log.Debug().Interface("status", status).Msgf("status update")
+			if po.TravelAgent != nil {
+				if err := po.SendUpdate(*travelagent.NewStatusUpdate(status)); err != nil {
+					log.Warn().Err(err).Msg("could not update travel agent")
+				}
+			}
+		}
+	}()
+
 	for _, fn := range items {
-		// wg.Go(func() {
-		item := path.Join(opts.Destination, fn)
-		if err := inv.Options.TransportPlugin.Send(item, uniqDir); err != nil {
+		item := path.Join(po.SuitcaseOpts.Destination, fn)
+		if err := po.Inventory.Options.TransportPlugin.SendWithChannel(item, uniqDir, c); err != nil {
 			log.Warn().Err(err).Str("file", item).Msg("error copying file")
 		}
-		// })
 	}
-	// wg.Wait()
 }
+*/
 
 type runsum struct {
 	Directories []string         `yaml:"directories"`
@@ -372,9 +390,11 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 		return err
 	}
 
+	now := time.Now()
 	if err = ptr.SendUpdate(travelagent.StatusUpdate{
 		SuitcasectlSource:      strings.Join(args, ", "),
 		Status:                 travelagent.StatusInProgress,
+		StartedAt:              &now,
 		SuitcasectlDestination: ptr.Destination,
 		Metadata:               ptr.Inventory.MustJSONString(),
 		MetadataCheckSum:       ptr.InventoryHash,
@@ -392,19 +412,13 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 
 	if !onlyInventory {
 		// return createSuitcases(cmd, opts, ptr.Inventory)
-		err = createSuitcases(ptr, ptr.SuitcaseOpts)
-		if err != nil {
+		if cerr := createSuitcases(ptr); cerr != nil {
 			if serr := ptr.SendUpdate(travelagent.StatusUpdate{
 				Status: travelagent.StatusFailed,
 			}); serr != nil {
-				log.Warn().Err(err).Msg("failed to send final status update")
+				log.Warn().Err(cerr).Msg("failed to send final status update")
 			}
 			return err
-		}
-		if serr := ptr.SendUpdate(travelagent.StatusUpdate{
-			Status: travelagent.StatusComplete,
-		}); serr != nil {
-			log.Warn().Err(err).Msg("failed to send final status update")
 		}
 		return nil
 	}
@@ -413,8 +427,8 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 }
 
 // func createSuitcases(cmd *cobra.Command, opts *config.SuitCaseOpts, inventoryD *inventory.Inventory) error {
-func createSuitcases(ptr *porter.Porter, opts *config.SuitCaseOpts) error {
-	if err := opts.EncryptToCobra(ptr.Cmd); err != nil {
+func createSuitcases(ptr *porter.Porter) error {
+	if err := ptr.SuitcaseOpts.EncryptToCobra(ptr.Cmd); err != nil {
 		return err
 	}
 
@@ -424,7 +438,7 @@ func createSuitcases(ptr *porter.Porter, opts *config.SuitCaseOpts) error {
 	}
 	createdFiles := processSuitcases(&processOpts{
 		Porter:        ptr,
-		SuitcaseOpts:  opts,
+		SuitcaseOpts:  ptr.SuitcaseOpts,
 		SampleEvery:   sampleI,
 		Concurrency:   mustGetCmd[int](ptr.Cmd, "concurrency"),
 		RetryCount:    mustGetCmd[int](ptr.Cmd, "retry-count"),

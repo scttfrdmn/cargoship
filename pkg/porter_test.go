@@ -3,6 +3,8 @@ package porter
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"path"
 	"testing"
 	"time"
 
@@ -11,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/cloud"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/travelagent"
 )
@@ -154,6 +158,47 @@ func (ft *fakeTrans) SendWithChannel(s, u string, c chan rclone.TransferStatus) 
 	}
 	ft.attempt++
 	return errors.New("some fake error")
+}
+
+type fta struct {
+	LastStatus travelagent.StatusUpdate
+}
+
+func (f fta) StatusURL() string {
+	return "https://www.example.com/api/v1/status"
+}
+
+func (f *fta) Update(s travelagent.StatusUpdate) (*travelagent.StatusUpdateResponse, error) {
+	f.LastStatus = s
+	r := &travelagent.StatusUpdateResponse{
+		Messages: []string{fmt.Sprintf("got update of %v\n", s)},
+	}
+	return r, nil
+}
+
+func TestShipItems(t *testing.T) {
+	td := t.TempDir()
+	ctd := t.TempDir()
+	tfile := "testdata/overflow-queue/2mb"
+	require.NoError(t, copy(tfile, path.Join(ctd, path.Base(tfile))))
+	require.NoError(t, copy(tfile, path.Join(td, path.Base(tfile))))
+	ftaI := &fta{}
+	p := New(
+		WithDestination(td),
+		WithInventory(&inventory.Inventory{
+			Options: inventory.NewOptions(),
+		}),
+		WithTravelAgent(ftaI),
+	)
+	p.Inventory.Options.TransportPlugin = &cloud.Transporter{
+		Config: transporters.Config{
+			Destination: ctd,
+		},
+	}
+	p.ShipItems([]string{path.Base(tfile)}, "foo")
+	require.Equal(t, int64(2097152), ftaI.LastStatus.TransferredBytes)
+	require.EqualValues(t, travelagent.StatusComplete, ftaI.LastStatus.Status)
+	// require.Equal(t, "foo", "bar")
 }
 
 func TestRetryTransport(t *testing.T) {
