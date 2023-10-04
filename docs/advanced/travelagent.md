@@ -10,6 +10,11 @@ and instructions. For example, it can be used to:
 The Duke University implementation uses RToolkits as the Travel Agent endpoint,
 however you can write your own as long as it supports the defined endoints.
 
+## Demo
+
+![travel-agent](../vhs/travel-agent.gif)
+
+
 ## Hosting your own Travel Agent
 
 API INFO GOES HERE
