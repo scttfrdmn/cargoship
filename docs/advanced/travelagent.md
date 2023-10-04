@@ -14,7 +14,6 @@ however you can write your own as long as it supports the defined endoints.
 
 ![travel-agent](../vhs/travel-agent.gif)
 
-
 ## Hosting your own Travel Agent
 
 API INFO GOES HERE
