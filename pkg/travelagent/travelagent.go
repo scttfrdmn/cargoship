@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/cloud"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
 	"moul.io/http2curl"
 )
@@ -28,12 +30,18 @@ type TravelAgent struct {
 	client       *http.Client
 	printCurl    bool
 	skipFinalize bool
+	// cloudCredentials map[string]string
+	// uploadTokenExpiration is a long expiration that should cover the uploading of the largest suitcase
+	uploadTokenExpiration time.Duration
+	// uploadMetaTokenExpiration is a short expiration used for uploading metadata
+	uploadMetaTokenExpiration time.Duration
 }
 
 // TravelAgenter is the thing that describes what a travel agent is!
 type TravelAgenter interface {
 	StatusURL() string
 	Update(StatusUpdate) (*StatusUpdateResponse, error)
+	Upload(string, chan rclone.TransferStatus) error
 }
 
 // StatusUpdate is a little structure that gives our TravelAgent more info on
@@ -54,6 +62,29 @@ type StatusUpdate struct {
 // Validate the built in TravelAgent meets the TravelAgenter interface
 var _ TravelAgenter = TravelAgent{}
 
+type credentialResponse struct {
+	AuthInfo    map[string]string `json:"auth_info"`
+	Destination string            `json:"destination"`
+}
+
+// connectionString returns an rclone style connection string for a given credential
+func (c credentialResponse) connectionString() string {
+	ctype := "local"
+	additionalAuth := map[string]string{}
+	for k, v := range c.AuthInfo {
+		if k == "type" {
+			ctype = v
+		} else {
+			additionalAuth[k] = v
+		}
+	}
+	connStr := ":" + ctype
+	for k, v := range additionalAuth {
+		connStr = fmt.Sprintf("%v,%v='%v'", connStr, k, v)
+	}
+	return connStr + ":"
+}
+
 // StatusURL is just the web url for viewing this stuff
 func (t TravelAgent) StatusURL() string {
 	pathPieces := strings.Split(t.URL.Path, "/")
@@ -61,9 +92,57 @@ func (t TravelAgent) StatusURL() string {
 	return fmt.Sprintf("https://%v/suitcase_transfers/%v", t.URL.Host, id)
 }
 
+func (t TravelAgent) credentialURL() string {
+	pathPieces := strings.Split(t.URL.Path, "/")
+	id := pathPieces[len(pathPieces)-1]
+	if id == "" {
+		panic("could not get id")
+	}
+	return fmt.Sprintf("%v://%v/api/v1/suitcase_transfers/%v/credentials", t.URL.Scheme, t.URL.Host, id)
+}
+
+// Upload sends a file off to the cloud, given the file to upload
+func (t TravelAgent) Upload(fn string, c chan rclone.TransferStatus) error {
+	uploadCred, err := t.getCredentials()
+	if err != nil {
+		return err
+	}
+
+	trans := cloud.Transporter{
+		Config: transporters.Config{
+			Destination: uploadCred.connectionString() + uploadCred.Destination,
+		},
+	}
+	if cerr := trans.Check(); cerr != nil {
+		return cerr
+	}
+
+	if serr := trans.SendWithChannel(fn, "", c); serr != nil {
+		return serr
+	}
+	return nil
+}
+
 // componentURL is the endpoint for a given component to send to
 func (t TravelAgent) componentURL(n string) string {
 	return fmt.Sprintf("%v/suitcase_components/%v", t.URL, n)
+}
+
+func (t *TravelAgent) getCredentials() (*credentialResponse, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%v?expiry_seconds=%v", t.credentialURL(), t.uploadTokenExpiration.Seconds()), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var credentialR credentialResponse
+	if _, cerr := t.sendRequest(req, &credentialR); err != nil {
+		return nil, cerr
+	}
+	if credentialR.Destination == "" {
+		return nil, errors.New("credential response did not specify a destination")
+	}
+
+	return &credentialR, nil
 }
 
 // Update updates the status of an agent
@@ -112,7 +191,7 @@ func blobToCred(b string) (*credential, error) {
 	return &c, nil
 }
 
-func (t *TravelAgent) sendRequest(req *http.Request, v interface{}) (*Response, error) {
+func (t *TravelAgent) sendRequest(req *http.Request, v interface{}) (*Response, error) { // nolint:unparam
 	bearer := "Bearer " + t.Token
 	req.Header.Add("Authorization", bearer)
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -127,7 +206,6 @@ func (t *TravelAgent) sendRequest(req *http.Request, v interface{}) (*Response, 
 	if err != nil {
 		return nil, err
 	}
-	// b, _ := ioutil.ReadAll(res.Body)
 
 	defer dclose(res.Body)
 
@@ -198,6 +276,20 @@ func WithClient(c *http.Client) Option {
 	})
 }
 
+// WithTokenExpiration sets the suitcase token at create
+func WithTokenExpiration(d time.Duration) Option {
+	return success(func(t *TravelAgent) {
+		t.uploadTokenExpiration = d
+	})
+}
+
+// WithMetaTokenExpiration sets the suitcase token at create
+func WithMetaTokenExpiration(d time.Duration) Option {
+	return success(func(t *TravelAgent) {
+		t.uploadMetaTokenExpiration = d
+	})
+}
+
 // WithCmd binds cobra args on
 func WithCmd(cmd *cobra.Command) Option {
 	credBlob, err := cmd.Flags().GetString("travel-agent")
@@ -250,7 +342,9 @@ func WithCmd(cmd *cobra.Command) Option {
 // New returns a new TravelAgent using functional options
 func New(options ...Option) (*TravelAgent, error) {
 	ta := &TravelAgent{
-		client: http.DefaultClient,
+		client:                    http.DefaultClient,
+		uploadTokenExpiration:     24 * time.Hour,
+		uploadMetaTokenExpiration: 1 * time.Hour,
 	}
 	for _, option := range options {
 		opt, err := option()

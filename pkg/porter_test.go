@@ -128,6 +128,10 @@ func (f fakeTa) StatusURL() string {
 	return "https://www.example.com/api/v1/5"
 }
 
+func (f fakeTa) Upload(s string, c chan rclone.TransferStatus) error {
+	return errors.New("not yet implemented")
+}
+
 func (f fakeTa) Update(s travelagent.StatusUpdate) (*travelagent.StatusUpdateResponse, error) {
 	return &travelagent.StatusUpdateResponse{
 		Messages: []string{
@@ -166,6 +170,10 @@ type fta struct {
 
 func (f fta) StatusURL() string {
 	return "https://www.example.com/api/v1/status"
+}
+
+func (f fta) Upload(s string, c chan rclone.TransferStatus) error {
+	return errors.New("not yet implemented")
 }
 
 func (f *fta) Update(s travelagent.StatusUpdate) (*travelagent.StatusUpdateResponse, error) {

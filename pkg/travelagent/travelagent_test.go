@@ -3,10 +3,13 @@ package travelagent
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
@@ -66,6 +69,25 @@ func TestStatusUpdateFailure(t *testing.T) {
 	require.EqualError(t, err, "suitcase cannot be updated since it is complete")
 }
 
+func TestTravelAgentUpload(t *testing.T) {
+	fakeDest := t.TempDir()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.Copy(w, bytes.NewReader([]byte(fmt.Sprintf(`{"destination":"%v"}`, fakeDest))))
+		require.NoError(t, err)
+		// panicIfErr(err)
+	}))
+	c, err := New(
+		WithToken("foo"),
+		WithURL(srv.URL+"/api/v1/suitcase_transfers/1"),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, c)
+	uerr := c.Upload("../testdata/archives/archive.tar.gz", nil)
+	require.NoError(t, uerr)
+
+	require.FileExists(t, path.Join(fakeDest, "archive.tar.gz"))
+}
+
 func TestStatusUpdate(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := io.Copy(w, bytes.NewReader([]byte(`{"messages":["updated fields: status and updated_at"]}`)))
@@ -119,11 +141,16 @@ func TestBindCmd(t *testing.T) {
 		"--travel-agent-token", "another-token",
 	})
 	cmd.Execute()
-	ta, err = New(WithCmd(&cmd))
+	ta, err = New(
+		WithCmd(&cmd),
+		WithMetaTokenExpiration(5*time.Minute),
+		WithTokenExpiration(48*time.Hour),
+	)
 	require.NoError(t, err)
 	require.Equal(t, ta.URL.String(), "https://www.example.com/api/v1/suitcase_transfers/2")
 	require.Equal(t, ta.Token, "another-token")
 	require.Equal(t, "https://www.example.com/suitcase_transfers/2", ta.StatusURL())
+	require.Equal(t, "https://www.example.com/api/v1/suitcase_transfers/2/credentials", ta.credentialURL())
 	require.Equal(t, "https://www.example.com/api/v1/suitcase_transfers/2/suitcase_components/foo", ta.componentURL("foo"))
 }
 
@@ -146,5 +173,37 @@ func copyResp(f string, w io.Writer) {
 func panicIfErr(err error) {
 	if err != nil {
 		panic(err)
+	}
+}
+
+func TestCredentialConnectionStrings(t *testing.T) {
+	tests := map[string]struct {
+		given  credentialResponse
+		expect string
+	}{
+		"azure-blob-sas-url": {
+			given: credentialResponse{
+				AuthInfo: map[string]string{
+					"type":    "azureblob",
+					"sas_url": "https://foo.blob.core.windows.net/test?sp=racwdli&st=2023-10-13T13:05:07Z&se=2023-10-20T21:05:07Z&spr=https&sv=2022-11-02&sr=c&sig=some-token",
+				},
+				Destination: "some-container/",
+			},
+			expect: `:azureblob,sas_url='https://foo.blob.core.windows.net/test?sp=racwdli&st=2023-10-13T13:05:07Z&se=2023-10-20T21:05:07Z&spr=https&sv=2022-11-02&sr=c&sig=some-token':`,
+		},
+		"assume-local": {
+			given: credentialResponse{
+				Destination: "/tmp",
+			},
+			expect: ":local:",
+		},
+	}
+	for desc, tt := range tests {
+		require.Equal(
+			t,
+			tt.expect,
+			tt.given.connectionString(),
+			desc,
+		)
 	}
 }

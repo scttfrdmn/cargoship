@@ -177,6 +177,8 @@ func setOuterHashes(ptr *porter.Porter, metaF string) ([]config.HashSet, string,
 		return nil, "", "", err
 	}
 	defer dclose(metaFh)
+
+	log.Info().Str("file", metaF).Msg("Creating hash for file")
 	hashes = append(hashes, config.HashSet{
 		Filename: strings.TrimPrefix(metaF, ptr.Destination+"/"),
 		Hash:     porter.MustCalculateHash(metaFh, hashAlgo.String()),
