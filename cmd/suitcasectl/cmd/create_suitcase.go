@@ -9,6 +9,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/drewstinnett/gout/v2"
@@ -192,6 +193,15 @@ func setOuterHashes(ptr *porter.Porter, metaF string) ([]config.HashSet, string,
 	return hashes, hashFn, hashFnBin, nil
 }
 
+func appendHashes(mfiles []string, items ...string) []string {
+	for _, item := range items {
+		if item != "" {
+			mfiles = append(mfiles, path.Base(item))
+		}
+	}
+	return mfiles
+}
+
 func createPostRunE(cmd *cobra.Command, args []string) error {
 	ptr := mustPorterWithCmd(cmd)
 	metaF := ptr.CLIMeta.MustComplete(ptr.Destination)
@@ -202,8 +212,7 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 	var hashFn, hashFnBin string
 	if mustGetCmd[bool](cmd, "hash-outer") && !mustGetCmd[bool](cmd, "only-inventory") {
 		var err error
-		hashes, hashFn, hashFnBin, err = setOuterHashes(ptr, metaF)
-		if err != nil {
+		if hashes, hashFn, hashFnBin, err = setOuterHashes(ptr, metaF); err != nil {
 			return err
 		}
 	}
@@ -221,17 +230,11 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 
 	// opts := suitcase.OptsWithCmd(cmd)
 	// Copy files up if needed
-	mfiles := []string{
+	mfiles := appendHashes([]string{
 		"inventory.yaml",
 		"suitcasectl.log",
 		"suitcasectl-invocation-meta.yaml",
-	}
-	if hashFn != "" {
-		mfiles = append(mfiles, path.Base(hashFn))
-	}
-	if hashFnBin != "" {
-		mfiles = append(mfiles, path.Base(hashFnBin))
-	}
+	}, hashFn, hashFnBin)
 	if ptr.Inventory.Options.TransportPlugin != nil {
 		ptr.ShipItems(mfiles, ptr.InventoryHash)
 
@@ -242,6 +245,10 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		}); serr != nil {
 			log.Warn().Err(serr).Msg("failed to send final status update")
 		}
+	}
+
+	if err := uploadMeta(ptr, mfiles); err != nil {
+		return err
 	}
 
 	gout.MustPrint(runsum{
@@ -255,31 +262,23 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-/*
-func shipMetadata(po *porter.Porter, items []string, uniqDir string) {
-	// Running in to a loop issue while this is concurrent
-	// var wg conc.WaitGroup
-	c := make(chan rclone.TransferStatus)
-	go func() {
-		for {
-			status := <-c
-			log.Debug().Interface("status", status).Msgf("status update")
-			if po.TravelAgent != nil {
-				if err := po.SendUpdate(*travelagent.NewStatusUpdate(status)); err != nil {
-					log.Warn().Err(err).Msg("could not update travel agent")
+func uploadMeta(ptr *porter.Porter, mfiles []string) error {
+	if ptr.TravelAgent != nil {
+		var wg sync.WaitGroup
+		wg.Add(len(mfiles))
+		for _, mfile := range mfiles {
+			mfile := mfile
+			go func() {
+				defer wg.Done()
+				if err := ptr.TravelAgent.Upload(path.Join(ptr.Destination, mfile), nil); err != nil {
+					panic(err)
 				}
-			}
+			}()
 		}
-	}()
-
-	for _, fn := range items {
-		item := path.Join(po.SuitcaseOpts.Destination, fn)
-		if err := po.Inventory.Options.TransportPlugin.SendWithChannel(item, uniqDir, c); err != nil {
-			log.Warn().Err(err).Str("file", item).Msg("error copying file")
-		}
+		wg.Wait()
 	}
+	return nil
 }
-*/
 
 type runsum struct {
 	Directories []string         `yaml:"directories"`

@@ -365,7 +365,6 @@ func Copy(source, destination string, c chan TransferStatus) error {
 }
 
 func getStats(id string) (*jobStats, error) {
-	// jobID := fmt.Sprintf("job/%v", id)
 	out, status := librclone.RPC("core/stats", statsRequest{Group: id}.JSONString())
 	if status != 200 {
 		return nil, errors.New("error getting stats")
@@ -438,7 +437,6 @@ func waitForFinished(statusReq statusRequest, c chan TransferStatus) (*jobStatus
 	var stats *jobStats
 	for (statusResp == nil) || !statusResp.Finished {
 		var err error
-		// stats, err := getStats(fmt.Sprintf("job/%v", statusReq.JobID))
 		if statusReq.Group == "" {
 			return nil, errors.New("missing group")
 		}
@@ -456,7 +454,7 @@ func waitForFinished(statusReq statusRequest, c chan TransferStatus) (*jobStatus
 				Status: *statusResp,
 			}
 		}
-		time.Sleep(time.Second)
+		time.Sleep(time.Second * 5)
 		statusTries++
 	}
 	// Send one last entry in

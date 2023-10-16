@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/rs/zerolog/log"
 
 	"github.com/rs/zerolog"
@@ -175,8 +176,18 @@ func (p Porter) SendUpdate(u travelagent.StatusUpdate) error {
 	}
 	if p.Logger != nil {
 		if u.Name != "" {
-			log = log.With().Str("component", u.Name).Logger()
+			log = log.With().
+				Str("component", u.Name).
+				Logger()
+			if u.SizeBytes > 0 {
+				log = log.With().
+					Str("transferred", humanize.Bytes(uint64(u.TransferredBytes))).
+					Str("total", humanize.Bytes(uint64(u.SizeBytes))).
+					Int("completed", u.PercentDone).
+					Logger()
+			}
 		}
+
 		for _, msg := range resp.Messages {
 			if strings.TrimSpace(msg) != "updated fields:" {
 				log.Info().Msg(msg)

@@ -183,7 +183,7 @@ func TestCredentialConnectionStrings(t *testing.T) {
 	}{
 		"azure-blob-sas-url": {
 			given: credentialResponse{
-				AuthInfo: map[string]string{
+				AuthType: map[string]string{
 					"type":    "azureblob",
 					"sas_url": "https://foo.blob.core.windows.net/test?sp=racwdli&st=2023-10-13T13:05:07Z&se=2023-10-20T21:05:07Z&spr=https&sv=2022-11-02&sr=c&sig=some-token",
 				},
