@@ -128,8 +128,12 @@ func (f fakeTa) StatusURL() string {
 	return "https://www.example.com/api/v1/5"
 }
 
-func (f fakeTa) Upload(s string, c chan rclone.TransferStatus) error {
-	return errors.New("not yet implemented")
+func (f fakeTa) Transferred() int64 {
+	return 0
+}
+
+func (f fakeTa) Upload(s string, c chan rclone.TransferStatus) (int64, error) {
+	return 0, errors.New("not yet implemented")
 }
 
 func (f fakeTa) Update(s travelagent.StatusUpdate) (*travelagent.StatusUpdateResponse, error) {
@@ -172,8 +176,12 @@ func (f fta) StatusURL() string {
 	return "https://www.example.com/api/v1/status"
 }
 
-func (f fta) Upload(s string, c chan rclone.TransferStatus) error {
-	return errors.New("not yet implemented")
+func (f fta) Upload(s string, c chan rclone.TransferStatus) (int64, error) {
+	return 0, errors.New("not yet implemented")
+}
+
+func (f fta) Transferred() int64 {
+	return 0
 }
 
 func (f *fta) Update(s travelagent.StatusUpdate) (*travelagent.StatusUpdateResponse, error) {

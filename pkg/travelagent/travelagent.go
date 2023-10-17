@@ -45,7 +45,7 @@ type TravelAgent struct {
 type TravelAgenter interface {
 	StatusURL() string
 	Update(StatusUpdate) (*StatusUpdateResponse, error)
-	Upload(string, chan rclone.TransferStatus) error
+	Upload(string, chan rclone.TransferStatus) (int64, error)
 }
 
 // StatusUpdate is a little structure that gives our TravelAgent more info on
@@ -53,6 +53,7 @@ type TravelAgenter interface {
 type StatusUpdate struct {
 	Status                 Status     `json:"status,omitempty"`
 	SizeBytes              int64      `json:"size_bytes,omitempty"`
+	Speed                  float64    `json:"speed,omitempty"`
 	TransferredBytes       int64      `json:"transferred_bytes,omitempty"`
 	PercentDone            int        `json:"percent_done,omitempty"`
 	Name                   string     `json:"-"`
@@ -108,30 +109,43 @@ func (t TravelAgent) credentialURL() string {
 }
 
 // Upload sends a file off to the cloud, given the file to upload
-func (t TravelAgent) Upload(fn string, c chan rclone.TransferStatus) error {
-	uploadCred, err := t.getCredentials()
-	if err != nil {
-		return err
-	}
-	log.Info().
-		Str("file", path.Base(fn)).
-		Str("destination", uploadCred.Destination).
-		Str("expiration", fmt.Sprint(time.Duration(uploadCred.ExpireSeconds)*time.Second)).
-		Msg("☀️ Got cloud credentials to upload file")
+func (t TravelAgent) Upload(fn string, c chan rclone.TransferStatus) (int64, error) {
+	var uploaded bool
+	attempt := 1
 
-	trans := cloud.Transporter{
-		Config: transporters.Config{
-			Destination: uploadCred.connectionString() + uploadCred.Destination,
-		},
-	}
-	if cerr := trans.Check(); cerr != nil {
-		return cerr
-	}
+	for (!uploaded && attempt == 1) || attempt <= t.uploadRetries {
+		uploadCred, err := t.getCredentials()
+		if err != nil {
+			return 0, err
+		}
+		log.Info().
+			Str("file", path.Base(fn)).
+			Str("destination", uploadCred.Destination).
+			Str("expiration", fmt.Sprint(time.Duration(uploadCred.ExpireSeconds)*time.Second)).
+			Msg("☀️ Got cloud credentials to upload file")
 
-	if serr := trans.SendWithChannel(fn, "", c); serr != nil {
-		return serr
+		trans := cloud.Transporter{
+			Config: transporters.Config{
+				Destination: uploadCred.connectionString() + uploadCred.Destination,
+			},
+		}
+		if cerr := trans.Check(); cerr != nil {
+			return 0, cerr
+		}
+
+		if serr := trans.SendWithChannel(fn, "", c); serr != nil {
+			return 0, serr
+		}
+		attempt++
 	}
-	return nil
+	if uploaded {
+		fstat, err := os.Stat(fn)
+		if err != nil {
+			log.Warn().Str("file", fn).Msg("could not determine filesize")
+		}
+		return fstat.Size(), nil
+	}
+	return 0, errors.New("could not upload file")
 }
 
 // componentURL is the endpoint for a given component to send to
@@ -396,15 +410,24 @@ func NewStatusUpdate(r rclone.TransferStatus) *StatusUpdate {
 	if r.Name != "" {
 		s.Name = r.Name
 	}
-	if r.Stats.Bytes != 0 {
-		s.TransferredBytes = r.Stats.Bytes
-	}
-	if r.Stats.TotalBytes != 0 {
-		s.SizeBytes = r.Stats.TotalBytes
-	}
 	switch {
 	case len(r.Stats.Transferring) == 1:
-		s.PercentDone = r.Stats.Transferring[0].Percentage
+
+		// Dividing percentage and Transferred by 2x. The raw stats
+		// appear to be roughly double the actual values. Unsure if
+		// this is a bug or if the read from the disk is also being
+		// counted here
+		s.PercentDone = r.Stats.Transferring[0].Percentage / 2
+		if r.Stats.Transferring[0].Bytes > 0 {
+			s.TransferredBytes = r.Stats.Transferring[0].Bytes / 2
+		}
+		if r.Stats.Transferring[0].Size > 0 {
+			s.SizeBytes = r.Stats.Transferring[0].Size
+		}
+		if r.Stats.Transferring[0].SpeedAvg > 0 {
+			s.Speed = r.Stats.Transferring[0].SpeedAvg
+		}
+
 	case len(r.Stats.Transferring) > 1:
 		log.Warn().Interface("trans", r.Stats.Transferring).Msg("☀️ hmmm...found multiple files uploading...we aren't handling this correctly")
 	}
@@ -415,8 +438,8 @@ func NewStatusUpdate(r rclone.TransferStatus) *StatusUpdate {
 	case r.Status.Finished && r.Status.Success:
 		s.CompletedAt = nowPtr()
 		s.Status = StatusComplete
-		s.SizeBytes = r.Stats.TotalBytes
-		s.TransferredBytes = r.Stats.TotalBytes
+		s.SizeBytes = r.Stats.TotalBytes / 2
+		s.TransferredBytes = r.Stats.TotalBytes / 2
 	case r.Status.Finished && !r.Status.Success:
 		s.Status = StatusFailed
 	default:

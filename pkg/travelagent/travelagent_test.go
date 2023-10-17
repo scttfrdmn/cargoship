@@ -82,7 +82,7 @@ func TestTravelAgentUpload(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, c)
-	uerr := c.Upload("../testdata/archives/archive.tar.gz", nil)
+	_, uerr := c.Upload("../testdata/archives/archive.tar.gz", nil)
 	require.NoError(t, uerr)
 
 	require.FileExists(t, path.Join(fakeDest, "archive.tar.gz"))

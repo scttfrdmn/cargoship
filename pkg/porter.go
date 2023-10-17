@@ -40,21 +40,22 @@ import (
 // flatten this nest of modules together, this is the first step in getting
 // something that can perform that way
 type Porter struct {
-	Cmd            *cobra.Command
-	Args           []string
-	CLIMeta        *CLIMeta
-	TravelAgent    travelagent.TravelAgenter
-	hasTravelAgent bool
-	Inventory      *inventory.Inventory
-	InventoryHash  string
-	Logger         *zerolog.Logger
-	HashAlgorithm  inventory.HashAlgorithm
-	Hashes         []config.HashSet
-	UserOverrides  *viper.Viper
-	Destination    string
-	Version        string
-	SuitcaseOpts   *config.SuitCaseOpts
-	LogFile        *os.File
+	Cmd              *cobra.Command
+	Args             []string
+	CLIMeta          *CLIMeta
+	TravelAgent      travelagent.TravelAgenter
+	hasTravelAgent   bool
+	Inventory        *inventory.Inventory
+	InventoryHash    string
+	Logger           *zerolog.Logger
+	HashAlgorithm    inventory.HashAlgorithm
+	Hashes           []config.HashSet
+	UserOverrides    *viper.Viper
+	Destination      string
+	Version          string
+	SuitcaseOpts     *config.SuitCaseOpts
+	LogFile          *os.File
+	TotalTransferred int64
 }
 
 // New returns a new porter using functional options
@@ -183,6 +184,7 @@ func (p Porter) SendUpdate(u travelagent.StatusUpdate) error {
 				log = log.With().
 					Str("transferred", humanize.Bytes(uint64(u.TransferredBytes))).
 					Str("total", humanize.Bytes(uint64(u.SizeBytes))).
+					Str("avg-speed", fmt.Sprintf("%v/s", humanize.Bytes(uint64(u.Speed)))).
 					Logger()
 				if u.PercentDone > 0 {
 					log = log.With().Str("progress", fmt.Sprintf("%v%%", u.PercentDone)).Logger()
@@ -201,7 +203,7 @@ func (p Porter) SendUpdate(u travelagent.StatusUpdate) error {
 }
 
 func prefixLog(s string) string {
-	return "💼 " + s
+	return "☁️ " + s
 }
 
 func dclose(c io.Closer) {

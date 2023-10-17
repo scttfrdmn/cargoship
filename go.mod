@@ -19,6 +19,8 @@ require (
 	github.com/mailru/easyjson v0.7.7
 	github.com/mholt/archiver/v4 v4.0.0-alpha.8.0.20230831060951-e2261a1bb41f
 	github.com/mitchellh/go-homedir v1.1.0
+	github.com/muesli/mango-cobra v1.2.0
+	github.com/muesli/roff v0.1.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/rclone/rclone v1.64.0
 	github.com/rs/zerolog v1.31.0
@@ -138,6 +140,8 @@ require (
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
+	github.com/muesli/mango v0.1.0 // indirect
+	github.com/muesli/mango-pflag v0.1.0 // indirect
 	github.com/muesli/reflow v0.3.0 // indirect
 	github.com/muesli/termenv v0.15.2 // indirect
 	github.com/ncw/go-acd v0.0.0-20201019170801-fe55f33415b1 // indirect

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/drewstinnett/gout/v2"
@@ -237,18 +238,19 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 	}, hashFn, hashFnBin)
 	if ptr.Inventory.Options.TransportPlugin != nil {
 		ptr.ShipItems(mfiles, ptr.InventoryHash)
-
-		now := time.Now()
-		if serr := ptr.SendUpdate(travelagent.StatusUpdate{
-			Status:      travelagent.StatusComplete,
-			CompletedAt: &now,
-		}); serr != nil {
-			log.Warn().Err(serr).Msg("🧳 failed to send final status update")
-		}
 	}
 
 	if err := uploadMeta(ptr, mfiles); err != nil {
 		return err
+	}
+
+	log.Warn().Msgf("TOTAL: %+v\n", ptr.TotalTransferred)
+	if serr := ptr.SendUpdate(travelagent.StatusUpdate{
+		Status:      travelagent.StatusComplete,
+		CompletedAt: nowPtr(),
+		SizeBytes:   ptr.TotalTransferred,
+	}); serr != nil {
+		log.Warn().Err(serr).Msg("🧳 failed to send final status update")
 	}
 
 	gout.MustPrint(runsum{
@@ -270,8 +272,10 @@ func uploadMeta(ptr *porter.Porter, mfiles []string) error {
 			mfile := mfile
 			go func() {
 				defer wg.Done()
-				if err := ptr.TravelAgent.Upload(path.Join(ptr.Destination, mfile), nil); err != nil {
+				if xferred, err := ptr.TravelAgent.Upload(path.Join(ptr.Destination, mfile), nil); err != nil {
 					panic(err)
+				} else {
+					atomic.AddInt64(&ptr.TotalTransferred, xferred)
 				}
 			}()
 		}

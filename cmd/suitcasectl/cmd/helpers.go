@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"sync/atomic"
 	"time"
 
 	// "github.com/minio/sha256-simd"
@@ -195,7 +196,9 @@ func processSuitcases(po *processOpts) []string {
 
 				// Insert TravelAgent upload right here yo'
 				if po.Porter.TravelAgent != nil {
-					panicIfErr(po.Porter.TravelAgent.Upload(createdF, statusC))
+					xferred, err := po.Porter.TravelAgent.Upload(createdF, statusC)
+					panicIfErr(err)
+					atomic.AddInt64(&po.Porter.TotalTransferred, xferred)
 				}
 			}
 		})
