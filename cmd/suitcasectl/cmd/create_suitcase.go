@@ -135,11 +135,11 @@ func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, er
 	userOverrides := viper.New()
 	userOverrides.SetConfigName("suitcasectl")
 	for _, dir := range args {
-		log.Debug().Str("dir", dir).Msg("Adding target dir")
+		log.Debug().Str("dir", dir).Msg("🧳 Adding target dir")
 		userOverrides.AddConfigPath(dir)
 	}
 	if rerr := userOverrides.ReadInConfig(); rerr == nil {
-		log.Info().Str("override-file", userOverrides.ConfigFileUsed()).Msg("Found user overrides, using them")
+		log.Info().Str("override-file", userOverrides.ConfigFileUsed()).Msg("🧳 Found user overrides, using them")
 	}
 	for _, field := range []string{"follow-symlinks", "ignore-glob", "inventory-format", "internal-metadata-glob", "max-suitcase-size", "prefix", "user", "suitcase-format"} {
 		err := userOverrides.BindPFlag(field, cmd.PersistentFlags().Lookup(field))
@@ -157,7 +157,7 @@ type hashFileCreator func([]config.HashSet, io.Writer) error
 // This could definitely be cleaner...
 func writeHashFile(ptr *porter.Porter, hfc hashFileCreator, ext string) (string, error) {
 	hashFile := path.Join(ptr.Destination, fmt.Sprintf("suitcasectl.%v", hashAlgo.String()+ext))
-	log.Info().Str("hash-file", hashFile).Msg("Creating hashes")
+	log.Info().Str("hash-file", hashFile).Msg("🧳 Creating hashes")
 	hashF, err := os.Create(hashFile) // nolint:gosec
 	if err != nil {
 		return "", err
@@ -179,7 +179,7 @@ func setOuterHashes(ptr *porter.Porter, metaF string) ([]config.HashSet, string,
 	}
 	defer dclose(metaFh)
 
-	log.Info().Str("file", metaF).Msg("Creating hash for file")
+	log.Info().Str("file", metaF).Msg("🧳 Creating hash for file")
 	hashes = append(hashes, config.HashSet{
 		Filename: strings.TrimPrefix(metaF, ptr.Destination+"/"),
 		Hash:     porter.MustCalculateHash(metaFh, hashAlgo.String()),
@@ -205,7 +205,7 @@ func appendHashes(mfiles []string, items ...string) []string {
 func createPostRunE(cmd *cobra.Command, args []string) error {
 	ptr := mustPorterWithCmd(cmd)
 	metaF := ptr.CLIMeta.MustComplete(ptr.Destination)
-	log.Debug().Str("file", metaF).Msg("Created meta file")
+	log.Debug().Str("file", metaF).Msg("🧳 Created meta file")
 
 	// Hash the outer items if asked
 	var hashes []config.HashSet
@@ -217,7 +217,7 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	log.Debug().Str("log-file", ptr.LogFile.Name()).Msg("Switching back to stderr logger and closing the multi log writer so we can hash it")
+	log.Debug().Str("log-file", ptr.LogFile.Name()).Msg("🧳 Switching back to stderr logger and closing the multi log writer so we can hash it")
 	setupLogging(cmd.OutOrStderr())
 	// Do we really care if this closes? maybe...
 	_ = ptr.LogFile.Close()
@@ -243,7 +243,7 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 			Status:      travelagent.StatusComplete,
 			CompletedAt: &now,
 		}); serr != nil {
-			log.Warn().Err(serr).Msg("failed to send final status update")
+			log.Warn().Err(serr).Msg("🧳 failed to send final status update")
 		}
 	}
 
@@ -276,8 +276,21 @@ func uploadMeta(ptr *porter.Porter, mfiles []string) error {
 			}()
 		}
 		wg.Wait()
+		if !mustGetCmd[bool](ptr.Cmd, "travel-agent-skip-finalize") {
+			if err := ptr.SendUpdate(travelagent.StatusUpdate{
+				CompletedAt: nowPtr(),
+				Status:      travelagent.StatusComplete,
+			}); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
+}
+
+func nowPtr() *time.Time {
+	n := time.Now()
+	return &n
 }
 
 type runsum struct {
@@ -368,10 +381,10 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 		taOpts = append(taOpts, travelagent.WithPrintCurl())
 	}
 	if ta, terr := travelagent.New(taOpts...); terr != nil {
-		log.Debug().Err(terr).Msg("no valid travel agent found")
+		log.Debug().Err(terr).Msg("🧳 no valid travel agent found")
 	} else {
 		ptr.SetTravelAgent(ta)
-		log.Info().Str("url", ptr.TravelAgent.StatusURL()).Msg("Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel ☀️")
+		log.Info().Str("url", ptr.TravelAgent.StatusURL()).Msg("☀️ Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel")
 		if serr := ptr.SendUpdate(travelagent.StatusUpdate{
 			Status: travelagent.StatusPending,
 		}); serr != nil {
@@ -400,7 +413,7 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 		Metadata:               ptr.Inventory.MustJSONString(),
 		MetadataCheckSum:       ptr.InventoryHash,
 	}); err != nil {
-		log.Warn().Err(err).Msg("error sending status update")
+		log.Warn().Err(err).Msg("🧳 error sending status update")
 	}
 
 	// We need options even if we already have the inventory
@@ -417,13 +430,13 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 			if serr := ptr.SendUpdate(travelagent.StatusUpdate{
 				Status: travelagent.StatusFailed,
 			}); serr != nil {
-				log.Warn().Err(cerr).Msg("failed to send final status update")
+				log.Warn().Err(cerr).Msg("🧳 failed to send final status update")
 			}
 			return err
 		}
 		return nil
 	}
-	log.Warn().Msg("Only creating inventory file, no suitcase archives")
+	log.Warn().Msg("🧳 Only creating inventory file, no suitcase archives")
 	return nil
 }
 
@@ -435,7 +448,7 @@ func createSuitcases(ptr *porter.Porter) error {
 
 	sampleI, err := strconv.Atoi(envOr("SAMPLE_EVERY", "100"))
 	if err != nil {
-		log.Warn().Err(err).Msg("could not set sampling")
+		log.Warn().Err(err).Msg("🧳 could not set sampling")
 	}
 	createdFiles := processSuitcases(&processOpts{
 		Porter:        ptr,

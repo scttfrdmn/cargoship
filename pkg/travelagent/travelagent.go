@@ -117,7 +117,7 @@ func (t TravelAgent) Upload(fn string, c chan rclone.TransferStatus) error {
 		Str("file", path.Base(fn)).
 		Str("destination", uploadCred.Destination).
 		Str("expiration", fmt.Sprint(time.Duration(uploadCred.ExpireSeconds)*time.Second)).
-		Msg("Got cloud credentials to upload file")
+		Msg("☀️ Got cloud credentials to upload file")
 
 	trans := cloud.Transporter{
 		Config: transporters.Config{
@@ -160,6 +160,7 @@ func (t *TravelAgent) getCredentials() (*credentialResponse, error) {
 func (t TravelAgent) Update(s StatusUpdate) (*StatusUpdateResponse, error) {
 	// In case we don't wanna truly finalize...
 	if t.skipFinalize && (s.Status == StatusComplete) {
+		log.Warn().Str("component", s.Name).Msg("☀️ keeping status as InProgress since we want to skip the finalize")
 		s.Status = StatusInProgress
 	}
 	var r StatusUpdateResponse
@@ -401,17 +402,21 @@ func NewStatusUpdate(r rclone.TransferStatus) *StatusUpdate {
 	if r.Stats.TotalBytes != 0 {
 		s.SizeBytes = r.Stats.TotalBytes
 	}
-	if len(r.Stats.Transferring) > 0 {
+	switch {
+	case len(r.Stats.Transferring) == 1:
 		s.PercentDone = r.Stats.Transferring[0].Percentage
+	case len(r.Stats.Transferring) > 1:
+		log.Warn().Interface("trans", r.Stats.Transferring).Msg("☀️ hmmm...found multiple files uploading...we aren't handling this correctly")
 	}
 
 	switch {
 	case !r.Status.Finished:
 		s.Status = StatusInProgress
 	case r.Status.Finished && r.Status.Success:
-		now := time.Now()
-		s.CompletedAt = &now
+		s.CompletedAt = nowPtr()
 		s.Status = StatusComplete
+		s.SizeBytes = r.Stats.TotalBytes
+		s.TransferredBytes = r.Stats.TotalBytes
 	case r.Status.Finished && !r.Status.Success:
 		s.Status = StatusFailed
 	default:
@@ -422,6 +427,11 @@ func NewStatusUpdate(r rclone.TransferStatus) *StatusUpdate {
 		s.CompletedAt = r.Status.EndTime
 	}
 	return s
+}
+
+func nowPtr() *time.Time {
+	n := time.Now()
+	return &n
 }
 
 // Status describes specific statuses for the updates

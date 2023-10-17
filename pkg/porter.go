@@ -154,7 +154,7 @@ func (p Porter) CreateHashes(s []string) ([]config.HashSet, error) {
 			return nil, err
 		}
 		defer dclose(fh)
-		p.Logger.Info().Str("file", f).Msg("Created file")
+		p.Logger.Info().Str("file", f).Msg("💼 created file")
 		hs = append(hs, config.HashSet{
 			Filename: strings.TrimPrefix(f, p.Destination+"/"),
 			Hash:     MustCalculateHash(fh, p.HashAlgorithm.String()),
@@ -183,19 +183,25 @@ func (p Porter) SendUpdate(u travelagent.StatusUpdate) error {
 				log = log.With().
 					Str("transferred", humanize.Bytes(uint64(u.TransferredBytes))).
 					Str("total", humanize.Bytes(uint64(u.SizeBytes))).
-					Int("completed", u.PercentDone).
 					Logger()
+				if u.PercentDone > 0 {
+					log = log.With().Str("progress", fmt.Sprintf("%v%%", u.PercentDone)).Logger()
+				}
 			}
 		}
 
 		for _, msg := range resp.Messages {
 			if strings.TrimSpace(msg) != "updated fields:" {
-				log.Info().Msg(msg)
+				log.Info().Msg(prefixLog(msg))
 			}
 		}
 	}
 
 	return nil
+}
+
+func prefixLog(s string) string {
+	return "💼 " + s
 }
 
 func dclose(c io.Closer) {
@@ -242,7 +248,7 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 	// Create an inventory file if one isn't specified
 	var inventoryD *inventory.Inventory
 	if inventoryFile == "" {
-		p.Logger.Debug().Msg("No inventory file specified, we're going to go ahead and create one")
+		p.Logger.Debug().Msg("💼 no inventory file specified, we're going to go ahead and create one")
 		var outF *os.File
 		var err error
 		p.UserOverrides = p.getUserOverrides()
@@ -255,7 +261,7 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 			return nil, err
 		}
 		inventoryFile = outF.Name()
-		log.Debug().Str("file", inventoryFile).Msg("Created inventory file")
+		log.Debug().Str("file", inventoryFile).Msg("💼 created inventory file")
 	} else {
 		var err error
 		inventoryD, err = inventory.NewInventoryWithFilename(inventoryFile)
@@ -380,7 +386,7 @@ func (p *Porter) RetryTransport(f string, statusC chan rclone.TransferStatus, re
 	attempt := 1
 	for (!created && attempt == 1) || attempt <= retryCount {
 		if serr := p.Inventory.Options.TransportPlugin.SendWithChannel(f, p.InventoryHash, statusC); serr != nil {
-			log.Warn().Str("retry-interval", retryInterval.String()).Msg("suitcase transport failed, sleeping, then will retry")
+			log.Warn().Str("retry-interval", retryInterval.String()).Msg("💼 suitcase transport failed, sleeping, then will retry")
 			time.Sleep(retryInterval)
 		} else {
 			created = true
@@ -401,10 +407,10 @@ func (p *Porter) ShipItems(items []string, uniqDir string) {
 	go func() {
 		for {
 			status := <-c
-			log.Debug().Interface("status", status).Msgf("status update")
+			log.Debug().Interface("status", status).Msgf("💼 status update")
 			if p.TravelAgent != nil {
 				if err := p.SendUpdate(*travelagent.NewStatusUpdate(status)); err != nil {
-					log.Warn().Err(err).Msg("could not update travel agent")
+					log.Warn().Err(err).Msg("💼 could not update travel agent")
 				}
 			}
 		}
@@ -413,7 +419,7 @@ func (p *Porter) ShipItems(items []string, uniqDir string) {
 	for _, fn := range items {
 		item := path.Join(p.Destination, fn)
 		if err := p.Inventory.Options.TransportPlugin.SendWithChannel(item, uniqDir, c); err != nil {
-			log.Warn().Err(err).Str("file", item).Msg("error copying file")
+			log.Warn().Err(err).Str("file", item).Msg("💼 error copying file")
 		}
 	}
 }

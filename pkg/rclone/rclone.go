@@ -30,6 +30,7 @@ type cloneRequest struct {
 	Group     string `json:"_group"`
 	Async     bool   `json:"_async"`
 	Filter    string `json:"_filter"`
+	// Config    jobConfig `json:"_config"`
 }
 
 // JSON returns the json representation in string format. Panic on error. I
@@ -111,6 +112,12 @@ type jobStats struct {
 	Transferring []jobFileStats `json:"transferring,omitempty"`
 }
 
+/*
+type jobConfig struct {
+	NoGzip bool `json:",omitempty"`
+}
+*/
+
 type jobFileStats struct {
 	Bytes      int64   `json:"bytes"`
 	ETA        float64 `json:"eta,omitempty"`
@@ -163,6 +170,11 @@ func newCloneRequest(options ...func(*cloneRequest)) (*cloneRequest, error) {
 	r := &cloneRequest{
 		Group: "SuitcaseCTLTransfer",
 		Async: true,
+		/*
+			Config: jobConfig{
+				NoGzip: true,
+			},
+		*/
 	}
 	for _, opt := range options {
 		opt(r)
