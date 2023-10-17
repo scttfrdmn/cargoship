@@ -13,10 +13,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/cloud"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
 	"moul.io/http2curl"
 )
@@ -28,12 +32,21 @@ type TravelAgent struct {
 	client       *http.Client
 	printCurl    bool
 	skipFinalize bool
+	// cloudCredentials map[string]string
+	// uploadTokenExpiration is a long expiration that should cover the uploading of the largest suitcase
+	uploadTokenExpiration time.Duration
+	// uploadMetaTokenExpiration is a short expiration used for uploading metadata
+	uploadMetaTokenExpiration time.Duration
+	uploadRetries             int
+	uploadRetryTime           time.Duration
+	UniquePrefix              string
 }
 
 // TravelAgenter is the thing that describes what a travel agent is!
 type TravelAgenter interface {
 	StatusURL() string
 	Update(StatusUpdate) (*StatusUpdateResponse, error)
+	Upload(string, chan rclone.TransferStatus) (int64, error)
 }
 
 // StatusUpdate is a little structure that gives our TravelAgent more info on
@@ -41,7 +54,9 @@ type TravelAgenter interface {
 type StatusUpdate struct {
 	Status                 Status     `json:"status,omitempty"`
 	SizeBytes              int64      `json:"size_bytes,omitempty"`
+	Speed                  float64    `json:"speed,omitempty"`
 	TransferredBytes       int64      `json:"transferred_bytes,omitempty"`
+	PercentDone            int        `json:"percent_done,omitempty"`
 	Name                   string     `json:"-"`
 	StartedAt              *time.Time `json:"started_at,omitempty"`
 	CompletedAt            *time.Time `json:"completed_at,omitempty"`
@@ -54,6 +69,30 @@ type StatusUpdate struct {
 // Validate the built in TravelAgent meets the TravelAgenter interface
 var _ TravelAgenter = TravelAgent{}
 
+type credentialResponse struct {
+	AuthType      map[string]string `json:"auth_type"`
+	Destination   string            `json:"destination"`
+	ExpireSeconds int               `json:"expire_seconds"`
+}
+
+// connectionString returns an rclone style connection string for a given credential
+func (c credentialResponse) connectionString() string {
+	ctype := "local"
+	additionalAuth := map[string]string{}
+	for k, v := range c.AuthType {
+		if k == "type" {
+			ctype = v
+		} else {
+			additionalAuth[k] = v
+		}
+	}
+	connStr := ":" + ctype
+	for k, v := range additionalAuth {
+		connStr = fmt.Sprintf("%v,%v='%v'", connStr, k, v)
+	}
+	return connStr + ":"
+}
+
 // StatusURL is just the web url for viewing this stuff
 func (t TravelAgent) StatusURL() string {
 	pathPieces := strings.Split(t.URL.Path, "/")
@@ -61,15 +100,89 @@ func (t TravelAgent) StatusURL() string {
 	return fmt.Sprintf("https://%v/suitcase_transfers/%v", t.URL.Host, id)
 }
 
+func (t TravelAgent) credentialURL() string {
+	pathPieces := strings.Split(t.URL.Path, "/")
+	id := pathPieces[len(pathPieces)-1]
+	if id == "" {
+		panic("could not get id")
+	}
+	return fmt.Sprintf("%v://%v/api/v1/suitcase_transfers/%v/credentials", t.URL.Scheme, t.URL.Host, id)
+}
+
+// Upload sends a file off to the cloud, given the file to upload
+func (t TravelAgent) Upload(fn string, c chan rclone.TransferStatus) (int64, error) {
+	var uploaded bool
+	attempt := 1
+
+	for (!uploaded && attempt == 1) || (!uploaded && (attempt <= t.uploadRetries)) {
+		uploadCred, err := t.getCredentials()
+		if err != nil {
+			return 0, err
+		}
+		log.Info().
+			Str("file", path.Base(fn)).
+			Str("destination", uploadCred.Destination).
+			Str("expiration", fmt.Sprint(time.Duration(uploadCred.ExpireSeconds)*time.Second)).
+			Msg("☀️ Got cloud credentials to upload file")
+
+		trans := cloud.Transporter{
+			Config: transporters.Config{
+				Destination: uploadCred.connectionString() + uploadCred.Destination,
+			},
+		}
+		if cerr := trans.Check(); cerr != nil {
+			return 0, cerr
+		}
+
+		if serr := trans.SendWithChannel(fn, t.UniquePrefix, c); serr != nil {
+			log.Warn().
+				Int("current-attempt", attempt).
+				Int("max-retries", t.uploadRetries).
+				Err(serr).
+				Msg("upload failed, sleeping then will try again")
+			time.Sleep(t.uploadRetryTime)
+			attempt++
+		} else {
+			uploaded = true
+		}
+	}
+	if uploaded {
+		fstat, err := os.Stat(fn)
+		if err != nil {
+			log.Warn().Str("file", fn).Msg("could not determine filesize")
+		}
+		return fstat.Size(), nil
+	}
+	return 0, errors.New("could not upload file")
+}
+
 // componentURL is the endpoint for a given component to send to
 func (t TravelAgent) componentURL(n string) string {
 	return fmt.Sprintf("%v/suitcase_components/%v", t.URL, n)
+}
+
+func (t *TravelAgent) getCredentials() (*credentialResponse, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%v?expiry_seconds=%v", t.credentialURL(), t.uploadTokenExpiration.Seconds()), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var credentialR credentialResponse
+	if _, cerr := t.sendRequest(req, &credentialR); err != nil {
+		return nil, cerr
+	}
+	if credentialR.Destination == "" {
+		return nil, errors.New("credential response did not specify a destination")
+	}
+
+	return &credentialR, nil
 }
 
 // Update updates the status of an agent
 func (t TravelAgent) Update(s StatusUpdate) (*StatusUpdateResponse, error) {
 	// In case we don't wanna truly finalize...
 	if t.skipFinalize && (s.Status == StatusComplete) {
+		log.Warn().Str("component", s.Name).Msg("☀️ keeping status as InProgress since we want to skip the finalize")
 		s.Status = StatusInProgress
 	}
 	var r StatusUpdateResponse
@@ -112,7 +225,7 @@ func blobToCred(b string) (*credential, error) {
 	return &c, nil
 }
 
-func (t *TravelAgent) sendRequest(req *http.Request, v interface{}) (*Response, error) {
+func (t *TravelAgent) sendRequest(req *http.Request, v interface{}) (*Response, error) { // nolint:unparam
 	bearer := "Bearer " + t.Token
 	req.Header.Add("Authorization", bearer)
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -127,7 +240,6 @@ func (t *TravelAgent) sendRequest(req *http.Request, v interface{}) (*Response, 
 	if err != nil {
 		return nil, err
 	}
-	// b, _ := ioutil.ReadAll(res.Body)
 
 	defer dclose(res.Body)
 
@@ -166,6 +278,13 @@ func failure(err error) Option {
 	}
 }
 
+// WithUniquePrefix adds a unique prefix to the uploaded path
+func WithUniquePrefix(s string) Option {
+	return success(func(t *TravelAgent) {
+		t.UniquePrefix = s
+	})
+}
+
 // WithURL sets the url from a string
 func WithURL(s string) Option {
 	u, err := url.Parse(s)
@@ -198,9 +317,42 @@ func WithClient(c *http.Client) Option {
 	})
 }
 
+// WithTokenExpiration sets the suitcase token at create
+func WithTokenExpiration(d time.Duration) Option {
+	return success(func(t *TravelAgent) {
+		t.uploadTokenExpiration = d
+	})
+}
+
+// WithMetaTokenExpiration sets the suitcase token at create
+func WithMetaTokenExpiration(d time.Duration) Option {
+	return success(func(t *TravelAgent) {
+		t.uploadMetaTokenExpiration = d
+	})
+}
+
+// WithUploadRetries sets the total retries for an upload
+func WithUploadRetries(i int) Option {
+	return success(func(t *TravelAgent) {
+		t.uploadRetries = i
+	})
+}
+
+// WithUploadRetryTime sets the time between retries
+func WithUploadRetryTime(d time.Duration) Option {
+	return success(func(t *TravelAgent) {
+		t.uploadRetryTime = d
+	})
+}
+
 // WithCmd binds cobra args on
 func WithCmd(cmd *cobra.Command) Option {
 	credBlob, err := cmd.Flags().GetString("travel-agent")
+	if err != nil {
+		return failure(err)
+	}
+
+	credExpire, err := cmd.Flags().GetDuration("travel-agent-credential-expiration")
 	if err != nil {
 		return failure(err)
 	}
@@ -244,13 +396,18 @@ func WithCmd(cmd *cobra.Command) Option {
 			t.Token = token
 		}
 		t.skipFinalize = skipFinalize
+		t.uploadTokenExpiration = credExpire
 	})
 }
 
 // New returns a new TravelAgent using functional options
 func New(options ...Option) (*TravelAgent, error) {
 	ta := &TravelAgent{
-		client: http.DefaultClient,
+		client:                    http.DefaultClient,
+		uploadTokenExpiration:     24 * time.Hour,
+		uploadMetaTokenExpiration: 1 * time.Hour,
+		uploadRetries:             5,
+		uploadRetryTime:           time.Minute * 2,
 	}
 	for _, option := range options {
 		opt, err := option()
@@ -282,20 +439,36 @@ func NewStatusUpdate(r rclone.TransferStatus) *StatusUpdate {
 	if r.Name != "" {
 		s.Name = r.Name
 	}
-	if r.Stats.Bytes != 0 {
-		s.TransferredBytes = r.Stats.Bytes
-	}
-	if r.Stats.TotalBytes != 0 {
-		s.SizeBytes = r.Stats.TotalBytes
+	switch {
+	case len(r.Stats.Transferring) == 1:
+
+		// Dividing percentage and Transferred by 2x. The raw stats
+		// appear to be roughly double the actual values. Unsure if
+		// this is a bug or if the read from the disk is also being
+		// counted here
+		s.PercentDone = r.Stats.Transferring[0].Percentage / 2
+		if r.Stats.Transferring[0].Bytes > 0 {
+			s.TransferredBytes = r.Stats.Transferring[0].Bytes / 2
+		}
+		if r.Stats.Transferring[0].Size > 0 {
+			s.SizeBytes = r.Stats.Transferring[0].Size
+		}
+		if r.Stats.Transferring[0].SpeedAvg > 0 {
+			s.Speed = r.Stats.Transferring[0].SpeedAvg
+		}
+
+	case len(r.Stats.Transferring) > 1:
+		log.Warn().Interface("trans", r.Stats.Transferring).Msg("☀️ hmmm...found multiple files uploading...we aren't handling this correctly")
 	}
 
 	switch {
 	case !r.Status.Finished:
 		s.Status = StatusInProgress
 	case r.Status.Finished && r.Status.Success:
-		now := time.Now()
-		s.CompletedAt = &now
+		s.CompletedAt = nowPtr()
 		s.Status = StatusComplete
+		s.SizeBytes = r.Stats.TotalBytes / 2
+		s.TransferredBytes = r.Stats.TotalBytes / 2
 	case r.Status.Finished && !r.Status.Success:
 		s.Status = StatusFailed
 	default:
@@ -306,6 +479,11 @@ func NewStatusUpdate(r rclone.TransferStatus) *StatusUpdate {
 		s.CompletedAt = r.Status.EndTime
 	}
 	return s
+}
+
+func nowPtr() *time.Time {
+	n := time.Now()
+	return &n
 }
 
 // Status describes specific statuses for the updates
@@ -369,6 +547,7 @@ func BindCobra(cmd *cobra.Command) {
 	cmd.PersistentFlags().String("travel-agent", "", "Base64 Encoded token and url for the travel agent, in json (Copy paste this from the travel agent website)")
 	cmd.PersistentFlags().String("travel-agent-url", "", "URL to use for travel agent operations")
 	cmd.PersistentFlags().String("travel-agent-token", "", "Token to use for travel agent operations")
+	cmd.PersistentFlags().Duration("travel-agent-credential-expiration", 24*time.Hour, "Expiration time for the token generated by your TravelAgent to upload to the cloud")
 	cmd.PersistentFlags().Bool("travel-agent-skip-finalize", false, "Use this to prevent a 'complete' status from being sent. Useful for debugging")
 
 	cmd.MarkFlagsMutuallyExclusive("travel-agent", "travel-agent-url")

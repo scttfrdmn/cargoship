@@ -76,6 +76,7 @@ func NewRootCmd(lo io.Writer) *cobra.Command {
 	// cmd.AddCommand(NewCompletionCmd())
 	cmd.AddCommand(NewSchemaCmd())
 	cmd.AddCommand(NewMDDocsCmd())
+	cmd.AddCommand(newManCmd())
 
 	// cmd.SetContext(context.WithValue(context.Background(), inventory.LogWriterKey, lo))
 	cmd.SetOut(lo)

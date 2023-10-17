@@ -30,6 +30,7 @@ type cloneRequest struct {
 	Group     string `json:"_group"`
 	Async     bool   `json:"_async"`
 	Filter    string `json:"_filter"`
+	// Config    jobConfig `json:"_config"`
 }
 
 // JSON returns the json representation in string format. Panic on error. I
@@ -111,6 +112,12 @@ type jobStats struct {
 	Transferring []jobFileStats `json:"transferring,omitempty"`
 }
 
+/*
+type jobConfig struct {
+	NoGzip bool `json:",omitempty"`
+}
+*/
+
 type jobFileStats struct {
 	Bytes      int64   `json:"bytes"`
 	ETA        float64 `json:"eta,omitempty"`
@@ -163,6 +170,11 @@ func newCloneRequest(options ...func(*cloneRequest)) (*cloneRequest, error) {
 	r := &cloneRequest{
 		Group: "SuitcaseCTLTransfer",
 		Async: true,
+		/*
+			Config: jobConfig{
+				NoGzip: true,
+			},
+		*/
 	}
 	for _, opt := range options {
 		opt(r)
@@ -365,7 +377,6 @@ func Copy(source, destination string, c chan TransferStatus) error {
 }
 
 func getStats(id string) (*jobStats, error) {
-	// jobID := fmt.Sprintf("job/%v", id)
 	out, status := librclone.RPC("core/stats", statsRequest{Group: id}.JSONString())
 	if status != 200 {
 		return nil, errors.New("error getting stats")
@@ -438,7 +449,6 @@ func waitForFinished(statusReq statusRequest, c chan TransferStatus) (*jobStatus
 	var stats *jobStats
 	for (statusResp == nil) || !statusResp.Finished {
 		var err error
-		// stats, err := getStats(fmt.Sprintf("job/%v", statusReq.JobID))
 		if statusReq.Group == "" {
 			return nil, errors.New("missing group")
 		}
@@ -456,7 +466,7 @@ func waitForFinished(statusReq statusRequest, c chan TransferStatus) (*jobStatus
 				Status: *statusResp,
 			}
 		}
-		time.Sleep(time.Second)
+		time.Sleep(time.Second * 5)
 		statusTries++
 	}
 	// Send one last entry in

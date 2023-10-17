@@ -3,6 +3,7 @@ before:
   hooks:
     - go mod tidy
     - ./scripts/completions.sh
+    - ./scripts/manpages.sh
 gitlab_urls:
   api: https://gitlab.oit.duke.edu/api/v4/
   download: https://gitlab.oit.duke.edu
@@ -34,6 +35,7 @@ archives:
       - README.md
       - LICENSE
       - completions/*
+      - manpages/*
 checksum:
   name_template: '{{ .ProjectName }}-{{ .Version }}_SHA256SUMS'
   algorithm: sha256
@@ -52,6 +54,7 @@ brews:
       bash_completion.install "completions/suitcasectl.bash" => "suitcasectl"
       zsh_completion.install "completions/suitcasectl.zsh" => "_suitcasectl"
       fish_completion.install "completions/suitcasectl.fish"
+      man1.install "manpages/suitcasectl.1.gz"
 nfpms:
   - id: rpms
     license: MIT
@@ -69,6 +72,10 @@ nfpms:
     formats:
       - rpm
     contents:
+      - src: ./manpages/suitcasectl.1.gz
+        dst: /usr/share/man/man1/suitcasectl.1.gz
+        file_info:
+          mode: 0644
       - src: ./completions/suitcasectl.bash
         dst: /usr/share/bash-completion/completions/suitcasectl
         file_info:
@@ -94,6 +101,10 @@ nfpms:
     formats:
       - deb
     contents:
+      - src: ./manpages/suitcasectl.1.gz
+        dst: /usr/share/man/man1/suitcasectl.1.gz
+        file_info:
+          mode: 0644
       - src: ./completions/suitcasectl.bash
         dst: /usr/share/bash-completion/completions/suitcasectl
         file_info:
@@ -117,6 +128,24 @@ nfpms:
     maintainer: Drew Stinnett <drew.stinnett@duke.edu>
     formats:
       - apk
+      - archlinux
+    contents:
+      - src: ./manpages/suitcasectl.1.gz
+        dst: /usr/share/man/man1/suitcasectl.1.gz
+        file_info:
+          mode: 0644
+      - src: ./completions/suitcasectl.bash
+        dst: /usr/share/bash-completion/completions/suitcasectl
+        file_info:
+          mode: 0644
+      - src: ./completions/suitcasectl.fish
+        dst: /usr/share/fish/vendor_completions.d/suitcasectl.fish
+        file_info:
+          mode: 0644
+      - src: ./completions/suitcasectl.zsh
+        dst:  /usr/share/zsh/vendor-completions/_suitcasectl
+        file_info:
+          mode: 0644
 uploads:
   - name: productionrpm
     target: https://oneget.oit.duke.edu/rpm/devil-ops-rpms/

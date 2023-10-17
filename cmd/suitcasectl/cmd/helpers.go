@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"sync/atomic"
 	"time"
 
 	// "github.com/minio/sha256-simd"
@@ -145,26 +146,27 @@ type processOpts struct {
 	RetryInterval time.Duration
 }
 
+func startFillStateC(state chan suitcase.FillState, se uint32) {
+	sampled := log.Sample(&zerolog.BasicSampler{N: se})
+	for {
+		st := <-state
+		sampled.Debug().
+			Int("index", st.Index).
+			Uint("current", st.Current).
+			Uint("total", st.Total).
+			Msg("Progress")
+	}
+}
+
 // processSuitcases processes the suitcases
 func processSuitcases(po *processOpts) []string {
 	ret := make([]string, po.Porter.Inventory.TotalIndexes)
 	p := pool.New().WithMaxGoroutines(po.Concurrency)
 	log.Debug().Int("concurrency", po.Concurrency).Msg("Setting pool guard")
 	state := make(chan suitcase.FillState)
-	// state := make(chan suitcase.FillState, 2*po.Inventory.TotalIndexes)
-	sampled := log.Sample(&zerolog.BasicSampler{N: uint32(po.SampleEvery)})
 
 	// Read in and log state here
-	go func() {
-		for {
-			st := <-state
-			sampled.Debug().
-				Int("index", st.Index).
-				Uint("current", st.Current).
-				Uint("total", st.Total).
-				Msg("Progress")
-		}
-	}()
+	go func() { startFillStateC(state, uint32(po.SampleEvery)) }()
 
 	statusC := make(chan rclone.TransferStatus)
 	go func() {
@@ -189,8 +191,14 @@ func processSuitcases(po *processOpts) []string {
 				// Put Transport plugin here!!
 				if po.Porter.Inventory.Options.TransportPlugin != nil {
 					// First check...
-					err := po.Porter.RetryTransport(createdF, statusC, po.RetryCount, po.RetryInterval)
+					panicIfErr(po.Porter.RetryTransport(createdF, statusC, po.RetryCount, po.RetryInterval))
+				}
+
+				// Insert TravelAgent upload right here yo'
+				if po.Porter.TravelAgent != nil {
+					xferred, err := po.Porter.TravelAgent.Upload(createdF, statusC)
 					panicIfErr(err)
+					atomic.AddInt64(&po.Porter.TotalTransferred, xferred)
 				}
 			}
 		})
