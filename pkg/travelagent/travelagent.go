@@ -39,6 +39,7 @@ type TravelAgent struct {
 	uploadMetaTokenExpiration time.Duration
 	uploadRetries             int
 	uploadRetryTime           time.Duration
+	UniquePrefix              string
 }
 
 // TravelAgenter is the thing that describes what a travel agent is!
@@ -113,7 +114,7 @@ func (t TravelAgent) Upload(fn string, c chan rclone.TransferStatus) (int64, err
 	var uploaded bool
 	attempt := 1
 
-	for (!uploaded && attempt == 1) || attempt <= t.uploadRetries {
+	for (!uploaded && attempt == 1) || (!uploaded && (attempt <= t.uploadRetries)) {
 		uploadCred, err := t.getCredentials()
 		if err != nil {
 			return 0, err
@@ -133,10 +134,17 @@ func (t TravelAgent) Upload(fn string, c chan rclone.TransferStatus) (int64, err
 			return 0, cerr
 		}
 
-		if serr := trans.SendWithChannel(fn, "", c); serr != nil {
-			return 0, serr
+		if serr := trans.SendWithChannel(fn, t.UniquePrefix, c); serr != nil {
+			log.Warn().
+				Int("current-attempt", attempt).
+				Int("max-retries", t.uploadRetries).
+				Err(serr).
+				Msg("upload failed, sleeping then will try again")
+			time.Sleep(t.uploadRetryTime)
+			attempt++
+		} else {
+			uploaded = true
 		}
-		attempt++
 	}
 	if uploaded {
 		fstat, err := os.Stat(fn)
@@ -270,6 +278,13 @@ func failure(err error) Option {
 	}
 }
 
+// WithUniquePrefix adds a unique prefix to the uploaded path
+func WithUniquePrefix(s string) Option {
+	return success(func(t *TravelAgent) {
+		t.UniquePrefix = s
+	})
+}
+
 // WithURL sets the url from a string
 func WithURL(s string) Option {
 	u, err := url.Parse(s)
@@ -313,6 +328,20 @@ func WithTokenExpiration(d time.Duration) Option {
 func WithMetaTokenExpiration(d time.Duration) Option {
 	return success(func(t *TravelAgent) {
 		t.uploadMetaTokenExpiration = d
+	})
+}
+
+// WithUploadRetries sets the total retries for an upload
+func WithUploadRetries(i int) Option {
+	return success(func(t *TravelAgent) {
+		t.uploadRetries = i
+	})
+}
+
+// WithUploadRetryTime sets the time between retries
+func WithUploadRetryTime(d time.Duration) Option {
+	return success(func(t *TravelAgent) {
+		t.uploadRetryTime = d
 	})
 }
 

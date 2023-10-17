@@ -278,7 +278,6 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 		return nil, err
 	}
 	p.InventoryHash = h
-	// p.Cmd.SetContext(context.WithValue(p.Cmd.Context(), inventory.InventoryHash, h))
 	// Store the inventory in context, so we can access it in the other run stages
 	p.Inventory = inventoryD
 	// p.Cmd.SetContext(context.WithValue(p.Cmd.Context(), inventory.InventoryKey, inventoryD))

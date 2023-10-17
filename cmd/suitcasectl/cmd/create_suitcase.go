@@ -244,7 +244,6 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	log.Warn().Msgf("TOTAL: %+v\n", ptr.TotalTransferred)
 	if serr := ptr.SendUpdate(travelagent.StatusUpdate{
 		Status:      travelagent.StatusComplete,
 		CompletedAt: nowPtr(),
@@ -280,14 +279,16 @@ func uploadMeta(ptr *porter.Porter, mfiles []string) error {
 			}()
 		}
 		wg.Wait()
-		if !mustGetCmd[bool](ptr.Cmd, "travel-agent-skip-finalize") {
-			if err := ptr.SendUpdate(travelagent.StatusUpdate{
-				CompletedAt: nowPtr(),
-				Status:      travelagent.StatusComplete,
-			}); err != nil {
-				return err
+		/*
+			if !mustGetCmd[bool](ptr.Cmd, "travel-agent-skip-finalize") {
+				if err := ptr.SendUpdate(travelagent.StatusUpdate{
+					CompletedAt: nowPtr(),
+					Status:      travelagent.StatusComplete,
+				}); err != nil {
+					return err
+				}
 			}
-		}
+		*/
 	}
 	return nil
 }
@@ -377,14 +378,19 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 	}()
 
 	var err error
-	ptr := mustPorterWithCmd(cmd)
 	taOpts := []travelagent.Option{
 		travelagent.WithCmd(cmd),
+		travelagent.WithUploadRetries(mustGetCmd[int](cmd, "retry-count")),
+		travelagent.WithUploadRetryTime(mustGetCmd[time.Duration](cmd, "retry-interval")),
 	}
 	if Verbose {
 		taOpts = append(taOpts, travelagent.WithPrintCurl())
 	}
-	if ta, terr := travelagent.New(taOpts...); terr != nil {
+
+	ptr := mustPorterWithCmd(cmd)
+	var ta *travelagent.TravelAgent
+	var terr error
+	if ta, terr = travelagent.New(taOpts...); terr != nil {
 		log.Debug().Err(terr).Msg("🧳 no valid travel agent found")
 	} else {
 		ptr.SetTravelAgent(ta)
@@ -403,16 +409,20 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 	}
 
 	// Create an inventory file if one isn't specified
-	ptr.Inventory, err = ptr.CreateOrReadInventory(inventoryFile)
-	if err != nil {
+	if ptr.Inventory, err = ptr.CreateOrReadInventory(inventoryFile); err != nil {
 		return err
 	}
+	// Replace the travel agent with one that knows the inventory hash
+	// This doesn't work yet, need to find out why
+	if ta != nil {
+		ta.UniquePrefix = ptr.InventoryHash
+		ptr.SetTravelAgent(ta)
+	}
 
-	now := time.Now()
 	if err = ptr.SendUpdate(travelagent.StatusUpdate{
 		SuitcasectlSource:      strings.Join(args, ", "),
 		Status:                 travelagent.StatusInProgress,
-		StartedAt:              &now,
+		StartedAt:              nowPtr(),
 		SuitcasectlDestination: ptr.Destination,
 		Metadata:               ptr.Inventory.MustJSONString(),
 		MetadataCheckSum:       ptr.InventoryHash,
@@ -431,11 +441,13 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 	if !onlyInventory {
 		// return createSuitcases(cmd, opts, ptr.Inventory)
 		if cerr := createSuitcases(ptr); cerr != nil {
-			if serr := ptr.SendUpdate(travelagent.StatusUpdate{
-				Status: travelagent.StatusFailed,
-			}); serr != nil {
-				log.Warn().Err(cerr).Msg("🧳 failed to send final status update")
-			}
+			log.Warn().Err(cerr).Msg("🧳 failed to completed createSuitcases")
+			/*
+				if serr := ptr.SendUpdate(travelagent.StatusUpdate{
+					Status: travelagent.StatusFailed,
+				}); serr != nil {
+				}
+			*/
 			return err
 		}
 		return nil

@@ -16,7 +16,8 @@ import (
 
 func TestNewSuitcaseWithDir(t *testing.T) {
 	testD := t.TempDir()
-	cmd := NewRootCmd(io.Discard)
+	// cmd := NewRootCmd(io.Discard)
+	cmd := NewRootCmd(os.Stderr)
 	cmd.SetArgs([]string{"create", "suitcase", testD})
 	err := cmd.ExecuteContext(context.Background())
 	require.NoError(t, err)
