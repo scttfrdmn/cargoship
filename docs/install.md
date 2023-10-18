@@ -41,6 +41,7 @@ for homebrew, yum, apt, etc..
     ```plain
     wget -qO - https://oneget.oit.duke.edu/debian-feeds/devil-ops-debs.pub | sudo gpg --dearmor -o /etc/apt/keyrings/devil-ops-debs.gpg
     echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/devil-ops-debs.gpg] https://oneget.oit.duke.edu/ devil-ops-debs main" | sudo tee /etc/apt/sources.list.d/devil-ops.list
+    sudo apt update
     sudo apt install suitcasectl
     ```
 
@@ -51,6 +52,7 @@ for homebrew, yum, apt, etc..
     ```plain
     wget -qO - https://oneget.oit.duke.edu/debian-feeds/devil-ops-debs.pub | sudo apt-key add -
     echo "deb https://oneget.oit.duke.edu/ devil-ops-debs main" | sudo tee /etc/apt/sources.list.d/devil-ops.list
+    sudo apt update
     sudo apt install suitcasectl
     ```
 
