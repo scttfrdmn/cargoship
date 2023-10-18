@@ -1,6 +1,7 @@
 # Overview
 
 [![Go Reference](https://pkg.go.dev/badge/gitlab.oit.duke.edu/devil-ops/suitcasectl.svg)](https://pkg.go.dev/gitlab.oit.duke.edu/devil-ops/suitcasectl)
+[![Go Report Card](https://goreportcard.com/badge/gitlab.oit.duke.edu/devil-ops/suitcasectl)](https://goreportcard.com/report/gitlab.oit.duke.edu/devil-ops/suitcasectl)
 [![Latest Release](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/-/badges/release.svg)](https://gitlab.oit.duke.edu/devil-ops/suitcasectl/-/releases)
 
 SuitcaseCTL is a tool for packaging up research data in a standardized format (tar, tar.gz) with the following additional features:
