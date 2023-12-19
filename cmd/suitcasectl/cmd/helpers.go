@@ -16,6 +16,8 @@ import (
 
 	// "github.com/minio/sha256-simd"
 
+	"github.com/charmbracelet/huh"
+	homedir "github.com/mitchellh/go-homedir"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/sourcegraph/conc/pool"
@@ -28,8 +30,8 @@ import (
 )
 
 // newOutDirWithCmd generates a new output directory using cobra.Command options
-func newOutDirWithCmd(cmd *cobra.Command, args []string) (string, error) {
-	o, err := getDestination(cmd, args)
+func newOutDirWithCmd(cmd *cobra.Command) (string, error) {
+	o, err := getDestination(cmd)
 	if err != nil {
 		return "", err
 	}
@@ -41,7 +43,7 @@ func newOutDirWithCmd(cmd *cobra.Command, args []string) (string, error) {
 	}
 
 	// Also shove this in to porter. We'll use it later there.
-	if ptr, err := porterWithCmd(cmd, args); err == nil {
+	if ptr, err := porterWithCmd(cmd); err == nil {
 		ptr.Destination = o
 	}
 	return o, nil
@@ -56,7 +58,7 @@ func dclose(c io.Closer) {
 
 // This needs some work. Why do we need it's own context entry instead of just
 // using the SuitcaseOpts, which already has it
-func getDestination(cmd *cobra.Command, args []string) (string, error) {
+func getDestination(cmd *cobra.Command) (string, error) {
 	d := mustGetCmd[string](cmd, "destination")
 	if d == "" {
 		var err error
@@ -66,7 +68,7 @@ func getDestination(cmd *cobra.Command, args []string) (string, error) {
 	}
 
 	// Set for later use
-	ptr, err := porterWithCmd(cmd, args)
+	ptr, err := porterWithCmd(cmd)
 	if err == nil {
 		ptr.Destination = d
 	}
@@ -77,7 +79,7 @@ func getDestination(cmd *cobra.Command, args []string) (string, error) {
 	}
 
 	// If we have a porter, set the logfile here
-	if ptr, err := porterWithCmd(cmd, args); err == nil {
+	if ptr, err := porterWithCmd(cmd); err == nil {
 		ptr.LogFile = lf
 	}
 
@@ -218,8 +220,8 @@ func hasDuplicates(strArr []string) bool {
 	return false
 }
 
-func mustPorterWithCmd(cmd *cobra.Command, args []string) *porter.Porter {
-	p, err := porterWithCmd(cmd, args)
+func mustPorterWithCmd(cmd *cobra.Command) *porter.Porter {
+	p, err := porterWithCmd(cmd)
 	if err != nil {
 		panic(err)
 	}
@@ -249,16 +251,70 @@ func retryWriteSuitcase(po *processOpts, i int, state chan suitcase.FillState) (
 	return createdF, nil
 }
 
-func porterWithCmd(cmd *cobra.Command, args []string) (*porter.Porter, error) {
+func porterWithCmd(cmd *cobra.Command) (*porter.Porter, error) {
 	p, ok := cmd.Context().Value(porter.PorterKey).(*porter.Porter)
 	if !ok {
 		return nil, errors.New("could not find Porter in this context")
 	}
+
+	return p, nil
+}
+
+func porterTravelAgentWithForm() (*porter.Porter, error) {
+	p := porter.New()
+
+	var dest string
+	var src string
+	var tatoken string
+
+	maxsize := "200Gb"
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Source of the data you want to package up").
+				Placeholder("/some/local/dir").
+				Description("Files within the given directory will be packaged up in to suitcases and transfered to their final destination").
+				Validate(func(s string) error {
+					expanded, err := homedir.Expand(s)
+					if err != nil {
+						return err
+					}
+					st, err := os.Stat(expanded)
+					if err != nil {
+						return err
+					}
+					if !st.IsDir() {
+						return errors.New("This must be a directory, not a file")
+					}
+					return nil
+				}).
+				Value(&src),
+			huh.NewInput().
+				Title("Maximum Suitcase Size").
+				Description("This is the maximum size for each suitcase created").
+				Value(&maxsize),
+			huh.NewInput().
+				Title("Destination for files").
+				Placeholder("/tmp/some/dir").
+				Description("When using a travel agent, this will be used for temporary storage. To use your current systems tmp space, leave this field blank").
+				Value(&dest),
+			huh.NewInput().
+				Title("Travel Agent Token").
+				Description("Using a Travel Agent? Enter it here. If not, you can just leave this blank").
+				Value(&tatoken),
+		),
+	)
+
+	if err := form.Run(); err != nil {
+		return nil, err
+	}
+
 	return p, nil
 }
 
 func porterTravelAgentWithCmd(cmd *cobra.Command, args []string) (*porter.Porter, bool, error) {
-	p, err := porterWithCmd(cmd, args)
+	p, err := porterWithCmd(cmd)
 	if err != nil {
 		return nil, false, err
 	}

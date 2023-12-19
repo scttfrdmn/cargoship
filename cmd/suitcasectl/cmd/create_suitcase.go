@@ -204,7 +204,7 @@ func appendHashes(mfiles []string, items ...string) []string {
 }
 
 func createPostRunE(cmd *cobra.Command, args []string) error {
-	ptr := mustPorterWithCmd(cmd, args)
+	ptr := mustPorterWithCmd(cmd)
 	metaF := ptr.CLIMeta.MustComplete(ptr.Destination)
 	log.Debug().Str("file", metaF).Msg("🧳 Created meta file")
 
@@ -329,7 +329,7 @@ func createPreRunE(cmd *cobra.Command, args []string) error {
 	cliMeta := porter.NewCLIMeta(cmd, args)
 	cliMeta.ViperConfig = userOverrides.AllSettings()
 
-	outDir, err := newOutDirWithCmd(cmd, args)
+	outDir, err := newOutDirWithCmd(cmd)
 	if err != nil {
 		return err
 	}
@@ -345,7 +345,7 @@ func createPreRunE(cmd *cobra.Command, args []string) error {
 		porter.WithCLIMeta(cliMeta),
 	)))
 
-	err = setupMultiLoggingWithCmd(cmd, args)
+	err = setupMultiLoggingWithCmd(cmd)
 	if err != nil {
 		return err
 	}
