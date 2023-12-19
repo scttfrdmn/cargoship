@@ -173,10 +173,10 @@ func setupSingleLoggingWithCmd(cmd *cobra.Command) {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: cmd.ErrOrStderr()}).With().Logger()
 }
 
-func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
+func setupMultiLoggingWithCmd(cmd *cobra.Command, args []string) error {
 	// If we have an outDir, also write the logs to a file
 	var multi io.Writer
-	o, err := getDestination(cmd)
+	o, err := getDestination(cmd, args)
 	if err != nil {
 		return err
 	}
@@ -184,7 +184,7 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 		log.Warn().Msg("No output directory specified")
 		return errors.New("no output directory specified")
 	}
-	ptr := mustPorterWithCmd(cmd)
+	ptr := mustPorterWithCmd(cmd, args)
 	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}, ptr.LogFile)
 	if trace {
 		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()

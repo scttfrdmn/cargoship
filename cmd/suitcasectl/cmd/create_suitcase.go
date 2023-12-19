@@ -204,7 +204,7 @@ func appendHashes(mfiles []string, items ...string) []string {
 }
 
 func createPostRunE(cmd *cobra.Command, args []string) error {
-	ptr := mustPorterWithCmd(cmd)
+	ptr := mustPorterWithCmd(cmd, args)
 	metaF := ptr.CLIMeta.MustComplete(ptr.Destination)
 	log.Debug().Str("file", metaF).Msg("🧳 Created meta file")
 
@@ -329,7 +329,7 @@ func createPreRunE(cmd *cobra.Command, args []string) error {
 	cliMeta := porter.NewCLIMeta(cmd, args)
 	cliMeta.ViperConfig = userOverrides.AllSettings()
 
-	outDir, err := newOutDirWithCmd(cmd)
+	outDir, err := newOutDirWithCmd(cmd, args)
 	if err != nil {
 		return err
 	}
@@ -345,20 +345,12 @@ func createPreRunE(cmd *cobra.Command, args []string) error {
 		porter.WithCLIMeta(cliMeta),
 	)))
 
-	err = setupMultiLoggingWithCmd(cmd)
+	err = setupMultiLoggingWithCmd(cmd, args)
 	if err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func porterWithCmd(cmd *cobra.Command) (*porter.Porter, error) {
-	p, ok := cmd.Context().Value(porter.PorterKey).(*porter.Porter)
-	if !ok {
-		return nil, errors.New("could not find Porter in this context")
-	}
-	return p, nil
 }
 
 func envOr(e, d string) string {
@@ -377,77 +369,25 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 		}
 	}()
 
-	var err error
-	taOpts := []travelagent.Option{
-		travelagent.WithCmd(cmd),
-		travelagent.WithUploadRetries(mustGetCmd[int](cmd, "retry-count")),
-		travelagent.WithUploadRetryTime(mustGetCmd[time.Duration](cmd, "retry-interval")),
-	}
-	if Verbose {
-		taOpts = append(taOpts, travelagent.WithPrintCurl())
-	}
-
-	ptr := mustPorterWithCmd(cmd)
-	var ta *travelagent.TravelAgent
-	var terr error
-	if ta, terr = travelagent.New(taOpts...); terr != nil {
-		log.Debug().Err(terr).Msg("🧳 no valid travel agent found")
-	} else {
-		ptr.SetTravelAgent(ta)
-		log.Info().Str("url", ptr.TravelAgent.StatusURL()).Msg("☀️ Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel")
-		if serr := ptr.SendUpdate(travelagent.StatusUpdate{
-			Status: travelagent.StatusPending,
-		}); serr != nil {
-			return serr
-		}
-	}
-
-	// Get option bits
-	inventoryFile, onlyInventory, err := inventoryOptsWithCobra(cmd, args)
+	ptr, onlyInventory, err := porterTravelAgentWithCmd(cmd, args)
 	if err != nil {
 		return err
 	}
 
-	// Create an inventory file if one isn't specified
-	if ptr.Inventory, err = ptr.CreateOrReadInventory(inventoryFile); err != nil {
-		return err
-	}
-	// Replace the travel agent with one that knows the inventory hash
-	// This doesn't work yet, need to find out why
-	if ta != nil {
-		ta.UniquePrefix = ptr.InventoryHash
-		ptr.SetTravelAgent(ta)
-	}
-
-	if err = ptr.SendUpdate(travelagent.StatusUpdate{
-		SuitcasectlSource:      strings.Join(args, ", "),
-		Status:                 travelagent.StatusInProgress,
-		StartedAt:              nowPtr(),
-		SuitcasectlDestination: ptr.Destination,
-		Metadata:               ptr.Inventory.MustJSONString(),
-		MetadataCheckSum:       ptr.InventoryHash,
-	}); err != nil {
-		log.Warn().Err(err).Msg("🧳 error sending status update")
-	}
-
-	// We need options even if we already have the inventory
-	ptr.SuitcaseOpts = &config.SuitCaseOpts{
-		Destination:  ptr.Destination,
-		EncryptInner: ptr.Inventory.Options.EncryptInner,
-		HashInner:    ptr.Inventory.Options.HashInner,
-		Format:       ptr.Inventory.Options.SuitcaseFormat,
-	}
-
 	if !onlyInventory {
-		// return createSuitcases(cmd, opts, ptr.Inventory)
+		if err = ptr.SendUpdate(travelagent.StatusUpdate{
+			SuitcasectlSource:      strings.Join(args, ", "),
+			Status:                 travelagent.StatusInProgress,
+			StartedAt:              nowPtr(),
+			SuitcasectlDestination: ptr.Destination,
+			Metadata:               ptr.Inventory.MustJSONString(),
+			MetadataCheckSum:       ptr.InventoryHash,
+		}); err != nil {
+			log.Warn().Err(err).Msg("🧳 error sending status update")
+		}
+
 		if cerr := createSuitcases(ptr); cerr != nil {
 			log.Warn().Err(cerr).Msg("🧳 failed to completed createSuitcases")
-			/*
-				if serr := ptr.SendUpdate(travelagent.StatusUpdate{
-					Status: travelagent.StatusFailed,
-				}); serr != nil {
-				}
-			*/
 			return err
 		}
 		return nil

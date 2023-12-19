@@ -28,8 +28,8 @@ import (
 )
 
 // newOutDirWithCmd generates a new output directory using cobra.Command options
-func newOutDirWithCmd(cmd *cobra.Command) (string, error) {
-	o, err := getDestination(cmd)
+func newOutDirWithCmd(cmd *cobra.Command, args []string) (string, error) {
+	o, err := getDestination(cmd, args)
 	if err != nil {
 		return "", err
 	}
@@ -41,7 +41,7 @@ func newOutDirWithCmd(cmd *cobra.Command) (string, error) {
 	}
 
 	// Also shove this in to porter. We'll use it later there.
-	if ptr, err := porterWithCmd(cmd); err == nil {
+	if ptr, err := porterWithCmd(cmd, args); err == nil {
 		ptr.Destination = o
 	}
 	return o, nil
@@ -56,7 +56,7 @@ func dclose(c io.Closer) {
 
 // This needs some work. Why do we need it's own context entry instead of just
 // using the SuitcaseOpts, which already has it
-func getDestination(cmd *cobra.Command) (string, error) {
+func getDestination(cmd *cobra.Command, args []string) (string, error) {
 	d := mustGetCmd[string](cmd, "destination")
 	if d == "" {
 		var err error
@@ -66,7 +66,7 @@ func getDestination(cmd *cobra.Command) (string, error) {
 	}
 
 	// Set for later use
-	ptr, err := porterWithCmd(cmd)
+	ptr, err := porterWithCmd(cmd, args)
 	if err == nil {
 		ptr.Destination = d
 	}
@@ -77,7 +77,7 @@ func getDestination(cmd *cobra.Command) (string, error) {
 	}
 
 	// If we have a porter, set the logfile here
-	if ptr, err := porterWithCmd(cmd); err == nil {
+	if ptr, err := porterWithCmd(cmd, args); err == nil {
 		ptr.LogFile = lf
 	}
 
@@ -218,8 +218,8 @@ func hasDuplicates(strArr []string) bool {
 	return false
 }
 
-func mustPorterWithCmd(cmd *cobra.Command) *porter.Porter {
-	p, err := porterWithCmd(cmd)
+func mustPorterWithCmd(cmd *cobra.Command, args []string) *porter.Porter {
+	p, err := porterWithCmd(cmd, args)
 	if err != nil {
 		panic(err)
 	}
@@ -247,4 +247,66 @@ func retryWriteSuitcase(po *processOpts, i int, state chan suitcase.FillState) (
 		return "", errors.New("could not create suitcasefile even with retries")
 	}
 	return createdF, nil
+}
+
+func porterWithCmd(cmd *cobra.Command, args []string) (*porter.Porter, error) {
+	p, ok := cmd.Context().Value(porter.PorterKey).(*porter.Porter)
+	if !ok {
+		return nil, errors.New("could not find Porter in this context")
+	}
+	return p, nil
+}
+
+func porterTravelAgentWithCmd(cmd *cobra.Command, args []string) (*porter.Porter, bool, error) {
+	p, err := porterWithCmd(cmd, args)
+	if err != nil {
+		return nil, false, err
+	}
+	taOpts := []travelagent.Option{
+		travelagent.WithCmd(cmd),
+		travelagent.WithUploadRetries(mustGetCmd[int](cmd, "retry-count")),
+		travelagent.WithUploadRetryTime(mustGetCmd[time.Duration](cmd, "retry-interval")),
+	}
+	if Verbose {
+		taOpts = append(taOpts, travelagent.WithPrintCurl())
+	}
+	var terr error
+	var ta *travelagent.TravelAgent
+	if ta, terr = travelagent.New(taOpts...); terr != nil {
+		log.Debug().Err(terr).Msg("🧳 no valid travel agent found")
+	} else {
+		p.SetTravelAgent(ta)
+		log.Info().Str("url", p.TravelAgent.StatusURL()).Msg("☀️ Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel")
+		if serr := p.SendUpdate(travelagent.StatusUpdate{
+			Status: travelagent.StatusPending,
+		}); serr != nil {
+			return nil, false, serr
+		}
+	}
+	// Get option bits
+	inventoryFile, onlyInventory, err := inventoryOptsWithCobra(cmd, args)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// Create an inventory file if one isn't specified
+	if p.Inventory, err = p.CreateOrReadInventory(inventoryFile); err != nil {
+		return nil, onlyInventory, err
+	}
+	// Replace the travel agent with one that knows the inventory hash
+	// This doesn't work yet, need to find out why
+	if ta != nil {
+		ta.UniquePrefix = p.InventoryHash
+		p.SetTravelAgent(ta)
+	}
+
+	// We need options even if we already have the inventory
+	p.SuitcaseOpts = &config.SuitCaseOpts{
+		Destination:  p.Destination,
+		EncryptInner: p.Inventory.Options.EncryptInner,
+		HashInner:    p.Inventory.Options.HashInner,
+		Format:       p.Inventory.Options.SuitcaseFormat,
+	}
+
+	return p, onlyInventory, nil
 }
