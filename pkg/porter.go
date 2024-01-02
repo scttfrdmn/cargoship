@@ -24,7 +24,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/huh"
 	"github.com/dustin/go-humanize"
+	"github.com/mitchellh/go-homedir"
 	"github.com/rs/zerolog/log"
 
 	"github.com/rs/zerolog"
@@ -56,10 +58,11 @@ type Porter struct {
 	SuitcaseOpts     *config.SuitCaseOpts
 	LogFile          *os.File
 	TotalTransferred int64
+	WizardForm       *inventory.WizardForm
 }
 
 // New returns a new porter using functional options
-func New(options ...func(*Porter)) *Porter {
+func New(options ...Option) *Porter {
 	p := &Porter{
 		Logger: &log.Logger,
 	}
@@ -68,6 +71,9 @@ func New(options ...func(*Porter)) *Porter {
 	}
 	return p
 }
+
+// Option is a functional option that can be passed to create a new Porter instance
+type Option func(*Porter)
 
 // WithUserOverrides sets UserOverrides at create time
 func WithUserOverrides(o *viper.Viper) func(*Porter) {
@@ -245,6 +251,16 @@ func CalculateHash(rd io.Reader, ht string) (string, error) {
 	return hex.EncodeToString(dst.Sum(nil)), nil
 }
 
+// SetOrReadInventory is similar to createorreadinventory, however it sets the inventory in the porter object instead of returning it
+func (p *Porter) SetOrReadInventory(invf string) error {
+	got, err := p.CreateOrReadInventory(invf)
+	if err != nil {
+		return err
+	}
+	p.Inventory = got
+	return nil
+}
+
 // CreateOrReadInventory returns an inventory and optionally creates it if it didn't exist
 func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Inventory, error) {
 	// Create an inventory file if one isn't specified
@@ -357,11 +373,18 @@ func (p *Porter) inventoryerGeneration() (*inventory.Inventory, *os.File, invent
 
 // inventoryGeneration generates appropriate inventory pieces...
 func (p *Porter) inventoryGeneration() (*inventory.Inventory, *os.File, error) {
+	iopts := []func(*inventory.Options){}
+	if p.Cmd != nil {
+		iopts = append(iopts, inventory.WithCobra(p.Cmd, p.Args))
+	}
+	if p.UserOverrides != nil {
+		iopts = append(iopts, inventory.WithViper(p.UserOverrides))
+	}
+	if p.WizardForm != nil {
+		iopts = append(iopts, inventory.WithWizardForm(*p.WizardForm))
+	}
 	i, err := inventory.NewDirectoryInventory(
-		inventory.NewOptions(
-			inventory.WithViper(p.UserOverrides),
-			inventory.WithCobra(p.Cmd, p.Args),
-		),
+		inventory.NewOptions(iopts...),
 	)
 	if err != nil {
 		return nil, nil, err
@@ -448,4 +471,110 @@ func copy(src, dst string) error {
 	defer dclose(destination)
 	_, err = io.Copy(destination, source)
 	return err
+}
+
+// RunForm uses an interactive form to select some base pieces and package up date in to suitcases
+func (p *Porter) RunForm() error {
+	p.WizardForm = &inventory.WizardForm{
+		Source:  os.Getenv("SUITCASECTL_SOURCE"),
+		MaxSize: "200Gb",
+	}
+
+	// form := huh.NewForm(
+	if err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Source of the data you want to package up").
+				Placeholder("/some/local/dir").
+				Description("FileG within the given directory will be packaged up in to suitcases and transferred to their final destination").
+				Validate(validateIsDir).
+				Value(&p.WizardForm.Source),
+			huh.NewInput().
+				Title("Maximum Suitcase Size").
+				Description("This is the maximum size for each suitcase created").
+				Value(&p.WizardForm.MaxSize),
+			huh.NewInput().
+				Title("Destination for files").
+				Placeholder("/srv/cold-storage").
+				Description("When using a travel agent, this will be used for temporary storage. To use your current systems tmp space, leave this field blank").
+				Value(&p.WizardForm.Destination),
+			huh.NewInput().
+				Title("Travel Agent Token").
+				Description("Using a Travel Agent? Enter it here. If not, you can just leave this blank").
+				Value(&p.WizardForm.TravelAgentToken),
+		),
+	).Run(); err != nil {
+		return err
+	}
+
+	var terr error
+	var ta *travelagent.TravelAgent
+	if ta, terr = travelagent.New(travelagent.WithToken(p.WizardForm.TravelAgentToken)); terr != nil {
+		log.Debug().Err(terr).Msg("🧳 no valid travel agent found")
+	} else {
+		p.SetTravelAgent(ta)
+		log.Info().Str("url", p.TravelAgent.StatusURL()).Msg("☀️ Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel")
+		if serr := p.SendUpdate(travelagent.StatusUpdate{
+			Status: travelagent.StatusPending,
+		}); serr != nil {
+			return serr
+		}
+	}
+	if err := p.SetOrReadInventory(""); err != nil {
+		return err
+	}
+	// Replace the travel agent with one that knows the inventory hash
+	// This doesn't work yet, need to find out why
+	if ta != nil {
+		ta.UniquePrefix = p.InventoryHash
+		p.SetTravelAgent(ta)
+	}
+
+	return p.mergeWizard()
+}
+
+// mergeWizard puts the fields from the wizard form in to the standard porter spots
+func (p *Porter) mergeWizard() error {
+	// We need options even if we already have the inventory
+	p.SuitcaseOpts = &config.SuitCaseOpts{
+		Destination:  p.Destination,
+		EncryptInner: p.Inventory.Options.EncryptInner,
+		HashInner:    p.Inventory.Options.HashInner,
+		Format:       p.Inventory.Options.SuitcaseFormat,
+	}
+
+	if p.WizardForm.Destination != "" {
+		p.Destination = p.WizardForm.Destination
+	} else {
+		td, err := os.MkdirTemp("", "suitcasectl-wizard")
+		if err != nil {
+			return nil
+		}
+		p.Destination = td
+	}
+	p.CLIMeta = NewCLIMeta()
+	p.CLIMeta.Wizard = p.WizardForm
+
+	logPath := path.Join(p.Destination, "suitcasectl.log")
+	lf, err := os.Create(logPath) // nolint:gosec
+	if err != nil {
+		return err
+	}
+	p.LogFile = lf
+	return nil
+}
+
+func validateIsDir(s string) error {
+	expanded, err := homedir.Expand(s)
+	if err != nil {
+		return err
+	}
+	st, err := os.Stat(expanded)
+	if err != nil {
+		return err
+	}
+	if !st.IsDir() {
+		return errors.New("this must be a directory, not a file")
+	}
+	return nil
 }

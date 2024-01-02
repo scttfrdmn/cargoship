@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 )
@@ -272,13 +273,13 @@ func BenchmarkSuitcaseCreate(b *testing.B) {
 func TestValidateCmdArgs(t *testing.T) {
 	require.EqualError(
 		t,
-		validateCmdArgs("", false, []string{}),
+		validateCmdArgs("", false, cobra.Command{}, []string{}),
 		"error: You must specify an inventory file or target dirs",
 	)
 
 	require.EqualError(
 		t,
-		validateCmdArgs("inventory.yaml", true, []string{}),
+		validateCmdArgs("inventory.yaml", true, cobra.Command{}, []string{}),
 		"you can't specify an inventory file and only-inventory at the same time",
 	)
 }

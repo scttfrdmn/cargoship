@@ -656,6 +656,21 @@ func NewInventoryerWithFilename(filename string) (Inventoryer, error) {
 	return ir, nil
 }
 
+// WizardForm are the little fields from our nice lil wizard 🧙
+type WizardForm struct {
+	Destination      string
+	Source           string
+	TravelAgentToken string
+	MaxSize          string
+}
+
+// WithWizardForm sets up data from a wizard form
+func WithWizardForm(f WizardForm) func(*Options) {
+	return func(o *Options) {
+		o.Directories = []string{f.Source}
+	}
+}
+
 // WithViper applies options from a Viper instance for options
 func WithViper(v *viper.Viper) func(*Options) {
 	if v == nil {

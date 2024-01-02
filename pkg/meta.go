@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/vjorlikowski/yaml"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 )
 
 // CLIMeta is the command line meta information generated on a run
@@ -24,6 +25,7 @@ type CLIMeta struct {
 	DefaultFlags map[string]interface{} `yaml:"default_flags"`
 	ViperConfig  map[string]interface{} `yaml:"viper_config"`
 	Version      string                 `yaml:"version"`
+	Wizard       *inventory.WizardForm  `yaml:"wizard"`
 }
 
 // MustComplete returns the completed file or panics if an error occurs
@@ -37,6 +39,9 @@ func (c *CLIMeta) MustComplete(od string) string {
 
 // Complete is the final method for a CLI meta thing
 func (c *CLIMeta) Complete(od string) (string, error) {
+	if c == nil {
+		return "", nil
+	}
 	n := time.Now()
 	c.CompletedAt = &n
 
@@ -81,8 +86,49 @@ func (c *CLIMeta) Print(w io.Writer) {
 	}
 }
 
-// NewCLIMeta returns a new CLIMeta option
-func NewCLIMeta(cmd *cobra.Command, args []string) *CLIMeta {
+// CLIMetaOption is passed to create functional arguments for a new CLIMeta
+type CLIMetaOption func(*CLIMeta)
+
+const unknown = "UNKNOWN"
+
+// NewCLIMeta returns a new CLIMeta option with functional options
+func NewCLIMeta(opts ...CLIMetaOption) *CLIMeta {
+	m := &CLIMeta{
+		StartedAt: toPTR(time.Now()),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	var err error
+	m.Username, err = GetCurrentUser()
+	if err != nil {
+		log.Warn().Err(err).Msg("Could not detect the current user")
+		m.Username = unknown
+	}
+	m.Hostname, err = os.Hostname()
+	if err != nil {
+		log.Warn().Err(err).Msg("Could not detect the current hostname")
+		m.Hostname = unknown
+	}
+	return m
+}
+
+// WithStart sets the start time for a CLIMeta
+func WithStart(t *time.Time) CLIMetaOption {
+	return func(m *CLIMeta) {
+		m.StartedAt = t
+	}
+}
+
+// WithMetaVersion sets the suitcasectl version in the meta
+func WithMetaVersion(s string) CLIMetaOption {
+	return func(m *CLIMeta) {
+		m.Version = s
+	}
+}
+
+// NewCLIMetaWithCobra returns a new CLIMeta option
+func NewCLIMetaWithCobra(cmd *cobra.Command, args []string) *CLIMeta {
 	start := time.Now()
 	m := &CLIMeta{
 		StartedAt:    &start,
@@ -123,4 +169,8 @@ func GetCurrentUser() (string, error) {
 		return "", err
 	}
 	return u.Username, nil
+}
+
+func toPTR[V any](v V) *V {
+	return &v
 }

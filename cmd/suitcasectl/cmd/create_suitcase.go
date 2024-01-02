@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -67,24 +66,6 @@ $ suitcasectl create suitcase ~/example --max-suitcase-size=500MiB
 	return cmd
 }
 
-// validateCmdArgs ensures we are passing valid arguments in
-func validateCmdArgs(inventoryFile string, onlyInventory bool, args []string) error {
-	// Figure out if we are using an inventory file, or creating one
-	if inventoryFile != "" && len(args) > 0 {
-		return errors.New("error: You can't specify an inventory file and target dir arguments at the same time")
-	}
-
-	// Make sure we are actually using either an inventory file or target dirs
-	if inventoryFile == "" && len(args) == 0 {
-		return errors.New("error: You must specify an inventory file or target dirs")
-	}
-
-	if onlyInventory && inventoryFile != "" {
-		return errors.New("you can't specify an inventory file and only-inventory at the same time")
-	}
-	return nil
-}
-
 func inventoryOptsWithCobra(cmd *cobra.Command, args []string) (string, bool, error) {
 	inventoryFile, err := cmd.Flags().GetString("inventory-file")
 	if err != nil {
@@ -97,7 +78,7 @@ func inventoryOptsWithCobra(cmd *cobra.Command, args []string) (string, bool, er
 	}
 
 	// Return the error here for use in testing, vs just barfing with checkErr
-	if cerr := validateCmdArgs(inventoryFile, onlyInventory, args); cerr != nil {
+	if cerr := validateCmdArgs(inventoryFile, onlyInventory, *cmd, args); cerr != nil {
 		return "", false, cerr
 	}
 
@@ -205,6 +186,7 @@ func appendHashes(mfiles []string, items ...string) []string {
 
 func createPostRunE(cmd *cobra.Command, args []string) error {
 	ptr := mustPorterWithCmd(cmd)
+	// gout.MustPrint(ptr)
 	metaF := ptr.CLIMeta.MustComplete(ptr.Destination)
 	log.Debug().Str("file", metaF).Msg("🧳 Created meta file")
 
@@ -309,48 +291,40 @@ type runsum struct {
 func createPreRunE(cmd *cobra.Command, args []string) error {
 	// Get this first, it'll be important
 	globalPersistentPreRun(cmd, args)
-	/*
-		outDir, err := newOutDirWithCmd(cmd)
-		if err != nil {
-			return err
-		}
-	*/
-	if hasDuplicates(args) {
-		return errors.New("duplicate path found in arguments")
-	}
 
-	// Check to see if prefix has a slash
-	if strings.Contains(mustGetCmd[string](cmd, "prefix"), "/") {
-		return errors.New("prefix cannot contain a /")
-	}
-
-	userOverrides, err := userOverridesWithCobra(cmd, args)
-	checkErr(err, "")
-	cliMeta := porter.NewCLIMeta(cmd, args)
-	cliMeta.ViperConfig = userOverrides.AllSettings()
-
-	outDir, err := newOutDirWithCmd(cmd)
-	if err != nil {
-		return err
-	}
+	cmdOpts, err := porterOptsWithCmd(cmd, args)
+	checkErr(err, "could not get porter options")
+	opts := append(
+		[]porter.Option{
+			porter.WithLogger(&log.Logger),
+			porter.WithHashAlgorithm(hashAlgo),
+			porter.WithVersion(version),
+		},
+		cmdOpts...)
 
 	// Shove porter in to the cmd context so we can use it later
-	cmd.SetContext(context.WithValue(cmd.Context(), porter.PorterKey, porter.New(
+	cmd.SetContext(context.WithValue(cmd.Context(), porter.PorterKey, porter.New(opts...)))
+
+	return setupMultiLoggingWithCmd(cmd)
+}
+
+func porterOptsWithCmd(cmd *cobra.Command, args []string) ([]porter.Option, error) {
+	outDir, err := newOutDirWithCmd(cmd)
+	if err != nil {
+		return nil, err
+	}
+	userOverrides, err := userOverridesWithCobra(cmd, args)
+	if err != nil {
+		return nil, err
+	}
+	cliMeta := porter.NewCLIMetaWithCobra(cmd, args)
+	cliMeta.ViperConfig = userOverrides.AllSettings()
+	return []porter.Option{
 		porter.WithCmdArgs(cmd, args),
-		porter.WithLogger(&log.Logger),
-		porter.WithVersion(version),
-		porter.WithDestination(outDir),
-		porter.WithHashAlgorithm(hashAlgo),
 		porter.WithUserOverrides(userOverrides),
 		porter.WithCLIMeta(cliMeta),
-	)))
-
-	err = setupMultiLoggingWithCmd(cmd)
-	if err != nil {
-		return err
-	}
-
-	return nil
+		porter.WithDestination(outDir),
+	}, nil
 }
 
 func envOr(e, d string) string {
@@ -406,19 +380,28 @@ func createSuitcases(ptr *porter.Porter) error {
 	if err != nil {
 		log.Warn().Err(err).Msg("🧳 could not set sampling")
 	}
-	createdFiles := processSuitcases(&processOpts{
+
+	popts := &processOpts{
 		Porter:        ptr,
 		SuitcaseOpts:  ptr.SuitcaseOpts,
 		SampleEvery:   sampleI,
-		Concurrency:   mustGetCmd[int](ptr.Cmd, "concurrency"),
-		RetryCount:    mustGetCmd[int](ptr.Cmd, "retry-count"),
-		RetryInterval: mustGetCmd[time.Duration](ptr.Cmd, "retry-interval"),
-	})
+		Concurrency:   10,
+		RetryCount:    5,
+		RetryInterval: 30,
+	}
+	if ptr.Cmd != nil {
+		popts.Concurrency = mustGetCmd[int](ptr.Cmd, "concurrency")
+		popts.RetryCount = mustGetCmd[int](ptr.Cmd, "retry-count")
+		popts.RetryInterval = mustGetCmd[time.Duration](ptr.Cmd, "retry-interval")
+	}
+	createdFiles := processSuitcases(popts)
 
-	if mustGetCmd[bool](ptr.Cmd, "hash-outer") {
-		ptr.Hashes, err = ptr.CreateHashes(createdFiles)
-		if err != nil {
-			return err
+	if ptr.Cmd != nil {
+		if mustGetCmd[bool](ptr.Cmd, "hash-outer") {
+			ptr.Hashes, err = ptr.CreateHashes(createdFiles)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

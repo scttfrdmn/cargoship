@@ -20,7 +20,7 @@ func NewCreateKeysCmd() *cobra.Command {
 				Bits:  mustGetCmd[int](cmd, "bits"),
 			}
 
-			outDir, err := getDestination(cmd)
+			outDir, err := getDestinationWithCobra(cmd)
 			checkErr(err, "")
 
 			kp, err := gpg.NewKeyPair(keyOpts)

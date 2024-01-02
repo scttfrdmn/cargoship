@@ -11,13 +11,12 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	// "github.com/minio/sha256-simd"
 
-	"github.com/charmbracelet/huh"
-	homedir "github.com/mitchellh/go-homedir"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/sourcegraph/conc/pool"
@@ -31,7 +30,7 @@ import (
 
 // newOutDirWithCmd generates a new output directory using cobra.Command options
 func newOutDirWithCmd(cmd *cobra.Command) (string, error) {
-	o, err := getDestination(cmd)
+	o, err := getDestinationWithCobra(cmd)
 	if err != nil {
 		return "", err
 	}
@@ -58,7 +57,7 @@ func dclose(c io.Closer) {
 
 // This needs some work. Why do we need it's own context entry instead of just
 // using the SuitcaseOpts, which already has it
-func getDestination(cmd *cobra.Command) (string, error) {
+func getDestinationWithCobra(cmd *cobra.Command) (string, error) {
 	d := mustGetCmd[string](cmd, "destination")
 	if d == "" {
 		var err error
@@ -260,11 +259,15 @@ func porterWithCmd(cmd *cobra.Command) (*porter.Porter, error) {
 	return p, nil
 }
 
+/*
 func porterTravelAgentWithForm() (*porter.Porter, error) {
 	p := porter.New()
-
+	wf := inventory.WizardForm{
+		Source: os.Getenv("SUITCASECTL_SOURCE"),
+	}
 	var dest string
-	var src string
+
+	// var src string
 	var tatoken string
 
 	maxsize := "200Gb"
@@ -274,29 +277,16 @@ func porterTravelAgentWithForm() (*porter.Porter, error) {
 			huh.NewInput().
 				Title("Source of the data you want to package up").
 				Placeholder("/some/local/dir").
-				Description("Files within the given directory will be packaged up in to suitcases and transfered to their final destination").
-				Validate(func(s string) error {
-					expanded, err := homedir.Expand(s)
-					if err != nil {
-						return err
-					}
-					st, err := os.Stat(expanded)
-					if err != nil {
-						return err
-					}
-					if !st.IsDir() {
-						return errors.New("This must be a directory, not a file")
-					}
-					return nil
-				}).
-				Value(&src),
+				Description("Files within the given directory will be packaged up in to suitcases and transferred to their final destination").
+				Validate(validateIsDir).
+				Value(&wf.Source),
 			huh.NewInput().
 				Title("Maximum Suitcase Size").
 				Description("This is the maximum size for each suitcase created").
 				Value(&maxsize),
 			huh.NewInput().
 				Title("Destination for files").
-				Placeholder("/tmp/some/dir").
+				Placeholder("/srv/cold-storage").
 				Description("When using a travel agent, this will be used for temporary storage. To use your current systems tmp space, leave this field blank").
 				Value(&dest),
 			huh.NewInput().
@@ -310,8 +300,51 @@ func porterTravelAgentWithForm() (*porter.Porter, error) {
 		return nil, err
 	}
 
+	p.Destination = dest
+	p.WizardForm = &wf
+
+	var terr error
+	var ta *travelagent.TravelAgent
+	if ta, terr = travelagent.New(travelagent.WithToken(tatoken)); terr != nil {
+		log.Debug().Err(terr).Msg("🧳 no valid travel agent found")
+	} else {
+		p.SetTravelAgent(ta)
+		log.Info().Str("url", p.TravelAgent.StatusURL()).Msg("☀️ Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel")
+		if serr := p.SendUpdate(travelagent.StatusUpdate{
+			Status: travelagent.StatusPending,
+		}); serr != nil {
+			return nil, serr
+		}
+	}
+	// Get option bits
+	// Create an inventory file if one isn't specified
+	// p.Inventory.Options.Directories = []string{src}
+	var err error
+	if p.Inventory, err = p.CreateOrReadInventory(""); err != nil {
+		return nil, err
+	}
+	// Replace the travel agent with one that knows the inventory hash
+	// This doesn't work yet, need to find out why
+	if ta != nil {
+		ta.UniquePrefix = p.InventoryHash
+		p.SetTravelAgent(ta)
+	}
+
+	// We need options even if we already have the inventory
+	p.SuitcaseOpts = &config.SuitCaseOpts{
+		Destination:  p.Destination,
+		EncryptInner: p.Inventory.Options.EncryptInner,
+		HashInner:    p.Inventory.Options.HashInner,
+		Format:       p.Inventory.Options.SuitcaseFormat,
+	}
+
+	p.CLIMeta = porter.NewCLIMeta()
+	p.CLIMeta.Wizard = &wf
+
 	return p, nil
 }
+
+*/
 
 func porterTravelAgentWithCmd(cmd *cobra.Command, args []string) (*porter.Porter, bool, error) {
 	p, err := porterWithCmd(cmd)
@@ -365,4 +398,31 @@ func porterTravelAgentWithCmd(cmd *cobra.Command, args []string) (*porter.Porter
 	}
 
 	return p, onlyInventory, nil
+}
+
+// validateCmdArgs ensures we are passing valid arguments in
+func validateCmdArgs(inventoryFile string, onlyInventory bool, cmd cobra.Command, args []string) error {
+	// Figure out if we are using an inventory file, or creating one
+	if inventoryFile != "" && len(args) > 0 {
+		return errors.New("error: You can't specify an inventory file and target dir arguments at the same time")
+	}
+
+	// Make sure we are actually using either an inventory file or target dirs
+	if inventoryFile == "" && len(args) == 0 {
+		return errors.New("error: You must specify an inventory file or target dirs")
+	}
+
+	if onlyInventory && inventoryFile != "" {
+		return errors.New("you can't specify an inventory file and only-inventory at the same time")
+	}
+
+	if hasDuplicates(args) {
+		return errors.New("duplicate path found in arguments")
+	}
+
+	if strings.Contains(mustGetCmd[string](&cmd, "prefix"), "/") {
+		return errors.New("prefix cannot contain a /")
+	}
+
+	return nil
 }
