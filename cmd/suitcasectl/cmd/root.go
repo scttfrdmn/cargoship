@@ -17,6 +17,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/dustin/go-humanize"
+	slogmulti "github.com/samber/slog-multi"
 	"github.com/spf13/cobra"
 
 	homedir "github.com/mitchellh/go-homedir"
@@ -88,14 +89,6 @@ func NewRootCmd(lo io.Writer) *cobra.Command {
 	return cmd
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
-/*
-func Execute() {
-	cobra.CheckErr(NewRootCmd(nil).Execute())
-}
-*/
-
 func init() {
 	cobra.OnInitialize(initConfig)
 
@@ -145,15 +138,6 @@ func checkErr(err error, msg string) {
 	}
 }
 
-func setupLogging(lo io.Writer) {
-	if lo == nil {
-		panic("must set lo")
-	}
-
-	logger = slog.New(log.NewWithOptions(lo, newLoggerOpts()))
-	slog.SetDefault(logger)
-}
-
 func newLoggerOpts() log.Options {
 	logOpts := log.Options{
 		ReportTimestamp: true,
@@ -169,9 +153,18 @@ func newLoggerOpts() log.Options {
 	return logOpts
 }
 
+func setupLogging(w io.Writer) {
+	if w == nil {
+		panic("must set writer")
+	}
+
+	logger = slog.New(log.NewWithOptions(w, newLoggerOpts()))
+	slog.SetDefault(logger)
+}
+
+/*
 func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 	// If we have an outDir, also write the logs to a file
-	var multi io.Writer
 	o, err := getDestinationWithCobra(cmd)
 	if err != nil {
 		return err
@@ -181,8 +174,44 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 	}
 	ptr := mustPorterWithCmd(cmd)
 
-	multi = io.MultiWriter(cmd.ErrOrStderr(), ptr.LogFile)
-	logger = slog.New(log.NewWithOptions(multi, newLoggerOpts()))
+	logger = slog.New(
+		log.NewWithOptions(
+			io.MultiWriter(cmd.OutOrStdout(), ptr.LogFile),
+			newLoggerOpts(),
+		),
+	)
+	// Make sure the Porter object still has the right logger
+	ptr.Logger = logger
+	slog.SetDefault(logger)
+	return nil
+}
+*/
+
+func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
+	// If we have an outDir, also write the logs to a file
+	o, err := getDestinationWithCobra(cmd)
+	if err != nil {
+		return err
+	}
+	if o == "" {
+		return errors.New("no output directory specified")
+	}
+	ptr := mustPorterWithCmd(cmd)
+
+	stdLogger := log.NewWithOptions(cmd.OutOrStdout(), newLoggerOpts())
+	jopts := newLoggerOpts()
+	jopts.Formatter = log.JSONFormatter
+	jsonLogger := log.NewWithOptions(ptr.LogFile, jopts)
+
+	logger = slog.New(
+		slogmulti.Fanout(
+			stdLogger,
+			jsonLogger,
+		),
+	)
+
+	// Make sure the Porter object still has the right logger
+	ptr.Logger = logger
 	slog.SetDefault(logger)
 	return nil
 }
