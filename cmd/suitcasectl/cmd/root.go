@@ -71,6 +71,7 @@ func NewRootCmd(lo io.Writer) *cobra.Command {
 	cmd.AddCommand(NewRetierCmd())
 
 	cmd.AddCommand(NewFindCmd())
+	cmd.AddCommand(NewWizardCmd())
 	cmd.AddCommand(NewAnalyzeCmd())
 
 	// cmd.AddCommand(NewCompletionCmd())
@@ -176,7 +177,7 @@ func setupSingleLoggingWithCmd(cmd *cobra.Command) {
 func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 	// If we have an outDir, also write the logs to a file
 	var multi io.Writer
-	o, err := getDestination(cmd)
+	o, err := getDestinationWithCobra(cmd)
 	if err != nil {
 		return err
 	}
@@ -250,4 +251,8 @@ func globalPersistentPostRun(cmd *cobra.Command, args []string) { // nolint:unpa
 	// logF = nil
 	// hashes = nil
 	// userOverrides = nil
+}
+
+func toPTR[V any](v V) *V {
+	return &v
 }

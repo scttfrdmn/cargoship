@@ -163,7 +163,7 @@ uploads:
       - debs
 signs:
 - cmd: cosign
-  args: ["sign-blob", "--key=hashivault://package-signing", "--output-signature=${signature}", "${artifact}"]
+  args: ["sign-blob", "--tlog-upload=false", "--key=hashivault://package-signing", "--output-signature=${signature}", "${artifact}"]
   artifacts: all
 sboms:
   - artifacts: archive
