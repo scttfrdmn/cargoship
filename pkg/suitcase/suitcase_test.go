@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
-	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
@@ -169,7 +168,6 @@ func BenchmarkNewSuitcase(b *testing.B) {
 	bdd, err = filepath.Abs(bdd)
 	require.NoError(b, err)
 
-	zerolog.SetGlobalLevel(zerolog.FatalLevel)
 	for desc, dataset := range datasets {
 		location := path.Join(bdd, dataset.path)
 		if _, err := os.Stat(location); err == nil {

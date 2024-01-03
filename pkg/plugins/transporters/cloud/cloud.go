@@ -5,9 +5,9 @@ package cloud
 
 import (
 	"errors"
+	"log/slog"
 	"strings"
 
-	"github.com/rs/zerolog/log"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
 )
@@ -42,7 +42,7 @@ func (t Transporter) SendWithChannel(s, u string, c chan rclone.TransferStatus) 
 	if u != "" {
 		dest = strings.TrimSuffix(dest, "/") + "/" + strings.TrimPrefix(u, "/")
 	}
-	log.Debug().Str("source", s).Str("destination", dest).Msg("☁️ sending to rclone.Copy")
+	slog.Debug("sending to rclone.Copy", "source", s, "destination", dest)
 	err := rclone.Copy(s, dest, c)
 
 	return err

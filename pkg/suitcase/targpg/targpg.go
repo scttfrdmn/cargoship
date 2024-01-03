@@ -8,7 +8,6 @@ import (
 	"io"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
-	"github.com/rs/zerolog/log"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/tar"
@@ -51,20 +50,10 @@ func (s Suitcase) GetHashes() []config.HashSet {
 // Close all closeables.
 func (s Suitcase) Close() error {
 	// Cipher Writer Close
-	log.Debug().Msg("Closing Cipher Writer")
 	item := *s.cw
 	if err := item.Close(); err != nil {
 		return err
 	}
-
-	// Tar Writer Close
-	/*
-		if err := s.tw.Close(); err != nil {
-			return err
-		}
-	*/
-
-	log.Debug().Msg("Closing Tar Writer")
 	return s.tw.Close()
 }
 

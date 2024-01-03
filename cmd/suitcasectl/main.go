@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
-	"github.com/rs/zerolog/log"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd"
 )
 
@@ -16,6 +16,8 @@ func main() {
 	// point
 	err := cmd.NewRootCmd(os.Stdout).ExecuteContext(context.Background())
 	if err != nil {
-		log.Fatal().Err(err).Msg("Error executing command")
+		// log.Error("error executing command", "error", err)
+		fmt.Fprintf(os.Stderr, "Error executing command, quitting: %v", err)
+		os.Exit(3)
 	}
 }

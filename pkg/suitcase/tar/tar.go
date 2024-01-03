@@ -9,10 +9,10 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 
-	"github.com/rs/zerolog/log"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/gpg"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
@@ -152,6 +152,6 @@ func (a Suitcase) AddEncrypt(f inventory.File) error {
 func dclose(c io.Closer) {
 	err := c.Close()
 	if err != nil {
-		log.Warn().Interface("closer", c).Msg("error closing file")
+		slog.Warn("error closing file")
 	}
 }

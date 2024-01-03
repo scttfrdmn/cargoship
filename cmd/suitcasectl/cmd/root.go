@@ -17,8 +17,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/dustin/go-humanize"
-	"github.com/rs/zerolog"
-	zlog "github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
 	homedir "github.com/mitchellh/go-homedir"
@@ -142,7 +140,8 @@ func checkErr(err error, msg string) {
 		msg = "Fatal Error"
 	}
 	if err != nil {
-		zlog.Fatal().Err(err).Msg(msg)
+		slog.Error(msg, "error", err)
+		os.Exit(2)
 	}
 }
 
@@ -151,42 +150,23 @@ func setupLogging(lo io.Writer) {
 		panic("must set lo")
 	}
 
-	// Set up slog
-	// logger = slog.New(log.New(os.Stderr))
-	logger = slog.New(log.NewWithOptions(os.Stderr, log.Options{
+	logger = slog.New(log.NewWithOptions(lo, newLoggerOpts()))
+	slog.SetDefault(logger)
+}
+
+func newLoggerOpts() log.Options {
+	logOpts := log.Options{
 		ReportTimestamp: true,
 		TimeFormat:      time.Kitchen,
 		Prefix:          "suitcasectl 🧳 ",
-	}))
-
-	// Deprecated zerolog
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		Level:           log.InfoLevel,
+		ReportCaller:    trace,
+	}
 	if Verbose {
-		zlog.Info().Msg("Verbose output enabled")
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		logOpts.Level = log.DebugLevel
 	}
-	// If we have an outDir, also write the logs to a file
-	multi := io.MultiWriter(zerolog.ConsoleWriter{Out: lo})
-	// multi := zerolog.MultiLevelWriter(lo, zerolog.ConsoleWriter{Out: os.Stderr})
-	if trace {
-		zlog.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
-	} else {
-		zlog.Logger = zerolog.New(multi).With().Timestamp().Logger()
-	}
-}
 
-func setupSingleLoggingWithCmd(cmd *cobra.Command) {
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	if Verbose {
-		zlog.Info().Msg("Verbose output enabled")
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	}
-	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}).With().Logger()
-	zlog.Logger = zlog.Output(zerolog.ConsoleWriter{Out: cmd.ErrOrStderr()}).With().Logger()
+	return logOpts
 }
 
 func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
@@ -197,22 +177,19 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 		return err
 	}
 	if o == "" {
-		zlog.Warn().Msg("No output directory specified")
 		return errors.New("no output directory specified")
 	}
 	ptr := mustPorterWithCmd(cmd)
-	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}, ptr.LogFile)
-	if trace {
-		zlog.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
-	} else {
-		zlog.Logger = zerolog.New(multi).With().Timestamp().Logger()
-	}
+
+	multi = io.MultiWriter(cmd.ErrOrStderr(), ptr.LogFile)
+	logger = slog.New(log.NewWithOptions(multi, newLoggerOpts()))
+	slog.SetDefault(logger)
 	return nil
 }
 
 func globalPersistentPreRun(cmd *cobra.Command, args []string) {
 	// Set up single logging first
-	setupSingleLoggingWithCmd(cmd)
+	// setupSingleLoggingWithCmd(cmd)
 
 	// lo := cmd.OutOrStderr()
 	// fmt.Fprintf(os.Stderr, "OUT IS: %+v\n", &lo)
@@ -231,11 +208,11 @@ func globalPersistentPreRun(cmd *cobra.Command, args []string) {
 		memLimitB, merr := humanize.ParseBytes(memLimit)
 		checkErr(merr, fmt.Sprintf("could not convert %v to bytes", memLimit))
 		debug.SetMemoryLimit(int64(memLimitB))
-		zlog.Info().Str("mem-limit", memLimit).Uint64("mem-limit-bytes", memLimitB).Msg("overriding memory handling with limit")
+		slog.Info("overriding memory handling with limit", "mem-limit", memLimit, "mem-limit-bytes", memLimitB)
 	}
 	// log.Fatal().Msgf("Profile is set to %+v", profile)
 	if profile {
-		zlog.Info().Msg("Enabling cpu profiling")
+		slog.Info("enabling cpu profiling")
 		var err error
 		cpufile, err = os.CreateTemp("", "cpuprofile")
 		if err != nil {
@@ -253,9 +230,9 @@ func globalPersistentPostRun(cmd *cobra.Command, args []string) { // nolint:unpa
 		pprof.StopCPUProfile()
 		err := cpufile.Close()
 		if err != nil {
-			zlog.Warn().Err(err).Str("cpu-profile", cpufile.Name()).Msg("error closing cpu profiler")
+			slog.Warn("error closing cpu profiler", "cpu-profile", cpufile.Name())
 		}
-		zlog.Info().Str("cpu-profile", cpufile.Name()).Msg("CPU Profile Created")
+		slog.Info("cpu profile created", "cpu-profile", cpufile.Name())
 	}
 
 	// Empty out the outDir so multiple runs can happen

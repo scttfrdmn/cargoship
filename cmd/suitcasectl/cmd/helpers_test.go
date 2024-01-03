@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 	porter "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg"
 )
@@ -62,6 +61,6 @@ func BenchmarkCalculateHashes(b *testing.B) {
 			})
 		}
 	} else {
-		log.Warn().Err(err).Send()
+		logger.Warn("error encountered while benchmarking", "error", err)
 	}
 }

@@ -7,10 +7,10 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 
-	"github.com/rs/zerolog/log"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
 )
@@ -33,7 +33,7 @@ func (t *Transporter) Check() error {
 	}
 
 	if t.checkScript == "" {
-		log.Debug().Msg("no checker script specified")
+		slog.Debug("no checker script specified")
 		return nil
 	}
 
@@ -45,7 +45,7 @@ func (t *Transporter) Check() error {
 	rcmd.Stderr = mw
 
 	// Execute the command
-	log.Info().Msg("running shell transporter check")
+	slog.Info("running shell transporter check")
 	if err := rcmd.Run(); err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func (t Transporter) SendWithChannel(s, u string, c chan rclone.TransferStatus) 
 	if err := os.Setenv("SUITCASECTL_FILE", s); err != nil {
 		return err
 	}
-	log.Info().Str("cmd", t.Config.Destination).Msg("running send command")
+	slog.Info("running send command", "cmd", t.Config.Destination)
 	rcmd := exec.Command(t.Config.Destination) // nolint
 	var stdBuffer bytes.Buffer
 	mw := io.MultiWriter(os.Stdout, &stdBuffer)
@@ -79,7 +79,7 @@ func (t Transporter) SendWithChannel(s, u string, c chan rclone.TransferStatus) 
 	rcmd.Stderr = mw
 
 	// Execute the command
-	log.Info().Msg("running shell transporter")
+	slog.Info("running shell transporter")
 	if err := rcmd.Run(); err != nil {
 		return err
 	}

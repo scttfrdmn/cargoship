@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/gpg"
 )
@@ -28,9 +27,7 @@ func NewCreateKeysCmd() *cobra.Command {
 
 			created, err := gpg.NewKeyFilesWithPair(kp, outDir)
 			checkErr(err, "")
-			log.Info().
-				Strs("created", created).
-				Msg("Create key files")
+			logger.Info("created key files", "created", created)
 		},
 	}
 }

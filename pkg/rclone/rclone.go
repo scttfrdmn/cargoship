@@ -7,13 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/gosimple/slug"
-	"github.com/rs/zerolog/log"
 
 	_ "github.com/rclone/rclone/backend/all" // import all backend
 	"github.com/rclone/rclone/fs/rc"
@@ -198,7 +198,6 @@ func newCloneRequestWithSrcDst(source, destination string) (string, *cloneReques
 	var cloneAction string
 	var sreq *cloneRequest
 	if sourceStat.IsDir() {
-		log.Debug().Msg("Using sync cloud method")
 		cloneAction = "sync/copy"
 		sreq = mustNewCloneRequest(
 			withSrcFs(source),
@@ -206,7 +205,6 @@ func newCloneRequestWithSrcDst(source, destination string) (string, *cloneReques
 			withGroup(slug.Make(source)),
 		)
 	} else {
-		log.Info().Msg("Using copyfile cloud method")
 		cloneAction = "operations/copyfile"
 		sourceB := filepath.Base(source)
 		sreq = mustNewCloneRequest(
@@ -292,9 +290,9 @@ func APIOneShot(command string, params rc.Params) error {
 	}
 	out, status := librclone.RPC(command, string(paramsB))
 	if status != 200 {
-		log.Info().Interface("out", out).Msg("command request status failed")
+		slog.Info("command request status failed", "out", out)
 	}
-	log.Info().Msg("🎊 All set! 🎊")
+	slog.Info("🎊 All set! 🎊")
 	return nil
 }
 
@@ -347,19 +345,19 @@ func syncResWithOut(o string) syncResponse {
 
 // Copy copies a single file to the destination
 func Copy(source, destination string, c chan TransferStatus) error {
-	log := log.With().Str("source", source).Str("destination", destination).Logger()
+	log := slog.With("source", source, "destination", destination)
 	librclone.Initialize()
 
 	// params := copyParamsWithSrcDest(source, destination)
 	params := copyParamsWithSrcDest(source, destination)
-	log.Debug().Interface("params", params).Send()
+	log.Debug("paramaeters set", "params", params)
 	// out, status := librclone.RPC("operations/copyfile", mustMarshalParams(params))
 	out, status := librclone.RPC("sync/copy", mustMarshalParams(params))
 	if status != 200 {
 		return errWithRPCOut(out)
 	}
 	syncR := syncResWithOut(out)
-	log.Debug().Int64("id", syncR.JobID).Msg("job id of async job")
+	log.Debug("job id of aysync job", "id", syncR.JobID)
 	statusResp, err := waitForFinished(
 		statusRequest{
 			JobID: syncR.JobID,
@@ -395,9 +393,9 @@ func Clone(source, destination string) error {
 	// breaks the shell completion pieces, as all shells expect them on
 	// stdout. Hopefully cobra will be able to have multiple outputs at some
 	// point
-	log := log.With().Str("source", source).Str("destination", destination).Logger()
+	log := slog.With("source", source, "destination", destination)
 	if !Exists(destination) {
-		log.Debug().Msg("destination does not exist, it may be created during the run")
+		log.Debug("destination does not exist, it may be created during the run")
 	}
 
 	librclone.Initialize()
@@ -406,11 +404,10 @@ func Clone(source, destination string) error {
 	if err != nil {
 		return err
 	}
-	log.Debug().Interface("request", sreq).Send()
 
 	out, status := librclone.RPC(cloneAction, sreq.JSONString())
 	if status != 200 {
-		log.Info().Interface("out", out).Msg("clone request status failed")
+		log.Info("clone request status failed", "out", out)
 	}
 
 	var sres syncResponse
@@ -418,7 +415,7 @@ func Clone(source, destination string) error {
 		return errors.New("error unmarshalling syncResponse")
 	}
 
-	log.Info().Int64("id", sres.JobID).Msg("job id of async job")
+	log.Info("job id of aync job", "id", sres.JobID)
 
 	statusResp, err := waitForFinished(statusRequest{
 		JobID: sres.JobID,
@@ -438,7 +435,7 @@ func Clone(source, destination string) error {
 		return err
 	}
 
-	log.Info().Int64("bytes", stats.Bytes).Int64("files", stats.Transfers).Msg("transfer complete")
+	log.Info("transfer complete", "bytes", stats.Bytes, "files", stats.Transfers)
 
 	return nil
 }

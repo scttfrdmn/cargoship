@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/drewstinnett/gout/v2"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -117,11 +116,11 @@ func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, er
 	userOverrides := viper.New()
 	userOverrides.SetConfigName("suitcasectl")
 	for _, dir := range args {
-		log.Debug().Str("dir", dir).Msg("🧳 Adding target dir")
+		logger.Debug("adding target dir", "dir", dir)
 		userOverrides.AddConfigPath(dir)
 	}
 	if rerr := userOverrides.ReadInConfig(); rerr == nil {
-		log.Info().Str("override-file", userOverrides.ConfigFileUsed()).Msg("🧳 Found user overrides, using them")
+		logger.Info("found user overrides", "file", userOverrides.ConfigFileUsed())
 	}
 	for _, field := range []string{"follow-symlinks", "ignore-glob", "inventory-format", "internal-metadata-glob", "max-suitcase-size", "prefix", "user", "suitcase-format"} {
 		err := userOverrides.BindPFlag(field, cmd.PersistentFlags().Lookup(field))
@@ -139,7 +138,6 @@ type hashFileCreator func([]config.HashSet, io.Writer) error
 // This could definitely be cleaner...
 func writeHashFile(ptr *porter.Porter, hfc hashFileCreator, ext string) (string, error) {
 	hashFile := path.Join(ptr.Destination, fmt.Sprintf("suitcasectl.%v", hashAlgo.String()+ext))
-	log.Info().Str("hash-file", hashFile).Msg("🧳 Creating hashes")
 	logger.Info("creating hashes", "file", hashFile)
 	hashF, err := os.Create(hashFile) // nolint:gosec
 	if err != nil {
@@ -162,7 +160,7 @@ func setOuterHashes(ptr *porter.Porter, metaF string) ([]config.HashSet, string,
 	}
 	defer dclose(metaFh)
 
-	log.Info().Str("file", metaF).Msg("🧳 Creating hash for file")
+	logger.Info("creating hash for file", "file", metaF)
 	hashes = append(hashes, config.HashSet{
 		Filename: strings.TrimPrefix(metaF, ptr.Destination+"/"),
 		Hash:     porter.MustCalculateHash(metaFh, hashAlgo.String()),
@@ -189,7 +187,7 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 	ptr := mustPorterWithCmd(cmd)
 	// gout.MustPrint(ptr)
 	metaF := ptr.CLIMeta.MustComplete(ptr.Destination)
-	log.Debug().Str("file", metaF).Msg("🧳 Created meta file")
+	logger.Debug("created meta file", "file", metaF)
 
 	// Hash the outer items if asked
 	var hashes []config.HashSet
@@ -201,16 +199,15 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	log.Debug().Str("log-file", ptr.LogFile.Name()).Msg("🧳 Switching back to stderr logger and closing the multi log writer so we can hash it")
+	logger.Debug("switching back to stderr logger and closing the multi log writer so we can hash it", "log", ptr.LogFile.Name())
 	setupLogging(cmd.OutOrStderr())
 	// Do we really care if this closes? maybe...
 	_ = ptr.LogFile.Close()
-
-	log.Info().
-		Str("runtime", ptr.CLIMeta.CompletedAt.Sub(*ptr.CLIMeta.StartedAt).String()).
-		Time("start", *ptr.CLIMeta.StartedAt).
-		Time("end", *ptr.CLIMeta.CompletedAt).
-		Msg("🧳 Completed")
+	logger.Info("completed",
+		"runtime", ptr.CLIMeta.CompletedAt.Sub(*ptr.CLIMeta.StartedAt).String(),
+		"start", *ptr.CLIMeta.StartedAt,
+		"end", *ptr.CLIMeta.CompletedAt,
+	)
 
 	// opts := suitcase.OptsWithCmd(cmd)
 	// Copy files up if needed
@@ -232,7 +229,7 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		CompletedAt: nowPtr(),
 		SizeBytes:   ptr.TotalTransferred,
 	}); serr != nil {
-		log.Warn().Err(serr).Msg("🧳 failed to send final status update")
+		logger.Warn("failed to send final status update", "error", serr)
 	}
 
 	gout.MustPrint(runsum{
@@ -297,7 +294,7 @@ func createPreRunE(cmd *cobra.Command, args []string) error {
 	checkErr(err, "could not get porter options")
 	opts := append(
 		[]porter.Option{
-			porter.WithLogger(&log.Logger),
+			porter.WithLogger(logger),
 			porter.WithHashAlgorithm(hashAlgo),
 			porter.WithVersion(version),
 		},
@@ -340,7 +337,8 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 	// Try to print any panics in mostly sane way
 	defer func() {
 		if err := recover(); err != nil {
-			log.Fatal().Msg(fmt.Sprint(err))
+			logger.Error("fatail error", "error", fmt.Sprint(err))
+			os.Exit(3)
 		}
 	}()
 
@@ -358,16 +356,16 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 			Metadata:               ptr.Inventory.MustJSONString(),
 			MetadataCheckSum:       ptr.InventoryHash,
 		}); err != nil {
-			log.Warn().Err(err).Msg("🧳 error sending status update")
+			logger.Warn("error sending status update", "error", err)
 		}
 
 		if cerr := createSuitcases(ptr); cerr != nil {
-			log.Warn().Err(cerr).Msg("🧳 failed to completed createSuitcases")
+			logger.Warn("failed to complete createSuitcases", "error", cerr)
 			return err
 		}
 		return nil
 	}
-	log.Warn().Msg("🧳 Only creating inventory file, no suitcase archives")
+	logger.Warn("only creating inventory file, no suitcases")
 	return nil
 }
 
@@ -379,7 +377,7 @@ func createSuitcases(ptr *porter.Porter) error {
 
 	sampleI, err := strconv.Atoi(envOr("SAMPLE_EVERY", "100"))
 	if err != nil {
-		log.Warn().Err(err).Msg("🧳 could not set sampling")
+		logger.Warn("could not set sampling", "error", err)
 	}
 
 	popts := &processOpts{

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/drewstinnett/gout/v2"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	porter "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
@@ -37,11 +36,11 @@ func NewWizardCmd() *cobra.Command {
 				Metadata:               p.Inventory.MustJSONString(),
 				MetadataCheckSum:       p.InventoryHash,
 			}); err != nil {
-				log.Warn().Err(err).Msg("🧳 error sending status update")
+				logger.Warn("error sending status update", "error", err)
 			}
 
 			if err := createSuitcases(p); err != nil {
-				log.Warn().Err(err).Msg("🧳 failed to completed createSuitcases")
+				logger.Warn("failed to complete createSuitcases", "error", err)
 				return err
 			}
 			return nil
@@ -57,7 +56,7 @@ func wizardPreRunE(cmd *cobra.Command, args []string) error {
 	globalPersistentPreRun(cmd, args)
 
 	opts := []porter.Option{
-		porter.WithLogger(&log.Logger),
+		porter.WithLogger(logger),
 		porter.WithHashAlgorithm(hashAlgo),
 		porter.WithVersion(version),
 		porter.WithCLIMeta(
@@ -81,7 +80,7 @@ func wizardPostRunE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	log.Debug().Str("file", metaF).Msg("🧳 Created meta file")
+	logger.Debug("created meta file", "file", metaF)
 
 	// Hash the outer items if asked
 	var hashes []config.HashSet
@@ -90,16 +89,16 @@ func wizardPostRunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	log.Debug().Str("log-file", ptr.LogFile.Name()).Msg("🧳 Switching back to stderr logger and closing the multi log writer so we can hash it")
+	logger.Debug("switching back to stderr logger and closing the multi log writer so we can hash it", "file", ptr.LogFile.Name())
 	setupLogging(cmd.OutOrStderr())
 	// Do we really care if this closes? maybe...
 	_ = ptr.LogFile.Close()
 
-	log.Info().
-		Str("runtime", ptr.CLIMeta.CompletedAt.Sub(*ptr.CLIMeta.StartedAt).String()).
-		Time("start", *ptr.CLIMeta.StartedAt).
-		Time("end", *ptr.CLIMeta.CompletedAt).
-		Msg("🧳 Completed")
+	logger.Info("completed",
+		"runtime", ptr.CLIMeta.CompletedAt.Sub(*ptr.CLIMeta.StartedAt).String(),
+		"start", *ptr.CLIMeta.StartedAt,
+		"end", *ptr.CLIMeta.CompletedAt,
+	)
 
 	// opts := suitcase.OptsWithCmd(cmd)
 	// Copy files up if needed
@@ -121,7 +120,7 @@ func wizardPostRunE(cmd *cobra.Command, args []string) error {
 		CompletedAt: nowPtr(),
 		SizeBytes:   ptr.TotalTransferred,
 	}); serr != nil {
-		log.Warn().Err(serr).Msg("🧳 failed to send final status update")
+		logger.Warn("failed to send final status update", "error", serr)
 	}
 
 	gout.MustPrint(runsum{

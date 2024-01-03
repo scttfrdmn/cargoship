@@ -2,12 +2,12 @@ package porter
 
 import (
 	"io"
+	"log/slog"
 	"os"
 	"os/user"
 	"path"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/vjorlikowski/yaml"
@@ -49,7 +49,7 @@ func (c *CLIMeta) Complete(od string) (string, error) {
 	var err error
 	var mf string
 	if od == "" {
-		log.Warn().Msg("No output directory specified. Using stdout for cli meta output")
+		slog.Warn("No output directory specified. Using stdout for cli meta output")
 		w = os.Stdout
 	} else {
 		mf = path.Join(od, "suitcasectl-invocation-meta.yaml")
@@ -57,7 +57,7 @@ func (c *CLIMeta) Complete(od string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		log.Debug().Str("meta-file", mf).Msg("Created CLI meta file")
+		slog.Debug("created CLI meta file", "meta-file", mf)
 	}
 	defer func() {
 		err := w.Close()
@@ -76,12 +76,12 @@ func (c *CLIMeta) Print(w io.Writer) {
 	}
 	b, err := yaml.Marshal(c)
 	if err != nil {
-		log.Warn().Err(err).Msg("Could not marshal CLI meta data")
+		slog.Warn("could not marshal CLI metadata", "error", err)
 		return
 	}
 	_, err = w.Write(b)
 	if err != nil {
-		log.Warn().Err(err).Msg("Could not write CLI meta data")
+		slog.Warn("could not write CLI metadata", "error", err)
 		return
 	}
 }
@@ -102,12 +102,12 @@ func NewCLIMeta(opts ...CLIMetaOption) *CLIMeta {
 	var err error
 	m.Username, err = GetCurrentUser()
 	if err != nil {
-		log.Warn().Err(err).Msg("Could not detect the current user")
+		slog.Warn("could not detect the current user", "error", err)
 		m.Username = unknown
 	}
 	m.Hostname, err = os.Hostname()
 	if err != nil {
-		log.Warn().Err(err).Msg("Could not detect the current hostname")
+		slog.Warn("Could not detect the current hostname", "error", err)
 		m.Hostname = unknown
 	}
 	return m
@@ -150,12 +150,12 @@ func NewCLIMetaWithCobra(cmd *cobra.Command, args []string) *CLIMeta {
 	var err error
 	m.Username, err = GetCurrentUser()
 	if err != nil {
-		log.Warn().Err(err).Msg("Could not detect the current user")
+		slog.Warn("Could not detect the current user", "error", err)
 		m.Username = "Unknown"
 	}
 	m.Hostname, err = os.Hostname()
 	if err != nil {
-		log.Warn().Err(err).Msg("Could not detect the current hostname")
+		slog.Warn("Could not detect the current hostname", "error", err)
 		m.Hostname = "Unknown"
 	}
 

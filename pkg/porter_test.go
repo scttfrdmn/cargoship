@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
@@ -96,7 +95,7 @@ func TestPorterNew(t *testing.T) {
 	got := New(
 		WithVersion("0.1.2"),
 		WithCLIMeta(&CLIMeta{Username: "joebob"}),
-		WithLogger(&log.Logger),
+		// WithLogger(&log.Logger),
 	)
 	require.Equal(t, "0.1.2", got.Version)
 	require.Equal(t, "joebob", got.CLIMeta.Username)
