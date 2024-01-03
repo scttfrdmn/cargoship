@@ -476,17 +476,17 @@ func copy(src, dst string) error {
 // RunForm uses an interactive form to select some base pieces and package up date in to suitcases
 func (p *Porter) RunForm() error {
 	p.WizardForm = &inventory.WizardForm{
-		Source:  os.Getenv("SUITCASECTL_SOURCE"),
-		MaxSize: "200Gb",
+		Source:      os.Getenv("SUITCASECTL_SOURCE"),
+		Destination: os.Getenv("SUITCASECTL_DESTINATION"),
+		MaxSize:     "200Gb",
 	}
 
-	// form := huh.NewForm(
 	if err := huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Source of the data you want to package up").
 				Placeholder("/some/local/dir").
-				Description("FileG within the given directory will be packaged up in to suitcases and transferred to their final destination").
+				Description("Files within the given directory will be packaged up in to suitcases and transferred to their final destination.\nDefaults to SUITCASECTL_SOURCE if set in the env").
 				Validate(validateIsDir).
 				Value(&p.WizardForm.Source),
 			huh.NewInput().
@@ -496,7 +496,7 @@ func (p *Porter) RunForm() error {
 			huh.NewInput().
 				Title("Destination for files").
 				Placeholder("/srv/cold-storage").
-				Description("When using a travel agent, this will be used for temporary storage. To use your current systems tmp space, leave this field blank").
+				Description("When using a travel agent, this will be used for temporary storage. To use your current systems tmp space, leave this field blank.\nDefaults to SUITCASECTL_DESTINATION if set in the env").
 				Value(&p.WizardForm.Destination),
 			huh.NewInput().
 				Title("Travel Agent Token").

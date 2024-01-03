@@ -90,14 +90,10 @@ func wizardPostRunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if ptr.LogFile != nil {
-		log.Debug().Str("log-file", ptr.LogFile.Name()).Msg("🧳 Switching back to stderr logger and closing the multi log writer so we can hash it")
-		setupLogging(cmd.OutOrStderr())
-		// Do we really care if this closes? maybe...
-		_ = ptr.LogFile.Close()
-	} else {
-		log.Warn().Msg("🧳 Log file not specified when using wizard. This will be cleaned up in a later version")
-	}
+	log.Debug().Str("log-file", ptr.LogFile.Name()).Msg("🧳 Switching back to stderr logger and closing the multi log writer so we can hash it")
+	setupLogging(cmd.OutOrStderr())
+	// Do we really care if this closes? maybe...
+	_ = ptr.LogFile.Close()
 
 	log.Info().
 		Str("runtime", ptr.CLIMeta.CompletedAt.Sub(*ptr.CLIMeta.StartedAt).String()).
