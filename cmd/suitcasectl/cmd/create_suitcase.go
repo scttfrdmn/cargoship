@@ -140,6 +140,7 @@ type hashFileCreator func([]config.HashSet, io.Writer) error
 func writeHashFile(ptr *porter.Porter, hfc hashFileCreator, ext string) (string, error) {
 	hashFile := path.Join(ptr.Destination, fmt.Sprintf("suitcasectl.%v", hashAlgo.String()+ext))
 	log.Info().Str("hash-file", hashFile).Msg("🧳 Creating hashes")
+	logger.Info("creating hashes", "file", hashFile)
 	hashF, err := os.Create(hashFile) // nolint:gosec
 	if err != nil {
 		return "", err

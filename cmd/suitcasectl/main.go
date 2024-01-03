@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/rs/zerolog/log"
-
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd"
 )
 

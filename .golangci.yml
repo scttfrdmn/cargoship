@@ -82,9 +82,6 @@ linters-settings:
     # exclude: /path/to/file.txt
 
   # Disable error checking, as errorcheck detects more errors and is more configurable.
-  gosec:
-    exclude:
-    - "G104"
 
   funlen:
     lines: 60
@@ -137,6 +134,82 @@ linters-settings:
     min-len: 3
     # minimal occurrences count to trigger, 3 by default
     min-occurrences: 3
+  depguard:
+    rules:
+      main:
+        files:
+          - "$all"
+          - "!$test"
+        deny:
+          - pkg: "log$"
+            desc: "Use log/slog so we can always do structured logging, via the logger"
+          - pkg: "github.com/rs/zerolog/log"
+            desc: "Use log/slog so we can always do structured logging, via the logger"
+        allow:
+          - '$gostd'
+          - "github.com/spf13/cobra"
+          - "github.com/spf13/viper"
+          - "github.com/spf13/pflag"
+          - "github.com/mitchellh/go-homedir"
+          - "github.com/oklog/ulid/v2"
+          - "github.com/drewstinnett/gout/v2"
+          - "github.com/charmbracelet/log"
+          - "github.com/charmbracelet/huh"
+          - "github.com/muesli/mango-cobra"
+          - "github.com/muesli/roff"
+          - "github.com/rclone/rclone/fs/rc"
+          - "moul.io/http2curl"
+          - "github.com/ProtonMail/go-crypto/openpgp"
+          - "github.com/ProtonMail/gopenpgp/v2/crypto"
+          - "github.com/klauspost/compress/zstd"
+          - "github.com/mholt/archiver/v4"
+          - "github.com/dustin/go-humanize"
+          - "github.com/invopop/jsonschema"
+          - "github.com/charmbracelet/lipgloss"
+          - "github.com/lucasb-eyer/go-colorful"
+          - "github.com/sourcegraph/conc/pool"
+          - "github.com/mailru/easyjson"
+          - "github.com/klauspost/compress/zstd"
+          - "github.com/go-git/go-git/v5"
+          - "github.com/karrick/godirwalk"
+          - "github.com/vjorlikowski/yaml"
+          - "github.com/dsnet/compress/bzip2"
+          - "github.com/klauspost/pgzip"
+          - "github.com/klauspost/compress/zstd"
+          - "github.com/gosimple/slug"
+          - "github.com/rclone/rclone/backend/all"
+          - "github.com/rclone/rclone/fs/sync"
+          - "github.com/rclone/rclone/librclone/librclone"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/gpg"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/travelagent"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/cloud"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/shell"
+      tests:
+        files:
+          - "$test"
+        allow:
+          - '$gostd'
+          - "github.com/klauspost/pgzip"
+          - "github.com/klauspost/compress/zstd"
+          - "github.com/rclone/rclone/fs/rc"
+          - "github.com/ProtonMail/go-crypto/openpgp"
+          - "github.com/stretchr/testify"
+          - "github.com/stretchr/testify/require"
+          - "github.com/spf13/cobra"
+          - "github.com/spf13/viper"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/travelagent"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
+          - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/cloud"
   # depguard:
   #   list-type: blacklist
   #   include-go-root: false
@@ -158,12 +231,12 @@ linters-settings:
     line-length: 120
     # tab width in spaces. Default to 1.
     tab-width: 1
-  unused:
+  # unused:
     # treat code as a program (not a library) and report unused exported identifiers; default is false.
     # XXX: if you enable this setting, unused will report a lot of false-positives in text editors:
     # if it's called for subdir of a project it can't find funcs usages. All text editor integrations
     # with golangci-lint call it on a directory with the changed file.
-    check-exported: false
+    # check-exported: false
   unparam:
     # Inspect exported functions, default is false. Set to true if no external program/library imports your code.
     # XXX: if you enable this setting, unparam will report a lot of false-positives in text editors:
@@ -243,7 +316,7 @@ linters:
   disable-all: true
   enable:
     - bodyclose
-    # - depguard
+    - depguard
     - dogsled
     - dupl
     - errcheck
