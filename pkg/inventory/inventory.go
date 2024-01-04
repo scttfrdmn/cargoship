@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/mholt/archiver/v4"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/cloud"
@@ -29,7 +31,6 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/karrick/godirwalk"
-	"github.com/rs/zerolog/log"
 	"golang.org/x/tools/godoc/util"
 )
 
@@ -256,18 +257,19 @@ func (di Inventory) SummaryLog() {
 	for k, item := range di.IndexSummaries {
 		totalC += item.Count
 		totalS += item.Size
-		log.Info().
-			Int("index", k).
-			Uint("file-count", item.Count).
-			Int64("file-size", item.Size).
-			Str("file-size-human", humanize.Bytes(uint64(item.Size))).
-			Msg("🧳 suitcase archive created")
+
+		slog.Info("suitcase archive created",
+			"index", k,
+			"file-count", item.Count,
+			"file-size", item.Size,
+			"file-size-human", humanize.Bytes(uint64(item.Size)),
+		)
 	}
-	log.Info().
-		Uint("file-count", totalC).
-		Int64("file-size", totalS).
-		Str("file-size-human", humanize.Bytes(uint64(totalS))).
-		Msg("🧳 total suitcase archives")
+	slog.Info("total suitcase archives",
+		"file-count", totalC,
+		"file-size", totalS,
+		"file-size-human", humanize.Bytes(uint64(totalS)),
+	)
 }
 
 // IndexSummary will give an overall summary to a set of suitcases
@@ -495,11 +497,11 @@ func (di *Inventory) IndexWithSize(maxSize int64) error {
 				}
 			}
 			if !sorted {
-				log.Debug().
-					Str("path", item.Path).
-					Int64("size", item.Size).
-					Int("numCases", numCases).
-					Msg("index is full, adding new index")
+				slog.Debug("index is full, adding new index",
+					"path", item.Path,
+					"size", item.Size,
+					"numCases", numCases,
+				)
 				numCases++
 				caseSet[numCases] = maxSize - item.Size
 				item.SuitcaseIndex = numCases
@@ -555,19 +557,19 @@ func NewDirectoryInventory(opts *Options) (*Inventory, error) {
 	}
 
 	if len(ret.InternalMetadata) == 0 && len(ret.ExternalMetadata) == 0 {
-		log.Debug().
-			Str("internal-glob", opts.InternalMetadataGlob).
-			Strs("external-files", opts.ExternalMetadataFiles).
-			Strs("topLevelDirectories", opts.Directories).
-			Msg("no metadata found")
+		log.Debug("no metadata found",
+			"internal-glob", opts.InternalMetadataGlob,
+			"external-files", opts.ExternalMetadataFiles,
+			"topLevelDirectories", opts.Directories,
+		)
 	}
 
 	for _, dir := range opts.Directories {
 		if !isDirectory(dir) {
-			log.Warn().Str("path", dir).Msg("top level directory does not exist")
+			log.Warn("top level directory does not exist", "directory", dir)
 			return nil, errors.New("not a directory")
 		}
-		log.Debug().Str("dir", dir).Msg("walking directory")
+		log.Debug("walking directory", "directory", dir)
 		err := walkDir(dir, opts, ret)
 		if err != nil {
 			if err.Error() != "halt" {
@@ -614,13 +616,13 @@ func GetMetadataWithFiles(files []string) (map[string]string, error) {
 func printMemUsage() {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	log.Debug().
-		Uint64("allocated", m.Alloc).
-		Uint64("total-allocated", m.TotalAlloc).
-		Float64("allocated-percent", (float64(m.Alloc)/float64(m.TotalAlloc))*float64(100)).
-		Uint64("system", m.Sys).
-		Uint64("gc-count", uint64(m.NumGC)).
-		Msg("Memory Usage in MB")
+	slog.Debug("memory usage in MB",
+		"allocated", m.Alloc,
+		"total-allocated", m.TotalAlloc,
+		"allocated-percent", (float64(m.Alloc)/float64(m.TotalAlloc))*float64(100),
+		"system", m.Sys,
+		"gc-count", uint64(m.NumGC),
+	)
 }
 
 // NewInventoryWithFilename returns a new DirectoryInventory from an inventory File
@@ -1068,11 +1070,11 @@ func mustTempDir() string {
 
 func checkItemSize(item *File, maxSize int64) error {
 	if item.Size > maxSize {
-		log.Warn().
-			Str("path", item.Path).
-			Int64("size", item.Size).
-			Int64("maxSize", maxSize).
-			Msg("file is too large for suitcase")
+		log.Warn("file is too large for suitcase",
+			"path", item.Path,
+			"size", item.Size,
+			"maxSize", maxSize,
+		)
 		return errors.New("index contains at least one file that is too large")
 	}
 	return nil
@@ -1146,7 +1148,7 @@ func walkDir(dir string, opts *Options, ret *Inventory) error {
 			if opts.IncludeArchiveTOCDeep || (opts.IncludeArchiveTOC && isTOCAble(path)) {
 				var aerr error
 				if invf.ArchiveTOC, aerr = ArchiveTOC(path); aerr != nil {
-					log.Debug().Err(aerr).Str("path", path).Msg("error attempting to look at table of contents in file")
+					slog.Debug("error attemping to look at table of contents in file", "file", path)
 				}
 			}
 
@@ -1171,12 +1173,12 @@ func walkDir(dir string, opts *Options, ret *Inventory) error {
 func shouldSkipSymlink(path string) (string, bool) {
 	target, eerr := filepath.EvalSymlinks(path)
 	if eerr != nil {
-		log.Debug().Err(eerr).Msg("error evaluating symlink")
+		slog.Debug("error evaluating symlink", "error", eerr)
 		return target, true
 	}
 	s, serr := os.Stat(target)
 	if serr != nil {
-		log.Warn().Err(serr).Msg("Error stating file")
+		slog.Debug("error stating file", "error", serr)
 		return target, true
 	}
 	// Finally, if a link to a dir...skip it always
@@ -1187,9 +1189,8 @@ func shouldSkipSymlink(path string) (string, bool) {
 }
 
 func haltIfLimit(opts *Options, addedCount int) error {
-	log.Warn().Int("limit", opts.LimitFileCount).Int("added", addedCount)
 	if opts.LimitFileCount > 0 && addedCount >= opts.LimitFileCount {
-		log.Warn().Msg("Reached file count limit, stopping walk")
+		slog.Warn("Reached file count limit, stopping walk", "limit", opts.LimitFileCount, "added", addedCount)
 		return errHalt
 	}
 	return nil
@@ -1242,7 +1243,7 @@ func isDirectory(path string) bool {
 func filenameMatchesGlobs(filename string, globs []string) bool {
 	for _, glob := range globs {
 		if ok, _ := filepath.Match(glob, filename); ok {
-			log.Debug().Str("path", filename).Msg("matched on file globbing")
+			slog.Debug("matched on file globbing", "path", filename)
 			return true
 		}
 	}
@@ -1464,7 +1465,7 @@ func ArchiveTOC(fn string) ([]string, error) {
 		return nil, err
 	}
 	ret := []string{}
-	log := log.With().Str("archive", fn).Logger()
+	log := slog.With("archive", fn)
 
 	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		// Handle: https://github.com/mholt/archiver/issues/383
@@ -1478,7 +1479,7 @@ func ArchiveTOC(fn string) ([]string, error) {
 				return err
 			}
 		*/
-		log.Debug().Str("path", path).Msg("examing")
+		log.Debug("examining path", "path", path)
 		if !d.IsDir() {
 			ret = append(ret, path)
 			return nil
@@ -1516,7 +1517,7 @@ func CollectionWithDirs(d []string) (*Collection, error) {
 			if strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml") {
 				i, err := NewInventoryWithFilename(path)
 				if err != nil {
-					log.Debug().Str("path", path).Msg("Ignoring file as it did not load as an inventory")
+					log.Debug("ignoring file as it did not load as an inventory", "file", path)
 				}
 				ret[path] = *i
 			}

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"github.com/drewstinnett/gout/v2"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 )
@@ -42,7 +41,7 @@ directories:
 			collection, err := inventory.CollectionWithDirs(searchD)
 			checkErr(err, "")
 			for inventoryF, i := range *collection {
-				log.Info().Str("pattern", pattern).Str("inventory", inventoryF).Msg("find running")
+				logger.Info("find running", "pattern", pattern, "inventory", inventoryF)
 				results := i.Search(pattern)
 				gout.MustPrint(results)
 			}

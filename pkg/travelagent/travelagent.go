@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rs/zerolog/log"
+	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/cloud"
@@ -119,11 +120,11 @@ func (t TravelAgent) Upload(fn string, c chan rclone.TransferStatus) (int64, err
 		if err != nil {
 			return 0, err
 		}
-		log.Info().
-			Str("file", path.Base(fn)).
-			Str("destination", uploadCred.Destination).
-			Str("expiration", fmt.Sprint(time.Duration(uploadCred.ExpireSeconds)*time.Second)).
-			Msg("☀️ Got cloud credentials to upload file")
+		slog.Info("got cloud credentials to upload file",
+			"file", path.Base(fn),
+			"destination", uploadCred.Destination,
+			"expiration", fmt.Sprint(time.Duration(uploadCred.ExpireSeconds)*time.Second),
+		)
 
 		trans := cloud.Transporter{
 			Config: transporters.Config{
@@ -135,11 +136,11 @@ func (t TravelAgent) Upload(fn string, c chan rclone.TransferStatus) (int64, err
 		}
 
 		if serr := trans.SendWithChannel(fn, t.UniquePrefix, c); serr != nil {
-			log.Warn().
-				Int("current-attempt", attempt).
-				Int("max-retries", t.uploadRetries).
-				Err(serr).
-				Msg("upload failed, sleeping then will try again")
+			slog.Warn("upload failed, sleeping then will try again",
+				"current-attempt", attempt,
+				"max-retries", t.uploadRetries,
+				"error", serr,
+			)
 			time.Sleep(t.uploadRetryTime)
 			attempt++
 		} else {
@@ -149,7 +150,7 @@ func (t TravelAgent) Upload(fn string, c chan rclone.TransferStatus) (int64, err
 	if uploaded {
 		fstat, err := os.Stat(fn)
 		if err != nil {
-			log.Warn().Str("file", fn).Msg("could not determine filesize")
+			return 0, fmt.Errorf("could stat file: %v", fn)
 		}
 		return fstat.Size(), nil
 	}
@@ -182,7 +183,7 @@ func (t *TravelAgent) getCredentials() (*credentialResponse, error) {
 func (t TravelAgent) Update(s StatusUpdate) (*StatusUpdateResponse, error) {
 	// In case we don't wanna truly finalize...
 	if t.skipFinalize && (s.Status == StatusComplete) {
-		log.Warn().Str("component", s.Name).Msg("☀️ keeping status as InProgress since we want to skip the finalize")
+		log.Warn("keeping status as InProgress since we want to skip the finalize", "component", s.Name)
 		s.Status = StatusInProgress
 	}
 	var r StatusUpdateResponse
@@ -307,6 +308,22 @@ func WithPrintCurl() Option {
 func WithToken(s string) Option {
 	return success(func(t *TravelAgent) {
 		t.Token = s
+	})
+}
+
+// WithCredentialBlob sets the url and password from a base64 encoded json blob
+func WithCredentialBlob(s string) Option {
+	creds, err := blobToCred(s)
+	if err != nil {
+		return failure(err)
+	}
+	cURL, err := url.Parse(creds.URL)
+	if err != nil {
+		return failure(err)
+	}
+	return success(func(t *TravelAgent) {
+		t.Token = creds.Token
+		t.URL = cURL
 	})
 }
 
@@ -458,7 +475,7 @@ func NewStatusUpdate(r rclone.TransferStatus) *StatusUpdate {
 		}
 
 	case len(r.Stats.Transferring) > 1:
-		log.Warn().Interface("trans", r.Stats.Transferring).Msg("☀️ hmmm...found multiple files uploading...we aren't handling this correctly")
+		log.Warn("hmmm...found multiple files uploading...we aren't handling this correctly", "trans", r.Stats.Transferring)
 	}
 
 	switch {

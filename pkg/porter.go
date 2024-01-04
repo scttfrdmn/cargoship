@@ -19,17 +19,17 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"log/slog"
 	"os"
 	"path"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/log"
 	"github.com/dustin/go-humanize"
 	"github.com/mitchellh/go-homedir"
-	"github.com/rs/zerolog/log"
 
-	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
@@ -49,7 +49,7 @@ type Porter struct {
 	hasTravelAgent   bool
 	Inventory        *inventory.Inventory
 	InventoryHash    string
-	Logger           *zerolog.Logger
+	Logger           *slog.Logger
 	HashAlgorithm    inventory.HashAlgorithm
 	Hashes           []config.HashSet
 	UserOverrides    *viper.Viper
@@ -64,7 +64,7 @@ type Porter struct {
 // New returns a new porter using functional options
 func New(options ...Option) *Porter {
 	p := &Porter{
-		Logger: &log.Logger,
+		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 	}
 	for _, opt := range options {
 		opt(p)
@@ -126,7 +126,7 @@ func WithCmdArgs(cmd *cobra.Command, args []string) func(*Porter) {
 }
 
 // WithLogger sets the logger at create
-func WithLogger(l *zerolog.Logger) func(*Porter) {
+func WithLogger(l *slog.Logger) func(*Porter) {
 	return func(p *Porter) {
 		p.Logger = l
 	}
@@ -161,7 +161,7 @@ func (p Porter) CreateHashes(s []string) ([]config.HashSet, error) {
 			return nil, err
 		}
 		defer dclose(fh)
-		p.Logger.Info().Str("file", f).Msg("💼 created file")
+		p.Logger.Info("created file", "file", f)
 		hs = append(hs, config.HashSet{
 			Filename: strings.TrimPrefix(f, p.Destination+"/"),
 			Hash:     MustCalculateHash(fh, p.HashAlgorithm.String()),
@@ -175,7 +175,7 @@ func (p Porter) SendUpdate(u travelagent.StatusUpdate) error {
 	if !p.hasTravelAgent {
 		return nil
 	}
-	log := *p.Logger
+	log := p.Logger
 
 	resp, err := p.TravelAgent.Update(u)
 	if err != nil {
@@ -183,24 +183,22 @@ func (p Porter) SendUpdate(u travelagent.StatusUpdate) error {
 	}
 	if p.Logger != nil {
 		if u.Name != "" {
-			log = log.With().
-				Str("component", u.Name).
-				Logger()
+			log = p.Logger.With("component", u.Name)
 			if u.SizeBytes > 0 {
-				log = log.With().
-					Str("transferred", humanize.Bytes(uint64(u.TransferredBytes))).
-					Str("total", humanize.Bytes(uint64(u.SizeBytes))).
-					Str("avg-speed", fmt.Sprintf("%v/s", humanize.Bytes(uint64(u.Speed)))).
-					Logger()
+				log = log.With(
+					"transferred", humanize.Bytes(uint64(u.TransferredBytes)),
+					"total", humanize.Bytes(uint64(u.SizeBytes)),
+					"avg-speed", fmt.Sprintf("%v/s", humanize.Bytes(uint64(u.Speed))),
+				)
 				if u.PercentDone > 0 {
-					log = log.With().Str("progress", fmt.Sprintf("%v%%", u.PercentDone)).Logger()
+					log = log.With("progress", fmt.Sprintf("%v%%", u.PercentDone))
 				}
 			}
 		}
 
 		for _, msg := range resp.Messages {
 			if strings.TrimSpace(msg) != "updated fields:" {
-				log.Info().Msg(prefixLog(msg))
+				log.Info(msg)
 			}
 		}
 	}
@@ -208,9 +206,11 @@ func (p Porter) SendUpdate(u travelagent.StatusUpdate) error {
 	return nil
 }
 
+/*
 func prefixLog(s string) string {
 	return "☁️ " + s
 }
+*/
 
 func dclose(c io.Closer) {
 	err := c.Close()
@@ -266,10 +266,13 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 	// Create an inventory file if one isn't specified
 	var inventoryD *inventory.Inventory
 	if inventoryFile == "" {
-		p.Logger.Debug().Msg("💼 no inventory file specified, we're going to go ahead and create one")
+		p.Logger.Debug("no inventory file specified, we're going to go ahead and create one")
 		var outF *os.File
 		var err error
 		p.UserOverrides = p.getUserOverrides()
+		if p.Destination == "" && p.WizardForm != nil && p.WizardForm.Destination != "" {
+			p.Destination = p.WizardForm.Destination
+		}
 		if p.Destination == "" {
 			p.Destination = mustTempDir()
 		}
@@ -279,7 +282,7 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 			return nil, err
 		}
 		inventoryFile = outF.Name()
-		log.Debug().Str("file", inventoryFile).Msg("💼 created inventory file")
+		slog.Warn("created inventory file", "file", inventoryFile)
 	} else {
 		var err error
 		inventoryD, err = inventory.NewInventoryWithFilename(inventoryFile)
@@ -410,7 +413,7 @@ func (p *Porter) RetryTransport(f string, statusC chan rclone.TransferStatus, re
 	attempt := 1
 	for (!created && attempt == 1) || attempt <= retryCount {
 		if serr := p.Inventory.Options.TransportPlugin.SendWithChannel(f, p.InventoryHash, statusC); serr != nil {
-			log.Warn().Str("retry-interval", retryInterval.String()).Msg("💼 suitcase transport failed, sleeping, then will retry")
+			p.Logger.Warn("suitcase transport failed, sleeping, then will retry", "retry-interval", retryInterval.String())
 			time.Sleep(retryInterval)
 		} else {
 			created = true
@@ -431,10 +434,10 @@ func (p *Porter) ShipItems(items []string, uniqDir string) {
 	go func() {
 		for {
 			status := <-c
-			log.Debug().Interface("status", status).Msgf("💼 status update")
+			p.Logger.Debug("status update", "status", status)
 			if p.TravelAgent != nil {
 				if err := p.SendUpdate(*travelagent.NewStatusUpdate(status)); err != nil {
-					log.Warn().Err(err).Msg("💼 could not update travel agent")
+					p.Logger.Warn("could not update travel agent", "error", err)
 				}
 			}
 		}
@@ -443,7 +446,7 @@ func (p *Porter) ShipItems(items []string, uniqDir string) {
 	for _, fn := range items {
 		item := path.Join(p.Destination, fn)
 		if err := p.Inventory.Options.TransportPlugin.SendWithChannel(item, uniqDir, c); err != nil {
-			log.Warn().Err(err).Str("file", item).Msg("💼 error copying file")
+			p.Logger.Warn("error copying file", "file", item)
 		}
 	}
 }
@@ -473,12 +476,25 @@ func copy(src, dst string) error {
 	return err
 }
 
+func envOrTmpDir(e string) string {
+	got := os.Getenv(e)
+	if got == "" {
+		tdir, err := os.MkdirTemp("", "suitcasectl")
+		if err != nil {
+			panic(err)
+		}
+		return tdir
+	}
+	return e
+}
+
 // RunForm uses an interactive form to select some base pieces and package up date in to suitcases
 func (p *Porter) RunForm() error {
 	p.WizardForm = &inventory.WizardForm{
-		Source:      os.Getenv("SUITCASECTL_SOURCE"),
-		Destination: os.Getenv("SUITCASECTL_DESTINATION"),
-		MaxSize:     "200Gb",
+		Source:           os.Getenv("SUITCASECTL_SOURCE"),
+		Destination:      envOrTmpDir("SUITCASECTL_DESTINATION"),
+		MaxSize:          "200Gb",
+		TravelAgentToken: os.Getenv("SUITCASECTL_TRAVELAGENT"),
 	}
 
 	if err := huh.NewForm(
@@ -486,7 +502,8 @@ func (p *Porter) RunForm() error {
 			huh.NewInput().
 				Title("Source of the data you want to package up").
 				Placeholder("/some/local/dir").
-				Description("Files within the given directory will be packaged up in to suitcases and transferred to their final destination.\nDefaults to SUITCASECTL_SOURCE if set in the env").
+				Description(`Files within the given directory will be packaged up in to suitcases and transferred to their final destination.
+Defaults to SUITCASECTL_SOURCE if set in the env`).
 				Validate(validateIsDir).
 				Value(&p.WizardForm.Source),
 			huh.NewInput().
@@ -500,7 +517,8 @@ func (p *Porter) RunForm() error {
 				Value(&p.WizardForm.Destination),
 			huh.NewInput().
 				Title("Travel Agent Token").
-				Description("Using a Travel Agent? Enter it here. If not, you can just leave this blank").
+				Description(`Using a Travel Agent? Enter it here. If not, you can just leave this blank.
+Defaults to SUITCASECTL_TRAVELAGENT if set in the env`).
 				Value(&p.WizardForm.TravelAgentToken),
 		),
 	).Run(); err != nil {
@@ -509,11 +527,11 @@ func (p *Porter) RunForm() error {
 
 	var terr error
 	var ta *travelagent.TravelAgent
-	if ta, terr = travelagent.New(travelagent.WithToken(p.WizardForm.TravelAgentToken)); terr != nil {
-		log.Debug().Err(terr).Msg("🧳 no valid travel agent found")
+	if ta, terr = travelagent.New(travelagent.WithCredentialBlob(p.WizardForm.TravelAgentToken)); terr != nil {
+		p.Logger.Warn("no valid travel agent found", "error", terr)
 	} else {
 		p.SetTravelAgent(ta)
-		log.Info().Str("url", p.TravelAgent.StatusURL()).Msg("☀️ Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel")
+		log.Info("Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel", "url", p.TravelAgent.StatusURL())
 		if serr := p.SendUpdate(travelagent.StatusUpdate{
 			Status: travelagent.StatusPending,
 		}); serr != nil {

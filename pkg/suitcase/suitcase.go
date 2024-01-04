@@ -10,13 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path"
 	"sort"
 	"strings"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
@@ -163,28 +163,27 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.Inventory, index int, state
 	var suitcaseHashes []config.HashSet
 
 	for _, f := range i.Files {
-		l := log.With().
-			Str("path", f.Path).
-			Int("index", index).
-			Logger()
+		l := slog.With(
+			"path", f.Path,
+			"index", index)
 		if f.SuitcaseIndex != index {
 			continue
 		}
 
-		l.Debug().
-			Uint("cur", cur).
-			Uint("total", total).
-			Msg("Adding file to suitcase")
+		l.Debug("Adding file to suitcase",
+			"cur", cur,
+			"total", total,
+		)
 
 		if s.Config().EncryptInner {
 			err = s.AddEncrypt(*f)
 			if err != nil {
-				l.Warn().Err(err).Msg("Failed to add file to suitcase")
+				l.Warn("Failed to add file to suitcase", "error", err)
 			}
 		} else {
 			hs, err := s.Add(*f)
 			if err != nil {
-				l.Warn().Err(err).Msg("Failed to add file to suitcase")
+				l.Warn("Failed to add file to suitcase", "error", err)
 			}
 			if s.Config().HashInner {
 				suitcaseHashes = append(suitcaseHashes, *hs)
@@ -214,17 +213,17 @@ func fileExists(filename string) bool {
 
 // validateSuitcase checks a suitcase file against an inventory, and ensures it is up to date
 func validateSuitcase(s string, i inventory.Inventory, idx int) bool {
-	log := log.With().Str("suitcase", s).Logger()
+	log := slog.With("suitcase", s)
 	reqFiles := map[string]bool{}
 	for _, item := range i.Files {
 		if item.SuitcaseIndex == idx {
 			reqFiles[item.Destination] = false
 		}
 	}
-	log.Debug().Msg("about to get TOC")
+	log.Debug("about to get TOC")
 	toc, err := inventory.ArchiveTOC(s)
 	if err != nil {
-		log.Debug().Str("suitcase", s).Msg("file appears to be corrupted, we'll recreate it if needed")
+		log.Debug("file appears to be corrupted, we'll recreate it if needed", "suitcase", s)
 		return false
 	}
 	for _, item := range toc {
@@ -233,7 +232,7 @@ func validateSuitcase(s string, i inventory.Inventory, idx int) bool {
 
 	for k, v := range reqFiles {
 		if !v {
-			log.Debug().Str("suitcase", s).Str("file", k).Msg("found suitcase but appears to be incomplete, we'll recreate it if needed")
+			log.Debug("found suitcase but appears to be incomplete, we'll recreate it if needed", "suitcase", s, "file", k)
 			return false
 		}
 	}
@@ -247,7 +246,7 @@ func inProcessName(s string) string {
 // WriteSuitcaseFile will write out the suitcase
 func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.Inventory, index int, stateC chan FillState) (string, error) {
 	targetFn := path.Join(so.Destination, i.SuitcaseNameWithIndex(index))
-	log := log.With().Str("suitcase", targetFn).Logger()
+	log := slog.With("suitcase", targetFn)
 	if fileExists(targetFn) {
 		return targetFn, nil
 	}
@@ -269,7 +268,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.Inventory, index in
 	}
 	defer dclose(s)
 
-	log.Debug().Str("destination", targetFn).Str("format", so.Format).Bool("encryptInner", so.EncryptInner).Int("index", index).Msg("Filling suitcase")
+	log.Debug("Filling suitcase", "destination", targetFn, "format", so.Format, "encrypt-inner", so.EncryptInner)
 	hashes, err := FillWithInventoryIndex(s, i, index, stateC)
 	if err != nil {
 		return "", err
@@ -398,6 +397,6 @@ func WriteHashFile(hs []config.HashSet, o io.Writer) error {
 func dclose(c io.Closer) {
 	err := c.Close()
 	if err != nil {
-		log.Warn().Err(err).Send()
+		slog.Warn("error closing file", "error", err)
 	}
 }

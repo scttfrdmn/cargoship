@@ -9,8 +9,8 @@ import (
 	"bufio"
 	"errors"
 	"io"
+	"log/slog"
 
-	"github.com/rs/zerolog/log"
 	"github.com/vjorlikowski/yaml"
 )
 
@@ -26,7 +26,7 @@ func (r *VAMLer) Write(w io.Writer, i *Inventory) error {
 		return errors.New("inventory is nil")
 	}
 
-	log.Debug().Msg("About to encode inventory in to yaml file")
+	slog.Debug("About to encode inventory in to yaml file")
 	writer := bufio.NewWriterSize(w, 10240)
 	defer func() {
 		err := writer.Flush()
@@ -37,7 +37,7 @@ func (r *VAMLer) Write(w io.Writer, i *Inventory) error {
 
 	// Pass the buffered IO writer to the encoder
 	printMemUsage()
-	log.Debug().Msg("About to create a new VAML encoder")
+	slog.Debug("About to create a new VAML encoder")
 	enc := yaml.NewEncoder(writer)
 	return enc.Encode(i)
 }

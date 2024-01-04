@@ -7,14 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"runtime/debug"
 	"runtime/pprof"
+	"time"
+
+	"github.com/charmbracelet/log"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/dustin/go-humanize"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
+	slogmulti "github.com/samber/slog-multi"
 	"github.com/spf13/cobra"
 
 	homedir "github.com/mitchellh/go-homedir"
@@ -31,6 +34,7 @@ var (
 	// Profiling data
 	profile bool
 	cpufile *os.File
+	logger  *slog.Logger
 )
 
 // NewRootCmd represents the base command when called without any subcommands
@@ -85,14 +89,6 @@ func NewRootCmd(lo io.Writer) *cobra.Command {
 	return cmd
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
-/*
-func Execute() {
-	cobra.CheckErr(NewRootCmd(nil).Execute())
-}
-*/
-
 func init() {
 	cobra.OnInitialize(initConfig)
 
@@ -137,67 +133,77 @@ func checkErr(err error, msg string) {
 		msg = "Fatal Error"
 	}
 	if err != nil {
-		log.Fatal().Err(err).Msg(msg)
+		slog.Error(msg, "error", err)
+		os.Exit(2)
 	}
 }
 
-func setupLogging(lo io.Writer) {
-	if lo == nil {
-		panic("must set lo")
+func newLoggerOpts() log.Options {
+	logOpts := log.Options{
+		ReportTimestamp: true,
+		TimeFormat:      time.Kitchen,
+		Prefix:          "suitcasectl 🧳 ",
+		Level:           log.InfoLevel,
+		ReportCaller:    trace,
 	}
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	if Verbose {
-		log.Info().Msg("Verbose output enabled")
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		logOpts.Level = log.DebugLevel
 	}
-	// If we have an outDir, also write the logs to a file
-	multi := io.MultiWriter(zerolog.ConsoleWriter{Out: lo})
-	// multi := zerolog.MultiLevelWriter(lo, zerolog.ConsoleWriter{Out: os.Stderr})
-	if trace {
-		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
-	} else {
-		log.Logger = zerolog.New(multi).With().Timestamp().Logger()
-	}
+
+	return logOpts
 }
 
-func setupSingleLoggingWithCmd(cmd *cobra.Command) {
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	if Verbose {
-		log.Info().Msg("Verbose output enabled")
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+func newJSONLoggerOpts() log.Options {
+	logOpts := log.Options{
+		ReportTimestamp: true,
+		Prefix:          "suitcasectl",
+		Level:           log.InfoLevel,
+		ReportCaller:    trace,
+		Formatter:       log.JSONFormatter,
 	}
-	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}).With().Logger()
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: cmd.ErrOrStderr()}).With().Logger()
+	if Verbose {
+		logOpts.Level = log.DebugLevel
+	}
+
+	return logOpts
+}
+
+func setupLogging(w io.Writer) {
+	if w == nil {
+		panic("must set writer")
+	}
+
+	logger = slog.New(log.NewWithOptions(w, newLoggerOpts()))
+	slog.SetDefault(logger)
 }
 
 func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 	// If we have an outDir, also write the logs to a file
-	var multi io.Writer
 	o, err := getDestinationWithCobra(cmd)
 	if err != nil {
 		return err
 	}
 	if o == "" {
-		log.Warn().Msg("No output directory specified")
 		return errors.New("no output directory specified")
 	}
 	ptr := mustPorterWithCmd(cmd)
-	multi = io.MultiWriter(zerolog.ConsoleWriter{Out: cmd.OutOrStderr()}, ptr.LogFile)
-	if trace {
-		log.Logger = zerolog.New(multi).With().Timestamp().Caller().Logger()
-	} else {
-		log.Logger = zerolog.New(multi).With().Timestamp().Logger()
-	}
+
+	logger = slog.New(
+		slogmulti.Fanout(
+			log.NewWithOptions(cmd.OutOrStdout(), newLoggerOpts()),
+			log.NewWithOptions(ptr.LogFile, newJSONLoggerOpts()),
+		),
+	)
+
+	// Make sure the Porter object still has the right logger
+	ptr.Logger = logger
+	slog.SetDefault(logger)
 	return nil
 }
 
 func globalPersistentPreRun(cmd *cobra.Command, args []string) {
 	// Set up single logging first
-	setupSingleLoggingWithCmd(cmd)
+	// setupSingleLoggingWithCmd(cmd)
 
 	// lo := cmd.OutOrStderr()
 	// fmt.Fprintf(os.Stderr, "OUT IS: %+v\n", &lo)
@@ -216,11 +222,11 @@ func globalPersistentPreRun(cmd *cobra.Command, args []string) {
 		memLimitB, merr := humanize.ParseBytes(memLimit)
 		checkErr(merr, fmt.Sprintf("could not convert %v to bytes", memLimit))
 		debug.SetMemoryLimit(int64(memLimitB))
-		log.Info().Str("mem-limit", memLimit).Uint64("mem-limit-bytes", memLimitB).Msg("overriding memory handling with limit")
+		slog.Info("overriding memory handling with limit", "mem-limit", memLimit, "mem-limit-bytes", memLimitB)
 	}
 	// log.Fatal().Msgf("Profile is set to %+v", profile)
 	if profile {
-		log.Info().Msg("Enabling cpu profiling")
+		slog.Info("enabling cpu profiling")
 		var err error
 		cpufile, err = os.CreateTemp("", "cpuprofile")
 		if err != nil {
@@ -238,9 +244,9 @@ func globalPersistentPostRun(cmd *cobra.Command, args []string) { // nolint:unpa
 		pprof.StopCPUProfile()
 		err := cpufile.Close()
 		if err != nil {
-			log.Warn().Err(err).Str("cpu-profile", cpufile.Name()).Msg("error closing cpu profiler")
+			slog.Warn("error closing cpu profiler", "cpu-profile", cpufile.Name())
 		}
-		log.Info().Str("cpu-profile", cpufile.Name()).Msg("CPU Profile Created")
+		slog.Info("cpu profile created", "cpu-profile", cpufile.Name())
 	}
 
 	// Empty out the outDir so multiple runs can happen

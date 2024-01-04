@@ -5,7 +5,6 @@ import (
 	"io"
 
 	"github.com/mailru/easyjson"
-	"github.com/rs/zerolog/log"
 )
 
 /*
@@ -23,7 +22,6 @@ func (r *EJSONer) Write(w io.Writer, i *Inventory) error {
 	if i == nil {
 		return errors.New("inventory is nil")
 	}
-	log.Debug().Msg("About to encode inventory in to json file")
 	_, err := easyjson.MarshalToWriter(i, w)
 	return err
 }

@@ -17,8 +17,6 @@ import (
 
 	// "github.com/minio/sha256-simd"
 
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/sourcegraph/conc/pool"
 	"github.com/spf13/cobra"
 	porter "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg"
@@ -51,7 +49,7 @@ func newOutDirWithCmd(cmd *cobra.Command) (string, error) {
 func dclose(c io.Closer) {
 	err := c.Close()
 	if err != nil {
-		log.Warn().Err(err).Send()
+		logger.Warn("error closing item", "error", err)
 	}
 }
 
@@ -148,14 +146,14 @@ type processOpts struct {
 }
 
 func startFillStateC(state chan suitcase.FillState, se uint32) {
-	sampled := log.Sample(&zerolog.BasicSampler{N: se})
+	// sampled := log.Sample(&zerolog.BasicSampler{N: se})
+	i := uint32(0)
 	for {
 		st := <-state
-		sampled.Debug().
-			Int("index", st.Index).
-			Uint("current", st.Current).
-			Uint("total", st.Total).
-			Msg("Progress")
+		if i%se == 0 {
+			logger.Debug("progress", "index", st.Index, "current", st.Current, "total", st.Total)
+		}
+		i++
 	}
 }
 
@@ -163,7 +161,7 @@ func startFillStateC(state chan suitcase.FillState, se uint32) {
 func processSuitcases(po *processOpts) []string {
 	ret := make([]string, po.Porter.Inventory.TotalIndexes)
 	p := pool.New().WithMaxGoroutines(po.Concurrency)
-	log.Debug().Int("concurrency", po.Concurrency).Msg("Setting pool guard")
+	logger.Debug("setting pool guard", "concurrency", po.Concurrency)
 	state := make(chan suitcase.FillState)
 
 	// Read in and log state here
@@ -173,10 +171,10 @@ func processSuitcases(po *processOpts) []string {
 	go func() {
 		for {
 			status := <-statusC
-			log.Debug().Interface("status", status).Msgf("status update")
+			logger.Debug("status update", "status", status)
 			if po.Porter.TravelAgent != nil {
 				if err := po.Porter.SendUpdate(*travelagent.NewStatusUpdate(status)); err != nil {
-					log.Warn().Err(err).Msg("could not update travel agent")
+					logger.Warn("could not update travel agent", "error", err)
 				}
 			}
 		}
@@ -186,7 +184,7 @@ func processSuitcases(po *processOpts) []string {
 		p.Go(func() {
 			createdF, err := retryWriteSuitcase(po, i, state)
 			if err != nil {
-				log.Warn().Err(err).Str("file", createdF).Msg("error creating suitcase file, please investigate")
+				logger.Warn("error creating suitcase file, please investigate", "file", createdF)
 			} else {
 				ret[i-1] = createdF
 				// Put Transport plugin here!!
@@ -232,12 +230,13 @@ func retryWriteSuitcase(po *processOpts, i int, state chan suitcase.FillState) (
 	var createdF string
 	var created bool
 	attempt := 1
-	log := log.With().Int("index", i).Logger()
+	log := logger.With("index", i)
+	// log := log.With().Int("index", i).Logger()
 	for (!created && attempt == 1) || (attempt <= po.RetryCount) {
-		log.Debug().Msg("about to write out suitcase file")
+		log.Debug("about to write out suitcase file")
 		createdF, err = suitcase.WriteSuitcaseFile(po.SuitcaseOpts, po.Porter.Inventory, i, state)
 		if err != nil {
-			log.Warn().Str("retry-interval", po.RetryInterval.String()).Msg("suitcase creation failed, sleeping, then will retry")
+			log.Warn("suitcase creation failed, sleeping, then will retry", "interval", po.RetryInterval.String())
 			time.Sleep(po.RetryInterval)
 		} else {
 			created = true
@@ -362,10 +361,10 @@ func porterTravelAgentWithCmd(cmd *cobra.Command, args []string) (*porter.Porter
 	var terr error
 	var ta *travelagent.TravelAgent
 	if ta, terr = travelagent.New(taOpts...); terr != nil {
-		log.Debug().Err(terr).Msg("🧳 no valid travel agent found")
+		logger.Debug("no valid travel agent found", "error", terr)
 	} else {
 		p.SetTravelAgent(ta)
-		log.Info().Str("url", p.TravelAgent.StatusURL()).Msg("☀️ Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel")
+		logger.Info("☀️ Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel", "url", p.TravelAgent.StatusURL())
 		if serr := p.SendUpdate(travelagent.StatusUpdate{
 			Status: travelagent.StatusPending,
 		}); serr != nil {

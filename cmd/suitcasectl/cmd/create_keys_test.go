@@ -14,5 +14,5 @@ func TestCreateKeys(t *testing.T) {
 	cmd.SetArgs([]string{"create", "keys", "--name", "test", "--email", "test@example.com", "--bits", "1024"})
 	err := cmd.Execute()
 	require.NoError(t, err)
-	require.Contains(t, b.String(), "Create key files")
+	require.Contains(t, b.String(), "created key files")
 }

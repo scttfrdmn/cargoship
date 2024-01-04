@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -64,7 +63,6 @@ func BenchmarkNewDirectoryInventory(b *testing.B) {
 		bdd = "../../benchmark_data/"
 	}
 
-	zerolog.SetGlobalLevel(zerolog.FatalLevel)
 	for desc, dataset := range datasets {
 		location := path.Join(bdd, dataset.path)
 		if _, err := os.Stat(location); err == nil {
