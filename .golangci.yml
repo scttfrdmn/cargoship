@@ -180,6 +180,7 @@ linters-settings:
           - "github.com/rclone/rclone/backend/all"
           - "github.com/rclone/rclone/fs/sync"
           - "github.com/rclone/rclone/librclone/librclone"
+          - "github.com/samber/slog-multi"
           - "gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd"
           - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg"
           - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/gpg"

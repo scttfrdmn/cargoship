@@ -270,6 +270,9 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 		var outF *os.File
 		var err error
 		p.UserOverrides = p.getUserOverrides()
+		if p.Destination == "" && p.WizardForm != nil && p.WizardForm.Destination != "" {
+			p.Destination = p.WizardForm.Destination
+		}
 		if p.Destination == "" {
 			p.Destination = mustTempDir()
 		}
@@ -279,7 +282,7 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 			return nil, err
 		}
 		inventoryFile = outF.Name()
-		slog.Debug("created inventory file", "file", inventoryFile)
+		slog.Warn("created inventory file", "file", inventoryFile)
 	} else {
 		var err error
 		inventoryD, err = inventory.NewInventoryWithFilename(inventoryFile)
@@ -473,12 +476,25 @@ func copy(src, dst string) error {
 	return err
 }
 
+func envOrTmpDir(e string) string {
+	got := os.Getenv(e)
+	if got == "" {
+		tdir, err := os.MkdirTemp("", "suitcasectl")
+		if err != nil {
+			panic(err)
+		}
+		return tdir
+	}
+	return e
+}
+
 // RunForm uses an interactive form to select some base pieces and package up date in to suitcases
 func (p *Porter) RunForm() error {
 	p.WizardForm = &inventory.WizardForm{
-		Source:      os.Getenv("SUITCASECTL_SOURCE"),
-		Destination: os.Getenv("SUITCASECTL_DESTINATION"),
-		MaxSize:     "200Gb",
+		Source:           os.Getenv("SUITCASECTL_SOURCE"),
+		Destination:      envOrTmpDir("SUITCASECTL_DESTINATION"),
+		MaxSize:          "200Gb",
+		TravelAgentToken: os.Getenv("SUITCASECTL_TRAVELAGENT"),
 	}
 
 	if err := huh.NewForm(
@@ -486,7 +502,8 @@ func (p *Porter) RunForm() error {
 			huh.NewInput().
 				Title("Source of the data you want to package up").
 				Placeholder("/some/local/dir").
-				Description("Files within the given directory will be packaged up in to suitcases and transferred to their final destination.\nDefaults to SUITCASECTL_SOURCE if set in the env").
+				Description(`Files within the given directory will be packaged up in to suitcases and transferred to their final destination.
+Defaults to SUITCASECTL_SOURCE if set in the env`).
 				Validate(validateIsDir).
 				Value(&p.WizardForm.Source),
 			huh.NewInput().
@@ -500,7 +517,8 @@ func (p *Porter) RunForm() error {
 				Value(&p.WizardForm.Destination),
 			huh.NewInput().
 				Title("Travel Agent Token").
-				Description("Using a Travel Agent? Enter it here. If not, you can just leave this blank").
+				Description(`Using a Travel Agent? Enter it here. If not, you can just leave this blank.
+Defaults to SUITCASECTL_TRAVELAGENT if set in the env`).
 				Value(&p.WizardForm.TravelAgentToken),
 		),
 	).Run(); err != nil {
@@ -509,8 +527,8 @@ func (p *Porter) RunForm() error {
 
 	var terr error
 	var ta *travelagent.TravelAgent
-	if ta, terr = travelagent.New(travelagent.WithToken(p.WizardForm.TravelAgentToken)); terr != nil {
-		p.Logger.Debug("no valid travel agent found", "error", terr)
+	if ta, terr = travelagent.New(travelagent.WithCredentialBlob(p.WizardForm.TravelAgentToken)); terr != nil {
+		p.Logger.Warn("no valid travel agent found", "error", terr)
 	} else {
 		p.SetTravelAgent(ta)
 		log.Info("Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel", "url", p.TravelAgent.StatusURL())

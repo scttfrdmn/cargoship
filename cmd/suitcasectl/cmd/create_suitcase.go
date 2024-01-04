@@ -259,16 +259,6 @@ func uploadMeta(ptr *porter.Porter, mfiles []string) error {
 			}()
 		}
 		wg.Wait()
-		/*
-			if !mustGetCmd[bool](ptr.Cmd, "travel-agent-skip-finalize") {
-				if err := ptr.SendUpdate(travelagent.StatusUpdate{
-					CompletedAt: nowPtr(),
-					Status:      travelagent.StatusComplete,
-				}); err != nil {
-					return err
-				}
-			}
-		*/
 	}
 	return nil
 }

@@ -153,6 +153,21 @@ func newLoggerOpts() log.Options {
 	return logOpts
 }
 
+func newJSONLoggerOpts() log.Options {
+	logOpts := log.Options{
+		ReportTimestamp: true,
+		Prefix:          "suitcasectl",
+		Level:           log.InfoLevel,
+		ReportCaller:    trace,
+		Formatter:       log.JSONFormatter,
+	}
+	if Verbose {
+		logOpts.Level = log.DebugLevel
+	}
+
+	return logOpts
+}
+
 func setupLogging(w io.Writer) {
 	if w == nil {
 		panic("must set writer")
@@ -162,7 +177,6 @@ func setupLogging(w io.Writer) {
 	slog.SetDefault(logger)
 }
 
-/*
 func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 	// If we have an outDir, also write the logs to a file
 	o, err := getDestinationWithCobra(cmd)
@@ -173,40 +187,11 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 		return errors.New("no output directory specified")
 	}
 	ptr := mustPorterWithCmd(cmd)
-
-	logger = slog.New(
-		log.NewWithOptions(
-			io.MultiWriter(cmd.OutOrStdout(), ptr.LogFile),
-			newLoggerOpts(),
-		),
-	)
-	// Make sure the Porter object still has the right logger
-	ptr.Logger = logger
-	slog.SetDefault(logger)
-	return nil
-}
-*/
-
-func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
-	// If we have an outDir, also write the logs to a file
-	o, err := getDestinationWithCobra(cmd)
-	if err != nil {
-		return err
-	}
-	if o == "" {
-		return errors.New("no output directory specified")
-	}
-	ptr := mustPorterWithCmd(cmd)
-
-	stdLogger := log.NewWithOptions(cmd.OutOrStdout(), newLoggerOpts())
-	jopts := newLoggerOpts()
-	jopts.Formatter = log.JSONFormatter
-	jsonLogger := log.NewWithOptions(ptr.LogFile, jopts)
 
 	logger = slog.New(
 		slogmulti.Fanout(
-			stdLogger,
-			jsonLogger,
+			log.NewWithOptions(cmd.OutOrStdout(), newLoggerOpts()),
+			log.NewWithOptions(ptr.LogFile, newJSONLoggerOpts()),
 		),
 	)
 

@@ -150,7 +150,7 @@ func (t TravelAgent) Upload(fn string, c chan rclone.TransferStatus) (int64, err
 	if uploaded {
 		fstat, err := os.Stat(fn)
 		if err != nil {
-			log.Warn("could not determine filesize", "file", fn)
+			return 0, fmt.Errorf("could stat file: %v", fn)
 		}
 		return fstat.Size(), nil
 	}
@@ -308,6 +308,22 @@ func WithPrintCurl() Option {
 func WithToken(s string) Option {
 	return success(func(t *TravelAgent) {
 		t.Token = s
+	})
+}
+
+// WithCredentialBlob sets the url and password from a base64 encoded json blob
+func WithCredentialBlob(s string) Option {
+	creds, err := blobToCred(s)
+	if err != nil {
+		return failure(err)
+	}
+	cURL, err := url.Parse(creds.URL)
+	if err != nil {
+		return failure(err)
+	}
+	return success(func(t *TravelAgent) {
+		t.Token = creds.Token
+		t.URL = cURL
 	})
 }
 
