@@ -282,7 +282,7 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 			return nil, err
 		}
 		inventoryFile = outF.Name()
-		slog.Warn("created inventory file", "file", inventoryFile)
+		slog.Info("created inventory file", "file", inventoryFile)
 	} else {
 		var err error
 		inventoryD, err = inventory.NewInventoryWithFilename(inventoryFile)
@@ -485,7 +485,15 @@ func envOrTmpDir(e string) string {
 		}
 		return tdir
 	}
-	return e
+	return got
+}
+
+func envOrString(e, d string) string {
+	got := os.Getenv(e)
+	if got != "" {
+		return got
+	}
+	return d
 }
 
 // RunForm uses an interactive form to select some base pieces and package up date in to suitcases
@@ -493,10 +501,11 @@ func (p *Porter) RunForm() error {
 	p.WizardForm = &inventory.WizardForm{
 		Source:           os.Getenv("SUITCASECTL_SOURCE"),
 		Destination:      envOrTmpDir("SUITCASECTL_DESTINATION"),
-		MaxSize:          "200Gb",
+		MaxSize:          envOrString("SUITCASECTL_MAXSIZE", "200Gb"),
 		TravelAgentToken: os.Getenv("SUITCASECTL_TRAVELAGENT"),
 	}
 
+	fmt.Println("!! NOTE: This is still in beta, use with caution\nFor a full experience, use `suitcasectl create suitcase`!!")
 	if err := huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
@@ -508,7 +517,8 @@ Defaults to SUITCASECTL_SOURCE if set in the env`).
 				Value(&p.WizardForm.Source),
 			huh.NewInput().
 				Title("Maximum Suitcase Size").
-				Description("This is the maximum size for each suitcase created").
+				Description(`This is the maximum size for each suitcase created
+Defaults to SUITCASECTL_MAXSIZE if set in the env`).
 				Value(&p.WizardForm.MaxSize),
 			huh.NewInput().
 				Title("Destination for files").
@@ -524,6 +534,9 @@ Defaults to SUITCASECTL_TRAVELAGENT if set in the env`).
 	).Run(); err != nil {
 		return err
 	}
+
+	// Expand the homedir
+	p.WizardForm.Source = mustExpandDir(p.WizardForm.Source)
 
 	var terr error
 	var ta *travelagent.TravelAgent
@@ -582,14 +595,25 @@ func (p *Porter) mergeWizard() error {
 	return nil
 }
 
+func mustExpandDir(s string) string {
+	expanded, err := homedir.Expand(s)
+	if err != nil {
+		panic(err)
+	}
+	return expanded
+}
+
 func validateIsDir(s string) error {
+	if s == "" {
+		return errors.New("must enter a source directory")
+	}
 	expanded, err := homedir.Expand(s)
 	if err != nil {
 		return err
 	}
 	st, err := os.Stat(expanded)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not stat %v, got error: %v", expanded, err)
 	}
 	if !st.IsDir() {
 		return errors.New("this must be a directory, not a file")

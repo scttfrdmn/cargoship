@@ -348,7 +348,7 @@ func Copy(source, destination string, c chan TransferStatus) error {
 	log := slog.With("source", source, "destination", destination)
 	librclone.Initialize()
 
-	// Waiting on https://github.com/rclone/rclone/issues/7439
+	// Waiting on https://github.com/rclone/rclone/is7439sues/
 	// librclone.RPC("options/set", `{"main": {"LogLevel": "ERROR"}}`)
 
 	// params := copyParamsWithSrcDest(source, destination)
