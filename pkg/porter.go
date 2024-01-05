@@ -577,6 +577,12 @@ func (p *Porter) RunWizard() error {
 // mergeWizard puts the fields from the wizard form in to the standard porter spots
 func (p *Porter) mergeWizard() error {
 	// We need options even if we already have the inventory
+	if p.Inventory == nil {
+		return errors.New("must have an Inventory set before merge can happen")
+	}
+	if p.WizardForm == nil {
+		return errors.New("must have a WizardForm set before merge can happen")
+	}
 	p.SuitcaseOpts = &config.SuitCaseOpts{
 		Destination:  p.Destination,
 		EncryptInner: p.Inventory.Options.EncryptInner,
@@ -597,7 +603,7 @@ func (p *Porter) mergeWizard() error {
 	p.CLIMeta.Wizard = p.WizardForm
 
 	logPath := path.Join(p.Destination, "suitcasectl.log")
-	lf, err := os.Create(logPath) // nolint:gosec
+	lf, err := os.Create(path.Clean(logPath))
 	if err != nil {
 		return err
 	}

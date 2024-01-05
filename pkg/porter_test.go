@@ -283,3 +283,39 @@ func TestValidateIsDir(t *testing.T) {
 	require.EqualError(t, validateIsDir(tf.Name()), "this must be a directory, not a file")
 	require.NoError(t, validateIsDir(t.TempDir()))
 }
+
+func TestEnvOrString(t *testing.T) {
+	os.Clearenv()
+	t.Setenv("SOME_ENV", "env-value")
+	require.Equal(t, "env-value", envOrString("SOME_ENV", "not-found"))
+	require.Equal(t, "not-found", envOrString("NEVER_EXISTS", "not-found"))
+}
+
+func TestEnvOrTempDir(t *testing.T) {
+	os.Clearenv()
+	t.Setenv("SOME_TMP", "/tmp/foo")
+	require.Equal(t, "/tmp/foo", envOrTmpDir("SOME_TMP"))
+	require.Contains(t, envOrTmpDir("NEVER_EXISTS"), "suitcasectl")
+}
+
+func TestMergeWizard(t *testing.T) {
+	p := New()
+	require.EqualError(t, p.mergeWizard(), "must have an Inventory set before merge can happen")
+
+	target := t.TempDir()
+	inv, err := inventory.NewDirectoryInventory(&inventory.Options{
+		Directories: []string{target},
+	})
+	require.NoError(t, err)
+	p = New(WithInventory(inv))
+	require.EqualError(t, p.mergeWizard(), "must have a WizardForm set before merge can happen")
+
+	p.WizardForm = &inventory.WizardForm{}
+	require.NoError(t, p.mergeWizard())
+}
+
+func TestSetOrReadInv(t *testing.T) {
+	p := New()
+	require.NoError(t, p.SetOrReadInventory("./testdata/validations/inventory.yaml"))
+	require.EqualError(t, p.SetOrReadInventory("/never-exists.yaml"), "open /never-exists.yaml: no such file or directory")
+}
