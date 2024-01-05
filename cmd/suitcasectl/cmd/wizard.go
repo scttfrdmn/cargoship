@@ -25,7 +25,7 @@ func NewWizardCmd() *cobra.Command {
 			gout.SetWriter(cmd.OutOrStdout())
 
 			p := mustPorterWithCmd(cmd)
-			if err := p.RunForm(); err != nil {
+			if err := p.RunWizard(); err != nil {
 				return err
 			}
 			if err := p.SendUpdate(travelagent.StatusUpdate{

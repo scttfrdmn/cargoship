@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"path"
 	"testing"
 	"time"
@@ -258,4 +259,63 @@ func TestSendUpdate(t *testing.T) {
 
 	err := p.SendUpdate(travelagent.StatusUpdate{})
 	require.NoError(t, err)
+}
+
+func TestCreateForm(t *testing.T) {
+	os.Clearenv()
+	f := createForm(&inventory.WizardForm{
+		Destination: "/foo/destination",
+	})
+	f.Update(f.Init())
+	require.Contains(t, f.View(), "/foo/destination")
+}
+
+func TestMustExpandDir(t *testing.T) {
+	require.Equal(t, "/foo", mustExpandDir("/foo"))
+}
+
+func TestValidateIsDir(t *testing.T) {
+	require.EqualError(t, validateIsDir(""), "directory cannot be blank")
+	require.EqualError(t, validateIsDir("/never/exists/ever"), "could not stat /never/exists/ever, got error: stat /never/exists/ever: no such file or directory")
+	tf, err := os.CreateTemp("", "")
+	require.NoError(t, err)
+	require.FileExists(t, tf.Name())
+	require.EqualError(t, validateIsDir(tf.Name()), "this must be a directory, not a file")
+	require.NoError(t, validateIsDir(t.TempDir()))
+}
+
+func TestEnvOrString(t *testing.T) {
+	os.Clearenv()
+	t.Setenv("SOME_ENV", "env-value")
+	require.Equal(t, "env-value", envOrString("SOME_ENV", "not-found"))
+	require.Equal(t, "not-found", envOrString("NEVER_EXISTS", "not-found"))
+}
+
+func TestEnvOrTempDir(t *testing.T) {
+	os.Clearenv()
+	t.Setenv("SOME_TMP", "/tmp/foo")
+	require.Equal(t, "/tmp/foo", envOrTmpDir("SOME_TMP"))
+	require.Contains(t, envOrTmpDir("NEVER_EXISTS"), "suitcasectl")
+}
+
+func TestMergeWizard(t *testing.T) {
+	p := New()
+	require.EqualError(t, p.mergeWizard(), "must have an Inventory set before merge can happen")
+
+	target := t.TempDir()
+	inv, err := inventory.NewDirectoryInventory(&inventory.Options{
+		Directories: []string{target},
+	})
+	require.NoError(t, err)
+	p = New(WithInventory(inv))
+	require.EqualError(t, p.mergeWizard(), "must have a WizardForm set before merge can happen")
+
+	p.WizardForm = &inventory.WizardForm{}
+	require.NoError(t, p.mergeWizard())
+}
+
+func TestSetOrReadInv(t *testing.T) {
+	p := New()
+	require.NoError(t, p.SetOrReadInventory("./testdata/validations/inventory.yaml"))
+	require.EqualError(t, p.SetOrReadInventory("/never-exists.yaml"), "open /never-exists.yaml: no such file or directory")
 }

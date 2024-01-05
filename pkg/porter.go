@@ -496,17 +496,8 @@ func envOrString(e, d string) string {
 	return d
 }
 
-// RunForm uses an interactive form to select some base pieces and package up date in to suitcases
-func (p *Porter) RunForm() error {
-	p.WizardForm = &inventory.WizardForm{
-		Source:           os.Getenv("SUITCASECTL_SOURCE"),
-		Destination:      envOrTmpDir("SUITCASECTL_DESTINATION"),
-		MaxSize:          envOrString("SUITCASECTL_MAXSIZE", "200Gb"),
-		TravelAgentToken: os.Getenv("SUITCASECTL_TRAVELAGENT"),
-	}
-
-	fmt.Println("!! NOTE: This is still in beta, use with caution\nFor a full experience, use `suitcasectl create suitcase`!!")
-	if err := huh.NewForm(
+func createForm(wf *inventory.WizardForm) *huh.Form {
+	return huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Source of the data you want to package up").
@@ -514,24 +505,43 @@ func (p *Porter) RunForm() error {
 				Description(`Files within the given directory will be packaged up in to suitcases and transferred to their final destination.
 Defaults to SUITCASECTL_SOURCE if set in the env`).
 				Validate(validateIsDir).
-				Value(&p.WizardForm.Source),
+				Value(&wf.Source),
 			huh.NewInput().
 				Title("Maximum Suitcase Size").
 				Description(`This is the maximum size for each suitcase created
 Defaults to SUITCASECTL_MAXSIZE if set in the env`).
-				Value(&p.WizardForm.MaxSize),
+				Value(&wf.MaxSize),
 			huh.NewInput().
 				Title("Destination for files").
 				Placeholder("/srv/cold-storage").
 				Description("When using a travel agent, this will be used for temporary storage. To use your current systems tmp space, leave this field blank.\nDefaults to SUITCASECTL_DESTINATION if set in the env").
-				Value(&p.WizardForm.Destination),
+				Value(&wf.Destination),
 			huh.NewInput().
 				Title("Travel Agent Token").
 				Description(`Using a Travel Agent? Enter it here. If not, you can just leave this blank.
 Defaults to SUITCASECTL_TRAVELAGENT if set in the env`).
-				Value(&p.WizardForm.TravelAgentToken),
+				Value(&wf.TravelAgentToken),
 		),
-	).Run(); err != nil {
+	)
+}
+
+func runForm(wf *inventory.WizardForm) error {
+	fmt.Println("!! NOTE: This is still in beta, use with caution\nFor a full experience, use `suitcasectl create suitcase`!!")
+	if err := createForm(wf).Run(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// RunWizard uses an interactive form to select some base pieces and package up date in to suitcases
+func (p *Porter) RunWizard() error {
+	p.WizardForm = &inventory.WizardForm{
+		Source:           os.Getenv("SUITCASECTL_SOURCE"),
+		Destination:      envOrTmpDir("SUITCASECTL_DESTINATION"),
+		MaxSize:          envOrString("SUITCASECTL_MAXSIZE", "200Gb"),
+		TravelAgentToken: os.Getenv("SUITCASECTL_TRAVELAGENT"),
+	}
+	if err := runForm(p.WizardForm); err != nil {
 		return err
 	}
 
@@ -567,6 +577,12 @@ Defaults to SUITCASECTL_TRAVELAGENT if set in the env`).
 // mergeWizard puts the fields from the wizard form in to the standard porter spots
 func (p *Porter) mergeWizard() error {
 	// We need options even if we already have the inventory
+	if p.Inventory == nil {
+		return errors.New("must have an Inventory set before merge can happen")
+	}
+	if p.WizardForm == nil {
+		return errors.New("must have a WizardForm set before merge can happen")
+	}
 	p.SuitcaseOpts = &config.SuitCaseOpts{
 		Destination:  p.Destination,
 		EncryptInner: p.Inventory.Options.EncryptInner,
@@ -587,7 +603,7 @@ func (p *Porter) mergeWizard() error {
 	p.CLIMeta.Wizard = p.WizardForm
 
 	logPath := path.Join(p.Destination, "suitcasectl.log")
-	lf, err := os.Create(logPath) // nolint:gosec
+	lf, err := os.Create(path.Clean(logPath))
 	if err != nil {
 		return err
 	}
@@ -605,7 +621,7 @@ func mustExpandDir(s string) string {
 
 func validateIsDir(s string) error {
 	if s == "" {
-		return errors.New("must enter a source directory")
+		return errors.New("directory cannot be blank")
 	}
 	expanded, err := homedir.Expand(s)
 	if err != nil {
