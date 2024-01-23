@@ -157,11 +157,15 @@ func startFillStateC(state chan suitcase.FillState, se uint32) {
 	}
 }
 
+func newPool(c int) *pool.ErrorPool {
+	logger.Debug("setting pool guard", "concurrency", c)
+	return pool.New().WithMaxGoroutines(c).WithErrors()
+}
+
 // processSuitcases processes the suitcases
-func processSuitcases(po *processOpts) []string {
+func processSuitcases(po *processOpts) ([]string, error) {
 	ret := make([]string, po.Porter.Inventory.TotalIndexes)
-	p := pool.New().WithMaxGoroutines(po.Concurrency)
-	logger.Debug("setting pool guard", "concurrency", po.Concurrency)
+	p := newPool(po.Concurrency)
 	state := make(chan suitcase.FillState)
 
 	// Read in and log state here
@@ -181,29 +185,33 @@ func processSuitcases(po *processOpts) []string {
 	}()
 	for i := 1; i <= po.Porter.Inventory.TotalIndexes; i++ {
 		i := i
-		p.Go(func() {
+		p.Go(func() error {
 			createdF, err := retryWriteSuitcase(po, i, state)
 			if err != nil {
-				logger.Warn("error creating suitcase file, please investigate", "file", createdF)
-			} else {
-				ret[i-1] = createdF
-				// Put Transport plugin here!!
-				if po.Porter.Inventory.Options.TransportPlugin != nil {
-					// First check...
-					panicIfErr(po.Porter.RetryTransport(createdF, statusC, po.RetryCount, po.RetryInterval))
-				}
-
-				// Insert TravelAgent upload right here yo'
-				if po.Porter.TravelAgent != nil {
-					xferred, err := po.Porter.TravelAgent.Upload(createdF, statusC)
-					panicIfErr(err)
-					atomic.AddInt64(&po.Porter.TotalTransferred, xferred)
+				// logger.Error("error creating suitcase file, please investigate", "error", err)
+				return err
+			}
+			ret[i-1] = createdF
+			// Put Transport plugin here!!
+			if po.Porter.Inventory.Options.TransportPlugin != nil {
+				// First check...
+				if err := po.Porter.RetryTransport(createdF, statusC, po.RetryCount, po.RetryInterval); err != nil {
+					return err
 				}
 			}
+
+			// Insert TravelAgent upload right here yo'
+			if po.Porter.TravelAgent != nil {
+				xferred, err := po.Porter.TravelAgent.Upload(createdF, statusC)
+				if err != nil {
+					return err
+				}
+				atomic.AddInt64(&po.Porter.TotalTransferred, xferred)
+			}
+			return nil
 		})
 	}
-	p.Wait()
-	return ret
+	return ret, p.Wait()
 }
 
 func hasDuplicates(strArr []string) bool {
@@ -236,7 +244,7 @@ func retryWriteSuitcase(po *processOpts, i int, state chan suitcase.FillState) (
 		log.Debug("about to write out suitcase file")
 		createdF, err = suitcase.WriteSuitcaseFile(po.SuitcaseOpts, po.Porter.Inventory, i, state)
 		if err != nil {
-			log.Warn("suitcase creation failed, sleeping, then will retry", "interval", po.RetryInterval.String())
+			log.Warn("suitcase creation failed, sleeping, then will retry", "interval", po.RetryInterval.String(), "error", err)
 			time.Sleep(po.RetryInterval)
 		} else {
 			created = true

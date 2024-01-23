@@ -549,3 +549,13 @@ func TestFormatCompletion(t *testing.T) {
 	got, _ := FormatCompletion(&cobra.Command{}, []string{}, "ya")
 	require.Contains(t, got[0], "yaml")
 }
+
+func TestInaccessableFilesInInventory(t *testing.T) {
+	dir := t.TempDir()
+	tfile := path.Join(dir, "bad-mode.txt")
+	require.NoError(t, os.WriteFile(tfile, []byte("hello"), 0o00))
+	got, err := NewDirectoryInventory(NewOptions(WithDirectories([]string{dir})))
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.EqualError(t, got.ValidateAccess(), fmt.Sprintf("the following files are not readable: %v", tfile))
+}

@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"os/user"
+	"path"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -196,6 +197,20 @@ func (di Inventory) MustJSONString() string {
 		panic(err)
 	}
 	return j
+}
+
+// ValidateAccess ensures that we have access to all files in a given inventory
+func (di Inventory) ValidateAccess() error {
+	invalidFiles := []string{}
+	for _, item := range di.Files {
+		if !isFileReadable(item.Path) {
+			invalidFiles = append(invalidFiles, item.Path)
+		}
+	}
+	if len(invalidFiles) > 0 {
+		return fmt.Errorf("the following files are not readable: %v", strings.Join(invalidFiles, ","))
+	}
+	return nil
 }
 
 // JSONString returns the inventory in JSON and an optional error
@@ -1113,6 +1128,26 @@ func printMemUsageIncr(addedCount, div int) {
 }
 */
 
+func isFileReadable(filePath string) bool {
+	// Open the file in read-only mode
+	file, err := os.Open(path.Clean(filePath))
+	if err != nil {
+		// Error opening the file, it may not be readable
+		return false
+	}
+	defer dclose(file)
+
+	// Check if the file can be read
+	_, err = file.Read([]byte{0})
+	if err == io.EOF {
+		return true
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+	}
+	return err == nil
+}
+
 func walkDir(dir string, opts *Options, ret *Inventory) error {
 	var addedCount int
 	if err := godirwalk.Walk(dir, &godirwalk.Options{
@@ -1542,4 +1577,10 @@ func isTOCAble(s string) bool {
 		}
 	}
 	return false
+}
+
+func dclose(c io.Closer) {
+	if err := c.Close(); err != nil {
+		fmt.Fprint(os.Stderr, "could not close file")
+	}
 }

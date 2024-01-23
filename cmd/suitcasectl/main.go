@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"os"
 
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/cmd/suitcasectl/cmd"
@@ -16,8 +16,7 @@ func main() {
 	// point
 	err := cmd.NewRootCmd(os.Stdout).ExecuteContext(context.Background())
 	if err != nil {
-		// log.Error("error executing command", "error", err)
-		fmt.Fprintf(os.Stderr, "Error executing command, quitting: %v", err)
+		slog.Error("error executing command, quitting", "error", err)
 		os.Exit(3)
 	}
 }

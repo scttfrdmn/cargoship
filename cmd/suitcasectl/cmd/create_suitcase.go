@@ -327,7 +327,7 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 	// Try to print any panics in mostly sane way
 	defer func() {
 		if err := recover(); err != nil {
-			logger.Error("fatail error", "error", fmt.Sprint(err))
+			logger.Error("fatal error", "error", fmt.Sprint(err))
 			os.Exit(3)
 		}
 	}()
@@ -350,8 +350,7 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 		}
 
 		if cerr := createSuitcases(ptr); cerr != nil {
-			logger.Warn("failed to complete createSuitcases", "error", cerr)
-			return err
+			return cerr
 		}
 		return nil
 	}
@@ -383,7 +382,10 @@ func createSuitcases(ptr *porter.Porter) error {
 		popts.RetryCount = mustGetCmd[int](ptr.Cmd, "retry-count")
 		popts.RetryInterval = mustGetCmd[time.Duration](ptr.Cmd, "retry-interval")
 	}
-	createdFiles := processSuitcases(popts)
+	createdFiles, err := processSuitcases(popts)
+	if err != nil {
+		return err
+	}
 
 	if ptr.Cmd != nil {
 		if mustGetCmd[bool](ptr.Cmd, "hash-outer") {
