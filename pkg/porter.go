@@ -392,6 +392,9 @@ func (p *Porter) inventoryGeneration() (*inventory.Inventory, *os.File, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	if verr := i.ValidateAccess(); verr != nil {
+		return nil, nil, verr
+	}
 	outF, err := os.Create(path.Join(p.Destination, fmt.Sprintf("inventory.%v", i.Options.InventoryFormat))) // nolint:gosec
 	if err != nil {
 		return nil, nil, err

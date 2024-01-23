@@ -327,7 +327,7 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 	// Try to print any panics in mostly sane way
 	defer func() {
 		if err := recover(); err != nil {
-			logger.Error("fatail error", "error", fmt.Sprint(err))
+			logger.Error("fatal error", "error", fmt.Sprint(err))
 			os.Exit(3)
 		}
 	}()
