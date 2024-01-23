@@ -178,12 +178,12 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.Inventory, index int, state
 		if s.Config().EncryptInner {
 			err = s.AddEncrypt(*f)
 			if err != nil {
-				l.Warn("Failed to add file to suitcase", "error", err)
+				return nil, fmt.Errorf("encountered error adding file to suitcase: %v", err)
 			}
 		} else {
 			hs, err := s.Add(*f)
 			if err != nil {
-				l.Warn("Failed to add file to suitcase", "error", err)
+				return nil, fmt.Errorf("encountered error adding file to suitcase: %v", err)
 			}
 			if s.Config().HashInner {
 				suitcaseHashes = append(suitcaseHashes, *hs)

@@ -18,6 +18,29 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestSuitcaseWithInaccessibleFiles(t *testing.T) {
+	dir := t.TempDir()
+	f1 := path.Join(dir, "good.txt")
+	f2 := path.Join(dir, "bad.txt")
+	require.NoError(t, os.WriteFile(f1, []byte("good"), 0o644))
+	require.NoError(t, os.WriteFile(f2, []byte("bad"), 0o644))
+	i, err := inventory.NewDirectoryInventory(inventory.NewOptions(inventory.WithDirectories([]string{dir})))
+	require.NoError(t, err)
+	require.NotNil(t, i)
+	require.NoError(t, i.ValidateAccess())
+
+	// Now pretend one of the files becomes inaccessible
+	/*
+		require.NoError(t, os.Chmod(f2, 0o000))
+		s, err := New(io.Discard, &config.SuitCaseOpts{
+			Format: "tar.gz",
+		})
+		require.NoError(t, err)
+		_, err = FillWithInventoryIndex(s, i, 0, nil)
+		require.EqualError(t, err, "foo")
+	*/
+}
+
 func TestNewSuitcase(t *testing.T) {
 	folder := t.TempDir()
 	empty, err := os.Create(folder + "/empty.txt")
