@@ -4,11 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"reflect"
 	"time"
 
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
 )
 
 // mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command
@@ -67,6 +71,34 @@ func validateIsDir(s string) error {
 	}
 	if !st.IsDir() {
 		return errors.New("this must be a directory, not a file")
+	}
+	return nil
+}
+
+func inProcessName(s string) string {
+	return path.Join(path.Dir(s), fmt.Sprintf(".__creating-%v", path.Base(s)))
+}
+
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
+func hashInner(targetFn string, ha inventory.HashAlgorithm, hashes []config.HashSet) error {
+	hashF, err := os.Create(fmt.Sprintf("%v.%v", targetFn, ha)) // nolint:gosec
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if herr := hashF.Close(); herr != nil {
+			panic(herr)
+		}
+	}()
+	if err := suitcase.WriteHashFile(hashes, hashF); err != nil {
+		return err
 	}
 	return nil
 }

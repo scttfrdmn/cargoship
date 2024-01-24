@@ -14,7 +14,6 @@ import (
 // SuitCaseOpts is options for a given suitcase
 type SuitCaseOpts struct {
 	Format            string
-	Destination       string
 	EncryptInner      bool // Encrypt all files in the archive
 	EncryptOuter      bool // Encrypt the archive itself
 	HashInner         bool // Hash files inside the archive

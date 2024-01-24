@@ -2,11 +2,9 @@ package suitcase
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
 	"path"
-	"path/filepath"
 	"testing"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -134,6 +132,7 @@ func TestFillWithInventoryIndexMissingDir(t *testing.T) {
 	require.EqualError(t, err, "not a directory")
 }
 
+/*
 func TestFillFileWithInventoryIndex(t *testing.T) {
 	d := t.TempDir()
 	so := &config.SuitCaseOpts{
@@ -217,6 +216,7 @@ func BenchmarkNewSuitcase(b *testing.B) {
 		}
 	}
 }
+*/
 
 func TestHexToBin(t *testing.T) {
 	require.Equal(

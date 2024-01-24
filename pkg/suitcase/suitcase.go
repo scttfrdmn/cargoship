@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
-	"os/exec"
 	"path"
 	"sort"
 	"strings"
@@ -203,14 +201,6 @@ func FillWithInventoryIndex(s Suitcase, i *inventory.Inventory, index int, state
 	return suitcaseHashes, nil
 }
 
-func fileExists(filename string) bool {
-	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return !info.IsDir()
-}
-
 // validateSuitcase checks a suitcase file against an inventory, and ensures it is up to date
 func validateSuitcase(s string, i inventory.Inventory, idx int) bool {
 	log := slog.With("suitcase", s)
@@ -243,7 +233,10 @@ func inProcessName(s string) string {
 	return path.Join(path.Dir(s), fmt.Sprintf(".__creating-%v", path.Base(s)))
 }
 
+/*
 // WriteSuitcaseFile will write out the suitcase
+//
+// Deprecated: Use WriteSuitcaseFile from the porter object instead
 func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.Inventory, index int, stateC chan FillState) (string, error) {
 	if i == nil {
 		return "", errors.New("inventory must not be nil in WriteSuitcaseFile")
@@ -300,34 +293,7 @@ func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.Inventory, index in
 
 	return targetFn, nil
 }
-
-func hashInner(targetFn string, ha inventory.HashAlgorithm, hashes []config.HashSet) error {
-	hashF, err := os.Create(fmt.Sprintf("%v.%v", targetFn, ha)) // nolint:gosec
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if herr := hashF.Close(); herr != nil {
-			panic(herr)
-		}
-	}()
-	if err := WriteHashFile(hashes, hashF); err != nil {
-		return err
-	}
-	return nil
-}
-
-// PostProcess executes post processing commands
-func PostProcess(s Suitcase) error {
-	c := s.Config()
-	cmd := exec.Command(c.PostProcessScript) // nolint:gosec
-	cmd.Env = append(cmd.Env, "SUITCASE_DESTINATION="+c.Destination)
-	err := cmd.Run()
-	if err != nil {
-		return err
-	}
-	return nil
-}
+*/
 
 // nonEmptyKeys returns the non-empty keys of a map in an array
 func nonEmptyKeys[V any](m map[string]V) []string {
@@ -398,11 +364,4 @@ func WriteHashFile(hs []config.HashSet, o io.Writer) error {
 		return err
 	}
 	return nil
-}
-
-func dclose(c io.Closer) {
-	err := c.Close()
-	if err != nil {
-		slog.Warn("error closing file", "error", err)
-	}
 }

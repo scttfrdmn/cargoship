@@ -87,12 +87,14 @@ func New(options ...Option) *Porter {
 		opt(p)
 	}
 	// There is probably a better way to do this...why do we want both??
-	if p.Destination == "" && p.SuitcaseOpts.Destination != "" {
-		p.Destination = p.SuitcaseOpts.Destination
-	}
-	if p.SuitcaseOpts.Destination == "" && p.Destination != "" {
-		p.SuitcaseOpts.Destination = p.Destination
-	}
+	/*
+		if p.Destination == "" && p.SuitcaseOpts.Destination != "" {
+			p.Destination = p.SuitcaseOpts.Destination
+		}
+		if p.SuitcaseOpts.Destination == "" && p.Destination != "" {
+			p.SuitcaseOpts.Destination = p.Destination
+		}
+	*/
 	return p
 }
 
@@ -160,6 +162,12 @@ func WithLogger(l *slog.Logger) func(*Porter) {
 func WithDestination(s string) func(*Porter) {
 	return func(p *Porter) {
 		p.Destination = s
+		// Eventually I'd like to get rid of this double Destination declaration...it only buys confusion
+		/*
+			if p.SuitcaseOpts.Destination == "" {
+				p.SuitcaseOpts.Destination = s
+			}
+		*/
 	}
 }
 
@@ -622,7 +630,7 @@ func (p *Porter) mergeWizard() error {
 		return errors.New("must have a WizardForm set before merge can happen")
 	}
 	p.SuitcaseOpts = &config.SuitCaseOpts{
-		Destination:  p.Destination,
+		// Destination:  p.Destination,
 		EncryptInner: p.Inventory.Options.EncryptInner,
 		HashInner:    p.Inventory.Options.HashInner,
 		Format:       p.Inventory.Options.SuitcaseFormat,
@@ -682,7 +690,7 @@ func (p *Porter) retryWriteSuitcase(i int, state chan suitcase.FillState) (strin
 	// log := log.With().Int("index", i).Logger()
 	for (!created && attempt == 1) || (attempt <= p.retryCount) {
 		log.Debug("about to write out suitcase file")
-		createdF, err = suitcase.WriteSuitcaseFile(p.SuitcaseOpts, p.Inventory, i, state)
+		createdF, err = p.WriteSuitcaseFile(i, state)
 		if err != nil {
 			log.Warn("suitcase creation failed, sleeping, then will retry", "interval", p.retryInterval.String(), "error", err)
 			time.Sleep(p.retryInterval)
@@ -757,6 +765,61 @@ func (p *Porter) Run() error {
 	}
 
 	return nil
+}
+
+// WriteSuitcaseFile will write out the suitcase
+func (p *Porter) WriteSuitcaseFile(index int, stateC chan suitcase.FillState) (string, error) {
+	if p.Inventory == nil {
+		return "", errors.New("inventory must not be nil in WriteSuitcaseFile")
+	}
+	targetFn := path.Join(p.Destination, p.Inventory.SuitcaseNameWithIndex(index))
+	log := slog.With("suitcase", targetFn)
+	if fileExists(targetFn) {
+		return targetFn, nil
+	}
+
+	tmpTargetFn := inProcessName(targetFn)
+	target, err := os.Create(tmpTargetFn) // nolint:gosec
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		if terr := target.Close(); terr != nil {
+			panic(terr)
+		}
+	}()
+
+	s, err := suitcase.New(target, p.SuitcaseOpts)
+	if err != nil {
+		return "", err
+	}
+	defer dclose(s)
+
+	log.Debug("Filling suitcase", "destination", targetFn, "format", p.SuitcaseOpts.Format, "encrypt-inner", p.SuitcaseOpts.EncryptInner)
+	hashes, err := suitcase.FillWithInventoryIndex(s, p.Inventory, index, stateC)
+	if err != nil {
+		return "", err
+	}
+
+	if stateC != nil {
+		// This is hanging... maybe?
+		stateC <- suitcase.FillState{
+			Completed: true,
+			Index:     index,
+		}
+	}
+
+	if p.SuitcaseOpts.HashInner {
+		if err := hashInner(targetFn, p.Inventory.Options.HashAlgorithm, hashes); err != nil {
+			return "", err
+		}
+	}
+
+	if err := os.Rename(tmpTargetFn, targetFn); err != nil {
+		return "", err
+	}
+
+	return targetFn, nil
 }
 
 func newPool(c int) *pool.ErrorPool {

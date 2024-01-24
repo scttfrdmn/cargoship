@@ -204,7 +204,7 @@ func porterTravelAgentWithCmd(cmd *cobra.Command, args []string) (*porter.Porter
 
 	// We need options even if we already have the inventory
 	p.SuitcaseOpts = &config.SuitCaseOpts{
-		Destination:  p.Destination,
+		// Destination:  p.Destination,
 		EncryptInner: p.Inventory.Options.EncryptInner,
 		HashInner:    p.Inventory.Options.HashInner,
 		Format:       p.Inventory.Options.SuitcaseFormat,
