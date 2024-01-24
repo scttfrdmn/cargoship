@@ -245,6 +245,12 @@ func inProcessName(s string) string {
 
 // WriteSuitcaseFile will write out the suitcase
 func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.Inventory, index int, stateC chan FillState) (string, error) {
+	if i == nil {
+		return "", errors.New("inventory must not be nil in WriteSuitcaseFile")
+	}
+	if so == nil {
+		return "", errors.New("suitcaseopts must not be nil in WriteSuitcaseFile")
+	}
 	targetFn := path.Join(so.Destination, i.SuitcaseNameWithIndex(index))
 	log := slog.With("suitcase", targetFn)
 	if fileExists(targetFn) {

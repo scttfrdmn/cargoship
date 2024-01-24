@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -315,14 +314,6 @@ func porterOptsWithCmd(cmd *cobra.Command, args []string) ([]porter.Option, erro
 	}, nil
 }
 
-func envOr(e, d string) string {
-	got := os.Getenv(e)
-	if got == "" {
-		return d
-	}
-	return got
-}
-
 func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 	// Try to print any panics in mostly sane way
 	defer func() {
@@ -336,6 +327,7 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 	if err != nil {
 		return err
 	}
+	fmt.Fprintf(os.Stderr, "PTR: %+v\n", ptr)
 
 	if !onlyInventory {
 		if err = ptr.SendUpdate(travelagent.StatusUpdate{
@@ -364,37 +356,12 @@ func createSuitcases(ptr *porter.Porter) error {
 		return err
 	}
 
-	sampleI, err := strconv.Atoi(envOr("SAMPLE_EVERY", "100"))
-	if err != nil {
-		logger.Warn("could not set sampling", "error", err)
-	}
-
-	popts := &processOpts{
-		Porter:        ptr,
-		SuitcaseOpts:  ptr.SuitcaseOpts,
-		SampleEvery:   sampleI,
-		Concurrency:   10,
-		RetryCount:    5,
-		RetryInterval: 30,
-	}
 	if ptr.Cmd != nil {
-		popts.Concurrency = mustGetCmd[int](ptr.Cmd, "concurrency")
-		popts.RetryCount = mustGetCmd[int](ptr.Cmd, "retry-count")
-		popts.RetryInterval = mustGetCmd[time.Duration](ptr.Cmd, "retry-interval")
+		ptr.SetConcurrency(mustGetCmd[int](ptr.Cmd, "concurrency"))
+		ptr.SetRetries(
+			mustGetCmd[int](ptr.Cmd, "retry-count"),
+			mustGetCmd[time.Duration](ptr.Cmd, "retry-interval"),
+		)
 	}
-	createdFiles, err := processSuitcases(popts)
-	if err != nil {
-		return err
-	}
-
-	if ptr.Cmd != nil {
-		if mustGetCmd[bool](ptr.Cmd, "hash-outer") {
-			ptr.Hashes, err = ptr.CreateHashes(createdFiles)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
+	return ptr.Run()
 }

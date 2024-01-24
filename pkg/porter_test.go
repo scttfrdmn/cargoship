@@ -319,3 +319,28 @@ func TestSetOrReadInv(t *testing.T) {
 	require.NoError(t, p.SetOrReadInventory("./testdata/validations/inventory.yaml"))
 	require.EqualError(t, p.SetOrReadInventory("/never-exists.yaml"), "open /never-exists.yaml: no such file or directory")
 }
+
+func TestRun(t *testing.T) {
+	dest := t.TempDir()
+	cmd := inventory.NewInventoryCmd()
+	cmd.SetArgs([]string{"--user", "gotest"})
+	cmd.Execute()
+	p := New(
+		WithCmdArgs(cmd, []string{"testdata/limit-dir"}),
+		WithDestination(dest),
+		WithHashAlgorithm(inventory.MD5Hash),
+	)
+	require.NotNil(t, p)
+	require.NoError(t, p.SetOrReadInventory(""))
+	require.NoError(t, p.Run())
+	require.DirExists(t, dest)
+	listing, err := os.ReadDir(dest)
+	require.NoError(t, err)
+	fmt.Fprintf(os.Stderr, "%+v\n", listing)
+	require.FileExists(t, path.Join(dest, "inventory.yaml"))
+	sFile := path.Join(dest, "suitcase-gotest-01-of-01.tar.zst")
+	require.FileExists(t, sFile)
+	stat, err := os.Stat(sFile)
+	require.NoError(t, err)
+	require.Greater(t, stat.Size(), int64(100))
+}

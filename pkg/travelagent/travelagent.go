@@ -53,7 +53,7 @@ type TravelAgenter interface {
 // StatusUpdate is a little structure that gives our TravelAgent more info on
 // where we are in the process
 type StatusUpdate struct {
-	Status                 Status     `json:"status,omitempty"`
+	Status                 Status     `json:"status"`
 	SizeBytes              int64      `json:"size_bytes,omitempty"`
 	Speed                  float64    `json:"speed,omitempty"`
 	TransferredBytes       int64      `json:"transferred_bytes,omitempty"`
@@ -368,7 +368,6 @@ func WithCmd(cmd *cobra.Command) Option {
 	if err != nil {
 		return failure(err)
 	}
-
 	credExpire, err := cmd.Flags().GetDuration("travel-agent-credential-expiration")
 	if err != nil {
 		return failure(err)

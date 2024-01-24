@@ -23,18 +23,20 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/log"
 	"github.com/dustin/go-humanize"
-	"github.com/mitchellh/go-homedir"
+	"github.com/sourcegraph/conc/pool"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
+	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/travelagent"
 )
 
@@ -59,15 +61,37 @@ type Porter struct {
 	LogFile          *os.File
 	TotalTransferred int64
 	WizardForm       *inventory.WizardForm
+	sampleEvery      int
+	retryCount       int
+	retryInterval    time.Duration
+	concurrency      int
+	stateC           chan suitcase.FillState
+	statusC          chan rclone.TransferStatus
 }
 
 // New returns a new porter using functional options
 func New(options ...Option) *Porter {
 	p := &Porter{
 		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		SuitcaseOpts: &config.SuitCaseOpts{
+			Format: "tar.zst",
+		},
+		sampleEvery:   100,
+		retryCount:    1,
+		retryInterval: time.Second * 5,
+		concurrency:   10,
+		stateC:        make(chan suitcase.FillState),
+		statusC:       make(chan rclone.TransferStatus),
 	}
 	for _, opt := range options {
 		opt(p)
+	}
+	// There is probably a better way to do this...why do we want both??
+	if p.Destination == "" && p.SuitcaseOpts.Destination != "" {
+		p.Destination = p.SuitcaseOpts.Destination
+	}
+	if p.SuitcaseOpts.Destination == "" && p.Destination != "" {
+		p.SuitcaseOpts.Destination = p.Destination
 	}
 	return p
 }
@@ -144,6 +168,17 @@ func WithHashAlgorithm(h inventory.HashAlgorithm) func(*Porter) {
 	return func(p *Porter) {
 		p.HashAlgorithm = h
 	}
+}
+
+// SetConcurrency sets the concurrency for a given porter instance
+func (p *Porter) SetConcurrency(c int) {
+	p.concurrency = c
+}
+
+// SetRetries sets the retry count and interval for retrying various things
+func (p *Porter) SetRetries(c int, i time.Duration) {
+	p.retryCount = c
+	p.retryInterval = i
 }
 
 // CreateHashes returns a HashSet from a set of strings
@@ -614,28 +649,117 @@ func (p *Porter) mergeWizard() error {
 	return nil
 }
 
-func mustExpandDir(s string) string {
-	expanded, err := homedir.Expand(s)
-	if err != nil {
-		panic(err)
+func (p *Porter) startFillStateC(state chan suitcase.FillState) {
+	// sampled := log.Sample(&zerolog.BasicSampler{N: se})
+	i := uint32(0)
+	for {
+		st := <-state
+		if i%uint32(p.sampleEvery) == 0 {
+			slog.Debug("progress", "index", st.Index, "current", st.Current, "total", st.Total)
+		}
+		i++
 	}
-	return expanded
 }
 
-func validateIsDir(s string) error {
-	if s == "" {
-		return errors.New("directory cannot be blank")
+func (p *Porter) startTransferStatusC(statusC chan rclone.TransferStatus) {
+	for {
+		status := <-statusC
+		slog.Debug("status update", "status", status)
+		if p.TravelAgent != nil {
+			if err := p.SendUpdate(*travelagent.NewStatusUpdate(status)); err != nil {
+				slog.Warn("could not update travel agent", "error", err)
+			}
+		}
 	}
-	expanded, err := homedir.Expand(s)
+}
+
+func (p *Porter) retryWriteSuitcase(i int, state chan suitcase.FillState) (string, error) {
+	var err error
+	var createdF string
+	var created bool
+	attempt := 1
+	log := slog.With("index", i)
+	// log := log.With().Int("index", i).Logger()
+	for (!created && attempt == 1) || (attempt <= p.retryCount) {
+		log.Debug("about to write out suitcase file")
+		createdF, err = suitcase.WriteSuitcaseFile(p.SuitcaseOpts, p.Inventory, i, state)
+		if err != nil {
+			log.Warn("suitcase creation failed, sleeping, then will retry", "interval", p.retryInterval.String(), "error", err)
+			time.Sleep(p.retryInterval)
+		} else {
+			created = true
+		}
+		attempt++
+	}
+	if !created {
+		return "", errors.New("could not create suitcasefile even with retries")
+	}
+	return createdF, nil
+}
+
+func (p *Porter) processSuitcases() ([]string, error) {
+	pl := newPool(p.concurrency)
+
+	// Launch some reading of these channels
+	go p.startFillStateC(p.stateC)
+	go p.startTransferStatusC(p.statusC)
+
+	ret := make([]string, p.Inventory.TotalIndexes)
+	for i := 1; i <= p.Inventory.TotalIndexes; i++ {
+		i := i
+		pl.Go(func() error {
+			var err error
+			if ret[i-1], err = p.retryWriteSuitcase(i, p.stateC); err != nil {
+				return err
+			}
+			if p.Inventory.Options.TransportPlugin != nil {
+				// First check...
+				if err := p.RetryTransport(ret[i-1], p.statusC, p.retryCount, p.retryInterval); err != nil {
+					return err
+				}
+			}
+
+			// Insert TravelAgent upload right here yo'
+			if p.TravelAgent != nil {
+				xferred, err := p.TravelAgent.Upload(ret[i-1], p.statusC)
+				if err != nil {
+					return err
+				}
+				atomic.AddInt64(&p.TotalTransferred, xferred)
+			}
+			return nil
+		})
+	}
+	err := pl.Wait()
+	return ret, err
+}
+
+// Run does the actual suitcase creation
+func (p *Porter) Run() error {
+	if p.SuitcaseOpts != nil {
+		if err := p.SuitcaseOpts.EncryptToCobra(p.Cmd); err != nil {
+			return err
+		}
+	}
+
+	createdFiles, err := p.processSuitcases()
 	if err != nil {
 		return err
 	}
-	st, err := os.Stat(expanded)
-	if err != nil {
-		return fmt.Errorf("could not stat %v, got error: %v", expanded, err)
+
+	if p.Cmd != nil {
+		if mustGetCmd[bool](p.Cmd, "hash-outer") {
+			p.Hashes, err = p.CreateHashes(createdFiles)
+			if err != nil {
+				return err
+			}
+		}
 	}
-	if !st.IsDir() {
-		return errors.New("this must be a directory, not a file")
-	}
+
 	return nil
+}
+
+func newPool(c int) *pool.ErrorPool {
+	slog.Debug("setting pool guard", "concurrency", c)
+	return pool.New().WithMaxGoroutines(c).WithErrors()
 }
