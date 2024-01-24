@@ -250,11 +250,12 @@ func uploadMeta(ptr *porter.Porter, mfiles []string) error {
 			mfile := mfile
 			go func() {
 				defer wg.Done()
-				if xferred, err := ptr.TravelAgent.Upload(path.Join(ptr.Destination, mfile), nil); err != nil {
+				var xferred int64
+				var err error
+				if xferred, err = ptr.TravelAgent.Upload(path.Join(ptr.Destination, mfile), nil); err != nil {
 					panic(err)
-				} else {
-					atomic.AddInt64(&ptr.TotalTransferred, xferred)
 				}
+				atomic.AddInt64(&ptr.TotalTransferred, xferred)
 			}()
 		}
 		wg.Wait()

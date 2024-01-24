@@ -132,11 +132,11 @@ func (f fakeTa) Transferred() int64 {
 	return 0
 }
 
-func (f fakeTa) Upload(s string, c chan rclone.TransferStatus) (int64, error) {
+func (f fakeTa) Upload(_ string, _ chan rclone.TransferStatus) (int64, error) {
 	return 0, errors.New("not yet implemented")
 }
 
-func (f fakeTa) Update(s travelagent.StatusUpdate) (*travelagent.StatusUpdateResponse, error) {
+func (f fakeTa) Update(_ travelagent.StatusUpdate) (*travelagent.StatusUpdateResponse, error) {
 	return &travelagent.StatusUpdateResponse{
 		Messages: []string{
 			"updated fields: some_fake_field",
@@ -152,7 +152,7 @@ func (ft fakeTrans) Check() error {
 	return nil
 }
 
-func (ft *fakeTrans) Send(s, u string) error {
+func (ft *fakeTrans) Send(_, _ string) error {
 	if ft.attempt == 3 {
 		return nil
 	}
@@ -160,7 +160,7 @@ func (ft *fakeTrans) Send(s, u string) error {
 	return errors.New("some fake error")
 }
 
-func (ft *fakeTrans) SendWithChannel(s, u string, c chan rclone.TransferStatus) error {
+func (ft *fakeTrans) SendWithChannel(_, _ string, _ chan rclone.TransferStatus) error {
 	if ft.attempt == 3 {
 		return nil
 	}
@@ -176,7 +176,7 @@ func (f fta) StatusURL() string {
 	return "https://www.example.com/api/v1/status"
 }
 
-func (f fta) Upload(s string, c chan rclone.TransferStatus) (int64, error) {
+func (f fta) Upload(_ string, _ chan rclone.TransferStatus) (int64, error) {
 	return 0, errors.New("not yet implemented")
 }
 
@@ -196,8 +196,8 @@ func TestShipItems(t *testing.T) {
 	td := t.TempDir()
 	ctd := t.TempDir()
 	tfile := "testdata/overflow-queue/2mb"
-	require.NoError(t, copy(tfile, path.Join(ctd, path.Base(tfile))))
-	require.NoError(t, copy(tfile, path.Join(td, path.Base(tfile))))
+	require.NoError(t, copySrcDst(tfile, path.Join(ctd, path.Base(tfile))))
+	require.NoError(t, copySrcDst(tfile, path.Join(td, path.Base(tfile))))
 	ftaI := &fta{}
 	p := New(
 		WithDestination(td),

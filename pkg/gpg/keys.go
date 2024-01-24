@@ -15,7 +15,7 @@ import (
 type KeyType int
 
 // KeyTypeCompletion returns shell completion
-func KeyTypeCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+func KeyTypeCompletion(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	return nonEmptyKeys(keyTypeMap), cobra.ShellCompDirectiveNoFileComp
 }
 
@@ -30,7 +30,7 @@ const (
 	X25519Type
 )
 
-var keyTypeMap map[string]KeyType = map[string]KeyType{
+var keyTypeMap = map[string]KeyType{
 	"rsa":    RSAKeyType,
 	"x25519": X25519Type,
 	"":       NullKeyType,

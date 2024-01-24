@@ -497,7 +497,7 @@ func (p *Porter) ShipItems(items []string, uniqDir string) {
 	}
 }
 
-func copy(src, dst string) error {
+func copySrcDst(src, dst string) error {
 	sourceFileStat, err := os.Stat(src)
 	if err != nil {
 		return err

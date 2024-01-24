@@ -58,7 +58,7 @@ const (
 	SHA512Hash
 )
 
-var hashMap map[string]HashAlgorithm = map[string]HashAlgorithm{
+var hashMap = map[string]HashAlgorithm{
 	"md5":    MD5Hash,
 	"sha1":   SHA1Hash,
 	"sha256": SHA256Hash,
@@ -66,7 +66,7 @@ var hashMap map[string]HashAlgorithm = map[string]HashAlgorithm{
 	"":       NullHash,
 }
 
-var hashHelp map[string]string = map[string]string{
+var hashHelp = map[string]string{
 	"md5":    "Fast but older hashing method, but usually fine for signatures",
 	"sha1":   "Less intensive on CPUs than sha256, and more secure than md5",
 	"sha256": "CPU intensive but very secure signature hashing",
@@ -74,7 +74,7 @@ var hashHelp map[string]string = map[string]string{
 }
 
 // HashCompletion returns shell completion
-func HashCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+func HashCompletion(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	help := []string{}
 	for _, format := range nonEmptyKeys(hashMap) {
 		if strings.Contains(format, toComplete) {
@@ -124,19 +124,19 @@ const (
 	JSONFormat
 )
 
-var formatMap map[string]Format = map[string]Format{
+var formatMap = map[string]Format{
 	"yaml": YAMLFormat,
 	"json": JSONFormat,
 	"":     NullFormat,
 }
 
-var formatHelp map[string]string = map[string]string{
+var formatHelp = map[string]string{
 	"yaml": "YAML is the preferred format. It allows for easy human readable inventories that can also be easily parsed by machines",
 	"json": "JSON inventory is not very readable, but could allow for faster machine parsing under certain conditions",
 }
 
 // FormatCompletion returns shell completion
-func FormatCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+func FormatCompletion(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	help := []string{}
 	for _, format := range nonEmptyKeys(formatMap) {
 		if strings.Contains(format, toComplete) {
@@ -1095,7 +1095,7 @@ func checkItemSize(item *File, maxSize int64) error {
 	return nil
 }
 
-func errCallback(osPathname string, err error) godirwalk.ErrorAction {
+func errCallback(_ string, err error) godirwalk.ErrorAction {
 	// Desired way, but currently wrong (not halting) due to different error types.
 	if err == errHalt {
 		return godirwalk.Halt

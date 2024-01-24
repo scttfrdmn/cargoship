@@ -46,7 +46,7 @@ const (
 	TarZstGpgFormat
 )
 
-var formatMap map[string]Format = map[string]Format{
+var formatMap = map[string]Format{
 	"tar":         TarFormat,
 	"tar.gpg":     TarGpgFormat,
 	"tar.gz":      TarGzFormat,
@@ -57,7 +57,7 @@ var formatMap map[string]Format = map[string]Format{
 }
 
 // FormatCompletion returns shell completion
-func FormatCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+func FormatCompletion(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	ret := []string{}
 	for _, item := range nonEmptyKeys(formatMap) {
 		if strings.Contains(item, toComplete) {

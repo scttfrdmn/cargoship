@@ -22,7 +22,7 @@ type Transporter struct {
 }
 
 // Configure shell transporter
-func (t *Transporter) Configure(c transporters.Config) error {
+func (t *Transporter) Configure(_ transporters.Config) error {
 	return nil
 }
 
@@ -66,7 +66,7 @@ func (t Transporter) Send(s, u string) error {
 }
 
 // SendWithChannel sends through the given channel
-func (t Transporter) SendWithChannel(s, u string, c chan rclone.TransferStatus) error {
+func (t Transporter) SendWithChannel(s, _ string, _ chan rclone.TransferStatus) error {
 	if err := os.Setenv("SUITCASECTL_FILE", s); err != nil {
 		return err
 	}
