@@ -22,8 +22,11 @@ averagefilesizehr: 599 kB
 totalfilesize: 10187619
 totalfilesizehr: 10 MB`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			gout.SetWriter(cmd.OutOrStdout())
 			i, err := inventory.NewDirectoryInventory(inventory.NewOptions(inventory.WithDirectories(args)))
-			checkErr(err, "")
+			if err != nil {
+				return err
+			}
 			gout.MustPrint(i.Analyze())
 			return nil
 		},

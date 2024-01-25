@@ -246,6 +246,18 @@ func TestWriteHashfileBin(t *testing.T) {
 	require.Equal(t, "foo\tsl9i0IVtTIGDHPcBuS4+dA==\n", buf.String())
 }
 
+func TestWriteHashfile(t *testing.T) {
+	buf := bytes.Buffer{}
+	err := WriteHashFile([]config.HashSet{
+		{
+			Filename: "foo",
+			Hash:     "b25f62d0856d4c81831cf701b92e3e74",
+		},
+	}, &buf)
+	require.NoError(t, err)
+	require.Equal(t, "foo\tb25f62d0856d4c81831cf701b92e3e74\n", buf.String())
+}
+
 func TestWriteHashfileBinFail(t *testing.T) {
 	buf := bytes.Buffer{}
 	err := WriteHashFileBin([]config.HashSet{
