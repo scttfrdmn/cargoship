@@ -663,8 +663,6 @@ func NewInventoryerWithFilename(filename string) (Inventoryer, error) {
 	ext := filepath.Ext(filename)
 	var ir Inventoryer
 	switch ext {
-	case ".json":
-		ir = &EJSONer{}
 	case ".yaml", ".yml":
 		ir = &VAMLer{}
 	default:

@@ -22,14 +22,14 @@ func TestNewOptions(t *testing.T) {
 		WithPrefix("pre"),
 		WithMaxSuitcaseSize(500),
 		WithLimitFileCount(10),
-		WithInventoryFormat("json"),
+		WithInventoryFormat("yaml"),
 		WithSuitcaseFormat("tar.gz"),
 	)
 	require.Equal(t, "foo", o.User)
 	require.Equal(t, "pre", o.Prefix)
 	require.Equal(t, 10, o.LimitFileCount)
 	require.Equal(t, int64(500), o.MaxSuitcaseSize)
-	require.Equal(t, "json", o.InventoryFormat)
+	require.Equal(t, "yaml", o.InventoryFormat)
 	require.Equal(t, "tar.gz", o.SuitcaseFormat)
 
 	// Check some defaults
@@ -200,10 +200,6 @@ func TestNewInventoryerWithFilename(t *testing.T) {
 		{
 			filename:     "thing.yml",
 			expectedType: "*inventory.VAMLer",
-		},
-		{
-			filename:     "thing.json",
-			expectedType: "*inventory.EJSONer",
 		},
 	}
 	for _, tt := range tests {
