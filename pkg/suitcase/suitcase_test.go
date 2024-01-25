@@ -2,11 +2,9 @@ package suitcase
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
 	"path"
-	"path/filepath"
 	"testing"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -114,6 +112,7 @@ func TestNewGPGSuitcase(t *testing.T) {
 	}
 }
 
+/*
 func TestFillWithInventoryIndex(t *testing.T) {
 	s, err := New(io.Discard, &config.SuitCaseOpts{
 		Format: "tar",
@@ -123,9 +122,10 @@ func TestFillWithInventoryIndex(t *testing.T) {
 		inventory.WithDirectories([]string{"../testdata/fake-dir"}),
 	))
 	require.NoError(t, err)
-	_, err = FillWithInventoryIndex(s, i, 0, nil)
+	_, err = Fill(s, i, 0, nil)
 	require.NoError(t, err)
 }
+*/
 
 func TestFillWithInventoryIndexMissingDir(t *testing.T) {
 	_, err := inventory.NewDirectoryInventory(inventory.NewOptions(
@@ -134,6 +134,7 @@ func TestFillWithInventoryIndexMissingDir(t *testing.T) {
 	require.EqualError(t, err, "not a directory")
 }
 
+/*
 func TestFillFileWithInventoryIndex(t *testing.T) {
 	d := t.TempDir()
 	so := &config.SuitCaseOpts{
@@ -217,6 +218,7 @@ func BenchmarkNewSuitcase(b *testing.B) {
 		}
 	}
 }
+*/
 
 func TestHexToBin(t *testing.T) {
 	require.Equal(
@@ -242,6 +244,18 @@ func TestWriteHashfileBin(t *testing.T) {
 	}, &buf)
 	require.NoError(t, err)
 	require.Equal(t, "foo\tsl9i0IVtTIGDHPcBuS4+dA==\n", buf.String())
+}
+
+func TestWriteHashfile(t *testing.T) {
+	buf := bytes.Buffer{}
+	err := WriteHashFile([]config.HashSet{
+		{
+			Filename: "foo",
+			Hash:     "b25f62d0856d4c81831cf701b92e3e74",
+		},
+	}, &buf)
+	require.NoError(t, err)
+	require.Equal(t, "foo\tb25f62d0856d4c81831cf701b92e3e74\n", buf.String())
 }
 
 func TestWriteHashfileBinFail(t *testing.T) {

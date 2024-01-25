@@ -12,17 +12,13 @@ import (
 	"path"
 	"reflect"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	// "github.com/minio/sha256-simd"
 
-	"github.com/sourcegraph/conc/pool"
 	"github.com/spf13/cobra"
 	porter "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/travelagent"
 )
 
@@ -135,85 +131,6 @@ func getSha256(file string) (string, error) {
 	return fmt.Sprintf("%x", sum), nil
 }
 
-// ProcessOpts defines the process options
-type processOpts struct {
-	Concurrency   int
-	SampleEvery   int
-	Porter        *porter.Porter
-	SuitcaseOpts  *config.SuitCaseOpts
-	RetryCount    int
-	RetryInterval time.Duration
-}
-
-func startFillStateC(state chan suitcase.FillState, se uint32) {
-	// sampled := log.Sample(&zerolog.BasicSampler{N: se})
-	i := uint32(0)
-	for {
-		st := <-state
-		if i%se == 0 {
-			logger.Debug("progress", "index", st.Index, "current", st.Current, "total", st.Total)
-		}
-		i++
-	}
-}
-
-func newPool(c int) *pool.ErrorPool {
-	logger.Debug("setting pool guard", "concurrency", c)
-	return pool.New().WithMaxGoroutines(c).WithErrors()
-}
-
-// processSuitcases processes the suitcases
-func processSuitcases(po *processOpts) ([]string, error) {
-	ret := make([]string, po.Porter.Inventory.TotalIndexes)
-	p := newPool(po.Concurrency)
-	state := make(chan suitcase.FillState)
-
-	// Read in and log state here
-	go func() { startFillStateC(state, uint32(po.SampleEvery)) }()
-
-	statusC := make(chan rclone.TransferStatus)
-	go func() {
-		for {
-			status := <-statusC
-			logger.Debug("status update", "status", status)
-			if po.Porter.TravelAgent != nil {
-				if err := po.Porter.SendUpdate(*travelagent.NewStatusUpdate(status)); err != nil {
-					logger.Warn("could not update travel agent", "error", err)
-				}
-			}
-		}
-	}()
-	for i := 1; i <= po.Porter.Inventory.TotalIndexes; i++ {
-		i := i
-		p.Go(func() error {
-			createdF, err := retryWriteSuitcase(po, i, state)
-			if err != nil {
-				// logger.Error("error creating suitcase file, please investigate", "error", err)
-				return err
-			}
-			ret[i-1] = createdF
-			// Put Transport plugin here!!
-			if po.Porter.Inventory.Options.TransportPlugin != nil {
-				// First check...
-				if err := po.Porter.RetryTransport(createdF, statusC, po.RetryCount, po.RetryInterval); err != nil {
-					return err
-				}
-			}
-
-			// Insert TravelAgent upload right here yo'
-			if po.Porter.TravelAgent != nil {
-				xferred, err := po.Porter.TravelAgent.Upload(createdF, statusC)
-				if err != nil {
-					return err
-				}
-				atomic.AddInt64(&po.Porter.TotalTransferred, xferred)
-			}
-			return nil
-		})
-	}
-	return ret, p.Wait()
-}
-
 func hasDuplicates(strArr []string) bool {
 	seen := make(map[string]bool)
 	for _, str := range strArr {
@@ -233,30 +150,6 @@ func mustPorterWithCmd(cmd *cobra.Command) *porter.Porter {
 	return p
 }
 
-func retryWriteSuitcase(po *processOpts, i int, state chan suitcase.FillState) (string, error) {
-	var err error
-	var createdF string
-	var created bool
-	attempt := 1
-	log := logger.With("index", i)
-	// log := log.With().Int("index", i).Logger()
-	for (!created && attempt == 1) || (attempt <= po.RetryCount) {
-		log.Debug("about to write out suitcase file")
-		createdF, err = suitcase.WriteSuitcaseFile(po.SuitcaseOpts, po.Porter.Inventory, i, state)
-		if err != nil {
-			log.Warn("suitcase creation failed, sleeping, then will retry", "interval", po.RetryInterval.String(), "error", err)
-			time.Sleep(po.RetryInterval)
-		} else {
-			created = true
-		}
-		attempt++
-	}
-	if !created {
-		return "", errors.New("could not create suitcasefile even with retries")
-	}
-	return createdF, nil
-}
-
 func porterWithCmd(cmd *cobra.Command) (*porter.Porter, error) {
 	p, ok := cmd.Context().Value(porter.PorterKey).(*porter.Porter)
 	if !ok {
@@ -265,93 +158,6 @@ func porterWithCmd(cmd *cobra.Command) (*porter.Porter, error) {
 
 	return p, nil
 }
-
-/*
-func porterTravelAgentWithForm() (*porter.Porter, error) {
-	p := porter.New()
-	wf := inventory.WizardForm{
-		Source: os.Getenv("SUITCASECTL_SOURCE"),
-	}
-	var dest string
-
-	// var src string
-	var tatoken string
-
-	maxsize := "200Gb"
-
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewInput().
-				Title("Source of the data you want to package up").
-				Placeholder("/some/local/dir").
-				Description("Files within the given directory will be packaged up in to suitcases and transferred to their final destination").
-				Validate(validateIsDir).
-				Value(&wf.Source),
-			huh.NewInput().
-				Title("Maximum Suitcase Size").
-				Description("This is the maximum size for each suitcase created").
-				Value(&maxsize),
-			huh.NewInput().
-				Title("Destination for files").
-				Placeholder("/srv/cold-storage").
-				Description("When using a travel agent, this will be used for temporary storage. To use your current systems tmp space, leave this field blank").
-				Value(&dest),
-			huh.NewInput().
-				Title("Travel Agent Token").
-				Description("Using a Travel Agent? Enter it here. If not, you can just leave this blank").
-				Value(&tatoken),
-		),
-	)
-
-	if err := form.Run(); err != nil {
-		return nil, err
-	}
-
-	p.Destination = dest
-	p.WizardForm = &wf
-
-	var terr error
-	var ta *travelagent.TravelAgent
-	if ta, terr = travelagent.New(travelagent.WithToken(tatoken)); terr != nil {
-		log.Debug().Err(terr).Msg("🧳 no valid travel agent found")
-	} else {
-		p.SetTravelAgent(ta)
-		log.Info().Str("url", p.TravelAgent.StatusURL()).Msg("☀️ Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel")
-		if serr := p.SendUpdate(travelagent.StatusUpdate{
-			Status: travelagent.StatusPending,
-		}); serr != nil {
-			return nil, serr
-		}
-	}
-	// Get option bits
-	// Create an inventory file if one isn't specified
-	// p.Inventory.Options.Directories = []string{src}
-	var err error
-	if p.Inventory, err = p.CreateOrReadInventory(""); err != nil {
-		return nil, err
-	}
-	// Replace the travel agent with one that knows the inventory hash
-	// This doesn't work yet, need to find out why
-	if ta != nil {
-		ta.UniquePrefix = p.InventoryHash
-		p.SetTravelAgent(ta)
-	}
-
-	// We need options even if we already have the inventory
-	p.SuitcaseOpts = &config.SuitCaseOpts{
-		Destination:  p.Destination,
-		EncryptInner: p.Inventory.Options.EncryptInner,
-		HashInner:    p.Inventory.Options.HashInner,
-		Format:       p.Inventory.Options.SuitcaseFormat,
-	}
-
-	p.CLIMeta = porter.NewCLIMeta()
-	p.CLIMeta.Wizard = &wf
-
-	return p, nil
-}
-
-*/
 
 func porterTravelAgentWithCmd(cmd *cobra.Command, args []string) (*porter.Porter, bool, error) {
 	p, err := porterWithCmd(cmd)
@@ -398,7 +204,7 @@ func porterTravelAgentWithCmd(cmd *cobra.Command, args []string) (*porter.Porter
 
 	// We need options even if we already have the inventory
 	p.SuitcaseOpts = &config.SuitCaseOpts{
-		Destination:  p.Destination,
+		// Destination:  p.Destination,
 		EncryptInner: p.Inventory.Options.EncryptInner,
 		HashInner:    p.Inventory.Options.HashInner,
 		Format:       p.Inventory.Options.SuitcaseFormat,

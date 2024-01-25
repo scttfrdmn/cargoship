@@ -19,7 +19,7 @@ func NewSchemaCmd() *cobra.Command {
 	}
 }
 
-func schemaRunE(cmd *cobra.Command, args []string) error {
+func schemaRunE(_ *cobra.Command, _ []string) error {
 	schema := jsonschema.Reflect(&inventory.Inventory{})
 	bts, err := json.MarshalIndent(schema, "  ", "  ")
 	if err != nil {

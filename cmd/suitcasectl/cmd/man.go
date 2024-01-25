@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	mcoral "github.com/muesli/mango-cobra"
 	"github.com/muesli/roff"
@@ -24,7 +23,7 @@ func newManCmd() *cobra.Command {
 				return err
 			}
 
-			_, err = fmt.Fprint(os.Stdout, manPage.Build(roff.NewDocument()))
+			_, err = fmt.Fprint(cmd.OutOrStdout(), manPage.Build(roff.NewDocument()))
 			return err
 		},
 	}

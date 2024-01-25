@@ -201,7 +201,7 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 	return nil
 }
 
-func globalPersistentPreRun(cmd *cobra.Command, args []string) {
+func globalPersistentPreRun(cmd *cobra.Command, _ []string) {
 	// Set up single logging first
 	// setupSingleLoggingWithCmd(cmd)
 
@@ -239,7 +239,7 @@ func globalPersistentPreRun(cmd *cobra.Command, args []string) {
 	}
 }
 
-func globalPersistentPostRun(cmd *cobra.Command, args []string) { // nolint:unparam
+func globalPersistentPostRun(_ *cobra.Command, _ []string) {
 	if profile {
 		pprof.StopCPUProfile()
 		err := cpufile.Close()

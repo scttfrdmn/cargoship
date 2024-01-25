@@ -18,7 +18,6 @@ require (
 	github.com/klauspost/compress v1.17.1
 	github.com/klauspost/pgzip v1.2.6
 	github.com/lucasb-eyer/go-colorful v1.2.0
-	github.com/mailru/easyjson v0.7.7
 	github.com/mholt/archiver/v4 v4.0.0-alpha.8.0.20230831060951-e2261a1bb41f
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/muesli/mango-cobra v1.2.0
@@ -135,7 +134,6 @@ require (
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/jlaffaye/ftp v0.2.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
-	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jszwec/csvutil v1.8.0 // indirect
 	github.com/jtolio/eventkit v0.0.0-20230705124759-cdaf7726a16f // indirect
 	github.com/jtolio/noiseconn v0.0.0-20230621152802-afeab29449e0 // indirect
@@ -148,6 +146,7 @@ require (
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20231016141302-07b5767bb0ed // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
+	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect

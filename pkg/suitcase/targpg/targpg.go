@@ -63,6 +63,6 @@ func (s Suitcase) Add(f inventory.File) (*config.HashSet, error) {
 }
 
 // AddEncrypt Add encrypted file to the archive.
-func (s Suitcase) AddEncrypt(f inventory.File) error {
+func (s Suitcase) AddEncrypt(_ inventory.File) error {
 	return errors.New("file encryption not supported on already encrypted archives")
 }

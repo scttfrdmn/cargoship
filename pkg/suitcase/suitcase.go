@@ -7,12 +7,9 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
-	"os/exec"
 	"path"
 	"sort"
 	"strings"
@@ -48,7 +45,7 @@ const (
 	TarZstGpgFormat
 )
 
-var formatMap map[string]Format = map[string]Format{
+var formatMap = map[string]Format{
 	"tar":         TarFormat,
 	"tar.gpg":     TarGpgFormat,
 	"tar.gz":      TarGzFormat,
@@ -59,7 +56,7 @@ var formatMap map[string]Format = map[string]Format{
 }
 
 // FormatCompletion returns shell completion
-func FormatCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+func FormatCompletion(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	ret := []string{}
 	for _, item := range nonEmptyKeys(formatMap) {
 		if strings.Contains(item, toComplete) {
@@ -144,73 +141,6 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 	return nil, fmt.Errorf("invalid archive format: %s", opts.Format)
 }
 
-// FillWithInventoryIndex fills up a suitcase using the given inventory
-func FillWithInventoryIndex(s Suitcase, i *inventory.Inventory, index int, stateC chan FillState) ([]config.HashSet, error) {
-	if i == nil {
-		return nil, errors.New("inventory is nil")
-	}
-	var err error
-
-	var total uint
-	if index > 0 {
-		if _, ok := i.IndexSummaries[index]; ok {
-			total = i.IndexSummaries[index].Count
-		}
-	} else {
-		total = uint(len(i.Files))
-	}
-	cur := uint(0)
-	var suitcaseHashes []config.HashSet
-
-	for _, f := range i.Files {
-		l := slog.With(
-			"path", f.Path,
-			"index", index)
-		if f.SuitcaseIndex != index {
-			continue
-		}
-
-		l.Debug("Adding file to suitcase",
-			"cur", cur,
-			"total", total,
-		)
-
-		if s.Config().EncryptInner {
-			err = s.AddEncrypt(*f)
-			if err != nil {
-				return nil, fmt.Errorf("encountered error adding file to suitcase: %v", err)
-			}
-		} else {
-			hs, err := s.Add(*f)
-			if err != nil {
-				return nil, fmt.Errorf("encountered error adding file to suitcase: %v", err)
-			}
-			if s.Config().HashInner {
-				suitcaseHashes = append(suitcaseHashes, *hs)
-			}
-		}
-
-		cur++
-		if stateC != nil {
-			stateC <- FillState{
-				Current:        cur,
-				Total:          total,
-				Index:          index,
-				CurrentPercent: float64(cur) / float64(total) * 100,
-			}
-		}
-	}
-	return suitcaseHashes, nil
-}
-
-func fileExists(filename string) bool {
-	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return !info.IsDir()
-}
-
 // validateSuitcase checks a suitcase file against an inventory, and ensures it is up to date
 func validateSuitcase(s string, i inventory.Inventory, idx int) bool {
 	log := slog.With("suitcase", s)
@@ -241,86 +171,6 @@ func validateSuitcase(s string, i inventory.Inventory, idx int) bool {
 
 func inProcessName(s string) string {
 	return path.Join(path.Dir(s), fmt.Sprintf(".__creating-%v", path.Base(s)))
-}
-
-// WriteSuitcaseFile will write out the suitcase
-func WriteSuitcaseFile(so *config.SuitCaseOpts, i *inventory.Inventory, index int, stateC chan FillState) (string, error) {
-	targetFn := path.Join(so.Destination, i.SuitcaseNameWithIndex(index))
-	log := slog.With("suitcase", targetFn)
-	if fileExists(targetFn) {
-		return targetFn, nil
-	}
-
-	tmpTargetFn := inProcessName(targetFn)
-	target, err := os.Create(tmpTargetFn) // nolint:gosec
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		if terr := target.Close(); terr != nil {
-			panic(terr)
-		}
-	}()
-
-	s, err := New(target, so)
-	if err != nil {
-		return "", err
-	}
-	defer dclose(s)
-
-	log.Debug("Filling suitcase", "destination", targetFn, "format", so.Format, "encrypt-inner", so.EncryptInner)
-	hashes, err := FillWithInventoryIndex(s, i, index, stateC)
-	if err != nil {
-		return "", err
-	}
-
-	if stateC != nil {
-		// This is hanging... maybe?
-		stateC <- FillState{
-			Completed: true,
-			Index:     index,
-		}
-	}
-
-	if so.HashInner {
-		if err := hashInner(targetFn, i.Options.HashAlgorithm, hashes); err != nil {
-			return "", err
-		}
-	}
-
-	if err := os.Rename(tmpTargetFn, targetFn); err != nil {
-		return "", err
-	}
-
-	return targetFn, nil
-}
-
-func hashInner(targetFn string, ha inventory.HashAlgorithm, hashes []config.HashSet) error {
-	hashF, err := os.Create(fmt.Sprintf("%v.%v", targetFn, ha)) // nolint:gosec
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if herr := hashF.Close(); herr != nil {
-			panic(herr)
-		}
-	}()
-	if err := WriteHashFile(hashes, hashF); err != nil {
-		return err
-	}
-	return nil
-}
-
-// PostProcess executes post processing commands
-func PostProcess(s Suitcase) error {
-	c := s.Config()
-	cmd := exec.Command(c.PostProcessScript) // nolint:gosec
-	cmd.Env = append(cmd.Env, "SUITCASE_DESTINATION="+c.Destination)
-	err := cmd.Run()
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // nonEmptyKeys returns the non-empty keys of a map in an array
@@ -392,11 +242,4 @@ func WriteHashFile(hs []config.HashSet, o io.Writer) error {
 		return err
 	}
 	return nil
-}
-
-func dclose(c io.Closer) {
-	err := c.Close()
-	if err != nil {
-		slog.Warn("error closing file", "error", err)
-	}
 }

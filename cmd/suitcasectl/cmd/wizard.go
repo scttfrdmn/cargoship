@@ -124,7 +124,7 @@ func wizardPostRunE(cmd *cobra.Command, args []string) error {
 	}
 
 	gout.MustPrint(runsum{
-		Destination: ptr.SuitcaseOpts.Destination,
+		Destination: ptr.Destination,
 		Suitcases:   ptr.Inventory.UniqueSuitcaseNames(),
 		Directories: ptr.Inventory.Options.Directories,
 		MetaFiles:   mfiles,

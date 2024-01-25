@@ -132,11 +132,11 @@ func (f fakeTa) Transferred() int64 {
 	return 0
 }
 
-func (f fakeTa) Upload(s string, c chan rclone.TransferStatus) (int64, error) {
+func (f fakeTa) Upload(_ string, _ chan rclone.TransferStatus) (int64, error) {
 	return 0, errors.New("not yet implemented")
 }
 
-func (f fakeTa) Update(s travelagent.StatusUpdate) (*travelagent.StatusUpdateResponse, error) {
+func (f fakeTa) Update(_ travelagent.StatusUpdate) (*travelagent.StatusUpdateResponse, error) {
 	return &travelagent.StatusUpdateResponse{
 		Messages: []string{
 			"updated fields: some_fake_field",
@@ -152,7 +152,7 @@ func (ft fakeTrans) Check() error {
 	return nil
 }
 
-func (ft *fakeTrans) Send(s, u string) error {
+func (ft *fakeTrans) Send(_, _ string) error {
 	if ft.attempt == 3 {
 		return nil
 	}
@@ -160,7 +160,7 @@ func (ft *fakeTrans) Send(s, u string) error {
 	return errors.New("some fake error")
 }
 
-func (ft *fakeTrans) SendWithChannel(s, u string, c chan rclone.TransferStatus) error {
+func (ft *fakeTrans) SendWithChannel(_, _ string, _ chan rclone.TransferStatus) error {
 	if ft.attempt == 3 {
 		return nil
 	}
@@ -176,7 +176,7 @@ func (f fta) StatusURL() string {
 	return "https://www.example.com/api/v1/status"
 }
 
-func (f fta) Upload(s string, c chan rclone.TransferStatus) (int64, error) {
+func (f fta) Upload(_ string, _ chan rclone.TransferStatus) (int64, error) {
 	return 0, errors.New("not yet implemented")
 }
 
@@ -196,8 +196,8 @@ func TestShipItems(t *testing.T) {
 	td := t.TempDir()
 	ctd := t.TempDir()
 	tfile := "testdata/overflow-queue/2mb"
-	require.NoError(t, copy(tfile, path.Join(ctd, path.Base(tfile))))
-	require.NoError(t, copy(tfile, path.Join(td, path.Base(tfile))))
+	require.NoError(t, copySrcDst(tfile, path.Join(ctd, path.Base(tfile))))
+	require.NoError(t, copySrcDst(tfile, path.Join(td, path.Base(tfile))))
 	ftaI := &fta{}
 	p := New(
 		WithDestination(td),
@@ -319,3 +319,44 @@ func TestSetOrReadInv(t *testing.T) {
 	require.NoError(t, p.SetOrReadInventory("./testdata/validations/inventory.yaml"))
 	require.EqualError(t, p.SetOrReadInventory("/never-exists.yaml"), "open /never-exists.yaml: no such file or directory")
 }
+
+func TestRun(t *testing.T) {
+	dest := t.TempDir()
+	cmd := inventory.NewInventoryCmd()
+	cmd.SetArgs([]string{"--user", "gotest"})
+	cmd.Execute()
+	p := New(
+		WithCmdArgs(cmd, []string{"testdata/limit-dir"}),
+		WithDestination(dest),
+		WithHashAlgorithm(inventory.MD5Hash),
+	)
+	require.NotNil(t, p)
+	require.NoError(t, p.SetOrReadInventory(""))
+	require.NoError(t, p.Run())
+	require.DirExists(t, dest)
+	listing, err := os.ReadDir(dest)
+	require.NoError(t, err)
+	fmt.Fprintf(os.Stderr, "%+v\n", listing)
+	require.FileExists(t, path.Join(dest, "inventory.yaml"))
+	sFile := path.Join(dest, "suitcase-gotest-01-of-01.tar.zst")
+	require.FileExists(t, sFile)
+	stat, err := os.Stat(sFile)
+	require.NoError(t, err)
+	require.Greater(t, stat.Size(), int64(100))
+}
+
+/*
+func TestFillWithInventoryIndex(t *testing.T) {
+	p := New(
+		WithDestination(t.TempDir()),
+		WithHashAlgorithm(inventory.MD5Hash),
+	)
+	require.NoError(t, err)
+	i, err := inventory.NewDirectoryInventory(inventory.NewOptions(
+		inventory.WithDirectories([]string{"../testdata/fake-dir"}),
+	))
+	require.NoError(t, err)
+	_, err = Fill(s, i, 0, nil)
+	require.NoError(t, err)
+}
+*/

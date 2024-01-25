@@ -1,3 +1,6 @@
+/*
+Packaged main defines the top level CLI module
+*/
 package main
 
 import (
