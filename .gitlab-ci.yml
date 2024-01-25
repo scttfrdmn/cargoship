@@ -57,9 +57,8 @@ coverage:
   coverage: '/total:.*\d+.\d+/'
   script:
     - go mod tidy
-    - go test ./... -coverprofile=coverage-all.txt -covermode count
+    - go test ./... -coverprofile=coverage.txt -covermode count
     ## EasyJson package is auto generated, no tests needed here in theory
-    - grep -v _easyjson.go coverage-all.txt > coverage.txt
     - gocover-cobertura < coverage.txt > coverage.xml
     - go tool cover -func coverage.txt
   rules:
