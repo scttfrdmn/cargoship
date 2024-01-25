@@ -328,7 +328,6 @@ func createRunE(cmd *cobra.Command, args []string) error { // nolint:funlen
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "PTR: %+v\n", ptr)
 
 	if !onlyInventory {
 		if err = ptr.SendUpdate(travelagent.StatusUpdate{

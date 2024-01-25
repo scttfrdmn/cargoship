@@ -65,7 +65,7 @@ type Porter struct {
 	retryCount       int
 	retryInterval    time.Duration
 	concurrency      int
-	stateC           chan suitcase.FillState
+	stateC           chan FillState
 	statusC          chan rclone.TransferStatus
 }
 
@@ -80,7 +80,7 @@ func New(options ...Option) *Porter {
 		retryCount:    1,
 		retryInterval: time.Second * 5,
 		concurrency:   10,
-		stateC:        make(chan suitcase.FillState),
+		stateC:        make(chan FillState),
 		statusC:       make(chan rclone.TransferStatus),
 	}
 	for _, opt := range options {
@@ -657,7 +657,7 @@ func (p *Porter) mergeWizard() error {
 	return nil
 }
 
-func (p *Porter) startFillStateC(state chan suitcase.FillState) {
+func (p *Porter) startFillStateC(state chan FillState) {
 	// sampled := log.Sample(&zerolog.BasicSampler{N: se})
 	i := uint32(0)
 	for {
@@ -681,7 +681,7 @@ func (p *Porter) startTransferStatusC(statusC chan rclone.TransferStatus) {
 	}
 }
 
-func (p *Porter) retryWriteSuitcase(i int, state chan suitcase.FillState) (string, error) {
+func (p *Porter) retryWriteSuitcase(i int, state chan FillState) (string, error) {
 	var err error
 	var createdF string
 	var created bool
@@ -768,7 +768,7 @@ func (p *Porter) Run() error {
 }
 
 // WriteSuitcaseFile will write out the suitcase
-func (p *Porter) WriteSuitcaseFile(index int, stateC chan suitcase.FillState) (string, error) {
+func (p *Porter) WriteSuitcaseFile(index int, stateC chan FillState) (string, error) {
 	if p.Inventory == nil {
 		return "", errors.New("inventory must not be nil in WriteSuitcaseFile")
 	}
@@ -803,10 +803,7 @@ func (p *Porter) WriteSuitcaseFile(index int, stateC chan suitcase.FillState) (s
 
 	if stateC != nil {
 		// This is hanging... maybe?
-		stateC <- suitcase.FillState{
-			Completed: true,
-			Index:     index,
-		}
+		stateC <- newCompleteFillState(index)
 	}
 
 	if p.SuitcaseOpts.HashInner {
@@ -823,7 +820,7 @@ func (p *Porter) WriteSuitcaseFile(index int, stateC chan suitcase.FillState) (s
 }
 
 // Fill fills up a suitcase using the given inventory
-func (p *Porter) Fill(s suitcase.Suitcase, index int, stateC chan suitcase.FillState) ([]config.HashSet, error) {
+func (p *Porter) Fill(s suitcase.Suitcase, index int, stateC chan FillState) ([]config.HashSet, error) {
 	if p.Inventory == nil {
 		return nil, errors.New("inventory is nil")
 	}
@@ -870,12 +867,7 @@ func (p *Porter) Fill(s suitcase.Suitcase, index int, stateC chan suitcase.FillS
 
 		cur++
 		if stateC != nil {
-			stateC <- suitcase.FillState{
-				Current:        cur,
-				Total:          total,
-				Index:          index,
-				CurrentPercent: float64(cur) / float64(total) * 100,
-			}
+			stateC <- newInProgressFillState(cur, total, index)
 		}
 	}
 	return suitcaseHashes, nil
@@ -884,4 +876,29 @@ func (p *Porter) Fill(s suitcase.Suitcase, index int, stateC chan suitcase.FillS
 func newPool(c int) *pool.ErrorPool {
 	slog.Debug("setting pool guard", "concurrency", c)
 	return pool.New().WithMaxGoroutines(c).WithErrors()
+}
+
+func newCompleteFillState(index int) FillState {
+	return FillState{
+		Completed: true,
+		Index:     index,
+	}
+}
+
+func newInProgressFillState(current, total uint, index int) FillState {
+	return FillState{
+		Current:        current,
+		Total:          total,
+		Index:          index,
+		CurrentPercent: float64(current) / float64(total) * 100,
+	}
+}
+
+// FillState is the current state of a suitcase file
+type FillState struct {
+	Current        uint
+	Total          uint
+	Completed      bool
+	CurrentPercent float64
+	Index          int
 }

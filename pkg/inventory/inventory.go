@@ -928,38 +928,6 @@ func setShellDestination[T viper.Viper | cobra.Command](v T, o *Options) { // no
 	}
 }
 
-/*
-func setTransportPlugin[T viper.Viper | cobra.Command](v T, o *Options) {
-	k := "transport-plugin"
-	switch any(new(T)).(type) {
-	case *viper.Viper:
-		vi := mustGetViper(v)
-		if vi.IsSet(k) {
-			if vi.GetString(k) == "shell" {
-				o.TransportPlugin = &shell.Transporter{
-					Config: transporters.Config{},
-				}
-			} else {
-				panic("unknown transport plugin")
-			}
-		}
-	case *cobra.Command:
-		ci := mustGetCommand(v)
-		if ci.Flags().Changed(k) {
-			// o.HashInner = mustGetCmd[bool](ci, k)
-			switch mustGetCmd[string](ci, k) {
-			case "shell":
-				o.TransportPlugin = &shell.Transporter{}
-			default:
-				panic("unknown transport plugin")
-			}
-		}
-	default:
-		panic(fmt.Sprintf("unexpected use of set %v", k))
-	}
-}
-*/
-
 func setFollowSymlinks[T viper.Viper | cobra.Command](v T, o *Options) {
 	k := "follow-symlinks"
 	switch any(new(T)).(type) {
