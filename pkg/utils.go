@@ -92,11 +92,7 @@ func hashInner(targetFn string, ha inventory.HashAlgorithm, hashes []config.Hash
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if herr := hashF.Close(); herr != nil {
-			panic(herr)
-		}
-	}()
+	defer dclose(hashF)
 	if err := suitcase.WriteHashFile(hashes, hashF); err != nil {
 		return err
 	}

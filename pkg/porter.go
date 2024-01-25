@@ -796,7 +796,7 @@ func (p *Porter) WriteSuitcaseFile(index int, stateC chan suitcase.FillState) (s
 	defer dclose(s)
 
 	log.Debug("Filling suitcase", "destination", targetFn, "format", p.SuitcaseOpts.Format, "encrypt-inner", p.SuitcaseOpts.EncryptInner)
-	hashes, err := suitcase.FillWithInventoryIndex(s, p.Inventory, index, stateC)
+	hashes, err := p.Fill(s, index, stateC)
 	if err != nil {
 		return "", err
 	}
@@ -820,6 +820,65 @@ func (p *Porter) WriteSuitcaseFile(index int, stateC chan suitcase.FillState) (s
 	}
 
 	return targetFn, nil
+}
+
+// Fill fills up a suitcase using the given inventory
+func (p *Porter) Fill(s suitcase.Suitcase, index int, stateC chan suitcase.FillState) ([]config.HashSet, error) {
+	if p.Inventory == nil {
+		return nil, errors.New("inventory is nil")
+	}
+	var err error
+
+	var total uint
+	if index > 0 {
+		if _, ok := p.Inventory.IndexSummaries[index]; ok {
+			total = p.Inventory.IndexSummaries[index].Count
+		}
+	} else {
+		total = uint(len(p.Inventory.Files))
+	}
+	cur := uint(0)
+	var suitcaseHashes []config.HashSet
+
+	for _, f := range p.Inventory.Files {
+		l := slog.With(
+			"path", f.Path,
+			"index", index)
+		if f.SuitcaseIndex != index {
+			continue
+		}
+
+		l.Debug("Adding file to suitcase",
+			"cur", cur,
+			"total", total,
+		)
+
+		if s.Config().EncryptInner {
+			err = s.AddEncrypt(*f)
+			if err != nil {
+				return nil, fmt.Errorf("encountered error adding file to suitcase: %v", err)
+			}
+		} else {
+			hs, err := s.Add(*f)
+			if err != nil {
+				return nil, fmt.Errorf("encountered error adding file to suitcase: %v", err)
+			}
+			if s.Config().HashInner {
+				suitcaseHashes = append(suitcaseHashes, *hs)
+			}
+		}
+
+		cur++
+		if stateC != nil {
+			stateC <- suitcase.FillState{
+				Current:        cur,
+				Total:          total,
+				Index:          index,
+				CurrentPercent: float64(cur) / float64(total) * 100,
+			}
+		}
+	}
+	return suitcaseHashes, nil
 }
 
 func newPool(c int) *pool.ErrorPool {

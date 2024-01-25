@@ -344,3 +344,19 @@ func TestRun(t *testing.T) {
 	require.NoError(t, err)
 	require.Greater(t, stat.Size(), int64(100))
 }
+
+/*
+func TestFillWithInventoryIndex(t *testing.T) {
+	p := New(
+		WithDestination(t.TempDir()),
+		WithHashAlgorithm(inventory.MD5Hash),
+	)
+	require.NoError(t, err)
+	i, err := inventory.NewDirectoryInventory(inventory.NewOptions(
+		inventory.WithDirectories([]string{"../testdata/fake-dir"}),
+	))
+	require.NoError(t, err)
+	_, err = Fill(s, i, 0, nil)
+	require.NoError(t, err)
+}
+*/
