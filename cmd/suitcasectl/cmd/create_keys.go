@@ -12,7 +12,7 @@ func NewCreateKeysCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "keys",
 		Short: "Create a new private and public key pair",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(cmd *cobra.Command, _ []string) {
 			keyOpts := &gpg.KeyOpts{
 				Name:  mustGetCmd[string](cmd, "name"),
 				Email: mustGetCmd[string](cmd, "email"),
@@ -38,14 +38,14 @@ func bindCreateKeys(createCmd *cobra.Command) {
 	createKeysCmd.PersistentFlags().StringP("name", "n", "", "Name of the key")
 	err := createKeysCmd.MarkPersistentFlagRequired("name")
 	checkErr(err, "")
-	if nerr := createKeysCmd.RegisterFlagCompletionFunc("name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if nerr := createKeysCmd.RegisterFlagCompletionFunc("name", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}); nerr != nil {
 		panic(nerr)
 	}
 
 	createKeysCmd.PersistentFlags().StringP("email", "e", "", "Email of the key")
-	if eerr := createKeysCmd.RegisterFlagCompletionFunc("email", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if eerr := createKeysCmd.RegisterFlagCompletionFunc("email", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}); eerr != nil {
 		panic(eerr)
@@ -59,7 +59,7 @@ func bindCreateKeys(createCmd *cobra.Command) {
 	createKeysCmd.PersistentFlags().Lookup("type").DefValue = "rsa"
 
 	createKeysCmd.PersistentFlags().IntP("bits", "b", 4096, "Bit length of the key")
-	if berr := createKeysCmd.RegisterFlagCompletionFunc("bits", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if berr := createKeysCmd.RegisterFlagCompletionFunc("bits", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}); berr != nil {
 		panic(berr)

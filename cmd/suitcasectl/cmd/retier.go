@@ -25,15 +25,13 @@ func NewRetierCmd() *cobra.Command {
 		Short:   "Change the tier of an object in cloud storage",
 		Args:    cobra.ExactArgs(2),
 		Example: `$ suitcasectl retier Archive suitcasectl-azure:/test`,
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(_ *cobra.Command, args []string) error {
 			fs, remote := splitFsRemote(args[1])
-			err := rclone.APIOneShot("operations/settier", rc.Params{
+			return rclone.APIOneShot("operations/settier", rc.Params{
 				"fs":     fs,
 				"remote": remote,
 				"tier":   args[0],
 			})
-
-			checkErr(err, "could not set tier")
 		},
 	}
 	return cmd

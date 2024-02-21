@@ -21,7 +21,7 @@ rclone config, but does not require the rclone binary to be present on your
 host.`,
 		Aliases: []string{"r"},
 		Args:    cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			return rclone.Copy(args[0], transporters.UniquifyDest(args[1]), nil)
 		},
 	}

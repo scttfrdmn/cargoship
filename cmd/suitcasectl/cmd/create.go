@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/spf13/cobra"
 )
@@ -12,8 +12,8 @@ func NewCreateCmd() *cobra.Command {
 		Use:   "create",
 		Short: "Create something!",
 		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("create called")
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return errors.New(cmd.UsageString())
 		},
 	}
 	bindCreateKeys(cmd)

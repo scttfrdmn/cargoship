@@ -288,6 +288,7 @@ func WithUniquePrefix(s string) Option {
 
 // WithURL sets the url from a string
 func WithURL(s string) Option {
+	s = strings.TrimSuffix(s, "/")
 	u, err := url.Parse(s)
 	if err != nil {
 		return failure(err)
@@ -510,6 +511,13 @@ func (s Status) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("\"%v\"", s.String())), nil
 }
 
+// UnmarshalJSON does the correct conversion for unmarshalling a status
+func (s *Status) UnmarshalJSON(data []byte) error {
+	var err error
+	*s, err = StatusString(strings.TrimPrefix(strings.TrimSuffix(string(data), "\""), "\""))
+	return err
+}
+
 const (
 	// StatusPending has not yet started
 	StatusPending = iota
@@ -520,6 +528,22 @@ const (
 	// StatusFailed is a falure
 	StatusFailed
 )
+
+// StatusString returns a Status using a string
+func StatusString(s string) (Status, error) {
+	switch s {
+	case "pending":
+		return StatusPending, nil
+	case "in_progress":
+		return StatusInProgress, nil
+	case "complete":
+		return StatusComplete, nil
+	case "failed":
+		return StatusFailed, nil
+	default:
+		return StatusPending, fmt.Errorf("unknown status string: %v", s)
+	}
+}
 
 func (s Status) String() string {
 	switch s {
@@ -568,4 +592,10 @@ func BindCobra(cmd *cobra.Command) {
 
 	cmd.MarkFlagsMutuallyExclusive("travel-agent", "travel-agent-url")
 	cmd.MarkFlagsMutuallyExclusive("travel-agent", "travel-agent-token")
+}
+
+func panicIfErr(err error) {
+	if err != nil {
+		panic(err)
+	}
 }

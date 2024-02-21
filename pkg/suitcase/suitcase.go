@@ -101,15 +101,6 @@ type Suitcase interface {
 	Config() *config.SuitCaseOpts
 }
 
-// FillState is the current state of a suitcase file
-type FillState struct {
-	Current        uint
-	Total          uint
-	Completed      bool
-	CurrentPercent float64
-	Index          int
-}
-
 // New Create a new suitcase
 func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 	// Decide if we are encrypting the whole shebang or not

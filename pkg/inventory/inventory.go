@@ -1468,7 +1468,7 @@ func ArchiveTOC(fn string) ([]string, error) {
 	ret := []string{}
 	log := slog.With("archive", fn)
 
-	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, _ error) error {
 		// Handle: https://github.com/mholt/archiver/issues/383
 		// This should be fixed in version later than the v4.0.0-alpha.8 tag
 		/*
@@ -1514,7 +1514,7 @@ type Collection map[string]Inventory
 func CollectionWithDirs(d []string) (*Collection, error) {
 	ret := Collection{}
 	for _, di := range d {
-		err := filepath.WalkDir(di, func(path string, di fs.DirEntry, err error) error {
+		err := filepath.WalkDir(di, func(path string, _ fs.DirEntry, _ error) error {
 			if strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml") {
 				i, err := NewInventoryWithFilename(path)
 				if err != nil {

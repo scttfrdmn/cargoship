@@ -156,6 +156,7 @@ linters-settings:
           - "github.com/muesli/roff"
           - "github.com/rclone/rclone/fs/rc"
           - "moul.io/http2curl"
+          - "github.com/google/uuid"
           - "github.com/ProtonMail/go-crypto/openpgp"
           - "github.com/ProtonMail/gopenpgp/v2/crypto"
           - "github.com/klauspost/compress/zstd"

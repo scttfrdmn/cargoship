@@ -14,7 +14,7 @@ func NewMDDocsCmd() *cobra.Command {
 		Short:  "Create a new tree of markdown docs",
 		Args:   cobra.ExactArgs(1),
 		Hidden: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			return doc.GenMarkdownTree(NewRootCmd(io.Discard), args[0])
 		},
 	}
