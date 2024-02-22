@@ -5,6 +5,7 @@ package travelagent
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/sethvargo/go-retry"
 	"github.com/spf13/cobra"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/cloud"
@@ -41,6 +43,7 @@ type TravelAgent struct {
 	uploadRetries             int
 	uploadRetryTime           time.Duration
 	UniquePrefix              string
+	backoff                   retry.Backoff
 }
 
 // TravelAgenter is the thing that describes what a travel agent is!
@@ -112,13 +115,13 @@ func (t TravelAgent) credentialURL() string {
 
 // Upload sends a file off to the cloud, given the file to upload
 func (t TravelAgent) Upload(fn string, c chan rclone.TransferStatus) (int64, error) {
-	var uploaded bool
-	attempt := 1
+	attempt := 0
 
-	for (!uploaded && attempt == 1) || (!uploaded && (attempt <= t.uploadRetries)) {
+	if err := retry.Do(context.Background(), t.backoff, func(_ context.Context) error {
+		attempt++
 		uploadCred, err := t.getCredentials()
 		if err != nil {
-			return 0, err
+			return err
 		}
 		slog.Info("got cloud credentials to upload file",
 			"file", path.Base(fn),
@@ -132,29 +135,30 @@ func (t TravelAgent) Upload(fn string, c chan rclone.TransferStatus) (int64, err
 			},
 		}
 		if cerr := trans.Check(); cerr != nil {
-			return 0, cerr
+			return cerr
 		}
 
 		if serr := trans.SendWithChannel(fn, t.UniquePrefix, c); serr != nil {
 			slog.Warn("upload failed, sleeping then will try again",
 				"current-attempt", attempt,
 				"max-retries", t.uploadRetries,
+				"file", path.Base(fn),
 				"error", serr,
 			)
-			time.Sleep(t.uploadRetryTime)
-			attempt++
-		} else {
-			uploaded = true
+			if err := retry.RetryableError(errors.New("could not upload file, will retry")); err != nil {
+				return err
+			}
 		}
+		return nil
+	}); err != nil {
+		return 0, err
 	}
-	if uploaded {
-		fstat, err := os.Stat(fn)
-		if err != nil {
-			return 0, fmt.Errorf("could stat file: %v", fn)
-		}
-		return fstat.Size(), nil
+	//}
+	fstat, err := os.Stat(fn)
+	if err != nil {
+		return 0, fmt.Errorf("could stat file: %v", fn)
 	}
-	return 0, errors.New("could not upload file")
+	return fstat.Size(), nil
 }
 
 // componentURL is the endpoint for a given component to send to
@@ -288,6 +292,7 @@ func WithUniquePrefix(s string) Option {
 
 // WithURL sets the url from a string
 func WithURL(s string) Option {
+	s = strings.TrimSuffix(s, "/")
 	u, err := url.Parse(s)
 	if err != nil {
 		return failure(err)
@@ -433,6 +438,11 @@ func New(options ...Option) (*TravelAgent, error) {
 		opt(ta)
 	}
 
+	// Assemble the backoff based on retries
+	ta.backoff = retry.NewFibonacci(ta.uploadRetryTime)
+	ta.backoff = retry.WithMaxRetries(uint64(ta.uploadRetries), ta.backoff)
+	// ta.backoff = retry.WithMaxDuration(5*time.Minute, ta.backoff)
+
 	if os.Getenv("DEBUG_CURL") != "" {
 		ta.printCurl = true
 	}
@@ -510,6 +520,13 @@ func (s Status) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("\"%v\"", s.String())), nil
 }
 
+// UnmarshalJSON does the correct conversion for unmarshalling a status
+func (s *Status) UnmarshalJSON(data []byte) error {
+	var err error
+	*s, err = StatusString(strings.TrimPrefix(strings.TrimSuffix(string(data), "\""), "\""))
+	return err
+}
+
 const (
 	// StatusPending has not yet started
 	StatusPending = iota
@@ -520,6 +537,22 @@ const (
 	// StatusFailed is a falure
 	StatusFailed
 )
+
+// StatusString returns a Status using a string
+func StatusString(s string) (Status, error) {
+	switch s {
+	case "pending":
+		return StatusPending, nil
+	case "in_progress":
+		return StatusInProgress, nil
+	case "complete":
+		return StatusComplete, nil
+	case "failed":
+		return StatusFailed, nil
+	default:
+		return StatusPending, fmt.Errorf("unknown status string: %v", s)
+	}
+}
 
 func (s Status) String() string {
 	switch s {
@@ -568,4 +601,10 @@ func BindCobra(cmd *cobra.Command) {
 
 	cmd.MarkFlagsMutuallyExclusive("travel-agent", "travel-agent-url")
 	cmd.MarkFlagsMutuallyExclusive("travel-agent", "travel-agent-token")
+}
+
+func panicIfErr(err error) {
+	if err != nil {
+		panic(err)
+	}
 }

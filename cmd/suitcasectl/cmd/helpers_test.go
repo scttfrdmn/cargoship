@@ -40,7 +40,7 @@ func BenchmarkCalculateHashes(b *testing.B) {
 	}
 
 	var allFiles []string
-	err := filepath.Walk(bdd, func(p string, info os.FileInfo, err error) error {
+	err := filepath.Walk(bdd, func(p string, info os.FileInfo, _ error) error {
 		if !info.IsDir() {
 			allFiles = append(allFiles, p)
 		}

@@ -1,0 +1,5 @@
+---
+admin_token: foo-bar
+transfers:
+  - destination: "/tmp/travel-agent"
+    expire_seconds: 60

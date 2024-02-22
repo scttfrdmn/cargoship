@@ -50,7 +50,7 @@ func TestStatusStrings(t *testing.T) {
 }
 
 func TestStatusUpdateFailure(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		_, err := io.Copy(w, bytes.NewReader([]byte(`{"errors":["suitcase cannot be updated since it is complete"]}`)))
 		panicIfErr(err)
@@ -71,7 +71,7 @@ func TestStatusUpdateFailure(t *testing.T) {
 
 func TestTravelAgentUpload(t *testing.T) {
 	fakeDest := t.TempDir()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := io.Copy(w, bytes.NewReader([]byte(fmt.Sprintf(`{"destination":"%v"}`, fakeDest))))
 		require.NoError(t, err)
 		// panicIfErr(err)
@@ -89,7 +89,7 @@ func TestTravelAgentUpload(t *testing.T) {
 }
 
 func TestStatusUpdate(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := io.Copy(w, bytes.NewReader([]byte(`{"messages":["updated fields: status and updated_at"]}`)))
 		panicIfErr(err)
 	}))
@@ -169,12 +169,6 @@ func copyResp(f string, w io.Writer) {
 	panicIfErr(err)
 }
 */
-
-func panicIfErr(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
 
 func TestCredentialConnectionStrings(t *testing.T) {
 	tests := map[string]struct {

@@ -1288,8 +1288,8 @@ func BindCobra(cmd *cobra.Command) {
 	// cmd.PersistentFlags().String("transport-plugin", "", "Transport plugin to use (if any). Options: shell, rclone...")
 	cmd.PersistentFlags().String("cloud-destination", "", "Send files to this cloud destination after creation. Destination must be a valid rclone location.")
 	cmd.PersistentFlags().String("shell-destination", "", "Send files through this shell destination after creation.")
-	cmd.PersistentFlags().Int("retry-count", 0, "Number of times to retry a failed operation.")
-	cmd.PersistentFlags().Duration("retry-interval", 5*time.Minute, "How long to wait between retries.")
+	cmd.PersistentFlags().Int("retry-count", 5, "Number of times to retry a failed operation.")
+	cmd.PersistentFlags().Duration("retry-interval", 1*time.Second, "How long to wait between retries.")
 }
 
 // mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command
@@ -1468,7 +1468,7 @@ func ArchiveTOC(fn string) ([]string, error) {
 	ret := []string{}
 	log := slog.With("archive", fn)
 
-	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, _ error) error {
 		// Handle: https://github.com/mholt/archiver/issues/383
 		// This should be fixed in version later than the v4.0.0-alpha.8 tag
 		/*
@@ -1514,7 +1514,7 @@ type Collection map[string]Inventory
 func CollectionWithDirs(d []string) (*Collection, error) {
 	ret := Collection{}
 	for _, di := range d {
-		err := filepath.WalkDir(di, func(path string, di fs.DirEntry, err error) error {
+		err := filepath.WalkDir(di, func(path string, _ fs.DirEntry, _ error) error {
 			if strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml") {
 				i, err := NewInventoryWithFilename(path)
 				if err != nil {
