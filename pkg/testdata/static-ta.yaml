@@ -1,6 +1,5 @@
 ---
 admin_token: foo-bar
 transfers:
-  - credentials:
-      destination: "/tmp"
-      expire_seconds: 60
+  - destination: "/tmp/travel-agent"
+    expire_seconds: 60

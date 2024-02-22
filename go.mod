@@ -26,12 +26,14 @@ require (
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/rclone/rclone v1.64.0
 	github.com/samber/slog-multi v1.0.2
+	github.com/sethvargo/go-retry v0.2.4
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.17.0
 	github.com/stretchr/testify v1.8.4
 	github.com/vjorlikowski/yaml v0.1.0
+	go.etcd.io/bbolt v1.3.7
 	golang.org/x/tools v0.14.0
 	gopkg.in/yaml.v3 v3.0.1
 	moul.io/http2curl v1.0.0
@@ -215,7 +217,6 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 	github.com/zeebo/blake3 v0.2.3 // indirect
 	github.com/zeebo/errs v1.3.0 // indirect
-	go.etcd.io/bbolt v1.3.7 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect

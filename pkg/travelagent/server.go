@@ -3,38 +3,53 @@ package travelagent
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	bolt "go.etcd.io/bbolt"
 )
 
 // staticSuitcaseTransfer is a hard coded transfer for a client
 type staticSuitcaseTransfer struct {
-	state    map[string]*suitcaseTransferState
 	response credentialResponse
 }
 
 type suitcaseTransferState struct {
-	status Status
-	size   int64
+	Status Status
+	Size   int64
 }
 
 // Server holds on the stuff that serves up a travel agent
 type Server struct {
 	listener        net.Listener
 	adminToken      string
-	staticTransfers []staticSuitcaseTransfer
+	staticTransfers []credentialResponse
+	db              *bolt.DB
+	dbf             string
+}
+
+// WithDBFile sets the database filename for a new server. If no filename is set, we'll use a temp file
+func WithDBFile(f string) func(*Server) {
+	return func(s *Server) {
+		s.dbf = f
+	}
 }
 
 // WithStaticTransfers sets the static transfers for a given server
-func WithStaticTransfers(t []staticSuitcaseTransfer) func(*Server) {
+func WithStaticTransfers(t []credentialResponse) func(*Server) {
+	for _, item := range t {
+		if item.Destination == "" {
+			fmt.Fprintf(os.Stderr, "IMPORT: %+v\n", item)
+			panic("missing destination")
+		}
+	}
 	return func(s *Server) {
 		s.staticTransfers = t
 	}
@@ -54,15 +69,6 @@ func WithListener(l net.Listener) func(*Server) {
 	}
 }
 
-/*
-// WithHTTPServer sets the http server on a Server
-func WithHTTPServer(hs *http.Server) func(*Server) {
-	return func(s *Server) {
-		s.httpServer = hs
-	}
-}
-*/
-
 // NewServer returns a new server with functional options
 func NewServer(opts ...func(*Server)) *Server {
 	defaultListener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -78,6 +84,18 @@ func NewServer(opts ...func(*Server)) *Server {
 		opt(s)
 	}
 
+	if s.dbf == "" {
+		tf, err := os.MkdirTemp("", "travelagent-server")
+		panicIfErr(err)
+		s.dbf = path.Join(tf, "server.db")
+	}
+
+	var dberr error
+	s.db, dberr = bolt.Open(s.dbf, 0o600, nil)
+	panicIfErr(dberr)
+	ierr := s.initDB()
+	panicIfErr(ierr)
+
 	if s.adminToken == "" {
 		guuid := fmt.Sprint(uuid.New())
 		slog.Warn("setting a random admin token", "token", guuid)
@@ -86,22 +104,53 @@ func NewServer(opts ...func(*Server)) *Server {
 	return s
 }
 
-/*
-func (s *Server) index(w http.ResponseWriter, r *http.Request) {
-	s.validateToken(w, r)
-	switch {
-	// Credential query
-	case strings.HasPrefix(r.URL.Path, "/api/v1/suitcase_transfers") && strings.HasSuffix(r.URL.Path, "/credentials"):
-		s.returnCredentials(w, r)
-	// Status update
-	case strings.HasPrefix(r.URL.Path, "/api/v1/suitcase_transfers"):
-		s.processStatusUpdate(w, r)
-	default:
-		slog.Info("could not find url", "path", r.URL.Path)
-		http.NotFound(w, r)
+func (s *Server) getState(id int, name string) (*suitcaseTransferState, error) {
+	var ret suitcaseTransferState
+
+	if err := s.db.View(func(tx *bolt.Tx) error {
+		b := s.getBucket(tx).Get([]byte(path.Join(fmt.Sprint(id), name)))
+		if string(b) == "" {
+			return nil
+		}
+		if err := json.Unmarshal(b, &ret); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
+	return &ret, nil
 }
-*/
+
+func (s *Server) setState(id int, name string, state suitcaseTransferState) error {
+	stateB, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		err := s.getBucket(tx).Put([]byte(path.Join(fmt.Sprint(id), name)), stateB)
+		return err
+	})
+}
+
+func (s Server) getBucket(tx *bolt.Tx) *bolt.Bucket {
+	return tx.Bucket([]byte("suitcases"))
+}
+
+// initDB initializes the database
+func (s *Server) initDB() error {
+	// store some data
+	bn := []byte("suitcases")
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket := s.getBucket(tx)
+		if bucket == nil {
+			if _, berr := tx.CreateBucket(bn); berr != nil {
+				return berr
+			}
+		}
+		return nil
+	})
+}
 
 func notFound(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(404)
@@ -153,15 +202,17 @@ func (s Server) validateToken(w http.ResponseWriter, r *http.Request) {
 
 func (s Server) handleCredentials(w http.ResponseWriter, r *http.Request) {
 	s.validateToken(w, r)
-	dest, err := os.MkdirTemp("", "travelagent-poc")
-	panicIfErr(err)
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
 	w.WriteHeader(200)
-	ret, err := json.Marshal(credentialResponse{
-		AuthType:      map[string]string{},
-		Destination:   dest,
-		ExpireSeconds: 600,
-	})
-	panicIfErr(err)
+	ret, err := json.Marshal(s.staticTransfers[id])
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
 	_, werr := w.Write(ret)
 	panicIfErr(werr)
 }
@@ -183,10 +234,22 @@ func writeErr(w http.ResponseWriter, code int, err error) {
 	panicIfErr(werr)
 }
 
+func getUpdatedFields(old suitcaseTransferState, new StatusUpdate, name string) []string {
+	updatedFields := []string{}
+	if new.Status != old.Status {
+		slog.Info("Updating status", "old", old.Status, "new", new.Status, "item", name)
+		updatedFields = append(updatedFields, "status")
+	}
+	if new.SizeBytes != old.Size {
+		slog.Info("Updating size", "old", old.Size, "new", new.SizeBytes, "item", name)
+		updatedFields = append(updatedFields, "size")
+	}
+	return updatedFields
+}
+
 func (s *Server) handleStatusUpdate(w http.ResponseWriter, r *http.Request) {
 	s.validateToken(w, r)
-	idS := r.PathValue("id")
-	id, err := strconv.Atoi(idS)
+	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 	}
@@ -201,36 +264,36 @@ func (s *Server) handleStatusUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err)
-	}
+	/*
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+		}
+	*/
 
 	var updatedState StatusUpdate
-	// if err := json.NewDecoder(r.Body).Decode(&updatedState); err != nil {
-	if err := json.Unmarshal(body, &updatedState); err != nil {
-		writeErr(w, http.StatusBadRequest, err)
+	if uerr := json.NewDecoder(r.Body).Decode(&updatedState); uerr != nil {
+		// if uerr := json.Unmarshal(body, &updatedState); uerr != nil {
+		writeErr(w, http.StatusBadRequest, uerr)
 		return
 	}
 
-	if s.staticTransfers[id].state == nil {
-		s.staticTransfers[id].state = map[string]*suitcaseTransferState{name: {}}
+	previous, err := s.getState(id, name)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
 	}
 
-	if _, ok := s.staticTransfers[id].state[name]; !ok {
-		s.staticTransfers[id].state[name] = &suitcaseTransferState{}
-	}
+	updatedFields := getUpdatedFields(*previous, updatedState, name)
 
-	updatedFields := []string{}
-	if updatedState.Status != s.staticTransfers[id].state[name].status {
-		slog.Info("Updating status", "old", s.staticTransfers[id].state[name].status, "new", updatedState.Status)
-		s.staticTransfers[id].state[name].status = updatedState.Status
-		updatedFields = append(updatedFields, "status")
-	}
-	if updatedState.SizeBytes != s.staticTransfers[id].state[name].size {
-		slog.Info("Updating size", "old", s.staticTransfers[id].state[name].size, "new", updatedState.SizeBytes)
-		s.staticTransfers[id].state[name].size = updatedState.SizeBytes
-		updatedFields = append(updatedFields, "size")
+	if len(updatedFields) > 0 {
+		if err := s.setState(id, name, suitcaseTransferState{
+			Status: updatedState.Status,
+			Size:   updatedState.SizeBytes,
+		}); err != nil {
+			writeErr(w, http.StatusBadGateway, err)
+			return
+		}
 	}
 
 	// currentState.state.status = r.
@@ -239,7 +302,8 @@ func (s *Server) handleStatusUpdate(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("updated fields: %v", strings.Join(updatedFields, ", ")),
 		},
 	}); err != nil {
-		panicIfErr(err)
+		writeErr(w, http.StatusBadRequest, err)
+		return
 	}
 }
 
@@ -254,6 +318,6 @@ func writeOK(w http.ResponseWriter, v any) error {
 // StaticCredentials represents a token and list of credential data.
 // Not suitable for production use, just used for testing
 type StaticCredentials struct {
-	AdminToken string                   `json:"admin_token,omitempty" yaml:"admin_token,omitempty"`
-	Transfers  []staticSuitcaseTransfer `json:"transfers,omitempty" yaml:"transfers,omitempty"`
+	AdminToken string               `json:"admin_token,omitempty" yaml:"admin_token,omitempty"`
+	Transfers  []credentialResponse `json:"transfers,omitempty" yaml:"transfers,omitempty"`
 }

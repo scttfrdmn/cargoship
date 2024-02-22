@@ -190,6 +190,7 @@ linters-settings:
           - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
           - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/cloud"
           - "gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/shell"
+          - "github.com/sethvargo/go-retry"
       tests:
         files:
           - "$test"

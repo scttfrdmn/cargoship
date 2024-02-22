@@ -7,11 +7,11 @@ import (
 	"os"
 	"path"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/drewstinnett/gout/v2"
+	"github.com/sourcegraph/conc/pool"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -244,21 +244,20 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 
 func uploadMeta(ptr *porter.Porter, mfiles []string) error {
 	if ptr.TravelAgent != nil {
-		var wg sync.WaitGroup
-		wg.Add(len(mfiles))
+		p := pool.New().WithMaxGoroutines(10).WithErrors()
 		for _, mfile := range mfiles {
 			mfile := mfile
-			go func() {
-				defer wg.Done()
+			p.Go(func() error {
 				var xferred int64
 				var err error
 				if xferred, err = ptr.TravelAgent.Upload(path.Join(ptr.Destination, mfile), nil); err != nil {
-					panic(err)
+					return err
 				}
 				atomic.AddInt64(&ptr.TotalTransferred, xferred)
-			}()
+				return nil
+			})
 		}
-		wg.Wait()
+		return p.Wait()
 	}
 	return nil
 }

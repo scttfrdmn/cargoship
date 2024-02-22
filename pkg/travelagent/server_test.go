@@ -3,6 +3,7 @@ package travelagent
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"testing"
 	"time"
 
@@ -14,13 +15,11 @@ func TestNewServer(t *testing.T) {
 	dest := t.TempDir()
 	srv := NewServer(
 		WithAdminToken(token),
-		WithStaticTransfers([]staticSuitcaseTransfer{
+		WithStaticTransfers([]credentialResponse{
 			{
-				response: credentialResponse{
-					AuthType:      map[string]string{},
-					Destination:   dest,
-					ExpireSeconds: 60,
-				},
+				AuthType:      map[string]string{},
+				Destination:   dest,
+				ExpireSeconds: 60,
 			},
 		}),
 	)
@@ -40,7 +39,7 @@ func TestNewServer(t *testing.T) {
 	// Get credentials
 	creds, err := c.getCredentials()
 	require.NoError(t, err)
-	require.Equal(t, 600, creds.ExpireSeconds)
+	require.Equal(t, 60, creds.ExpireSeconds)
 
 	// Send a status update
 	resp, err := c.Update(StatusUpdate{Status: StatusInProgress})
@@ -92,13 +91,11 @@ func TestBadTokenServer(t *testing.T) {
 	token := "some-token"
 	srv := NewServer(
 		WithAdminToken(token),
-		WithStaticTransfers([]staticSuitcaseTransfer{
+		WithStaticTransfers([]credentialResponse{
 			{
-				response: credentialResponse{
-					AuthType:      map[string]string{},
-					Destination:   t.TempDir(),
-					ExpireSeconds: 60,
-				},
+				AuthType:      map[string]string{},
+				Destination:   t.TempDir(),
+				ExpireSeconds: 60,
 			},
 		}),
 	)
@@ -125,4 +122,24 @@ func TestBadTokenServer(t *testing.T) {
 func TestStatusUnmarshal(t *testing.T) {
 	var updatedState StatusUpdate
 	require.NoError(t, json.Unmarshal([]byte(`{"status":"pending"}`), &updatedState))
+}
+
+func TestDB(t *testing.T) {
+	td := t.TempDir()
+	tf := path.Join(td, "test-db")
+
+	got := NewServer(
+		WithDBFile(tf),
+	)
+	require.NotNil(t, got)
+	require.FileExists(t, tf)
+
+	require.NoError(t, got.setState(5, "foo.txt", suitcaseTransferState{Status: StatusInProgress}))
+
+	gotS, gotE := got.getState(5, "foo.txt")
+	require.NoError(t, gotE)
+	require.Equal(t,
+		&suitcaseTransferState{Status: StatusInProgress},
+		gotS,
+	)
 }
