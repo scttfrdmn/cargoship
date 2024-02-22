@@ -10,7 +10,7 @@ variables:
   GOCACHE: /tmp/
   GOPATH: /tmp/
   GOLANGCI_LINT_CACHE: /tmp/
-  MKDOCS_IMAGE: gitlab-registry.oit.duke.edu/devil-ops/mkdocs-material:v0.1.0
+  MKDOCS_IMAGE: gitlab-registry.oit.duke.edu/devil-ops/mkdocs-material:v0.2.0
 stages:
   - test
   - release
