@@ -16,11 +16,6 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
-// staticSuitcaseTransfer is a hard coded transfer for a client
-type staticSuitcaseTransfer struct {
-	response credentialResponse
-}
-
 type suitcaseTransferState struct {
 	Status Status
 	Size   int64
