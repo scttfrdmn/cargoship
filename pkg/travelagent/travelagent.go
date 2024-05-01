@@ -173,7 +173,7 @@ func (t *TravelAgent) getCredentials() (*credentialResponse, error) {
 	}
 
 	var credentialR credentialResponse
-	if _, cerr := t.sendRequest(req, &credentialR); err != nil {
+	if _, cerr := t.sendRequest(req, &credentialR); cerr != nil {
 		return nil, cerr
 	}
 	if credentialR.Destination == "" {
