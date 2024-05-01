@@ -243,7 +243,7 @@ func TestWriteHashfileBin(t *testing.T) {
 		},
 	}, &buf)
 	require.NoError(t, err)
-	require.Equal(t, "foo\tsl9i0IVtTIGDHPcBuS4+dA==\n", buf.String())
+	require.Equal(t, "sl9i0IVtTIGDHPcBuS4+dA==\tfoo\n", buf.String())
 }
 
 func TestWriteHashfile(t *testing.T) {
@@ -255,7 +255,7 @@ func TestWriteHashfile(t *testing.T) {
 		},
 	}, &buf)
 	require.NoError(t, err)
-	require.Equal(t, "foo\tb25f62d0856d4c81831cf701b92e3e74\n", buf.String())
+	require.Equal(t, "b25f62d0856d4c81831cf701b92e3e74\tfoo\n", buf.String())
 }
 
 func TestWriteHashfileBinFail(t *testing.T) {

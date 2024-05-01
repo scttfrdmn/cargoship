@@ -209,7 +209,7 @@ func WriteHashFileBin(hs []config.HashSet, o io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if _, err := w.WriteString(fmt.Sprintf("%s\t%s\n", hs.Filename, hx)); err != nil {
+		if _, err := w.WriteString(fmt.Sprintf("%s\t%s\n", hx, hs.Filename)); err != nil {
 			return err
 		}
 	}
@@ -223,8 +223,7 @@ func WriteHashFileBin(hs []config.HashSet, o io.Writer) error {
 func WriteHashFile(hs []config.HashSet, o io.Writer) error {
 	w := bufio.NewWriter(o)
 	for _, hs := range hs {
-		_, err := w.WriteString(fmt.Sprintf("%s\t%s\n", hs.Filename, hs.Hash))
-		if err != nil {
+		if _, err := w.WriteString(fmt.Sprintf("%s\t%s\n", hs.Hash, hs.Filename)); err != nil {
 			return err
 		}
 	}
