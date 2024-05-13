@@ -223,7 +223,7 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if serr := ptr.SendUpdate(travelagent.StatusUpdate{
+	if serr := ptr.SendFinalUpdate(travelagent.StatusUpdate{
 		Status:      travelagent.StatusComplete,
 		CompletedAt: nowPtr(),
 		SizeBytes:   ptr.TotalTransferred,

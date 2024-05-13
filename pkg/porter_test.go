@@ -128,6 +128,10 @@ func (f fakeTa) StatusURL() string {
 	return "https://www.example.com/api/v1/5"
 }
 
+func (f fakeTa) PostMetaData(_ string) error {
+	return nil
+}
+
 func (f fakeTa) Transferred() int64 {
 	return 0
 }
@@ -174,6 +178,10 @@ type fta struct {
 
 func (f fta) StatusURL() string {
 	return "https://www.example.com/api/v1/status"
+}
+
+func (f fta) PostMetaData(_ string) error {
+	return nil
 }
 
 func (f fta) Upload(_ string, _ chan rclone.TransferStatus) (int64, error) {

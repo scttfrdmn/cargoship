@@ -44,29 +44,30 @@ import (
 // flatten this nest of modules together, this is the first step in getting
 // something that can perform that way
 type Porter struct {
-	Cmd              *cobra.Command
-	Args             []string
-	CLIMeta          *CLIMeta
-	TravelAgent      travelagent.TravelAgenter
-	hasTravelAgent   bool
-	Inventory        *inventory.Inventory
-	InventoryHash    string
-	Logger           *slog.Logger
-	HashAlgorithm    inventory.HashAlgorithm
-	Hashes           []config.HashSet
-	UserOverrides    *viper.Viper
-	Destination      string
-	Version          string
-	SuitcaseOpts     *config.SuitCaseOpts
-	LogFile          *os.File
-	TotalTransferred int64
-	WizardForm       *inventory.WizardForm
-	sampleEvery      int
-	retryCount       int
-	retryInterval    time.Duration
-	concurrency      int
-	stateC           chan FillState
-	statusC          chan rclone.TransferStatus
+	Cmd               *cobra.Command
+	Args              []string
+	CLIMeta           *CLIMeta
+	TravelAgent       travelagent.TravelAgenter
+	hasTravelAgent    bool
+	Inventory         *inventory.Inventory
+	InventoryFilePath string
+	InventoryHash     string
+	Logger            *slog.Logger
+	HashAlgorithm     inventory.HashAlgorithm
+	Hashes            []config.HashSet
+	UserOverrides     *viper.Viper
+	Destination       string
+	Version           string
+	SuitcaseOpts      *config.SuitCaseOpts
+	LogFile           *os.File
+	TotalTransferred  int64
+	WizardForm        *inventory.WizardForm
+	sampleEvery       int
+	retryCount        int
+	retryInterval     time.Duration
+	concurrency       int
+	stateC            chan FillState
+	statusC           chan rclone.TransferStatus
 }
 
 // New returns a new porter using functional options
@@ -211,6 +212,20 @@ func (p Porter) CreateHashes(s []string) ([]config.HashSet, error) {
 		})
 	}
 	return hs, nil
+}
+
+// SendFinalUpdate sends the last update (including metadata) to the travel agent
+func (p Porter) SendFinalUpdate(update travelagent.StatusUpdate) error {
+	if !p.hasTravelAgent {
+		return nil
+	}
+	err := p.TravelAgent.PostMetaData(p.InventoryFilePath)
+	if err != nil {
+		return err
+	}
+	// panic("die")
+	err = p.SendUpdate(update)
+	return err
 }
 
 // SendUpdate sends an update to the travel agent if it exists
@@ -438,7 +453,8 @@ func (p *Porter) inventoryGeneration() (*inventory.Inventory, *os.File, error) {
 	if verr := i.ValidateAccess(); verr != nil {
 		return nil, nil, verr
 	}
-	outF, err := os.Create(path.Join(p.Destination, fmt.Sprintf("inventory.%v", i.Options.InventoryFormat))) // nolint:gosec
+	p.InventoryFilePath = path.Join(p.Destination, fmt.Sprintf("inventory.%v", i.Options.InventoryFormat))
+	outF, err := os.Create(p.InventoryFilePath) // nolint:gosec
 	if err != nil {
 		return nil, nil, err
 	}
