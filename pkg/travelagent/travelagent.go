@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -49,6 +50,7 @@ type TravelAgent struct {
 // TravelAgenter is the thing that describes what a travel agent is!
 type TravelAgenter interface {
 	StatusURL() string
+	PostMetaData(string) error
 	Update(StatusUpdate) (*StatusUpdateResponse, error)
 	Upload(string, chan rclone.TransferStatus) (int64, error)
 }
@@ -65,7 +67,7 @@ type StatusUpdate struct {
 	StartedAt              *time.Time `json:"started_at,omitempty"`
 	CompletedAt            *time.Time `json:"completed_at,omitempty"`
 	MetadataCheckSum       string     `json:"metadata_checksum,omitempty"`
-	Metadata               string     `json:"metadata,omitempty"`
+	Metadata               string     `json:"-"`
 	SuitcasectlSource      string     `json:"suitcasectl_source,omitempty"`
 	SuitcasectlDestination string     `json:"suitcasectl_destination,omitempty"`
 }
@@ -166,6 +168,11 @@ func (t TravelAgent) componentURL(n string) string {
 	return fmt.Sprintf("%v/suitcase_components/%v", t.URL, n)
 }
 
+// metadataURL
+func (t TravelAgent) metadataURL() string {
+	return fmt.Sprintf("%v/metadata_file", t.URL)
+}
+
 func (t *TravelAgent) getCredentials() (*credentialResponse, error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("%v?expiry_seconds=%v", t.credentialURL(), t.uploadTokenExpiration.Seconds()), nil)
 	if err != nil {
@@ -181,6 +188,41 @@ func (t *TravelAgent) getCredentials() (*credentialResponse, error) {
 	}
 
 	return &credentialR, nil
+}
+
+// PostMetaData posts raw metadata file to travel agent
+func (t TravelAgent) PostMetaData(pathName string) error {
+	file, oerr := os.Open(pathName) // nolint:gosec
+	if oerr != nil {
+		return oerr
+	}
+	defer dclose(file)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, cerr := writer.CreateFormFile("metadata_file", path.Base(pathName))
+	if cerr != nil {
+		return cerr
+	}
+
+	if _, err := io.Copy(part, file); err != nil {
+		return err
+	}
+
+	if err := writer.Close(); err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", t.metadataURL(), body)
+	if err != nil {
+		return err
+	}
+	req.Header.Add("Content-Type", writer.FormDataContentType())
+	var r StatusUpdateResponse
+	if _, err := t.sendRequest(req, &r); err != nil {
+		return nil
+	}
+	return nil
 }
 
 // Update updates the status of an agent
@@ -233,7 +275,9 @@ func blobToCred(b string) (*credential, error) {
 func (t *TravelAgent) sendRequest(req *http.Request, v interface{}) (*Response, error) { // nolint:unparam
 	bearer := "Bearer " + t.Token
 	req.Header.Add("Authorization", bearer)
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	if req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	}
 
 	if t.printCurl {
 		command, _ := http2curl.GetCurlCommand(req)
