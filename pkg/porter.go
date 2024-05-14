@@ -219,13 +219,11 @@ func (p Porter) SendFinalUpdate(update travelagent.StatusUpdate) error {
 	if !p.hasTravelAgent {
 		return nil
 	}
-	err := p.TravelAgent.PostMetaData(p.InventoryFilePath)
-	if err != nil {
+	if err := p.TravelAgent.PostMetaData(p.InventoryFilePath); err != nil {
 		return err
 	}
 	// panic("die")
-	err = p.SendUpdate(update)
-	return err
+	return p.SendUpdate(update)
 }
 
 // SendUpdate sends an update to the travel agent if it exists

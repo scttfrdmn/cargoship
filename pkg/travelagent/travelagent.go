@@ -192,25 +192,24 @@ func (t *TravelAgent) getCredentials() (*credentialResponse, error) {
 
 // PostMetaData posts raw metadata file to travel agent
 func (t TravelAgent) PostMetaData(pathName string) error {
-	file, err := os.Open(pathName) // nolint:gosec
-	if err != nil {
-		return err
+	file, oerr := os.Open(pathName) // nolint:gosec
+	if oerr != nil {
+		return oerr
 	}
 	defer dclose(file)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("metadata_file", path.Base(pathName))
-	if err != nil {
-		return err
+	part, cerr := writer.CreateFormFile("metadata_file", path.Base(pathName))
+	if cerr != nil {
+		return cerr
 	}
-	_, err = io.Copy(part, file)
-	if err != nil {
+
+	if _, err := io.Copy(part, file); err != nil {
 		return err
 	}
 
-	err = writer.Close()
-	if err != nil {
+	if err := writer.Close(); err != nil {
 		return err
 	}
 
@@ -220,8 +219,7 @@ func (t TravelAgent) PostMetaData(pathName string) error {
 	}
 	req.Header.Add("Content-Type", writer.FormDataContentType())
 	var r StatusUpdateResponse
-	_, err = t.sendRequest(req, &r)
-	if err != nil {
+	if _, err := t.sendRequest(req, &r); err != nil {
 		return nil
 	}
 	return nil
