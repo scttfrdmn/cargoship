@@ -192,7 +192,7 @@ func (t *TravelAgent) getCredentials() (*credentialResponse, error) {
 
 // PostMetaData posts raw metadata file to travel agent
 func (t TravelAgent) PostMetaData(pathName string) error {
-	file, oerr := os.Open(pathName) // nolint:gosec
+	file, oerr := os.Open(path.Clean(pathName))
 	if oerr != nil {
 		return oerr
 	}
