@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
 )
@@ -86,6 +87,19 @@ func TestTravelAgentUpload(t *testing.T) {
 	require.NoError(t, uerr)
 
 	require.FileExists(t, path.Join(fakeDest, "archive.tar.gz"))
+}
+
+func TestPostMetaData(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
+	c, err := New(
+		WithToken("foo"),
+		WithURL(srv.URL+"/api/v1/suitcase_transfers/1"),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, c)
+
+	assert.EqualError(t, c.PostMetaData("never-exists.yaml"), "open never-exists.yaml: no such file or directory")
+	require.NoError(t, c.PostMetaData("../testdata/inventories/example-inventory.yaml"))
 }
 
 func TestStatusUpdate(t *testing.T) {
