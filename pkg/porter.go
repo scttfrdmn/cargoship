@@ -340,6 +340,8 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 		inventoryFile = outF.Name()
 		slog.Info("created inventory file", "file", inventoryFile)
 	} else {
+		// Set this in porter so we can look at it later
+		p.InventoryFilePath = inventoryFile
 		var err error
 		inventoryD, err = inventory.NewInventoryWithFilename(inventoryFile)
 		if err != nil {
@@ -451,7 +453,10 @@ func (p *Porter) inventoryGeneration() (*inventory.Inventory, *os.File, error) {
 	if verr := i.ValidateAccess(); verr != nil {
 		return nil, nil, verr
 	}
-	p.InventoryFilePath = path.Join(p.Destination, fmt.Sprintf("inventory.%v", i.Options.InventoryFormat))
+	// If aren't using a specific inventory file path, go ahead and set it to the default location
+	if p.InventoryFilePath == "" {
+		p.InventoryFilePath = path.Join(p.Destination, fmt.Sprintf("inventory.%v", i.Options.InventoryFormat))
+	}
 	outF, err := os.Create(p.InventoryFilePath) // nolint:gosec
 	if err != nil {
 		return nil, nil, err
@@ -512,6 +517,7 @@ func (p *Porter) ShipItems(items []string, uniqDir string) {
 }
 
 func copySrcDst(src, dst string) error {
+	slog.Debug("copying file", "source", src, "dest", dst)
 	sourceFileStat, err := os.Stat(src)
 	if err != nil {
 		return err
