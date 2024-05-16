@@ -174,9 +174,16 @@ func setOuterHashes(ptr *porter.Porter, metaF string) ([]config.HashSet, string,
 }
 
 func appendHashes(mfiles []string, items ...string) []string {
+	var bpath string
+	// This should probably be moved to a Porter function so we don't have to do this weird base path detection
+	for _, f := range mfiles {
+		if path.Base(f) != "inventory.yaml" {
+			bpath = path.Dir(f)
+		}
+	}
 	for _, item := range items {
 		if item != "" {
-			mfiles = append(mfiles, path.Base(item))
+			mfiles = append(mfiles, path.Join(bpath, path.Base(item)))
 		}
 	}
 	return mfiles
@@ -208,13 +215,15 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 		"end", *ptr.CLIMeta.CompletedAt,
 	)
 
+	metadataFiles := []string{
+		ptr.InventoryFilePath,
+		path.Join(ptr.Destination, "suitcasectl.log"),
+		path.Join(ptr.Destination, "suitcasectl-invocation-meta.yaml"),
+	}
+
 	// opts := suitcase.OptsWithCmd(cmd)
 	// Copy files up if needed
-	mfiles := appendHashes([]string{
-		"inventory.yaml",
-		"suitcasectl.log",
-		"suitcasectl-invocation-meta.yaml",
-	}, hashFn, hashFnBin)
+	mfiles := appendHashes(metadataFiles, hashFn, hashFnBin)
 	if ptr.Inventory.Options.TransportPlugin != nil {
 		ptr.ShipItems(mfiles, ptr.InventoryHash)
 	}
@@ -250,7 +259,7 @@ func uploadMeta(ptr *porter.Porter, mfiles []string) error {
 			p.Go(func() error {
 				var xferred int64
 				var err error
-				if xferred, err = ptr.TravelAgent.Upload(path.Join(ptr.Destination, mfile), nil); err != nil {
+				if xferred, err = ptr.TravelAgent.Upload(mfile, nil); err != nil {
 					return err
 				}
 				atomic.AddInt64(&ptr.TotalTransferred, xferred)
