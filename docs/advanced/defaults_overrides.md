@@ -1,4 +1,4 @@
-# Overview
+# Defaults
 
 ## Global Defaults
 
@@ -8,7 +8,7 @@ should match their command line counterparts, minus the `--`, so if you want to
 set `--suitcase-format ".tar.gz"` on every run, put this in your
 `~/.suitcasectl.yaml` file: `suitcase-format: tar.gz`.
 
-## Project Defaults (Overrides)
+## Project Defaults
 
 Users can include a `suitcasectl.yaml` file in the root of their
 directory which will automatically be used by suitcasectl for certain options.
