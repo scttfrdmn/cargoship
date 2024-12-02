@@ -41,6 +41,7 @@ pages:
     - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
 lint:
   stage: test
+  resource_group: tester
   script:
     - '[ -e .golangci.yml ] || cp /golangci/.golangci.yml .'
     - golangci-lint run --issues-exit-code 0 --out-format code-climate | tee gl-code-quality-report.json | jq -r '.[] | "\(.location.path):\(.location.lines.begin) \(.description)"'
@@ -54,6 +55,7 @@ lint:
 ## Coverage will do visual coverage in the GitLab UI
 coverage:
   stage: test
+  resource_group: tester
   coverage: '/total:.*\d+.\d+/'
   script:
     - go mod tidy
@@ -102,6 +104,7 @@ release:
 security:
   stage: test
   allow_failure: true
+  resource_group: tester
   tags:
     - oit-shared
   script:

@@ -16,7 +16,6 @@ func BenchmarkGetSha256(b *testing.B) {
 		tf = "../../../pkg/testdata/fakey-private.key"
 	}
 	for _, ha := range []string{"sha256", "sha512", "md5", "sha1"} {
-		ha := ha
 		b.Run(fmt.Sprintf("suitcase_%v_%v", ha, tf), func(b *testing.B) {
 			tfh, err := os.Open(tf)
 			require.NoError(b, err)
@@ -50,7 +49,6 @@ func BenchmarkCalculateHashes(b *testing.B) {
 
 	if _, err := os.Stat(bdd); err == nil {
 		for _, format := range []string{"md5", "sha1", "sha256", "sha512"} {
-			format := format
 			b.Run(fmt.Sprintf("suitcase_calculate_hashes_%v", format), func(b *testing.B) {
 				for _, location := range allFiles {
 					fh, oerr := os.Open(location)

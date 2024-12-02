@@ -255,7 +255,6 @@ func uploadMeta(ptr *porter.Porter, mfiles []string) error {
 	if ptr.TravelAgent != nil {
 		p := pool.New().WithMaxGoroutines(10).WithErrors()
 		for _, mfile := range mfiles {
-			mfile := mfile
 			p.Go(func() error {
 				var xferred int64
 				var err error

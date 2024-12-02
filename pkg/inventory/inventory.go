@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"math"
 	"os"
 	"os/user"
 	"path"
@@ -255,13 +256,20 @@ func (di Inventory) Analyze() Analysis {
 	avg := ts / int64(len(di.Files))
 	return Analysis{
 		LargestFileSize:   largest.Size,
-		LargestFileSizeHR: humanize.Bytes(uint64(largest.Size)),
+		LargestFileSizeHR: humanize.Bytes(int64ToUint64(largest.Size)),
 		FileCount:         fc,
 		AverageFileSize:   avg,
-		AverageFileSizeHR: humanize.Bytes(uint64(avg)),
+		AverageFileSizeHR: humanize.Bytes(int64ToUint64(avg)),
 		TotalFileSize:     ts,
-		TotalFileSizeHR:   humanize.Bytes(uint64(ts)),
+		TotalFileSizeHR:   humanize.Bytes(int64ToUint64(ts)),
 	}
+}
+
+func int64ToUint64(i int64) uint64 {
+	if i < 0 {
+		panic("value is negative and cannot be converted to uint64")
+	}
+	return uint64(i)
 }
 
 // SummaryLog logs out a summary of the suitcase data
@@ -277,13 +285,13 @@ func (di Inventory) SummaryLog() {
 			"index", k,
 			"file-count", item.Count,
 			"file-size", item.Size,
-			"file-size-human", humanize.Bytes(uint64(item.Size)),
+			"file-size-human", humanize.Bytes(int64ToUint64(item.Size)),
 		)
 	}
 	slog.Info("total suitcase archives",
 		"file-count", totalC,
 		"file-size", totalS,
-		"file-size-human", humanize.Bytes(uint64(totalS)),
+		"file-size-human", humanize.Bytes(int64ToUint64(totalS)),
 	)
 }
 
@@ -536,7 +544,7 @@ func (di *Inventory) IndexWithSize(maxSize int64) error {
 	}
 	// Generate human readable total sizes
 	for _, v := range di.IndexSummaries {
-		v.HumanSize = humanize.Bytes(uint64(v.Size))
+		v.HumanSize = humanize.Bytes(int64ToUint64(v.Size))
 	}
 	di.TotalIndexes = numCases
 	di.expandSuitcaseNames()
@@ -984,7 +992,14 @@ func mustBytesFromHuman(h string) int64 {
 	if err != nil {
 		panic(err)
 	}
-	return int64(b)
+	return uint64ToInt64(b)
+}
+
+func uint64ToInt64(u uint64) int64 {
+	if u > math.MaxInt64 {
+		panic("value out of range for int64")
+	}
+	return int64(u)
 }
 
 // WithCobra applies options using a cobra Command and args
@@ -1417,7 +1432,7 @@ func dirSummary(all []File, p string) (uint64, []string) {
 	var scs []string
 	for _, f := range all {
 		if strings.HasPrefix(f.Destination, p) {
-			s += uint64(f.Size)
+			s += int64ToUint64(f.Size)
 			if !containsString(scs, f.SuitcaseName) {
 				scs = append(scs, f.SuitcaseName)
 			}

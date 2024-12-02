@@ -242,7 +242,7 @@ func (p Porter) SendUpdate(u travelagent.StatusUpdate) error {
 			log = p.Logger.With("component", u.Name)
 			if u.SizeBytes > 0 {
 				log = log.With(
-					"transferred", humanize.Bytes(uint64(u.TransferredBytes)),
+					"transferred", humanize.Bytes(int64ToUint64(u.TransferredBytes)),
 					"total", humanize.Bytes(uint64(u.SizeBytes)),
 					"avg-speed", fmt.Sprintf("%v/s", humanize.Bytes(uint64(u.Speed))),
 				)
@@ -298,10 +298,9 @@ func CalculateHash(rd io.Reader, ht string) (string, error) {
 	case "sha512":
 		dst = sha512.New()
 	default:
-		return "", fmt.Errorf(fmt.Sprintf("unexpected hash type: %v", ht))
+		return "", fmt.Errorf("unexpected hash type: %v", ht)
 	}
-	_, err := io.Copy(dst, reader)
-	if err != nil {
+	if _, err := io.Copy(dst, reader); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(dst.Sum(nil)), nil
@@ -679,10 +678,11 @@ func (p *Porter) mergeWizard() error {
 
 func (p *Porter) startFillStateC(state chan FillState) {
 	// sampled := log.Sample(&zerolog.BasicSampler{N: se})
-	i := uint32(0)
+	i := uint64(0)
 	for {
 		st := <-state
-		if i%uint32(p.sampleEvery) == 0 {
+		if i%intToUint64(p.sampleEvery) == 0 {
+			// if i%uint64(p.sampleEvery) == 0 {
 			slog.Debug("progress", "index", st.Index, "current", st.Current, "total", st.Total)
 		}
 		i++
@@ -734,7 +734,6 @@ func (p *Porter) processSuitcases() ([]string, error) {
 
 	ret := make([]string, p.Inventory.TotalIndexes)
 	for i := 1; i <= p.Inventory.TotalIndexes; i++ {
-		i := i
 		pl.Go(func() error {
 			var err error
 			if ret[i-1], err = p.retryWriteSuitcase(i, p.stateC); err != nil {
