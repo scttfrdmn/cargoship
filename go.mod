@@ -33,6 +33,7 @@ require (
 	github.com/spf13/viper v1.17.0
 	github.com/stretchr/testify v1.8.4
 	github.com/vjorlikowski/yaml v0.1.0
+	github.com/xlab/treeprint v1.2.0
 	go.etcd.io/bbolt v1.3.7
 	golang.org/x/tools v0.18.0
 	gopkg.in/yaml.v3 v3.0.1

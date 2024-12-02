@@ -74,7 +74,10 @@ func NewRootCmd(lo io.Writer) *cobra.Command {
 
 	cmd.AddCommand(NewRetierCmd())
 
-	cmd.AddCommand(NewFindCmd())
+	cmd.AddCommand(
+		NewFindCmd(),
+		NewTreeCmd(),
+	)
 	cmd.AddCommand(NewWizardCmd())
 	cmd.AddCommand(NewAnalyzeCmd())
 
