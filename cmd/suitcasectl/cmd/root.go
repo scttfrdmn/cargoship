@@ -224,7 +224,7 @@ func globalPersistentPreRun(cmd *cobra.Command, _ []string) {
 	if memLimit != "" {
 		memLimitB, merr := humanize.ParseBytes(memLimit)
 		checkErr(merr, fmt.Sprintf("could not convert %v to bytes", memLimit))
-		debug.SetMemoryLimit(int64(memLimitB))
+		debug.SetMemoryLimit(uint64ToInt64(memLimitB))
 		slog.Info("overriding memory handling with limit", "mem-limit", memLimit, "mem-limit-bytes", memLimitB)
 	}
 	// log.Fatal().Msgf("Profile is set to %+v", profile)

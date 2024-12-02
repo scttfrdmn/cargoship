@@ -484,7 +484,7 @@ func New(options ...Option) (*TravelAgent, error) {
 
 	// Assemble the backoff based on retries
 	ta.backoff = retry.NewFibonacci(ta.uploadRetryTime)
-	ta.backoff = retry.WithMaxRetries(uint64(ta.uploadRetries), ta.backoff)
+	ta.backoff = retry.WithMaxRetries(intToUint64(ta.uploadRetries), ta.backoff)
 	// ta.backoff = retry.WithMaxDuration(5*time.Minute, ta.backoff)
 
 	if os.Getenv("DEBUG_CURL") != "" {
@@ -651,4 +651,11 @@ func panicIfErr(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func intToUint64(i int) uint64 {
+	if i < 0 {
+		panic("value is negative and cannot be converted to uint64")
+	}
+	return uint64(i)
 }

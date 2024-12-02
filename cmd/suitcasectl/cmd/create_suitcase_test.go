@@ -252,7 +252,6 @@ func BenchmarkSuitcaseCreate(b *testing.B) {
 		bdd = "../../../benchmark_data/"
 	}
 	for desc, opts := range benchmarks {
-		opts := opts
 		for dataDesc, dataSet := range datasets {
 			location := path.Join(bdd, dataSet.path)
 			if _, err := os.Stat(location); err == nil {

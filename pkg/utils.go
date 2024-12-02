@@ -98,3 +98,17 @@ func hashInner(targetFn string, ha inventory.HashAlgorithm, hashes []config.Hash
 	}
 	return nil
 }
+
+func int64ToUint64(i int64) uint64 {
+	if i < 0 {
+		panic("value is negative and cannot be converted to uint64")
+	}
+	return uint64(i)
+}
+
+func intToUint64(i int) uint64 {
+	if i < 0 {
+		panic("value is negative and cannot be converted to uint64")
+	}
+	return uint64(i)
+}

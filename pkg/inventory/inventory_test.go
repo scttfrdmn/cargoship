@@ -67,7 +67,6 @@ func BenchmarkNewDirectoryInventory(b *testing.B) {
 		location := path.Join(bdd, dataset.path)
 		if _, err := os.Stat(location); err == nil {
 			for _, format := range []string{"yaml", "json"} {
-				format := format
 				b.Run(fmt.Sprintf("suitcase_new_inventory_%v_%v", format, desc), func(b *testing.B) {
 					got, err := NewDirectoryInventory(NewOptions(
 						WithDirectories([]string{location}),

@@ -47,7 +47,6 @@ func TestNewSuitcase(t *testing.T) {
 	require.NoError(t, os.Mkdir(folder+"/folder-inside", 0o755))
 
 	for _, format := range []string{"tar", "tar.gz", "tar.zst", "tar.bz2"} {
-		format := format
 		t.Run(format, func(t *testing.T) {
 			archive, err := New(io.Discard, &config.SuitCaseOpts{
 				Format: format,
@@ -88,7 +87,6 @@ func TestNewGPGSuitcase(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, format := range []string{"tar.gpg", "tar.gz.gpg"} {
-		format := format
 		t.Run(format, func(t *testing.T) {
 			archive, err := New(io.Discard, &config.SuitCaseOpts{
 				Format:    format,

@@ -229,14 +229,14 @@ func writeErr(w http.ResponseWriter, code int, err error) {
 	panicIfErr(werr)
 }
 
-func getUpdatedFields(old suitcaseTransferState, new StatusUpdate, name string) []string {
+func getUpdatedFields(old suitcaseTransferState, newStatus StatusUpdate, name string) []string {
 	updatedFields := []string{}
-	if new.Status != old.Status {
-		slog.Info("Updating status", "old", old.Status, "new", new.Status, "item", name)
+	if newStatus.Status != old.Status {
+		slog.Info("Updating status", "old", old.Status, "new", newStatus.Status, "item", name)
 		updatedFields = append(updatedFields, "status")
 	}
-	if new.SizeBytes != old.Size {
-		slog.Info("Updating size", "old", old.Size, "new", new.SizeBytes, "item", name)
+	if newStatus.SizeBytes != old.Size {
+		slog.Info("Updating size", "old", old.Size, "new", newStatus.SizeBytes, "item", name)
 		updatedFields = append(updatedFields, "size")
 	}
 	return updatedFields

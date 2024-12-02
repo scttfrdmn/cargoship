@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path"
 	"reflect"
@@ -238,4 +239,11 @@ func validateCmdArgs(inventoryFile string, onlyInventory bool, cmd cobra.Command
 	}
 
 	return nil
+}
+
+func uint64ToInt64(u uint64) int64 {
+	if u > math.MaxInt64 {
+		panic("value out of range for int64")
+	}
+	return int64(u)
 }
