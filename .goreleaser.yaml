@@ -1,4 +1,5 @@
 ---
+version: 2
 before:
   hooks:
     - go mod tidy
@@ -39,8 +40,6 @@ archives:
 checksum:
   name_template: '{{ .ProjectName }}-{{ .Version }}_SHA256SUMS'
   algorithm: sha256
-snapshot:
-  name_template: "{{ .Tag }}-snapshot"
 brews:
   - repository:
       owner: devil-ops
