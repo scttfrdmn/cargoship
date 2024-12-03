@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/drewstinnett/gout/v2"
 	"github.com/spf13/cobra"
 	"github.com/xlab/treeprint"
 	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
@@ -18,7 +17,6 @@ func NewTreeCmd() *cobra.Command {
 		Aliases: []string{"t"},
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			gout.SetWriter(cmd.OutOrStdout())
 			inv, err := inventory.NewInventoryWithFilename(args[0])
 			if err != nil {
 				return err
@@ -27,9 +25,13 @@ func NewTreeCmd() *cobra.Command {
 			nodeMap := map[string]treeprint.Tree{}
 			for _, item := range inv.Files {
 				parts := strings.Split(item.Path, "/")
+
 				currentNode := tree
 
 				for i, part := range parts {
+					if part == "" {
+						continue
+					}
 					currentPath := strings.Join(parts[:i+1], "/")
 
 					if existingNode, exists := nodeMap[currentPath]; exists {
@@ -40,7 +42,9 @@ func NewTreeCmd() *cobra.Command {
 					}
 				}
 			}
-			fmt.Println(tree.String())
+			if _, err := fmt.Fprint(cmd.OutOrStdout(), tree.String()); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
