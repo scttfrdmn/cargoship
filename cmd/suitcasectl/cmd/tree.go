@@ -25,7 +25,6 @@ func NewTreeCmd() *cobra.Command {
 			nodeMap := map[string]treeprint.Tree{}
 			for _, item := range inv.Files {
 				parts := strings.Split(item.Path, "/")
-
 				currentNode := tree
 
 				for i, part := range parts {

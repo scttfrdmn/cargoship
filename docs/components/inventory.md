@@ -146,3 +146,60 @@ cli_meta:
     date: 2023-09-19T09:40:00.683167-04:00
     version: v0.16.0
 ```
+
+## Browsing the Inventory
+
+You can use `suitcasectl tree INVENTORY.yaml` to create a gnu tree style output of all the files it contains:
+
+```bash
+❯ suitcasectl tree ~/Desktop/example-suitcase/inventory.yaml
+/
+└── Users
+    └── drews
+        └── Desktop
+            └── example-suitcase
+                ├── bad.tar
+                ├── good.tar
+                ├── thing
+                ├── suitcase-drews-01-of-01.tar.zst
+                ├── 20210922_105206.jpeg
+                ├── 20220221_100626.jpeg
+                ├── OAShapeTypes.zip
+                ├── fake-zip
+                ├── inventory.yaml
+                ├── 20220221_100626.jpeg alias
+                ├── 20220221_100626.jpeg alias 4
+                ├── 20220221_100626.jpeg alias 2
+                ├── 20220221_100626.jpeg alias 3
+                ├── suitcasectl.yaml
+                ├── data.txt
+                ├── suitcase-meta.txt
+                ├── .hidden-file.txt
+                ├── sub
+                │   └── sub.txt
+                ├── thing.swp
+                └── thing.out
+```
+
+## Search the Inventory
+
+You can search an inventory for certain keywords using the `suitcasectl find` command
+
+```bash
+$ suitcasectl find PATTERN
+files:
+    - path: /Users/drews/Desktop/Almost Garbage/godoc/src/runtime/cgo/libcgo_windows.h?m=text
+      destination: godoc/src/runtime/cgo/libcgo_windows.h
+      name: libcgo_windows.h
+      size: 258
+      suitcase_index: 5
+      suitcase_name: suitcase-drews-05-of-05.tar.zst
+...
+directories:
+    - directory: godoc/lib
+      totalsize: 139186
+      totalsizehr: 139 kB
+      suitcases:
+        - suitcase-drews-04-of-05.tar.zst
+        - suitcase-drews-05-of-05.tar.zst
+```
