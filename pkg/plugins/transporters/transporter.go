@@ -9,7 +9,7 @@ import (
 	"path"
 
 	"github.com/oklog/ulid/v2"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
+	"github.com/scttfrdmn/cargoship/pkg/rclone"
 )
 
 // Transporter describes how items that meet a Transporter behaves

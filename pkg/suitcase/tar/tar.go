@@ -13,9 +13,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/gpg"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
+	"github.com/scttfrdmn/cargoship/pkg/config"
+	"github.com/scttfrdmn/cargoship/pkg/gpg"
+	"github.com/scttfrdmn/cargoship/pkg/inventory"
 )
 
 // Suitcase as tar.

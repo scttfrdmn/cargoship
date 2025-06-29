@@ -23,9 +23,9 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/sethvargo/go-retry"
 	"github.com/spf13/cobra"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/cloud"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
+	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters"
+	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud"
+	"github.com/scttfrdmn/cargoship/pkg/rclone"
 	"moul.io/http2curl"
 )
 

@@ -24,9 +24,9 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/mholt/archiver/v4"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/cloud"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters/shell"
+	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters"
+	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud"
+	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell"
 
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"

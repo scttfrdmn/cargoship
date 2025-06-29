@@ -33,11 +33,11 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/travelagent"
+	"github.com/scttfrdmn/cargoship/pkg/config"
+	"github.com/scttfrdmn/cargoship/pkg/inventory"
+	"github.com/scttfrdmn/cargoship/pkg/rclone"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase"
+	"github.com/scttfrdmn/cargoship/pkg/travelagent"
 )
 
 // Porter holds all the pieces of the suitcases together and such. Trying to

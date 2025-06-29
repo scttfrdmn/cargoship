@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/vjorlikowski/yaml"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
+	"github.com/scttfrdmn/cargoship/pkg/inventory"
 )
 
 // CLIMeta is the command line meta information generated on a run

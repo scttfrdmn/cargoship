@@ -8,9 +8,9 @@ import (
 	"io"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/tar"
+	"github.com/scttfrdmn/cargoship/pkg/config"
+	"github.com/scttfrdmn/cargoship/pkg/inventory"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase/tar"
 )
 
 // Suitcase as a tar.gpg

@@ -15,14 +15,14 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/tar"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/tarbz2"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/targpg"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/targz"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/targzgpg"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase/tarzstd"
+	"github.com/scttfrdmn/cargoship/pkg/config"
+	"github.com/scttfrdmn/cargoship/pkg/inventory"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase/tar"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase/tarbz2"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase/targpg"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase/targz"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase/targzgpg"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase/tarzstd"
 )
 
 // Format is the format the inventory will use, such as yaml, json, etc

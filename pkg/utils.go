@@ -10,9 +10,9 @@ import (
 
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/config"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/inventory"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/suitcase"
+	"github.com/scttfrdmn/cargoship/pkg/config"
+	"github.com/scttfrdmn/cargoship/pkg/inventory"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase"
 )
 
 // mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command

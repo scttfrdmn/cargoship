@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/plugins/transporters"
-	"gitlab.oit.duke.edu/devil-ops/suitcasectl/pkg/rclone"
+	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters"
+	"github.com/scttfrdmn/cargoship/pkg/rclone"
 )
 
 // Transporter is the main struct for this plugin
