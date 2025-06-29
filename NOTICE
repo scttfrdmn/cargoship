@@ -1,0 +1,31 @@
+CargoShip - Enterprise Data Archiving for AWS
+Copyright 2025 Scott Friedman
+
+This product includes software developed by Duke University:
+  SuitcaseCTL (https://gitlab.oit.duke.edu/devil-ops/suitcasectl)
+  Copyright (c) Duke University
+  Licensed under MIT License
+
+This product includes software developed at Amazon.com, Inc.:
+  AWS SDK for Go v2 (https://github.com/aws/aws-sdk-go-v2)
+  Licensed under Apache License 2.0
+
+This product includes software developed by Charm Bracelet, Inc.:
+  Charm CLI Libraries (https://github.com/charmbracelet)
+  Licensed under MIT License
+
+This product includes software developed by Klauspost:
+  Compression Libraries (https://github.com/klauspost/compress)
+  Licensed under Apache License 2.0 / MIT License
+
+This product includes software developed by HashiCorp:
+  Go Libraries (https://github.com/hashicorp)
+  Licensed under Mozilla Public License 2.0
+
+This product includes software developed by spf13:
+  Cobra CLI Framework (https://github.com/spf13/cobra)
+  Viper Configuration (https://github.com/spf13/viper)
+  Licensed under Apache License 2.0
+
+For a complete list of third-party dependencies and their licenses,
+see the THIRD_PARTY_LICENSES directory.
