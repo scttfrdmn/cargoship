@@ -366,7 +366,7 @@ func (h *ErrorHandler) GetRecoveryOptions(err error) *RecoveryOptions {
 			"Check GitHub issues for similar problems",
 		}
 		options.ContactSupport = true
-		options.Documentation = "https://github.com/scttfrdmn/cargoship/issues"
+		options.Documentation = "https://github.com/scttfrdmn/cargoship-cli/issues"
 	}
 	
 	return options

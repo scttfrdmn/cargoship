@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scttfrdmn/cargoship/pkg/aws/config"
-	"github.com/scttfrdmn/cargoship/pkg/aws/s3"
+	"github.com/scttfrdmn/cargoship-cli/pkg/aws/config"
+	"github.com/scttfrdmn/cargoship-cli/pkg/aws/s3"
 )
 
 func TestNewCalculator(t *testing.T) {

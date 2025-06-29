@@ -9,8 +9,8 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
-	"github.com/scttfrdmn/cargoship/pkg/config"
-	"github.com/scttfrdmn/cargoship/pkg/inventory"
+	"github.com/scttfrdmn/cargoship-cli/pkg/config"
+	"github.com/scttfrdmn/cargoship-cli/pkg/inventory"
 )
 
 func TestTarZstFile(t *testing.T) {

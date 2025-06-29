@@ -12,7 +12,7 @@ import (
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 
-	"github.com/scttfrdmn/cargoship/pkg/compression"
+	"github.com/scttfrdmn/cargoship-cli/pkg/compression"
 )
 
 var (

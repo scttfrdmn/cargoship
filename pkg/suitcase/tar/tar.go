@@ -13,9 +13,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/scttfrdmn/cargoship/pkg/config"
-	"github.com/scttfrdmn/cargoship/pkg/gpg"
-	"github.com/scttfrdmn/cargoship/pkg/inventory"
+	"github.com/scttfrdmn/cargoship-cli/pkg/config"
+	"github.com/scttfrdmn/cargoship-cli/pkg/gpg"
+	"github.com/scttfrdmn/cargoship-cli/pkg/inventory"
 )
 
 // Suitcase as tar.

@@ -11,9 +11,9 @@ import (
 
 	"github.com/dsnet/compress/bzip2"
 
-	"github.com/scttfrdmn/cargoship/pkg/config"
-	"github.com/scttfrdmn/cargoship/pkg/inventory"
-	"github.com/scttfrdmn/cargoship/pkg/suitcase/tar"
+	"github.com/scttfrdmn/cargoship-cli/pkg/config"
+	"github.com/scttfrdmn/cargoship-cli/pkg/inventory"
+	"github.com/scttfrdmn/cargoship-cli/pkg/suitcase/tar"
 )
 
 // Suitcase represents everything needef for a tar.gz suitcase

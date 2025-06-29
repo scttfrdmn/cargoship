@@ -1,4 +1,4 @@
-module github.com/scttfrdmn/cargoship
+module github.com/scttfrdmn/cargoship-cli
 
 go 1.23.0
 

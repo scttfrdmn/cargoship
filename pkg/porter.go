@@ -33,11 +33,11 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/scttfrdmn/cargoship/pkg/config"
-	"github.com/scttfrdmn/cargoship/pkg/inventory"
-	"github.com/scttfrdmn/cargoship/pkg/rclone"
-	"github.com/scttfrdmn/cargoship/pkg/suitcase"
-	"github.com/scttfrdmn/cargoship/pkg/travelagent"
+	"github.com/scttfrdmn/cargoship-cli/pkg/config"
+	"github.com/scttfrdmn/cargoship-cli/pkg/inventory"
+	"github.com/scttfrdmn/cargoship-cli/pkg/rclone"
+	"github.com/scttfrdmn/cargoship-cli/pkg/suitcase"
+	"github.com/scttfrdmn/cargoship-cli/pkg/travelagent"
 )
 
 // Porter holds all the pieces of the suitcases together and such. Trying to

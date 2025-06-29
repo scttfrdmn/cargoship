@@ -10,9 +10,9 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
-	"github.com/scttfrdmn/cargoship/pkg/config"
-	"github.com/scttfrdmn/cargoship/pkg/gpg"
-	"github.com/scttfrdmn/cargoship/pkg/inventory"
+	"github.com/scttfrdmn/cargoship-cli/pkg/config"
+	"github.com/scttfrdmn/cargoship-cli/pkg/gpg"
+	"github.com/scttfrdmn/cargoship-cli/pkg/inventory"
 )
 
 func TestTarGPGFileCorrupt(t *testing.T) {

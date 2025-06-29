@@ -7,9 +7,9 @@ import (
 	"math"
 	"time"
 
-	"github.com/scttfrdmn/cargoship/pkg/aws/config"
-	"github.com/scttfrdmn/cargoship/pkg/aws/pricing"
-	"github.com/scttfrdmn/cargoship/pkg/aws/s3"
+	"github.com/scttfrdmn/cargoship-cli/pkg/aws/config"
+	"github.com/scttfrdmn/cargoship-cli/pkg/aws/pricing"
+	"github.com/scttfrdmn/cargoship-cli/pkg/aws/s3"
 )
 
 // Calculator provides cost estimation for S3 operations

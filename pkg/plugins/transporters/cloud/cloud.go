@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters"
-	"github.com/scttfrdmn/cargoship/pkg/rclone"
+	"github.com/scttfrdmn/cargoship-cli/pkg/plugins/transporters"
+	"github.com/scttfrdmn/cargoship-cli/pkg/rclone"
 )
 
 // Transporter is the main struct for this plugin

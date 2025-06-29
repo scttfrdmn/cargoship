@@ -23,9 +23,9 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/sethvargo/go-retry"
 	"github.com/spf13/cobra"
-	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters"
-	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud"
-	"github.com/scttfrdmn/cargoship/pkg/rclone"
+	"github.com/scttfrdmn/cargoship-cli/pkg/plugins/transporters"
+	"github.com/scttfrdmn/cargoship-cli/pkg/plugins/transporters/cloud"
+	"github.com/scttfrdmn/cargoship-cli/pkg/rclone"
 	"moul.io/http2curl"
 )
 
