@@ -8,21 +8,29 @@ import (
 	"time"
 
 	"github.com/scttfrdmn/cargoship/pkg/aws/config"
+	"github.com/scttfrdmn/cargoship/pkg/aws/pricing"
 	"github.com/scttfrdmn/cargoship/pkg/aws/s3"
 )
 
 // Calculator provides cost estimation for S3 operations
 type Calculator struct {
-	region     string
-	pricingData map[string]float64 // Cache for pricing data
-	lastUpdate time.Time
+	region        string
+	pricingService *pricing.Service
+	lastUpdate    time.Time
 }
 
 // NewCalculator creates a new cost calculator for the specified region
 func NewCalculator(region string) *Calculator {
 	return &Calculator{
-		region:      region,
-		pricingData: make(map[string]float64),
+		region: region,
+	}
+}
+
+// NewCalculatorWithPricing creates a calculator with real-time pricing
+func NewCalculatorWithPricing(region string, pricingService *pricing.Service) *Calculator {
+	return &Calculator{
+		region:         region,
+		pricingService: pricingService,
 	}
 }
 
@@ -95,9 +103,9 @@ func (c *Calculator) EstimateArchives(ctx context.Context, archives []s3.Archive
 		config.StorageClassGlacier,
 		config.StorageClassDeepArchive,
 	} {
-		storageCost := c.calculateStorageCost(estimate.TotalSizeGB, storageClass)
-		transferCost := c.calculateTransferCost(estimate.TotalSizeGB)
-		requestCost := c.calculateRequestCost(len(archives), storageClass)
+		storageCost := c.calculateStorageCost(ctx, estimate.TotalSizeGB, storageClass)
+		transferCost := c.calculateTransferCost(ctx, estimate.TotalSizeGB)
+		requestCost := c.calculateRequestCost(ctx, len(archives), storageClass)
 		
 		switch storageClass {
 		case config.StorageClassStandard:
@@ -157,9 +165,20 @@ func (c *Calculator) EstimateArchives(ctx context.Context, archives []s3.Archive
 }
 
 // calculateStorageCost calculates monthly storage cost for given size and storage class
-func (c *Calculator) calculateStorageCost(sizeGB float64, storageClass config.StorageClass) float64 {
-	// Simplified pricing (real implementation would use AWS Pricing API)
-	// Prices are per GB per month in USD for us-east-1
+func (c *Calculator) calculateStorageCost(ctx context.Context, sizeGB float64, storageClass config.StorageClass) float64 {
+	// Use real-time pricing if available
+	if c.pricingService != nil {
+		priceData, err := c.pricingService.GetPricing(ctx, c.region)
+		if err == nil {
+			if price, exists := priceData.StoragePrice[storageClass]; exists {
+				return sizeGB * price
+			}
+		}
+		// Log warning but continue with fallback
+		// Note: In production, consider more sophisticated error handling
+	}
+	
+	// Fallback pricing (original static prices)
 	pricePerGB := map[config.StorageClass]float64{
 		config.StorageClassStandard:           0.023,  // $0.023/GB
 		config.StorageClassStandardIA:         0.0125, // $0.0125/GB
@@ -178,18 +197,38 @@ func (c *Calculator) calculateStorageCost(sizeGB float64, storageClass config.St
 }
 
 // calculateTransferCost calculates data transfer cost (first 1GB free)
-func (c *Calculator) calculateTransferCost(sizeGB float64) float64 {
+func (c *Calculator) calculateTransferCost(ctx context.Context, sizeGB float64) float64 {
 	if sizeGB <= 1.0 {
 		return 0.0 // First 1GB is free
 	}
 	
 	chargeableGB := sizeGB - 1.0
+	
+	// Use real-time pricing if available
+	if c.pricingService != nil {
+		priceData, err := c.pricingService.GetPricing(ctx, c.region)
+		if err == nil && priceData.TransferPrice > 0 {
+			return chargeableGB * priceData.TransferPrice
+		}
+	}
+	
+	// Fallback pricing
 	return chargeableGB * 0.09 // $0.09/GB for data transfer out
 }
 
 // calculateRequestCost calculates PUT request costs
-func (c *Calculator) calculateRequestCost(numRequests int, storageClass config.StorageClass) float64 {
-	// PUT request pricing per 1,000 requests
+func (c *Calculator) calculateRequestCost(ctx context.Context, numRequests int, storageClass config.StorageClass) float64 {
+	// Use real-time pricing if available
+	if c.pricingService != nil {
+		priceData, err := c.pricingService.GetPricing(ctx, c.region)
+		if err == nil {
+			if price, exists := priceData.RequestPrice[storageClass]; exists {
+				return (float64(numRequests) / 1000.0) * price
+			}
+		}
+	}
+	
+	// Fallback pricing per 1,000 requests
 	pricePerThousand := map[config.StorageClass]float64{
 		config.StorageClassStandard:           0.005,  // $0.005/1K requests
 		config.StorageClassStandardIA:         0.01,   // $0.01/1K requests
