@@ -8,7 +8,7 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/spf13/cobra"
-	"github.com/scttfrdmn/cargoship-cli/pkg/gpg"
+	"github.com/scttfrdmn/cargoship/pkg/gpg"
 )
 
 // SuitCaseOpts is options for a given suitcase

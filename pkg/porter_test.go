@@ -11,12 +11,12 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
-	"github.com/scttfrdmn/cargoship-cli/pkg/config"
-	"github.com/scttfrdmn/cargoship-cli/pkg/inventory"
-	"github.com/scttfrdmn/cargoship-cli/pkg/plugins/transporters"
-	"github.com/scttfrdmn/cargoship-cli/pkg/plugins/transporters/cloud"
-	"github.com/scttfrdmn/cargoship-cli/pkg/rclone"
-	"github.com/scttfrdmn/cargoship-cli/pkg/travelagent"
+	"github.com/scttfrdmn/cargoship/pkg/config"
+	"github.com/scttfrdmn/cargoship/pkg/inventory"
+	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters"
+	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud"
+	"github.com/scttfrdmn/cargoship/pkg/rclone"
+	"github.com/scttfrdmn/cargoship/pkg/travelagent"
 )
 
 func TestPorterCreateHashes(t *testing.T) {

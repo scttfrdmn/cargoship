@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
-	awsconfig "github.com/scttfrdmn/cargoship-cli/pkg/aws/config"
+	awsconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 )
 
 // Transporter implements S3-based transport for CargoShip

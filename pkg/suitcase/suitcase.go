@@ -15,14 +15,14 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/scttfrdmn/cargoship-cli/pkg/config"
-	"github.com/scttfrdmn/cargoship-cli/pkg/inventory"
-	"github.com/scttfrdmn/cargoship-cli/pkg/suitcase/tar"
-	"github.com/scttfrdmn/cargoship-cli/pkg/suitcase/tarbz2"
-	"github.com/scttfrdmn/cargoship-cli/pkg/suitcase/targpg"
-	"github.com/scttfrdmn/cargoship-cli/pkg/suitcase/targz"
-	"github.com/scttfrdmn/cargoship-cli/pkg/suitcase/targzgpg"
-	"github.com/scttfrdmn/cargoship-cli/pkg/suitcase/tarzstd"
+	"github.com/scttfrdmn/cargoship/pkg/config"
+	"github.com/scttfrdmn/cargoship/pkg/inventory"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase/tar"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase/tarbz2"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase/targpg"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase/targz"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase/targzgpg"
+	"github.com/scttfrdmn/cargoship/pkg/suitcase/tarzstd"
 )
 
 // Format is the format the inventory will use, such as yaml, json, etc

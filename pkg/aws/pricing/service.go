@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/pricing"
 	"github.com/aws/aws-sdk-go-v2/service/pricing/types"
 
-	"github.com/scttfrdmn/cargoship-cli/pkg/aws/config"
+	"github.com/scttfrdmn/cargoship/pkg/aws/config"
 )
 
 // Service provides real-time AWS pricing information
