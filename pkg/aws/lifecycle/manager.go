@@ -81,9 +81,6 @@ func GetPredefinedTemplates() []PolicyTemplate {
 					Status: "Enabled",
 					Filter: RuleFilter{
 						Prefix: "archives/",
-						Tags: map[string]string{
-							"cargoship-created-by": "cargoship",
-						},
 					},
 					Transitions: []Transition{
 						{Days: 30, StorageClass: "STANDARD_IA"},
@@ -156,10 +153,7 @@ func GetPredefinedTemplates() []PolicyTemplate {
 					ID:     "cargoship-fast-access",
 					Status: "Enabled",
 					Filter: RuleFilter{
-						Prefix: "archives/",
-						Tags: map[string]string{
-							"cargoship-access-pattern": "frequent",
-						},
+						Prefix: "archives/frequent/",
 					},
 					Transitions: []Transition{
 						{Days: 90, StorageClass: "STANDARD_IA"},
