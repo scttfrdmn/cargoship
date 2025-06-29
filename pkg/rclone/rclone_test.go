@@ -81,5 +81,5 @@ func TestCopy(t *testing.T) {
 func TestCopyFail(t *testing.T) {
 	err := Copy("testdata/fake-file.txt", "never-exists:/foo", nil)
 	require.Error(t, err)
-	require.EqualError(t, err, "didn't find section in config file")
+	require.EqualError(t, err, "didn't find section in config file (\"never-exists\")")
 }

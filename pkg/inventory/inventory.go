@@ -1483,19 +1483,46 @@ func ArchiveTOC(fn string) ([]string, error) {
 	ret := []string{}
 	log := slog.With("archive", fn)
 
-	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, _ error) error {
+	// Track visited paths to prevent infinite recursion in self-referential archives
+	visitedPaths := make(map[string]bool)
+	maxDepth := 1000  // Conservative depth limit
+	maxFiles := 100000 // Maximum files to prevent runaway processing
+	fileCount := 0
+	
+	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		
+		// Check file count limit
+		fileCount++
+		if fileCount > maxFiles {
+			log.Warn("maximum file count exceeded, stopping walk", "path", path, "count", fileCount)
+			return fmt.Errorf("archive contains too many files (>%d)", maxFiles)
+		}
+		
+		// Count directory depth
+		depth := strings.Count(path, "/")
+		if depth > maxDepth {
+			log.Warn("maximum depth exceeded, stopping walk", "path", path, "depth", depth)
+			return fs.SkipDir
+		}
+		
+		// Track visited paths to detect cycles
+		if visitedPaths[path] {
+			log.Warn("cycle detected, skipping path", "path", path)
+			return fs.SkipDir
+		}
+		visitedPaths[path] = true
+		
 		// Handle: https://github.com/mholt/archiver/issues/383
-		// This should be fixed in version later than the v4.0.0-alpha.8 tag
-		/*
-				if (path == ".") && d.Name() == "." && strings.Contains(fn, ".tar") {
-					log.Debug().Str("archive", fn).Msg("this archive is not properly handled, falling back to external lookup")
-					return fs.ErrInvalid
-				}
-			if err != nil {
-				return err
-			}
-		*/
-		log.Debug("examining path", "path", path)
+		// Detect self-referential archives that cause infinite recursion
+		if (path == ".") && d.Name() == "." && strings.Contains(fn, ".tar") {
+			log.Debug("detected potentially problematic self-referential archive", "archive", fn)
+			// Continue with extra safety checks
+		}
+		
+		log.Debug("examining path", "path", path, "depth", depth)
 		if !d.IsDir() {
 			ret = append(ret, path)
 			return nil

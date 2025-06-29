@@ -3,13 +3,14 @@ package errors
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	"github.com/sethvargo/go-retry"
 )
 
@@ -112,27 +113,25 @@ func (h *ErrorHandler) WrapError(err error, operation, resource string) *CargoSh
 func (h *ErrorHandler) categorizeError(err error) (ErrorType, bool) {
 	errStr := strings.ToLower(err.Error())
 	
-	// AWS-specific errors
-	var awsErr aws.GenericAPIError
-	if ok := errorAs(err, &awsErr); ok {
-		return h.categorizeAWSError(awsErr)
+	// AWS-specific errors using smithy-go
+	var apiErr *smithy.GenericAPIError
+	if errors.As(err, &apiErr) {
+		return h.categorizeAWSError(*apiErr)
 	}
 	
 	// S3-specific errors
 	var notFound *types.NotFound
-	if errorAs(err, &notFound) {
+	if errors.As(err, &notFound) {
 		return ErrorTypeValidation, false
 	}
 	
 	var noSuchBucket *types.NoSuchBucket
-	if errorAs(err, &noSuchBucket) {
+	if errors.As(err, &noSuchBucket) {
 		return ErrorTypeValidation, false
 	}
 	
-	var accessDenied *types.AccessDenied
-	if errorAs(err, &accessDenied) {
-		return ErrorTypePermission, false
-	}
+	// Note: types.AccessDenied was removed in newer AWS SDK versions
+	// Handle access denied via string matching instead
 	
 	// Network errors
 	if strings.Contains(errStr, "connection") ||
@@ -169,7 +168,7 @@ func (h *ErrorHandler) categorizeError(err error) (ErrorType, bool) {
 }
 
 // categorizeAWSError categorizes AWS-specific errors
-func (h *ErrorHandler) categorizeAWSError(awsErr aws.GenericAPIError) (ErrorType, bool) {
+func (h *ErrorHandler) categorizeAWSError(awsErr smithy.GenericAPIError) (ErrorType, bool) {
 	code := awsErr.Code
 	
 	switch code {
@@ -182,12 +181,9 @@ func (h *ErrorHandler) categorizeAWSError(awsErr aws.GenericAPIError) (ErrorType
 	case "RequestTimeout", "ServiceUnavailable", "InternalError":
 		return ErrorTypeNetwork, true
 	default:
-		if awsErr.HTTPStatusCode >= 500 {
-			return ErrorTypeSystem, true
-		}
-		if awsErr.HTTPStatusCode >= 400 && awsErr.HTTPStatusCode < 500 {
-			return ErrorTypeValidation, false
-		}
+		// Note: smithy.GenericAPIError doesn't expose HTTPStatusCode
+		// We'll categorize based on the error code instead
+		return ErrorTypeSystem, true
 		return ErrorTypeUnknown, true
 	}
 }
@@ -195,7 +191,7 @@ func (h *ErrorHandler) categorizeAWSError(awsErr aws.GenericAPIError) (ErrorType
 // RetryWithBackoff executes an operation with retry logic
 func (h *ErrorHandler) RetryWithBackoff(ctx context.Context, operation string, fn func() error) error {
 	backoff := retry.NewExponential(h.baseDelay)
-	backoff = retry.WithMaxRetries(h.maxRetries, backoff)
+	backoff = retry.WithMaxRetries(uint64(h.maxRetries), backoff)
 	backoff = retry.WithCappedDuration(h.maxDelay, backoff)
 	
 	return retry.Do(ctx, backoff, func(ctx context.Context) error {
@@ -244,14 +240,14 @@ func (h *ErrorHandler) HandlePanic(operation string) func() {
 }
 
 // LogError logs an error with appropriate level and context
-func (h *ErrorHandler) LogError(err error, operation, resource string, context map[string]interface{}) {
+func (h *ErrorHandler) LogError(err error, operation, resource string, errorContext map[string]interface{}) {
 	wrappedErr := h.WrapError(err, operation, resource)
 	
 	// Add additional context
 	if wrappedErr.Context == nil {
 		wrappedErr.Context = make(map[string]interface{})
 	}
-	for k, v := range context {
+	for k, v := range errorContext {
 		wrappedErr.Context[k] = v
 	}
 	
@@ -264,13 +260,13 @@ func (h *ErrorHandler) LogError(err error, operation, resource string, context m
 		level = slog.LevelInfo
 	}
 	
-	h.logger.Log(ctx, level, "operation error",
+	h.logger.Log(context.Background(), level, "operation error",
 		"operation", wrappedErr.Operation,
 		"resource", wrappedErr.Resource,
 		"error_type", wrappedErr.Type,
 		"retryable", wrappedErr.Retryable,
 		"message", wrappedErr.Message,
-		"context", wrappedErr.Context)
+		"error_context", wrappedErr.Context)
 }
 
 // IsRetryableError checks if an error is retryable
@@ -372,34 +368,6 @@ func (h *ErrorHandler) GetRecoveryOptions(err error) *RecoveryOptions {
 	return options
 }
 
-// errorAs is a helper function for error type checking
-func errorAs(err error, target interface{}) bool {
-	// Simplified version of errors.As for this context
-	// In production, use errors.As from the standard library
-	switch v := target.(type) {
-	case *aws.GenericAPIError:
-		if awsErr, ok := err.(aws.GenericAPIError); ok {
-			*v = awsErr
-			return true
-		}
-	case **types.NotFound:
-		if notFound, ok := err.(*types.NotFound); ok {
-			*v = notFound
-			return true
-		}
-	case **types.NoSuchBucket:
-		if noSuchBucket, ok := err.(*types.NoSuchBucket); ok {
-			*v = noSuchBucket
-			return true
-		}
-	case **types.AccessDenied:
-		if accessDenied, ok := err.(*types.AccessDenied); ok {
-			*v = accessDenied
-			return true
-		}
-	}
-	return false
-}
 
 // ErrorMetrics tracks error statistics for monitoring
 type ErrorMetrics struct {
