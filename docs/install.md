@@ -18,25 +18,31 @@ Download the latest release for your platform:
     ```bash
     # Linux x86_64
     curl -sSL https://github.com/scttfrdmn/cargoship/releases/latest/download/cargoship-linux-amd64.tar.gz | tar -xz
-    sudo mv cargoship /usr/local/bin/
+    sudo mv cargoship-linux-amd64 /usr/local/bin/cargoship
+    
+    # Linux ARM64
+    curl -sSL https://github.com/scttfrdmn/cargoship/releases/latest/download/cargoship-linux-arm64.tar.gz | tar -xz
+    sudo mv cargoship-linux-arm64 /usr/local/bin/cargoship
     ```
 
 === "macOS"
     ```bash
     # macOS (Intel)
     curl -sSL https://github.com/scttfrdmn/cargoship/releases/latest/download/cargoship-darwin-amd64.tar.gz | tar -xz
-    sudo mv cargoship /usr/local/bin/
+    sudo mv cargoship-darwin-amd64 /usr/local/bin/cargoship
     
     # macOS (Apple Silicon)
     curl -sSL https://github.com/scttfrdmn/cargoship/releases/latest/download/cargoship-darwin-arm64.tar.gz | tar -xz
-    sudo mv cargoship /usr/local/bin/
+    sudo mv cargoship-darwin-arm64 /usr/local/bin/cargoship
     ```
 
 === "Windows"
     ```powershell
-    # Download and extract to your PATH
+    # Download and extract
     Invoke-WebRequest -Uri "https://github.com/scttfrdmn/cargoship/releases/latest/download/cargoship-windows-amd64.zip" -OutFile "cargoship.zip"
     Expand-Archive -Path "cargoship.zip" -DestinationPath "C:\Program Files\CargoShip"
+    # Rename binary and add to PATH
+    Rename-Item "C:\Program Files\CargoShip\cargoship-windows-amd64.exe" "cargoship.exe"
     # Add C:\Program Files\CargoShip to your PATH environment variable
     ```
 

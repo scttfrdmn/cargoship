@@ -1,0 +1,177 @@
+name: Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Linux builds
+          - goos: linux
+            goarch: amd64
+            name: cargoship-linux-amd64
+          - goos: linux
+            goarch: arm64
+            name: cargoship-linux-arm64
+          
+          # macOS builds
+          - goos: darwin
+            goarch: amd64
+            name: cargoship-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            name: cargoship-darwin-arm64
+          
+          # Windows builds
+          - goos: windows
+            goarch: amd64
+            name: cargoship-windows-amd64.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Get dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          # Get version from tag or input
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.tag }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/}
+          fi
+          
+          # Build with version info
+          go build \
+            -ldflags "-X main.version=${VERSION} -X main.commit=${GITHUB_SHA::8} -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o dist/${{ matrix.name }} \
+            ./cmd/cargoship
+
+      - name: Create archive
+        run: |
+          cd dist
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip ${{ matrix.name }}.zip ${{ matrix.name }}
+            echo "ASSET_NAME=${{ matrix.name }}.zip" >> $GITHUB_ENV
+            echo "ASSET_PATH=dist/${{ matrix.name }}.zip" >> $GITHUB_ENV
+          else
+            tar -czf ${{ matrix.name }}.tar.gz ${{ matrix.name }}
+            echo "ASSET_NAME=${{ matrix.name }}.tar.gz" >> $GITHUB_ENV
+            echo "ASSET_PATH=dist/${{ matrix.name }}.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: Upload binary to release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: ${{ env.ASSET_PATH }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  create-checksums:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download release assets
+        id: download
+        run: |
+          # Get version from tag or input
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.tag }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/}
+          fi
+          
+          # Download all release assets
+          gh release download ${VERSION} --dir ./release-assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate checksums
+        run: |
+          cd release-assets
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Upload checksums
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: release-assets/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-documentation:
+    needs: create-checksums
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update installation documentation
+        run: |
+          # Get version from tag or input
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.tag }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/}
+          fi
+          
+          # Update docs/install.md with latest version
+          sed -i "s|cargoship/releases/latest/download|cargoship/releases/download/${VERSION}|g" docs/install.md
+          
+          # Update version badge in README if it exists
+          if [ -f README.md ]; then
+            sed -i "s|version-v.*-blue|version-${VERSION}-blue|g" README.md
+          fi
+
+      - name: Commit documentation updates
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          if git diff --quiet; then
+            echo "No documentation changes needed"
+          else
+            git add docs/install.md README.md 2>/dev/null || true
+            git commit -m "Update documentation for release ${{ github.event.inputs.tag || github.ref_name }}"
+            git push
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

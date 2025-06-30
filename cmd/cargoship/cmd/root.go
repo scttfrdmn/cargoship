@@ -39,10 +39,15 @@ var (
 
 // NewRootCmd represents the base command when called without any subcommands
 func NewRootCmd(lo io.Writer) *cobra.Command {
+	return NewRootCmdWithVersion(lo, version)
+}
+
+// NewRootCmdWithVersion creates the root command with custom version info
+func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "cargoship",
 		Short:   "Enterprise data archiving for AWS",
-		Version: version,
+		Version: versionInfo,
 		Long: paragraph(fmt.Sprintf(`The %s 🚢 tool ships your data to AWS with intelligence and efficiency. Built for enterprise-scale archiving with cost optimization and observability.`,
 			makeGradientText(lipgloss.NewStyle(), "cargoship"),
 		)),
