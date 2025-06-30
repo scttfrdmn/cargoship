@@ -16,9 +16,14 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/aws/config"
 )
 
+// PricingClient interface for AWS pricing operations
+type PricingClient interface {
+	GetProducts(ctx context.Context, params *pricing.GetProductsInput, optFns ...func(*pricing.Options)) (*pricing.GetProductsOutput, error)
+}
+
 // Service provides real-time AWS pricing information
 type Service struct {
-	client       *pricing.Client
+	client       PricingClient
 	cache        map[string]*PriceData
 	cacheMutex   sync.RWMutex
 	cacheExpiry  time.Duration
@@ -34,7 +39,7 @@ type PriceData struct {
 }
 
 // NewService creates a new pricing service
-func NewService(client *pricing.Client) *Service {
+func NewService(client PricingClient) *Service {
 	return &Service{
 		client:      client,
 		cache:       make(map[string]*PriceData),
@@ -123,6 +128,8 @@ func (s *Service) fetchS3StoragePricing(ctx context.Context, region string, pric
 
 	result, err := s.client.GetProducts(ctx, input)
 	if err != nil {
+		// Set fallback pricing on API error
+		s.setFallbackStoragePricing(priceData, region)
 		return err
 	}
 
@@ -162,6 +169,8 @@ func (s *Service) fetchDataTransferPricing(ctx context.Context, region string, p
 
 	result, err := s.client.GetProducts(ctx, input)
 	if err != nil {
+		// Set fallback pricing on API error
+		priceData.TransferPrice = 0.09
 		return err
 	}
 
@@ -202,6 +211,8 @@ func (s *Service) fetchRequestPricing(ctx context.Context, region string, priceD
 
 	result, err := s.client.GetProducts(ctx, input)
 	if err != nil {
+		// Set fallback pricing on API error
+		s.setFallbackRequestPricing(priceData)
 		return err
 	}
 
