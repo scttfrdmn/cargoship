@@ -189,11 +189,12 @@ func TestTransporter_ImplementsInterface(t *testing.T) {
 	var _ transporters.Transporter = (*Transporter)(nil)
 	
 	// Also test that we can create and use the transporter as the interface
-	var tr transporters.Transporter = &Transporter{
+	transporter := &Transporter{
 		Config: transporters.Config{
 			Destination: "s3://test-bucket/path",
 		},
 	}
+	var tr transporters.Transporter = transporter
 
 	// Test interface methods work
 	err := tr.Check()
@@ -201,10 +202,9 @@ func TestTransporter_ImplementsInterface(t *testing.T) {
 		t.Errorf("Interface Check() failed: %v", err)
 	}
 
-	// Verify we can call Send through the interface
-	// (We won't actually execute it to avoid external dependencies)
-	if tr == nil {
-		t.Error("Transporter should implement interface correctly")
+	// Verify the transporter is properly initialized
+	if transporter.Config.Destination == "" {
+		t.Error("Transporter should have configured destination")
 	}
 }
 

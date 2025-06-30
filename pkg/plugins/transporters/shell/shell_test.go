@@ -141,8 +141,8 @@ func TestTransporter_Send(t *testing.T) {
 		if err != nil {
 			t.Skipf("Could not create temp file for test: %v", err)
 		}
-		file.Close()
-		defer os.Remove(tmpFile)
+		_ = file.Close()
+		defer func() { _ = os.Remove(tmpFile) }()
 
 		err = transporter.Send(tmpFile, "upload/path")
 		if err != nil {
@@ -178,8 +178,8 @@ func TestTransporter_SendWithChannel(t *testing.T) {
 		if err != nil {
 			t.Skipf("Could not create temp file for test: %v", err)
 		}
-		file.Close()
-		defer os.Remove(tmpFile)
+		_ = file.Close()
+		defer func() { _ = os.Remove(tmpFile) }()
 
 		err = transporter.SendWithChannel(tmpFile, "upload/path", testChannel)
 		if err != nil {
@@ -206,9 +206,9 @@ func TestTransporter_EnvironmentVariableHandling(t *testing.T) {
 	originalEnv := os.Getenv("SUITCASECTL_FILE")
 	defer func() {
 		if originalEnv != "" {
-			os.Setenv("SUITCASECTL_FILE", originalEnv)
+			_ = os.Setenv("SUITCASECTL_FILE", originalEnv)
 		} else {
-			os.Unsetenv("SUITCASECTL_FILE")
+			_ = os.Unsetenv("SUITCASECTL_FILE")
 		}
 	}()
 
