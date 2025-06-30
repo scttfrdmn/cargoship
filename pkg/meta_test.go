@@ -14,7 +14,7 @@ func TestNewCLIMetaWithCobra(t *testing.T) {
 	cmd := &cobra.Command{
 		Version: "1.2.3",
 	}
-	cmd.Execute()
+	_ = cmd.Execute() // Test helper
 
 	got := NewCLIMetaWithCobra(cmd, []string{})
 	require.NotNil(t, got)
@@ -28,7 +28,7 @@ func TestNewCLIMetaWithCobra(t *testing.T) {
 	// Make sure the close works
 	tdir := t.TempDir()
 	complete := got.MustComplete(tdir)
-	require.Equal(t, path.Join(tdir, "suitcasectl-invocation-meta.yaml"), complete)
+	require.Equal(t, path.Join(tdir, "cargoship-invocation-meta.yaml"), complete)
 	require.FileExists(t, complete)
 }
 

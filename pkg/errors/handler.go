@@ -184,7 +184,6 @@ func (h *ErrorHandler) categorizeAWSError(awsErr smithy.GenericAPIError) (ErrorT
 		// Note: smithy.GenericAPIError doesn't expose HTTPStatusCode
 		// We'll categorize based on the error code instead
 		return ErrorTypeSystem, true
-		return ErrorTypeUnknown, true
 	}
 }
 
@@ -209,10 +208,10 @@ func (h *ErrorHandler) RetryWithBackoff(ctx context.Context, operation string, f
 			"error", wrappedErr.Message)
 		
 		if !wrappedErr.IsRetryable() {
-			return retry.RetryableError(wrappedErr)
+			return wrappedErr
 		}
 		
-		return wrappedErr
+		return retry.RetryableError(wrappedErr)
 	})
 }
 

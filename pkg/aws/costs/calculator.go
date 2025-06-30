@@ -16,7 +16,6 @@ import (
 type Calculator struct {
 	region        string
 	pricingService *pricing.Service
-	lastUpdate    time.Time
 }
 
 // NewCalculator creates a new cost calculator for the specified region

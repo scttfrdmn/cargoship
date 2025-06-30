@@ -303,6 +303,9 @@ func formatBytes(bytes int64) string {
 	}
 	
 	units := []string{"KB", "MB", "GB", "TB", "PB"}
+	if exp >= len(units) {
+		exp = len(units) - 1 // Cap at PB for very large values
+	}
 	return fmt.Sprintf("%.1f %s", float64(bytes)/float64(div), units[exp])
 }
 
@@ -317,7 +320,9 @@ func formatDuration(d time.Duration) string {
 	}
 	
 	if d < time.Hour {
-		return fmt.Sprintf("%.0fm %.0fs", d.Minutes(), float64(d.Seconds())-(d.Minutes()*60))
+		minutes := int(d.Minutes())
+		seconds := int(d.Seconds()) - (minutes * 60)
+		return fmt.Sprintf("%dm %ds", minutes, seconds)
 	}
 	
 	hours := int(d.Hours())

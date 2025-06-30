@@ -261,12 +261,8 @@ func (c *Compressor) initGzipPools() {
 		},
 	}
 
-	c.gzipReaderPool = &sync.Pool{
-		New: func() interface{} {
-			r, _ := gzip.NewReader(nil)
-			return r
-		},
-	}
+	// Note: gzip readers will be created on-demand since they can't be pre-created
+	c.gzipReaderPool = nil
 }
 
 // initZlibPools initializes zlib writer and reader pools
@@ -278,12 +274,8 @@ func (c *Compressor) initZlibPools() {
 		},
 	}
 
-	c.zlibReaderPool = &sync.Pool{
-		New: func() interface{} {
-			r, _ := zlib.NewReader(nil)
-			return r
-		},
-	}
+	// Note: zlib readers will be created on-demand since they can't be pre-created
+	c.zlibReaderPool = nil
 }
 
 // initZstdCodec initializes zstd encoder and decoder
@@ -356,7 +348,7 @@ func (c *Compressor) compressGzip(src io.Reader, dst io.Writer) (int64, error) {
 	defer c.gzipWriterPool.Put(w)
 
 	w.Reset(dst)
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	written, err := io.Copy(w, src)
 	if err != nil {
@@ -367,15 +359,13 @@ func (c *Compressor) compressGzip(src io.Reader, dst io.Writer) (int64, error) {
 }
 
 func (c *Compressor) decompressGzip(src io.Reader, dst io.Writer) error {
-	r := c.gzipReaderPool.Get().(*gzip.Reader)
-	defer c.gzipReaderPool.Put(r)
-
-	if err := r.Reset(src); err != nil {
+	r, err := gzip.NewReader(src)
+	if err != nil {
 		return err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
-	_, err := io.Copy(dst, r)
+	_, err = io.Copy(dst, r)
 	return err
 }
 
@@ -384,7 +374,7 @@ func (c *Compressor) compressZlib(src io.Reader, dst io.Writer) (int64, error) {
 	defer c.zlibWriterPool.Put(w)
 
 	w.Reset(dst)
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	written, err := io.Copy(w, src)
 	if err != nil {
@@ -395,17 +385,13 @@ func (c *Compressor) compressZlib(src io.Reader, dst io.Writer) (int64, error) {
 }
 
 func (c *Compressor) decompressZlib(src io.Reader, dst io.Writer) error {
-	r := c.zlibReaderPool.Get().(io.ReadCloser)
-	defer c.zlibReaderPool.Put(r)
-
-	if resetter, ok := r.(interface{ Reset(io.Reader, []byte) error }); ok {
-		if err := resetter.Reset(src, nil); err != nil {
-			return err
-		}
+	r, err := zlib.NewReader(src)
+	if err != nil {
+		return err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
-	_, err := io.Copy(dst, r)
+	_, err = io.Copy(dst, r)
 	return err
 }
 
@@ -434,7 +420,7 @@ func (c *Compressor) compressS2(src io.Reader, dst io.Writer) (int64, error) {
 	defer c.s2WriterPool.Put(w)
 
 	w.Reset(dst)
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	written, err := io.Copy(w, src)
 	if err != nil {
@@ -459,7 +445,7 @@ func (c *Compressor) compressLZ4(src io.Reader, dst io.Writer) (int64, error) {
 	defer c.lz4WriterPool.Put(w)
 
 	w.Reset(dst)
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	written, err := io.Copy(w, src)
 	if err != nil {

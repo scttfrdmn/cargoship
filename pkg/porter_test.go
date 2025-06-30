@@ -55,7 +55,7 @@ func TestPorterCreateHashesFail(t *testing.T) {
 
 func TestCreateOrReadInventoryCreate(t *testing.T) {
 	cmd := inventory.NewInventoryCmd()
-	cmd.Execute()
+	_ = cmd.Execute() // Test helper
 	p := New(
 		WithCmdArgs(cmd, []string{"testdata/limit-dir"}),
 	)
@@ -67,7 +67,7 @@ func TestCreateOrReadInventoryCreate(t *testing.T) {
 
 func TestCreateOrReadInventoryRead(t *testing.T) {
 	cmd := inventory.NewInventoryCmd()
-	cmd.Execute()
+	_ = cmd.Execute() // Test helper
 	p := New(
 		WithCmdArgs(cmd, []string{"testdata/limit-dir"}),
 	)
@@ -80,7 +80,7 @@ func TestCreateOrReadInventoryRead(t *testing.T) {
 func TestWriteInventoryFile(t *testing.T) {
 	f := t.TempDir()
 	cmd := inventory.NewInventoryCmd()
-	cmd.Execute()
+	_ = cmd.Execute() // Test helper
 	ptr := New(
 		WithDestination(f),
 		WithCmdArgs(cmd, []string{"./testdata/fake-dir"}),
@@ -303,7 +303,7 @@ func TestEnvOrTempDir(t *testing.T) {
 	os.Clearenv()
 	t.Setenv("SOME_TMP", "/tmp/foo")
 	require.Equal(t, "/tmp/foo", envOrTmpDir("SOME_TMP"))
-	require.Contains(t, envOrTmpDir("NEVER_EXISTS"), "suitcasectl")
+	require.Contains(t, envOrTmpDir("NEVER_EXISTS"), "cargoship")
 }
 
 func TestMergeWizard(t *testing.T) {
@@ -332,7 +332,7 @@ func TestRun(t *testing.T) {
 	dest := t.TempDir()
 	cmd := inventory.NewInventoryCmd()
 	cmd.SetArgs([]string{"--user", "gotest"})
-	cmd.Execute()
+	_ = cmd.Execute() // Test helper
 	p := New(
 		WithCmdArgs(cmd, []string{"testdata/limit-dir"}),
 		WithDestination(dest),

@@ -19,7 +19,7 @@ func TestTarGPGFileCorrupt(t *testing.T) {
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
 	require.NoError(t, err)
@@ -65,7 +65,7 @@ func TestTarGPGFileWithTar(t *testing.T) {
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
 	require.NoError(t, err)
@@ -91,7 +91,7 @@ func TestTarGPGFileWithTar(t *testing.T) {
 	// Ok, now lets look at it
 	f, err = os.Open(f.Name())
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Make sure a normal tar reader can't actually open this
 	r := tar.NewReader(f)
@@ -110,7 +110,7 @@ func TestTarGZGPGFile(t *testing.T) {
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar.gpg"))
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
 	require.NoError(t, err)
@@ -140,7 +140,7 @@ func TestTarGZGPGFile(t *testing.T) {
 
 	privk, err := os.Open("../../testdata/fakey-private.key")
 	require.NoError(t, err)
-	defer privk.Close()
+	defer func() { _ = privk.Close() }()
 
 	entityList, err := openpgp.ReadArmoredKeyRing(privk)
 	require.NoError(t, err)

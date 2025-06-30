@@ -1056,7 +1056,7 @@ func destinationWithCobra(cmd *cobra.Command) string {
 }
 
 func mustTempDir() string {
-	o, err := os.MkdirTemp("", "suitcasectl")
+	o, err := os.MkdirTemp("", "cargoship")
 	if err != nil {
 		panic(err)
 	}

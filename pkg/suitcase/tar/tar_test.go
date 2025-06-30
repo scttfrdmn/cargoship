@@ -17,7 +17,7 @@ func TestTarFile(t *testing.T) {
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	archive := New(f, &config.SuitCaseOpts{
 		Format: "tar",
@@ -64,7 +64,7 @@ func TestTarFileAddHash(t *testing.T) {
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	archive := New(f, &config.SuitCaseOpts{
 		Format:    "tar",

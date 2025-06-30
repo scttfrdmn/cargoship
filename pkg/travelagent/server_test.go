@@ -25,7 +25,7 @@ func TestNewServer(t *testing.T) {
 	)
 	require.NotNil(t, srv)
 
-	go srv.Run()
+	go func() { _ = srv.Run() }() // Background server for test
 	// Give it a sec to spin up
 	time.Sleep(time.Second * 1)
 
@@ -101,7 +101,7 @@ func TestBadTokenServer(t *testing.T) {
 	)
 	require.NotNil(t, srv)
 
-	go srv.Run()
+	go func() { _ = srv.Run() }() // Background server for test
 	// Give it a sec to spin up
 	time.Sleep(time.Second * 1)
 

@@ -544,7 +544,7 @@ func copySrcDst(src, dst string) error {
 func envOrTmpDir(e string) string {
 	got := os.Getenv(e)
 	if got == "" {
-		tdir, err := os.MkdirTemp("", "suitcasectl")
+		tdir, err := os.MkdirTemp("", "cargoship")
 		if err != nil {
 			panic(err)
 		}

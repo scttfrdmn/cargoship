@@ -22,7 +22,6 @@ type Service struct {
 	cache        map[string]*PriceData
 	cacheMutex   sync.RWMutex
 	cacheExpiry  time.Duration
-	lastUpdate   time.Time
 }
 
 // PriceData contains pricing information for AWS services

@@ -52,7 +52,7 @@ func (c *CLIMeta) Complete(od string) (string, error) {
 		slog.Warn("No output directory specified. Using stdout for cli meta output")
 		w = os.Stdout
 	} else {
-		mf = path.Join(od, "suitcasectl-invocation-meta.yaml")
+		mf = path.Join(od, "cargoship-invocation-meta.yaml")
 		w, err = os.Create(mf) // nolint:gosec
 		if err != nil {
 			return "", err
@@ -120,7 +120,7 @@ func WithStart(t *time.Time) CLIMetaOption {
 	}
 }
 
-// WithMetaVersion sets the suitcasectl version in the meta
+// WithMetaVersion sets the cargoship version in the meta
 func WithMetaVersion(s string) CLIMetaOption {
 	return func(m *CLIMeta) {
 		m.Version = s

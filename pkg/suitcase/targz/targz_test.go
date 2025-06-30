@@ -18,7 +18,7 @@ func TestTarGzFile(t *testing.T) {
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar.gz"))
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	archive := New(f, &config.SuitCaseOpts{
 		Format: "tar.gz",

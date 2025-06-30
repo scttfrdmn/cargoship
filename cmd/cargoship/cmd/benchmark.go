@@ -186,7 +186,7 @@ func outputBenchmarkTable(results []compression.CompressionResult, originalSize 
 			efficiency += " ⭐"
 		}
 
-		table.Append(
+		_ = table.Append(
 			string(result.Algorithm),
 			fmt.Sprintf("%d", result.Level),
 			formatBytes(result.CompressedSize),
@@ -197,7 +197,7 @@ func outputBenchmarkTable(results []compression.CompressionResult, originalSize 
 		)
 	}
 
-	table.Render()
+	_ = table.Render()
 
 	// Show recommendations
 	fmt.Printf("\n🎯 Recommendations:\n")

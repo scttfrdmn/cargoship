@@ -46,7 +46,6 @@ type UploadMetrics struct {
 	TotalUploaded  int64
 	TotalErrors    int
 	StartTime      time.Time
-	mutex          sync.RWMutex
 }
 
 // PrefixMetrics tracks per-prefix performance

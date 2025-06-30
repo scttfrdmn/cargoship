@@ -68,8 +68,8 @@ type StatusUpdate struct {
 	CompletedAt            *time.Time `json:"completed_at,omitempty"`
 	MetadataCheckSum       string     `json:"metadata_checksum,omitempty"`
 	Metadata               string     `json:"-"`
-	SuitcasectlSource      string     `json:"suitcasectl_source,omitempty"`
-	SuitcasectlDestination string     `json:"suitcasectl_destination,omitempty"`
+	CargoshipSource      string     `json:"cargoship_source,omitempty"`
+	CargoshipDestination string     `json:"cargoship_destination,omitempty"`
 }
 
 // Validate the built in TravelAgent meets the TravelAgenter interface

@@ -48,8 +48,6 @@ type AdaptiveConfig struct {
 type NetworkMonitor struct {
 	bandwidth     float64       // MB/s
 	latency       time.Duration // Round-trip time
-	jitter        time.Duration // Latency variation
-	packetLoss    float64       // Packet loss percentage
 	samples       []NetworkSample
 	maxSamples    int
 	mutex         sync.RWMutex
@@ -201,20 +199,20 @@ func (a *AdaptiveUploader) adjustForNetworkConditions(baseSize int64) int64 {
 func (a *AdaptiveUploader) adjustForContentType(baseSize int64, contentType string) int64 {
 	multiplier := 1.0
 	
-	switch {
-	case contentType == "application/zip" || contentType == "application/x-tar":
+	switch contentType {
+	case "application/zip", "application/x-tar":
 		// Already compressed archives - larger chunks
 		multiplier = 1.3
-	case contentType == "video/mp4" || contentType == "video/mov":
+	case "video/mp4", "video/mov":
 		// Video files - larger chunks for efficiency
 		multiplier = 1.4
-	case contentType == "image/jpeg" || contentType == "image/png":
+	case "image/jpeg", "image/png":
 		// Images - moderate chunks
 		multiplier = 1.1
-	case contentType == "text/plain" || contentType == "application/json":
+	case "text/plain", "application/json":
 		// Text files compress well - smaller chunks for parallel compression
 		multiplier = 0.8
-	case contentType == "application/octet-stream":
+	case "application/octet-stream":
 		// Binary data - use default
 		multiplier = 1.0
 	}

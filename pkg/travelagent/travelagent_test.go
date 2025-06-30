@@ -141,7 +141,7 @@ func TestBindCmd(t *testing.T) {
 
 	// Test with credential blob
 	cmd.SetArgs([]string{"--travel-agent", "ewogICJ1cmwiOiAiaHR0cHM6Ly9leGFtcGxlLmNvbS9hcGkvdjEvc3VpdGNhc2VfdHJhbnNmZXJzLzEiLAogICJwYXNzd29yZCI6ICJzZWNyZXQtdG9rZW4iCn0K"})
-	cmd.Execute()
+	_ = cmd.Execute() // Test helper
 	ta, err := New(WithCmd(&cmd))
 	require.NoError(t, err)
 	require.Equal(t, ta.URL.String(), "https://example.com/api/v1/suitcase_transfers/1")
@@ -154,7 +154,7 @@ func TestBindCmd(t *testing.T) {
 		"--travel-agent-url", "https://www.example.com/api/v1/suitcase_transfers/2",
 		"--travel-agent-token", "another-token",
 	})
-	cmd.Execute()
+	_ = cmd.Execute() // Test helper
 	ta, err = New(
 		WithCmd(&cmd),
 		WithMetaTokenExpiration(5*time.Minute),
