@@ -1,15 +1,21 @@
-# CargoShip
-
-> **Enterprise data archiving for AWS, built for speed and intelligence**
-
-[![Go Reference](https://pkg.go.dev/badge/github.com/scttfrdmn/cargoship.svg)](https://pkg.go.dev/github.com/scttfrdmn/cargoship)
-[![Go Report Card](https://goreportcard.com/badge/github.com/scttfrdmn/cargoship)](https://goreportcard.com/report/github.com/scttfrdmn/cargoship)
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Test Coverage](https://img.shields.io/badge/coverage-60%25-yellow.svg)](https://github.com/scttfrdmn/cargoship)
+<div align="center">
+  <img src="assets/cargoship-logo.svg" alt="CargoShip Logo" width="200" height="200">
+  <h1>CargoShip</h1>
+  <p><strong>Enterprise data archiving for AWS, built for speed and intelligence</strong></p>
+  
+  [![Go Reference](https://pkg.go.dev/badge/github.com/scttfrdmn/cargoship.svg)](https://pkg.go.dev/github.com/scttfrdmn/cargoship)
+  [![Go Report Card](https://goreportcard.com/badge/github.com/scttfrdmn/cargoship)](https://goreportcard.com/report/github.com/scttfrdmn/cargoship)
+  [![Release](https://img.shields.io/github/v/release/scttfrdmn/cargoship?include_prereleases&sort=semver)](https://github.com/scttfrdmn/cargoship/releases)
+  [![Docker Pulls](https://img.shields.io/docker/pulls/scttfrdmn/cargoship)](https://hub.docker.com/r/scttfrdmn/cargoship)
+  [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+  [![Test Coverage](https://img.shields.io/badge/coverage-60%25-yellow.svg)](https://github.com/scttfrdmn/cargoship)
+  [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/scttfrdmn/cargoship/ci.yml?branch=main)](https://github.com/scttfrdmn/cargoship/actions)
+  [![AWS Integration](https://img.shields.io/badge/AWS-Native%20Integration-FF9900?logo=amazon-aws)](https://aws.amazon.com/)
+</div>
 
 CargoShip is a next-generation data archiving tool optimized for AWS infrastructure. Built on the foundation of Duke University's excellent [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl), CargoShip adds native AWS integration, intelligent cost optimization, and enterprise-grade observability.
 
-![CargoShip Demo](./vhs/demo.gif)
+<!-- ![CargoShip Demo](./vhs/demo.gif) -->
 
 ## 🚀 Key Features
 
