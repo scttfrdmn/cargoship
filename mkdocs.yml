@@ -1,22 +1,45 @@
-site_name: SuitcaseCTL
-site_url: https://devil-ops.pages.oit.duke.edu/suitcasectl/
-repo_url: https://gitlab.oit.duke.edu/devil-ops/suitcasectl
-edit_uri: https://gitlab.oit.duke.edu/-/ide/project/devil-ops/suitcasectl/edit/main/-/docs/
+site_name: CargoShip
+site_url: https://cargoship.app
+repo_url: https://github.com/scttfrdmn/cargoship
+edit_uri: https://github.com/scttfrdmn/cargoship/edit/main/docs/
 docs_dir: docs
 site_dir: public
 theme:
   name: material
+  custom_dir: docs/overrides
   icon:
-    logo: material/bag-suitcase-outline
+    logo: material/ferry
+  palette:
+    # Palette toggle for light mode
+    - scheme: default
+      primary: blue
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - scheme: slate
+      primary: blue
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
   features:
     - content.action.edit
     - content.code.select
     - content.code.copy
     - content.tabs.link
-#   - navigation.expand
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.suggest
+
 plugins:
+  - search
   - awesome-pages:
-      strict: true
+      strict: false
 
 markdown_extensions:
   - def_list
@@ -27,7 +50,9 @@ markdown_extensions:
   - pymdownx.keys
   - pymdownx.mark
   - pymdownx.tilde
-  - pymdownx.emoji
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - toc:
       permalink: true
       toc_depth: 4
@@ -41,15 +66,51 @@ markdown_extensions:
       custom_checkbox: true
   - pymdownx.highlight:
       anchor_linenums: true
-      # Comment below because they are not supported by mkdocs-material
-      # line_spans: __span
-      # pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets:
       check_paths: true
       base_path:
         - docs
-      # Still a wip
-      # auto_append:
-      #   - _includes/snippets.md
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: index.md
+  - Installation: install.md
+  - Getting Started:
+    - Wizard: wizard.md
+    - Components:
+      - CLI Metadata: components/cli_metadata.md
+      - CLI Output: components/cli_output.md
+      - Inventory: components/inventory.md
+      - Inventory Metadata: components/inventory_metadata.md
+      - Suitcase: components/suitcase.md
+      - Hashes: components/hashes.md
+  - Advanced:
+    - Autocomplete: advanced/autocomplete.md
+    - Benchmarks: advanced/benchmarks.md
+    - Configuration: advanced/defaults_overrides.md
+    - GPG Encryption: advanced/gpg_encryption.md
+    - Inventory Schema: advanced/inventory_schema.md
+    - Travel Agent: advanced/travelagent.md
+  - Plugins:
+    - Transport:
+      - Cloud: plugins/transport/cloud.md
+      - Shell: plugins/transport/shell.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/scttfrdmn/cargoship
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/r/scttfrdmn/cargoship
+  analytics:
+    provider: google
+    property: G-PLACEHOLDER # Replace with actual GA property when ready
+
+copyright: |
+  Copyright &copy; 2024 CargoShip Contributors<br>
+  Built upon <a href="https://gitlab.oit.duke.edu/devil-ops/suitcasectl">SuitcaseCTL</a> by Duke University
