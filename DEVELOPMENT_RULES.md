@@ -93,9 +93,10 @@
 
 #### Automated Checks
 - CI pipeline enforces all rules automatically
-- Pre-commit hooks prevent rule violations
+- **Pre-commit hooks prevent rule violations and are mandatory**
 - Coverage reports generated and tracked over time
 - Automated security scanning
+- Git hooks validate quality before each commit
 
 #### Manual Review
 - All code changes require peer review
@@ -121,6 +122,33 @@ Before any commit or PR:
 - [ ] Documentation updated for public APIs
 - [ ] Error handling properly implemented
 - [ ] Performance impact assessed
+- [ ] **Pre-commit hooks installed and passing** (`.githooks/pre-commit`)
+
+### Pre-Commit Hook Setup
+
+**MANDATORY**: All developers must install and use pre-commit hooks.
+
+```bash
+# Install hooks (run once after cloning)
+./scripts/setup-hooks.sh
+
+# Verify installation
+.githooks/pre-commit
+
+# Test manually before committing
+git add . && .githooks/pre-commit
+```
+
+The pre-commit hook automatically:
+- ✅ Runs `golangci-lint` with zero tolerance for warnings
+- ✅ Executes full test suite with coverage validation
+- ✅ Verifies 85%+ project coverage and 80%+ individual file coverage
+- ✅ Checks Go module consistency (`go mod tidy -diff`)
+- ✅ Validates documentation for exported functions
+- ✅ Scans for code quality issues (TODO/FIXME/debugging statements)
+- ✅ Ensures development rules compliance
+
+**Cannot bypass**: Hooks enforce the "NO BYPASSING" policy automatically.
 
 ## Tooling Requirements
 

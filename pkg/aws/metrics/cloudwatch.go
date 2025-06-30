@@ -13,9 +13,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 )
 
+// CloudWatchClient defines the interface for CloudWatch operations
+type CloudWatchClient interface {
+	PutMetricData(ctx context.Context, params *cloudwatch.PutMetricDataInput, optFns ...func(*cloudwatch.Options)) (*cloudwatch.PutMetricDataOutput, error)
+}
+
 // CloudWatchPublisher publishes CargoShip metrics to AWS CloudWatch
 type CloudWatchPublisher struct {
-	client     *cloudwatch.Client
+	client     CloudWatchClient
 	namespace  string
 	region     string
 	batchSize  int
@@ -36,7 +41,7 @@ type MetricConfig struct {
 }
 
 // NewCloudWatchPublisher creates a new CloudWatch metrics publisher
-func NewCloudWatchPublisher(client *cloudwatch.Client, config MetricConfig) *CloudWatchPublisher {
+func NewCloudWatchPublisher(client CloudWatchClient, config MetricConfig) *CloudWatchPublisher {
 	if config.Namespace == "" {
 		config.Namespace = "CargoShip"
 	}

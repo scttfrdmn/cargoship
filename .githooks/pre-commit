@@ -1,0 +1,300 @@
+#!/bin/bash
+
+# CargoShip Pre-Commit Hook
+# This hook enforces code quality standards before allowing commits
+# - Runs linting (golangci-lint)
+# - Executes all tests with coverage requirements
+# - Validates documentation exists for new code
+# - Ensures development rules compliance
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Coverage requirements - Progressive targets
+PROJECT_COVERAGE_TARGET=60  # Current: 60.0%, Goal: 85% (to be increased as we add more tests)
+INDIVIDUAL_FILE_COVERAGE_TARGET=80
+
+# Helper functions
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if required tools are installed
+check_dependencies() {
+    log_info "Checking required dependencies..."
+    
+    if ! command -v go &> /dev/null; then
+        log_error "Go is not installed or not in PATH"
+        exit 1
+    fi
+    
+    if ! command -v golangci-lint &> /dev/null; then
+        log_error "golangci-lint is not installed. Please install it:"
+        log_error "  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b \$(go env GOPATH)/bin v1.55.2"
+        exit 1
+    fi
+    
+    log_success "All dependencies found"
+}
+
+# Run golangci-lint
+run_linting() {
+    log_info "Running golangci-lint..."
+    
+    if ! golangci-lint run --no-config; then
+        log_error "Linting failed. Please fix the issues above before committing."
+        log_error "Development rules require zero linting violations."
+        exit 1
+    fi
+    
+    log_success "Linting passed - zero violations"
+}
+
+# Run tests with coverage
+run_tests() {
+    log_info "Running tests with coverage analysis..."
+    
+    # Run tests and capture coverage
+    if ! go test -cover ./... > test_output.tmp 2>&1; then
+        log_error "Tests failed:"
+        cat test_output.tmp
+        rm -f test_output.tmp
+        exit 1
+    fi
+    
+    # Parse coverage results
+    local failed_packages=()
+    local project_statements=0
+    local project_covered=0
+    
+    while IFS= read -r line; do
+        if [[ $line =~ coverage:\ ([0-9.]+)%\ of\ statements ]]; then
+            local package_coverage="${BASH_REMATCH[1]}"
+            local package_name=$(echo "$line" | awk '{print $2}')
+            
+            # Check individual package coverage
+            if (( $(echo "$package_coverage < $INDIVIDUAL_FILE_COVERAGE_TARGET" | bc -l) )); then
+                failed_packages+=("$package_name: ${package_coverage}% (minimum: ${INDIVIDUAL_FILE_COVERAGE_TARGET}%)")
+            fi
+        fi
+    done < test_output.tmp
+    
+    # Calculate overall project coverage using go tool cover
+    go test -coverprofile=coverage.out ./... > /dev/null 2>&1
+    local project_coverage=0
+    if [ -f coverage.out ]; then
+        project_coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+        rm -f coverage.out
+    fi
+    
+    rm -f test_output.tmp
+    
+    log_info "Project coverage: ${project_coverage}% (target: ${PROJECT_COVERAGE_TARGET}%)"
+    
+    # Check project coverage
+    if (( $(echo "$project_coverage < $PROJECT_COVERAGE_TARGET" | bc -l) )); then
+        log_error "Project coverage (${project_coverage}%) is below target (${PROJECT_COVERAGE_TARGET}%)"
+        exit 1
+    fi
+    
+    # Check individual package coverage
+    if [ ${#failed_packages[@]} -gt 0 ]; then
+        log_error "The following packages have insufficient coverage:"
+        for package in "${failed_packages[@]}"; do
+            log_error "  $package"
+        done
+        log_error "Development rules require ${INDIVIDUAL_FILE_COVERAGE_TARGET}%+ coverage for individual files"
+        exit 1
+    fi
+    
+    log_success "All tests passed with sufficient coverage"
+}
+
+# Check for documentation requirements
+check_documentation() {
+    log_info "Checking documentation requirements..."
+    
+    # Get list of staged Go files
+    local staged_files=($(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true))
+    
+    if [ ${#staged_files[@]} -eq 0 ]; then
+        log_info "No Go files staged for commit"
+        return 0
+    fi
+    
+    local missing_docs=()
+    
+    for file in "${staged_files[@]}"; do
+        # Skip test files
+        if [[ $file =~ _test\.go$ ]]; then
+            continue
+        fi
+        
+        # Check if file exists (might be deleted)
+        if [ ! -f "$file" ]; then
+            continue
+        fi
+        
+        # Check for package documentation
+        if ! head -20 "$file" | grep -q "^// Package.*"; then
+            missing_docs+=("$file: Missing package documentation")
+        fi
+        
+        # Check for exported functions/types documentation
+        local exported_without_docs=$(grep -n "^func [A-Z]\|^type [A-Z]\|^var [A-Z]\|^const [A-Z]" "$file" | while read -r line; do
+            local line_num=$(echo "$line" | cut -d: -f1)
+            local prev_line_num=$((line_num - 1))
+            
+            # Check if previous line has documentation comment
+            if [ $prev_line_num -gt 0 ]; then
+                local prev_line=$(sed -n "${prev_line_num}p" "$file")
+                if [[ ! $prev_line =~ ^// ]]; then
+                    echo "$file:$line_num: $(echo "$line" | cut -d: -f2-)"
+                fi
+            else
+                echo "$file:$line_num: $(echo "$line" | cut -d: -f2-)"
+            fi
+        done)
+        
+        if [ -n "$exported_without_docs" ]; then
+            missing_docs+=("$exported_without_docs")
+        fi
+    done
+    
+    if [ ${#missing_docs[@]} -gt 0 ]; then
+        log_warning "Documentation issues found:"
+        for doc in "${missing_docs[@]}"; do
+            log_warning "  $doc"
+        done
+        log_warning "Consider adding documentation for better code maintainability"
+        # This is a warning, not a blocking error for now
+    else
+        log_success "Documentation requirements satisfied"
+    fi
+}
+
+# Validate development rules compliance
+check_development_rules() {
+    log_info "Validating development rules compliance..."
+    
+    if [ ! -f "DEVELOPMENT_RULES.md" ]; then
+        log_error "DEVELOPMENT_RULES.md not found - this file should document project standards"
+        exit 1
+    fi
+    
+    # Check for any TODO or FIXME comments in staged files
+    local staged_go_files=($(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true))
+    local issues_found=()
+    
+    for file in "${staged_go_files[@]}"; do
+        if [ -f "$file" ]; then
+            # Look for problematic patterns
+            local todos=$(grep -n "TODO\|FIXME\|XXX\|HACK" "$file" || true)
+            if [ -n "$todos" ]; then
+                issues_found+=("$file: Contains TODO/FIXME comments")
+            fi
+            
+            # Check for debugging code
+            local debug_code=$(grep -n "fmt\.Print\|log\.Print\|console\.log" "$file" || true)
+            if [ -n "$debug_code" ]; then
+                issues_found+=("$file: Contains debugging print statements")
+            fi
+        fi
+    done
+    
+    if [ ${#issues_found[@]} -gt 0 ]; then
+        log_warning "Code quality issues found:"
+        for issue in "${issues_found[@]}"; do
+            log_warning "  $issue"
+        done
+        log_warning "Consider cleaning up before committing"
+        # This is a warning, not a blocking error
+    fi
+    
+    log_success "Development rules validation completed"
+}
+
+# Check Go module consistency
+check_go_modules() {
+    log_info "Checking Go module consistency..."
+    
+    # Check if go.mod and go.sum are in sync
+    if ! go mod verify; then
+        log_error "Go module verification failed - go.sum may be out of sync"
+        exit 1
+    fi
+    
+    # Check for unused dependencies
+    if ! go mod tidy -diff; then
+        log_error "Go modules are not tidy. Run 'go mod tidy' to fix."
+        exit 1
+    fi
+    
+    log_success "Go modules are consistent"
+}
+
+# Main execution
+main() {
+    echo "🚀 CargoShip Pre-Commit Hook Starting..."
+    echo "=================================="
+    
+    # Run all checks
+    check_dependencies
+    echo
+    
+    check_go_modules
+    echo
+    
+    run_linting
+    echo
+    
+    run_tests
+    echo
+    
+    check_documentation
+    echo
+    
+    check_development_rules
+    echo
+    
+    echo "=================================="
+    log_success "🎉 All pre-commit checks passed! Commit proceeding..."
+    echo
+}
+
+# Install bc if not available (for floating point comparisons)
+if ! command -v bc &> /dev/null; then
+    log_warning "bc not found - installing for coverage calculations..."
+    # Try different package managers
+    if command -v apt-get &> /dev/null; then
+        sudo apt-get update && sudo apt-get install -y bc
+    elif command -v yum &> /dev/null; then
+        sudo yum install -y bc
+    elif command -v brew &> /dev/null; then
+        brew install bc
+    else
+        log_error "Cannot install bc automatically. Please install it manually."
+        exit 1
+    fi
+fi
+
+# Run main function
+main

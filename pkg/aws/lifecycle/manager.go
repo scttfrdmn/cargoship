@@ -11,14 +11,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
+// S3Client defines the interface for S3 lifecycle operations
+type S3Client interface {
+	PutBucketLifecycleConfiguration(ctx context.Context, params *s3.PutBucketLifecycleConfigurationInput, optFns ...func(*s3.Options)) (*s3.PutBucketLifecycleConfigurationOutput, error)
+	GetBucketLifecycleConfiguration(ctx context.Context, params *s3.GetBucketLifecycleConfigurationInput, optFns ...func(*s3.Options)) (*s3.GetBucketLifecycleConfigurationOutput, error)
+	DeleteBucketLifecycle(ctx context.Context, params *s3.DeleteBucketLifecycleInput, optFns ...func(*s3.Options)) (*s3.DeleteBucketLifecycleOutput, error)
+}
+
 // Manager handles S3 lifecycle policies for automated cost optimization
 type Manager struct {
-	s3Client *s3.Client
+	s3Client S3Client
 	bucket   string
 }
 
 // NewManager creates a new lifecycle policy manager
-func NewManager(s3Client *s3.Client, bucket string) *Manager {
+func NewManager(s3Client S3Client, bucket string) *Manager {
 	return &Manager{
 		s3Client: s3Client,
 		bucket:   bucket,
