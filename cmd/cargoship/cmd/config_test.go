@@ -58,14 +58,14 @@ func TestGenerateConfig(t *testing.T) {
 	err := generateConfig()
 
 	// Restore stdout
-	w.Close()
+	_ = w.Close()
 	os.Stdout = originalStdout
 
 	assert.NoError(t, err)
 
 	// Read captured output
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	// Verify output contains expected content
@@ -118,14 +118,14 @@ logging:
 	err = showConfig(manager)
 	
 	// Restore stdout
-	w.Close()
+	_ = w.Close()
 	os.Stdout = originalStdout
 	
 	assert.NoError(t, err)
 	
 	// Read and verify JSON output
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 	
 	// Should be valid JSON
@@ -180,14 +180,14 @@ func TestRunConfigShowHelp(t *testing.T) {
 	err := cmd.RunE(cmd, []string{})
 	
 	// Restore stdout
-	w.Close()
+	_ = w.Close()
 	os.Stdout = originalStdout
 	
 	assert.NoError(t, err)
 	
 	// Verify help output
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 	assert.Contains(t, output, "Manage CargoShip configuration")
 }
@@ -202,14 +202,14 @@ func TestValidateConfig(t *testing.T) {
 	err := validateConfig(manager)
 	
 	// Restore stdout
-	w.Close()
+	_ = w.Close()
 	os.Stdout = originalStdout
 	
 	assert.NoError(t, err)
 	
 	// Verify validation output
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 	
 	assert.Contains(t, output, "✅ Configuration is valid!")
@@ -228,20 +228,20 @@ func TestEditConfigNoEditor(t *testing.T) {
 	originalEditor := os.Getenv("EDITOR")
 	originalVisual := os.Getenv("VISUAL")
 	defer func() {
-		os.Setenv("EDITOR", originalEditor)
-		os.Setenv("VISUAL", originalVisual)
+		_ = os.Setenv("EDITOR", originalEditor)
+		_ = os.Setenv("VISUAL", originalVisual)
 	}()
 	
 	// Clear editor environment variables
-	os.Unsetenv("EDITOR")
-	os.Unsetenv("VISUAL")
+	_ = os.Unsetenv("EDITOR")
+	_ = os.Unsetenv("VISUAL")
 	
 	// Save original PATH to restore later
 	originalPath := os.Getenv("PATH")
-	defer func() { os.Setenv("PATH", originalPath) }()
+	defer func() { _ = os.Setenv("PATH", originalPath) }()
 	
 	// Set empty PATH to ensure no editors are found
-	os.Setenv("PATH", "")
+	_ = os.Setenv("PATH", "")
 	
 	err := editConfig()
 	assert.Error(t, err)
@@ -253,9 +253,9 @@ func TestConfigFlagHandling(t *testing.T) {
 	cmd := NewConfigCmd()
 	
 	// Test setting flags
-	cmd.Flags().Set("generate", "true")
-	cmd.Flags().Set("format", "json")
-	cmd.Flags().Set("file", "/tmp/test.yaml")
+	_ = cmd.Flags().Set("generate", "true")
+	_ = cmd.Flags().Set("format", "json")
+	_ = cmd.Flags().Set("file", "/tmp/test.yaml")
 	
 	// Flags should be accessible
 	generateFlag, _ := cmd.Flags().GetBool("generate")
