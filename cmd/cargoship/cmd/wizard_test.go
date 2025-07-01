@@ -357,7 +357,7 @@ func TestWizardPostRunEValidation(t *testing.T) {
 	
 	// Call wizardPostRunE without porter in context - should panic
 	assert.Panics(t, func() {
-		wizardPostRunE(cmd, []string{})
+		_ = wizardPostRunE(cmd, []string{})
 	}, "wizardPostRunE should panic when porter is not in context")
 }
 
@@ -379,7 +379,7 @@ func TestWizardRunEValidation(t *testing.T) {
 	
 	// Call RunE without porter in context - should panic
 	assert.Panics(t, func() {
-		cmd.RunE(cmd, []string{})
+		_ = cmd.RunE(cmd, []string{})
 	}, "RunE should panic when porter is not in context")
 }
 
