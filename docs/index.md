@@ -8,7 +8,9 @@
   [![Release](https://img.shields.io/github/v/release/scttfrdmn/cargoship?include_prereleases&sort=semver)](https://github.com/scttfrdmn/cargoship/releases)
   [![Docker Pulls](https://img.shields.io/docker/pulls/scttfrdmn/cargoship)](https://hub.docker.com/r/scttfrdmn/cargoship)
   [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-  [![Test Coverage](https://img.shields.io/badge/coverage-60%25-yellow.svg)](https://github.com/scttfrdmn/cargoship)
+  [![Test Coverage](https://img.shields.io/badge/coverage-67.5%25-yellow.svg)](https://github.com/scttfrdmn/cargoship)
+  [![Security Analysis](https://img.shields.io/badge/security-gosec%20enabled-green.svg)](https://github.com/securecodewarrior/gosec)
+  [![Integration Tests](https://img.shields.io/badge/testing-LocalStack%20S3-blue.svg)](https://localstack.cloud/)
   [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/scttfrdmn/cargoship/ci.yml?branch=main)](https://github.com/scttfrdmn/cargoship/actions)
   [![AWS Integration](https://img.shields.io/badge/AWS-Native%20Integration-FF9900?logo=amazon-aws)](https://aws.amazon.com/)
 </div>

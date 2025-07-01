@@ -4,6 +4,9 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/scttfrdmn/cargoship.svg)](https://pkg.go.dev/github.com/scttfrdmn/cargoship)
 [![Go Report Card](https://goreportcard.com/badge/github.com/scttfrdmn/cargoship)](https://goreportcard.com/report/github.com/scttfrdmn/cargoship)
+[![Test Coverage](https://img.shields.io/badge/coverage-67.5%25-yellow.svg)](https://github.com/scttfrdmn/cargoship)
+[![Security Analysis](https://img.shields.io/badge/security-gosec%20enabled-green.svg)](https://github.com/securecodewarrior/gosec)
+[![Integration Tests](https://img.shields.io/badge/testing-LocalStack%20S3-blue.svg)](https://localstack.cloud/)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 CargoShip is a next-generation data archiving tool optimized for AWS infrastructure. Built on the foundation of Duke University's excellent [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl), CargoShip adds native AWS integration, intelligent cost optimization, and enterprise-grade observability.
