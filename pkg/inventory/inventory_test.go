@@ -554,3 +554,302 @@ func TestInaccessableFilesInInventory(t *testing.T) {
 	require.NotNil(t, got)
 	require.EqualError(t, got.ValidateAccess(), fmt.Sprintf("the following files are not readable: %v", tfile))
 }
+
+// Test HashAlgorithm methods
+func TestHashAlgorithmString(t *testing.T) {
+	tests := []struct {
+		name     string
+		hash     HashAlgorithm
+		expected string
+	}{
+		{"MD5Hash", MD5Hash, "md5"},
+		{"SHA1Hash", SHA1Hash, "sha1"},
+		{"SHA256Hash", SHA256Hash, "sha256"},
+		{"SHA512Hash", SHA512Hash, "sha512"},
+		{"NullHash", NullHash, ""},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.hash.String()
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestHashAlgorithmStringPanic(t *testing.T) {
+	// Test with invalid hash algorithm value
+	require.Panics(t, func() {
+		var invalidHash HashAlgorithm = 999
+		_ = invalidHash.String()
+	})
+}
+
+func TestHashAlgorithmType(t *testing.T) {
+	var hash HashAlgorithm
+	require.Equal(t, "HashAlgorithm", hash.Type())
+}
+
+func TestHashAlgorithmSet(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       string
+		expectedVal HashAlgorithm
+		expectError bool
+	}{
+		{"valid md5", "md5", MD5Hash, false},
+		{"valid sha1", "sha1", SHA1Hash, false},
+		{"valid sha256", "sha256", SHA256Hash, false},
+		{"valid sha512", "sha512", SHA512Hash, false},
+		{"valid empty", "", NullHash, false},
+		{"invalid value", "invalid", NullHash, true},
+		{"case sensitive", "MD5", NullHash, true},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var hash HashAlgorithm
+			err := hash.Set(tt.value)
+			
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "HashAlgorithm should be one of")
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedVal, hash)
+			}
+		})
+	}
+}
+
+func TestHashAlgorithmMarshalJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		hash     HashAlgorithm
+		expected string
+	}{
+		{"MD5Hash", MD5Hash, `"md5"`},
+		{"SHA1Hash", SHA1Hash, `"sha1"`},
+		{"SHA256Hash", SHA256Hash, `"sha256"`},
+		{"SHA512Hash", SHA512Hash, `"sha512"`},
+		{"NullHash", NullHash, `""`},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := tt.hash.MarshalJSON()
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, string(result))
+		})
+	}
+}
+
+// Test Format methods
+func TestFormatString(t *testing.T) {
+	tests := []struct {
+		name     string
+		format   Format
+		expected string
+	}{
+		{"YAMLFormat", YAMLFormat, "yaml"},
+		{"JSONFormat", JSONFormat, "json"},
+		{"NullFormat", NullFormat, ""},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.format.String()
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestFormatStringPanic(t *testing.T) {
+	// Test with invalid format value
+	require.Panics(t, func() {
+		var invalidFormat Format = 999
+		_ = invalidFormat.String()
+	})
+}
+
+func TestFormatType(t *testing.T) {
+	var format Format
+	require.Equal(t, "Format", format.Type())
+}
+
+func TestFormatSet(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       string
+		expectedVal Format
+		expectError bool
+	}{
+		{"valid yaml", "yaml", YAMLFormat, false},
+		{"valid json", "json", JSONFormat, false},
+		{"valid empty", "", NullFormat, false},
+		{"invalid value", "invalid", NullFormat, true},
+		{"case sensitive", "YAML", NullFormat, true},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var format Format
+			err := format.Set(tt.value)
+			
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "ProductionLevel should be one of")
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedVal, format)
+			}
+		})
+	}
+}
+
+func TestFormatMarshalJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		format   Format
+		expected string
+	}{
+		{"YAMLFormat", YAMLFormat, `"yaml"`},
+		{"JSONFormat", JSONFormat, `"json"`},
+		{"NullFormat", NullFormat, `""`},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := tt.format.MarshalJSON()
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, string(result))
+		})
+	}
+}
+
+// Test Inventory JSON methods
+func TestInventoryJSONString(t *testing.T) {
+	inventory := &Inventory{
+		Files: []*File{
+			{Path: "test.txt", Size: 100},
+		},
+		Options: NewOptions(),
+	}
+	
+	jsonStr, err := inventory.JSONString()
+	require.NoError(t, err)
+	require.Contains(t, jsonStr, "test.txt")
+	require.Contains(t, jsonStr, "files")
+	require.Contains(t, jsonStr, "options")
+}
+
+func TestInventoryMustJSONString(t *testing.T) {
+	inventory := &Inventory{
+		Files: []*File{
+			{Path: "test.txt", Size: 100},
+		},
+		Options: NewOptions(),
+	}
+	
+	// Should not panic with valid inventory
+	require.NotPanics(t, func() {
+		jsonStr := inventory.MustJSONString()
+		require.Contains(t, jsonStr, "test.txt")
+	})
+}
+
+// Test utility functions
+func TestReverseMapString(t *testing.T) {
+	original := map[string]string{
+		"key1": "value1",
+		"key2": "value2",
+		"key3": "value3",
+	}
+	
+	reversed := reverseMap(original)
+	
+	require.Equal(t, "key1", reversed["value1"])
+	require.Equal(t, "key2", reversed["value2"])
+	require.Equal(t, "key3", reversed["value3"])
+	require.Len(t, reversed, 3)
+}
+
+func TestReverseMapHashAlgorithm(t *testing.T) {
+	reversed := reverseMap(hashMap)
+	
+	require.Equal(t, "md5", reversed[MD5Hash])
+	require.Equal(t, "sha1", reversed[SHA1Hash])
+	require.Equal(t, "sha256", reversed[SHA256Hash])
+	require.Equal(t, "sha512", reversed[SHA512Hash])
+	require.Equal(t, "", reversed[NullHash])
+}
+
+func TestReverseMapFormat(t *testing.T) {
+	reversed := reverseMap(formatMap)
+	
+	require.Equal(t, "yaml", reversed[YAMLFormat])
+	require.Equal(t, "json", reversed[JSONFormat])
+	require.Equal(t, "", reversed[NullFormat])
+}
+
+// Test dclose function
+func TestDclose(t *testing.T) {
+	// Test with a valid closer
+	file, err := os.CreateTemp("", "test_dclose_*.txt")
+	require.NoError(t, err)
+	defer func() { _ = os.Remove(file.Name()) }()
+	
+	// Should not panic
+	require.NotPanics(t, func() {
+		dclose(file)
+	})
+	
+	// File should be closed
+	_, err = file.Write([]byte("test"))
+	require.Error(t, err) // Should error because file is closed
+}
+
+func TestDcloseWithAlreadyClosedFile(t *testing.T) {
+	file, err := os.CreateTemp("", "test_dclose_*.txt")
+	require.NoError(t, err)
+	defer func() { _ = os.Remove(file.Name()) }()
+	
+	// Close file first
+	err = file.Close()
+	require.NoError(t, err)
+	
+	// dclose should handle already closed file gracefully
+	require.NotPanics(t, func() {
+		dclose(file)
+	})
+}
+
+// Test SummaryLog function
+func TestInventorySummaryLog(t *testing.T) {
+	inventory := &Inventory{
+		Files: []*File{
+			{Path: "file1.txt", Size: 100},
+			{Path: "file2.txt", Size: 200},
+			{Path: "file3.txt", Size: 300},
+		},
+		Options: NewOptions(),
+		TotalIndexes: 2,
+	}
+	
+	// Should not panic when calling SummaryLog
+	require.NotPanics(t, func() {
+		inventory.SummaryLog()
+	})
+}
+
+func TestInventorySummaryLogEmpty(t *testing.T) {
+	inventory := &Inventory{
+		Files:   []*File{},
+		Options: NewOptions(),
+	}
+	
+	// Should not panic with empty inventory
+	require.NotPanics(t, func() {
+		inventory.SummaryLog()
+	})
+}

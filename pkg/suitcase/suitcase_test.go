@@ -303,3 +303,76 @@ func TestInProcessName(t *testing.T) {
 		inProcessName("/tmp/foo.txt"),
 	)
 }
+
+// Test Format methods (0% coverage functions)
+func TestFormatType(t *testing.T) {
+	var format Format
+	require.Equal(t, "Format", format.Type())
+}
+
+func TestFormatSet(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       string
+		expectedVal Format
+		expectError bool
+	}{
+		{"valid tar", "tar", TarFormat, false},
+		{"valid tar.gz", "tar.gz", TarGzFormat, false},
+		{"valid tar.zst", "tar.zst", TarZstFormat, false},
+		{"valid tar.gpg", "tar.gpg", TarGpgFormat, false},
+		{"valid tar.gz.gpg", "tar.gz.gpg", TarGzGpgFormat, false},
+		{"valid tar.zst.gpg", "tar.zst.gpg", TarZstGpgFormat, false},
+		{"valid empty", "", NullFormat, false},
+		{"invalid value", "invalid", NullFormat, true},
+		{"case sensitive", "TAR", NullFormat, true},
+		{"partial match", "tar.g", NullFormat, true},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var format Format
+			err := format.Set(tt.value)
+			
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "ProductionLevel should be one of")
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedVal, format)
+			}
+		})
+	}
+}
+
+func TestFormatMarshalJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		format   Format
+		expected string
+	}{
+		{"TarFormat", TarFormat, `"tar"`},
+		{"TarGzFormat", TarGzFormat, `"tar.gz"`},
+		{"TarZstFormat", TarZstFormat, `"tar.zst"`},
+		{"TarGpgFormat", TarGpgFormat, `"tar.gpg"`},
+		{"TarGzGpgFormat", TarGzGpgFormat, `"tar.gz.gpg"`},
+		{"TarZstGpgFormat", TarZstGpgFormat, `"tar.zst.gpg"`},
+		{"NullFormat", NullFormat, `""`},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := tt.format.MarshalJSON()
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, string(result))
+		})
+	}
+}
+
+func TestFormatStringPanic(t *testing.T) {
+	// Test with invalid format value
+	require.Panics(t, func() {
+		var invalidFormat Format = 999
+		_ = invalidFormat.String()
+	})
+}
