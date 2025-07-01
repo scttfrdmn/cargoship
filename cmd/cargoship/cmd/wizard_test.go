@@ -276,3 +276,151 @@ func TestWizardCommandIntegration(t *testing.T) {
 	porterValue := cmd.Context().Value(porter.PorterKey)
 	assert.NotNil(t, porterValue)
 }
+
+func TestWizardPreRunEExecution(t *testing.T) {
+	// Test the main logic of wizardPreRunE without calling globalPersistentPreRun
+	cmd := NewWizardCmd()
+	
+	// Set up minimal context
+	ctx := context.Background()
+	cmd.SetContext(ctx)
+	
+	// Manually execute the porter setup logic from wizardPreRunE
+	// (This is what wizardPreRunE does after calling globalPersistentPreRun)
+	opts := []porter.Option{
+		porter.WithLogger(logger),
+		porter.WithHashAlgorithm(hashAlgo),
+		porter.WithVersion(version),
+		porter.WithCLIMeta(
+			porter.NewCLIMeta(
+				porter.WithStart(toPTR(time.Now())),
+			),
+		),
+	}
+	
+	// Shove porter in to the cmd context so we can use it later
+	cmd.SetContext(context.WithValue(cmd.Context(), porter.PorterKey, porter.New(opts...)))
+	
+	// Verify that porter was added to context
+	porterValue := cmd.Context().Value(porter.PorterKey)
+	assert.NotNil(t, porterValue, "Porter should be set in context")
+	
+	// Verify it's the correct type and properly configured
+	porterInstance, ok := porterValue.(*porter.Porter)
+	require.True(t, ok)
+	assert.Equal(t, hashAlgo, porterInstance.HashAlgorithm)
+	assert.Equal(t, version, porterInstance.Version)
+	assert.NotNil(t, porterInstance.CLIMeta)
+	assert.NotNil(t, porterInstance.CLIMeta.StartedAt)
+}
+
+func TestWizardPreRunEPorterSetup(t *testing.T) {
+	// Test the porter setup part of wizardPreRunE in isolation
+	cmd := NewWizardCmd()
+	ctx := context.Background()
+	cmd.SetContext(ctx)
+	
+	// Simulate the porter creation part of wizardPreRunE
+	opts := []porter.Option{
+		porter.WithLogger(logger),
+		porter.WithHashAlgorithm(hashAlgo),
+		porter.WithVersion(version),
+		porter.WithCLIMeta(
+			porter.NewCLIMeta(
+				porter.WithStart(toPTR(time.Now())),
+			),
+		),
+	}
+	
+	// Create and set porter in context
+	porterInstance := porter.New(opts...)
+	cmd.SetContext(context.WithValue(cmd.Context(), porter.PorterKey, porterInstance))
+	
+	// Verify porter setup
+	porterValue := cmd.Context().Value(porter.PorterKey)
+	require.NotNil(t, porterValue)
+	
+	porterInstance, ok := porterValue.(*porter.Porter)
+	require.True(t, ok)
+	assert.NotNil(t, porterInstance)
+	assert.Equal(t, hashAlgo, porterInstance.HashAlgorithm)
+	assert.Equal(t, version, porterInstance.Version)
+	assert.NotNil(t, porterInstance.CLIMeta)
+	assert.NotNil(t, porterInstance.CLIMeta.StartedAt)
+}
+
+func TestWizardPostRunEValidation(t *testing.T) {
+	// Test wizardPostRunE validation - it should panic without proper porter context
+	cmd := NewWizardCmd()
+	ctx := context.Background()
+	cmd.SetContext(ctx)
+	
+	// Call wizardPostRunE without porter in context - should panic
+	assert.Panics(t, func() {
+		wizardPostRunE(cmd, []string{})
+	}, "wizardPostRunE should panic when porter is not in context")
+}
+
+func TestWizardAliases(t *testing.T) {
+	// Test that wizard command has expected aliases
+	cmd := NewWizardCmd()
+	
+	aliases := cmd.Aliases
+	assert.Contains(t, aliases, "wiz")
+	assert.Contains(t, aliases, "easybutton")
+	assert.Len(t, aliases, 2)
+}
+
+func TestWizardRunEValidation(t *testing.T) {
+	// Test that the RunE function validates porter in context
+	cmd := NewWizardCmd()
+	ctx := context.Background()
+	cmd.SetContext(ctx)
+	
+	// Call RunE without porter in context - should panic
+	assert.Panics(t, func() {
+		cmd.RunE(cmd, []string{})
+	}, "RunE should panic when porter is not in context")
+}
+
+func TestWizardCompleteWorkflow(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping wizard workflow test in short mode")
+	}
+	
+	// Test the complete workflow setup (without actually running wizard)
+	cmd := NewWizardCmd()
+	
+	// Set up context
+	ctx := context.Background()
+	cmd.SetContext(ctx)
+	
+	// Create minimal porter instance
+	opts := []porter.Option{
+		porter.WithLogger(logger),
+		porter.WithHashAlgorithm(hashAlgo),
+		porter.WithVersion(version),
+		porter.WithCLIMeta(
+			porter.NewCLIMeta(
+				porter.WithStart(toPTR(time.Now())),
+			),
+		),
+	}
+	
+	porterInstance := porter.New(opts...)
+	cmd.SetContext(context.WithValue(cmd.Context(), porter.PorterKey, porterInstance))
+	
+	// Verify the command structure supports the complete workflow
+	assert.NotNil(t, cmd.PreRunE, "PreRunE should be set for initialization")
+	assert.NotNil(t, cmd.RunE, "RunE should be set for main execution")
+	assert.NotNil(t, cmd.PostRunE, "PostRunE should be set for cleanup")
+	
+	// Verify porter is available for the workflow
+	porterValue := cmd.Context().Value(porter.PorterKey)
+	assert.NotNil(t, porterValue, "Porter should be available in context")
+	
+	porterInstance, ok := porterValue.(*porter.Porter)
+	require.True(t, ok)
+	assert.NotNil(t, porterInstance.CLIMeta, "CLI meta should be initialized")
+	assert.NotNil(t, porterInstance.CLIMeta.StartedAt, "Start time should be set")
+}

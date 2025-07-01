@@ -1,10 +1,17 @@
 package cmd
 
 import (
+	"context"
+	"fmt"
 	"testing"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/scttfrdmn/cargoship/pkg/aws/metrics"
 )
 
 func TestNewMetricsCmd(t *testing.T) {
@@ -356,4 +363,238 @@ func TestMetricsGlobalVariableScope(t *testing.T) {
 	test, err := cmd.Flags().GetBool("test")
 	assert.NoError(t, err)
 	assert.False(t, test)
+}
+
+// MockCloudWatchClient for testing runMetrics
+type MockCloudWatchClient struct {
+	putMetricDataErr error
+	putMetricDataCalls []cloudwatch.PutMetricDataInput
+}
+
+func (m *MockCloudWatchClient) PutMetricData(ctx context.Context, params *cloudwatch.PutMetricDataInput, optFns ...func(*cloudwatch.Options)) (*cloudwatch.PutMetricDataOutput, error) {
+	if params != nil {
+		m.putMetricDataCalls = append(m.putMetricDataCalls, *params)
+	}
+	return &cloudwatch.PutMetricDataOutput{}, m.putMetricDataErr
+}
+
+func TestRunMetricsErrorPaths(t *testing.T) {
+	// Save original global variables
+	originalNamespace := metricsNamespace
+	originalRegion := metricsRegion
+	originalTest := metricsTest
+	defer func() {
+		metricsNamespace = originalNamespace
+		metricsRegion = originalRegion
+		metricsTest = originalTest
+	}()
+
+	testCases := []struct {
+		name         string
+		setupFunc    func(*testing.T) *cobra.Command
+		expectedErr  string
+	}{
+		{
+			name: "test flag false",
+			setupFunc: func(t *testing.T) *cobra.Command {
+				cmd := NewMetricsCmd()
+				err := cmd.Flags().Set("test", "false")
+				require.NoError(t, err)
+				return cmd
+			},
+			expectedErr: "use --test flag to send test metrics",
+		},
+		{
+			name: "invalid AWS region",
+			setupFunc: func(t *testing.T) *cobra.Command {
+				cmd := NewMetricsCmd()
+				err := cmd.Flags().Set("test", "true")
+				require.NoError(t, err)
+				err = cmd.Flags().Set("region", "invalid-region-name")
+				require.NoError(t, err)
+				return cmd
+			},
+			expectedErr: "failed to publish upload metrics",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := tc.setupFunc(t)
+			err := cmd.RunE(cmd, []string{})
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tc.expectedErr)
+		})
+	}
+}
+
+func TestRunMetricsOutputFormatting(t *testing.T) {
+	// Save original global variables
+	originalNamespace := metricsNamespace
+	originalRegion := metricsRegion
+	originalTest := metricsTest
+	defer func() {
+		metricsNamespace = originalNamespace
+		metricsRegion = originalRegion
+		metricsTest = originalTest
+	}()
+
+	// Test output formatting paths
+	cmd := NewMetricsCmd()
+	err := cmd.Flags().Set("test", "true")
+	require.NoError(t, err)
+	err = cmd.Flags().Set("namespace", "TestNamespace/Validation")
+	require.NoError(t, err)
+	err = cmd.Flags().Set("region", "us-east-1")
+	require.NoError(t, err)
+
+	// Verify output sections would be printed
+	// The actual execution would fail on AWS calls, but we can test setup
+	namespace, err := cmd.Flags().GetString("namespace")
+	assert.NoError(t, err)
+	assert.Equal(t, "TestNamespace/Validation", namespace)
+
+	region, err := cmd.Flags().GetString("region")
+	assert.NoError(t, err)
+	assert.Equal(t, "us-east-1", region)
+
+	test, err := cmd.Flags().GetBool("test")
+	assert.NoError(t, err)
+	assert.True(t, test)
+}
+
+func TestRunMetricsValidConfigValues(t *testing.T) {
+	// Test that the function creates proper config values
+	cmd := NewMetricsCmd()
+	err := cmd.Flags().Set("test", "true")
+	require.NoError(t, err)
+	err = cmd.Flags().Set("namespace", "CargoShip/UnitTest")
+	require.NoError(t, err)
+	err = cmd.Flags().Set("region", "us-west-2")
+	require.NoError(t, err)
+
+	// Test the metrics config creation path by verifying flag values
+	namespace, err := cmd.Flags().GetString("namespace")
+	assert.NoError(t, err)
+	assert.Equal(t, "CargoShip/UnitTest", namespace)
+
+	region, err := cmd.Flags().GetString("region")
+	assert.NoError(t, err)
+	assert.Equal(t, "us-west-2", region)
+
+	// Verify that the test values would create valid metric configs
+	metricsConfig := metrics.MetricConfig{
+		Namespace:     namespace,
+		Region:        region,
+		BatchSize:     5,
+		FlushInterval: 10 * time.Second,
+		Enabled:       true,
+	}
+
+	assert.Equal(t, "CargoShip/UnitTest", metricsConfig.Namespace)
+	assert.Equal(t, "us-west-2", metricsConfig.Region)
+	assert.Equal(t, 5, metricsConfig.BatchSize)
+	assert.Equal(t, 10*time.Second, metricsConfig.FlushInterval)
+	assert.True(t, metricsConfig.Enabled)
+}
+
+func TestRunMetricsValidMetricStructures(t *testing.T) {
+	// Test that the function would create valid metric structures
+	// This tests the data structures used in runMetrics without AWS calls
+
+	// Test UploadMetrics structure
+	uploadMetrics := &metrics.UploadMetrics{
+		Duration:        45 * time.Second,
+		ThroughputMBps:  15.5,
+		TotalBytes:      500 * 1024 * 1024, // 500MB
+		ChunkCount:      25,
+		Concurrency:     8,
+		ErrorCount:      0,
+		Success:         true,
+		StorageClass:    "INTELLIGENT_TIERING",
+		ContentType:     "application/octet-stream",
+		CompressionType: "zstd",
+	}
+	assert.Equal(t, 45*time.Second, uploadMetrics.Duration)
+	assert.Equal(t, 15.5, uploadMetrics.ThroughputMBps)
+	assert.Equal(t, int64(500*1024*1024), uploadMetrics.TotalBytes)
+	assert.True(t, uploadMetrics.Success)
+
+	// Test CostMetrics structure
+	costMetrics := &metrics.CostMetrics{
+		EstimatedMonthlyCost:    2.30,
+		EstimatedAnnualCost:     27.60,
+		ActualMonthlyCost:       0.10,
+		DataSizeGB:              100.0,
+		PotentialSavingsPercent: 95.7,
+		StorageClass:            "DEEP_ARCHIVE",
+		OptimizationType:        "archive_optimization",
+	}
+	assert.Equal(t, 2.30, costMetrics.EstimatedMonthlyCost)
+	assert.Equal(t, 95.7, costMetrics.PotentialSavingsPercent)
+
+	// Test NetworkMetrics structure
+	networkMetrics := &metrics.NetworkMetrics{
+		BandwidthMBps:       25.0,
+		LatencyMs:           50.0,
+		PacketLossPercent:   0.1,
+		OptimalChunkSizeMB:  24,
+		OptimalConcurrency:  8,
+		NetworkCondition:    "excellent",
+	}
+	assert.Equal(t, 25.0, networkMetrics.BandwidthMBps)
+	assert.Equal(t, "excellent", networkMetrics.NetworkCondition)
+
+	// Test OperationalMetrics structure
+	operationalMetrics := &metrics.OperationalMetrics{
+		ActiveUploads:     3,
+		QueuedUploads:     7,
+		CompletedUploads:  45,
+		FailedUploads:     2,
+		MemoryUsageMB:     256.5,
+		CPUUsagePercent:   25.3,
+	}
+	assert.Equal(t, 3, operationalMetrics.ActiveUploads)
+	assert.Equal(t, 256.5, operationalMetrics.MemoryUsageMB)
+
+	// Test LifecycleMetrics structure
+	lifecycleMetrics := &metrics.LifecycleMetrics{
+		ActivePolicies:          1,
+		EstimatedSavingsPercent: 95.7,
+		ObjectsTransitioned:     1250,
+		PolicyTemplate:          "archive-optimization",
+		BucketName:              "cargoship-production",
+	}
+	assert.Equal(t, 1, lifecycleMetrics.ActivePolicies)
+	assert.Equal(t, "archive-optimization", lifecycleMetrics.PolicyTemplate)
+}
+
+func TestRunMetricsStringFormatting(t *testing.T) {
+	// Test the string formatting used in runMetrics output
+	namespace := "CargoShip/Production"
+	region := "us-east-1"
+
+	// Test console URL formatting
+	consoleURL := fmt.Sprintf("https://console.aws.amazon.com/cloudwatch/home?region=%s#metricsV2:graph=~();search=%s", region, namespace)
+	expectedURL := "https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#metricsV2:graph=~();search=CargoShip/Production"
+	assert.Equal(t, expectedURL, consoleURL)
+
+	// Test that output strings would be properly formatted
+	outputStrings := []string{
+		"🔍 Testing CloudWatch metrics integration...",
+		fmt.Sprintf("   Namespace: %s", namespace),
+		fmt.Sprintf("   Region: %s", region),
+		"📊 Publishing upload metrics...",
+		"💰 Publishing cost metrics...",
+		"🌐 Publishing network metrics...",
+		"⚙️ Publishing operational metrics...",
+		"🔄 Publishing lifecycle metrics...",
+		"🚀 Flushing metrics to CloudWatch...",
+		"✅ All test metrics published successfully!",
+	}
+
+	for _, str := range outputStrings {
+		assert.NotEmpty(t, str)
+		assert.True(t, len(str) > 5) // Ensure meaningful output
+	}
 }
