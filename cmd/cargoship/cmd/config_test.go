@@ -267,3 +267,283 @@ func TestConfigFlagHandling(t *testing.T) {
 	fileFlag, _ := cmd.Flags().GetString("file")
 	assert.Equal(t, "/tmp/test.yaml", fileFlag)
 }
+
+func TestShowConfigYAML(t *testing.T) {
+	// Save original configFormat
+	originalFormat := configFormat
+	defer func() { configFormat = originalFormat }()
+	
+	// Set format to YAML
+	configFormat = "yaml"
+	
+	// Save original home directory behavior
+	// Create temporary directory to act as home
+	tempDir := t.TempDir()
+	
+	// Create mock config manager with default values
+	manager := config.NewManager()
+	
+	// Capture stdout
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	
+	// Temporarily change HOME for this test
+	originalHome := os.Getenv("HOME")
+	_ = os.Setenv("HOME", tempDir)
+	defer func() { _ = os.Setenv("HOME", originalHome) }()
+	
+	err := showConfig(manager)
+	
+	// Restore stdout
+	_ = w.Close()
+	os.Stdout = originalStdout
+	
+	assert.NoError(t, err)
+	
+	// Read captured output
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	
+	// Should contain YAML content
+	assert.Contains(t, output, "aws:")
+	assert.Contains(t, output, "region:")
+	assert.Contains(t, output, "storage:")
+	assert.Contains(t, output, "upload:")
+}
+
+func TestShowConfigYMLFormat(t *testing.T) {
+	// Save original configFormat
+	originalFormat := configFormat
+	defer func() { configFormat = originalFormat }()
+	
+	// Test yml alias for yaml
+	configFormat = "yml"
+	
+	tempDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	_ = os.Setenv("HOME", tempDir)
+	defer func() { _ = os.Setenv("HOME", originalHome) }()
+	
+	manager := config.NewManager()
+	
+	// Capture stdout
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	
+	err := showConfig(manager)
+	
+	// Restore stdout
+	_ = w.Close()
+	os.Stdout = originalStdout
+	
+	assert.NoError(t, err)
+	
+	// Read captured output
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	
+	// Should contain YAML content
+	assert.Contains(t, output, "aws:")
+}
+
+func TestEditConfigWithEditor(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping editor integration test in short mode")
+	}
+	
+	// Save original environment
+	originalEditor := os.Getenv("EDITOR")
+	originalConfigFile := configFile
+	defer func() {
+		_ = os.Setenv("EDITOR", originalEditor)
+		configFile = originalConfigFile
+	}()
+	
+	// Create temp directory and config file
+	tempDir := t.TempDir()
+	testConfig := filepath.Join(tempDir, "test-config.yaml")
+	configFile = testConfig
+	
+	// Create initial config content
+	initialConfig := `aws:
+  region: us-west-2
+storage:
+  default_bucket: test
+`
+	err := os.WriteFile(testConfig, []byte(initialConfig), 0644)
+	require.NoError(t, err)
+	
+	// Use 'true' command as a no-op editor for testing
+	_ = os.Setenv("EDITOR", "true")
+	
+	// Capture stdout
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	
+	err = editConfig()
+	
+	// Restore stdout
+	_ = w.Close()
+	os.Stdout = originalStdout
+	
+	assert.NoError(t, err)
+	
+	// Read captured output
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	
+	assert.Contains(t, output, "Opening")
+	assert.Contains(t, output, "with true")
+	assert.Contains(t, output, "✅ Configuration saved and validated successfully!")
+}
+
+func TestEditConfigCreatesNewFile(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping editor integration test in short mode")
+	}
+	
+	// Save original environment
+	originalEditor := os.Getenv("EDITOR")
+	originalConfigFile := configFile
+	defer func() {
+		_ = os.Setenv("EDITOR", originalEditor)
+		configFile = originalConfigFile
+	}()
+	
+	// Create temp directory for new config file
+	tempDir := t.TempDir()
+	testConfig := filepath.Join(tempDir, "new-config.yaml")
+	configFile = testConfig
+	
+	// Use 'true' command as a no-op editor for testing
+	_ = os.Setenv("EDITOR", "true")
+	
+	// Capture stdout
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	
+	err := editConfig()
+	
+	// Restore stdout
+	_ = w.Close()
+	os.Stdout = originalStdout
+	
+	assert.NoError(t, err)
+	
+	// Verify file was created
+	_, err = os.Stat(testConfig)
+	assert.NoError(t, err)
+	
+	// Read captured output
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	
+	assert.Contains(t, output, "Creating new configuration file")
+	assert.Contains(t, output, "✅ Configuration saved and validated successfully!")
+}
+
+func TestEditConfigWithVISUALEditor(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping editor integration test in short mode")
+	}
+	
+	// Save original environment
+	originalEditor := os.Getenv("EDITOR")
+	originalVisual := os.Getenv("VISUAL")
+	originalConfigFile := configFile
+	defer func() {
+		_ = os.Setenv("EDITOR", originalEditor)
+		_ = os.Setenv("VISUAL", originalVisual)
+		configFile = originalConfigFile
+	}()
+	
+	// Clear EDITOR but set VISUAL
+	_ = os.Unsetenv("EDITOR")
+	_ = os.Setenv("VISUAL", "true")
+	
+	tempDir := t.TempDir()
+	testConfig := filepath.Join(tempDir, "visual-config.yaml")
+	configFile = testConfig
+	
+	// Capture stdout
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	
+	err := editConfig()
+	
+	// Restore stdout
+	_ = w.Close()
+	os.Stdout = originalStdout
+	
+	assert.NoError(t, err)
+	
+	// Read captured output
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	
+	assert.Contains(t, output, "Opening")
+	assert.Contains(t, output, "with true")
+}
+
+func TestEditConfigInvalidConfiguration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping editor integration test in short mode")
+	}
+	
+	// Save original environment
+	originalEditor := os.Getenv("EDITOR")
+	originalConfigFile := configFile
+	defer func() {
+		_ = os.Setenv("EDITOR", originalEditor)
+		configFile = originalConfigFile
+	}()
+	
+	// Create temp directory and invalid config file
+	tempDir := t.TempDir()
+	testConfig := filepath.Join(tempDir, "invalid-config.yaml")
+	configFile = testConfig
+	
+	// Create invalid config content that will fail validation
+	invalidConfig := `aws:
+  region: invalid-region-that-should-fail
+  totally_invalid_key: invalid_value
+invalid_yaml: [unclosed bracket
+`
+	err := os.WriteFile(testConfig, []byte(invalidConfig), 0644)
+	require.NoError(t, err)
+	
+	// Use 'true' command as a no-op editor for testing
+	_ = os.Setenv("EDITOR", "true")
+	
+	// Capture stdout
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	
+	err = editConfig()
+	
+	// Restore stdout
+	_ = w.Close()
+	os.Stdout = originalStdout
+	
+	// Should not return error even if validation fails
+	assert.NoError(t, err)
+	
+	// Read captured output
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	
+	assert.Contains(t, output, "⚠️ Configuration validation failed")
+	assert.Contains(t, output, "Please fix the errors and try again")
+}

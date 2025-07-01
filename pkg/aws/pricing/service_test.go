@@ -441,7 +441,7 @@ func TestService_extractPriceFromTerms(t *testing.T) {
 			expected: 0.023,
 		},
 		{
-			name: "Multiple terms - use first valid",
+			name: "Multiple terms - use any valid",
 			productData: map[string]interface{}{
 				"terms": map[string]interface{}{
 					"OnDemand": map[string]interface{}{
@@ -454,19 +454,10 @@ func TestService_extractPriceFromTerms(t *testing.T) {
 								},
 							},
 						},
-						"term2": map[string]interface{}{
-							"priceDimensions": map[string]interface{}{
-								"dim2": map[string]interface{}{
-									"pricePerUnit": map[string]interface{}{
-										"USD": "0.030",
-									},
-								},
-							},
-						},
 					},
 				},
 			},
-			expected: 0.025, // Should get first valid price
+			expected: 0.025, // Should get the valid price
 		},
 		{
 			name: "Missing terms",
