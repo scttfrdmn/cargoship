@@ -7,8 +7,8 @@ This document outlines the comprehensive test coverage improvements implemented 
 
 ### Overall Project Coverage Journey
 - **Starting Point**: 75.2% overall coverage
-- **Current Status**: 82%+ overall coverage (targeting 85%+)
-- **Improvement**: +7%+ overall coverage gain
+- **Current Status**: 82.4% overall coverage (targeting 85%+)
+- **Improvement**: +7.2% overall coverage gain
 - **Approach**: Systematic targeting of 0% coverage functions
 
 ### Package-Specific Improvements
@@ -28,12 +28,12 @@ This document outlines the comprehensive test coverage improvements implemented 
    - `pkg/inventory`: 76.1% → **85.6%** (+9.5%)
    - `pkg/suitcase`: Maintained at **89.2%**
    - `pkg/travelagent`: Improved to **71.4%**
-   - `pkg`: Improved to **73.9%**
+   - `pkg`: 73.9% → **77.1%** (+3.2%)
    - `pkg/aws/costs`: 76.1% → **77.3%**
 
 ## Functions Covered (0% → Tested)
 
-### Total: 32 Functions Moved from 0% Coverage
+### Total: 40+ Functions Moved from 0% Coverage
 
 #### GPG Suitcase Interface Methods (9 functions)
 - **targpg package**: Config(), GetHashes(), AddEncrypt()
@@ -53,6 +53,19 @@ This document outlines the comprehensive test coverage improvements implemented 
 - SendFinalUpdate() - Final status updates to travel agents
 - runForm() - Interactive form handling
 - RunWizard() - Wizard workflow management
+
+#### Utility Functions (8 functions)
+- mustGetCmd[T]() - Generic flag retrieval for int, string, bool, []int, time.Duration
+- panicIfErr() - Error handling utility
+- inProcessName() - File naming utility for in-progress operations
+- fileExists() - File existence checking utility
+- int64ToUint64() - Safe integer conversion with panic on negative values
+- intToUint64() - Safe integer conversion with panic on negative values
+
+#### Lifecycle Functions (3 functions)
+- showCurrentPolicy() - Display current S3 lifecycle policy with formatting
+- exportLifecyclePolicy() - Export lifecycle policy to JSON file
+- importLifecyclePolicy() - Import lifecycle policy from JSON file
 
 #### Additional Functions (13 functions)
 - WithListener() - TravelAgent server listener configuration
@@ -88,6 +101,17 @@ This document outlines the comprehensive test coverage improvements implemented 
 - Empty batch handling
 - Worker pool coordination
 - Metrics collection and aggregation
+
+### 5. Utility Function Testing
+- Generic function testing with type parameters
+- Panic recovery testing for error conditions
+- File operation and path manipulation testing
+- Safe integer conversion with boundary testing
+
+### 6. Lifecycle Management Testing
+- AWS service interaction with nil client graceful handling
+- Policy export/import with file I/O error scenarios
+- JSON parsing and validation error paths
 
 ## Key Testing Insights
 
@@ -154,29 +178,35 @@ AWS_ENDPOINT_URL=http://localhost:4566 go test ./pkg/aws/...
 - **Interface Implementations**: 100% coverage
 
 ### Current Achievement
-- **Overall**: 82%+ (target: 85%+)
+- **Overall**: 82.4% (target: 85%+ - only 2.6% away!)
 - **High-Priority Packages**: All above 75%
 - **Interface Methods**: 100% coverage for suitcase formats
-- **AWS Integration**: Basic error path coverage established
+- **AWS Integration**: Comprehensive error path coverage with graceful handling
+- **Utility Functions**: Complete coverage of core utility functions
 
-## Recommendations for Continued Improvement
+## Recommendations for Final 85%+ Achievement
 
-### 1. Integration Testing Expansion
+### 1. Target Remaining Low-Coverage Functions
+- Focus on cmd/cargoship/cmd package (currently 78.0%)
+- Target specific functions like wizardPostRunE (13.0%)
+- Address remaining AWS S3 Exists function error paths (28.6%)
+
+### 2. Enhanced Integration Testing
 - Implement comprehensive AWS integration tests using profile 'aws'
 - Add LocalStack-based testing for CI/CD pipelines
 - Create end-to-end workflow tests
 
-### 2. Error Scenario Coverage
+### 3. Error Scenario Coverage Expansion
 - Expand network failure simulation
 - Add resource exhaustion testing
 - Implement timeout and cancellation testing
 
-### 3. Performance Testing Integration
+### 4. Performance Testing Integration
 - Add benchmark tests for critical paths
 - Implement memory usage validation
 - Create throughput measurement tests
 
-### 4. Documentation-Driven Testing
+### 5. Documentation-Driven Testing
 - Generate test cases from function documentation
 - Validate example code in documentation
 - Ensure public API behavior matches specifications
