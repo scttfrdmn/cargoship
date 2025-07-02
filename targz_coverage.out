@@ -1,0 +1,11 @@
+mode: set
+github.com/scttfrdmn/cargoship/pkg/suitcase/targz/targz.go:25.64,27.16 2 1
+github.com/scttfrdmn/cargoship/pkg/suitcase/targz/targz.go:27.16,28.32 1 0
+github.com/scttfrdmn/cargoship/pkg/suitcase/targz/targz.go:30.2,34.3 1 1
+github.com/scttfrdmn/cargoship/pkg/suitcase/targz/targz.go:38.33,40.37 1 1
+github.com/scttfrdmn/cargoship/pkg/suitcase/targz/targz.go:40.37,42.3 1 0
+github.com/scttfrdmn/cargoship/pkg/suitcase/targz/targz.go:43.2,43.21 1 1
+github.com/scttfrdmn/cargoship/pkg/suitcase/targz/targz.go:47.49,49.2 1 1
+github.com/scttfrdmn/cargoship/pkg/suitcase/targz/targz.go:52.48,54.2 1 1
+github.com/scttfrdmn/cargoship/pkg/suitcase/targz/targz.go:57.66,59.2 1 1
+github.com/scttfrdmn/cargoship/pkg/suitcase/targz/targz.go:62.54,64.2 1 1

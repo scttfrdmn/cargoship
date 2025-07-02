@@ -1,0 +1,11 @@
+mode: set
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud/cloud.go:21.37,22.32 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud/cloud.go:22.32,24.3 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud/cloud.go:25.2,25.12 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud/cloud.go:29.46,31.12 2 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud/cloud.go:31.12,32.7 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud/cloud.go:32.7,34.4 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud/cloud.go:36.2,36.35 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud/cloud.go:40.87,42.13 2 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud/cloud.go:42.13,44.3 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud/cloud.go:45.2,48.12 3 1

@@ -1,0 +1,18 @@
+mode: set
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:25.62,27.2 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:30.37,31.32 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:31.32,33.3 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:35.2,35.25 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:35.25,38.3 2 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:40.2,49.35 7 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:49.35,51.3 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:53.2,53.12 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:57.46,60.12 2 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:60.12,61.7 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:61.7,63.4 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:65.2,65.35 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:69.87,70.57 1 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:70.57,72.3 1 0
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:73.2,83.35 8 1
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:83.35,85.3 1 0
+github.com/scttfrdmn/cargoship/pkg/plugins/transporters/shell/shell.go:87.2,87.12 1 1

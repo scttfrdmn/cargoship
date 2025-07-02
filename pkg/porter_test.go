@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"github.com/scttfrdmn/cargoship/pkg/config"
@@ -474,6 +476,122 @@ func TestRunWizard(t *testing.T) {
 	
 	// We can't call it directly in tests due to interactive nature
 	// but we've verified the method exists and has correct signature
+}
+
+// Test 0% coverage utility functions
+func TestMustGetCmd(t *testing.T) {
+	cmd := &cobra.Command{}
+	
+	// Add various flags to test
+	cmd.Flags().Int("test-int", 42, "test int flag")
+	cmd.Flags().String("test-string", "hello", "test string flag")
+	cmd.Flags().Bool("test-bool", true, "test bool flag")
+	cmd.Flags().IntSlice("test-int-slice", []int{1, 2, 3}, "test int slice flag")
+	cmd.Flags().Duration("test-duration", time.Second*5, "test duration flag")
+	
+	// Test int flag
+	intVal := mustGetCmd[int](cmd, "test-int")
+	require.Equal(t, 42, intVal)
+	
+	// Test string flag
+	stringVal := mustGetCmd[string](cmd, "test-string")
+	require.Equal(t, "hello", stringVal)
+	
+	// Test bool flag
+	boolVal := mustGetCmd[bool](cmd, "test-bool")
+	require.True(t, boolVal)
+	
+	// Test int slice flag
+	intSliceVal := mustGetCmd[[]int](cmd, "test-int-slice")
+	require.Equal(t, []int{1, 2, 3}, intSliceVal)
+	
+	// Test duration flag
+	durationVal := mustGetCmd[time.Duration](cmd, "test-duration")
+	require.Equal(t, time.Second*5, durationVal)
+}
+
+func TestMustGetCmdPanic(t *testing.T) {
+	cmd := &cobra.Command{}
+	
+	// Test panic with non-existent flag
+	require.Panics(t, func() {
+		mustGetCmd[int](cmd, "non-existent-flag")
+	})
+}
+
+func TestPanicIfErr(t *testing.T) {
+	// Test with nil error (should not panic)
+	require.NotPanics(t, func() {
+		panicIfErr(nil)
+	})
+	
+	// Test with actual error (should panic)
+	require.Panics(t, func() {
+		panicIfErr(errors.New("test error"))
+	})
+}
+
+func TestInProcessName(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"/tmp/test.txt", "/tmp/.__creating-test.txt"},
+		{"test.txt", ".__creating-test.txt"},
+		{"/path/to/file.dat", "/path/to/.__creating-file.dat"},
+	}
+	
+	for _, tt := range tests {
+		result := inProcessName(tt.input)
+		require.Equal(t, tt.expected, result)
+	}
+}
+
+func TestFileExists(t *testing.T) {
+	tmpDir := t.TempDir()
+	
+	// Test with non-existent file
+	nonExistentFile := filepath.Join(tmpDir, "non-existent.txt")
+	require.False(t, fileExists(nonExistentFile))
+	
+	// Test with existing file
+	existingFile := filepath.Join(tmpDir, "existing.txt")
+	err := os.WriteFile(existingFile, []byte("test"), 0644)
+	require.NoError(t, err)
+	require.True(t, fileExists(existingFile))
+	
+	// Test with directory (should return false)
+	require.False(t, fileExists(tmpDir))
+}
+
+func TestInt64ToUint64(t *testing.T) {
+	// Test with positive number
+	result := int64ToUint64(42)
+	require.Equal(t, uint64(42), result)
+	
+	// Test with zero
+	result = int64ToUint64(0)
+	require.Equal(t, uint64(0), result)
+	
+	// Test with negative number (should panic)
+	require.Panics(t, func() {
+		int64ToUint64(-1)
+	})
+}
+
+func TestIntToUint64(t *testing.T) {
+	// Test with positive number
+	result := intToUint64(42)
+	require.Equal(t, uint64(42), result)
+	
+	// Test with zero
+	result = intToUint64(0)
+	require.Equal(t, uint64(0), result)
+	
+	// Test with negative number (should panic)
+	require.Panics(t, func() {
+		intToUint64(-1)
+	})
 }
 
 /*

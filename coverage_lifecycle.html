@@ -1,0 +1,3134 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>cmd: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/analyze.go (87.5%)</option>
+				
+				<option value="file1">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/benchmark.go (96.8%)</option>
+				
+				<option value="file2">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/config.go (83.5%)</option>
+				
+				<option value="file3">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/create.go (75.0%)</option>
+				
+				<option value="file4">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/create_keys.go (76.7%)</option>
+				
+				<option value="file5">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/create_suitcase.go (86.9%)</option>
+				
+				<option value="file6">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/estimate.go (82.5%)</option>
+				
+				<option value="file7">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/find.go (100.0%)</option>
+				
+				<option value="file8">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/helpers.go (77.8%)</option>
+				
+				<option value="file9">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/lifecycle.go (57.5%)</option>
+				
+				<option value="file10">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/man.go (85.7%)</option>
+				
+				<option value="file11">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/mddocs.go (100.0%)</option>
+				
+				<option value="file12">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/metrics.go (40.0%)</option>
+				
+				<option value="file13">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/rclone.go (100.0%)</option>
+				
+				<option value="file14">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/retier.go (80.0%)</option>
+				
+				<option value="file15">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/root.go (84.9%)</option>
+				
+				<option value="file16">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/schema.go (85.7%)</option>
+				
+				<option value="file17">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/style.go (100.0%)</option>
+				
+				<option value="file18">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/travelagent.go (15.4%)</option>
+				
+				<option value="file19">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/tree.go (86.4%)</option>
+				
+				<option value="file20">github.com/scttfrdmn/cargoship/cmd/cargoship/cmd/wizard.go (22.5%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package cmd
+
+import (
+        "github.com/drewstinnett/gout/v2"
+        "github.com/spf13/cobra"
+        "github.com/scttfrdmn/cargoship/pkg/inventory"
+)
+
+// NewAnalyzeCmd creates a new 'find' command
+func NewAnalyzeCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:     "analyze DIRECTORY",
+                Short:   "Analyze a directory to provide some useful runtime information",
+                Aliases: []string{"a"},
+                Args:    cobra.ExactArgs(1),
+                Example: `❯ suitcasectl analyze ~/Desktop/example-suitcase
+largestfilesize: 3154432
+largestfilesizehr: 3.2 MB
+filecount: 17
+averagefilesize: 599271
+averagefilesizehr: 599 kB
+totalfilesize: 10187619
+totalfilesizehr: 10 MB`,
+                RunE: func(cmd *cobra.Command, args []string) error </span><span class="cov8" title="1">{
+                        gout.SetWriter(cmd.OutOrStdout())
+                        i, err := inventory.NewDirectoryInventory(inventory.NewOptions(inventory.WithDirectories(args)))
+                        if err != nil </span><span class="cov0" title="0">{
+                                return err
+                        }</span>
+                        <span class="cov8" title="1">gout.MustPrint(i.Analyze())
+                        return nil</span>
+                },
+        }
+
+        <span class="cov8" title="1">return cmd</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package cmd
+
+import (
+        "bytes"
+        "crypto/rand"
+        "encoding/json"
+        "fmt"
+        "os"
+        "strings"
+        "time"
+
+        "github.com/olekukonko/tablewriter"
+        "github.com/spf13/cobra"
+
+        "github.com/scttfrdmn/cargoship/pkg/compression"
+)
+
+var (
+        benchmarkSize     string
+        benchmarkDataType string
+        benchmarkFormat   string
+        benchmarkFile     string
+)
+
+// NewBenchmarkCmd creates the benchmark command for compression algorithms
+func NewBenchmarkCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:   "benchmark",
+                Short: "Benchmark compression algorithms",
+                Long: `Benchmark different compression algorithms to find the optimal one for your data.
+
+This command tests various compression algorithms (gzip, zlib, zstd, lz4, s2) 
+with different compression levels to help you choose the best algorithm based
+on your performance and size requirements.
+
+Examples:
+  # Benchmark with random data
+  cargoship benchmark --size 10MB
+  
+  # Benchmark with specific data type simulation
+  cargoship benchmark --size 50MB --data-type text
+  
+  # Benchmark using a real file
+  cargoship benchmark --file /path/to/data.tar
+  
+  # Output results in JSON format
+  cargoship benchmark --size 1GB --format json`,
+                RunE: runBenchmark,
+        }
+
+        cmd.Flags().StringVar(&amp;benchmarkSize, "size", "10MB", "Size of test data to generate (e.g., 1MB, 10MB, 1GB)")
+        cmd.Flags().StringVar(&amp;benchmarkDataType, "data-type", "mixed", "Type of data to simulate (text, binary, mixed, random)")
+        cmd.Flags().StringVar(&amp;benchmarkFormat, "format", "table", "Output format (table, json)")
+        cmd.Flags().StringVar(&amp;benchmarkFile, "file", "", "Use real file instead of generated data")
+
+        return cmd
+}</span>
+
+func runBenchmark(cmd *cobra.Command, args []string) error <span class="cov8" title="1">{
+        fmt.Printf("🚀 Starting compression algorithm benchmark...\n\n")
+
+        var data []byte
+        var dataSize int64
+        var err error
+
+        if benchmarkFile != "" </span><span class="cov8" title="1">{
+                // Use real file
+                fmt.Printf("📁 Loading data from file: %s\n", benchmarkFile)
+                data, err = os.ReadFile(benchmarkFile)
+                if err != nil </span><span class="cov8" title="1">{
+                        return fmt.Errorf("failed to read file: %w", err)
+                }</span>
+                <span class="cov8" title="1">dataSize = int64(len(data))
+                fmt.Printf("   File size: %s\n\n", formatBytes(dataSize))</span>
+        } else<span class="cov8" title="1"> {
+                // Generate test data
+                dataSize, err = parseBytes(benchmarkSize)
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("invalid size: %w", err)
+                }</span>
+
+                <span class="cov8" title="1">fmt.Printf("📊 Generating %s of %s data...\n", benchmarkSize, benchmarkDataType)
+                data, err = generateTestData(dataSize, benchmarkDataType)
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to generate test data: %w", err)
+                }</span>
+                <span class="cov8" title="1">fmt.Printf("   Generated: %s\n\n", formatBytes(int64(len(data))))</span>
+        }
+
+        // Run benchmark
+        <span class="cov8" title="1">dataReader := bytes.NewReader(data)
+        results, err := compression.BenchmarkCompression(dataReader, dataSize)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("benchmark failed: %w", err)
+        }</span>
+
+        // Output results
+        <span class="cov8" title="1">switch benchmarkFormat </span>{
+        case "json":<span class="cov8" title="1">
+                return outputBenchmarkJSON(results)</span>
+        case "table":<span class="cov8" title="1">
+                return outputBenchmarkTable(results, dataSize)</span>
+        default:<span class="cov8" title="1">
+                return fmt.Errorf("unsupported format: %s", benchmarkFormat)</span>
+        }
+}
+
+func generateTestData(size int64, dataType string) ([]byte, error) <span class="cov8" title="1">{
+        data := make([]byte, size)
+
+        switch dataType </span>{
+        case "random":<span class="cov8" title="1">
+                // Completely random data (worst case for compression)
+                if _, err := rand.Read(data); err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("failed to generate random data: %w", err)
+                }</span>
+
+        case "text":<span class="cov8" title="1">
+                // Simulate text data with repeated patterns
+                pattern := []byte("The quick brown fox jumps over the lazy dog. This is a test of compression algorithms with repeated text patterns. ")
+                for i := int64(0); i &lt; size; i++ </span><span class="cov8" title="1">{
+                        data[i] = pattern[i%int64(len(pattern))]
+                }</span>
+
+        case "binary":<span class="cov8" title="1">
+                // Simulate binary data with some patterns
+                for i := int64(0); i &lt; size; i++ </span><span class="cov8" title="1">{
+                        if i%1024 &lt; 100 </span><span class="cov8" title="1">{
+                                data[i] = byte(i % 256) // Some pattern
+                        }</span> else<span class="cov8" title="1"> {
+                                data[i] = byte((i * 31) % 256) // Pseudo-random but deterministic
+                        }</span>
+                }
+
+        case "mixed":<span class="cov8" title="1">
+                // Mix of text and binary
+                textPattern := []byte("Sample text content with some repetition. ")
+                for i := int64(0); i &lt; size; i++ </span><span class="cov8" title="1">{
+                        if i%100 &lt; 80 </span><span class="cov8" title="1">{
+                                // 80% text-like data
+                                data[i] = textPattern[i%int64(len(textPattern))]
+                        }</span> else<span class="cov8" title="1"> {
+                                // 20% binary-like data
+                                data[i] = byte((i * 13) % 256)
+                        }</span>
+                }
+
+        default:<span class="cov8" title="1">
+                return nil, fmt.Errorf("unsupported data type: %s", dataType)</span>
+        }
+
+        <span class="cov8" title="1">return data, nil</span>
+}
+
+func outputBenchmarkTable(results []compression.CompressionResult, originalSize int64) error <span class="cov8" title="1">{
+        fmt.Printf("📈 Compression Benchmark Results\n")
+        fmt.Printf("   Original size: %s\n\n", formatBytes(originalSize))
+
+        table := tablewriter.NewWriter(os.Stdout)
+        table.Header(
+                "Algorithm",
+                "Level", 
+                "Compressed Size",
+                "Ratio",
+                "Time (ms)",
+                "Speed (MB/s)",
+                "Efficiency Score",
+        )
+
+        // Calculate efficiency scores and sort
+        for i := range results </span><span class="cov8" title="1">{
+                // Efficiency score: ratio / (time_factor) - higher is better
+                timeFactor := float64(results[i].CompressionTime) / 1000.0 // Convert to seconds
+                if timeFactor == 0 </span><span class="cov8" title="1">{
+                        timeFactor = 0.001 // Prevent division by zero
+                }</span>
+                <span class="cov8" title="1">results[i].Throughput = results[i].CompressionRatio / timeFactor</span>
+        }
+
+        // Add recommendation
+        <span class="cov8" title="1">best := findBestAlgorithm(results)
+        
+        for _, result := range results </span><span class="cov8" title="1">{
+                efficiency := fmt.Sprintf("%.1f", result.Throughput)
+                if result.Algorithm == best.Algorithm &amp;&amp; result.Level == best.Level </span><span class="cov8" title="1">{
+                        efficiency += " ⭐"
+                }</span>
+
+                <span class="cov8" title="1">_ = table.Append(
+                        string(result.Algorithm),
+                        fmt.Sprintf("%d", result.Level),
+                        formatBytes(result.CompressedSize),
+                        fmt.Sprintf("%.2fx", result.CompressionRatio),
+                        fmt.Sprintf("%d", result.CompressionTime),
+                        fmt.Sprintf("%.1f", result.Throughput),
+                        efficiency,
+                )</span>
+        }
+
+        <span class="cov8" title="1">_ = table.Render()
+
+        // Show recommendations
+        fmt.Printf("\n🎯 Recommendations:\n")
+        fmt.Printf("   Best Overall: %s (level %d) - %.2fx compression in %dms\n", 
+                best.Algorithm, best.Level, best.CompressionRatio, best.CompressionTime)
+
+        fastest := findFastestAlgorithm(results)
+        fmt.Printf("   Fastest: %s (level %d) - %.1f MB/s\n", 
+                fastest.Algorithm, fastest.Level, fastest.Throughput)
+
+        bestRatio := findBestRatioAlgorithm(results) 
+        fmt.Printf("   Best Compression: %s (level %d) - %.2fx ratio\n", 
+                bestRatio.Algorithm, bestRatio.Level, bestRatio.CompressionRatio)
+
+        return nil</span>
+}
+
+func outputBenchmarkJSON(results []compression.CompressionResult) error <span class="cov8" title="1">{
+        output := map[string]interface{}{
+                "timestamp": time.Now().Format(time.RFC3339),
+                "results":   results,
+                "recommendations": map[string]interface{}{
+                        "best_overall":     findBestAlgorithm(results),
+                        "fastest":         findFastestAlgorithm(results),
+                        "best_compression": findBestRatioAlgorithm(results),
+                },
+        }
+
+        encoder := json.NewEncoder(os.Stdout)
+        encoder.SetIndent("", "  ")
+        return encoder.Encode(output)
+}</span>
+
+func findBestAlgorithm(results []compression.CompressionResult) compression.CompressionResult <span class="cov8" title="1">{
+        if len(results) == 0 </span><span class="cov8" title="1">{
+                return compression.CompressionResult{}
+        }</span>
+
+        <span class="cov8" title="1">best := results[0]
+        bestScore := calculateScore(best)
+
+        for _, result := range results[1:] </span><span class="cov8" title="1">{
+                score := calculateScore(result)
+                if score &gt; bestScore </span><span class="cov8" title="1">{
+                        best = result
+                        bestScore = score
+                }</span>
+        }
+
+        <span class="cov8" title="1">return best</span>
+}
+
+func findFastestAlgorithm(results []compression.CompressionResult) compression.CompressionResult <span class="cov8" title="1">{
+        if len(results) == 0 </span><span class="cov8" title="1">{
+                return compression.CompressionResult{}
+        }</span>
+
+        <span class="cov8" title="1">fastest := results[0]
+        for _, result := range results[1:] </span><span class="cov8" title="1">{
+                if result.Throughput &gt; fastest.Throughput </span><span class="cov8" title="1">{
+                        fastest = result
+                }</span>
+        }
+
+        <span class="cov8" title="1">return fastest</span>
+}
+
+func findBestRatioAlgorithm(results []compression.CompressionResult) compression.CompressionResult <span class="cov8" title="1">{
+        if len(results) == 0 </span><span class="cov8" title="1">{
+                return compression.CompressionResult{}
+        }</span>
+
+        <span class="cov8" title="1">best := results[0]
+        for _, result := range results[1:] </span><span class="cov8" title="1">{
+                if result.CompressionRatio &gt; best.CompressionRatio </span><span class="cov8" title="1">{
+                        best = result
+                }</span>
+        }
+
+        <span class="cov8" title="1">return best</span>
+}
+
+func calculateScore(result compression.CompressionResult) float64 <span class="cov8" title="1">{
+        // Balance compression ratio and speed
+        // Higher compression ratio is better, lower time is better
+        ratioScore := result.CompressionRatio * 10 // Weight compression ratio
+        speedScore := result.Throughput           // Weight speed
+        
+        return ratioScore + speedScore
+}</span>
+
+func parseBytes(s string) (int64, error) <span class="cov8" title="1">{
+        s = strings.ToUpper(s)
+        multipliers := map[string]int64{
+                "B":  1,
+                "KB": 1024,
+                "MB": 1024 * 1024,
+                "GB": 1024 * 1024 * 1024,
+                "TB": 1024 * 1024 * 1024 * 1024,
+        }
+
+        var value float64
+        var unit string
+
+        n, err := fmt.Sscanf(s, "%f%s", &amp;value, &amp;unit)
+        if err != nil || n != 2 </span><span class="cov8" title="1">{
+                return 0, fmt.Errorf("invalid size format: %s", s)
+        }</span>
+
+        <span class="cov8" title="1">multiplier, ok := multipliers[unit]
+        if !ok </span><span class="cov8" title="1">{
+                return 0, fmt.Errorf("unknown unit: %s", unit)
+        }</span>
+
+        <span class="cov8" title="1">return int64(value * float64(multiplier)), nil</span>
+}
+
+func formatBytes(bytes int64) string <span class="cov8" title="1">{
+        const unit = 1024
+        if bytes &lt; unit </span><span class="cov8" title="1">{
+                return fmt.Sprintf("%d B", bytes)
+        }</span>
+
+        <span class="cov8" title="1">div, exp := int64(unit), 0
+        for n := bytes / unit; n &gt;= unit; n /= unit </span><span class="cov8" title="1">{
+                div *= unit
+                exp++
+        }</span>
+
+        <span class="cov8" title="1">units := []string{"KB", "MB", "GB", "TB", "PB"}
+        return fmt.Sprintf("%.1f %s", float64(bytes)/float64(div), units[exp])</span>
+}
+
+func init() {<span class="cov8" title="1">
+        // This command will be added to root in root.go
+}</pre>
+		
+		<pre class="file" id="file2" style="display: none">package cmd
+
+import (
+        "encoding/json"
+        "fmt"
+        "os"
+        "os/exec"
+        "path/filepath"
+
+        "github.com/spf13/cobra"
+        "github.com/scttfrdmn/cargoship/pkg/config"
+)
+
+var (
+        configFile     string
+        configGenerate bool
+        configEdit     bool
+        configValidate bool
+        configShow     bool
+        configFormat   string
+)
+
+// NewConfigCmd creates the config management command
+func NewConfigCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:   "config",
+                Short: "Manage CargoShip configuration",
+                Long: `Manage CargoShip configuration files and settings.
+                
+CargoShip uses YAML configuration files to store settings for AWS, storage,
+upload optimization, metrics, logging, and security. Configuration can be
+loaded from multiple sources with the following precedence:
+
+1. Command line flags (highest priority)
+2. Environment variables (CARGOSHIP_*)
+3. Configuration file
+4. Built-in defaults (lowest priority)
+
+Configuration file locations (searched in order):
+- ~/.cargoship.yaml
+- ~/.config/cargoship/.cargoship.yaml
+- ./.cargoship.yaml
+
+Examples:
+  # Generate example configuration file
+  cargoship config --generate
+  
+  # Show current configuration
+  cargoship config --show
+  
+  # Validate configuration file
+  cargoship config --validate --file ~/.cargoship.yaml
+  
+  # Show configuration in JSON format
+  cargoship config --show --format json`,
+                RunE: runConfig,
+        }
+
+        cmd.Flags().StringVar(&amp;configFile, "file", "", "Configuration file path")
+        cmd.Flags().BoolVar(&amp;configGenerate, "generate", false, "Generate example configuration file")
+        cmd.Flags().BoolVar(&amp;configEdit, "edit", false, "Edit configuration file with default editor")
+        cmd.Flags().BoolVar(&amp;configValidate, "validate", false, "Validate configuration file")
+        cmd.Flags().BoolVar(&amp;configShow, "show", false, "Show current configuration")
+        cmd.Flags().StringVar(&amp;configFormat, "format", "yaml", "Output format (yaml, json)")
+
+        return cmd
+}</span>
+
+func runConfig(cmd *cobra.Command, args []string) error <span class="cov8" title="1">{
+        manager := config.NewManager()
+
+        // Handle generate flag
+        if configGenerate </span><span class="cov0" title="0">{
+                return generateConfig()
+        }</span>
+
+        // Load configuration if file is specified or for validation/show
+        <span class="cov8" title="1">if configFile != "" || configValidate || configShow </span><span class="cov0" title="0">{
+                if err := manager.LoadConfig(configFile); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to load config: %w", err)
+                }</span>
+        }
+
+        // Handle validate flag
+        <span class="cov8" title="1">if configValidate </span><span class="cov0" title="0">{
+                return validateConfig(manager)
+        }</span>
+
+        // Handle show flag
+        <span class="cov8" title="1">if configShow </span><span class="cov0" title="0">{
+                return showConfig(manager)
+        }</span>
+
+        // Handle edit flag
+        <span class="cov8" title="1">if configEdit </span><span class="cov0" title="0">{
+                return editConfig()
+        }</span>
+
+        // Show help if no flags specified
+        <span class="cov8" title="1">return cmd.Help()</span>
+}
+
+func generateConfig() error <span class="cov8" title="1">{
+        example := config.GenerateExampleConfig()
+        
+        fmt.Printf("# CargoShip Configuration Example\n")
+        fmt.Printf("# Save this to ~/.cargoship.yaml to use as your configuration\n\n")
+        fmt.Print(example)
+        
+        // Optionally save to file
+        fmt.Printf("\n# To save this configuration:\n")
+        fmt.Printf("# cargoship config --generate &gt; ~/.cargoship.yaml\n")
+        
+        return nil
+}</span>
+
+func validateConfig(manager *config.Manager) error <span class="cov8" title="1">{
+        fmt.Printf("✅ Configuration is valid!\n")
+        
+        cfg := manager.GetConfig()
+        
+        fmt.Printf("\nConfiguration summary:\n")
+        fmt.Printf("  AWS Region: %s\n", cfg.AWS.Region)
+        if cfg.AWS.Profile != "" </span><span class="cov0" title="0">{
+                fmt.Printf("  AWS Profile: %s\n", cfg.AWS.Profile)
+        }</span>
+        <span class="cov8" title="1">if cfg.Storage.DefaultBucket != "" </span><span class="cov0" title="0">{
+                fmt.Printf("  Default Bucket: %s\n", cfg.Storage.DefaultBucket)
+        }</span>
+        <span class="cov8" title="1">fmt.Printf("  Storage Class: %s\n", cfg.Storage.DefaultStorageClass)
+        fmt.Printf("  Upload Concurrency: %d\n", cfg.Upload.MaxConcurrency)
+        fmt.Printf("  Chunk Size: %s\n", cfg.Upload.ChunkSize)
+        fmt.Printf("  Metrics Enabled: %t\n", cfg.Metrics.Enabled)
+        if cfg.Metrics.Enabled </span><span class="cov8" title="1">{
+                fmt.Printf("  Metrics Namespace: %s\n", cfg.Metrics.Namespace)
+        }</span>
+        <span class="cov8" title="1">fmt.Printf("  Log Level: %s\n", cfg.Logging.Level)
+        
+        return nil</span>
+}
+
+func showConfig(manager *config.Manager) error <span class="cov8" title="1">{
+        cfg := manager.GetConfig()
+        
+        switch configFormat </span>{
+        case "json":<span class="cov8" title="1">
+                encoder := json.NewEncoder(os.Stdout)
+                encoder.SetIndent("", "  ")
+                return encoder.Encode(cfg)</span>
+        case "yaml", "yml":<span class="cov8" title="1">
+                if err := manager.SaveConfig(""); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to format config as YAML: %w", err)
+                }</span>
+                // Read the saved config and print it
+                <span class="cov8" title="1">home, err := os.UserHomeDir()
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to get home directory: %w", err)
+                }</span>
+                <span class="cov8" title="1">configPath := filepath.Join(home, ".cargoship.yaml")
+                data, err := os.ReadFile(configPath)
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to read config file: %w", err)
+                }</span>
+                <span class="cov8" title="1">fmt.Print(string(data))
+                return nil</span>
+        default:<span class="cov8" title="1">
+                return fmt.Errorf("unsupported format: %s (use yaml or json)", configFormat)</span>
+        }
+}
+
+func editConfig() error <span class="cov8" title="1">{
+        // Find config file
+        home, err := os.UserHomeDir()
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to get home directory: %w", err)
+        }</span>
+        
+        <span class="cov8" title="1">configPath := configFile
+        if configPath == "" </span><span class="cov8" title="1">{
+                configPath = filepath.Join(home, ".cargoship.yaml")
+        }</span>
+        
+        // Create config file if it doesn't exist
+        <span class="cov8" title="1">if _, err := os.Stat(configPath); os.IsNotExist(err) </span><span class="cov8" title="1">{
+                fmt.Printf("Creating new configuration file at %s\n", configPath)
+                example := config.GenerateExampleConfig()
+                if err := os.WriteFile(configPath, []byte(example), 0644); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to create config file: %w", err)
+                }</span>
+        }
+        
+        // Get editor from environment
+        <span class="cov8" title="1">editor := os.Getenv("EDITOR")
+        if editor == "" </span><span class="cov8" title="1">{
+                editor = os.Getenv("VISUAL")
+        }</span>
+        <span class="cov8" title="1">if editor == "" </span><span class="cov8" title="1">{
+                // Try common editors
+                editors := []string{"nano", "vim", "vi", "emacs"}
+                for _, e := range editors </span><span class="cov8" title="1">{
+                        if _, err := exec.LookPath(e); err == nil </span><span class="cov0" title="0">{
+                                editor = e
+                                break</span>
+                        }
+                }
+        }
+        
+        <span class="cov8" title="1">if editor == "" </span><span class="cov8" title="1">{
+                return fmt.Errorf("no editor found. Set EDITOR or VISUAL environment variable")
+        }</span>
+        
+        <span class="cov8" title="1">fmt.Printf("Opening %s with %s...\n", configPath, editor)
+        
+        // Execute editor
+        cmd := exec.Command(editor, configPath)
+        cmd.Stdin = os.Stdin
+        cmd.Stdout = os.Stdout
+        cmd.Stderr = os.Stderr
+        
+        if err := cmd.Run(); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("editor failed: %w", err)
+        }</span>
+        
+        // Validate the edited configuration
+        <span class="cov8" title="1">manager := config.NewManager()
+        if err := manager.LoadConfig(configPath); err != nil </span><span class="cov8" title="1">{
+                fmt.Printf("⚠️ Configuration validation failed: %v\n", err)
+                fmt.Printf("Please fix the errors and try again.\n")
+                return nil
+        }</span>
+        
+        <span class="cov8" title="1">fmt.Printf("✅ Configuration saved and validated successfully!\n")
+        return nil</span>
+}
+
+func init() {<span class="cov8" title="1">
+        // This command will be added to root in root.go
+}</pre>
+		
+		<pre class="file" id="file3" style="display: none">package cmd
+
+import (
+        "errors"
+
+        "github.com/spf13/cobra"
+)
+
+// NewCreateCmd creates a new 'create' command
+func NewCreateCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:   "create",
+                Short: "Create something!",
+                Args:  cobra.ExactArgs(1),
+                RunE: func(cmd *cobra.Command, _ []string) error </span><span class="cov0" title="0">{
+                        return errors.New(cmd.UsageString())
+                }</span>,
+        }
+        <span class="cov8" title="1">bindCreateKeys(cmd)
+        return cmd</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package cmd
+
+import (
+        "github.com/spf13/cobra"
+        "github.com/scttfrdmn/cargoship/pkg/gpg"
+)
+
+var gpgKeyType gpg.KeyType
+
+// NewCreateKeysCmd generates a new subcommand for creating key pairs
+func NewCreateKeysCmd() *cobra.Command <span class="cov8" title="1">{
+        return &amp;cobra.Command{
+                Use:   "keys",
+                Short: "Create a new private and public key pair",
+                Run: func(cmd *cobra.Command, _ []string) </span><span class="cov8" title="1">{
+                        keyOpts := &amp;gpg.KeyOpts{
+                                Name:  mustGetCmd[string](cmd, "name"),
+                                Email: mustGetCmd[string](cmd, "email"),
+                                Bits:  mustGetCmd[int](cmd, "bits"),
+                        }
+
+                        outDir, err := getDestinationWithCobra(cmd)
+                        checkErr(err, "")
+
+                        kp, err := gpg.NewKeyPair(keyOpts)
+                        checkErr(err, "")
+
+                        created, err := gpg.NewKeyFilesWithPair(kp, outDir)
+                        checkErr(err, "")
+                        logger.Info("created key files", "created", created)
+                }</span>,
+        }
+}
+
+func bindCreateKeys(createCmd *cobra.Command) <span class="cov8" title="1">{
+        createKeysCmd := NewCreateKeysCmd()
+        createCmd.AddCommand(createKeysCmd)
+        createKeysCmd.PersistentFlags().StringP("name", "n", "", "Name of the key")
+        err := createKeysCmd.MarkPersistentFlagRequired("name")
+        checkErr(err, "")
+        if nerr := createKeysCmd.RegisterFlagCompletionFunc("name", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) </span><span class="cov0" title="0">{
+                return nil, cobra.ShellCompDirectiveNoFileComp
+        }</span>); nerr != nil <span class="cov0" title="0">{
+                panic(nerr)</span>
+        }
+
+        <span class="cov8" title="1">createKeysCmd.PersistentFlags().StringP("email", "e", "", "Email of the key")
+        if eerr := createKeysCmd.RegisterFlagCompletionFunc("email", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) </span><span class="cov0" title="0">{
+                return nil, cobra.ShellCompDirectiveNoFileComp
+        }</span>); eerr != nil <span class="cov0" title="0">{
+                panic(eerr)</span>
+        }
+
+        <span class="cov8" title="1">checkErr(err, "")
+        createKeysCmd.PersistentFlags().Var(&amp;gpgKeyType, "type", "key type (rsa, x25519)")
+        if err := createKeysCmd.RegisterFlagCompletionFunc("type", gpg.KeyTypeCompletion); err != nil </span><span class="cov0" title="0">{
+                panic(err)</span>
+        }
+        <span class="cov8" title="1">createKeysCmd.PersistentFlags().Lookup("type").DefValue = "rsa"
+
+        createKeysCmd.PersistentFlags().IntP("bits", "b", 4096, "Bit length of the key")
+        if berr := createKeysCmd.RegisterFlagCompletionFunc("bits", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) </span><span class="cov0" title="0">{
+                return nil, cobra.ShellCompDirectiveNoFileComp
+        }</span>); berr != nil <span class="cov0" title="0">{
+                panic(berr)</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package cmd
+
+import (
+        "context"
+        "fmt"
+        "io"
+        "os"
+        "path"
+        "strings"
+        "sync/atomic"
+        "time"
+
+        "github.com/drewstinnett/gout/v2"
+        "github.com/sourcegraph/conc/pool"
+        "github.com/spf13/cobra"
+        "github.com/spf13/viper"
+
+        porter "github.com/scttfrdmn/cargoship/pkg"
+        "github.com/scttfrdmn/cargoship/pkg/config"
+        "github.com/scttfrdmn/cargoship/pkg/inventory"
+        "github.com/scttfrdmn/cargoship/pkg/suitcase"
+        "github.com/scttfrdmn/cargoship/pkg/travelagent"
+)
+
+var (
+        inventoryFormat inventory.Format
+        suitcaseFormat  suitcase.Format
+        hashAlgo        inventory.HashAlgorithm = inventory.MD5Hash
+)
+
+// NewCreateSuitcaseCmd represents the createSuitcase command
+func NewCreateSuitcaseCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:     "suitcase [--inventory-file=INVENTORY_FILE | TARGET_DIR...]",
+                Short:   "Create a suitcase",
+                Long:    "Create a suitcase from either an inventory file or multiple target directories.",
+                Args:    cobra.ArbitraryArgs,
+                Version: version, // Needed so we can put the version in the metadata
+                Example: ` # Create a suitcase using the defaults. This will land in a new TEMPDIR on your host:
+$ suitcasectl create suitcase ~/example
+...
+
+# Specify a destination for the generated files:
+$ suitcasectl create suitcase ~/example --destination=/srv/storage
+...
+
+# Specify a maximum suitcase size:
+$ suitcasectl create suitcase ~/example --max-suitcase-size=500MiB
+...
+`,
+                Aliases: []string{
+                        "suitecase", // Encouraging bad habits
+                        "s",
+                        "sc",
+                },
+                RunE:               createRunE,
+                PersistentPreRunE:  createPreRunE,
+                PersistentPostRunE: createPostRunE,
+        }
+        err := bindInventoryCmd(cmd)
+        panicIfErr(err)
+        travelagent.BindCobra(cmd)
+
+        return cmd
+}</span>
+
+func inventoryOptsWithCobra(cmd *cobra.Command, args []string) (string, bool, error) <span class="cov8" title="1">{
+        inventoryFile, err := cmd.Flags().GetString("inventory-file")
+        if err != nil </span><span class="cov0" title="0">{
+                return "", false, err
+        }</span>
+
+        <span class="cov8" title="1">onlyInventory, err := cmd.Flags().GetBool("only-inventory")
+        if err != nil </span><span class="cov0" title="0">{
+                return "", false, err
+        }</span>
+
+        // Return the error here for use in testing, vs just barfing with checkErr
+        <span class="cov8" title="1">if cerr := validateCmdArgs(inventoryFile, onlyInventory, *cmd, args); cerr != nil </span><span class="cov8" title="1">{
+                return "", false, cerr
+        }</span>
+
+        <span class="cov8" title="1">return inventoryFile, onlyInventory, nil</span>
+}
+
+func bindInventoryCmd(cmd *cobra.Command) error <span class="cov8" title="1">{
+        inventory.BindCobra(cmd)
+        // Inventory Format needs some extra love for auto complete
+        cmd.PersistentFlags().Var(&amp;inventoryFormat, "inventory-format", "Format for the inventory. Should be 'yaml' or 'json'")
+        if err := cmd.RegisterFlagCompletionFunc("inventory-format", inventory.FormatCompletion); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov8" title="1">cmd.PersistentFlags().Lookup("inventory-format").DefValue = "yaml"
+
+        // Hashing Algorithms
+        cmd.PersistentFlags().Var(&amp;hashAlgo, "hash-algorithm", "Hashing Algorithm for signatures")
+        if err := cmd.RegisterFlagCompletionFunc("hash-algorithm", inventory.HashCompletion); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov8" title="1">cmd.PersistentFlags().Lookup("hash-algorithm").DefValue = "md5"
+
+        // Inventory Format needs some extra love for auto complete
+        cmd.PersistentFlags().Var(&amp;suitcaseFormat, "suitcase-format", "Format for the suitcase. Should be 'tar', 'tar.gpg', 'tar.gz' or 'tar.gz.gpg'")
+        if err := cmd.RegisterFlagCompletionFunc("suitcase-format", suitcase.FormatCompletion); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov8" title="1">cmd.PersistentFlags().Lookup("suitcase-format").DefValue = inventory.DefaultSuitcaseFormat
+
+        // Get some exclusivity goin'
+        cmd.MarkFlagsMutuallyExclusive("only-inventory", "hash-outer")
+        return nil</span>
+}
+
+func userOverridesWithCobra(cmd *cobra.Command, args []string) (*viper.Viper, error) <span class="cov8" title="1">{
+        userOverrides := viper.New()
+        userOverrides.SetConfigName("cargoship")
+        for _, dir := range args </span><span class="cov8" title="1">{
+                logger.Debug("adding target dir", "dir", dir)
+                userOverrides.AddConfigPath(dir)
+        }</span>
+        <span class="cov8" title="1">if rerr := userOverrides.ReadInConfig(); rerr == nil </span><span class="cov8" title="1">{
+                logger.Info("found user overrides", "file", userOverrides.ConfigFileUsed())
+        }</span>
+        <span class="cov8" title="1">for _, field := range []string{"follow-symlinks", "ignore-glob", "inventory-format", "internal-metadata-glob", "max-suitcase-size", "prefix", "user", "suitcase-format"} </span><span class="cov8" title="1">{
+                err := userOverrides.BindPFlag(field, cmd.PersistentFlags().Lookup(field))
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+        }
+
+        // Store in context for later retrieval
+        <span class="cov8" title="1">return userOverrides, nil</span>
+}
+
+type hashFileCreator func([]config.HashSet, io.Writer) error
+
+// This could definitely be cleaner...
+func writeHashFile(ptr *porter.Porter, hfc hashFileCreator, ext string) (string, error) <span class="cov8" title="1">{
+        hashFile := path.Join(ptr.Destination, fmt.Sprintf("suitcasectl.%v", hashAlgo.String()+ext))
+        logger.Info("creating hashes", "file", hashFile)
+        hashF, err := os.Create(hashFile) // nolint:gosec
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+        <span class="cov8" title="1">defer dclose(hashF)
+        err = hfc(ptr.Hashes, hashF)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+        <span class="cov8" title="1">return hashF.Name(), nil</span>
+}
+
+// setOuterHashes returns a HashSet, hashFileName, hashFileNameBinary and error
+func setOuterHashes(ptr *porter.Porter, metaF string) ([]config.HashSet, string, string, error) <span class="cov8" title="1">{
+        hashes := ptr.Hashes
+        metaFh, err := os.Open(metaF) // nolint:gosec
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, "", "", err
+        }</span>
+        <span class="cov8" title="1">defer dclose(metaFh)
+
+        logger.Info("creating hash for file", "file", metaF)
+        hashes = append(hashes, config.HashSet{
+                Filename: strings.TrimPrefix(metaF, ptr.Destination+"/"),
+                Hash:     porter.MustCalculateHash(metaFh, hashAlgo.String()),
+        })
+
+        hashFn, err := writeHashFile(ptr, suitcase.WriteHashFile, "")
+        checkErr(err, "Could not write out the hashfile")
+
+        hashFnBin, err := writeHashFile(ptr, suitcase.WriteHashFileBin, "bin")
+        checkErr(err, "Could not write out the binary hashfile")
+        return hashes, hashFn, hashFnBin, nil</span>
+}
+
+func appendHashes(mfiles []string, items ...string) []string <span class="cov8" title="1">{
+        var bpath string
+        // This should probably be moved to a Porter function so we don't have to do this weird base path detection
+        for _, f := range mfiles </span><span class="cov8" title="1">{
+                if path.Base(f) != "inventory.yaml" </span><span class="cov8" title="1">{
+                        bpath = path.Dir(f)
+                }</span>
+        }
+        <span class="cov8" title="1">for _, item := range items </span><span class="cov8" title="1">{
+                if item != "" </span><span class="cov8" title="1">{
+                        mfiles = append(mfiles, path.Join(bpath, path.Base(item)))
+                }</span>
+        }
+        <span class="cov8" title="1">return mfiles</span>
+}
+
+func createPostRunE(cmd *cobra.Command, args []string) error <span class="cov8" title="1">{
+        ptr := mustPorterWithCmd(cmd)
+        // gout.MustPrint(ptr)
+        metaF := ptr.CLIMeta.MustComplete(ptr.Destination)
+        logger.Debug("created meta file", "file", metaF)
+
+        // Hash the outer items if asked
+        var hashes []config.HashSet
+        var hashFn, hashFnBin string
+        if mustGetCmd[bool](cmd, "hash-outer") &amp;&amp; !mustGetCmd[bool](cmd, "only-inventory") </span><span class="cov8" title="1">{
+                var err error
+                if hashes, hashFn, hashFnBin, err = setOuterHashes(ptr, metaF); err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+        }
+
+        <span class="cov8" title="1">logger.Debug("switching back to stderr logger and closing the multi log writer so we can hash it", "log", ptr.LogFile.Name())
+        setupLogging(cmd.OutOrStderr())
+        // Do we really care if this closes? maybe...
+        _ = ptr.LogFile.Close()
+        logger.Info("completed",
+                "runtime", ptr.CLIMeta.CompletedAt.Sub(*ptr.CLIMeta.StartedAt).String(),
+                "start", *ptr.CLIMeta.StartedAt,
+                "end", *ptr.CLIMeta.CompletedAt,
+        )
+
+        metadataFiles := []string{
+                ptr.InventoryFilePath,
+                path.Join(ptr.Destination, "suitcasectl.log"),
+                path.Join(ptr.Destination, "suitcasectl-invocation-meta.yaml"),
+        }
+
+        // opts := suitcase.OptsWithCmd(cmd)
+        // Copy files up if needed
+        mfiles := appendHashes(metadataFiles, hashFn, hashFnBin)
+        if ptr.Inventory.Options.TransportPlugin != nil </span><span class="cov8" title="1">{
+                ptr.ShipItems(mfiles, ptr.InventoryHash)
+        }</span>
+
+        <span class="cov8" title="1">if err := uploadMeta(ptr, mfiles); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">if serr := ptr.SendFinalUpdate(travelagent.StatusUpdate{
+                Status:      travelagent.StatusComplete,
+                CompletedAt: nowPtr(),
+                SizeBytes:   ptr.TotalTransferred,
+        }); serr != nil </span><span class="cov0" title="0">{
+                logger.Warn("failed to send final status update", "error", serr)
+        }</span>
+
+        <span class="cov8" title="1">gout.MustPrint(runsum{
+                Destination: ptr.Destination,
+                Suitcases:   ptr.Inventory.UniqueSuitcaseNames(),
+                Directories: ptr.Inventory.Options.Directories,
+                MetaFiles:   mfiles,
+                Hashes:      hashes,
+        })
+        globalPersistentPostRun(cmd, args)
+        return nil</span>
+}
+
+func uploadMeta(ptr *porter.Porter, mfiles []string) error <span class="cov8" title="1">{
+        if ptr.TravelAgent != nil </span><span class="cov8" title="1">{
+                p := pool.New().WithMaxGoroutines(10).WithErrors()
+                for _, mfile := range mfiles </span><span class="cov8" title="1">{
+                        p.Go(func() error </span><span class="cov8" title="1">{
+                                var xferred int64
+                                var err error
+                                if xferred, err = ptr.TravelAgent.Upload(mfile, nil); err != nil </span><span class="cov8" title="1">{
+                                        return err
+                                }</span>
+                                <span class="cov8" title="1">atomic.AddInt64(&amp;ptr.TotalTransferred, xferred)
+                                return nil</span>
+                        })
+                }
+                <span class="cov8" title="1">return p.Wait()</span>
+        }
+        <span class="cov8" title="1">return nil</span>
+}
+
+func nowPtr() *time.Time <span class="cov8" title="1">{
+        n := time.Now()
+        return &amp;n
+}</span>
+
+type runsum struct {
+        Directories []string         `yaml:"directories"`
+        Suitcases   []string         `yaml:"suitcases"`
+        Destination string           `yaml:"destination"`
+        MetaFiles   []string         `yaml:"meta_files"`
+        Hashes      []config.HashSet `yaml:"hashes,omitempty"`
+}
+
+func createPreRunE(cmd *cobra.Command, args []string) error <span class="cov8" title="1">{
+        // Get this first, it'll be important
+        globalPersistentPreRun(cmd, args)
+
+        cmdOpts, err := porterOptsWithCmd(cmd, args)
+        checkErr(err, "could not get porter options")
+        opts := append(
+                []porter.Option{
+                        porter.WithLogger(logger),
+                        porter.WithHashAlgorithm(hashAlgo),
+                        porter.WithVersion(version),
+                },
+                cmdOpts...)
+
+        // Shove porter in to the cmd context so we can use it later
+        cmd.SetContext(context.WithValue(cmd.Context(), porter.PorterKey, porter.New(opts...)))
+
+        return setupMultiLoggingWithCmd(cmd)
+}</span>
+
+func porterOptsWithCmd(cmd *cobra.Command, args []string) ([]porter.Option, error) <span class="cov8" title="1">{
+        outDir, err := newOutDirWithCmd(cmd)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">userOverrides, err := userOverridesWithCobra(cmd, args)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">cliMeta := porter.NewCLIMetaWithCobra(cmd, args)
+        cliMeta.ViperConfig = userOverrides.AllSettings()
+        return []porter.Option{
+                porter.WithCmdArgs(cmd, args),
+                porter.WithUserOverrides(userOverrides),
+                porter.WithCLIMeta(cliMeta),
+                porter.WithDestination(outDir),
+        }, nil</span>
+}
+
+func createRunE(cmd *cobra.Command, args []string) error <span class="cov8" title="1">{ // nolint:funlen
+        // Try to print any panics in mostly sane way
+        defer func() </span><span class="cov8" title="1">{
+                if err := recover(); err != nil </span><span class="cov0" title="0">{
+                        logger.Error("fatal error", "error", fmt.Sprint(err))
+                        os.Exit(3)
+                }</span>
+        }()
+
+        <span class="cov8" title="1">ptr, onlyInventory, err := porterTravelAgentWithCmd(cmd, args)
+        if err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">if !onlyInventory </span><span class="cov8" title="1">{
+                if err = ptr.SendUpdate(travelagent.StatusUpdate{
+                        CargoshipSource:      strings.Join(args, ", "),
+                        Status:                 travelagent.StatusInProgress,
+                        StartedAt:              nowPtr(),
+                        CargoshipDestination: ptr.Destination,
+                        Metadata:               ptr.Inventory.MustJSONString(),
+                        MetadataCheckSum:       ptr.InventoryHash,
+                }); err != nil </span><span class="cov0" title="0">{
+                        logger.Warn("error sending status update", "error", err)
+                }</span>
+
+                <span class="cov8" title="1">if cerr := createSuitcases(ptr); cerr != nil </span><span class="cov0" title="0">{
+                        return cerr
+                }</span>
+                <span class="cov8" title="1">return nil</span>
+        }
+        <span class="cov8" title="1">logger.Warn("only creating inventory file, no suitcases")
+        return nil</span>
+}
+
+// func createSuitcases(cmd *cobra.Command, opts *config.SuitCaseOpts, inventoryD *inventory.Inventory) error {
+func createSuitcases(ptr *porter.Porter) error <span class="cov8" title="1">{
+        if err := ptr.SuitcaseOpts.EncryptToCobra(ptr.Cmd); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">if ptr.Cmd != nil </span><span class="cov8" title="1">{
+                ptr.SetConcurrency(mustGetCmd[int](ptr.Cmd, "concurrency"))
+                ptr.SetRetries(
+                        mustGetCmd[int](ptr.Cmd, "retry-count"),
+                        mustGetCmd[time.Duration](ptr.Cmd, "retry-interval"),
+                )
+        }</span>
+        <span class="cov8" title="1">return ptr.Run()</span>
+}
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package cmd
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+        "os"
+        "path/filepath"
+        "strings"
+        "time"
+
+        awsconfig "github.com/aws/aws-sdk-go-v2/config"
+        "github.com/aws/aws-sdk-go-v2/service/pricing"
+        "github.com/charmbracelet/lipgloss"
+        "github.com/dustin/go-humanize"
+        "github.com/spf13/cobra"
+
+        "github.com/scttfrdmn/cargoship/pkg/aws/config"
+        "github.com/scttfrdmn/cargoship/pkg/aws/costs"
+        pricingpkg "github.com/scttfrdmn/cargoship/pkg/aws/pricing"
+        "github.com/scttfrdmn/cargoship/pkg/aws/s3"
+)
+
+var (
+        estimateFormat         string
+        estimateStorageClass   string
+        showRecommendations    bool
+        estimateRegion         string
+        useRealTimePricing     bool
+        showParallelOptimization bool
+        estimateMaxPrefixes   int
+        showUploadOptimization bool
+        estimateBandwidth     float64
+)
+
+// NewEstimateCmd creates the estimate command for cost calculation
+func NewEstimateCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:   "estimate [path]",
+                Short: "Estimate AWS costs for archiving data",
+                Long: `Estimate the cost of archiving data to AWS S3.
+
+This command analyzes the specified directory and provides detailed cost estimates
+for different storage classes, including storage, transfer, and request costs.
+
+Examples:
+  cargoship estimate ./research-data
+  cargoship estimate /data --storage-class glacier --format json
+  cargoship estimate . --show-recommendations --region us-west-2`,
+                Args: cobra.ExactArgs(1),
+                RunE: runEstimate,
+        }
+
+        cmd.Flags().StringVarP(&amp;estimateFormat, "format", "f", "table", "Output format (table, json)")
+        cmd.Flags().StringVarP(&amp;estimateStorageClass, "storage-class", "s", "", "Target storage class for estimation")
+        cmd.Flags().BoolVar(&amp;showRecommendations, "show-recommendations", true, "Show cost optimization recommendations")
+        cmd.Flags().StringVar(&amp;estimateRegion, "region", "us-east-1", "AWS region for cost calculation")
+        cmd.Flags().BoolVar(&amp;useRealTimePricing, "real-time-pricing", false, "Use real-time AWS pricing (requires AWS credentials)")
+        cmd.Flags().BoolVar(&amp;showParallelOptimization, "show-parallel", true, "Show parallel upload optimization recommendations")
+        cmd.Flags().IntVar(&amp;estimateMaxPrefixes, "max-prefixes", 0, "Maximum prefixes for parallel upload analysis (0 = auto)")
+        cmd.Flags().BoolVar(&amp;showUploadOptimization, "show-upload-optimization", true, "Show intelligent upload sizing recommendations")
+        cmd.Flags().Float64Var(&amp;estimateBandwidth, "bandwidth", 0, "Network bandwidth in MB/s for optimization (0 = auto-detect)")
+
+        return cmd
+}</span>
+
+func runEstimate(cmd *cobra.Command, args []string) error <span class="cov8" title="1">{
+        sourcePath := args[0]
+        
+        // Validate path exists
+        if _, err := os.Stat(sourcePath); os.IsNotExist(err) </span><span class="cov8" title="1">{
+                return fmt.Errorf("path does not exist: %s", sourcePath)
+        }</span>
+
+        // Create a mock inventory for cost estimation
+        <span class="cov8" title="1">archives, err := createMockArchives(sourcePath)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to analyze directory: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if len(archives) == 0 </span><span class="cov0" title="0">{
+                fmt.Println("No files found to archive")
+                return nil
+        }</span>
+
+        // Create cost calculator with optional real-time pricing
+        <span class="cov8" title="1">var calculator *costs.Calculator
+        if useRealTimePricing </span><span class="cov0" title="0">{
+                calculator = createCalculatorWithRealTimePricing(context.Background(), estimateRegion)
+        }</span> else<span class="cov8" title="1"> {
+                calculator = costs.NewCalculator(estimateRegion)
+        }</span>
+        
+        // Calculate costs
+        <span class="cov8" title="1">ctx := context.Background()
+        estimate, err := calculator.EstimateArchives(ctx, archives)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to calculate costs: %w", err)
+        }</span>
+
+        // Generate parallel upload optimization if requested
+        <span class="cov8" title="1">var parallelOpt *s3.PrefixOptimization
+        if showParallelOptimization </span><span class="cov8" title="1">{
+                parallelOpt = generateParallelOptimization(archives)
+        }</span>
+        
+        // Generate upload optimization recommendations if requested
+        <span class="cov8" title="1">var uploadOpt *s3.UploadRecommendations
+        if showUploadOptimization </span><span class="cov8" title="1">{
+                uploadOpt = generateUploadOptimization(archives)
+        }</span>
+        
+        // Output results
+        <span class="cov8" title="1">switch estimateFormat </span>{
+        case "json":<span class="cov8" title="1">
+                return outputJSON(estimate, parallelOpt, uploadOpt)</span>
+        case "table":<span class="cov8" title="1">
+                return outputTable(estimate, parallelOpt, uploadOpt, sourcePath)</span>
+        default:<span class="cov8" title="1">
+                return fmt.Errorf("unsupported format: %s", estimateFormat)</span>
+        }
+}
+
+// createMockArchives creates mock archives for cost estimation based on directory analysis
+func createMockArchives(sourcePath string) ([]s3.Archive, error) <span class="cov8" title="1">{
+        var archives []s3.Archive
+        var totalSize int64
+        
+        // Walk directory to calculate total size
+        err := filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error </span><span class="cov8" title="1">{
+                if err != nil </span><span class="cov8" title="1">{
+                        return err
+                }</span>
+                <span class="cov8" title="1">if !info.IsDir() </span><span class="cov8" title="1">{
+                        totalSize += info.Size()
+                }</span>
+                <span class="cov8" title="1">return nil</span>
+        })
+        
+        <span class="cov8" title="1">if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        
+        // Create mock archive (simplified - in reality we'd use the inventory system)
+        <span class="cov8" title="1">archive := s3.Archive{
+                Key:             filepath.Base(sourcePath) + ".tar.zst",
+                Size:            totalSize,
+                StorageClass:    config.StorageClassIntelligentTiering,
+                OriginalSize:    totalSize,
+                CompressionType: "zstd",
+                AccessPattern:   "unknown", // Default for estimation
+                RetentionDays:   365,       // Default 1 year retention
+        }
+        
+        // Override storage class if specified
+        if estimateStorageClass != "" </span><span class="cov8" title="1">{
+                archive.StorageClass = config.StorageClass(strings.ToUpper(estimateStorageClass))
+        }</span>
+        
+        <span class="cov8" title="1">archives = append(archives, archive)
+        return archives, nil</span>
+}
+
+// createCalculatorWithRealTimePricing creates a calculator with AWS Pricing API integration
+func createCalculatorWithRealTimePricing(ctx context.Context, region string) *costs.Calculator <span class="cov8" title="1">{
+        // Load AWS config for pricing API (requires credentials)
+        cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion("us-east-1")) // Pricing API only in us-east-1
+        if err != nil </span><span class="cov0" title="0">{
+                fmt.Fprintf(os.Stderr, "Warning: Failed to load AWS config for real-time pricing: %v\n", err)
+                fmt.Fprintf(os.Stderr, "Using fallback pricing...\n")
+                return costs.NewCalculator(region)
+        }</span>
+
+        // Create pricing service
+        <span class="cov8" title="1">pricingClient := pricing.NewFromConfig(cfg)
+        pricingService := pricingpkg.NewService(pricingClient)
+
+        return costs.NewCalculatorWithPricing(region, pricingService)</span>
+}
+
+// generateParallelOptimization creates parallel upload recommendations
+func generateParallelOptimization(archives []s3.Archive) *s3.PrefixOptimization <span class="cov8" title="1">{
+        // Create a temporary parallel uploader for optimization analysis
+        parallelConfig := s3.ParallelConfig{
+                MaxPrefixes:        estimateMaxPrefixes,
+                PrefixPattern:      "hash", // Default for analysis
+                LoadBalancing:      "least_loaded",
+                PrefixOptimization: true,
+        }
+
+        // Create minimal transporter for analysis (not used for actual upload)
+        uploader := s3.NewParallelUploader(nil, parallelConfig)
+        
+        return uploader.OptimizePrefixDistribution(archives)
+}</span>
+
+// generateUploadOptimization creates intelligent upload sizing recommendations
+func generateUploadOptimization(archives []s3.Archive) *s3.UploadRecommendations <span class="cov8" title="1">{
+        if len(archives) == 0 </span><span class="cov8" title="1">{
+                return nil
+        }</span>
+
+        // Use first archive for analysis (in real usage, would analyze all)
+        <span class="cov8" title="1">archive := archives[0]
+        
+        // Create adaptive uploader for analysis
+        adaptiveConfig := s3.AdaptiveConfig{
+                MinChunkSize:   5 * 1024 * 1024,   // 5MB
+                MaxChunkSize:   100 * 1024 * 1024, // 100MB
+                MaxConcurrency: 10,
+                EnableContentTypeOptimization: true,
+        }
+        
+        adaptiveUploader := s3.NewAdaptiveUploader(nil, adaptiveConfig)
+        
+        // Simulate network conditions if bandwidth provided
+        if estimateBandwidth &gt; 0 </span><span class="cov0" title="0">{
+                sample := s3.NetworkSample{
+                        Timestamp: time.Now(),
+                        Bandwidth: estimateBandwidth,
+                        Latency:   100 * time.Millisecond, // Default assumption
+                        Success:   true,
+                }
+                adaptiveUploader.RecordNetworkSample(sample)
+        }</span>
+        
+        // Get recommendations for the archive
+        <span class="cov8" title="1">return adaptiveUploader.GetRecommendations(archive.Size, "application/octet-stream")</span>
+}
+
+func outputJSON(estimate *costs.CostEstimate, parallelOpt *s3.PrefixOptimization, uploadOpt *s3.UploadRecommendations) error <span class="cov8" title="1">{
+        output := map[string]interface{}{
+                "cost_estimate": estimate,
+        }
+        
+        if parallelOpt != nil </span><span class="cov8" title="1">{
+                output["parallel_optimization"] = parallelOpt
+        }</span>
+        
+        <span class="cov8" title="1">if uploadOpt != nil </span><span class="cov8" title="1">{
+                output["upload_optimization"] = uploadOpt
+        }</span>
+        
+        <span class="cov8" title="1">encoder := json.NewEncoder(os.Stdout)
+        encoder.SetIndent("", "  ")
+        return encoder.Encode(output)</span>
+}
+
+func outputTable(estimate *costs.CostEstimate, parallelOpt *s3.PrefixOptimization, uploadOpt *s3.UploadRecommendations, sourcePath string) error <span class="cov8" title="1">{
+        // Header
+        headerStyle := lipgloss.NewStyle().
+                Bold(true).
+                Foreground(lipgloss.Color("12")). // Blue
+                MarginBottom(1)
+        
+        fmt.Println(headerStyle.Render(fmt.Sprintf("📊 Cost Estimate for %s (%.1f GB)", 
+                sourcePath, estimate.TotalSizeGB)))
+        
+        // Storage costs table
+        fmt.Println("\n💾 Monthly Storage Costs by Class:")
+        fmt.Printf("%-20s %12s %12s %12s\n", "Storage Class", "Monthly Cost", "Annual Cost", "Cost per GB")
+        fmt.Println(strings.Repeat("-", 60))
+        
+        storageOptions := []struct {
+                name string
+                monthly float64
+        }{
+                {"Standard", estimate.StorageCosts.Standard},
+                {"Standard-IA", estimate.StorageCosts.StandardIA},
+                {"One Zone-IA", estimate.StorageCosts.OneZoneIA},
+                {"Intelligent Tiering", estimate.StorageCosts.IntelligentTiering},
+                {"Glacier", estimate.StorageCosts.Glacier},
+                {"Deep Archive", estimate.StorageCosts.DeepArchive},
+        }
+        
+        for _, option := range storageOptions </span><span class="cov8" title="1">{
+                annual := option.monthly * 12
+                perGB := option.monthly / estimate.TotalSizeGB
+                
+                fmt.Printf("%-20s %12s %12s %12s\n",
+                        option.name,
+                        fmt.Sprintf("$%.2f", option.monthly),
+                        fmt.Sprintf("$%.2f", annual),
+                        fmt.Sprintf("$%.4f", perGB),
+                )
+        }</span>
+        
+        // Transfer costs
+        <span class="cov8" title="1">fmt.Printf("\n🌐 Data Transfer Cost: $%.2f (one-time)\n", estimate.TransferCosts.Standard)
+        fmt.Printf("📋 Request Costs: $%.2f (one-time)\n", estimate.RequestCosts.Standard)
+        
+        // Summary
+        fmt.Println("\n📈 Cost Summary:")
+        fmt.Printf("%-30s %12s\n", "Cost Type", "Amount")
+        fmt.Println(strings.Repeat("-", 45))
+        fmt.Printf("%-30s %12s\n", "Upload Cost (one-time)", fmt.Sprintf("$%.2f", estimate.TotalUploadCost))
+        fmt.Printf("%-30s %12s\n", "Monthly Storage (optimized)", fmt.Sprintf("$%.2f", estimate.TotalMonthlyCost))
+        fmt.Printf("%-30s %12s\n", "Annual Storage (projected)", fmt.Sprintf("$%.2f", estimate.TotalAnnualCost))
+        
+        // Recommendations
+        if showRecommendations &amp;&amp; len(estimate.Recommendations) &gt; 0 </span><span class="cov0" title="0">{
+                fmt.Println("\n💡 Optimization Recommendations:")
+                for i, rec := range estimate.Recommendations </span><span class="cov0" title="0">{
+                        impactIcon := "🔸"
+                        switch rec.Impact </span>{
+                        case "high":<span class="cov0" title="0">
+                                impactIcon = "🔴"</span>
+                        case "medium":<span class="cov0" title="0">
+                                impactIcon = "🟡"</span>
+                        case "low":<span class="cov0" title="0">
+                                impactIcon = "🟢"</span>
+                        }
+                        
+                        <span class="cov0" title="0">fmt.Printf("%s %d. %s\n", impactIcon, i+1, rec.Description)
+                        fmt.Printf("   💰 Estimated savings: $%.2f/month (%.0f%% confidence)\n", 
+                                rec.EstimatedSavings, rec.Confidence*100)</span>
+                }
+                
+                <span class="cov0" title="0">totalSavings := 0.0
+                for _, rec := range estimate.Recommendations </span><span class="cov0" title="0">{
+                        totalSavings += rec.EstimatedSavings
+                }</span>
+                
+                <span class="cov0" title="0">if totalSavings &gt; 0 </span><span class="cov0" title="0">{
+                        fmt.Printf("\n🎯 Total potential savings: $%.2f/month ($%.2f/year)\n", 
+                                totalSavings, totalSavings*12)
+                }</span>
+        }
+        
+        // Parallel Upload Optimization
+        <span class="cov8" title="1">if parallelOpt != nil </span><span class="cov8" title="1">{
+                fmt.Println("\n🚀 Parallel Upload Optimization:")
+                fmt.Printf("   Recommended Prefixes: %d\n", parallelOpt.RecommendedPrefixes)
+                fmt.Printf("   Recommended Concurrency: %d\n", parallelOpt.RecommendedConcurrency)
+                fmt.Printf("   Optimal Pattern: %s\n", parallelOpt.OptimalPattern)
+                fmt.Printf("   Size Variation: %.2f%%\n", parallelOpt.SizeVariation*100)
+                
+                if parallelOpt.RecommendedPrefixes &gt; 1 </span><span class="cov8" title="1">{
+                        estimatedSpeedup := float64(parallelOpt.RecommendedPrefixes) * 0.8 // Conservative estimate
+                        fmt.Printf("   Estimated Speedup: %.1fx\n", estimatedSpeedup)
+                }</span>
+        }
+        
+        // Upload Optimization
+        <span class="cov8" title="1">if uploadOpt != nil </span><span class="cov8" title="1">{
+                fmt.Println("\n⚡ Intelligent Upload Optimization:")
+                fmt.Printf("   Optimal Chunk Size: %.1f MB\n", float64(uploadOpt.OptimalChunkSize)/(1024*1024))
+                fmt.Printf("   Optimal Concurrency: %d\n", uploadOpt.OptimalConcurrency)
+                fmt.Printf("   Network Condition: %s\n", uploadOpt.NetworkCondition)
+                fmt.Printf("   Estimated Duration: %v\n", uploadOpt.EstimatedDuration.Round(time.Second))
+                fmt.Printf("   Confidence Level: %.0f%%\n", uploadOpt.ConfidenceLevel*100)
+                fmt.Printf("   📝 %s\n", uploadOpt.Reasoning)
+        }</span>
+
+        // Metadata
+        <span class="cov8" title="1">fmt.Printf("\n📋 Analysis Details:\n")
+        fmt.Printf("   Region: %s\n", estimate.Region)
+        fmt.Printf("   Total Size: %s\n", humanize.Bytes(uint64(estimate.TotalSizeGB*1024*1024*1024)))
+        fmt.Printf("   Archives: %d\n", estimate.ArchiveCount)
+        fmt.Printf("   Calculated: %s\n", estimate.CalculatedAt.Format("2006-01-02 15:04:05 MST"))
+        
+        return nil</span>
+}
+
+func init() {<span class="cov8" title="1">
+        // Add estimate command to root (we'll need to add this to root.go)
+}</pre>
+		
+		<pre class="file" id="file7" style="display: none">package cmd
+
+import (
+        "github.com/drewstinnett/gout/v2"
+        "github.com/spf13/cobra"
+        "github.com/scttfrdmn/cargoship/pkg/inventory"
+)
+
+// NewFindCmd creates a new 'find' command
+func NewFindCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:   "find PATTERN",
+                Short: "Find where a file or directory lives",
+                Long: `By default, we'll search your current directory for yaml
+files, and treat them as inventory. This can be changed using
+the --inventory-directory flag.`,
+                Example: `$ suitcasectl find SOME_PATTERN
+files:
+    - path: /Users/drews/Desktop/Almost Garbage/godoc/src/runtime/cgo/libcgo_windows.h?m=text
+      destination: godoc/src/runtime/cgo/libcgo_windows.h
+      name: libcgo_windows.h
+      size: 258
+      suitcase_index: 5
+      suitcase_name: suitcase-drews-05-of-05.tar.zst
+...
+directories:
+    - directory: godoc/lib
+      totalsize: 139186
+      totalsizehr: 139 kB
+      suitcases:
+        - suitcase-drews-04-of-05.tar.zst
+        - suitcase-drews-05-of-05.tar.zst
+...`,
+                Aliases: []string{"search"},
+                Args:    cobra.ExactArgs(1),
+                RunE: func(cmd *cobra.Command, args []string) error </span><span class="cov8" title="1">{
+                        gout.SetWriter(cmd.OutOrStdout())
+                        pattern := args[0]
+                        searchD, err := cmd.Flags().GetStringArray("inventory-directory")
+                        checkErr(err, "")
+                        collection, err := inventory.CollectionWithDirs(searchD)
+                        checkErr(err, "")
+                        for inventoryF, i := range *collection </span><span class="cov8" title="1">{
+                                logger.Info("find running", "pattern", pattern, "inventory", inventoryF)
+                                results := i.Search(pattern)
+                                gout.MustPrint(results)
+                        }</span>
+                        <span class="cov8" title="1">return nil</span>
+                },
+        }
+
+        <span class="cov8" title="1">cmd.PersistentFlags().StringArray("inventory-directory", []string{"."}, "Directory containing inventories to search. Can be specified multiple times for multiple directories.")
+        return cmd</span>
+}
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">package cmd
+
+import (
+
+        // nolint:gosec
+        // nolint:gosec
+        "crypto/sha256"
+        "errors"
+        "fmt"
+        "io"
+        "math"
+        "os"
+        "path"
+        "reflect"
+        "strings"
+        "time"
+
+        // "github.com/minio/sha256-simd"
+
+        "github.com/spf13/cobra"
+        porter "github.com/scttfrdmn/cargoship/pkg"
+        "github.com/scttfrdmn/cargoship/pkg/config"
+        "github.com/scttfrdmn/cargoship/pkg/travelagent"
+)
+
+// newOutDirWithCmd generates a new output directory using cobra.Command options
+func newOutDirWithCmd(cmd *cobra.Command) (string, error) <span class="cov8" title="1">{
+        o, err := getDestinationWithCobra(cmd)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+        <span class="cov8" title="1">if o == "" </span><span class="cov0" title="0">{
+                o, err = os.MkdirTemp("", "suitcasectl-")
+                if err != nil </span><span class="cov0" title="0">{
+                        return "", err
+                }</span>
+        }
+
+        // Also shove this in to porter. We'll use it later there.
+        <span class="cov8" title="1">if ptr, err := porterWithCmd(cmd); err == nil </span><span class="cov0" title="0">{
+                ptr.Destination = o
+        }</span>
+        <span class="cov8" title="1">return o, nil</span>
+}
+
+func dclose(c io.Closer) <span class="cov8" title="1">{
+        err := c.Close()
+        if err != nil </span><span class="cov0" title="0">{
+                logger.Warn("error closing item", "error", err)
+        }</span>
+}
+
+// This needs some work. Why do we need it's own context entry instead of just
+// using the SuitcaseOpts, which already has it
+func getDestinationWithCobra(cmd *cobra.Command) (string, error) <span class="cov8" title="1">{
+        d := mustGetCmd[string](cmd, "destination")
+        if d == "" </span><span class="cov8" title="1">{
+                var err error
+                if d, err = os.MkdirTemp("", "suitcasectl"); err != nil </span><span class="cov0" title="0">{
+                        return "", err
+                }</span>
+        }
+
+        // Set for later use
+        <span class="cov8" title="1">ptr, err := porterWithCmd(cmd)
+        if err == nil </span><span class="cov8" title="1">{
+                ptr.Destination = d
+        }</span>
+        <span class="cov8" title="1">logPath := path.Join(d, "suitcasectl.log")
+        lf, err := os.Create(logPath) // nolint:gosec
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+
+        // If we have a porter, set the logfile here
+        <span class="cov8" title="1">if ptr, err := porterWithCmd(cmd); err == nil </span><span class="cov8" title="1">{
+                ptr.LogFile = lf
+        }</span>
+
+        <span class="cov8" title="1">return d, nil</span>
+}
+
+// mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command
+func mustGetCmd[T []int | int | string | bool | time.Duration](cmd *cobra.Command, s string) T <span class="cov8" title="1">{
+        switch any(new(T)).(type) </span>{
+        case *int:<span class="cov8" title="1">
+                item, err := cmd.Flags().GetInt(s)
+                panicIfErr(err)
+                return any(item).(T)</span>
+        case *string:<span class="cov8" title="1">
+                item, err := cmd.Flags().GetString(s)
+                panicIfErr(err)
+                return any(item).(T)</span>
+        case *bool:<span class="cov8" title="1">
+                item, err := cmd.Flags().GetBool(s)
+                panicIfErr(err)
+                return any(item).(T)</span>
+        case *[]int:<span class="cov0" title="0">
+                item, err := cmd.Flags().GetIntSlice(s)
+                panicIfErr(err)
+                return any(item).(T)</span>
+        case *time.Duration:<span class="cov8" title="1">
+                item, err := cmd.Flags().GetDuration(s)
+                panicIfErr(err)
+                return any(item).(T)</span>
+        default:<span class="cov0" title="0">
+                panic(fmt.Sprintf("unexpected use of mustGetCmd: %v", reflect.TypeOf(s)))</span>
+        }
+}
+
+func panicIfErr(err error) <span class="cov8" title="1">{
+        if err != nil </span><span class="cov0" title="0">{
+                panic(err)</span>
+        }
+}
+
+// getSha256 Get sha256 hash from a file
+func getSha256(file string) (string, error) <span class="cov8" title="1">{
+        f, err := os.Open(file) // nolint:gosec
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+        <span class="cov8" title="1">defer dclose(f)
+
+        b, err := io.ReadAll(f)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+
+        <span class="cov8" title="1">sum := sha256.Sum256(b)
+
+        return fmt.Sprintf("%x", sum), nil</span>
+}
+
+func hasDuplicates(strArr []string) bool <span class="cov8" title="1">{
+        seen := make(map[string]bool)
+        for _, str := range strArr </span><span class="cov8" title="1">{
+                if seen[str] </span><span class="cov8" title="1">{
+                        return true
+                }</span>
+                <span class="cov8" title="1">seen[str] = true</span>
+        }
+        <span class="cov8" title="1">return false</span>
+}
+
+func mustPorterWithCmd(cmd *cobra.Command) *porter.Porter <span class="cov8" title="1">{
+        p, err := porterWithCmd(cmd)
+        if err != nil </span><span class="cov8" title="1">{
+                panic(err)</span>
+        }
+        <span class="cov8" title="1">return p</span>
+}
+
+func porterWithCmd(cmd *cobra.Command) (*porter.Porter, error) <span class="cov8" title="1">{
+        p, ok := cmd.Context().Value(porter.PorterKey).(*porter.Porter)
+        if !ok </span><span class="cov8" title="1">{
+                return nil, errors.New("could not find Porter in this context")
+        }</span>
+
+        <span class="cov8" title="1">return p, nil</span>
+}
+
+func porterTravelAgentWithCmd(cmd *cobra.Command, args []string) (*porter.Porter, bool, error) <span class="cov8" title="1">{
+        p, err := porterWithCmd(cmd)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, false, err
+        }</span>
+        <span class="cov8" title="1">taOpts := []travelagent.Option{
+                travelagent.WithCmd(cmd),
+                travelagent.WithUploadRetries(mustGetCmd[int](cmd, "retry-count")),
+                travelagent.WithUploadRetryTime(mustGetCmd[time.Duration](cmd, "retry-interval")),
+        }
+        if Verbose </span><span class="cov0" title="0">{
+                taOpts = append(taOpts, travelagent.WithPrintCurl())
+        }</span>
+        <span class="cov8" title="1">var terr error
+        var ta *travelagent.TravelAgent
+        if ta, terr = travelagent.New(taOpts...); terr != nil </span><span class="cov8" title="1">{
+                logger.Debug("no valid travel agent found", "error", terr)
+        }</span> else<span class="cov0" title="0"> {
+                p.SetTravelAgent(ta)
+                logger.Info("☀️ Thanks for using a TravelAgent! Check out this URL for full info on your suitcases fun travel", "url", p.TravelAgent.StatusURL())
+                if serr := p.SendUpdate(travelagent.StatusUpdate{
+                        Status: travelagent.StatusPending,
+                }); serr != nil </span><span class="cov0" title="0">{
+                        return nil, false, serr
+                }</span>
+        }
+        // Get option bits
+        <span class="cov8" title="1">inventoryFile, onlyInventory, err := inventoryOptsWithCobra(cmd, args)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, false, err
+        }</span>
+
+        // Create an inventory file if one isn't specified
+        <span class="cov8" title="1">if p.Inventory, err = p.CreateOrReadInventory(inventoryFile); err != nil </span><span class="cov0" title="0">{
+                return nil, onlyInventory, err
+        }</span>
+        // Replace the travel agent with one that knows the inventory hash
+        // This doesn't work yet, need to find out why
+        <span class="cov8" title="1">if ta != nil </span><span class="cov0" title="0">{
+                ta.UniquePrefix = p.InventoryHash
+                p.SetTravelAgent(ta)
+        }</span>
+
+        // We need options even if we already have the inventory
+        <span class="cov8" title="1">p.SuitcaseOpts = &amp;config.SuitCaseOpts{
+                // Destination:  p.Destination,
+                EncryptInner: p.Inventory.Options.EncryptInner,
+                HashInner:    p.Inventory.Options.HashInner,
+                Format:       p.Inventory.Options.SuitcaseFormat,
+        }
+
+        return p, onlyInventory, nil</span>
+}
+
+// validateCmdArgs ensures we are passing valid arguments in
+func validateCmdArgs(inventoryFile string, onlyInventory bool, cmd cobra.Command, args []string) error <span class="cov8" title="1">{
+        // Figure out if we are using an inventory file, or creating one
+        if inventoryFile != "" &amp;&amp; len(args) &gt; 0 </span><span class="cov8" title="1">{
+                return errors.New("error: You can't specify an inventory file and target dir arguments at the same time")
+        }</span>
+
+        // Make sure we are actually using either an inventory file or target dirs
+        <span class="cov8" title="1">if inventoryFile == "" &amp;&amp; len(args) == 0 </span><span class="cov8" title="1">{
+                return errors.New("error: You must specify an inventory file or target dirs")
+        }</span>
+
+        <span class="cov8" title="1">if onlyInventory &amp;&amp; inventoryFile != "" </span><span class="cov8" title="1">{
+                return errors.New("you can't specify an inventory file and only-inventory at the same time")
+        }</span>
+
+        <span class="cov8" title="1">if hasDuplicates(args) </span><span class="cov8" title="1">{
+                return errors.New("duplicate path found in arguments")
+        }</span>
+
+        <span class="cov8" title="1">if strings.Contains(mustGetCmd[string](&amp;cmd, "prefix"), "/") </span><span class="cov8" title="1">{
+                return errors.New("prefix cannot contain a /")
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+func uint64ToInt64(u uint64) int64 <span class="cov8" title="1">{
+        if u &gt; math.MaxInt64 </span><span class="cov8" title="1">{
+                panic("value out of range for int64")</span>
+        }
+        <span class="cov8" title="1">return int64(u)</span>
+}
+</pre>
+		
+		<pre class="file" id="file9" style="display: none">package cmd
+
+import (
+        "context"
+        "fmt"
+        "os"
+        "strings"
+
+        "github.com/aws/aws-sdk-go-v2/config"
+        "github.com/aws/aws-sdk-go-v2/service/s3"
+        "github.com/charmbracelet/lipgloss"
+        "github.com/spf13/cobra"
+
+        "github.com/scttfrdmn/cargoship/pkg/aws/lifecycle"
+)
+
+var (
+        lifecycleBucket      string
+        lifecycleTemplate    string
+        lifecycleListOnly    bool
+        lifecycleRemove      bool
+        lifecycleExport      string
+        lifecycleImport      string
+        lifecycleRegion      string
+        lifecycleEstimateSize float64
+)
+
+// NewLifecycleCmd creates the lifecycle management command
+func NewLifecycleCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:   "lifecycle",
+                Short: "Manage S3 lifecycle policies for cost optimization",
+                Long: `Manage S3 lifecycle policies to automatically optimize storage costs.
+
+CargoShip provides predefined lifecycle policy templates optimized for different
+use cases, or you can create custom policies based on your access patterns.
+
+Examples:
+  # List available policy templates
+  cargoship lifecycle --list-templates
+  
+  # Apply archive optimization policy
+  cargoship lifecycle --bucket my-bucket --template archive-optimization
+  
+  # Estimate savings for a policy
+  cargoship lifecycle --bucket my-bucket --template intelligent-tiering --estimate-size 100
+  
+  # Export current policy
+  cargoship lifecycle --bucket my-bucket --export policy.json
+  
+  # Remove lifecycle policy
+  cargoship lifecycle --bucket my-bucket --remove`,
+                RunE: runLifecycle,
+        }
+
+        cmd.Flags().StringVar(&amp;lifecycleBucket, "bucket", "", "S3 bucket name (required unless listing templates)")
+        cmd.Flags().StringVar(&amp;lifecycleTemplate, "template", "", "Lifecycle policy template to apply")
+        cmd.Flags().BoolVar(&amp;lifecycleListOnly, "list-templates", false, "List available policy templates")
+        cmd.Flags().BoolVar(&amp;lifecycleRemove, "remove", false, "Remove existing lifecycle policy")
+        cmd.Flags().StringVar(&amp;lifecycleExport, "export", "", "Export current policy to file")
+        cmd.Flags().StringVar(&amp;lifecycleImport, "import", "", "Import policy from file")
+        cmd.Flags().StringVar(&amp;lifecycleRegion, "region", "us-east-1", "AWS region")
+        cmd.Flags().Float64Var(&amp;lifecycleEstimateSize, "estimate-size", 0, "Data size in GB for savings estimation")
+
+        return cmd
+}</span>
+
+func runLifecycle(cmd *cobra.Command, args []string) error <span class="cov8" title="1">{
+        // Handle list templates command
+        if lifecycleListOnly </span><span class="cov8" title="1">{
+                return listLifecycleTemplates()
+        }</span>
+
+        // Validate required parameters
+        <span class="cov8" title="1">if lifecycleBucket == "" </span><span class="cov8" title="1">{
+                return fmt.Errorf("bucket name is required (use --bucket)")
+        }</span>
+
+        // Create AWS S3 client
+        <span class="cov8" title="1">ctx := context.Background()
+        cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(lifecycleRegion))
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to load AWS config: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">s3Client := s3.NewFromConfig(cfg)
+        manager := lifecycle.NewManager(s3Client, lifecycleBucket)
+
+        // Handle different operations
+        switch </span>{
+        case lifecycleRemove:<span class="cov8" title="1">
+                return removeLifecyclePolicy(ctx, manager)</span>
+        case lifecycleExport != "":<span class="cov8" title="1">
+                return exportLifecyclePolicy(ctx, manager, lifecycleExport)</span>
+        case lifecycleImport != "":<span class="cov8" title="1">
+                return importLifecyclePolicy(ctx, manager, lifecycleImport)</span>
+        case lifecycleTemplate != "":<span class="cov8" title="1">
+                return applyLifecycleTemplate(ctx, manager, lifecycleTemplate)</span>
+        default:<span class="cov8" title="1">
+                return showCurrentPolicy(ctx, manager)</span>
+        }
+}
+
+// listLifecycleTemplates displays available policy templates
+func listLifecycleTemplates() error <span class="cov8" title="1">{
+        templates := lifecycle.GetPredefinedTemplates()
+
+        headerStyle := lipgloss.NewStyle().
+                Bold(true).
+                Foreground(lipgloss.Color("12")).
+                MarginBottom(1)
+
+        fmt.Println(headerStyle.Render("📋 Available Lifecycle Policy Templates"))
+
+        for _, template := range templates </span><span class="cov8" title="1">{
+                fmt.Printf("\n🔧 %s (%s)\n", template.Name, template.ID)
+                fmt.Printf("   %s\n", template.Description)
+                fmt.Printf("   💰 Estimated savings: %.0f%% monthly\n", template.Savings.MonthlyPercent)
+                
+                fmt.Printf("   📝 Rules:\n")
+                for _, rule := range template.Rules </span><span class="cov8" title="1">{
+                        fmt.Printf("      • %s: ", rule.ID)
+                        if len(rule.Transitions) &gt; 0 </span><span class="cov8" title="1">{
+                                transitions := make([]string, len(rule.Transitions))
+                                for i, t := range rule.Transitions </span><span class="cov8" title="1">{
+                                        transitions[i] = fmt.Sprintf("%dd→%s", t.Days, t.StorageClass)
+                                }</span>
+                                <span class="cov8" title="1">fmt.Printf("%s", strings.Join(transitions, ", "))</span>
+                        }
+                        <span class="cov8" title="1">if rule.Expiration != nil </span><span class="cov8" title="1">{
+                                fmt.Printf(", expires after %dd", rule.Expiration.Days)
+                        }</span>
+                        <span class="cov8" title="1">fmt.Println()</span>
+                }
+        }
+
+        <span class="cov8" title="1">fmt.Printf("\n💡 Usage: cargoship lifecycle --bucket YOUR_BUCKET --template TEMPLATE_ID\n")
+        return nil</span>
+}
+
+// applyLifecycleTemplate applies a predefined template to the bucket
+func applyLifecycleTemplate(ctx context.Context, manager *lifecycle.Manager, templateID string) error <span class="cov8" title="1">{
+        templates := lifecycle.GetPredefinedTemplates()
+        
+        var selectedTemplate *lifecycle.PolicyTemplate
+        for _, template := range templates </span><span class="cov8" title="1">{
+                if template.ID == templateID </span><span class="cov8" title="1">{
+                        selectedTemplate = &amp;template
+                        break</span>
+                }
+        }
+
+        <span class="cov8" title="1">if selectedTemplate == nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("template '%s' not found. Use --list-templates to see available templates", templateID)
+        }</span>
+
+        <span class="cov8" title="1">fmt.Printf("📋 Applying lifecycle policy: %s\n", selectedTemplate.Name)
+        fmt.Printf("   %s\n", selectedTemplate.Description)
+
+        // Validate the policy
+        if err := manager.ValidatePolicy(*selectedTemplate); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("policy validation failed: %w", err)
+        }</span>
+
+        // Apply the policy
+        <span class="cov8" title="1">if err := manager.ApplyPolicy(ctx, *selectedTemplate); err != nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("failed to apply policy: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("✅ Lifecycle policy applied successfully!\n")
+
+        // Show savings estimate if size provided
+        if lifecycleEstimateSize &gt; 0 </span><span class="cov0" title="0">{
+                estimate, err := manager.EstimateSavings(ctx, *selectedTemplate, lifecycleEstimateSize)
+                if err == nil </span><span class="cov0" title="0">{
+                        fmt.Printf("\n💰 Savings Estimate (%.1f GB):\n", estimate.CurrentSizeGB)
+                        fmt.Printf("   Current monthly cost: $%.2f\n", estimate.CurrentMonthlyCost)
+                        fmt.Printf("   Optimized monthly cost: $%.2f\n", estimate.OptimizedMonthlyCost)
+                        fmt.Printf("   Monthly savings: $%.2f (%.1f%%)\n", estimate.MonthlySavings, estimate.SavingsPercent)
+                        fmt.Printf("   Annual savings: $%.2f\n", estimate.AnnualSavings)
+                }</span>
+        }
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+// removeLifecyclePolicy removes the lifecycle policy from the bucket
+func removeLifecyclePolicy(ctx context.Context, manager *lifecycle.Manager) error <span class="cov8" title="1">{
+        fmt.Printf("🗑️ Removing lifecycle policy from bucket...\n")
+
+        if err := manager.RemovePolicy(ctx); err != nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("failed to remove policy: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("✅ Lifecycle policy removed successfully!\n")
+        return nil</span>
+}
+
+// exportLifecyclePolicy exports the current policy to a file
+func exportLifecyclePolicy(ctx context.Context, manager *lifecycle.Manager, filename string) error <span class="cov8" title="1">{
+        fmt.Printf("📤 Exporting current lifecycle policy to %s...\n", filename)
+
+        // Get current policy
+        currentPolicy, err := manager.GetCurrentPolicy(ctx)
+        if err != nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("failed to get current policy: %w", err)
+        }</span>
+
+        // Convert to our template format (simplified)
+        <span class="cov0" title="0">template := lifecycle.PolicyTemplate{
+                ID:          "exported-policy",
+                Name:        "Exported Policy",
+                Description: "Exported from S3 bucket",
+                Rules:       []lifecycle.LifecycleRule{}, // Would need conversion logic
+        }
+
+        // Export to JSON
+        jsonData, err := manager.ExportPolicy(template)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to export policy: %w", err)
+        }</span>
+
+        // Write to file
+        <span class="cov0" title="0">if err := os.WriteFile(filename, []byte(jsonData), 0644); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write file: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("✅ Policy exported successfully!\n")
+        fmt.Printf("   Rules: %d\n", len(currentPolicy.Rules))
+        return nil</span>
+}
+
+// importLifecyclePolicy imports a policy from a file
+func importLifecyclePolicy(ctx context.Context, manager *lifecycle.Manager, filename string) error <span class="cov8" title="1">{
+        fmt.Printf("📥 Importing lifecycle policy from %s...\n", filename)
+
+        // Read file
+        data, err := os.ReadFile(filename)
+        if err != nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("failed to read file: %w", err)
+        }</span>
+
+        // Import policy
+        <span class="cov0" title="0">template, err := manager.ImportPolicy(string(data))
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to import policy: %w", err)
+        }</span>
+
+        // Apply the imported policy
+        <span class="cov0" title="0">if err := manager.ApplyPolicy(ctx, *template); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to apply imported policy: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("✅ Policy imported and applied successfully!\n")
+        fmt.Printf("   Policy: %s\n", template.Name)
+        fmt.Printf("   Rules: %d\n", len(template.Rules))
+        return nil</span>
+}
+
+// showCurrentPolicy displays the current lifecycle policy
+func showCurrentPolicy(ctx context.Context, manager *lifecycle.Manager) error <span class="cov8" title="1">{
+        fmt.Printf("📋 Current lifecycle policy for bucket: %s\n\n", lifecycleBucket)
+
+        currentPolicy, err := manager.GetCurrentPolicy(ctx)
+        if err != nil </span><span class="cov8" title="1">{
+                // Check if it's a "no policy" error
+                if strings.Contains(err.Error(), "NoSuchLifecycleConfiguration") </span><span class="cov0" title="0">{
+                        fmt.Printf("❌ No lifecycle policy configured for this bucket.\n")
+                        fmt.Printf("\n💡 Use --template to apply a predefined policy or --list-templates to see options.\n")
+                        return nil
+                }</span>
+                <span class="cov8" title="1">return fmt.Errorf("failed to get current policy: %w", err)</span>
+        }
+
+        <span class="cov0" title="0">fmt.Printf("✅ Active lifecycle policy found\n")
+        fmt.Printf("   Rules: %d\n\n", len(currentPolicy.Rules))
+
+        // Display rules in a readable format
+        for i, rule := range currentPolicy.Rules </span><span class="cov0" title="0">{
+                fmt.Printf("🔧 Rule %d: %s\n", i+1, *rule.ID)
+                fmt.Printf("   Status: %s\n", rule.Status)
+
+                // Show filter
+                if rule.Filter != nil </span><span class="cov0" title="0">{
+                        if rule.Filter.Prefix != nil </span><span class="cov0" title="0">{
+                                fmt.Printf("   Prefix: %s\n", *rule.Filter.Prefix)
+                        }</span>
+                        <span class="cov0" title="0">if rule.Filter.Tag != nil </span><span class="cov0" title="0">{
+                                fmt.Printf("   Tag: %s = %s\n", *rule.Filter.Tag.Key, *rule.Filter.Tag.Value)
+                        }</span>
+                }
+
+                // Show transitions
+                <span class="cov0" title="0">if len(rule.Transitions) &gt; 0 </span><span class="cov0" title="0">{
+                        fmt.Printf("   Transitions:\n")
+                        for _, transition := range rule.Transitions </span><span class="cov0" title="0">{
+                                fmt.Printf("      • After %d days → %s\n", *transition.Days, transition.StorageClass)
+                        }</span>
+                }
+
+                // Show expiration
+                <span class="cov0" title="0">if rule.Expiration != nil &amp;&amp; rule.Expiration.Days != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("   Expiration: After %d days\n", *rule.Expiration.Days)
+                }</span>
+
+                <span class="cov0" title="0">fmt.Println()</span>
+        }
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+func init() {<span class="cov8" title="1">
+        // This command will be added to root in root.go
+}</pre>
+		
+		<pre class="file" id="file10" style="display: none">package cmd
+
+import (
+        "fmt"
+
+        mcoral "github.com/muesli/mango-cobra"
+        "github.com/muesli/roff"
+        "github.com/spf13/cobra"
+)
+
+func newManCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:                   "man",
+                Short:                 "Generates GoReleaser's command line manpages",
+                SilenceUsage:          true,
+                DisableFlagsInUseLine: true,
+                Hidden:                true,
+                Args:                  cobra.NoArgs,
+                ValidArgsFunction:     cobra.NoFileCompletions,
+                RunE: func(cmd *cobra.Command, _ []string) error </span><span class="cov8" title="1">{
+                        manPage, err := mcoral.NewManPage(1, cmd.Root())
+                        if err != nil </span><span class="cov0" title="0">{
+                                return err
+                        }</span>
+
+                        <span class="cov8" title="1">_, err = fmt.Fprint(cmd.OutOrStdout(), manPage.Build(roff.NewDocument()))
+                        return err</span>
+                },
+        }
+
+        <span class="cov8" title="1">return cmd</span>
+}
+</pre>
+		
+		<pre class="file" id="file11" style="display: none">package cmd
+
+import (
+        "io"
+
+        "github.com/spf13/cobra"
+        "github.com/spf13/cobra/doc"
+)
+
+// NewMDDocsCmd generates the markdown docs
+func NewMDDocsCmd() *cobra.Command <span class="cov8" title="1">{
+        return &amp;cobra.Command{
+                Use:    "mddocs",
+                Short:  "Create a new tree of markdown docs",
+                Args:   cobra.ExactArgs(1),
+                Hidden: true,
+                RunE: func(_ *cobra.Command, args []string) error </span><span class="cov8" title="1">{
+                        return doc.GenMarkdownTree(NewRootCmd(io.Discard), args[0])
+                }</span>,
+        }
+}
+</pre>
+		
+		<pre class="file" id="file12" style="display: none">package cmd
+
+import (
+        "context"
+        "fmt"
+        "time"
+
+        "github.com/aws/aws-sdk-go-v2/config"
+        "github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+        "github.com/spf13/cobra"
+
+        "github.com/scttfrdmn/cargoship/pkg/aws/metrics"
+)
+
+var (
+        metricsNamespace string
+        metricsRegion    string
+        metricsTest      bool
+)
+
+// NewMetricsCmd creates the metrics command for CloudWatch integration testing
+func NewMetricsCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:   "metrics",
+                Short: "Test CloudWatch metrics integration",
+                Long: `Test CloudWatch metrics integration for CargoShip observability.
+
+This command allows you to test the CloudWatch metrics publishing functionality
+to ensure proper integration with AWS monitoring services.
+
+Examples:
+  # Test metrics publishing
+  cargoship metrics --test
+  
+  # Test with custom namespace and region
+  cargoship metrics --test --namespace "CargoShip/Prod" --region us-east-1`,
+                RunE: runMetrics,
+        }
+
+        cmd.Flags().StringVar(&amp;metricsNamespace, "namespace", "CargoShip/Test", "CloudWatch namespace for metrics")
+        cmd.Flags().StringVar(&amp;metricsRegion, "region", "us-west-2", "AWS region for CloudWatch")
+        cmd.Flags().BoolVar(&amp;metricsTest, "test", false, "Send test metrics to CloudWatch")
+
+        return cmd
+}</span>
+
+func runMetrics(cmd *cobra.Command, args []string) error <span class="cov8" title="1">{
+        if !metricsTest </span><span class="cov8" title="1">{
+                return fmt.Errorf("use --test flag to send test metrics to CloudWatch")
+        }</span>
+
+        <span class="cov8" title="1">fmt.Printf("🔍 Testing CloudWatch metrics integration...\n")
+        fmt.Printf("   Namespace: %s\n", metricsNamespace)
+        fmt.Printf("   Region: %s\n", metricsRegion)
+
+        // Load AWS config
+        ctx := context.Background()
+        cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(metricsRegion))
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to load AWS config: %w", err)
+        }</span>
+
+        // Create CloudWatch client
+        <span class="cov8" title="1">cloudwatchClient := cloudwatch.NewFromConfig(cfg)
+
+        // Create metrics publisher
+        metricsConfig := metrics.MetricConfig{
+                Namespace:     metricsNamespace,
+                Region:        metricsRegion,
+                BatchSize:     5, // Small batch for testing
+                FlushInterval: 10 * time.Second,
+                Enabled:       true,
+        }
+
+        publisher := metrics.NewCloudWatchPublisher(cloudwatchClient, metricsConfig)
+
+        // Test upload metrics
+        fmt.Printf("\n📊 Publishing upload metrics...\n")
+        uploadMetrics := &amp;metrics.UploadMetrics{
+                Duration:        45 * time.Second,
+                ThroughputMBps:  15.5,
+                TotalBytes:      500 * 1024 * 1024, // 500MB
+                ChunkCount:      25,
+                Concurrency:     8,
+                ErrorCount:      0,
+                Success:         true,
+                StorageClass:    "INTELLIGENT_TIERING",
+                ContentType:     "application/octet-stream",
+                CompressionType: "zstd",
+        }
+
+        if err := publisher.PublishUploadMetrics(ctx, uploadMetrics); err != nil </span><span class="cov8" title="1">{
+                return fmt.Errorf("failed to publish upload metrics: %w", err)
+        }</span>
+
+        // Test cost metrics
+        <span class="cov0" title="0">fmt.Printf("💰 Publishing cost metrics...\n")
+        costMetrics := &amp;metrics.CostMetrics{
+                EstimatedMonthlyCost:    2.30,
+                EstimatedAnnualCost:     27.60,
+                ActualMonthlyCost:       0.10,
+                DataSizeGB:              100.0,
+                PotentialSavingsPercent: 95.7,
+                StorageClass:            "DEEP_ARCHIVE",
+                OptimizationType:        "archive_optimization",
+        }
+
+        if err := publisher.PublishCostMetrics(ctx, costMetrics); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to publish cost metrics: %w", err)
+        }</span>
+
+        // Test network metrics
+        <span class="cov0" title="0">fmt.Printf("🌐 Publishing network metrics...\n")
+        networkMetrics := &amp;metrics.NetworkMetrics{
+                BandwidthMBps:       25.0,
+                LatencyMs:           50.0,
+                PacketLossPercent:   0.1,
+                OptimalChunkSizeMB:  24,
+                OptimalConcurrency:  8,
+                NetworkCondition:    "excellent",
+        }
+
+        if err := publisher.PublishNetworkMetrics(ctx, networkMetrics); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to publish network metrics: %w", err)
+        }</span>
+
+        // Test operational metrics
+        <span class="cov0" title="0">fmt.Printf("⚙️ Publishing operational metrics...\n")
+        operationalMetrics := &amp;metrics.OperationalMetrics{
+                ActiveUploads:     3,
+                QueuedUploads:     7,
+                CompletedUploads:  45,
+                FailedUploads:     2,
+                MemoryUsageMB:     256.5,
+                CPUUsagePercent:   25.3,
+        }
+
+        if err := publisher.PublishOperationalMetrics(ctx, operationalMetrics); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to publish operational metrics: %w", err)
+        }</span>
+
+        // Test lifecycle metrics
+        <span class="cov0" title="0">fmt.Printf("🔄 Publishing lifecycle metrics...\n")
+        lifecycleMetrics := &amp;metrics.LifecycleMetrics{
+                ActivePolicies:          1,
+                EstimatedSavingsPercent: 95.7,
+                ObjectsTransitioned:     1250,
+                PolicyTemplate:          "archive-optimization",
+                BucketName:              "cargoship-production",
+        }
+
+        if err := publisher.PublishLifecycleMetrics(ctx, lifecycleMetrics); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to publish lifecycle metrics: %w", err)
+        }</span>
+
+        // Flush any remaining metrics
+        <span class="cov0" title="0">fmt.Printf("🚀 Flushing metrics to CloudWatch...\n")
+        if err := publisher.Flush(ctx); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to flush metrics: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("\n✅ All test metrics published successfully!\n")
+        fmt.Printf("\n🔍 Check CloudWatch console:\n")
+        fmt.Printf("   https://console.aws.amazon.com/cloudwatch/home?region=%s#metricsV2:graph=~();search=%s\n", 
+                metricsRegion, metricsNamespace)
+        
+        fmt.Printf("\n📈 Key metrics published:\n")
+        fmt.Printf("   • Upload performance (duration, throughput, errors)\n")
+        fmt.Printf("   • Cost optimization (savings, storage classes)\n") 
+        fmt.Printf("   • Network conditions (bandwidth, latency, optimization)\n")
+        fmt.Printf("   • Operational status (uploads, memory, CPU)\n")
+        fmt.Printf("   • Lifecycle policies (savings, transitions)\n")
+
+        return nil</span>
+}
+
+func init() {<span class="cov8" title="1">
+        // This command will be added to root in root.go
+}</pre>
+		
+		<pre class="file" id="file13" style="display: none">package cmd
+
+import (
+        "github.com/spf13/cobra"
+        "github.com/scttfrdmn/cargoship/pkg/plugins/transporters"
+        "github.com/scttfrdmn/cargoship/pkg/rclone"
+)
+
+// NewRcloneCmd returns a new cobra.Command for Rclone
+func NewRcloneCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:   "rclone SOURCE DESTINATION",
+                Short: "Execute an rclone (sync) from src to dst",
+                Long: `rclone - Sync data out to the cloud (or elsewhere!) using an embedded version
+of rclone.
+                
+SOURCE should be a local directory or file.
+
+DESTINATION should be a valid rclone endpoint. This will be ready by your local
+rclone config, but does not require the rclone binary to be present on your
+host.`,
+                Aliases: []string{"r"},
+                Args:    cobra.ExactArgs(2),
+                RunE: func(_ *cobra.Command, args []string) error </span><span class="cov8" title="1">{
+                        return rclone.Copy(args[0], transporters.UniquifyDest(args[1]), nil)
+                }</span>,
+        }
+
+        <span class="cov8" title="1">return cmd</span>
+}
+</pre>
+		
+		<pre class="file" id="file14" style="display: none">package cmd
+
+import (
+        "strings"
+
+        "github.com/rclone/rclone/fs/rc"
+        "github.com/spf13/cobra"
+        "github.com/scttfrdmn/cargoship/pkg/rclone"
+)
+
+func splitFsRemote(s string) (string, string) <span class="cov8" title="1">{
+        fsPieces := strings.Split(s, ":")
+        var fs, remote string
+        fs = fsPieces[0] + ":"
+        if len(fsPieces) &gt; 1 </span><span class="cov8" title="1">{
+                remote = fsPieces[1]
+        }</span>
+        <span class="cov8" title="1">return fs, remote</span>
+}
+
+// NewRetierCmd represents the retier command
+func NewRetierCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:     "retier",
+                Short:   "Change the tier of an object in cloud storage",
+                Args:    cobra.ExactArgs(2),
+                Example: `$ suitcasectl retier Archive suitcasectl-azure:/test`,
+                RunE: func(_ *cobra.Command, args []string) error </span><span class="cov0" title="0">{
+                        fs, remote := splitFsRemote(args[1])
+                        return rclone.APIOneShot("operations/settier", rc.Params{
+                                "fs":     fs,
+                                "remote": remote,
+                                "tier":   args[0],
+                        })
+                }</span>,
+        }
+        <span class="cov8" title="1">return cmd</span>
+}
+</pre>
+		
+		<pre class="file" id="file15" style="display: none">/*
+Package cmd is the command line utility
+*/
+package cmd
+
+import (
+        "errors"
+        "fmt"
+        "io"
+        "log/slog"
+        "os"
+        "runtime/debug"
+        "runtime/pprof"
+        "time"
+
+        "github.com/charmbracelet/log"
+
+        "github.com/charmbracelet/lipgloss"
+        "github.com/dustin/go-humanize"
+        slogmulti "github.com/samber/slog-multi"
+        "github.com/spf13/cobra"
+
+        homedir "github.com/mitchellh/go-homedir"
+        "github.com/spf13/viper"
+)
+
+var (
+        version = "dev"
+        cfgFile string
+        // Verbose uses lots more verbosity for output and logging and such
+        Verbose bool
+        trace   bool
+
+        // Profiling data
+        profile bool
+        cpufile *os.File
+        logger  *slog.Logger
+)
+
+// NewRootCmd represents the base command when called without any subcommands
+func NewRootCmd(lo io.Writer) *cobra.Command <span class="cov8" title="1">{
+        return NewRootCmdWithVersion(lo, version)
+}</span>
+
+// NewRootCmdWithVersion creates the root command with custom version info
+func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:     "cargoship",
+                Short:   "Enterprise data archiving for AWS",
+                Version: versionInfo,
+                Long: paragraph(fmt.Sprintf(`The %s 🚢 tool ships your data to AWS with intelligence and efficiency. Built for enterprise-scale archiving with cost optimization and observability.`,
+                        makeGradientText(lipgloss.NewStyle(), "cargoship"),
+                )),
+                PersistentPreRun:  globalPersistentPreRun,
+                PersistentPostRun: globalPersistentPostRun,
+                SilenceUsage:      true, // Usage too heavy to print out every time this thing fails
+                SilenceErrors:     true, // We have a wrapper using our logger to do this
+        }
+        // fmt.Fprintf(os.Stderr, "LOGTHING: %+v\n", reflect.TypeOf(lo))
+        // cmd.PersistentFlags().StringVar(&amp;cfgFile, "config", "", "config file (default is $HOME/.suitcase.yaml)")
+        cmd.PersistentFlags().BoolVarP(&amp;Verbose, "verbose", "v", false, "Enable verbose output")
+        cmd.PersistentFlags().BoolVarP(&amp;trace, "trace", "t", false, "Enable trace messages in output")
+        cmd.PersistentFlags().BoolVar(&amp;profile, "profile", false, "Enable performance profiling. This will generate profile files in a temp directory")
+        cmd.PersistentFlags().String("memory-limit", "", "Set a memory limit for the run. This will slow things down, but will less likely to OOM in certain situations. Avoid this unless you are having memory issues.")
+        cmd.SetVersionTemplate("{{ .Version }}\n")
+
+        // Create stuff
+        createCmd := NewCreateCmd()
+
+        createCmd.PersistentFlags().StringP("destination", "d", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
+        if oerr := createCmd.MarkPersistentFlagDirname("destination"); oerr != nil </span><span class="cov0" title="0">{
+                panic(oerr)</span>
+        }
+        <span class="cov8" title="1">createSuitcaseCmd := NewCreateSuitcaseCmd()
+        createCmd.AddCommand(createSuitcaseCmd)
+        cmd.AddCommand(createCmd)
+        rcloneCmd := NewRcloneCmd()
+        cmd.AddCommand(rcloneCmd)
+
+        cmd.AddCommand(NewRetierCmd())
+
+        cmd.AddCommand(
+                NewFindCmd(),
+                NewTreeCmd(),
+                NewEstimateCmd(),
+                NewLifecycleCmd(),
+                NewMetricsCmd(),
+                NewConfigCmd(),
+                NewBenchmarkCmd(),
+        )
+        cmd.AddCommand(NewWizardCmd())
+        cmd.AddCommand(NewAnalyzeCmd())
+
+        // cmd.AddCommand(NewCompletionCmd())
+        cmd.AddCommand(NewSchemaCmd())
+        cmd.AddCommand(NewMDDocsCmd())
+        cmd.AddCommand(newManCmd(), newTravelAgentCmd())
+
+        // cmd.SetContext(context.WithValue(context.Background(), inventory.LogWriterKey, lo))
+        cmd.SetOut(lo)
+
+        return cmd</span>
+}
+
+func init() <span class="cov8" title="1">{
+        cobra.OnInitialize(initConfig)
+
+        // Here you will define your flags and configuration settings.
+        // Cobra supports persistent flags, which, if defined here,
+        // will be global for your application.
+}</span>
+
+// initConfig reads in config file and ENV variables if set.
+func initConfig() <span class="cov8" title="1">{
+        if cfgFile != "" </span><span class="cov0" title="0">{
+                // Use config file from the flag.
+                viper.SetConfigFile(cfgFile)
+        }</span> else<span class="cov8" title="1"> {
+                // Find home directory.
+                home, err := homedir.Dir()
+                cobra.CheckErr(err)
+
+                // Search config in home directory with name ".cli" (without extension).
+                viper.AddConfigPath(home)
+                viper.SetConfigName(".cargoship")
+        }</span>
+
+        <span class="cov8" title="1">viper.AutomaticEnv() // read in environment variables that match
+
+        // If a config file is found, read it in.
+        if err := viper.ReadInConfig(); err == nil </span><span class="cov8" title="1">{
+                fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+        }</span>
+}
+
+/*
+type runStats struct {
+        Start   time.Time
+        End     time.Time
+        Runtime time.Duration
+}
+*/
+
+func checkErr(err error, msg string) <span class="cov8" title="1">{
+        if msg == "" </span><span class="cov8" title="1">{
+                msg = "Fatal Error"
+        }</span>
+        <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
+                slog.Error(msg, "error", err)
+                os.Exit(2)
+        }</span>
+}
+
+func newLoggerOpts() log.Options <span class="cov8" title="1">{
+        logOpts := log.Options{
+                ReportTimestamp: true,
+                TimeFormat:      time.Kitchen,
+                Prefix:          "cargoship 🚢 ",
+                Level:           log.InfoLevel,
+                ReportCaller:    trace,
+        }
+        if Verbose </span><span class="cov8" title="1">{
+                logOpts.Level = log.DebugLevel
+        }</span>
+
+        <span class="cov8" title="1">return logOpts</span>
+}
+
+func newJSONLoggerOpts() log.Options <span class="cov8" title="1">{
+        logOpts := log.Options{
+                ReportTimestamp: true,
+                Prefix:          "cargoship",
+                Level:           log.InfoLevel,
+                ReportCaller:    trace,
+                Formatter:       log.JSONFormatter,
+        }
+        if Verbose </span><span class="cov8" title="1">{
+                logOpts.Level = log.DebugLevel
+        }</span>
+
+        <span class="cov8" title="1">return logOpts</span>
+}
+
+func setupLogging(w io.Writer) <span class="cov8" title="1">{
+        if w == nil </span><span class="cov8" title="1">{
+                panic("must set writer")</span>
+        }
+
+        <span class="cov8" title="1">logger = slog.New(log.NewWithOptions(w, newLoggerOpts()))
+        slog.SetDefault(logger)</span>
+}
+
+func setupMultiLoggingWithCmd(cmd *cobra.Command) error <span class="cov8" title="1">{
+        // If we have an outDir, also write the logs to a file
+        o, err := getDestinationWithCobra(cmd)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov8" title="1">if o == "" </span><span class="cov0" title="0">{
+                return errors.New("no output directory specified")
+        }</span>
+        <span class="cov8" title="1">ptr := mustPorterWithCmd(cmd)
+
+        logger = slog.New(
+                slogmulti.Fanout(
+                        log.NewWithOptions(cmd.OutOrStdout(), newLoggerOpts()),
+                        log.NewWithOptions(ptr.LogFile, newJSONLoggerOpts()),
+                ),
+        )
+
+        // Make sure the Porter object still has the right logger
+        ptr.Logger = logger
+        slog.SetDefault(logger)
+        return nil</span>
+}
+
+func globalPersistentPreRun(cmd *cobra.Command, _ []string) <span class="cov8" title="1">{
+        // Set up single logging first
+        // setupSingleLoggingWithCmd(cmd)
+
+        // lo := cmd.OutOrStderr()
+        // fmt.Fprintf(os.Stderr, "OUT IS: %+v\n", &amp;lo)
+        setupLogging(cmd.OutOrStderr())
+        /*
+                lo, ok := cmd.Context().Value(inventory.LogWriterKey).(io.Writer)
+                if ok {
+                        setupLogging(lo)
+                } else {
+                        log.Warn().Msg("could not set up log writer")
+                }
+        */
+        memLimit, err := cmd.Flags().GetString("memory-limit")
+        checkErr(err, "Could not find memory limit")
+        if memLimit != "" </span><span class="cov0" title="0">{
+                memLimitB, merr := humanize.ParseBytes(memLimit)
+                checkErr(merr, fmt.Sprintf("could not convert %v to bytes", memLimit))
+                debug.SetMemoryLimit(uint64ToInt64(memLimitB))
+                slog.Info("overriding memory handling with limit", "mem-limit", memLimit, "mem-limit-bytes", memLimitB)
+        }</span>
+        // log.Fatal().Msgf("Profile is set to %+v", profile)
+        <span class="cov8" title="1">if profile </span><span class="cov8" title="1">{
+                slog.Info("enabling cpu profiling")
+                var err error
+                cpufile, err = os.CreateTemp("", "cpuprofile")
+                if err != nil </span><span class="cov0" title="0">{
+                        panic(err)</span>
+                }
+                <span class="cov8" title="1">err = pprof.StartCPUProfile(cpufile)
+                if err != nil </span><span class="cov0" title="0">{
+                        panic(err)</span>
+                }
+        }
+}
+
+func globalPersistentPostRun(_ *cobra.Command, _ []string) <span class="cov8" title="1">{
+        if profile </span><span class="cov8" title="1">{
+                pprof.StopCPUProfile()
+                err := cpufile.Close()
+                if err != nil </span><span class="cov0" title="0">{
+                        slog.Warn("error closing cpu profiler", "cpu-profile", cpufile.Name())
+                }</span>
+                <span class="cov8" title="1">slog.Info("cpu profile created", "cpu-profile", cpufile.Name())</span>
+        }
+
+        // Empty out the outDir so multiple runs can happen
+        // outDir = ""
+        // cliMeta = nil
+        // outDir = ""
+        // logFile = ""
+        // logF = nil
+        // hashes = nil
+        // userOverrides = nil
+}
+
+func toPTR[V any](v V) *V <span class="cov8" title="1">{
+        return &amp;v
+}</span>
+</pre>
+		
+		<pre class="file" id="file16" style="display: none">package cmd
+
+import (
+        "encoding/json"
+        "fmt"
+
+        "github.com/invopop/jsonschema"
+        "github.com/spf13/cobra"
+        "github.com/scttfrdmn/cargoship/pkg/inventory"
+)
+
+// NewSchemaCmd represents the schema command
+func NewSchemaCmd() *cobra.Command <span class="cov8" title="1">{
+        return &amp;cobra.Command{
+                Use:    "schema",
+                Short:  "Generate json schema for current inventory definition",
+                Hidden: true,
+                RunE:   schemaRunE,
+        }
+}</span>
+
+func schemaRunE(_ *cobra.Command, _ []string) error <span class="cov8" title="1">{
+        schema := jsonschema.Reflect(&amp;inventory.Inventory{})
+        bts, err := json.MarshalIndent(schema, "  ", "  ")
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create jsonschema: %w", err)
+        }</span>
+        <span class="cov8" title="1">fmt.Println(string(bts))
+
+        return nil</span>
+}
+
+func init() {<span class="cov8" title="1">
+        // Here you will define your flags and configuration settings.
+
+        // Cobra supports Persistent Flags which will work for this command
+        // and all subcommands, e.g.:
+        // schemaCmd.PersistentFlags().String("foo", "", "A help for foo")
+
+        // Cobra supports local flags which will only run when this command
+        // is called directly, e.g.:
+        // schemaCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+}</span>
+</pre>
+		
+		<pre class="file" id="file17" style="display: none">package cmd
+
+import (
+        "strings"
+
+        "github.com/charmbracelet/lipgloss"
+        "github.com/lucasb-eyer/go-colorful"
+) //nolint:revive
+
+/*
+        keyword = lipgloss.NewStyle().
+                Foreground(lipgloss.Color("#04B575")).
+                Bold(true).
+                Render
+        important = lipgloss.NewStyle().
+                        Foreground(lipgloss.Color("201")).
+                        Bold(true).
+                        Render
+*/
+
+var paragraph = lipgloss.NewStyle().
+        Width(78).
+        Padding(1, 0, 0, 2).
+        Render
+
+func makeGradientRamp(length int) []lipgloss.Color <span class="cov8" title="1">{
+        const startColor = "#F967DC"
+        const endColor = "#6B50FF"
+        var (
+                c        = make([]lipgloss.Color, length)
+                start, _ = colorful.Hex(startColor)
+                end, _   = colorful.Hex(endColor)
+        )
+        for i := 0; i &lt; length; i++ </span><span class="cov8" title="1">{
+                step := start.BlendLuv(end, float64(i)/float64(length))
+                c[i] = lipgloss.Color(step.Hex())
+        }</span>
+        <span class="cov8" title="1">return c</span>
+}
+
+func makeGradientText(baseStyle lipgloss.Style, str string) string <span class="cov8" title="1">{
+        const minSize = 3
+        if len(str) &lt; minSize </span><span class="cov8" title="1">{
+                return str
+        }</span>
+        <span class="cov8" title="1">b := strings.Builder{}
+        runes := []rune(str)
+        for i, c := range makeGradientRamp(len(str)) </span><span class="cov8" title="1">{
+                b.WriteString(baseStyle.Foreground(c).Render(string(runes[i])))
+        }</span>
+        <span class="cov8" title="1">return b.String()</span>
+}
+</pre>
+		
+		<pre class="file" id="file18" style="display: none">package cmd
+
+import (
+        "errors"
+        "os"
+
+        "github.com/spf13/cobra"
+        "github.com/scttfrdmn/cargoship/pkg/travelagent"
+        "gopkg.in/yaml.v3"
+)
+
+func newTravelAgentCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:   "travelagent CREDENTIAL_FILE",
+                Args:  cobra.ExactArgs(1),
+                Short: "Run a travel agent server. NOT FOR PRODUCTION USE",
+                RunE: func(_ *cobra.Command, args []string) error </span><span class="cov0" title="0">{
+                        credB, err := os.ReadFile(args[0])
+                        if err != nil </span><span class="cov0" title="0">{
+                                return err
+                        }</span>
+
+                        <span class="cov0" title="0">var creds travelagent.StaticCredentials
+                        if err := yaml.Unmarshal(credB, &amp;creds); err != nil </span><span class="cov0" title="0">{
+                                return err
+                        }</span>
+                        <span class="cov0" title="0">if len(creds.Transfers) == 0 </span><span class="cov0" title="0">{
+                                return errors.New("could not find any transfers")
+                        }</span>
+                        <span class="cov0" title="0">s := travelagent.NewServer(
+                                travelagent.WithAdminToken(creds.AdminToken),
+                                travelagent.WithStaticTransfers(creds.Transfers),
+                        )
+                        logger.Info("starting server", "address", s.Addr())
+                        // Get port with: s.Listener.Addr().(*net.TCPAddr).Port
+                        return s.Run()</span>
+                },
+        }
+        <span class="cov8" title="1">return cmd</span>
+}
+</pre>
+		
+		<pre class="file" id="file19" style="display: none">package cmd
+
+import (
+        "fmt"
+        "strings"
+
+        "github.com/spf13/cobra"
+        "github.com/xlab/treeprint"
+        "github.com/scttfrdmn/cargoship/pkg/inventory"
+)
+
+// NewTreeCmd creates a new 'find' command
+func NewTreeCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:     "tree /path/to/inventory.yaml",
+                Short:   "Print out a tree style listing of the files in a given inventory",
+                Aliases: []string{"t"},
+                Args:    cobra.ExactArgs(1),
+                RunE: func(cmd *cobra.Command, args []string) error </span><span class="cov8" title="1">{
+                        inv, err := inventory.NewInventoryWithFilename(args[0])
+                        if err != nil </span><span class="cov0" title="0">{
+                                return err
+                        }</span>
+                        <span class="cov8" title="1">tree := treeprint.NewWithRoot("/")
+                        nodeMap := map[string]treeprint.Tree{}
+                        for _, item := range inv.Files </span><span class="cov8" title="1">{
+                                parts := strings.Split(item.Path, "/")
+                                currentNode := tree
+
+                                for i, part := range parts </span><span class="cov8" title="1">{
+                                        if part == "" </span><span class="cov8" title="1">{
+                                                continue</span>
+                                        }
+                                        <span class="cov8" title="1">currentPath := strings.Join(parts[:i+1], "/")
+
+                                        if existingNode, exists := nodeMap[currentPath]; exists </span><span class="cov0" title="0">{
+                                                currentNode = existingNode
+                                        }</span> else<span class="cov8" title="1"> {
+                                                currentNode = currentNode.AddBranch(part)
+                                                nodeMap[currentPath] = currentNode
+                                        }</span>
+                                }
+                        }
+                        <span class="cov8" title="1">if _, err := fmt.Fprint(cmd.OutOrStdout(), tree.String()); err != nil </span><span class="cov0" title="0">{
+                                return err
+                        }</span>
+                        <span class="cov8" title="1">return nil</span>
+                },
+        }
+
+        <span class="cov8" title="1">cmd.PersistentFlags().StringArray("inventory-directory", []string{"."}, "Directory containing inventories to search. Can be specified multiple times for multiple directories.")
+        return cmd</span>
+}
+</pre>
+		
+		<pre class="file" id="file20" style="display: none">package cmd
+
+import (
+        "context"
+        "strings"
+        "time"
+
+        "github.com/drewstinnett/gout/v2"
+        "github.com/spf13/cobra"
+        porter "github.com/scttfrdmn/cargoship/pkg"
+        "github.com/scttfrdmn/cargoship/pkg/config"
+        "github.com/scttfrdmn/cargoship/pkg/travelagent"
+)
+
+// NewWizardCmd creates a new 'find' command
+func NewWizardCmd() *cobra.Command <span class="cov8" title="1">{
+        cmd := &amp;cobra.Command{
+                Use:      "wizard",
+                Short:    "Run a console wizard to do the creation",
+                Long:     `This is for users who want a simple command to do some basic stuff. For advanced usage, use 'create suitcase'`,
+                Aliases:  []string{"wiz", "easybutton"},
+                PreRunE:  wizardPreRunE,
+                PostRunE: wizardPostRunE,
+                RunE: func(cmd *cobra.Command, args []string) error </span><span class="cov8" title="1">{
+                        gout.SetWriter(cmd.OutOrStdout())
+
+                        p := mustPorterWithCmd(cmd)
+                        if err := p.RunWizard(); err != nil </span><span class="cov0" title="0">{
+                                return err
+                        }</span>
+                        <span class="cov0" title="0">if err := p.SendUpdate(travelagent.StatusUpdate{
+                                CargoshipSource:      strings.Join(args, ", "),
+                                Status:                 travelagent.StatusInProgress,
+                                StartedAt:              nowPtr(),
+                                CargoshipDestination: p.Destination,
+                                Metadata:               p.Inventory.MustJSONString(),
+                                MetadataCheckSum:       p.InventoryHash,
+                        }); err != nil </span><span class="cov0" title="0">{
+                                logger.Warn("error sending status update", "error", err)
+                        }</span>
+
+                        <span class="cov0" title="0">if err := createSuitcases(p); err != nil </span><span class="cov0" title="0">{
+                                logger.Warn("failed to complete createSuitcases", "error", err)
+                                return err
+                        }</span>
+                        <span class="cov0" title="0">return nil</span>
+                },
+        }
+
+        <span class="cov8" title="1">cmd.PersistentFlags().StringArray("inventory-directory", []string{"."}, "Directory containing inventories to search. Can be specified multiple times for multiple directories.")
+        return cmd</span>
+}
+
+func wizardPreRunE(cmd *cobra.Command, args []string) error <span class="cov0" title="0">{
+        // Get this first, it'll be important
+        globalPersistentPreRun(cmd, args)
+
+        opts := []porter.Option{
+                porter.WithLogger(logger),
+                porter.WithHashAlgorithm(hashAlgo),
+                porter.WithVersion(version),
+                porter.WithCLIMeta(
+                        porter.NewCLIMeta(
+                                porter.WithStart(toPTR(time.Now())),
+                        ),
+                ),
+        }
+
+        // Shove porter in to the cmd context so we can use it later
+        cmd.SetContext(context.WithValue(cmd.Context(), porter.PorterKey, porter.New(opts...)))
+
+        return nil
+
+        // return setupMultiLoggingWithCmd(cmd)
+}</span>
+
+func wizardPostRunE(cmd *cobra.Command, args []string) error <span class="cov8" title="1">{
+        ptr := mustPorterWithCmd(cmd)
+        metaF, err := ptr.CLIMeta.Complete(ptr.Destination)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov0" title="0">logger.Debug("created meta file", "file", metaF)
+
+        // Hash the outer items if asked
+        var hashes []config.HashSet
+        var hashFn, hashFnBin string
+        if hashes, hashFn, hashFnBin, err = setOuterHashes(ptr, metaF); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">logger.Debug("switching back to stderr logger and closing the multi log writer so we can hash it", "file", ptr.LogFile.Name())
+        setupLogging(cmd.OutOrStderr())
+        // Do we really care if this closes? maybe...
+        _ = ptr.LogFile.Close()
+
+        logger.Info("completed",
+                "runtime", ptr.CLIMeta.CompletedAt.Sub(*ptr.CLIMeta.StartedAt).String(),
+                "start", *ptr.CLIMeta.StartedAt,
+                "end", *ptr.CLIMeta.CompletedAt,
+        )
+
+        // opts := suitcase.OptsWithCmd(cmd)
+        // Copy files up if needed
+        mfiles := appendHashes([]string{
+                "inventory.yaml",
+                "suitcasectl.log",
+                "suitcasectl-invocation-meta.yaml",
+        }, hashFn, hashFnBin)
+        if ptr.Inventory.Options.TransportPlugin != nil </span><span class="cov0" title="0">{
+                ptr.ShipItems(mfiles, ptr.InventoryHash)
+        }</span>
+
+        <span class="cov0" title="0">if err := uploadMeta(ptr, mfiles); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">if serr := ptr.SendUpdate(travelagent.StatusUpdate{
+                Status:      travelagent.StatusComplete,
+                CompletedAt: nowPtr(),
+                SizeBytes:   ptr.TotalTransferred,
+        }); serr != nil </span><span class="cov0" title="0">{
+                logger.Warn("failed to send final status update", "error", serr)
+        }</span>
+
+        <span class="cov0" title="0">gout.MustPrint(runsum{
+                Destination: ptr.Destination,
+                Suitcases:   ptr.Inventory.UniqueSuitcaseNames(),
+                Directories: ptr.Inventory.Options.Directories,
+                MetaFiles:   mfiles,
+                Hashes:      hashes,
+        })
+        globalPersistentPostRun(cmd, args)
+        return nil</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
