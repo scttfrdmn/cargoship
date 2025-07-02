@@ -17,6 +17,7 @@ type ParallelUploader struct {
 	transporter *Transporter
 	config      ParallelConfig
 	metrics     *UploadMetrics
+	coordinator *PipelineCoordinator // NEW: Cross-prefix coordination
 }
 
 // ParallelConfig configures parallel upload behavior
@@ -38,6 +39,10 @@ type ParallelConfig struct {
 	
 	// PrefixOptimization enables automatic prefix optimization
 	PrefixOptimization bool
+	
+	// NEW: Cross-prefix coordination settings
+	EnableCoordination bool                 // Enable cross-prefix pipeline coordination
+	CoordinationConfig *CoordinationConfig // Coordination configuration
 }
 
 // UploadMetrics tracks performance across prefixes
@@ -50,12 +55,25 @@ type UploadMetrics struct {
 
 // PrefixMetrics tracks per-prefix performance
 type PrefixMetrics struct {
+	Prefix        string
 	UploadCount   int64
 	TotalBytes    int64
 	ErrorCount    int
 	LastUpload    time.Time
 	AvgThroughput float64 // MB/s
 	ActiveUploads int
+	
+	// Coordination-specific metrics
+	ArchiveCount     int
+	StartTime        time.Time
+	EndTime          time.Time
+	Duration         time.Duration
+	SuccessCount     int
+	TotalSize        int64
+	MaxUploadTime    time.Duration
+	MinUploadTime    time.Duration
+	AvgUploadTime    time.Duration
+	ThroughputMBps   float64
 }
 
 // PrefixBatch groups archives for parallel upload
@@ -80,7 +98,7 @@ func NewParallelUploader(transporter *Transporter, config ParallelConfig) *Paral
 		config.LoadBalancing = "least_loaded"
 	}
 
-	return &ParallelUploader{
+	uploader := &ParallelUploader{
 		transporter: transporter,
 		config:      config,
 		metrics: &UploadMetrics{
@@ -88,6 +106,24 @@ func NewParallelUploader(transporter *Transporter, config ParallelConfig) *Paral
 			StartTime:   time.Now(),
 		},
 	}
+	
+	// Initialize cross-prefix coordination if enabled
+	if config.EnableCoordination {
+		coordinationConfig := config.CoordinationConfig
+		if coordinationConfig == nil {
+			coordinationConfig = DefaultCoordinationConfig()
+		}
+		
+		uploader.coordinator = NewPipelineCoordinator(context.Background(), coordinationConfig)
+		
+		// Start the coordinator
+		if err := uploader.coordinator.Start(); err != nil {
+			slog.Warn("failed to start pipeline coordinator", "error", err)
+			uploader.coordinator = nil // Fallback to non-coordinated mode
+		}
+	}
+	
+	return uploader
 }
 
 // UploadParallel uploads archives in parallel across multiple prefixes
@@ -255,6 +291,17 @@ func (p *ParallelUploader) executeParallelUpload(ctx context.Context, batches []
 		StartTime:   time.Now(),
 	}
 	
+	// Initialize coordination if enabled
+	if p.coordinator != nil {
+		// Register all prefixes with the coordinator
+		for _, batch := range batches {
+			capacity := float64(len(batch.Archives) * p.config.MaxConcurrentUploads)
+			if err := p.coordinator.RegisterPrefix(batch.Prefix, capacity); err != nil {
+				slog.Warn("failed to register prefix with coordinator", "prefix", batch.Prefix, "error", err)
+			}
+		}
+	}
+	
 	// Create worker pool for prefix-level parallelism
 	prefixPool := pool.New().WithErrors().WithContext(ctx)
 	
@@ -271,7 +318,16 @@ func (p *ParallelUploader) executeParallelUpload(ctx context.Context, batches []
 		slog.Info("starting prefix batch", "prefix", batch.Prefix, "archives", len(batch.Archives))
 		
 		prefixPool.Go(func(ctx context.Context) error {
-			prefixResult, err := p.uploadPrefixBatch(ctx, batch)
+			var prefixResult *PrefixUploadResult
+			var err error
+			
+			// Use coordinated upload if coordinator is available
+			if p.coordinator != nil {
+				prefixResult, err = p.uploadPrefixBatchCoordinated(ctx, batch)
+			} else {
+				// Fallback to non-coordinated upload
+				prefixResult, err = p.uploadPrefixBatch(ctx, batch)
+			}
 			
 			resultMutex.Lock()
 			if prefixResult != nil {
@@ -487,6 +543,180 @@ func (p *ParallelUploader) selectOptimalPattern(totalSize int64, archiveCount in
 	default:
 		return "date" // Date-based for organization and moderate performance
 	}
+}
+
+// uploadPrefixBatchCoordinated uploads a batch of archives using cross-prefix coordination.
+func (p *ParallelUploader) uploadPrefixBatchCoordinated(ctx context.Context, batch PrefixBatch) (*PrefixUploadResult, error) {
+	prefixMetrics := &PrefixMetrics{
+		Prefix:        batch.Prefix,
+		ArchiveCount:  len(batch.Archives),
+		StartTime:     time.Now(),
+	}
+	
+	result := &PrefixUploadResult{
+		Results: make([]*UploadResult, 0, len(batch.Archives)),
+		Metrics: prefixMetrics,
+	}
+	
+	// Create archive-level worker pool with coordinated concurrency
+	archivePool := pool.New().WithErrors().WithContext(ctx).WithMaxGoroutines(p.config.MaxConcurrentUploads)
+	
+	var resultMutex sync.Mutex
+	
+	// Process each archive through the coordination system
+	for i, archive := range batch.Archives {
+		archive := archive // Capture for closure
+		archiveIndex := i
+		
+		archivePool.Go(func(ctx context.Context) error {
+			// Create scheduled upload for coordination
+			scheduledUpload := &ScheduledUpload{
+				ArchivePath:   archive.Key, // Use Key instead of Path
+				PrefixID:      batch.Prefix,
+				Priority:      3, // Default priority since Archive doesn't have Priority field
+				EstimatedSize: archive.Size,
+				ScheduledAt:   time.Now(),
+				Dependencies:  []string{}, // No dependencies for now
+				CoordinationID: fmt.Sprintf("%s-%d", batch.Prefix, archiveIndex),
+				GroupID:       batch.Prefix,
+			}
+			
+			// Schedule through coordinator
+			if err := p.coordinator.ScheduleUpload(scheduledUpload); err != nil {
+				if coordErr, ok := err.(*CoordinationError); ok && coordErr.Type == "congestion_window_full" {
+					// Apply backoff delay
+					select {
+					case <-time.After(scheduledUpload.BackoffDelay):
+						// Retry after backoff
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				} else {
+					return fmt.Errorf("coordination scheduling failed: %w", err)
+				}
+			}
+			
+			// Add prefix to archive key for coordination
+			archive.Key = batch.Prefix + archive.Key
+			
+			// Perform the actual upload 
+			startTime := time.Now()
+			uploadResult, err := p.transporter.Upload(ctx, archive)
+			uploadDuration := time.Since(startTime)
+			
+			// Update coordination metrics
+			p.updateCoordinationMetrics(batch.Prefix, uploadResult, uploadDuration, err)
+			
+			// Update results
+			resultMutex.Lock()
+			if uploadResult != nil {
+				result.Results = append(result.Results, uploadResult)
+				result.TotalUploaded += archive.Size // Use archive.Size instead of uploadResult.Size
+				
+				// Update prefix metrics
+				prefixMetrics.TotalSize += archive.Size
+				prefixMetrics.SuccessCount++
+				if uploadDuration > prefixMetrics.MaxUploadTime {
+					prefixMetrics.MaxUploadTime = uploadDuration
+				}
+				if prefixMetrics.MinUploadTime == 0 || uploadDuration < prefixMetrics.MinUploadTime {
+					prefixMetrics.MinUploadTime = uploadDuration
+				}
+			}
+			
+			if err != nil {
+				result.TotalErrors++
+				prefixMetrics.ErrorCount++
+			}
+			resultMutex.Unlock()
+			
+			return err
+		})
+	}
+	
+	// Wait for all archive uploads to complete
+	if err := archivePool.Wait(); err != nil {
+		slog.Error("coordinated prefix batch upload failed", "prefix", batch.Prefix, "error", err)
+		return result, err
+	}
+	
+	// Finalize metrics
+	prefixMetrics.EndTime = time.Now()
+	prefixMetrics.Duration = prefixMetrics.EndTime.Sub(prefixMetrics.StartTime)
+	
+	if prefixMetrics.SuccessCount > 0 {
+		prefixMetrics.AvgUploadTime = time.Duration(int64(prefixMetrics.Duration) / int64(prefixMetrics.SuccessCount))
+		prefixMetrics.ThroughputMBps = float64(prefixMetrics.TotalSize) / (1024 * 1024) / prefixMetrics.Duration.Seconds()
+	}
+	
+	slog.Info("coordinated prefix batch completed", 
+		"prefix", batch.Prefix,
+		"archives", len(batch.Archives), 
+		"success", prefixMetrics.SuccessCount,
+		"errors", prefixMetrics.ErrorCount,
+		"throughput_mbps", prefixMetrics.ThroughputMBps,
+		"duration", prefixMetrics.Duration)
+	
+	return result, nil
+}
+
+// updateCoordinationMetrics updates coordination metrics based on upload performance.
+func (p *ParallelUploader) updateCoordinationMetrics(prefixID string, uploadResult *UploadResult, duration time.Duration, err error) {
+	if p.coordinator == nil {
+		return
+	}
+	
+	// Create performance metrics for the coordinator
+	metrics := &PrefixPerformanceMetrics{
+		PrefixID:     prefixID,
+		ActiveUploads: 1, // This upload
+		LastUpdate:   time.Now(),
+	}
+	
+	if uploadResult != nil && duration > 0 {
+		// Use archive size since UploadResult doesn't have Size field
+		archiveSize := int64(1024 * 1024) // Default 1MB if we can't determine size
+		
+		// Calculate throughput in MB/s
+		throughputMBps := float64(archiveSize) / (1024 * 1024) / duration.Seconds()
+		metrics.ThroughputMBps = throughputMBps
+		
+		// Estimate latency (simplified)
+		metrics.LatencyMs = float64(duration.Milliseconds())
+		
+		// Calculate bandwidth utilization (simplified estimate)
+		// This would ideally be measured against available bandwidth
+		metrics.BandwidthUtilization = throughputMBps / 100.0 // Assume 100 MB/s baseline
+		if metrics.BandwidthUtilization > 1.0 {
+			metrics.BandwidthUtilization = 1.0
+		}
+	}
+	
+	// Set error rate
+	if err != nil {
+		metrics.ErrorRate = 1.0 // 100% error rate for this upload
+	} else {
+		metrics.ErrorRate = 0.0 // 0% error rate for this upload
+	}
+	
+	// Update the coordinator
+	p.coordinator.UpdatePrefixMetrics(prefixID, metrics)
+}
+
+// GetCoordinationMetrics returns current coordination metrics if available.
+func (p *ParallelUploader) GetCoordinationMetrics() *CoordinationMetrics {
+	if p.coordinator == nil {
+		return nil
+	}
+	return p.coordinator.GetMetrics()
+}
+
+// Close gracefully shuts down the parallel uploader and its coordinator.
+func (p *ParallelUploader) Close() error {
+	if p.coordinator != nil {
+		return p.coordinator.Stop()
+	}
+	return nil
 }
 
 // Helper function for min
