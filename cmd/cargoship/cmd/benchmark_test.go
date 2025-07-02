@@ -348,6 +348,10 @@ func TestOutputBenchmarkJSON(t *testing.T) {
 }
 
 func TestRunBenchmark(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping benchmark execution test in short mode")
+	}
+	
 	t.Run("benchmark with flag-based input", func(t *testing.T) {
 		cmd := NewBenchmarkCmd()
 		

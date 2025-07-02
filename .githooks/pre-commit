@@ -72,8 +72,9 @@ run_linting() {
 run_tests() {
     log_info "Running tests with coverage analysis..."
     
-    # Run tests and capture coverage
-    if ! go test -cover ./... > test_output.tmp 2>&1; then
+    # Run tests with timeout and short flag to skip benchmarks and long-running tests
+    # Note: Benchmarks should be run separately using 'go test -bench=.' or dedicated benchmark scripts
+    if ! go test -short -timeout=60s -cover ./... > test_output.tmp 2>&1; then
         log_error "Tests failed:"
         cat test_output.tmp
         rm -f test_output.tmp
@@ -98,7 +99,7 @@ run_tests() {
     done < test_output.tmp
     
     # Calculate overall project coverage using go tool cover
-    go test -coverprofile=coverage.out ./... > /dev/null 2>&1
+    go test -short -timeout=60s -coverprofile=coverage.out ./... > /dev/null 2>&1
     local project_coverage=0
     if [ -f coverage.out ]; then
         project_coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
