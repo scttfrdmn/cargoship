@@ -10,6 +10,9 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/aws/s3"
 )
 
+// Note: Testing pricing service integration requires interface changes
+// For now, we focus on testing the fallback pricing paths
+
 func TestNewCalculator(t *testing.T) {
 	calc := NewCalculator("us-east-1")
 	if calc == nil {
@@ -115,6 +118,101 @@ func TestCalculateTransferCost(t *testing.T) {
 			
 			if cost != tt.want {
 				t.Errorf("calculateTransferCost() = %v, want %v", cost, tt.want)
+			}
+		})
+	}
+}
+
+func TestCalculateTransferCostEdgeCases(t *testing.T) {
+	calc := NewCalculator("us-east-1")
+	ctx := context.Background()
+	
+	tests := []struct {
+		name    string
+		sizeGB  float64
+		want    float64
+	}{
+		{
+			name:   "exactly free tier boundary",
+			sizeGB: 1.0,
+			want:   0.0,
+		},
+		{
+			name:   "just over free tier",
+			sizeGB: 1.1,
+			want:   0.009000000000000008, // 0.1GB * $0.09/GB (floating point precision)
+		},
+		{
+			name:   "large transfer",
+			sizeGB: 100.0,
+			want:   8.91, // 99GB * $0.09/GB
+		},
+		{
+			name:   "zero size",
+			sizeGB: 0.0,
+			want:   0.0,
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cost := calc.calculateTransferCost(ctx, tt.sizeGB)
+			
+			if cost != tt.want {
+				t.Errorf("calculateTransferCost() = %v, want %v", cost, tt.want)
+			}
+		})
+	}
+}
+
+func TestCalculateRequestCostComprehensive(t *testing.T) {
+	calc := NewCalculator("us-east-1")
+	ctx := context.Background()
+	
+	tests := []struct {
+		name         string
+		numRequests  int
+		storageClass config.StorageClass
+		wantMin      float64
+		wantMax      float64
+	}{
+		{
+			name:         "standard 1000 requests",
+			numRequests:  1000,
+			storageClass: config.StorageClassStandard,
+			wantMin:      0.004,
+			wantMax:      0.006,
+		},
+		{
+			name:         "deep archive 500 requests",
+			numRequests:  500,
+			storageClass: config.StorageClassDeepArchive,
+			wantMin:      0.020,
+			wantMax:      0.030,
+		},
+		{
+			name:         "intelligent tiering 2000 requests",
+			numRequests:  2000,
+			storageClass: config.StorageClassIntelligentTiering,
+			wantMin:      0.008,
+			wantMax:      0.012,
+		},
+		{
+			name:         "zero requests",
+			numRequests:  0,
+			storageClass: config.StorageClassStandard,
+			wantMin:      0.0,
+			wantMax:      0.0,
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cost := calc.calculateRequestCost(ctx, tt.numRequests, tt.storageClass)
+			
+			if cost < tt.wantMin || cost > tt.wantMax {
+				t.Errorf("calculateRequestCost() = %v, want between %v and %v", 
+					cost, tt.wantMin, tt.wantMax)
 			}
 		})
 	}
@@ -226,6 +324,155 @@ func TestGenerateRecommendations(t *testing.T) {
 	
 	if !foundRecommendation {
 		t.Error("Expected storage class or lifecycle recommendation for archival data")
+	}
+}
+
+func TestGenerateRecommendationsComprehensive(t *testing.T) {
+	calc := NewCalculator("us-east-1")
+	
+	tests := []struct {
+		name          string
+		archives      []s3.Archive
+		totalSizeGB   float64
+		expectedTypes []string
+		minCount      int
+	}{
+		{
+			name: "large archive with significant savings",
+			archives: []s3.Archive{
+				{
+					Key:           "huge-archive.tar.zst",
+					Size:          50 * 1024 * 1024 * 1024, // 50GB - savings: 50 * 0.02201 = ~$1.10/month
+					AccessPattern: "archive",
+					RetentionDays: 1000,
+				},
+			},
+			totalSizeGB:   55.0,
+			expectedTypes: []string{"storage_class", "lifecycle"},
+			minCount:      2,
+		},
+		{
+			name: "small archive - no deep archive recommendation",
+			archives: []s3.Archive{
+				{
+					Key:           "small-archive.tar.zst",
+					Size:          500 * 1024 * 1024, // 500MB < 1GB threshold
+					AccessPattern: "archive",
+					RetentionDays: 2000,
+				},
+			},
+			totalSizeGB:   15.0,
+			expectedTypes: []string{"lifecycle"},
+			minCount:      1,
+		},
+		{
+			name: "unknown access patterns - intelligent tiering",
+			archives: []s3.Archive{
+				{
+					Key:           "unknown1.tar.zst",
+					Size:          1024 * 1024 * 1024,
+					AccessPattern: "unknown",
+					RetentionDays: 100,
+				},
+				{
+					Key:           "unknown2.tar.zst",
+					Size:          1024 * 1024 * 1024,
+					AccessPattern: "", // Empty pattern
+					RetentionDays: 100,
+				},
+			},
+			totalSizeGB:   15.0, // > 10GB threshold
+			expectedTypes: []string{"storage_class"},
+			minCount:      1,
+		},
+		{
+			name: "no long-term retention - no lifecycle",
+			archives: []s3.Archive{
+				{
+					Key:           "short-term.tar.zst",
+					Size:          2 * 1024 * 1024 * 1024,
+					AccessPattern: "frequent",
+					RetentionDays: 30, // < 365 days
+				},
+			},
+			totalSizeGB:   15.0,
+			expectedTypes: []string{}, // No specific recommendations
+			minCount:      0,
+		},
+		{
+			name: "small total size - no intelligent tiering",
+			archives: []s3.Archive{
+				{
+					Key:           "small-total.tar.zst",
+					Size:          1024 * 1024 * 1024,
+					AccessPattern: "unknown",
+					RetentionDays: 100,
+				},
+			},
+			totalSizeGB:   5.0, // < 10GB threshold
+			expectedTypes: []string{},
+			minCount:      0,
+		},
+		{
+			name: "mixed access patterns - partial intelligent tiering",
+			archives: []s3.Archive{
+				{
+					Key:           "known1.tar.zst",
+					Size:          1024 * 1024 * 1024,
+					AccessPattern: "frequent",
+					RetentionDays: 100,
+				},
+				{
+					Key:           "unknown1.tar.zst",
+					Size:          1024 * 1024 * 1024,
+					AccessPattern: "unknown",
+					RetentionDays: 100,
+				},
+			},
+			totalSizeGB:   15.0, // > 10GB but only 50% unknown
+			expectedTypes: []string{}, // < 50% unknown patterns
+			minCount:      0,
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			estimate := &CostEstimate{
+				TotalSizeGB: tt.totalSizeGB,
+			}
+			
+			recommendations := calc.generateRecommendations(tt.archives, estimate)
+			
+			if len(recommendations) < tt.minCount {
+				t.Errorf("Expected at least %d recommendations, got %d", tt.minCount, len(recommendations))
+			}
+			
+			// Check for expected recommendation types
+			foundTypes := make(map[string]bool)
+			for _, rec := range recommendations {
+				foundTypes[rec.Type] = true
+				
+				// Validate recommendation structure
+				if rec.Description == "" {
+					t.Error("Recommendation should have description")
+				}
+				if rec.EstimatedSavings < 0 {
+					t.Error("Estimated savings should be non-negative")
+				}
+				if rec.Confidence < 0 || rec.Confidence > 1 {
+					t.Error("Confidence should be between 0 and 1")
+				}
+				if rec.Impact == "" {
+					t.Error("Recommendation should have impact level")
+				}
+			}
+			
+			for _, expectedType := range tt.expectedTypes {
+				if !foundTypes[expectedType] {
+					t.Errorf("Expected recommendation type %s not found", expectedType)
+				}
+			}
+		})
 	}
 }
 
