@@ -110,3 +110,30 @@ func TestFileInfo_LargeFile(t *testing.T) {
 	require.Equal(t, origFileInfo.Name()+".gpg", fileInfo.Name())
 	require.Equal(t, int64(largeDataSize), fileInfo.Size())
 }
+
+// Additional tests to push coverage over 80%
+
+func TestReadEntity_FileNotFound(t *testing.T) {
+	_, err := ReadEntity("nonexistent-file.key")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no such file or directory")
+}
+
+func TestEncryptToWithCmd_ExcludeSystems(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().StringArray("public-key", []string{"../testdata/fakey-public.key"}, "")
+	cmd.Flags().Bool("exclude-systems-pubkeys", true, "")
+	
+	el, err := EncryptToWithCmd(cmd)
+	require.NoError(t, err)
+	require.Len(t, *el, 1) // Only the specified key, no system keys
+}
+
+func TestCollectGPGPubKeys_NoKeysFound(t *testing.T) {
+	// Create a temporary directory with no .gpg files
+	tempDir := t.TempDir()
+	
+	_, err := CollectGPGPubKeys(tempDir)
+	require.Error(t, err)
+	require.Equal(t, "no gpg keys found", err.Error())
+}

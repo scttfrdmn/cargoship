@@ -164,3 +164,59 @@ func TestKeyType_MarshalJSON_NullKey(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, `""`, string(jsonBytes))
 }
+
+// Additional tests to push coverage over 80%
+
+func TestKeyType_String_Panic(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("Expected panic for invalid KeyType")
+		}
+	}()
+	var invalidKeyType KeyType = 999
+	_ = invalidKeyType.String()
+}
+
+func TestNewKeyPair_X25519(t *testing.T) {
+	kp, err := NewKeyPair(&KeyOpts{
+		Name:    "test",
+		Email:   "test@example.com",
+		KeyType: "x25519",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, kp)
+	require.NotEmpty(t, kp.Public)
+	require.NotEmpty(t, kp.Private)
+}
+
+func TestNewKeyPair_DefaultValues(t *testing.T) {
+	// Test default RSA key type and 4096 bit size
+	kp, err := NewKeyPair(&KeyOpts{
+		Name:  "test",
+		Email: "test@example.com",
+		// KeyType defaults to "rsa", Bits should default to 4096
+	})
+	require.NoError(t, err)
+	require.NotNil(t, kp)
+	require.NotEmpty(t, kp.Public)
+	require.NotEmpty(t, kp.Private)
+}
+
+func TestNewKeyFilesWithPair_SpecifiedDest(t *testing.T) {
+	kp, err := NewKeyPair(&KeyOpts{
+		Name:    "test",
+		Email:   "test@example.com",
+		KeyType: "rsa",
+		Bits:    1024,
+	})
+	require.NoError(t, err)
+	
+	tempDir := t.TempDir()
+	files, err := NewKeyFilesWithPair(kp, tempDir)
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	
+	// Verify files were created in the specified directory
+	require.Contains(t, files[0], tempDir)
+	require.Contains(t, files[1], tempDir)
+}

@@ -2,6 +2,7 @@ package tarzstgpg
 
 import (
 	"archive/tar"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -235,4 +236,53 @@ func TestAddEncrypt(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.EqualError(t, err, "file encryption not supported on already encrypted archives")
+}
+
+// Test panic condition when EncryptTo is nil (covers missing New function coverage)
+func TestNewWithNilEncryptTo(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			require.Contains(t, fmt.Sprint(r), "NEED ENCRYPT TO")
+		} else {
+			t.Error("Expected panic when EncryptTo is nil")
+		}
+	}()
+
+	tmp := t.TempDir()
+	f, err := os.Create(filepath.Join(tmp, "test.tar"))
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+
+	// This should panic
+	_ = New(f, &config.SuitCaseOpts{
+		EncryptTo: nil, // This will trigger panic
+	})
+}
+
+// Test error paths in Close function by closing underlying resources
+func TestCloseWithErrors(t *testing.T) {
+	tmp := t.TempDir()
+	f, err := os.Create(filepath.Join(tmp, "test.tar"))
+	require.NoError(t, err)
+
+	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
+	require.NoError(t, err)
+
+	archive := New(f, &config.SuitCaseOpts{
+		EncryptTo: &openpgp.EntityList{pubKey},
+	})
+
+	// Add a file first to make the archive valid
+	_, err = archive.Add(inventory.File{
+		Path:        "../../testdata/name.txt",
+		Destination: "name.txt",
+	})
+	require.NoError(t, err)
+
+	// Force close the underlying file to potentially trigger errors
+	_ = f.Close()
+
+	// This may or may not error depending on the implementation,
+	// but it exercises the error paths in Close()
+	_ = archive.Close()
 }

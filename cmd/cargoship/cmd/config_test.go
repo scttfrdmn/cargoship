@@ -547,3 +547,244 @@ invalid_yaml: [unclosed bracket
 	assert.Contains(t, output, "⚠️ Configuration validation failed")
 	assert.Contains(t, output, "Please fix the errors and try again")
 }
+
+// Additional tests for runConfig function coverage improvement
+
+func TestRunConfigWithGenerate(t *testing.T) {
+	// Capture stdout
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	
+	cmd := NewConfigCmd()
+	// Set flag through command
+	err := cmd.Flags().Set("generate", "true")
+	require.NoError(t, err)
+	
+	err = cmd.RunE(cmd, []string{})
+	
+	// Restore stdout
+	_ = w.Close()
+	os.Stdout = originalStdout
+	
+	assert.NoError(t, err)
+	
+	// Verify generate output
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	assert.Contains(t, output, "# CargoShip Configuration Example")
+}
+
+func TestRunConfigWithValidate(t *testing.T) {
+	// Capture stdout
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	
+	cmd := NewConfigCmd()
+	// Set flag through command
+	err := cmd.Flags().Set("validate", "true")
+	require.NoError(t, err)
+	
+	err = cmd.RunE(cmd, []string{})
+	
+	// Restore stdout
+	_ = w.Close()
+	os.Stdout = originalStdout
+	
+	assert.NoError(t, err)
+	
+	// Verify validation output
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	assert.Contains(t, output, "✅ Configuration is valid!")
+}
+
+func TestRunConfigWithShow(t *testing.T) {
+	// Capture stdout
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	
+	cmd := NewConfigCmd()
+	// Set flags through command
+	err := cmd.Flags().Set("show", "true")
+	require.NoError(t, err)
+	err = cmd.Flags().Set("format", "yaml")
+	require.NoError(t, err)
+	
+	err = cmd.RunE(cmd, []string{})
+	
+	// Restore stdout
+	_ = w.Close()
+	os.Stdout = originalStdout
+	
+	assert.NoError(t, err)
+	
+	// Verify show output
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	assert.Contains(t, output, "aws:")
+}
+
+func TestRunConfigWithEdit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping editor integration test in short mode")
+	}
+	
+	// Save original environment
+	originalEditor := os.Getenv("EDITOR")
+	defer func() { 
+		_ = os.Setenv("EDITOR", originalEditor)
+	}()
+	
+	// Set editor
+	_ = os.Setenv("EDITOR", "true")
+	
+	// Create temp config file with initial content
+	tempDir := t.TempDir()
+	testConfig := filepath.Join(tempDir, "edit-test.yaml")
+	initialConfig := `aws:
+  region: us-west-2
+storage:
+  default_bucket: test
+`
+	err := os.WriteFile(testConfig, []byte(initialConfig), 0644)
+	require.NoError(t, err)
+	
+	// Capture stdout
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	
+	cmd := NewConfigCmd()
+	// Set flags through command
+	err = cmd.Flags().Set("edit", "true")
+	require.NoError(t, err)
+	err = cmd.Flags().Set("file", testConfig)
+	require.NoError(t, err)
+	
+	err = cmd.RunE(cmd, []string{})
+	
+	// Restore stdout
+	_ = w.Close()
+	os.Stdout = originalStdout
+	
+	assert.NoError(t, err)
+	
+	// Verify edit output
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	assert.Contains(t, output, "Opening")
+}
+
+func TestRunConfigLoadConfigError(t *testing.T) {
+	cmd := NewConfigCmd()
+	// Set flags through command
+	err := cmd.Flags().Set("validate", "true")
+	require.NoError(t, err)
+	err = cmd.Flags().Set("file", "/nonexistent/path/config.yaml")
+	require.NoError(t, err)
+	
+	err = cmd.RunE(cmd, []string{})
+	
+	// Should return error when config loading fails
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to load config")
+}
+
+func TestRunConfigShowWithInvalidFile(t *testing.T) {
+	cmd := NewConfigCmd()
+	// Set flags through command
+	err := cmd.Flags().Set("show", "true")
+	require.NoError(t, err)
+	err = cmd.Flags().Set("file", "/nonexistent/directory/config.yaml")
+	require.NoError(t, err)
+	
+	err = cmd.RunE(cmd, []string{})
+	
+	// Should return error when config loading fails for show
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to load config")
+}
+
+func TestRunConfigWithValidFileLoad(t *testing.T) {
+	// Create a valid config file
+	tempDir := t.TempDir()
+	testConfig := filepath.Join(tempDir, "valid-config.yaml")
+	validConfig := `aws:
+  region: us-east-1
+  profile: default
+storage:
+  default_bucket: test-bucket
+`
+	err := os.WriteFile(testConfig, []byte(validConfig), 0644)
+	require.NoError(t, err)
+	
+	// Capture stdout
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	
+	cmd := NewConfigCmd()
+	// Set flags through command
+	err = cmd.Flags().Set("show", "true")
+	require.NoError(t, err)
+	err = cmd.Flags().Set("file", testConfig)
+	require.NoError(t, err)
+	err = cmd.Flags().Set("format", "yaml")
+	require.NoError(t, err)
+	
+	err = cmd.RunE(cmd, []string{})
+	
+	// Restore stdout
+	_ = w.Close()
+	os.Stdout = originalStdout
+	
+	assert.NoError(t, err)
+	
+	// Verify output contains configuration (even if merged with defaults)
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	assert.Contains(t, output, "aws:")
+	// The configuration system merges with defaults, so just verify structure
+	assert.Contains(t, output, "region:")
+	assert.Contains(t, output, "storage:")
+}
+
+func TestRunConfigFlagPrecedence(t *testing.T) {
+	// Capture stdout
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	
+	cmd := NewConfigCmd()
+	// Set multiple flags - generate should take precedence
+	err := cmd.Flags().Set("generate", "true")
+	require.NoError(t, err)
+	err = cmd.Flags().Set("show", "true") // This should be ignored
+	require.NoError(t, err)
+	err = cmd.Flags().Set("validate", "true") // This should be ignored
+	require.NoError(t, err)
+	
+	err = cmd.RunE(cmd, []string{})
+	
+	// Restore stdout
+	_ = w.Close()
+	os.Stdout = originalStdout
+	
+	assert.NoError(t, err)
+	
+	// Should only run generate, not other actions
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+	assert.Contains(t, output, "# CargoShip Configuration Example")
+	// Should not contain validation output
+	assert.NotContains(t, output, "✅ Configuration is valid!")
+}
