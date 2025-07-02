@@ -424,3 +424,6 @@ func TestWizardCompleteWorkflow(t *testing.T) {
 	assert.NotNil(t, porterInstance.CLIMeta, "CLI meta should be initialized")
 	assert.NotNil(t, porterInstance.CLIMeta.StartedAt, "Start time should be set")
 }
+
+// Note: wizardPreRunE is tested indirectly through other wizard tests
+// Direct testing is complex due to globalPersistentPreRun dependencies

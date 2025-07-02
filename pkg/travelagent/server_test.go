@@ -3,6 +3,7 @@ package travelagent
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"path"
 	"testing"
 	"time"
@@ -142,4 +143,20 @@ func TestDB(t *testing.T) {
 		&suitcaseTransferState{Status: StatusInProgress},
 		gotS,
 	)
+}
+
+// Test 0% coverage function
+func TestWithListener(t *testing.T) {
+	// Create a custom listener
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = listener.Close() }()
+	
+	// Test WithListener option
+	server := NewServer(WithListener(listener))
+	require.NotNil(t, server)
+	
+	// Verify the listener was set correctly
+	require.Equal(t, listener, server.listener)
+	require.Equal(t, listener.Addr(), server.Addr())
 }

@@ -166,3 +166,73 @@ func TestTarGZGPGFile(t *testing.T) {
 		}
 	}
 }
+
+// Test 0% coverage functions
+func TestConfig(t *testing.T) {
+	tmp := t.TempDir()
+	f, err := os.Create(filepath.Join(tmp, "test.tar.zst.gpg"))
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+
+	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
+	require.NoError(t, err)
+
+	opts := &config.SuitCaseOpts{
+		Format:    "tar.zst.gpg",
+		EncryptTo: &openpgp.EntityList{pubKey},
+	}
+
+	archive := New(f, opts)
+	defer archive.Close() // nolint: errcheck
+
+	// Test Config method
+	config := archive.Config()
+	require.NotNil(t, config)
+	require.Equal(t, opts, config)
+	require.Equal(t, "tar.zst.gpg", config.Format)
+}
+
+func TestGetHashes(t *testing.T) {
+	tmp := t.TempDir()
+	f, err := os.Create(filepath.Join(tmp, "test.tar.zst.gpg"))
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+
+	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
+	require.NoError(t, err)
+
+	archive := New(f, &config.SuitCaseOpts{
+		Format:    "tar.zst.gpg",
+		EncryptTo: &openpgp.EntityList{pubKey},
+	})
+	defer archive.Close() // nolint: errcheck
+
+	// Test GetHashes method (should return empty slice initially)
+	hashes := archive.GetHashes()
+	// The slice can be nil or empty initially
+	require.True(t, len(hashes) == 0, "Hashes should be empty initially")
+}
+
+func TestAddEncrypt(t *testing.T) {
+	tmp := t.TempDir()
+	f, err := os.Create(filepath.Join(tmp, "test.tar.zst.gpg"))
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+
+	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
+	require.NoError(t, err)
+
+	archive := New(f, &config.SuitCaseOpts{
+		Format:    "tar.zst.gpg",
+		EncryptTo: &openpgp.EntityList{pubKey},
+	})
+	defer archive.Close() // nolint: errcheck
+
+	// Test AddEncrypt method (should return error for already encrypted archives)
+	err = archive.AddEncrypt(inventory.File{
+		Path:        "../../testdata/name.txt",
+		Destination: "name.txt",
+	})
+	require.Error(t, err)
+	require.EqualError(t, err, "file encryption not supported on already encrypted archives")
+}

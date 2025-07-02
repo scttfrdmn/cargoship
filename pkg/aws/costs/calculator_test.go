@@ -21,6 +21,22 @@ func TestNewCalculator(t *testing.T) {
 	}
 }
 
+func TestNewCalculatorWithPricing(t *testing.T) {
+	// Test with nil pricing service
+	calc := NewCalculatorWithPricing("us-west-2", nil)
+	if calc == nil {
+		t.Fatal("NewCalculatorWithPricing returned nil")
+	}
+	
+	if calc.region != "us-west-2" {
+		t.Errorf("Expected region 'us-west-2', got %s", calc.region)
+	}
+	
+	if calc.pricingService != nil {
+		t.Error("Expected pricingService to be nil")
+	}
+}
+
 func TestCalculateStorageCost(t *testing.T) {
 	calc := NewCalculator("us-east-1")
 	ctx := context.Background()
