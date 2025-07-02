@@ -129,8 +129,19 @@ func TestGenerateTestData(t *testing.T) {
 				switch tc.dataType {
 				case "random":
 					if tc.size > 0 {
-						// Random data should vary (this is probabilistic, but very likely)
-						assert.NotEqual(t, data[0], data[len(data)-1])
+						// Random data should have some variation (check multiple bytes)
+						// This is more robust than comparing just first and last byte
+						allSame := true
+						if tc.size > 1 {
+							firstByte := data[0]
+							for i := 1; i < len(data) && i < 10; i++ { // Check first 10 bytes
+								if data[i] != firstByte {
+									allSame = false
+									break
+								}
+							}
+							assert.False(t, allSame, "Random data should have variation in first 10 bytes")
+						}
 					}
 				case "text":
 					if tc.size > 0 {
