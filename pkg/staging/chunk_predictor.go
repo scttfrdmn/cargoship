@@ -477,7 +477,7 @@ func (cpd *ContentPatternDetector) DetectPatterns(data []byte, offset int64) []C
 	
 	// Create cache key
 	hasher := md5.New()
-	hasher.Write(data[:min(len(data), 1024)]) // Hash first 1KB for cache key
+	hasher.Write(data[:minInt(len(data), 1024)]) // Hash first 1KB for cache key
 	cacheKey := fmt.Sprintf("%x", hasher.Sum(nil))
 	
 	// Check cache
@@ -669,7 +669,7 @@ func (ctc *ContentTypeClassifier) ClassifyContent(data []byte) string {
 		}
 	}
 	
-	printableRatio := float64(printableCount) / float64(min(len(data), 1024))
+	printableRatio := float64(printableCount) / float64(minInt(len(data), 1024))
 	if printableRatio > 0.8 {
 		return "text"
 	}
@@ -678,7 +678,7 @@ func (ctc *ContentTypeClassifier) ClassifyContent(data []byte) string {
 }
 
 // Utility function
-func min(a, b int) int {
+func minInt(a, b int) int {
 	if a < b {
 		return a
 	}
