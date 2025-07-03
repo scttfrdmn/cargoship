@@ -111,7 +111,7 @@ func NewNetworkAdaptationEngine(ctx context.Context, config *AdaptationConfig) *
 	adaptationCtx, cancel := context.WithCancel(ctx)
 	
 	engine := &NetworkAdaptationEngine{
-		conditionMonitor:   NewNetworkConditionMonitor(nil), // Use default staging config
+		conditionMonitor:   NewNetworkConditionMonitor(DefaultStagingConfig()), // Use default staging config
 		adaptationHistory:  NewAdaptationHistory(),
 		config:             config,
 		currentAdaptation:  NewDefaultAdaptationState(),
@@ -815,6 +815,10 @@ func (nae *NetworkAdaptationEngine) GetCurrentAdaptation() *AdaptationState {
 	nae.mu.RLock()
 	defer nae.mu.RUnlock()
 	
+	if !nae.active {
+		return nil
+	}
+	
 	// Return a copy to prevent race conditions
 	state := *nae.currentAdaptation
 	return &state
@@ -891,7 +895,7 @@ func (ah *AdaptationHistory) RecordAdaptation(oldState, newState *AdaptationStat
 	}
 }
 
-// GetRecentAdaptations returns recent adaptation history.
+// GetRecentAdaptations returns recent adaptation history in reverse chronological order (most recent first).
 func (ah *AdaptationHistory) GetRecentAdaptations(count int) []*AdaptationRecord {
 	ah.mu.RLock()
 	defer ah.mu.RUnlock()
@@ -900,9 +904,12 @@ func (ah *AdaptationHistory) GetRecentAdaptations(count int) []*AdaptationRecord
 		count = len(ah.adaptations)
 	}
 	
-	start := len(ah.adaptations) - count
 	recent := make([]*AdaptationRecord, count)
-	copy(recent, ah.adaptations[start:])
+	
+	// Copy in reverse order (most recent first)
+	for i := 0; i < count; i++ {
+		recent[i] = ah.adaptations[len(ah.adaptations)-1-i]
+	}
 	
 	return recent
 }

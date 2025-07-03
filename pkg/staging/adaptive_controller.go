@@ -245,12 +245,12 @@ func (atc *AdaptiveTransferController) validateParameters(params *TransferParame
 	
 	// Adjust chunk size based on remaining transfer size
 	remainingBytes := session.TotalBytes - session.TransferredBytes
-	maxReasonableChunks := 100 // Don't create too many small chunks
+	maxReasonableChunks := 10 // Don't create too many small chunks
 	
 	if remainingBytes > 0 {
-		maxChunkSize := int(remainingBytes / (1024 * 1024 * int64(maxReasonableChunks)))
-		if maxChunkSize > 0 && validated.ChunkSizeMB > maxChunkSize {
-			validated.ChunkSizeMB = maxChunkSize
+		maxChunkSizeMB := int(remainingBytes / (1024 * 1024 * int64(maxReasonableChunks)))
+		if maxChunkSizeMB > 0 && validated.ChunkSizeMB > maxChunkSizeMB {
+			validated.ChunkSizeMB = maxChunkSizeMB
 		}
 	}
 	
@@ -718,7 +718,9 @@ func (ph *ParameterHistory) RecordAdaptation(sessionID string, oldParams, newPar
 	
 	// Limit history size
 	if len(ph.adaptations) > ph.maxHistory {
-		ph.adaptations = ph.adaptations[1:]
+		// Remove oldest entries to get back to max size
+		excess := len(ph.adaptations) - ph.maxHistory
+		ph.adaptations = ph.adaptations[excess:]
 	}
 }
 
