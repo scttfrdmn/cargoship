@@ -391,7 +391,7 @@ func TestTransferSchedulerConcurrency(t *testing.T) {
 	
 	var wg sync.WaitGroup
 	
-	// Register prefixes concurrently
+	// First, register prefixes concurrently and wait for completion
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func(id int) {
@@ -400,7 +400,9 @@ func TestTransferSchedulerConcurrency(t *testing.T) {
 			scheduler.RegisterPrefix(prefixID, 100.0)
 		}(i)
 	}
+	wg.Wait() // Wait for all prefixes to be registered
 	
+	// Now update metrics and select prefixes concurrently
 	// Update metrics concurrently
 	for i := 0; i < 50; i++ {
 		wg.Add(1)
@@ -416,7 +418,7 @@ func TestTransferSchedulerConcurrency(t *testing.T) {
 		}(i)
 	}
 	
-	// Select prefixes concurrently
+	// Select prefixes concurrently (now that prefixes are registered)
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
 		go func(id int) {

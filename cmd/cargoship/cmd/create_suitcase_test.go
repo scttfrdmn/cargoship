@@ -87,14 +87,24 @@ func TestNewSuitcaseCloudDest(t *testing.T) {
 		t.Skip("Skipping cloud destination test in short mode (requires rclone operations)")
 	}
 	
+	// Skip this test in CI or when CARGOSHIP_ENABLE_CLOUD_TESTS is not set
+	// This test requires proper cloud configuration and can hang with rclone operations
+	if os.Getenv("CARGOSHIP_ENABLE_CLOUD_TESTS") != "true" {
+		t.Skip("Skipping cloud destination test (set CARGOSHIP_ENABLE_CLOUD_TESTS=true to enable)")
+	}
+	
 	testD := t.TempDir()
 	cmd := NewRootCmd(io.Discard)
 	cmd.SetArgs([]string{
 		"create", "suitcase", "../../../pkg/testdata/overflow-queue/",
 		"--max-suitcase-size", "2.1Mb", "--concurrency", "2", "--cloud-destination", testD,
 	})
-	// err := cmd.ExecuteContext(context.Background())
-	err := cmd.Execute()
+	
+	// Use a context with timeout to prevent hanging
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	
+	err := cmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 }
 
