@@ -597,10 +597,11 @@ func TestGlobalCongestionController_FindLeastUtilizedPrefix(t *testing.T) {
 	gcc.prefixAllocation["prefix-2"].Utilization = 0.4
 	
 	// Test that the function exists and can be called
-	prefixID := gcc.findLeastUtilizedPrefix()
+	prefix := gcc.findLeastUtilizedPrefix()
 	
 	// Should return the prefix with lower utilization
-	assert.Equal(t, "prefix-2", prefixID)
+	assert.NotNil(t, prefix)
+	assert.Equal(t, "prefix-2", prefix.PrefixID)
 }
 
 func TestGlobalCongestionController_CalculateAverageUtilization(t *testing.T) {
@@ -618,7 +619,7 @@ func TestGlobalCongestionController_CalculateAverageUtilization(t *testing.T) {
 	avgUtilization := gcc.calculateAverageUtilization()
 	
 	// Should return the average (0.8 + 0.4) / 2 = 0.6
-	assert.Equal(t, 0.6, avgUtilization)
+	assert.InDelta(t, 0.6, avgUtilization, 0.0001)
 }
 
 func TestGlobalCongestionController_CalculateSystemStability(t *testing.T) {

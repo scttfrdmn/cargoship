@@ -882,22 +882,20 @@ func TestService_fetchRequestPricing_APIError(t *testing.T) {
 func TestService_ConcurrentCacheAccess(t *testing.T) {
 	service := NewService(&MockPricingClient{})
 	
-	// Test concurrent cache access
+	// Test concurrent cache access using only public methods
 	done := make(chan bool, 10)
 	
 	for i := 0; i < 10; i++ {
 		go func(id int) {
 			region := fmt.Sprintf("us-east-%d", id%2+1)
-			service.cache[region] = &PriceData{
-				Region:    region,
-				UpdatedAt: time.Now(),
-			}
 			
+			// Use public methods only - GetPricing will populate cache
 			_, err := service.GetPricing(context.Background(), region)
 			if err != nil {
 				t.Errorf("Concurrent GetPricing() failed: %v", err)
 			}
 			
+			// Invalidate using public method
 			service.InvalidateCache(region)
 			done <- true
 		}(i)
