@@ -424,3 +424,105 @@ func TestUtilizationHistory_Basic(t *testing.T) {
 		t.Error("Expected positive max history")
 	}
 }
+
+// Test BandwidthOptimizer isOptimizationNeeded function
+func TestBandwidthOptimizer_isOptimizationNeeded(t *testing.T) {
+	config := DefaultAdaptationConfig()
+	optimizer := NewBandwidthOptimizer(config)
+	
+	tests := []struct {
+		name           string
+		utilization    *BandwidthUtilization
+		expectedNeed   bool
+		expectedReason string
+		expectedPri    OptimizationPriority
+	}{
+		{
+			name: "severe congestion",
+			utilization: &BandwidthUtilization{
+				CongestionLevel: 0.9,
+			},
+			expectedNeed:   true,
+			expectedReason: "congestion",
+			expectedPri:    PriorityCritical,
+		},
+		{
+			name: "network health poor",
+			utilization: &BandwidthUtilization{
+				NetworkHealth: NetworkHealthPoor,
+			},
+			expectedNeed:   true,
+			expectedReason: "network_degradation",
+			expectedPri:    PriorityHigh,
+		},
+		{
+			name: "severe underutilization",
+			utilization: &BandwidthUtilization{
+				UtilizationRatio:      0.2,
+				AvailableBandwidthMBps: 30,
+			},
+			expectedNeed:   true,
+			expectedReason: "underutilization",
+			expectedPri:    PriorityMedium,
+		},
+		{
+			name: "poor efficiency",
+			utilization: &BandwidthUtilization{
+				EfficiencyScore: 0.4,
+			},
+			expectedNeed:   true,
+			expectedReason: "poor_efficiency",
+			expectedPri:    PriorityMedium,
+		},
+		{
+			name: "moderate congestion",
+			utilization: &BandwidthUtilization{
+				CongestionLevel: 0.6,
+				EfficiencyScore: 0.6, // Set high enough to avoid poor_efficiency
+			},
+			expectedNeed:   true,
+			expectedReason: "congestion",
+			expectedPri:    PriorityMedium,
+		},
+		{
+			name: "moderate underutilization",
+			utilization: &BandwidthUtilization{
+				UtilizationRatio:      0.5,
+				AvailableBandwidthMBps: 15,
+				EfficiencyScore:       0.6, // Set high enough to avoid poor_efficiency
+			},
+			expectedNeed:   true,
+			expectedReason: "underutilization",
+			expectedPri:    PriorityLow,
+		},
+		{
+			name: "no optimization needed",
+			utilization: &BandwidthUtilization{
+				CongestionLevel:        0.4,
+				NetworkHealth:          NetworkHealthGood,
+				UtilizationRatio:       0.8,
+				AvailableBandwidthMBps: 50,
+				EfficiencyScore:        0.9,
+			},
+			expectedNeed:   false,
+			expectedReason: "",
+			expectedPri:    PriorityLow,
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			need, reason, priority := optimizer.isOptimizationNeeded(tt.utilization)
+			
+			if need != tt.expectedNeed {
+				t.Errorf("Expected need %v, got %v", tt.expectedNeed, need)
+			}
+			if reason != tt.expectedReason {
+				t.Errorf("Expected reason %s, got %s", tt.expectedReason, reason)
+			}
+			if priority != tt.expectedPri {
+				t.Errorf("Expected priority %v, got %v", tt.expectedPri, priority)
+			}
+		})
+	}
+}

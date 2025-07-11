@@ -220,3 +220,66 @@ func TestNewKeyFilesWithPair_SpecifiedDest(t *testing.T) {
 	require.Contains(t, files[0], tempDir)
 	require.Contains(t, files[1], tempDir)
 }
+
+// Test NewKeyPair with invalid key type (crypto library handles it gracefully)
+func TestNewKeyPair_InvalidKeyType(t *testing.T) {
+	// The crypto library doesn't error on invalid key types, it uses defaults
+	kp, err := NewKeyPair(&KeyOpts{
+		Name:    "test",
+		Email:   "test@example.com",
+		KeyType: "invalid",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, kp)
+	require.NotEmpty(t, kp.Public)
+	require.NotEmpty(t, kp.Private)
+}
+
+// Test NewKeyPair with edge case bit sizes
+func TestNewKeyPair_EdgeCaseBits(t *testing.T) {
+	// Test with minimum RSA key size
+	kp, err := NewKeyPair(&KeyOpts{
+		Name:    "test",
+		Email:   "test@example.com",
+		KeyType: "rsa",
+		Bits:    1024,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, kp)
+	
+	// Test with larger key size
+	kp, err = NewKeyPair(&KeyOpts{
+		Name:    "test",
+		Email:   "test@example.com",
+		KeyType: "rsa",
+		Bits:    2048,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, kp)
+}
+
+// Test NewKeyFilesWithPair error handling
+func TestNewKeyFilesWithPair_ErrorHandling(t *testing.T) {
+	kp, err := NewKeyPair(&KeyOpts{
+		Name:    "test",
+		Email:   "test@example.com",
+		KeyType: "rsa",
+		Bits:    1024,
+	})
+	require.NoError(t, err)
+	
+	// Test with invalid destination path (non-existent directory)
+	_, err = NewKeyFilesWithPair(kp, "/nonexistent/path")
+	require.Error(t, err)
+}
+
+// Test MarshalJSON error path (if any)
+func TestKeyType_MarshalJSON_AllTypes(t *testing.T) {
+	// Test all key types to ensure comprehensive coverage
+	types := []KeyType{RSAKeyType, X25519Type, NullKeyType}
+	
+	for _, keyType := range types {
+		_, err := keyType.MarshalJSON()
+		require.NoError(t, err)
+	}
+}

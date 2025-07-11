@@ -137,3 +137,103 @@ func TestCollectGPGPubKeys_NoKeysFound(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, "no gpg keys found", err.Error())
 }
+
+// Test CollectGPGPubKeys with invalid GPG files
+func TestCollectGPGPubKeys_InvalidGPGFiles(t *testing.T) {
+	tempDir := t.TempDir()
+	
+	// Create a file with .gpg extension but invalid content
+	invalidGPGFile := tempDir + "/invalid.gpg"
+	err := os.WriteFile(invalidGPGFile, []byte("invalid gpg content"), 0644)
+	require.NoError(t, err)
+	
+	// Should return error as no valid keys found
+	_, err = CollectGPGPubKeys(tempDir)
+	require.Error(t, err)
+	require.Equal(t, "no gpg keys found", err.Error())
+}
+
+// Test CollectGPGPubKeys with valid GPG files
+func TestCollectGPGPubKeys_ValidKeys(t *testing.T) {
+	tempDir := t.TempDir()
+	
+	// Copy the test GPG file to temp directory
+	testKey := "../testdata/fakey-public.key"
+	testKeyContent, err := os.ReadFile(testKey)
+	require.NoError(t, err)
+	
+	gpgFile := tempDir + "/test.gpg"
+	err = os.WriteFile(gpgFile, testKeyContent, 0644)
+	require.NoError(t, err)
+	
+	// Should find the valid key
+	els, err := CollectGPGPubKeys(tempDir)
+	require.NoError(t, err)
+	require.NotNil(t, els)
+	require.Len(t, *els, 1)
+}
+
+// Test EncryptToWithCmd with no public keys specified
+func TestEncryptToWithCmd_NoKeys(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().StringArray("public-key", []string{}, "")
+	cmd.Flags().Bool("exclude-systems-pubkeys", true, "")
+	
+	// Should not fail when no keys are specified
+	el, err := EncryptToWithCmd(cmd)
+	require.NoError(t, err)
+	require.NotNil(t, el)
+	require.Len(t, *el, 0)
+}
+
+// Test EncryptToWithCmd with invalid public key file
+func TestEncryptToWithCmd_InvalidKeyFile(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().StringArray("public-key", []string{"nonexistent.key"}, "")
+	cmd.Flags().Bool("exclude-systems-pubkeys", true, "")
+	
+	_, err := EncryptToWithCmd(cmd)
+	require.Error(t, err)
+}
+
+// Test Encrypt function error paths
+func TestEncrypt_ErrorPaths(t *testing.T) {
+	// Test with empty entity list
+	d := []byte("test data")
+	emptyEntityList := &openpgp.EntityList{}
+	
+	_, err := Encrypt(d, emptyEntityList, false)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "bad Cipher")
+	
+	// Test armored version with empty entity list
+	_, err = Encrypt(d, emptyEntityList, true)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "bad Cipher")
+}
+
+// Test ReadEntity with invalid file content
+func TestReadEntity_InvalidContent(t *testing.T) {
+	// Create a temporary file with invalid GPG content
+	tempFile, err := os.CreateTemp("", "invalid.key")
+	require.NoError(t, err)
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
+	
+	// Write invalid content
+	_, err = tempFile.WriteString("invalid gpg key content")
+	require.NoError(t, err)
+	tempFile.Close()
+	
+	_, err = ReadEntity(tempFile.Name())
+	require.Error(t, err)
+}
+
+// Test EncryptToWithCmd with missing flags
+func TestEncryptToWithCmd_MissingFlags(t *testing.T) {
+	cmd := &cobra.Command{}
+	// Don't set any flags to test error paths
+	
+	_, err := EncryptToWithCmd(cmd)
+	require.Error(t, err) // Should fail due to missing flags
+}
