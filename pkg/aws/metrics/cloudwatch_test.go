@@ -500,6 +500,76 @@ func TestCloudWatchPublisher_Stop(t *testing.T) {
 	}
 }
 
+func TestCloudWatchPublisher_StartFlushTimer(t *testing.T) {
+	mockClient := &MockCloudWatchClient{}
+	config := MetricConfig{
+		FlushInterval: 50 * time.Millisecond, // Very short interval for testing
+		Enabled:       true,
+	}
+	publisher := NewCloudWatchPublisher(mockClient, config)
+	
+	// Add some metrics to buffer
+	metrics := &OperationalMetrics{ActiveUploads: 1}
+	ctx := context.Background()
+	err := publisher.PublishOperationalMetrics(ctx, metrics)
+	if err != nil {
+		t.Errorf("PublishOperationalMetrics() error = %v", err)
+	}
+	
+	// Wait for the timer to trigger at least once
+	time.Sleep(100 * time.Millisecond)
+	
+	// Verify timer triggered and flushed metrics
+	if len(mockClient.putMetricDataCalls) == 0 {
+		t.Error("Expected timer to trigger and flush metrics")
+	}
+	
+	// Stop the publisher
+	err = publisher.Stop(ctx)
+	if err != nil {
+		t.Errorf("Stop() error = %v", err)
+	}
+}
+
+func TestCloudWatchPublisher_StartFlushTimer_Error(t *testing.T) {
+	mockClient := &MockCloudWatchClient{
+		returnError: fmt.Errorf("CloudWatch API error"),
+	}
+	config := MetricConfig{
+		FlushInterval: 50 * time.Millisecond,
+		Enabled:       true,
+	}
+	publisher := NewCloudWatchPublisher(mockClient, config)
+	
+	// Add some metrics to buffer
+	metrics := &OperationalMetrics{ActiveUploads: 1}
+	ctx := context.Background()
+	err := publisher.PublishOperationalMetrics(ctx, metrics)
+	if err != nil {
+		t.Errorf("PublishOperationalMetrics() error = %v", err)
+	}
+	
+	// Wait for the timer to trigger and handle the error
+	time.Sleep(100 * time.Millisecond)
+	
+	// Verify timer attempted to flush (error should be logged but not returned)
+	if len(mockClient.putMetricDataCalls) == 0 {
+		t.Error("Expected timer to attempt flush even with error")
+	}
+	
+	// Add more metrics after the timer flush to ensure buffer has content for final flush
+	err = publisher.PublishOperationalMetrics(ctx, &OperationalMetrics{ActiveUploads: 2})
+	if err != nil {
+		t.Errorf("PublishOperationalMetrics() error = %v", err)
+	}
+	
+	// Stop the publisher - final flush will fail with same error
+	err = publisher.Stop(ctx)
+	if err == nil {
+		t.Error("Expected Stop() to return error due to final flush failure")
+	}
+}
+
 func TestMetricStructFields(t *testing.T) {
 	// Test UploadMetrics
 	upload := UploadMetrics{

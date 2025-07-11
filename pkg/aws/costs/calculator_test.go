@@ -476,6 +476,159 @@ func TestGenerateRecommendationsComprehensive(t *testing.T) {
 	}
 }
 
+// Test edge cases for cost calculation functions to improve coverage
+
+func TestCalculateStorageCostEdgeCases(t *testing.T) {
+	calc := NewCalculator("us-east-1")
+	ctx := context.Background()
+	
+	tests := []struct {
+		name         string
+		sizeGB       float64
+		storageClass config.StorageClass
+		want         float64
+	}{
+		{
+			name:         "zero size",
+			sizeGB:       0.0,
+			storageClass: config.StorageClassStandard,
+			want:         0.0,
+		},
+		{
+			name:         "all storage classes",
+			sizeGB:       1.0,
+			storageClass: config.StorageClassStandardIA,
+			want:         0.0125,
+		},
+		{
+			name:         "one zone IA",
+			sizeGB:       1.0,
+			storageClass: config.StorageClassOneZoneIA,
+			want:         0.01,
+		},
+		{
+			name:         "glacier",
+			sizeGB:       1.0,
+			storageClass: config.StorageClassGlacier,
+			want:         0.004,
+		},
+		{
+			name:         "unknown storage class defaults to standard",
+			sizeGB:       1.0,
+			storageClass: config.StorageClass("unknown"),
+			want:         0.023, // Standard fallback
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cost := calc.calculateStorageCost(ctx, tt.sizeGB, tt.storageClass)
+			if cost != tt.want {
+				t.Errorf("calculateStorageCost() = %v, want %v", cost, tt.want)
+			}
+		})
+	}
+}
+
+func TestCalculateRequestCostAllStorageClasses(t *testing.T) {
+	calc := NewCalculator("us-east-1")
+	ctx := context.Background()
+	
+	tests := []struct {
+		name         string
+		numRequests  int
+		storageClass config.StorageClass
+		wantCost     float64
+	}{
+		{
+			name:         "standard IA requests",
+			numRequests:  1000,
+			storageClass: config.StorageClassStandardIA,
+			wantCost:     0.01,
+		},
+		{
+			name:         "one zone IA requests",
+			numRequests:  1000,
+			storageClass: config.StorageClassOneZoneIA,
+			wantCost:     0.01,
+		},
+		{
+			name:         "glacier requests",
+			numRequests:  1000,
+			storageClass: config.StorageClassGlacier,
+			wantCost:     0.03,
+		},
+		{
+			name:         "deep archive requests",
+			numRequests:  1000,
+			storageClass: config.StorageClassDeepArchive,
+			wantCost:     0.05,
+		},
+		{
+			name:         "unknown storage class defaults to standard",
+			numRequests:  1000,
+			storageClass: config.StorageClass("unknown"),
+			wantCost:     0.005, // Standard fallback
+		},
+		{
+			name:         "fractional requests",
+			numRequests:  500,
+			storageClass: config.StorageClassStandard,
+			wantCost:     0.0025, // 500/1000 * 0.005
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cost := calc.calculateRequestCost(ctx, tt.numRequests, tt.storageClass)
+			if cost != tt.wantCost {
+				t.Errorf("calculateRequestCost() = %v, want %v", cost, tt.wantCost)
+			}
+		})
+	}
+}
+
+func TestCalculateTransferCostLargeTransfers(t *testing.T) {
+	calc := NewCalculator("us-east-1")
+	ctx := context.Background()
+	
+	tests := []struct {
+		name   string
+		sizeGB float64
+		want   float64
+	}{
+		{
+			name:   "very large transfer",
+			sizeGB: 1000.0,
+			want:   89.91, // (1000-1) * 0.09
+		},
+		{
+			name:   "edge case exactly 1GB",
+			sizeGB: 1.0,
+			want:   0.0,
+		},
+		{
+			name:   "tiny transfer",
+			sizeGB: 0.001,
+			want:   0.0,
+		},
+		{
+			name:   "fractional GB over limit",
+			sizeGB: 1.5,
+			want:   0.045, // 0.5 * 0.09
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cost := calc.calculateTransferCost(ctx, tt.sizeGB)
+			if cost != tt.want {
+				t.Errorf("calculateTransferCost() = %v, want %v", cost, tt.want)
+			}
+		})
+	}
+}
+
 func BenchmarkEstimateArchives(b *testing.B) {
 	calc := NewCalculator("us-east-1")
 	ctx := context.Background()
