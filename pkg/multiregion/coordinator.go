@@ -262,6 +262,10 @@ func (c *DefaultCoordinator) validateConfig(config *MultiRegionConfig) error {
 
 // validateRegion validates individual region configuration
 func (c *DefaultCoordinator) validateRegion(region *Region) error {
+	if region == nil {
+		return fmt.Errorf("region cannot be nil")
+	}
+	
 	if region.Name == "" {
 		return fmt.Errorf("region name cannot be empty")
 	}

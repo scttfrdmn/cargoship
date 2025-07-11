@@ -26,7 +26,7 @@ func TestNetworkAdaptationEngine_StartStop(t *testing.T) {
 	engine := NewNetworkAdaptationEngine(ctx, config)
 	
 	// Start in a goroutine since it blocks
-	go engine.Start()
+	go func() { _ = engine.Start() }()
 	
 	// Give it a moment to start up
 	time.Sleep(10 * time.Millisecond)
@@ -41,13 +41,13 @@ func TestNetworkAdaptationEngine_DoubleStart(t *testing.T) {
 	engine := NewNetworkAdaptationEngine(ctx, config)
 	
 	// Start in a goroutine since it blocks
-	go engine.Start()
+	go func() { _ = engine.Start() }()
 	
 	// Give it a moment to start up
 	time.Sleep(10 * time.Millisecond)
 	
 	// Try to start again - should not panic
-	go engine.Start()
+	go func() { _ = engine.Start() }()
 	
 	// Give it a moment
 	time.Sleep(10 * time.Millisecond)
@@ -75,7 +75,7 @@ func TestNetworkAdaptationEngine_ForceAdaptation(t *testing.T) {
 	engine := NewNetworkAdaptationEngine(ctx, config)
 	
 	// Start in a goroutine since it blocks
-	go engine.Start()
+	go func() { _ = engine.Start() }()
 	
 	// Give it a moment to start up
 	time.Sleep(100 * time.Millisecond)
@@ -93,7 +93,7 @@ func TestNetworkAdaptationEngine_GetCurrentAdaptationAfterStart(t *testing.T) {
 	engine := NewNetworkAdaptationEngine(ctx, config)
 	
 	// Start in a goroutine since it blocks
-	go engine.Start()
+	go func() { _ = engine.Start() }()
 	
 	// Give it a moment to start up
 	time.Sleep(100 * time.Millisecond)

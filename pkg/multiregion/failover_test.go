@@ -465,3 +465,137 @@ func TestDefaultFailoverManager_EdgeCases(t *testing.T) {
 		assert.True(t, failed)
 	})
 }
+
+// Test executeFailoverStrategy function to improve coverage
+func TestDefaultFailoverManager_executeFailoverStrategy(t *testing.T) {
+	config := createValidMultiRegionConfig()
+	config.Failover.FailoverTimeout = 100 * time.Millisecond
+	logger := log.New(nil)
+	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+	ctx := context.Background()
+	
+	t.Run("graceful failover strategy", func(t *testing.T) {
+		config.Failover.Strategy = FailoverGraceful
+		
+		operationCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		
+		operation := &FailoverOperation{
+			ID:         "test-op-1",
+			FromRegion: "us-east-1",
+			ToRegion:   "us-west-2",
+			StartTime:  time.Now(),
+			Status:     FailoverStatusInitiated,
+			Context:    operationCtx,
+			Cancel:     cancel,
+		}
+		
+		err := manager.executeFailoverStrategy(operation)
+		assert.NoError(t, err)
+	})
+	
+	t.Run("immediate failover strategy", func(t *testing.T) {
+		config.Failover.Strategy = FailoverImmediate
+		
+		operationCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		
+		operation := &FailoverOperation{
+			ID:         "test-op-2",
+			FromRegion: "us-east-1",
+			ToRegion:   "us-west-2",
+			StartTime:  time.Now(),
+			Status:     FailoverStatusInitiated,
+			Context:    operationCtx,
+			Cancel:     cancel,
+		}
+		
+		err := manager.executeFailoverStrategy(operation)
+		assert.NoError(t, err)
+	})
+	
+	t.Run("cancelled context", func(t *testing.T) {
+		cancelCtx, cancel := context.WithCancel(ctx)
+		cancel() // Cancel immediately
+		
+		operation := &FailoverOperation{
+			ID:         "test-op-3",
+			FromRegion: "us-east-1",
+			ToRegion:   "us-west-2",
+			StartTime:  time.Now(),
+			Status:     FailoverStatusInitiated,
+			Context:    cancelCtx,
+			Cancel:     cancel,
+		}
+		
+		err := manager.executeFailoverStrategy(operation)
+		assert.Error(t, err)
+		assert.Equal(t, context.Canceled, err)
+	})
+}
+
+// Test executeManualFailover function to improve coverage
+func TestDefaultFailoverManager_executeManualFailover(t *testing.T) {
+	config := createValidMultiRegionConfig()
+	config.Failover.FailoverTimeout = 100 * time.Millisecond
+	logger := log.New(nil)
+	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+	
+	operation := &FailoverOperation{
+		ID:         "test-manual-op",
+		FromRegion: "us-east-1",
+		ToRegion:   "us-west-2",
+		StartTime:  time.Now(),
+		Status:     FailoverStatusInitiated,
+	}
+	
+	err := manager.executeManualFailover(operation)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "manual failover requires administrator intervention")
+}
+
+// Test IsRegionInFailover edge cases to improve coverage
+func TestDefaultFailoverManager_IsRegionInFailover_edgeCases(t *testing.T) {
+	config := createValidMultiRegionConfig()
+	logger := log.New(nil)
+	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+	
+	t.Run("region not in failover", func(t *testing.T) {
+		inFailover := manager.IsRegionInFailover("non-existent-region")
+		assert.False(t, inFailover)
+	})
+	
+	t.Run("region with completed failover", func(t *testing.T) {
+		// Add a completed failover operation
+		operation := &FailoverOperation{
+			ID:         "completed-op",
+			FromRegion: "us-east-1",
+			ToRegion:   "us-west-2",
+			Status:     FailoverStatusCompleted,
+		}
+		manager.activeFailovers["completed-op"] = operation
+		
+		inFailover := manager.IsRegionInFailover("us-east-1")
+		assert.False(t, inFailover) // Should be false for completed operations
+		
+		// Clean up
+		delete(manager.activeFailovers, "completed-op")
+	})
+	
+	t.Run("region with failed failover", func(t *testing.T) {
+		// Add a failed failover operation
+		operation := &FailoverOperation{
+			ID:         "failed-op",
+			FromRegion: "us-east-1",
+			ToRegion:   "us-west-2",
+			Status:     FailoverStatusFailed,
+		}
+		manager.activeFailovers["failed-op"] = operation
+		
+		inFailover := manager.IsRegionInFailover("us-east-1")
+		assert.False(t, inFailover) // Should be false for failed operations
+		
+		// Clean up
+		delete(manager.activeFailovers, "failed-op")
+	})
+}

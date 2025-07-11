@@ -1037,3 +1037,69 @@ func TestRegionSelector_EdgeCases_Comprehensive(t *testing.T) {
 		assert.Contains(t, err.Error(), "no healthy regions available")
 	})
 }
+
+// Test selectByGeography function to improve coverage
+func TestDefaultRegionSelector_selectByGeography(t *testing.T) {
+	config := createValidMultiRegionConfig()
+	logger := log.New(nil)
+	selector := NewRegionSelector(config, logger).(*DefaultRegionSelector)
+	
+	regions := []*Region{
+		{Name: "us-east-1", Status: RegionStatusHealthy},
+		{Name: "us-west-2", Status: RegionStatusHealthy},
+	}
+	
+	// Mock request with geography preference
+	request := &UploadRequest{
+		FilePath: "/test/file.txt",
+		Size:     1024,
+		// The selectByGeography function should select based on geography
+	}
+	
+	region := selector.selectByGeography(request, regions)
+	assert.NotNil(t, region)
+	assert.Contains(t, []string{"us-east-1", "us-west-2"}, region.Name)
+	
+	// Test with empty regions
+	emptyRegions := []*Region{}
+	region = selector.selectByGeography(request, emptyRegions)
+	assert.Nil(t, region)
+}
+
+// Test selectBestRegions function to improve coverage  
+func TestDefaultRegionSelector_selectBestRegions(t *testing.T) {
+	config := createValidMultiRegionConfig()
+	logger := log.New(nil)
+	selector := NewRegionSelector(config, logger).(*DefaultRegionSelector)
+	
+	regions := []*Region{
+		{Name: "us-east-1", Status: RegionStatusHealthy, Priority: 1},
+		{Name: "us-west-2", Status: RegionStatusHealthy, Priority: 2},
+		{Name: "eu-west-1", Status: RegionStatusUnhealthy, Priority: 3},
+	}
+	
+	ctx := context.Background()
+	request := &UploadRequest{
+		FilePath: "/test/file.txt",
+		Size:     1024,
+	}
+	
+	// Test selecting top 2 regions
+	bestRegions := selector.selectBestRegions(ctx, request, regions, 2)
+	assert.Len(t, bestRegions, 2)
+	assert.Equal(t, "us-east-1", bestRegions[0].Name)
+	assert.Equal(t, "us-west-2", bestRegions[1].Name)
+	
+	// Test selecting more regions than available
+	bestRegions = selector.selectBestRegions(ctx, request, regions, 5)
+	assert.Len(t, bestRegions, 3) // Should return all regions
+	
+	// Test with empty regions
+	emptyRegions := []*Region{}
+	bestRegions = selector.selectBestRegions(ctx, request, emptyRegions, 2)
+	assert.Empty(t, bestRegions)
+	
+	// Test with zero count
+	bestRegions = selector.selectBestRegions(ctx, request, regions, 0)
+	assert.Empty(t, bestRegions)
+}

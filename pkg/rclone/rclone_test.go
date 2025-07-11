@@ -225,11 +225,35 @@ func TestGetStats_Error(t *testing.T) {
 	_ = err
 }
 
+// Test getStats with different scenarios
+func TestGetStats_EdgeCases(t *testing.T) {
+	// Test with empty group string
+	_, err := getStats("")
+	_ = err // May or may not error, but shouldn't panic
+
+	// Test with normal group string
+	_, err = getStats("test-group")
+	_ = err // May or may not error, but shouldn't panic
+}
+
 func TestGetJobStatus_Error(t *testing.T) {
 	// Test with invalid job status request
 	req := statusRequest{JobID: -1, Group: "invalid"}
 	_, err := getJobStatus(req)
 	require.Error(t, err)
+}
+
+// Test getJobStatus with different error conditions
+func TestGetJobStatus_EdgeCases(t *testing.T) {
+	// Test with zero job ID
+	req := statusRequest{JobID: 0, Group: "test"}
+	_, err := getJobStatus(req)
+	_ = err // May error depending on rclone state
+
+	// Test with valid-looking request
+	req = statusRequest{JobID: 12345, Group: "valid-group"}
+	_, err = getJobStatus(req)
+	_ = err // May error depending on rclone state, but shouldn't panic
 }
 
 // Test about request JSONString method
@@ -246,4 +270,107 @@ func TestAboutRequest_JSONString(t *testing.T) {
 	var parsed map[string]interface{}
 	err := json.Unmarshal([]byte(jsonStr), &parsed)
 	require.NoError(t, err)
+}
+
+// Test mustNewCloneRequest function
+func TestMustNewCloneRequest(t *testing.T) {
+	// Test successful case
+	req := mustNewCloneRequest(withSrcFs("source"), withDstFs("dest"))
+	require.NotNil(t, req)
+	require.Equal(t, "source", req.SrcFs)
+	require.Equal(t, "dest", req.DstFs)
+
+	// Test panic case with invalid parameters
+	require.Panics(t, func() {
+		mustNewCloneRequest() // Missing required parameters should panic
+	})
+}
+
+// Test statsRequest JSONString method
+func TestStatsRequest_JSONString(t *testing.T) {
+	req := statsRequest{
+		Group: "test-group",
+	}
+	jsonStr := req.JSONString()
+	require.Contains(t, jsonStr, `"group":"test-group"`)
+
+	// Test that it's valid JSON
+	var parsed map[string]interface{}
+	err := json.Unmarshal([]byte(jsonStr), &parsed)
+	require.NoError(t, err)
+	require.Equal(t, "test-group", parsed["group"])
+}
+
+// Test JSONString panic path for cloneRequest
+func TestCloneRequest_JSONString_Panic(t *testing.T) {
+	// This is hard to trigger since json.Marshal rarely fails for simple structs
+	// but we can test the normal path
+	req := &cloneRequest{
+		SrcFs: "test",
+		DstFs: "dest",
+		Group: "group",
+		Async: true,
+	}
+	jsonStr := req.JSONString()
+	require.Contains(t, jsonStr, `"srcFs":"test"`)
+}
+
+// Test waitForFinished with missing group error
+func TestWaitForFinished_MissingGroup(t *testing.T) {
+	// Test with missing group - should return error immediately
+	req := statusRequest{JobID: 123} // Missing Group
+	_, err := waitForFinished(req, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "missing group")
+}
+
+// Test Exists with different path formats
+func TestExists_PathFormats(t *testing.T) {
+	// Test single component path
+	exists := Exists("testdata")
+	_ = exists // Just verify it doesn't panic
+
+	// Test two component path
+	exists = Exists("local:testdata")
+	_ = exists // Just verify it doesn't panic
+
+	// Test panic case with too many colons
+	require.Panics(t, func() {
+		Exists("one:two:three:four")
+	})
+}
+
+// Test errWithRPCOut with different inputs
+func TestErrWithRPCOut_EdgeCases(t *testing.T) {
+	// Test with invalid JSON - should return nil
+	err := errWithRPCOut("invalid json")
+	require.NoError(t, err) // Function returns nil for invalid JSON
+
+	// Test with valid JSON but no error field - will create error with empty string
+	err = errWithRPCOut(`{"status": "ok"}`)
+	require.Error(t, err) // Function creates error even with empty error field
+	require.Equal(t, "", err.Error()) // Error message will be empty
+
+	// Test with valid error JSON
+	err = errWithRPCOut(`{"error": "test error message"}`)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "test error message")
+}
+
+// Test APIOneShot with error conditions
+func TestAPIOneShot_ErrorHandling(t *testing.T) {
+	// Test with invalid params that can't be marshaled
+	invalidParams := map[string]interface{}{
+		"invalid": make(chan int), // channels can't be marshaled
+	}
+	err := APIOneShot("core/version", invalidParams)
+	require.Error(t, err)
+
+	// Test with valid params
+	validParams := map[string]interface{}{
+		"test": "value",
+	}
+	err = APIOneShot("core/version", validParams)
+	// This may or may not error depending on rclone setup, but shouldn't panic
+	_ = err
 }

@@ -217,13 +217,13 @@ func TestReadEntity_InvalidContent(t *testing.T) {
 	// Create a temporary file with invalid GPG content
 	tempFile, err := os.CreateTemp("", "invalid.key")
 	require.NoError(t, err)
-	defer os.Remove(tempFile.Name())
-	defer tempFile.Close()
+	defer func() { _ = os.Remove(tempFile.Name()) }()
+	defer func() { _ = tempFile.Close() }()
 	
 	// Write invalid content
 	_, err = tempFile.WriteString("invalid gpg key content")
 	require.NoError(t, err)
-	tempFile.Close()
+	_ = tempFile.Close()
 	
 	_, err = ReadEntity(tempFile.Name())
 	require.Error(t, err)
