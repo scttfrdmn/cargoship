@@ -193,6 +193,79 @@ func TestConfig(t *testing.T) {
 	require.Equal(t, "tar.gz.gpg", config.Format)
 }
 
+// Test New function panic path
+func TestNewPanic(t *testing.T) {
+	tmp := t.TempDir()
+	f, err := os.Create(filepath.Join(tmp, "test.tar.gz.gpg"))
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+
+	// Test panic when EncryptTo is nil
+	require.Panics(t, func() {
+		New(f, &config.SuitCaseOpts{
+			Format:    "tar.gz.gpg",
+			EncryptTo: nil, // This should cause a panic
+		})
+	})
+}
+
+// Test Close method error handling
+func TestCloseErrors(t *testing.T) {
+	tmp := t.TempDir()
+	f, err := os.Create(filepath.Join(tmp, "test.tar.gz.gpg"))
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+
+	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
+	require.NoError(t, err)
+
+	archive := New(f, &config.SuitCaseOpts{
+		Format:    "tar.gz.gpg",
+		EncryptTo: &openpgp.EntityList{pubKey},
+	})
+
+	// Add a file to make sure all writers are properly initialized
+	_, err = archive.Add(inventory.File{
+		Path:        "../../testdata/name.txt",
+		Destination: "name.txt",
+	})
+	require.NoError(t, err)
+
+	// Test successful close
+	err = archive.Close()
+	require.NoError(t, err)
+
+	// Test that closing again doesn't cause issues
+	// (the underlying writers should handle this gracefully)
+	_ = archive.Close()
+	// This may or may not error depending on the underlying writers
+	// but we test it to ensure coverage
+}
+
+// Test New function with different parameters
+func TestNewWithDifferentOpts(t *testing.T) {
+	tmp := t.TempDir()
+	f, err := os.Create(filepath.Join(tmp, "test.tar.gz.gpg"))
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+
+	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
+	require.NoError(t, err)
+
+	// Test with minimal options
+	archive := New(f, &config.SuitCaseOpts{
+		EncryptTo: &openpgp.EntityList{pubKey},
+	})
+	defer archive.Close() // nolint: errcheck
+
+	// Verify that the archive was created correctly
+	require.NotNil(t, archive.tw)
+	require.NotNil(t, archive.gw)
+	require.NotNil(t, archive.cw)
+	require.NotNil(t, archive.opts)
+	require.Equal(t, &openpgp.EntityList{pubKey}, archive.opts.EncryptTo)
+}
+
 func TestGetHashes(t *testing.T) {
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar.gz.gpg"))
