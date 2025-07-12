@@ -22,6 +22,8 @@ import (
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
+	
+	contextpkg "github.com/scttfrdmn/cargoship/pkg/context"
 )
 
 var (
@@ -62,6 +64,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 	cmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
 	cmd.PersistentFlags().BoolVar(&profile, "profile", false, "Enable performance profiling. This will generate profile files in a temp directory")
 	cmd.PersistentFlags().String("memory-limit", "", "Set a memory limit for the run. This will slow things down, but will less likely to OOM in certain situations. Avoid this unless you are having memory issues.")
+	cmd.PersistentFlags().String("context", "", "Override execution context (local, agent, controller, repl)")
 	cmd.SetVersionTemplate("{{ .Version }}\n")
 
 	// Create stuff
@@ -89,6 +92,8 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 		NewBenchmarkCmd(),
 		NewControllerCmd(),
 		NewContextCmd(),
+		NewShellCmd(),
+		NewDashboardCmd(),
 	)
 	cmd.AddCommand(NewWizardCmd())
 	cmd.AddCommand(NewAnalyzeCmd())
@@ -223,6 +228,9 @@ func globalPersistentPreRun(cmd *cobra.Command, _ []string) {
 	// lo := cmd.OutOrStderr()
 	// fmt.Fprintf(os.Stderr, "OUT IS: %+v\n", &lo)
 	setupLogging(cmd.OutOrStderr())
+	
+	// Initialize context awareness
+	initializeContextAwareness(cmd)
 	/*
 		lo, ok := cmd.Context().Value(inventory.LogWriterKey).(io.Writer)
 		if ok {
@@ -276,4 +284,34 @@ func globalPersistentPostRun(_ *cobra.Command, _ []string) {
 
 func toPTR[V any](v V) *V {
 	return &v
+}
+
+// initializeContextAwareness sets up context-aware CLI behavior
+func initializeContextAwareness(cmd *cobra.Command) {
+	logger := slog.Default()
+	
+	// Create context manager
+	contextManager := contextpkg.NewManager(logger)
+	
+	// Handle --context flag if provided
+	if contextFlag, _ := cmd.Flags().GetString("context"); contextFlag != "" {
+		targetContext := contextpkg.ExecutionContext(contextFlag)
+		if err := contextManager.SwitchTo(targetContext); err != nil {
+			logger.Error("Failed to switch context", "context", contextFlag, "error", err)
+		} else {
+			logger.Debug("Context switched via flag", "context", targetContext)
+		}
+	}
+	
+	// Apply context-aware command filtering
+	filter := contextpkg.NewCommandFilter(logger)
+	filter.ApplyContextFiltering(cmd.Root())
+	
+	// Show context info in verbose mode
+	if verbose, _ := cmd.Flags().GetBool("verbose"); verbose {
+		currentCtx := contextManager.Current()
+		logger.Info("Current execution context", 
+			"context", currentCtx, 
+			"description", filter.GetContextDescription(currentCtx))
+	}
 }

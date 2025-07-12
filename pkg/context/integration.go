@@ -29,6 +29,9 @@ func EnhanceRootCommand(cmd *cobra.Command, logger *slog.Logger) {
 			}
 		}
 		
+		// Apply context-aware command filtering
+		FilterCommandsByContext(cmd.Root(), logger)
+		
 		// Show context in verbose mode
 		if verbose, _ := cmd.Flags().GetBool("verbose"); verbose {
 			showContextInfo(logger)
