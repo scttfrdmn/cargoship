@@ -1,209 +1,161 @@
 # CargoShip
 
-> **Enterprise data archiving for AWS, built for speed and intelligence**
+> **Intelligent research data archival for AWS S3**
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/scttfrdmn/cargoship.svg)](https://pkg.go.dev/github.com/scttfrdmn/cargoship)
 [![Go Report Card](https://goreportcard.com/badge/github.com/scttfrdmn/cargoship)](https://goreportcard.com/report/github.com/scttfrdmn/cargoship)
-[![Test Coverage](https://img.shields.io/badge/coverage-67.5%25-yellow.svg)](https://github.com/scttfrdmn/cargoship)
-[![Security Analysis](https://img.shields.io/badge/security-gosec%20enabled-green.svg)](https://github.com/securecodewarrior/gosec)
-[![Integration Tests](https://img.shields.io/badge/testing-LocalStack%20S3-blue.svg)](https://localstack.cloud/)
+[![Test Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen.svg)](https://github.com/scttfrdmn/cargoship)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-CargoShip is a next-generation data archiving tool optimized for AWS infrastructure. Built on the foundation of Duke University's excellent [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl), CargoShip adds native AWS integration, intelligent cost optimization, and enterprise-grade observability.
+CargoShip helps researchers move their data to AWS S3 intelligently and cost-effectively. Built on the foundation of Duke University's [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl), CargoShip adds smart archival workflows, cost optimization, and simple deployment for research environments.
 
-## 🚀 Key Features
+## 🔬 For Researchers, By Researchers
 
-- **🚢 Ship It Smart**: Intelligent packing algorithms optimize archive sizes and costs
-- **⚡ Ship It Fast**: 3x faster S3 uploads with native AWS SDK and adaptive concurrency  
-- **🌍 Ship It Global**: Multi-region coordination with intelligent failover and redundant uploads
-- **🧪 Ship It Tested**: Production-ready with comprehensive test suite and 100% reliability ✨ **NEW**
-- **💰 Ship It Cheap**: 50% cost reduction through intelligent storage class selection
-- **📊 Ship It Visible**: Complete observability with CloudWatch metrics and X-Ray tracing
-- **🔒 Ship It Secure**: KMS encryption, IAM integration, and compliance-ready audit logging
+**Move your research data to S3 the smart way:**
+- 📊 **Automatic cost optimization** - Save up to 90% on storage costs
+- 🚀 **Launch agents** - Deploy on lab NAS boxes and research servers  
+- 🧠 **Smart data detection** - Automatically identify completed datasets
+- 💰 **Budget-friendly** - Perfect for research grants and academic budgets
+- 🔍 **Simple setup** - No complex enterprise infrastructure required
 
-![CargoShip Demo](docs/demo.gif)
+![CargoShip Research Demo](docs/vhs/demo.gif)
 
-## Quick Start
+## 🚀 Quick Start for Researchers
 
 ### Installation
 
 ```bash
-# Using Go install
+# Install CargoShip
 go install github.com/scttfrdmn/cargoship/cmd/cargoship@latest
 
-# Using pre-built binaries (coming soon)
-curl -sSL https://github.com/scttfrdmn/cargoship/releases/latest/download/install.sh | sh
-
-# Using Docker
-docker run --rm -v $(pwd):/data scttfrdmn/cargoship:latest survey /data
+# Or download pre-built binary
+curl -sSL https://get.cargoship.dev/install.sh | sh
 ```
 
-### Basic Usage
+### Basic Research Workflow
 
 ```bash
-# Survey your data and estimate costs
-cargoship survey /path/to/research/data
-cargoship estimate /path/to/data --storage-class glacier
+# 1. Survey your research data and estimate costs
+cargoship survey /data/research-project-2024
+cargoship estimate /data/completed-analysis --storage-class deep-archive
 
-# Ship your data to AWS
-cargoship ship /path/to/data \
-  --destination s3://my-research-bucket/archives \
-  --storage-class intelligent-tiering \
-  --encrypt-kms arn:aws:kms:us-east-1:123:key/abc \
-  --max-cost-per-month 500
+# 2. Archive completed research datasets
+cargoship ship /data/completed-analysis \
+  --destination s3://my-research-bucket/project-2024 \
+  --storage-class deep-archive \
+  --max-cost-per-month 50
 
-# Monitor and optimize
-cargoship status
-cargoship costs optimize --dry-run
+# 3. Deploy launch agent on your lab NAS
+docker run -d --name cargoship-agent \
+  -v /mnt/research-data:/data:ro \
+  -v ~/.aws:/root/.aws:ro \
+  scttfrdmn/cargoship:launch \
+  --watch /data --auto-archive
 ```
 
-## Why CargoShip?
+## 💰 Research Budget Optimization
 
-### Built for AWS, Optimized for Performance
-
-- **Native S3 Integration**: Direct AWS SDK usage eliminates rclone overhead
-- **Intelligent Multipart Uploads**: Adaptive chunk sizing and concurrency
-- **Storage Class Intelligence**: Automatic optimization based on access patterns
-- **Transfer Acceleration**: Built-in support for S3 Transfer Acceleration
-
-### Cost Intelligence That Saves Money
+CargoShip helps stretch your research budget with intelligent cost optimization:
 
 ```bash
-$ cargoship estimate ./research-data --show-recommendations
+$ cargoship estimate ./genomics-analysis --show-breakdown
 
-📊 Cost Estimate for ./research-data (2.3TB)
+📊 Archive Cost Estimate (1.2TB genomics data)
 ┌─────────────────┬──────────────┬──────────────┐
 │ Storage Class   │ Monthly Cost │ Annual Cost  │
 ├─────────────────┼──────────────┼──────────────┤
-│ Standard        │ $529.50     │ $6,354.00   │
-│ Standard-IA     │ $317.70     │ $3,812.40   │
-│ Glacier         │ $105.90     │ $1,270.80   │
-│ Deep Archive    │ $52.95      │ $635.40     │
+│ Standard        │ $276.48     │ $3,317.76   │
+│ Glacier         │ $61.44      │ $737.28     │
+│ Deep Archive    │ $12.29      │ $147.48     │
 └─────────────────┴──────────────┴──────────────┘
 
-💡 Recommendations:
-• Use Deep Archive for 95% of files → Save $476.55/month
-• Enable Intelligent Tiering → Automatic optimization
-• Set lifecycle policy → Additional 15% savings
+💡 Research Recommendations:
+• Archive raw sequencing data → Deep Archive (90% savings)
+• Keep analysis results → Glacier (75% savings)  
+• Enable lifecycle policies → Additional 15% savings
 
-Estimated total savings: $5,718.60/year
+Total research budget savings: $3,170/year
 ```
 
-### Enterprise-Ready Observability
+## 🧪 Research Lab Integration
 
-- **Real-time Metrics**: CloudWatch integration with custom dashboards
-- **Distributed Tracing**: X-Ray tracing for performance insights
-- **Cost Monitoring**: Automated alerts and budget controls
-- **Audit Logging**: Complete compliance and security trail
+### Launch Agents for Lab Infrastructure
 
-### Production-Ready Testing & Quality
-
-- **Comprehensive Test Suite**: 62+ unit tests with 100% pass rate
-- **Multi-Region Testing**: Complete coverage of failover, coordination, and load balancing
-- **Concurrent Access Testing**: Validated thread safety under high load
-- **Edge Case Coverage**: Robust error handling and recovery scenarios
-- **Performance Benchmarking**: Validated for production workloads
-
-## Architecture
-
-CargoShip follows a modular, cloud-native architecture:
-
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Data Sources  │    │    CargoShip     │    │   AWS Services  │
-│                 │    │     Engine       │    │                 │
-│ • File Systems  │───▶│                  │───▶│ • S3 Storage    │
-│ • Network Mounts│    │ • Discovery      │    │ • KMS Encryption│
-│ • Archives      │    │ • Compression    │    │ • CloudWatch    │
-│ • Databases     │    │ • Upload Manager │    │ • X-Ray Tracing │
-└─────────────────┘    │ • Cost Optimizer │    │ • Lambda        │
-                       └──────────────────┘    └─────────────────┘
-```
-
-## Configuration
-
-CargoShip supports flexible configuration via files, environment variables, and command-line flags:
+Deploy CargoShip agents on your existing lab infrastructure:
 
 ```yaml
-# ~/.cargoship/config.yaml
-aws:
-  profile: research
-  region: us-east-1
-
-storage:
-  default_bucket: research-archives
-  storage_class: intelligent_tiering
-  lifecycle_enabled: true
-
-cost_control:
-  max_monthly_budget: 1000.00
-  alert_threshold: 0.8
-  auto_optimize: true
-
-security:
-  kms_key_id: arn:aws:kms:us-east-1:123:key/12345678-1234
-  encryption_required: true
+# docker-compose.yml for lab deployment
+version: '3.8'
+services:
+  cargoship-agent:
+    image: scttfrdmn/cargoship:launch
+    volumes:
+      - /mnt/lab-nas:/data:ro
+      - ./config:/config
+    environment:
+      - CARGOSHIP_WATCH_PATHS=/data/completed,/data/analysis-output
+      - CARGOSHIP_DESTINATION=s3://lab-research-archive
+      - CARGOSHIP_STORAGE_CLASS=deep-archive
+      - CARGOSHIP_MAX_MONTHLY_COST=200
 ```
 
-## Performance Benchmarks
+### Smart Dataset Detection
 
-CargoShip significantly outperforms generic cloud tools:
+CargoShip automatically detects completed research datasets:
 
-| Metric | CargoShip | rclone | Improvement |
-|--------|-----------|--------|-------------|
-| Upload Speed | 200 MB/s | 65 MB/s | 3.1x faster |
-| Memory Usage | 512 MB | 1.2 GB | 57% less |
-| Cost Optimization | 50% savings | Manual | Automatic |
-| Monitoring | Native | External | Built-in |
+```bash
+# Configure intelligent archival rules
+cargoship config set rules.auto-archive true
+cargoship config set rules.detect-patterns "*.bam,*.fastq.gz,analysis_complete.txt"
+cargoship config set rules.min-age-days 7
+cargoship config set rules.storage-class deep-archive
+```
 
-*Benchmarks measured on c5.2xlarge instance with 1TB mixed research data*
+## 🏗️ Architecture for Research Labs
 
-## Documentation
+```
+┌─────────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Research Data     │    │  CargoShip       │    │   AWS S3        │
+│                     │    │  Launch Agent    │    │                 │
+│ • Lab NAS           │───▶│                  │───▶│ • Deep Archive  │
+│ • Analysis Servers  │    │ • Smart Detection│    │ • Intelligent   │
+│ • Sequencing Output │    │ • Cost Optimizer │    │   Tiering       │
+│ • Microscopy Data   │    │ • Budget Controls│    │ • Lifecycle     │
+└─────────────────────┘    └──────────────────┘    └─────────────────┘
+```
 
-- **[Quick Start Guide](docs/quickstart.md)** - Get up and running in 5 minutes
-- **[Configuration Reference](docs/configuration.md)** - Complete configuration options
-- **[AWS Setup Guide](docs/aws-setup.md)** - IAM policies and AWS configuration
-- **[Cost Optimization](docs/cost-optimization.md)** - Maximize your savings
-- **[Monitoring & Alerting](docs/monitoring.md)** - Set up observability
-- **[Migration Guide](docs/migration.md)** - Migrate from SuitcaseCTL or other tools
+## 📖 Documentation
 
-## Contributing
+- **[Installation Guide](docs/install.md)** - Get CargoShip running in your lab
+- **[Research Workflows](docs/research-guide.md)** - Common patterns for research data
+- **[Launch Agent Setup](docs/launch-agent.md)** - Deploy agents on NAS and servers
+- **[Cost Optimization](docs/cost-optimization.md)** - Maximize your research budget
+- **[AWS Setup for Researchers](docs/aws-research-setup.md)** - Simple AWS configuration
 
-We welcome contributions! CargoShip is built on the foundation of Duke University's SuitcaseCTL, and we maintain the same spirit of open collaboration.
+## 🤝 Contributing
+
+CargoShip welcomes contributions from the research community! Built on Duke University's SuitcaseCTL foundation.
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
+2. Create a feature branch: `git checkout -b feature/research-feature`
+3. Commit your changes: `git commit -m 'Add feature for research workflow'`
+4. Push to the branch: `git push origin feature/research-feature`
 5. Open a Pull Request
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
-## License and Attribution
+## 📄 License and Attribution
 
 CargoShip is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
-**Important Attribution**: CargoShip is built upon [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl) by Duke University. We are grateful for their innovative work and open-source contribution. See [ATTRIBUTION.md](ATTRIBUTION.md) for complete acknowledgments.
+**Built on SuitcaseCTL**: CargoShip extends [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl) by Duke University. We gratefully acknowledge their innovative foundation for research data management.
 
-## Support
+## 🆘 Support
 
-- **Documentation**: [https://cargoship.dev](https://cargoship.dev) *(coming soon)*
+- **Documentation**: [cargoship.dev](https://cargoship.dev)
 - **Issues**: [GitHub Issues](https://github.com/scttfrdmn/cargoship/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/scttfrdmn/cargoship/discussions)
-- **Enterprise Support**: contact@cargoship.dev *(coming soon)*
-
-## Roadmap
-
-- [x] **v0.1.0**: Core AWS S3 integration with cost optimization
-- [x] **Phase 1**: Predictive chunk staging with content analysis and network adaptation  
-- [x] **Phase 2**: Multi-region pipeline distribution with intelligent failover
-- [x] **Phase 3**: Multi-region testing & production readiness ✨ **NEW**
-- [ ] **v0.2.0**: Advanced monitoring and observability features  
-- [ ] **v0.3.0**: Serverless workflow integration (Lambda, EventBridge)
-- [ ] **v1.0.0**: Production-ready with enterprise features
-- [ ] **v1.1.0**: Enhanced multi-region capabilities and disaster recovery
-- [ ] **v1.2.0**: Advanced analytics and ML-driven optimization
+- **Research Community**: [GitHub Discussions](https://github.com/scttfrdmn/cargoship/discussions)
 
 ---
 
-**Ship your data with confidence. Ship it with CargoShip.** 🚢
+**Move your research data intelligently. Ship it with CargoShip.** 🚢

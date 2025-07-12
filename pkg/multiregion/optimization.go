@@ -75,7 +75,6 @@ type PrewarmedConnection struct {
 	LastUsed    time.Time
 	Ready       bool
 	Latency     time.Duration
-	mu          sync.RWMutex
 }
 
 // TrendAnalyzer analyzes health trends for prediction

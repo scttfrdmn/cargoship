@@ -1,744 +1,434 @@
-# CargoShip User Guide
+# CargoShip User Guide for Researchers
+
+A comprehensive guide for using CargoShip to archive research data to AWS S3 intelligently and cost-effectively.
 
 ## Table of Contents
 
-1. [Introduction](#introduction)
-2. [Installation](#installation)
-3. [Quick Start](#quick-start)
-4. [Configuration](#configuration)
-5. [Basic Usage](#basic-usage)
-6. [Advanced Features](#advanced-features)
-7. [Multi-Region Setup](#multi-region-setup)
-8. [Performance Optimization](#performance-optimization)
-9. [Security Best Practices](#security-best-practices)
-10. [Troubleshooting](#troubleshooting)
-11. [CLI Reference](#cli-reference)
+- [Getting Started](#getting-started)
+- [Research Workflows](#research-workflows)
+- [Cost Optimization](#cost-optimization)
+- [Launch Agents](#launch-agents)
+- [AWS Setup for Researchers](#aws-setup-for-researchers)
+- [Common Use Cases](#common-use-cases)
+- [Troubleshooting](#troubleshooting)
 
-## Introduction
+## Getting Started
 
-CargoShip is a high-performance AWS data archiving tool designed for enterprise-scale data management. It provides:
+### Installation
 
-- **Intelligent Compression**: Automatic algorithm selection for optimal performance
-- **Multi-Region Support**: Distribute and replicate data across AWS regions
-- **GPG Encryption**: End-to-end encryption for sensitive data
-- **Smart Failover**: Automatic failover with minimal downtime
-- **Performance Optimization**: Adaptive network and compression tuning
-
-## Installation
-
-### Prerequisites
-
-- **Go 1.21+** (for building from source)
-- **AWS CLI** configured with appropriate credentials
-- **GPG** (for encryption features)
-- **Git** (for cloning the repository)
-
-### From Binary (Recommended)
+Choose the installation method that works best for your research environment:
 
 ```bash
-# Download the latest release
-curl -L https://github.com/scttfrdmn/cargoship/releases/latest/download/cargoship-linux-amd64 -o cargoship
-chmod +x cargoship
-sudo mv cargoship /usr/local/bin/
+# Option 1: Go install (requires Go 1.21+)
+go install github.com/scttfrdmn/cargoship/cmd/cargoship@latest
+
+# Option 2: Download binary (Linux/macOS)
+curl -sSL https://get.cargoship.dev/install.sh | sh
+
+# Option 3: Docker (for containerized environments)
+docker pull scttfrdmn/cargoship:latest
 ```
 
-### From Source
+### Basic Configuration
+
+Create a simple configuration for your research environment:
 
 ```bash
-git clone https://github.com/scttfrdmn/cargoship.git
-cd cargoship
-go build -o cargoship ./cmd/cargoship
-sudo mv cargoship /usr/local/bin/
-```
-
-### Verify Installation
-
-```bash
-cargoship version
-cargoship --help
-```
-
-## Quick Start
-
-### 1. Configure AWS Credentials
-
-```bash
-# Using AWS CLI
-aws configure
-
-# Or set environment variables
-export AWS_ACCESS_KEY_ID=your-access-key
-export AWS_SECRET_ACCESS_KEY=your-secret-key
-export AWS_DEFAULT_REGION=us-east-1
-```
-
-### 2. Initialize Configuration
-
-```bash
-# Create default configuration
+# Initialize CargoShip configuration
 cargoship config init
 
-# Or use the interactive wizard
-cargoship wizard
+# Set your research AWS profile
+cargoship config set aws.profile research
+cargoship config set aws.region us-east-1
+
+# Configure your research bucket
+cargoship config set storage.default_bucket my-research-archive
+cargoship config set storage.storage_class deep-archive
+
+# Set budget controls
+cargoship config set cost_control.max_monthly_budget 500.00
+cargoship config set cost_control.alert_threshold 0.8
 ```
 
-### 3. Create Your First Archive
+## Research Workflows
+
+### 1. Survey and Estimate
+
+Before archiving, understand your data and costs:
 
 ```bash
-# Archive a directory to S3
-cargoship create /path/to/data --bucket my-archive-bucket
+# Survey your research data
+cargoship survey /data/genomics-project-2024
 
-# Archive with compression
-cargoship create /path/to/data --bucket my-archive-bucket --compression gzip
-
-# Archive with encryption
-cargoship create /path/to/data --bucket my-archive-bucket --encrypt
+# Get cost estimates for different scenarios
+cargoship estimate /data/completed-analysis \
+  --storage-class standard \
+  --storage-class glacier \
+  --storage-class deep-archive \
+  --show-recommendations
 ```
 
-## Configuration
+**Example Output:**
+```
+📊 Research Data Survey: /data/genomics-project-2024
+Total Size: 2.3TB
+File Count: 12,847 files
+Largest Files: raw_sequences/ (1.8TB), analysis_output/ (500GB)
 
-### Configuration File
+💰 Storage Cost Estimates (Monthly):
+┌─────────────────┬──────────────┬──────────────┐
+│ Storage Class   │ Monthly Cost │ Best For     │
+├─────────────────┼──────────────┼──────────────┤
+│ Standard        │ $529.50     │ Active data  │
+│ Glacier         │ $105.90     │ Archive      │
+│ Deep Archive    │ $52.95      │ Long-term    │
+└─────────────────┴──────────────┴──────────────┘
 
-CargoShip uses a YAML configuration file located at `~/.cargoship.yaml`:
+🧬 Research Data Recommendations:
+• Archive raw sequences → Deep Archive (save $476/month)
+• Keep final results → Standard (for collaboration)
+• Set lifecycle policy → Additional 15% savings
+```
+
+### 2. Archive Completed Research
+
+Archive your completed research datasets:
+
+```bash
+# Archive completed analysis
+cargoship ship /data/completed-analysis \
+  --destination s3://research-archive/project-2024/analysis \
+  --storage-class deep-archive \
+  --description "RNA-seq analysis, experiment batch 3" \
+  --tags "project=rna-seq,batch=3,status=complete"
+
+# Archive with metadata preservation
+cargoship ship /data/microscopy-images \
+  --destination s3://research-archive/imaging/batch-15 \
+  --storage-class glacier \
+  --preserve-metadata \
+  --include-checksums
+```
+
+### 3. Intelligent Archive Rules
+
+Set up automatic archival based on your research patterns:
+
+```bash
+# Configure intelligent archival
+cargoship config set rules.auto_archive true
+cargoship config set rules.completed_markers "analysis_complete.txt,FINISHED.flag"
+cargoship config set rules.min_age_days 7
+cargoship config set rules.file_patterns "*.bam,*.fastq.gz,*.tiff,*.czi"
+```
+
+## Cost Optimization
+
+### Research Budget Management
+
+CargoShip helps maximize your research budget:
+
+```bash
+# Set monthly budget limits
+cargoship budget set 500.00 --alert-at 80%
+
+# Get budget recommendations
+cargoship budget analyze /data/to-archive
+
+# Track current spending
+cargoship budget status --this-month
+```
+
+### Storage Class Selection
+
+Choose the right storage class for your research data:
+
+| Storage Class | Best For | Cost | Retrieval |
+|---------------|----------|------|-----------|
+| **Standard** | Active analysis data | High | Immediate |
+| **Standard-IA** | Recently completed work | Medium | Immediate |
+| **Glacier** | Archived datasets | Low | 3-5 hours |
+| **Deep Archive** | Long-term preservation | Lowest | 12+ hours |
+
+**Research Recommendations:**
+- **Raw sequencing data** → Deep Archive (rarely accessed)
+- **Processed datasets** → Glacier (occasional access)
+- **Final results/papers** → Standard-IA (collaboration ready)
+- **Working data** → Standard (active analysis)
+
+### Lifecycle Policies
+
+Set up automatic transitions to save costs:
+
+```bash
+# Create research-optimized lifecycle policy
+cargoship lifecycle create research-policy \
+  --transition-to-ia 30 \
+  --transition-to-glacier 90 \
+  --transition-to-deep-archive 365 \
+  --apply-to-bucket research-archive
+```
+
+## Launch Agents
+
+Deploy CargoShip agents on your lab infrastructure for automatic archival.
+
+### NAS Box Deployment
+
+Deploy on your lab NAS or file server:
 
 ```yaml
-# Basic AWS Configuration
-aws:
-  region: us-east-1
-  bucket: my-default-bucket
-  storage_class: STANDARD_IA
+# docker-compose.yml
+version: '3.8'
+services:
+  cargoship-agent:
+    image: scttfrdmn/cargoship:launch
+    container_name: lab-archive-agent
+    restart: unless-stopped
+    volumes:
+      - /mnt/lab-nas:/data:ro
+      - ./config:/config:ro
+      - ~/.aws:/root/.aws:ro
+    environment:
+      - CARGOSHIP_WATCH_PATHS=/data/completed,/data/analysis-output
+      - CARGOSHIP_DESTINATION=s3://lab-research-archive
+      - CARGOSHIP_STORAGE_CLASS=deep-archive
+      - CARGOSHIP_MAX_MONTHLY_COST=200
+      - CARGOSHIP_MIN_AGE_DAYS=7
+    networks:
+      - lab-network
 
-# Compression Settings
-compression:
-  algorithm: zstd
-  level: 3
-  enable_auto_selection: true
+networks:
+  lab-network:
+    driver: bridge
+```
 
-# Encryption Settings
-encryption:
-  enabled: true
-  gpg_key_id: your-gpg-key-id
+Deploy the agent:
+
+```bash
+# Start the lab archive agent
+docker-compose up -d
+
+# Check agent status
+docker-compose logs -f cargoship-agent
+
+# Monitor archival activity
+cargoship agent status --agent lab-archive-agent
+```
+
+### Research Server Deployment
+
+For deployment on research computing servers:
+
+```bash
+# Install as systemd service
+sudo cargoship agent install \
+  --watch-paths /scratch/completed,/data/analysis-output \
+  --destination s3://research-archive \
+  --storage-class glacier \
+  --max-cost 300
+
+# Start the service
+sudo systemctl start cargoship-agent
+sudo systemctl enable cargoship-agent
+
+# Monitor logs
+sudo journalctl -u cargoship-agent -f
+```
+
+### Agent Configuration
+
+Configure intelligent detection patterns:
+
+```yaml
+# config/agent.yaml
+watch:
+  paths:
+    - /data/completed
+    - /analysis/output
+    - /sequencing/finished
   
-# Multi-Region Configuration
-multi_region:
-  enabled: false
-  primary_region: us-east-1
-  regions:
-    - name: us-east-1
-      priority: 1
-      weight: 50
-    - name: us-west-2
-      priority: 2
-      weight: 30
+  patterns:
+    include:
+      - "*.bam"
+      - "*.fastq.gz"
+      - "*.tiff"
+      - "analysis_complete.txt"
+    exclude:
+      - "*.tmp"
+      - "*.lock"
+      - ".DS_Store"
 
-# Performance Settings
-performance:
-  max_concurrent_uploads: 8
-  chunk_size_mb: 64
-  enable_adaptive_tuning: true
-
-# Logging
-logging:
-  level: info
-  file: ~/.cargoship.log
-```
-
-### Environment Variables
-
-Key environment variables:
-
-```bash
-# AWS Configuration
-export AWS_PROFILE=production
-export AWS_DEFAULT_REGION=us-east-1
-
-# CargoShip Configuration
-export CARGOSHIP_CONFIG=/path/to/config.yaml
-export CARGOSHIP_LOG_LEVEL=debug
-export CARGOSHIP_BUCKET=my-backup-bucket
-
-# GPG Configuration
-export GPG_KEY_ID=your-key-id
-export GNUPGHOME=/path/to/gpg/home
-```
-
-## Basic Usage
-
-### Creating Archives
-
-#### Simple Directory Archive
-
-```bash
-cargoship create /home/user/documents \
-  --bucket my-archive-bucket \
-  --prefix backups/documents
-```
-
-#### With Compression Options
-
-```bash
-# Automatic compression selection
-cargoship create /data --bucket my-bucket --compression auto
-
-# Specific compression algorithm
-cargoship create /data --bucket my-bucket --compression zstd --level 5
-
-# Compare compression algorithms
-cargoship benchmark --size 100MB --data-type mixed
-```
-
-#### With Encryption
-
-```bash
-# Encrypt with default GPG key
-cargoship create /sensitive-data --bucket my-bucket --encrypt
-
-# Encrypt with specific key
-cargoship create /sensitive-data --bucket my-bucket --encrypt --gpg-key user@example.com
-
-# Create and use new GPG key
-cargoship create-keys --name "Archive Key" --email archive@company.com
-cargoship create /data --bucket my-bucket --encrypt --gpg-key archive@company.com
-```
-
-### Listing and Finding Archives
-
-```bash
-# List all archives
-cargoship find --bucket my-bucket
-
-# Search by prefix
-cargoship find --bucket my-bucket --prefix backups/
-
-# Search by date range
-cargoship find --bucket my-bucket --after 2024-01-01 --before 2024-12-31
-
-# Search by size
-cargoship find --bucket my-bucket --min-size 1GB --max-size 10GB
-```
-
-### Archive Analysis
-
-```bash
-# Analyze storage costs
-cargoship analyze cost --bucket my-bucket
-
-# Analyze compression efficiency
-cargoship analyze compression --bucket my-bucket
-
-# Storage lifecycle analysis
-cargoship analyze lifecycle --bucket my-bucket
-```
-
-## Advanced Features
-
-### Multi-File Archives (Suitcases)
-
-```bash
-# Create suitcase with size limit
-cargoship create-suitcase /large-dataset \
-  --bucket my-bucket \
-  --max-size 5GB \
-  --format targz
-
-# Create with file count limit
-cargoship create-suitcase /many-files \
-  --bucket my-bucket \
-  --max-files 10000
-```
-
-### Metadata and Inventories
-
-```bash
-# Include detailed metadata
-cargoship create /data \
-  --bucket my-bucket \
-  --include-metadata \
-  --metadata-format json
-
-# Generate inventory
-cargoship create /data \
-  --bucket my-bucket \
-  --generate-inventory \
-  --inventory-format csv
-```
-
-### Custom Filters and Patterns
-
-```bash
-# Exclude patterns
-cargoship create /project \
-  --bucket my-bucket \
-  --exclude "*.tmp" \
-  --exclude "node_modules" \
-  --exclude ".git"
-
-# Include only specific patterns
-cargoship create /data \
-  --bucket my-bucket \
-  --include "*.pdf" \
-  --include "*.doc*"
-```
-
-## Multi-Region Setup
-
-### Basic Multi-Region Configuration
-
-```yaml
-multi_region:
-  enabled: true
-  primary_region: us-east-1
-  regions:
-    - name: us-east-1
-      priority: 1
-      weight: 50
-      capacity:
-        max_concurrent_uploads: 10
-        max_bandwidth_mbps: 1000
-      health_check:
-        enabled: true
-        interval: 30s
-        timeout: 5s
-        failure_threshold: 3
-    - name: us-west-2
-      priority: 2
-      weight: 30
-      capacity:
-        max_concurrent_uploads: 8
-        max_bandwidth_mbps: 800
-      health_check:
-        enabled: true
-        interval: 30s
-        timeout: 5s
-        failure_threshold: 3
-    - name: eu-west-1
-      priority: 3
-      weight: 20
-      capacity:
-        max_concurrent_uploads: 6
-        max_bandwidth_mbps: 600
-
-  # Load balancing strategy
-  load_balancing:
-    strategy: weighted_round_robin
-    sticky_sessions: false
-
-  # Failover configuration
-  failover:
-    auto_failover: true
-    strategy: graceful
-    detection_interval: 15s
-    failover_timeout: 30s
-    retry_attempts: 2
-
-  # Monitoring
-  monitoring:
-    enabled: true
-    metrics_interval: 60s
-```
-
-### Multi-Region Commands
-
-```bash
-# Upload with multi-region support
-cargoship create /data \
-  --bucket my-bucket \
-  --multi-region \
-  --redundancy 2
-
-# Check region status
-cargoship status regions
-
-# Manual failover
-cargoship failover --from us-east-1 --to us-west-2
-
-# Performance test across regions
-cargoship performance \
-  --test-bucket my-test-bucket \
-  --regions us-east-1,us-west-2,eu-west-1 \
-  --file-sizes 1MB,100MB,1GB
-```
-
-## Performance Optimization
-
-### Compression Benchmarking
-
-```bash
-# Test compression algorithms
-cargoship benchmark --size 1GB --data-type mixed --format table
-
-# Compare performance with real data
-cargoship benchmark --file /path/to/sample-data.tar
-
-# JSON output for analysis
-cargoship benchmark --size 500MB --format json > compression-results.json
-```
-
-### Network Performance Testing
-
-```bash
-# Comprehensive performance test
-cargoship performance \
-  --test-bucket my-benchmark-bucket \
-  --file-sizes 1MB,10MB,100MB,1GB \
-  --iterations 5 \
-  --regions us-east-1,us-west-2 \
-  --multi-region \
-  --failover-tests
-
-# Focus on specific regions
-cargoship performance \
-  --test-bucket my-bucket \
-  --regions us-east-1 \
-  --file-sizes 100MB,1GB \
-  --iterations 10
-```
-
-### Adaptive Tuning
-
-```yaml
-# Enable adaptive performance tuning
-performance:
-  enable_adaptive_tuning: true
-  network_monitoring:
-    enabled: true
-    interval: 5s
-    adaptation_threshold: 0.1
+rules:
+  min_age_days: 7
+  auto_archive: true
+  completed_markers:
+    - "ANALYSIS_COMPLETE"
+    - "processing_finished.flag"
   
-  staging:
-    enabled: true
-    max_memory_mb: 512
-    chunk_ahead_count: 3
-    
-  bandwidth_management:
-    max_bandwidth_mbps: 1000
-    adaptive_throttling: true
-    burst_allowance: 1.5
+archive:
+  destination: s3://research-archive/{project}/{date}
+  storage_class: deep-archive
+  max_monthly_cost: 200
+  
+notifications:
+  email: lab-admin@university.edu
+  slack_webhook: https://hooks.slack.com/services/YOUR/WEBHOOK
 ```
 
-## Security Best Practices
+## AWS Setup for Researchers
 
-### GPG Key Management
+### Simple AWS Configuration
+
+Set up AWS for research use:
 
 ```bash
-# Generate dedicated archive key
-cargoship create-keys \
-  --name "Production Archive Key" \
-  --email archives@company.com \
-  --key-size 4096 \
-  --expires 2y
+# Configure AWS credentials
+aws configure --profile research
+# AWS Access Key ID: YOUR_ACCESS_KEY
+# AWS Secret Access Key: YOUR_SECRET_KEY  
+# Default region: us-east-1
+# Default output format: json
 
-# List available keys
-cargoship create-keys --list
+# Create research bucket
+aws s3 mb s3://my-research-archive --profile research
 
-# Export public key for sharing
-gpg --export --armor archives@company.com > archive-public-key.asc
-
-# Backup private key securely
-gpg --export-secret-keys --armor archives@company.com > archive-private-key.asc
+# Set bucket lifecycle policy
+cargoship lifecycle apply research-policy \
+  --bucket my-research-archive
 ```
 
-### AWS IAM Permissions
+### Research IAM Policy
 
-Minimum required permissions:
+Use this minimal IAM policy for research access:
 
 ```json
 {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:GetObject",
-                "s3:PutObject",
-                "s3:DeleteObject",
-                "s3:GetObjectVersion"
-            ],
-            "Resource": "arn:aws:s3:::your-archive-bucket/*"
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:ListBucket",
-                "s3:GetBucketLocation",
-                "s3:GetBucketVersioning"
-            ],
-            "Resource": "arn:aws:s3:::your-archive-bucket"
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:GetBucketLocation"
-            ],
-            "Resource": "*"
-        }
-    ]
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::my-research-archive",
+        "arn:aws:s3:::my-research-archive/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:ListAllMyBuckets"
+      ],
+      "Resource": "*"
+    }
+  ]
 }
 ```
 
-For multi-region setups:
+## Common Use Cases
 
-```json
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:*"
-            ],
-            "Resource": [
-                "arn:aws:s3:::your-archive-bucket-*",
-                "arn:aws:s3:::your-archive-bucket-*/*"
-            ]
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:ListAllMyBuckets",
-                "s3:GetBucketLocation"
-            ],
-            "Resource": "*"
-        }
-    ]
-}
+### Genomics Research
+
+Archive sequencing data efficiently:
+
+```bash
+# Archive raw sequencing data
+cargoship ship /data/raw-sequences \
+  --destination s3://genomics-archive/project-001/raw \
+  --storage-class deep-archive \
+  --compression zstd \
+  --tags "project=cancer-genomics,grant=NIH-001"
+
+# Archive analysis results  
+cargoship ship /data/variant-calls \
+  --destination s3://genomics-archive/project-001/analysis \
+  --storage-class glacier \
+  --preserve-metadata \
+  --include-checksums
 ```
 
-### Encryption Best Practices
+### Microscopy Data
 
-1. **Always encrypt sensitive data**:
-   ```bash
-   cargoship create /sensitive-data --bucket my-bucket --encrypt
-   ```
+Handle large imaging datasets:
 
-2. **Use separate keys for different data classifications**:
-   ```bash
-   # Financial data
-   cargoship create /finance --bucket my-bucket --encrypt --gpg-key finance@company.com
-   
-   # HR data
-   cargoship create /hr --bucket my-bucket --encrypt --gpg-key hr@company.com
-   ```
+```bash
+# Archive microscopy images
+cargoship ship /data/confocal-images \
+  --destination s3://imaging-archive/experiment-456 \
+  --storage-class glacier \
+  --max-archive-size 10GB \
+  --compression lz4 \
+  --parallel 4
+```
 
-3. **Regularly rotate encryption keys**:
-   ```bash
-   # Create new key
-   cargoship create-keys --name "Archive Key 2025" --email archives-2025@company.com
-   
-   # Update configuration to use new key
-   # Keep old key available for decryption
-   ```
+### Long-term Data Preservation
 
-4. **Secure key storage**:
-   - Store private keys in hardware security modules (HSMs)
-   - Use key management services (AWS KMS, HashiCorp Vault)
-   - Implement proper backup and recovery procedures
+Set up institutional archival:
+
+```bash
+# Create preservation-grade archive
+cargoship ship /data/thesis-dataset \
+  --destination s3://university-preservation/student-123 \
+  --storage-class deep-archive \
+  --encrypt-kms arn:aws:kms:us-east-1:account:key/preservation-key \
+  --preserve-metadata \
+  --integrity-check sha256 \
+  --redundancy 3
+```
 
 ## Troubleshooting
 
 ### Common Issues
 
-#### Connection Problems
-
+**Agent not detecting files:**
 ```bash
-# Test AWS connectivity
-aws s3 ls s3://your-bucket
+# Check agent logs
+docker logs cargoship-agent
 
-# Check CargoShip configuration
-cargoship config validate
+# Verify watch patterns
+cargoship agent test-patterns /data/test-file.bam
 
-# Test with verbose logging
-cargoship create /data --bucket my-bucket --log-level debug
+# Test file age detection
+cargoship agent test-age /data/analysis-output
 ```
 
-#### Performance Issues
-
+**High costs:**
 ```bash
-# Run performance diagnostics
-cargoship performance --test-bucket my-bucket --file-sizes 10MB
+# Analyze current spending
+cargoship costs analyze --detailed
+
+# Check storage class distribution
+cargoship costs breakdown --by-storage-class
+
+# Get optimization recommendations
+cargoship costs optimize --dry-run
+```
+
+**Transfer failures:**
+```bash
+# Check AWS credentials
+cargoship config test aws
+
+# Verify S3 permissions
+cargoship test s3://my-research-bucket
 
 # Check network connectivity
-cargoship analyze network --region us-east-1
-
-# Monitor resource usage
-cargoship analyze system
-```
-
-#### Multi-Region Issues
-
-```bash
-# Check region health
-cargoship status regions
-
-# Test failover manually
-cargoship failover --test --from us-east-1 --to us-west-2
-
-# View detailed logs
-cargoship --log-level debug status regions
-```
-
-### Log Analysis
-
-CargoShip logs include structured information for troubleshooting:
-
-```bash
-# View recent logs
-tail -f ~/.cargoship.log
-
-# Search for errors
-grep ERROR ~/.cargoship.log
-
-# Filter by operation
-grep "upload" ~/.cargoship.log | grep ERROR
+cargoship network test --region us-east-1
 ```
 
 ### Getting Help
 
-```bash
-# Built-in help
-cargoship help
-cargoship help create
-cargoship help multi-region
-
-# Version and build information
-cargoship version --verbose
-
-# Configuration validation
-cargoship config validate --verbose
-```
-
-## CLI Reference
-
-### Global Flags
-
-- `--config`: Path to configuration file
-- `--log-level`: Logging level (debug, info, warn, error)
-- `--log-file`: Path to log file
-- `--profile`: AWS profile to use
-- `--region`: AWS region override
-
-### Commands
-
-#### create
-Create archives from files or directories.
-
-```bash
-cargoship create [source] [flags]
-```
-
-**Key Flags:**
-- `--bucket`: S3 bucket name (required)
-- `--prefix`: Object prefix/path
-- `--compression`: Compression algorithm (auto, gzip, zstd, lz4)
-- `--level`: Compression level
-- `--encrypt`: Enable GPG encryption
-- `--gpg-key`: GPG key ID or email
-- `--exclude`: Exclude patterns
-- `--include`: Include patterns
-- `--multi-region`: Enable multi-region upload
-- `--redundancy`: Number of redundant copies
-
-#### find
-Search and list archives.
-
-```bash
-cargoship find [flags]
-```
-
-**Key Flags:**
-- `--bucket`: S3 bucket to search
-- `--prefix`: Object prefix filter
-- `--after`: Find objects after date
-- `--before`: Find objects before date
-- `--min-size`: Minimum object size
-- `--max-size`: Maximum object size
-
-#### analyze
-Analyze storage costs, compression, and performance.
-
-```bash
-cargoship analyze [cost|compression|lifecycle|network|system] [flags]
-```
-
-#### benchmark
-Test compression algorithm performance.
-
-```bash
-cargoship benchmark [flags]
-```
-
-**Key Flags:**
-- `--size`: Test data size
-- `--data-type`: Data type simulation
-- `--file`: Use real file for testing
-- `--format`: Output format (table, json)
-
-#### performance
-Run comprehensive AWS performance tests.
-
-```bash
-cargoship performance [flags]
-```
-
-**Key Flags:**
-- `--test-bucket`: S3 bucket for testing (required)
-- `--file-sizes`: File sizes to test
-- `--iterations`: Number of test iterations
-- `--regions`: AWS regions to test
-- `--multi-region`: Include multi-region tests
-- `--failover-tests`: Include failover tests
-
-#### config
-Manage configuration.
-
-```bash
-cargoship config [init|validate|show] [flags]
-```
-
-#### wizard
-Interactive setup wizard.
-
-```bash
-cargoship wizard
-```
-
-#### create-keys
-GPG key management.
-
-```bash
-cargoship create-keys [flags]
-```
-
-#### status
-Show system and region status.
-
-```bash
-cargoship status [regions|system] [flags]
-```
-
-### Exit Codes
-
-- `0`: Success
-- `1`: General error
-- `2`: Configuration error
-- `3`: Authentication error
-- `4`: Network error
-- `5`: Storage error
-- `6`: Encryption error
-
-### Environment Variables Reference
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `CARGOSHIP_CONFIG` | Configuration file path | `~/.cargoship.yaml` |
-| `CARGOSHIP_LOG_LEVEL` | Log level | `info` |
-| `CARGOSHIP_LOG_FILE` | Log file path | `~/.cargoship.log` |
-| `CARGOSHIP_BUCKET` | Default S3 bucket | - |
-| `AWS_PROFILE` | AWS profile | `default` |
-| `AWS_DEFAULT_REGION` | AWS region | `us-east-1` |
-| `GPG_KEY_ID` | Default GPG key | - |
-| `GNUPGHOME` | GPG home directory | `~/.gnupg` |
+- **Documentation**: [https://cargoship.dev](https://cargoship.dev)
+- **GitHub Issues**: [Report bugs and request features](https://github.com/scttfrdmn/cargoship/issues)
+- **Research Community**: [Join discussions](https://github.com/scttfrdmn/cargoship/discussions)
+- **Slack Channel**: `#cargoship` on Research Computing Slack
 
 ---
 
-For more information, visit the [CargoShip GitHub repository](https://github.com/scttfrdmn/cargoship) or check the latest documentation at the project wiki.
+**Need help with your research data archival? We're here to help!** 🚢
