@@ -1,146 +1,139 @@
 # CargoShip Launch Agents
 
-Deploy CargoShip agents on your lab infrastructure for automatic, intelligent research data archival.
+Deploy headless CargoShip agents on your lab infrastructure for automatic, intelligent research data archival.
 
 ## Overview
 
-Launch agents are containerized CargoShip instances that run on your lab's NAS boxes, file servers, and compute nodes to automatically detect and archive completed research datasets.
+Launch agents are lightweight, containerized agents that run on your lab's NAS boxes, file servers, and compute nodes to automatically detect and archive completed research datasets. They operate headlessly and connect securely to your main CargoShip instance.
 
 **Key Benefits:**
-- 🔍 **Automatic Detection** - Identifies completed research datasets
-- 💰 **Cost Optimization** - Intelligent storage class selection
-- ⚡ **Background Operation** - No interruption to research workflows
-- 🛡️ **Reliable** - Handles network issues and retries automatically
+- 🔍 **Smart Detection** - Uses multiple algorithms to identify research data types (genomics, imaging, computational)
+- 🏗️ **Headless Operation** - No local UI, managed remotely via secure WebSocket connection
+- 📦 **Containerized** - Easy deployment on NAS devices like QNAP and Synology
+- 🛡️ **Secure** - TLS-encrypted communication with authentication tokens
+- ⚡ **Background Processing** - No interruption to research workflows
 
 ## Quick Start
 
 ### NAS Box Deployment
 
-Deploy on your lab NAS using Docker Compose:
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  cargoship-agent:
-    image: scttfrdmn/cargoship:launch
-    container_name: research-archive-agent
-    restart: unless-stopped
-    volumes:
-      - /mnt/research-data:/data:ro
-      - ./config:/config:ro
-      - ~/.aws:/root/.aws:ro
-    environment:
-      - CARGOSHIP_WATCH_PATHS=/data/completed,/data/analysis-output
-      - CARGOSHIP_DESTINATION=s3://research-archive
-      - CARGOSHIP_STORAGE_CLASS=deep-archive
-      - CARGOSHIP_MAX_MONTHLY_COST=300
-      - CARGOSHIP_MIN_AGE_DAYS=7
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-```
-
-Start the agent:
+Deploy on your lab NAS using the provided Docker Compose configuration:
 
 ```bash
+# Download the deployment files
+curl -O https://raw.githubusercontent.com/scttfrdmn/cargoship/main/docker/launch/docker-compose.yml
+curl -O https://raw.githubusercontent.com/scttfrdmn/cargoship/main/docker/launch/agent.yaml
+
+# Create .env file with your configuration
+cat > .env << 'EOF'
+CARGOSHIP_CONTROLLER_URL=wss://your-cargoship-instance.com
+CARGOSHIP_AUTH_TOKEN=your-secure-auth-token
+CARGOSHIP_DESTINATION=s3://research-archive
+CARGOSHIP_WATCH_PATHS=/data/completed,/data/analysis-output
+DATA_PATH=/volume1/research-data
+AWS_CREDENTIALS_PATH=/volume1/docker/cargoship/.aws
+EOF
+
 # Deploy the agent
 docker-compose up -d
 
 # Check status
 docker-compose logs -f cargoship-agent
-
-# Monitor archival activity
-docker exec cargoship-agent cargoship agent status
 ```
 
 ## Configuration
 
-### Environment Variables
+### Required Environment Variables
 
-Configure the agent using environment variables:
+The agent requires these essential variables to connect and operate:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `CARGOSHIP_CONTROLLER_URL` | WebSocket URL of your CargoShip controller | `wss://cargoship.lab.edu` |
+| `CARGOSHIP_AUTH_TOKEN` | Authentication token for secure connection | `your-secure-token` |
+| `CARGOSHIP_DESTINATION` | S3 destination bucket/prefix | `s3://research-archive` |
+
+### Optional Environment Variables
+
+Customize agent behavior with these optional variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `CARGOSHIP_WATCH_PATHS` | Comma-separated paths to monitor | `/data` |
-| `CARGOSHIP_DESTINATION` | S3 destination bucket/prefix | Required |
 | `CARGOSHIP_STORAGE_CLASS` | Default storage class | `deep-archive` |
-| `CARGOSHIP_MAX_MONTHLY_COST` | Budget limit in USD | `1000` |
 | `CARGOSHIP_MIN_AGE_DAYS` | Minimum file age before archival | `7` |
 | `CARGOSHIP_PATTERNS` | File patterns to include | `*` |
-| `CARGOSHIP_EXCLUDE_PATTERNS` | File patterns to exclude | `*.tmp,*.lock` |
-| `CARGOSHIP_CHECK_INTERVAL` | How often to scan (seconds) | `3600` |
+| `CARGOSHIP_EXCLUDE_PATTERNS` | File patterns to exclude | `*.tmp,*.lock,.DS_Store` |
+| `CARGOSHIP_CHECK_INTERVAL` | How often to scan (seconds) | `300` |
+| `CARGOSHIP_AGENT_NAME` | Friendly name for the agent | `CargoShip Agent` |
+| `CARGOSHIP_AGENT_DESCRIPTION` | Description of the agent | `Automated research data archival` |
+| `CARGOSHIP_LOG_LEVEL` | Log verbosity (debug, info, warn, error) | `info` |
 
 ### Configuration File
 
-For advanced configuration, mount a config file:
+For advanced configuration, mount a config file to `/config/agent.yaml`:
 
 ```yaml
 # config/agent.yaml
-agent:
-  name: "lab-nas-agent"
-  check_interval: 3600  # 1 hour
-  max_concurrent_uploads: 3
+# Agent identification
+id: ""  # Will be auto-generated if empty
+name: "CargoShip NAS Agent"
+description: "Headless agent for research data archival"
 
-watch:
-  paths:
-    - path: "/data/genomics/completed"
-      storage_class: "deep-archive"
-      max_cost: 100
-    - path: "/data/imaging/analysis-output"
-      storage_class: "glacier"
-      max_cost: 200
-  
-  patterns:
-    include:
-      - "*.bam"
+# Controller connection (REQUIRED)
+controller_url: ""  # Set via CARGOSHIP_CONTROLLER_URL
+auth_token: ""      # Set via CARGOSHIP_AUTH_TOKEN
+
+# TLS configuration for secure communication
+tls_config:
+  enabled: true
+  insecure_skip_verify: false  # Set to true for self-signed certificates
+
+# File watching configuration
+watch_paths:
+  - path: "/data/genomics"
+    include_patterns:
       - "*.fastq.gz"
-      - "*.tiff"
-      - "*.czi"
-      - "analysis_complete.txt"
-    exclude:
+      - "*.bam"
+      - "*.vcf.gz"
+    exclude_patterns:
       - "*.tmp"
       - "*.lock"
-      - ".DS_Store"
-      - "*.partial"
-
-rules:
-  min_age_days: 7
-  auto_archive: true
-  completed_markers:
-    - "ANALYSIS_COMPLETE"
-    - "processing_finished.flag"
-    - "job_done.txt"
+    min_age: "168h"        # 7 days
+    storage_class: "deep-archive"
+    recursive: true
   
-  size_limits:
-    max_file_size: "50GB"
-    max_archive_size: "500GB"
+  - path: "/data/imaging"
+    include_patterns:
+      - "*.tiff"
+      - "*.czi"
+      - "*.lsm"
+    min_age: "336h"        # 14 days
+    storage_class: "glacier"
+    recursive: true
 
+# Scan interval (how often to check for new files)
+scan_interval: "300s"  # 5 minutes
+
+# Archive configuration
 archive:
-  destination: "s3://research-archive/{project}/{year}/{month}"
+  destination: ""  # Set via CARGOSHIP_DESTINATION
   storage_class: "deep-archive"
   compression: "zstd"
-  encrypt: true
-  
-  lifecycle:
-    transition_to_glacier: 90    # days
-    transition_to_deep_archive: 365
+  encryption: true
+  max_concurrent: 2
+  retry_attempts: 3
+  retry_delay: "30s"
 
-budget:
-  max_monthly_cost: 300.00
-  alert_threshold: 0.8
-  alert_email: "lab-admin@university.edu"
+# Health monitoring
+health_check:
+  enabled: true
+  check_interval: "30s"
+  report_interval: "300s"  # 5 minutes
+  metrics_enabled: true
 
-notifications:
-  slack:
-    webhook: "https://hooks.slack.com/services/YOUR/WEBHOOK"
-    channel: "#lab-archive"
-  email:
-    smtp_server: "smtp.university.edu"
-    from: "cargoship@lab.university.edu"
-    to: ["lab-admin@university.edu"]
+# Logging level
+log_level: "info"  # debug, info, warn, error
 ```
 
 ## Research Patterns
@@ -345,32 +338,32 @@ sudo journalctl -u cargoship-agent -f
 Check agent health and activity:
 
 ```bash
-# View agent status
-docker exec cargoship-agent cargoship agent status
+# View agent logs
+docker logs cargoship-agent
 
-# Check recent archival activity
-docker exec cargoship-agent cargoship agent activity --last 24h
+# Check if agent is running
+docker ps | grep cargoship-agent
 
-# View current configuration
-docker exec cargoship-agent cargoship agent config show
+# Validate configuration
+docker exec cargoship-agent cargoship-launch -validate
 
-# Test file detection patterns
-docker exec cargoship-agent cargoship agent test-patterns /data/test-file.bam
+# View agent version
+docker exec cargoship-agent cargoship-launch -version
 ```
 
-### Cost Monitoring
+### Monitoring Communication
 
-Track archival costs:
+Monitor the secure connection to your CargoShip controller:
 
 ```bash
-# Check current month costs
-docker exec cargoship-agent cargoship costs status --this-month
+# Check WebSocket connection logs
+docker logs cargoship-agent 2>&1 | grep -i "controller\|websocket\|connection"
 
-# Get cost breakdown by storage class
-docker exec cargoship-agent cargoship costs breakdown --by-storage-class
+# Monitor agent registration status
+docker logs cargoship-agent 2>&1 | grep -i "register\|heartbeat"
 
-# View budget status
-docker exec cargoship-agent cargoship budget status
+# View file detection activity
+docker logs cargoship-agent 2>&1 | grep -i "scan\|candidate\|archive"
 ```
 
 ### Logs and Debugging

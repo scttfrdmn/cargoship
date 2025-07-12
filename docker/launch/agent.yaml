@@ -1,0 +1,104 @@
+# CargoShip Launch Agent Configuration
+# This is the default configuration for headless agents running on NAS devices
+
+# Agent identification
+id: ""  # Will be auto-generated if empty
+name: "CargoShip NAS Agent"
+description: "Headless agent for research data archival"
+
+# Controller connection (REQUIRED)
+controller_url: ""  # Set via CARGOSHIP_CONTROLLER_URL
+auth_token: ""      # Set via CARGOSHIP_AUTH_TOKEN
+
+# TLS configuration for secure communication
+tls_config:
+  enabled: true
+  insecure_skip_verify: false  # Set to true for self-signed certificates
+  cert_file: ""
+  key_file: ""
+  ca_file: ""
+
+# File watching configuration
+watch_paths:
+  - path: "/data"
+    include_patterns:
+      - "*.fastq.gz"
+      - "*.bam"
+      - "*.tiff"
+      - "*.czi"
+      - "*.csv"
+      - "*.h5"
+      - "analysis_complete.txt"
+    exclude_patterns:
+      - "*.tmp"
+      - "*.lock"
+      - ".DS_Store"
+      - "*.partial"
+      - "Thumbs.db"
+      - "desktop.ini"
+    min_age: "168h"        # 7 days
+    storage_class: "deep-archive"
+    recursive: true
+
+# Scan interval (how often to check for new files)
+scan_interval: "300s"  # 5 minutes
+
+# Archive configuration
+archive:
+  destination: ""  # Set via CARGOSHIP_DESTINATION
+  storage_class: "deep-archive"
+  compression: "zstd"
+  encryption: true
+  max_concurrent: 2
+  chunk_size: 67108864   # 64MB
+  retry_attempts: 3
+  retry_delay: "30s"
+
+# Health monitoring
+health_check:
+  enabled: true
+  check_interval: "30s"
+  report_interval: "300s"  # 5 minutes
+  metrics_enabled: true
+
+# Logging level
+log_level: "info"  # debug, info, warn, error
+
+# Example configurations for different research environments:
+
+# Genomics Lab Configuration:
+# watch_paths:
+#   - path: "/data/raw-sequences"
+#     include_patterns: ["*.fastq.gz", "*.fq.gz"]
+#     storage_class: "deep-archive"
+#     min_age: "720h"  # 30 days for raw data
+#   - path: "/data/alignments"
+#     include_patterns: ["*.bam", "*.sam"]
+#     storage_class: "glacier"
+#     min_age: "336h"  # 14 days for alignments
+#   - path: "/data/variants"
+#     include_patterns: ["*.vcf", "*.vcf.gz"]
+#     storage_class: "standard-ia"
+#     min_age: "168h"  # 7 days for variants
+
+# Imaging Lab Configuration:
+# watch_paths:
+#   - path: "/data/raw-images"
+#     include_patterns: ["*.tiff", "*.czi", "*.lsm"]
+#     storage_class: "glacier"
+#     min_age: "336h"  # 14 days
+#   - path: "/data/processed"
+#     include_patterns: ["*.png", "*.jpg", "analysis_results.pdf"]
+#     storage_class: "standard-ia"
+#     min_age: "168h"  # 7 days
+
+# Computational Research Configuration:
+# watch_paths:
+#   - path: "/data/simulations"
+#     include_patterns: ["*.out", "*.dat", "*.h5"]
+#     storage_class: "deep-archive"
+#     min_age: "72h"   # 3 days
+#   - path: "/data/results"
+#     include_patterns: ["*.csv", "*.xlsx", "*.pdf"]
+#     storage_class: "standard-ia"
+#     min_age: "24h"   # 1 day
