@@ -26,6 +26,14 @@
 - New code cannot reduce overall coverage percentage
 - Untestable code must be explicitly justified and documented
 
+#### Security Requirements
+- **ALL code must pass security scanning** with zero vulnerabilities
+- Use `govulncheck` for Go vulnerability scanning - runs automatically in pre-commit hooks
+- Use `gosec` for static security analysis - integrated with golangci-lint
+- **Zero tolerance policy** for known security vulnerabilities
+- Dependencies must be regularly updated for security patches
+- Security scanning failures block all PRs and commits
+
 #### Test Quality
 - Tests must be meaningful, not just coverage padding
 - All error paths must be tested
@@ -72,7 +80,7 @@
 #### Third-Party Libraries
 - Evaluate security, maintenance status, and license compatibility
 - Pin to specific versions, avoid floating dependencies
-- Regular security audits with `go mod audit`
+- Regular security audits with `govulncheck`
 - Document rationale for each major dependency
 
 #### Updates
@@ -118,7 +126,7 @@ Before any commit or PR:
 - [ ] All tests pass (`go test ./...`)
 - [ ] Linting passes (`golangci-lint run`)
 - [ ] Coverage meets requirements (`go test -cover ./...`)
-- [ ] No security vulnerabilities (`go mod audit`)
+- [ ] No security vulnerabilities (`govulncheck`)
 - [ ] Documentation updated for public APIs
 - [ ] Error handling properly implemented
 - [ ] Performance impact assessed
@@ -155,7 +163,7 @@ The pre-commit hook automatically:
 ### Required Tools
 - `golangci-lint` for code linting
 - `go test -race -cover` for testing
-- `go mod audit` for security scanning
+- `govulncheck` for vulnerability scanning
 - `go tool cover` for coverage analysis
 - `go tool pprof` for performance profiling
 

@@ -52,14 +52,37 @@ check_dependencies() {
         exit 1
     fi
     
+    # Check for govulncheck (install if missing)
+    if ! command -v govulncheck &> /dev/null; then
+        log_info "Installing govulncheck for vulnerability scanning..."
+        if ! go install golang.org/x/vuln/cmd/govulncheck@latest; then
+            log_error "Failed to install govulncheck"
+            exit 1
+        fi
+    fi
+    
     log_success "All dependencies found"
+}
+
+# Run vulnerability scanning
+run_security_scan() {
+    log_info "Running security vulnerability scan..."
+    
+    # Run govulncheck
+    if ! govulncheck ./...; then
+        log_error "Vulnerability scan failed. Please address security issues before committing."
+        log_error "Development rules require zero known vulnerabilities."
+        exit 1
+    fi
+    
+    log_success "Security scan passed - no known vulnerabilities"
 }
 
 # Run golangci-lint
 run_linting() {
     log_info "Running golangci-lint..."
     
-    if ! golangci-lint run --no-config; then
+    if ! golangci-lint run; then
         log_error "Linting failed. Please fix the issues above before committing."
         log_error "Development rules require zero linting violations."
         exit 1
@@ -262,6 +285,9 @@ main() {
     echo
     
     check_go_modules
+    echo
+    
+    run_security_scan
     echo
     
     run_linting
