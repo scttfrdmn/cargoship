@@ -88,6 +88,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 		NewConfigCmd(),
 		NewBenchmarkCmd(),
 		NewControllerCmd(),
+		NewContextCmd(),
 	)
 	cmd.AddCommand(NewWizardCmd())
 	cmd.AddCommand(NewAnalyzeCmd())
