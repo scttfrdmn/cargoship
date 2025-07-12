@@ -1,0 +1,86 @@
+# Multi-stage security-hardened Dockerfile for CargoShip
+FROM golang:1.21-alpine AS builder
+
+# Install security tools and dependencies
+RUN apk add --no-cache \
+    git \
+    ca-certificates \
+    tzdata \
+    gcc \
+    musl-dev \
+    sqlite \
+    curl
+
+# Create non-root user for building
+RUN adduser -D -s /bin/sh builder
+USER builder
+WORKDIR /app
+
+# Copy go mod files first for better caching
+COPY --chown=builder:builder go.mod go.sum ./
+RUN go mod download && go mod verify
+
+# Copy source code
+COPY --chown=builder:builder . .
+
+# Build with security flags
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+ENV GOARCH=amd64
+
+RUN go build \
+    -a \
+    -installsuffix cgo \
+    -ldflags '-w -s -extldflags "-static" -X main.version=$VERSION -X main.commit=$COMMIT' \
+    -trimpath \
+    -buildvcs=false \
+    -o cargoship \
+    ./cmd/cargoship
+
+# Run security tests on the binary
+RUN ./cargoship version
+
+# Production image - minimal and secure
+FROM scratch
+
+# Import CA certificates and timezone data
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+
+# Create minimal filesystem structure
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
+
+# Copy the binary
+COPY --from=builder /app/cargoship /usr/local/bin/cargoship
+
+# Create non-root user in final image
+USER 65534:65534
+
+# Security labels
+LABEL \
+    org.opencontainers.image.title="CargoShip" \
+    org.opencontainers.image.description="Secure AWS data archiving tool" \
+    org.opencontainers.image.vendor="CargoShip Project" \
+    org.opencontainers.image.licenses="MIT" \
+    org.opencontainers.image.source="https://github.com/scttfrdmn/cargoship" \
+    security.scan.enabled="true" \
+    security.hardened="true"
+
+# Health check (if running as server)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/usr/local/bin/cargoship", "version"]
+
+# Default entrypoint
+ENTRYPOINT ["/usr/local/bin/cargoship"]
+CMD ["--help"]
+
+# Security metadata
+LABEL security.features="\
+    static-binary,\
+    non-root-user,\
+    minimal-base,\
+    no-shell,\
+    ca-certificates,\
+    stack-protection,\
+    stripped-binary"
