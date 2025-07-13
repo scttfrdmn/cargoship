@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned for v0.3.2 (August 2025)
+- Region selection strategy comprehensive testing
+- Failover scenario validation and simulation
+- Performance benchmarking suite with competitor comparisons
+- Multi-region test coverage improvements to 80%+
+
+### Planned for v0.4.0 (October 2025)
+- Cross-prefix pipeline coordination with TCP-like congestion control
+- Predictive chunk staging with real-time optimization
+- Advanced flow control algorithms (BBR/CUBIC-style)
+- Real-time network adaptation during transfers
+
+See [ROADMAP.md](ROADMAP.md) for complete version planning.
+
 ## [0.3.1] - 2025-07-13
 
 ### Added
