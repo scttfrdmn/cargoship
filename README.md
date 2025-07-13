@@ -5,6 +5,10 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/scttfrdmn/cargoship.svg)](https://pkg.go.dev/github.com/scttfrdmn/cargoship)
 [![Go Report Card](https://goreportcard.com/badge/github.com/scttfrdmn/cargoship)](https://goreportcard.com/report/github.com/scttfrdmn/cargoship)
 [![Test Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen.svg)](https://github.com/scttfrdmn/cargoship)
+[![Security Scan](https://github.com/scttfrdmn/cargoship/actions/workflows/security.yml/badge.svg)](https://github.com/scttfrdmn/cargoship/actions/workflows/security.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/scttfrdmn/cargoship/badge)](https://securityscorecards.dev/viewer/?uri=github.com/scttfrdmn/cargoship)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fscttfrdmn%2Fcargoship.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fscttfrdmn%2Fcargoship?ref=badge_shield)
+[![Vulnerabilities](https://img.shields.io/snyk/vulnerabilities/github/scttfrdmn/cargoship.svg)](https://snyk.io/test/github/scttfrdmn/cargoship)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 CargoShip helps researchers move their data to AWS S3 intelligently and cost-effectively. Built on the foundation of Duke University's [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl), CargoShip adds smart archival workflows, cost optimization, and simple deployment for research environments.

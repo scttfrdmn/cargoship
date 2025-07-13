@@ -15,8 +15,10 @@ type Controller struct {
 	logger *slog.Logger
 	
 	// Components
-	registry  *AgentRegistry
-	wsServer  *WebSocketServer
+	registry    *AgentRegistry
+	wsServer    *WebSocketServer
+	webServer   *WebServer
+	authManager *AuthManager
 	
 	// Lifecycle
 	ctx    context.Context
@@ -34,6 +36,9 @@ type Config struct {
 	TLSEnabled  bool   `json:"tls_enabled" yaml:"tls_enabled"`
 	TLSCertFile string `json:"tls_cert_file" yaml:"tls_cert_file"`
 	TLSKeyFile  string `json:"tls_key_file" yaml:"tls_key_file"`
+	
+	// Authentication settings
+	Auth *AuthConfig `json:"auth" yaml:"auth"`
 	
 	// Logging
 	LogLevel string `json:"log_level" yaml:"log_level"`
@@ -58,11 +63,27 @@ func NewController(config *Config, logger *slog.Logger) (*Controller, error) {
 		cancel: cancel,
 	}
 	
+	// Create authentication manager
+	authManager, err := NewAuthManager(config.Auth, logger)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to create auth manager: %w", err)
+	}
+	controller.authManager = authManager
+	
 	// Create agent registry
 	controller.registry = NewAgentRegistry(config.AuthToken, logger)
 	
 	// Create WebSocket server
 	controller.wsServer = NewWebSocketServer(config.ListenAddr, config.AuthToken, controller.registry, logger)
+	controller.wsServer.SetAuthManager(authManager)
+	
+	// Create web server (using a different port for HTTP)
+	webAddr := config.ListenAddr
+	if webAddr == ":8080" {
+		webAddr = ":8081" // Use different port for web UI
+	}
+	controller.webServer = NewWebServer(webAddr, config.AuthToken, controller.registry, logger)
 	
 	// Configure TLS if enabled
 	if config.TLSEnabled {
@@ -96,6 +117,15 @@ func (c *Controller) Start() error {
 		return fmt.Errorf("failed to start WebSocket server: %w", err)
 	}
 	
+	// Start web server
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		if err := c.webServer.Start(); err != nil {
+			c.logger.Error("Web server failed", "error", err)
+		}
+	}()
+	
 	c.logger.Info("Controller started successfully", 
 		"listen_addr", c.config.ListenAddr,
 		"protocol", func() string {
@@ -114,6 +144,11 @@ func (c *Controller) Stop() error {
 	
 	// Cancel context
 	c.cancel()
+	
+	// Stop web server
+	if c.webServer != nil {
+		_ = c.webServer.Stop()
+	}
 	
 	// Stop WebSocket server
 	if c.wsServer != nil {
@@ -140,6 +175,16 @@ func (c *Controller) GetRegistry() *AgentRegistry {
 // GetWebSocketServer returns the WebSocket server
 func (c *Controller) GetWebSocketServer() *WebSocketServer {
 	return c.wsServer
+}
+
+// GetWebServer returns the web server
+func (c *Controller) GetWebServer() *WebServer {
+	return c.webServer
+}
+
+// GetAuthManager returns the authentication manager
+func (c *Controller) GetAuthManager() *AuthManager {
+	return c.authManager
 }
 
 // validateConfig validates the controller configuration

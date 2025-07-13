@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CargoShip Controller Dashboard</title>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-icon">🚢</span>
+                    <h1>CargoShip Controller</h1>
+                </div>
+                <div class="status-indicator">
+                    <span id="connection-status" class="status-dot connected"></span>
+                    <span id="connection-text">Connected</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Dashboard -->
+        <main class="dashboard">
+            <!-- Metrics Cards -->
+            <section class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-icon">👥</div>
+                    <div class="metric-content">
+                        <div class="metric-value" id="total-agents">0</div>
+                        <div class="metric-label">Connected Agents</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">⚡</div>
+                    <div class="metric-content">
+                        <div class="metric-value" id="active-jobs">0</div>
+                        <div class="metric-label">Active Jobs</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">✅</div>
+                    <div class="metric-content">
+                        <div class="metric-value" id="completed-jobs">0</div>
+                        <div class="metric-label">Completed</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">📊</div>
+                    <div class="metric-content">
+                        <div class="metric-value" id="throughput">0 MB/s</div>
+                        <div class="metric-label">Throughput</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Agents Table -->
+            <section class="table-section">
+                <div class="section-header">
+                    <h2>Connected Agents</h2>
+                    <div class="section-actions">
+                        <button id="refresh-btn" class="btn btn-secondary">
+                            <span class="btn-icon">🔄</span>
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="agents-table" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Name</th>
+                                <th>ID</th>
+                                <th>Endpoint</th>
+                                <th>Jobs</th>
+                                <th>Progress</th>
+                                <th>Throughput</th>
+                                <th>Last Seen</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="agents-tbody">
+                            <!-- Agent rows will be populated by JavaScript -->
+                        </tbody>
+                    </table>
+                    <div id="agents-empty" class="empty-state" style="display: none;">
+                        <div class="empty-icon">🚢</div>
+                        <div class="empty-text">No agents connected</div>
+                        <div class="empty-subtext">Launch agents will appear here when they connect</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Jobs Table -->
+            <section class="table-section">
+                <div class="section-header">
+                    <h2>Active Jobs</h2>
+                    <div class="section-actions">
+                        <select id="job-filter" class="filter-select">
+                            <option value="">All Jobs</option>
+                            <option value="running">Running</option>
+                            <option value="pending">Pending</option>
+                            <option value="completed">Completed</option>
+                            <option value="failed">Failed</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="jobs-table" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Job ID</th>
+                                <th>Agent</th>
+                                <th>Type</th>
+                                <th>Path</th>
+                                <th>Progress</th>
+                                <th>Size</th>
+                                <th>Rate</th>
+                                <th>Started</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jobs-tbody">
+                            <!-- Job rows will be populated by JavaScript -->
+                        </tbody>
+                    </table>
+                    <div id="jobs-empty" class="empty-state" style="display: none;">
+                        <div class="empty-icon">📦</div>
+                        <div class="empty-text">No active jobs</div>
+                        <div class="empty-subtext">Jobs will appear here when agents start processing</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Modals -->
+        <div id="agent-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="modal-agent-name">Agent Details</h3>
+                    <button class="modal-close" onclick="closeModal('agent-modal')">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="agent-details">
+                        <div class="detail-row">
+                            <span class="detail-label">ID:</span>
+                            <span id="modal-agent-id" class="detail-value"></span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Status:</span>
+                            <span id="modal-agent-status" class="detail-value"></span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Endpoint:</span>
+                            <span id="modal-agent-endpoint" class="detail-value"></span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Last Seen:</span>
+                            <span id="modal-agent-lastseen" class="detail-value"></span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Progress:</span>
+                            <div class="progress-bar">
+                                <div id="modal-agent-progress" class="progress-fill"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-actions">
+                        <button id="disconnect-agent-btn" class="btn btn-danger">Disconnect Agent</button>
+                        <button class="btn btn-secondary" onclick="closeModal('agent-modal')">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div id="toast-container" class="toast-container"></div>
+    </div>
+
+    <script src="js/dashboard.js"></script>
+</body>
+</html>

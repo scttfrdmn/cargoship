@@ -7,16 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2025-07-13
+
 ### Added
-- Launch agent architecture for containerized deployment on NAS boxes and lab servers
+- Web GUI interface for managing connected agents
+- Enhanced launch agent architecture for containerized deployment on NAS boxes and lab servers
 - Research-focused documentation and examples
 - Smart dataset detection for automatic archival workflows
 - Budget-friendly cost optimization for academic research
+- Context-aware CLI with persistent caching and REPL environment
+- TUI dashboard framework with multi-agent monitoring
+- Comprehensive security framework with vulnerability scanning
 
 ### Changed
 - Refocused project from enterprise to research use cases
 - Simplified documentation structure for academic users
 - Updated README with research-focused value proposition
+- Enhanced CLI with interactive features and context management
 
 ## [0.3.0] - 2024-07-11
 

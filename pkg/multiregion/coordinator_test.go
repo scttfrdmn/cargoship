@@ -527,7 +527,7 @@ func createValidMultiRegionConfig() *MultiRegionConfig {
 		Failover: FailoverConfig{
 			AutoFailover:      true,
 			Strategy:          FailoverGraceful,
-			DetectionInterval: 15 * time.Second,
+			DetectionInterval: 10 * time.Millisecond, // Reduced for fast tests
 			FailoverTimeout:   30 * time.Second,
 			RetryAttempts:     2,
 		},
@@ -545,6 +545,7 @@ func TestDefaultCoordinator_executeUploadWithFailover(t *testing.T) {
 	ctx := context.Background()
 	err := coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
+	defer func() { _ = coordinator.Shutdown(ctx) }() // Ensure cleanup
 	
 	request := &UploadRequest{
 		ID:             "test-upload-1",
@@ -577,6 +578,7 @@ func TestDefaultCoordinator_executeUploadInRegion(t *testing.T) {
 	ctx := context.Background()
 	err := coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
+	defer func() { _ = coordinator.Shutdown(ctx) }() // Ensure cleanup
 	
 	request := &UploadRequest{
 		ID:             "test-upload-2",
@@ -729,6 +731,7 @@ func TestDefaultCoordinator_attemptFailover(t *testing.T) {
 	ctx := context.Background()
 	err := coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
+	defer func() { _ = coordinator.Shutdown(ctx) }() // Ensure cleanup
 	
 	request := &UploadRequest{
 		ID:             "test-failover-1",
@@ -781,6 +784,7 @@ func TestDefaultCoordinator_backgroundServices(t *testing.T) {
 		coordinator := NewCoordinator()
 		err := coordinator.Initialize(ctx, config)
 		require.NoError(t, err)
+		defer func() { _ = coordinator.Shutdown(ctx) }() // Ensure cleanup
 		
 		// Test performHealthChecks function
 		coordinator.performHealthChecks()
@@ -796,6 +800,7 @@ func TestDefaultCoordinator_backgroundServices(t *testing.T) {
 		coordinator := NewCoordinator()
 		err := coordinator.Initialize(ctx, config)
 		require.NoError(t, err)
+		defer func() { _ = coordinator.Shutdown(ctx) }() // Ensure cleanup
 		
 		// Test collectMetrics function (placeholder implementation)
 		coordinator.collectMetrics()
@@ -806,6 +811,7 @@ func TestDefaultCoordinator_backgroundServices(t *testing.T) {
 		coordinator := NewCoordinator()
 		err := coordinator.Initialize(ctx, config)
 		require.NoError(t, err)
+		defer func() { _ = coordinator.Shutdown(ctx) }() // Ensure cleanup
 		
 		// Test detectAndHandleFailures function (placeholder implementation)
 		coordinator.detectAndHandleFailures()
@@ -821,6 +827,7 @@ func TestDefaultCoordinator_executeUploadWithFailover_errorPaths(t *testing.T) {
 	ctx := context.Background()
 	err := coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
+	defer func() { _ = coordinator.Shutdown(ctx) }() // Ensure cleanup
 	
 	request := &UploadRequest{
 		ID:             "test-failover-error-1",

@@ -50,7 +50,7 @@ func (s *DefaultRegionSelector) SelectRegion(ctx context.Context, request *Uploa
 	// Check if preferred region is specified and available
 	if request.PreferredRegion != "" {
 		for _, region := range availableRegions {
-			if region.Name == request.PreferredRegion && region.Status == RegionStatusHealthy {
+			if region.Name == request.PreferredRegion && (region.Status == RegionStatusHealthy || region.Status == RegionStatusDegraded) {
 				s.logger.Debug("Using preferred region",
 					"region", region.Name,
 					"request_id", request.ID)
@@ -94,7 +94,7 @@ func (s *DefaultRegionSelector) SelectRegions(ctx context.Context, request *Uplo
 	// Always include preferred region if available
 	if request.PreferredRegion != "" {
 		for _, region := range availableRegions {
-			if region.Name == request.PreferredRegion && region.Status == RegionStatusHealthy {
+			if region.Name == request.PreferredRegion && (region.Status == RegionStatusHealthy || region.Status == RegionStatusDegraded) {
 				selectedRegions = append(selectedRegions, region)
 				count--
 				break

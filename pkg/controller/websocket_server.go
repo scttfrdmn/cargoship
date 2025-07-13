@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ type WebSocketServer struct {
 	
 	// Agent management
 	registry *AgentRegistry
+	authManager *AuthManager
 	
 	// WebSocket upgrader
 	upgrader websocket.Upgrader
@@ -75,6 +77,11 @@ func NewWebSocketServer(addr, authToken string, registry *AgentRegistry, logger 
 	}
 }
 
+// SetAuthManager sets the authentication manager for the WebSocket server
+func (ws *WebSocketServer) SetAuthManager(authManager *AuthManager) {
+	ws.authManager = authManager
+}
+
 // Start starts the WebSocket server
 func (ws *WebSocketServer) Start() error {
 	ws.logger.Info("Starting WebSocket server", "addr", ws.addr)
@@ -84,6 +91,9 @@ func (ws *WebSocketServer) Start() error {
 	mux.HandleFunc("/api/v1/agents/connect", ws.handleAgentConnection)
 	mux.HandleFunc("/api/v1/agents", ws.handleAgentList)
 	mux.HandleFunc("/api/v1/agents/", ws.handleAgentOperations)
+	mux.HandleFunc("/api/v1/auth/register", ws.handleAgentRegistration)
+	mux.HandleFunc("/api/v1/auth/authenticate", ws.handleAgentAuthentication)
+	mux.HandleFunc("/api/v1/auth/validate", ws.handleTokenValidation)
 	mux.HandleFunc("/health", ws.handleHealth)
 	
 	// Create HTTP server
@@ -143,15 +153,46 @@ func (ws *WebSocketServer) Stop() error {
 func (ws *WebSocketServer) handleAgentConnection(w http.ResponseWriter, r *http.Request) {
 	// Validate authentication
 	authHeader := r.Header.Get("Authorization")
-	if authHeader != "Bearer "+ws.authToken {
+	var agentID, agentVersion string
+	var authenticated bool
+	
+	// Try JWT authentication first, then fall back to legacy token
+	if authHeader != "" && len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		token := authHeader[7:]
+		
+		// Check if it's a JWT token (contains dots)
+		if ws.authManager != nil && len(token) > 20 && strings.Contains(token, ".") {
+			// Validate JWT token
+			claims, err := ws.authManager.ValidateToken(token)
+			if err == nil {
+				authenticated = true
+				agentID = claims.AgentID
+				ws.logger.Info("Agent connecting with JWT authentication", "agent_id", agentID)
+			}
+		}
+		
+		// Fall back to legacy token authentication
+		if !authenticated && token == ws.authToken {
+			authenticated = true
+			agentID = r.Header.Get("X-Agent-ID")
+			agentVersion = r.Header.Get("X-Agent-Version")
+			ws.logger.Info("Agent connecting with legacy token authentication", "agent_id", agentID)
+		}
+	}
+	
+	if !authenticated {
 		ws.logger.Warn("Unauthorized agent connection attempt", "remote_addr", r.RemoteAddr)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 	
-	// Get agent info from headers
-	agentID := r.Header.Get("X-Agent-ID")
-	agentVersion := r.Header.Get("X-Agent-Version")
+	// Get additional agent info from headers if not already set
+	if agentID == "" {
+		agentID = r.Header.Get("X-Agent-ID")
+	}
+	if agentVersion == "" {
+		agentVersion = r.Header.Get("X-Agent-Version")
+	}
 	
 	if agentID == "" {
 		ws.logger.Warn("Agent connection missing agent ID", "remote_addr", r.RemoteAddr)
@@ -508,4 +549,171 @@ func (ac *AgentConnection) startMessageSender(ctx context.Context) {
 // generateMessageID generates a unique message ID
 func generateMessageID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
+// handleAgentRegistration handles agent registration requests
+func (ws *WebSocketServer) handleAgentRegistration(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	if ws.authManager == nil {
+		http.Error(w, "Authentication not configured", http.StatusServiceUnavailable)
+		return
+	}
+	
+	// Parse registration request
+	var req struct {
+		AgentID      string            `json:"agent_id"`
+		AgentName    string            `json:"agent_name"`
+		PublicKey    string            `json:"public_key,omitempty"`
+		Role         string            `json:"role"`
+		Capabilities []string          `json:"capabilities,omitempty"`
+		Metadata     map[string]string `json:"metadata,omitempty"`
+	}
+	
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		ws.logger.Error("Failed to decode registration request", "error", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	
+	// Validate required fields
+	if req.AgentID == "" || req.AgentName == "" || req.Role == "" {
+		http.Error(w, "Missing required fields: agent_id, agent_name, role", http.StatusBadRequest)
+		return
+	}
+	
+	// Register agent with auth manager
+	err := ws.authManager.RegisterAgent(req.AgentID, req.AgentName, req.PublicKey, req.Role, req.Capabilities, req.Metadata)
+	if err != nil {
+		ws.logger.Error("Failed to register agent", "error", err, "agent_id", req.AgentID)
+		http.Error(w, fmt.Sprintf("Registration failed: %v", err), http.StatusBadRequest)
+		return
+	}
+	
+	ws.logger.Info("Agent registered successfully", "agent_id", req.AgentID, "name", req.AgentName, "role", req.Role)
+	
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":   true,
+		"agent_id":  req.AgentID,
+		"message":   "Agent registered successfully",
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+}
+
+// handleAgentAuthentication handles agent authentication requests
+func (ws *WebSocketServer) handleAgentAuthentication(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	if ws.authManager == nil {
+		http.Error(w, "Authentication not configured", http.StatusServiceUnavailable)
+		return
+	}
+	
+	// Parse authentication request
+	var req struct {
+		AgentID   string `json:"agent_id"`
+		Signature string `json:"signature,omitempty"`
+	}
+	
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		ws.logger.Error("Failed to decode authentication request", "error", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	
+	// Validate required fields
+	if req.AgentID == "" {
+		http.Error(w, "Missing required field: agent_id", http.StatusBadRequest)
+		return
+	}
+	
+	// Authenticate agent
+	token, err := ws.authManager.AuthenticateAgent(req.AgentID, req.Signature)
+	if err != nil {
+		ws.logger.Error("Authentication failed", "error", err, "agent_id", req.AgentID)
+		http.Error(w, "Authentication failed", http.StatusUnauthorized)
+		return
+	}
+	
+	ws.logger.Info("Agent authenticated successfully", "agent_id", req.AgentID)
+	
+	// Return JWT token
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":   true,
+		"token":     token,
+		"agent_id":  req.AgentID,
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+}
+
+// handleTokenValidation handles token validation requests
+func (ws *WebSocketServer) handleTokenValidation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	if ws.authManager == nil {
+		http.Error(w, "Authentication not configured", http.StatusServiceUnavailable)
+		return
+	}
+	
+	// Get token from Authorization header or request body
+	var token string
+	
+	// Try Authorization header first
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" && len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		token = authHeader[7:]
+	} else {
+		// Try request body
+		var req struct {
+			Token string `json:"token"`
+		}
+		
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request: provide token in Authorization header or request body", http.StatusBadRequest)
+			return
+		}
+		token = req.Token
+	}
+	
+	if token == "" {
+		http.Error(w, "Missing token", http.StatusBadRequest)
+		return
+	}
+	
+	// Validate token
+	claims, err := ws.authManager.ValidateToken(token)
+	if err != nil {
+		ws.logger.Debug("Token validation failed", "error", err)
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return
+	}
+	
+	// Get agent capabilities
+	capabilities := ws.authManager.GetAgentCapabilities(claims)
+	
+	// Return validation result
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"valid":        true,
+		"agent_id":     claims.AgentID,
+		"agent_name":   claims.AgentName,
+		"role":         claims.Role,
+		"permissions":  claims.Permissions,
+		"capabilities": capabilities,
+		"session_id":   claims.SessionID,
+		"expires_at":   claims.ExpiresAt.Format(time.RFC3339),
+		"timestamp":    time.Now().Format(time.RFC3339),
+	})
 }

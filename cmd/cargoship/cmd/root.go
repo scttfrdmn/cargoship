@@ -102,6 +102,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 	cmd.AddCommand(NewSchemaCmd())
 	cmd.AddCommand(NewMDDocsCmd())
 	cmd.AddCommand(newManCmd(), newTravelAgentCmd())
+	cmd.AddCommand(webuiCmd)
 
 	// cmd.SetContext(context.WithValue(context.Background(), inventory.LogWriterKey, lo))
 	cmd.SetOut(lo)
