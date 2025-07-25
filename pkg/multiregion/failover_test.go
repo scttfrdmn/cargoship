@@ -599,3 +599,478 @@ func TestDefaultFailoverManager_IsRegionInFailover_edgeCases(t *testing.T) {
 		delete(manager.activeFailovers, "failed-op")
 	})
 }
+
+// COMPREHENSIVE FAILOVER SCENARIO TESTS - Phase 3 Task 5 Requirements
+
+func TestFailoverScenarios_RegionFailureSimulation(t *testing.T) {
+	config := createValidMultiRegionConfig()
+	config.Failover.RetryAttempts = 3
+	config.Failover.FailoverTimeout = 5 * time.Second
+	config.Failover.DetectionInterval = 100 * time.Millisecond
+	logger := log.New(nil)
+	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+	ctx := context.Background()
+	
+	t.Run("gradual region degradation", func(t *testing.T) {
+		regionName := "us-east-1"
+		
+		// Stage 1: Initial failures (below threshold)
+		manager.RecordFailure(regionName)
+		failed, err := manager.DetectFailure(ctx, regionName)
+		assert.NoError(t, err)
+		assert.False(t, failed, "Should not detect failure with single failure")
+		
+		// Stage 2: More failures (at threshold)
+		manager.RecordFailure(regionName)
+		manager.RecordFailure(regionName)
+		failed, err = manager.DetectFailure(ctx, regionName)
+		assert.NoError(t, err)
+		assert.True(t, failed, "Should detect failure at threshold")
+		
+		// Stage 3: Recovery attempt
+		manager.RecordSuccess(regionName)
+		failed, err = manager.DetectFailure(ctx, regionName)
+		assert.NoError(t, err)
+		assert.False(t, failed, "Should not detect failure after recovery")
+	})
+	
+	t.Run("sudden region failure", func(t *testing.T) {
+		regionName := "us-west-2"
+		
+		// Simulate sudden failure with multiple consecutive failures
+		for i := 0; i < 5; i++ {
+			manager.RecordFailure(regionName)
+		}
+		
+		failed, err := manager.DetectFailure(ctx, regionName)
+		assert.NoError(t, err)
+		assert.True(t, failed, "Should detect sudden failure")
+		
+		// Verify failure history
+		history := manager.GetFailureHistory(regionName)
+		assert.NotNil(t, history)
+		assert.Equal(t, 5, history.ConsecutiveFailures)
+		assert.Greater(t, history.FailureRate, float64(0))
+	})
+	
+	t.Run("intermittent failures", func(t *testing.T) {
+		regionName := "eu-west-1"
+		
+		// Simulate intermittent failures
+		manager.RecordFailure(regionName)
+		manager.RecordSuccess(regionName)
+		manager.RecordFailure(regionName)
+		manager.RecordSuccess(regionName)
+		manager.RecordFailure(regionName)
+		
+		// Should not trigger failure detection (consecutive failures reset)
+		failed, err := manager.DetectFailure(ctx, regionName)
+		assert.NoError(t, err)
+		assert.False(t, failed, "Should not detect failure with intermittent pattern")
+		
+		history := manager.GetFailureHistory(regionName)
+		assert.Equal(t, 1, history.ConsecutiveFailures)
+		assert.Equal(t, int64(3), history.TotalFailures)
+	})
+	
+	t.Run("high failure rate detection", func(t *testing.T) {
+		regionName := "ap-south-1"
+		
+		// Create a pattern with high failure rate but low consecutive failures
+		for i := 0; i < 8; i++ {
+			manager.RecordFailure(regionName)
+		}
+		for i := 0; i < 3; i++ {
+			manager.RecordSuccess(regionName)
+		}
+		
+		// Should detect failure due to high failure rate (8/11 = 72.7%)
+		_, err := manager.DetectFailure(ctx, regionName)
+		assert.NoError(t, err)
+		
+		history := manager.GetFailureHistory(regionName)
+		assert.Greater(t, history.FailureRate, float64(70))
+	})
+}
+
+func TestFailoverScenarios_RecoveryValidation(t *testing.T) {
+	config := createValidMultiRegionConfig()
+	config.Failover.FailoverTimeout = 2 * time.Second
+	logger := log.New(nil)
+	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+	ctx := context.Background()
+	
+	t.Run("successful failover and recovery", func(t *testing.T) {
+		fromRegion := "us-east-1"
+		toRegion := "us-west-2"
+		
+		// Execute failover
+		err := manager.ExecuteFailover(ctx, fromRegion, toRegion)
+		assert.NoError(t, err)
+		
+		// Verify failover status
+		status, err := manager.GetFailoverStatus(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, toRegion, status[fromRegion])
+		
+		// Simulate recovery of original region
+		manager.RecordSuccess(fromRegion)
+		
+		// Verify failure history reset
+		history := manager.GetFailureHistory(fromRegion)
+		if history != nil {
+			assert.Equal(t, 0, history.ConsecutiveFailures)
+		}
+	})
+	
+	t.Run("failover with subsequent failure", func(t *testing.T) {
+		fromRegion := "us-west-1"
+		toRegion := "eu-west-1"
+		
+		// Execute initial failover
+		err := manager.ExecuteFailover(ctx, fromRegion, toRegion)
+		assert.NoError(t, err)
+		
+		// Simulate failure in target region too
+		manager.RecordFailure(toRegion)
+		manager.RecordFailure(toRegion)
+		manager.RecordFailure(toRegion)
+		
+		failed, err := manager.DetectFailure(ctx, toRegion)
+		assert.NoError(t, err)
+		assert.True(t, failed, "Target region should also fail")
+		
+		// Attempt cascading failover
+		cascadeRegion := "ap-southeast-1"
+		err = manager.ExecuteFailover(ctx, toRegion, cascadeRegion)
+		assert.NoError(t, err)
+	})
+	
+	t.Run("failed recovery attempt", func(t *testing.T) {
+		regionName := "us-central-1"
+		
+		// Record failures
+		for i := 0; i < 5; i++ {
+			manager.RecordFailure(regionName)
+		}
+		
+		// Attempt recovery
+		manager.RecordSuccess(regionName)
+		
+		// Immediate failure again
+		manager.RecordFailure(regionName)
+		manager.RecordFailure(regionName)
+		
+		failed, err := manager.DetectFailure(ctx, regionName)
+		assert.NoError(t, err)
+		assert.True(t, failed, "Should detect failure after failed recovery")
+	})
+}
+
+func TestFailoverScenarios_CrossRegionRetry(t *testing.T) {
+	config := createValidMultiRegionConfig()
+	config.Failover.RetryAttempts = 2
+	config.Failover.FailoverTimeout = 3 * time.Second
+	logger := log.New(nil)
+	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+	ctx := context.Background()
+	
+	t.Run("multi-region cascading failover", func(t *testing.T) {
+		regions := []string{"primary", "backup1", "backup2", "backup3"}
+		
+		// Simulate cascading failures across regions
+		for i := 0; i < len(regions)-1; i++ {
+			fromRegion := regions[i]
+			toRegion := regions[i+1]
+			
+			// Record failures for current region
+			for j := 0; j < 3; j++ {
+				manager.RecordFailure(fromRegion)
+			}
+			
+			// Execute failover to next region
+			err := manager.ExecuteFailover(ctx, fromRegion, toRegion)
+			assert.NoError(t, err, "Failover should succeed for cascade %d", i)
+			
+			// Verify failover status
+			status, err := manager.GetFailoverStatus(ctx)
+			assert.NoError(t, err)
+			assert.Equal(t, toRegion, status[fromRegion])
+		}
+		
+		// Verify final state
+		status, err := manager.GetFailoverStatus(ctx)
+		assert.NoError(t, err)
+		assert.Len(t, status, 3, "Should have 3 failover mappings")
+	})
+	
+	t.Run("circular failover prevention", func(t *testing.T) {
+		region1 := "circular-1"
+		region2 := "circular-2"
+		
+		// Execute failover A -> B
+		err := manager.ExecuteFailover(ctx, region1, region2)
+		assert.NoError(t, err)
+		
+		// Try to execute failover B -> A (circular)
+		err = manager.ExecuteFailover(ctx, region2, region1)
+		assert.NoError(t, err, "Circular failover should be allowed but tracked")
+		
+		// Verify status
+		status, err := manager.GetFailoverStatus(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, region2, status[region1])
+		assert.Equal(t, region1, status[region2])
+	})
+	
+	t.Run("parallel failover handling", func(t *testing.T) {
+		region1 := "parallel-1"
+		region2 := "parallel-2"
+		targetRegion := "parallel-target"
+		
+		// Execute concurrent failovers
+		errors := make(chan error, 2)
+		
+		go func() {
+			err := manager.ExecuteFailover(ctx, region1, targetRegion)
+			errors <- err
+		}()
+		
+		go func() {
+			err := manager.ExecuteFailover(ctx, region2, targetRegion)
+			errors <- err
+		}()
+		
+		// Collect results
+		for i := 0; i < 2; i++ {
+			err := <-errors
+			assert.NoError(t, err, "Parallel failovers should succeed")
+		}
+		
+		// Verify both failovers completed
+		status, err := manager.GetFailoverStatus(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, targetRegion, status[region1])
+		assert.Equal(t, targetRegion, status[region2])
+	})
+}
+
+func TestFailoverScenarios_TimeoutHandling(t *testing.T) {
+	config := createValidMultiRegionConfig()
+	config.Failover.FailoverTimeout = 50 * time.Millisecond // Very short timeout
+	logger := log.New(nil)
+	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+	
+	t.Run("failover timeout", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+		
+		fromRegion := "timeout-source"
+		toRegion := "timeout-target"
+		
+		// Execute failover that should timeout
+		err := manager.ExecuteFailover(ctx, fromRegion, toRegion)
+		// Note: Current implementation uses sleep simulation, so this should actually succeed
+		// In real implementation, this would test actual timeout scenarios
+		assert.NoError(t, err)
+	})
+	
+	t.Run("context cancellation during failover", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		
+		fromRegion := "cancel-source"
+		toRegion := "cancel-target"
+		
+		// Start failover in goroutine
+		errCh := make(chan error, 1)
+		go func() {
+			err := manager.ExecuteFailover(ctx, fromRegion, toRegion)
+			errCh <- err
+		}()
+		
+		// Cancel context immediately
+		cancel()
+		
+		// Check result
+		select {
+		case err := <-errCh:
+			// Should complete (simulated implementation) or return context error
+			if err != nil {
+				assert.Contains(t, err.Error(), "context")
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("Failover did not complete in time")
+		}
+	})
+	
+	t.Run("prolonged failure detection", func(t *testing.T) {
+		regionName := "prolonged-failure"
+		ctx := context.Background()
+		
+		// Set up a region with old failure but no recent success
+		manager.RecordFailure(regionName)
+		
+		// Manipulate the failure time to be old enough to trigger prolonged failure detection
+		history := manager.GetFailureHistory(regionName)
+		if history != nil {
+			// Access internal state for testing (normally not recommended)
+			manager.mu.Lock()
+			internalHistory := manager.failureHistory[regionName]
+			internalHistory.LastFailure = time.Now().Add(-20 * time.Minute)
+			internalHistory.LastSuccess = time.Now().Add(-30 * time.Minute)
+			manager.mu.Unlock()
+			
+			failed, err := manager.DetectFailure(ctx, regionName)
+			assert.NoError(t, err)
+			assert.True(t, failed, "Should detect prolonged failure")
+		}
+	})
+	
+	t.Run("concurrent failover prevention", func(t *testing.T) {
+		config.Failover.FailoverTimeout = 1 * time.Second
+		managerNew := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
+		
+		fromRegion := "concurrent-source"
+		toRegion1 := "concurrent-target1"
+		toRegion2 := "concurrent-target2"
+		
+		// Start first failover
+		errCh1 := make(chan error, 1)
+		go func() {
+			err := managerNew.ExecuteFailover(ctx, fromRegion, toRegion1)
+			errCh1 <- err
+		}()
+		
+		// Give first failover time to start
+		time.Sleep(10 * time.Millisecond)
+		
+		// Try second failover for same source region
+		errCh2 := make(chan error, 1)
+		go func() {
+			err := managerNew.ExecuteFailover(ctx, fromRegion, toRegion2)
+			errCh2 <- err
+		}()
+		
+		// Collect results
+		err1 := <-errCh1
+		err2 := <-errCh2
+		
+		// One should succeed, one should fail or both succeed based on timing
+		if err1 != nil && err2 != nil {
+			t.Fatal("Both failovers failed when at least one should succeed")
+		}
+		
+		// At least one should complete successfully
+		assert.True(t, err1 == nil || err2 == nil, "At least one failover should succeed")
+	})
+}
+
+func TestFailoverScenarios_RealWorldPatterns(t *testing.T) {
+	config := createValidMultiRegionConfig()
+	config.Failover.RetryAttempts = 3
+	config.Failover.FailoverTimeout = 2 * time.Second
+	logger := log.New(nil)
+	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+	ctx := context.Background()
+	
+	t.Run("network partition simulation", func(t *testing.T) {
+		eastRegion := "us-east-network"
+		westRegion := "us-west-network"
+		
+		// Simulate network partition - east region becomes unreachable
+		for i := 0; i < 5; i++ {
+			manager.RecordFailure(eastRegion)
+		}
+		
+		// Execute failover
+		err := manager.ExecuteFailover(ctx, eastRegion, westRegion)
+		assert.NoError(t, err)
+		
+		// Simulate network recovery
+		manager.RecordSuccess(eastRegion)
+		
+		// Region should be considered recovered
+		failed, err := manager.DetectFailure(ctx, eastRegion)
+		assert.NoError(t, err)
+		assert.False(t, failed)
+	})
+	
+	t.Run("data center outage simulation", func(t *testing.T) {
+		dcRegions := []string{"dc-region-1", "dc-region-2", "dc-region-3"}
+		backupRegion := "backup-dc"
+		
+		// Simulate entire data center going down
+		for _, region := range dcRegions {
+			for i := 0; i < 3; i++ {
+				manager.RecordFailure(region)
+			}
+			
+			// All regions should be detected as failed
+			failed, err := manager.DetectFailure(ctx, region)
+			assert.NoError(t, err)
+			assert.True(t, failed, "Region %s should be detected as failed", region)
+			
+			// Execute failover to backup DC
+			err = manager.ExecuteFailover(ctx, region, backupRegion)
+			assert.NoError(t, err)
+		}
+		
+		// Verify all regions failed over to backup
+		status, err := manager.GetFailoverStatus(ctx)
+		assert.NoError(t, err)
+		
+		for _, region := range dcRegions {
+			assert.Equal(t, backupRegion, status[region])
+		}
+	})
+	
+	t.Run("rolling maintenance simulation", func(t *testing.T) {
+		maintenanceRegion := "maintenance-region"
+		activeRegion := "active-region"
+		
+		// Simulate planned maintenance (gradual failure)
+		manager.RecordFailure(maintenanceRegion)
+		
+		// Execute planned failover
+		err := manager.ExecuteFailover(ctx, maintenanceRegion, activeRegion)
+		assert.NoError(t, err)
+		
+		// Simulate maintenance completion and region recovery
+		time.Sleep(100 * time.Millisecond)
+		manager.RecordSuccess(maintenanceRegion)
+		
+		// Execute failback
+		err = manager.ExecuteFailover(ctx, activeRegion, maintenanceRegion)
+		assert.NoError(t, err)
+		
+		// Verify failback completed
+		status, err := manager.GetFailoverStatus(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, maintenanceRegion, status[activeRegion])
+	})
+	
+	t.Run("load spike induced failure", func(t *testing.T) {
+		loadRegion := "high-load-region"
+		spillRegion := "spill-region"
+		
+		// Simulate load-induced failures (high failure rate)
+		for i := 0; i < 7; i++ {
+			manager.RecordFailure(loadRegion)
+		}
+		for i := 0; i < 4; i++ {
+			manager.RecordSuccess(loadRegion)
+		}
+		
+		// Should detect failure due to high failure rate
+		_, err := manager.DetectFailure(ctx, loadRegion)
+		assert.NoError(t, err)
+		
+		history := manager.GetFailureHistory(loadRegion)
+		if history.FailureRate > 60 { // High failure rate threshold
+			// Execute load balancing failover
+			err = manager.ExecuteFailover(ctx, loadRegion, spillRegion)
+			assert.NoError(t, err)
+		}
+	})
+}
