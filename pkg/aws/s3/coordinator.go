@@ -126,6 +126,27 @@ type GlobalCongestionController struct {
 	congestionState          CongestionState
 	lastCongestionEvent      time.Time
 	adaptiveParameters       *AdaptiveParameters
+	
+	// Cross-prefix communication integration
+	communicator             *CrossPrefixCommunicator
+	
+	// Advanced congestion control state
+	globalRTTEstimate        time.Duration
+	fairnessIndex            float64
+	systemEfficiency         float64
+	coordinationOverhead     float64
+	
+	// BBR-style state machine
+	bbrMode                  BBRMode
+	bbrCycleIndex           int
+	gainCycleGains          []float64
+	pacingGain              float64
+	cwndGain                float64
+	
+	// Performance tracking
+	deliveryRateEstimator   *DeliveryRateEstimator
+	congestionEventHistory  []CongestionEvent
+	
 	mu                       sync.RWMutex
 }
 

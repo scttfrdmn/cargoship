@@ -10,6 +10,7 @@ import (
 	"context"
 	"math"
 	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -99,8 +100,14 @@ func (gcc *GlobalCongestionController) UpdatePrefixPerformance(prefixID string, 
 	allocation.Utilization = metrics.BandwidthUtilization
 	allocation.LastAdjustment = time.Now()
 	
-	// Apply congestion control algorithms
-	gcc.applyCongestionControl(allocation, metrics)
+	// Apply enhanced congestion control algorithms
+	if gcc.communicator != nil {
+		// Use BBR with cross-prefix coordination
+		gcc.ApplyBBRCongestionControl(allocation, metrics)
+	} else {
+		// Fall back to standard TCP-like control
+		gcc.applyCongestionControl(allocation, metrics)
+	}
 	
 	// Update global bandwidth estimation
 	gcc.updateGlobalBandwidthEstimate(metrics)
@@ -602,11 +609,16 @@ func (bf *BandwidthFilter) AddSample(sample BandwidthSample) {
 	bf.mu.Lock()
 	defer bf.mu.Unlock()
 	
+	// Don't add samples that are already too old
+	cutoff := time.Now().Add(-bf.maxWindow)
+	if sample.Timestamp.Before(cutoff) {
+		return // Ignore old samples
+	}
+	
 	// Add sample
 	bf.samples = append(bf.samples, sample)
 	
 	// Remove old samples outside the window
-	cutoff := time.Now().Add(-bf.maxWindow)
 	for len(bf.samples) > 0 && bf.samples[0].Timestamp.Before(cutoff) {
 		bf.samples = bf.samples[1:]
 	}
@@ -646,5 +658,676 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// Enhanced congestion control structures and algorithms
+
+// BBRMode represents the current BBR congestion control mode.
+type BBRMode int
+
+const (
+	BBRModeStartup BBRMode = iota
+	BBRModeDrain
+	BBRModeProbeBW
+	BBRModeProbeRTT
+)
+
+// CongestionEvent represents a congestion event for analysis.
+type CongestionEvent struct {
+	Timestamp         time.Time
+	EventType         CongestionEventType
+	PrefixID          string
+	CongestionWindow  int
+	BandwidthMBps     float64
+	RTT               time.Duration
+	LossRate          float64
+	RecoveryTime      time.Duration
+}
+
+// CongestionEventType defines different types of congestion events.
+type CongestionEventType string
+
+const (
+	CongestionEventTimeout      CongestionEventType = "timeout"
+	CongestionEventPacketLoss   CongestionEventType = "packet_loss"
+	CongestionEventBandwidth    CongestionEventType = "bandwidth_degradation"
+	CongestionEventRTTIncrease  CongestionEventType = "rtt_increase"
+	CongestionEventRecovery     CongestionEventType = "recovery"
+)
+
+// DeliveryRateEstimator tracks delivery rate for BBR-style congestion control.
+type DeliveryRateEstimator struct {
+	samples          []DeliveryRateSample
+	currentRate      float64
+	maxDeliveryRate  float64
+	rttEstimate      time.Duration
+	lastUpdate       time.Time
+}
+
+// DeliveryRateSample represents a single delivery rate measurement.
+type DeliveryRateSample struct {
+	Timestamp       time.Time
+	DeliveredBytes  int64
+	DeliveryTime    time.Duration
+	RTT             time.Duration
+	InFlight        int
+}
+
+// PerformanceSnapshot captures system performance at a point in time.
+type PerformanceSnapshot struct {
+	Timestamp           time.Time
+	TotalThroughputMBps float64
+	AverageRTT          time.Duration
+	GlobalErrorRate     float64
+	PrefixCount         int
+	UtilizationRatio    float64
+	FairnessIndex       float64
+}
+
+// CrossPrefixCongestionCoordinator coordinates congestion control across prefixes.
+type CrossPrefixCongestionCoordinator struct {
+	gcc              *GlobalCongestionController
+	communicator     *CrossPrefixCommunicator
+	coordMessages    chan *CongestionCoordinationMessage
+	prefixStates     map[string]*PrefixCongestionState
+	globalTarget     float64
+	fairnessWeight   float64
+	mu               sync.RWMutex
+}
+
+// CongestionCoordinationMessage represents coordination messages between prefixes.
+type CongestionCoordinationMessage struct {
+	Type             CongestionMessageType
+	SourcePrefixID   string
+	TargetPrefixID   string
+	BandwidthRequest float64
+	CurrentLoad      float64
+	CongestionLevel  float64
+	Priority         int
+	Timestamp        time.Time
+}
+
+// CongestionMessageType defines types of congestion coordination messages.
+type CongestionMessageType string
+
+const (
+	CongestionMsgBandwidthRequest   CongestionMessageType = "bandwidth_request"
+	CongestionMsgBandwidthOffer     CongestionMessageType = "bandwidth_offer"
+	CongestionMsgCongestionAlert    CongestionMessageType = "congestion_alert"
+	CongestionMsgLoadUpdate         CongestionMessageType = "load_update"
+	CongestionMsgCoordinationSync   CongestionMessageType = "coordination_sync"
+)
+
+// PrefixCongestionState tracks congestion state for a specific prefix.
+type PrefixCongestionState struct {
+	PrefixID             string
+	Mode                 BBRMode
+	CongestionWindow     int
+	InFlight             int
+	BandwidthTarget      float64
+	RTTEstimate          time.Duration
+	MinRTT               time.Duration
+	MaxBandwidth         float64
+	PacingRate           float64
+	LastUpdate           time.Time
+	
+	// Coordination state
+	SharedBandwidth      float64
+	BorrowedBandwidth    float64
+	LentBandwidth        float64
+	CoordinationActive   bool
+}
+
+// NewDeliveryRateEstimator creates a new delivery rate estimator.
+func NewDeliveryRateEstimator() *DeliveryRateEstimator {
+	return &DeliveryRateEstimator{
+		samples:         make([]DeliveryRateSample, 0, 100),
+		currentRate:     0,
+		maxDeliveryRate: 0,
+		rttEstimate:     time.Millisecond * 50,
+		lastUpdate:      time.Now(),
+	}
+}
+
+// NewCrossPrefixCongestionCoordinator creates a new cross-prefix congestion coordinator.
+func NewCrossPrefixCongestionCoordinator(gcc *GlobalCongestionController, communicator *CrossPrefixCommunicator) *CrossPrefixCongestionCoordinator {
+	return &CrossPrefixCongestionCoordinator{
+		gcc:           gcc,
+		communicator:  communicator,
+		coordMessages: make(chan *CongestionCoordinationMessage, 256),
+		prefixStates:  make(map[string]*PrefixCongestionState),
+		globalTarget:  0.8, // 80% target utilization
+		fairnessWeight: 0.3,
+	}
+}
+
+// SetCommunicator integrates the congestion controller with cross-prefix communication.
+func (gcc *GlobalCongestionController) SetCommunicator(communicator *CrossPrefixCommunicator) {
+	gcc.mu.Lock()
+	defer gcc.mu.Unlock()
+	
+	// Set the communicator
+	gcc.communicator = communicator
+	
+	if gcc.adaptiveParameters == nil {
+		gcc.adaptiveParameters = NewAdaptiveParameters()
+	}
+	
+	// Initialize BBR parameters
+	gcc.bbrMode = BBRModeStartup
+	gcc.gainCycleGains = []float64{1.25, 0.75, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0}
+	gcc.pacingGain = 2.77 // High gain for startup
+	gcc.cwndGain = 2.0
+	
+	// Initialize delivery rate estimator
+	if gcc.adaptiveParameters.BTLBandwidthFilter == nil {
+		gcc.adaptiveParameters.BTLBandwidthFilter = NewBandwidthFilter(time.Second * 10)
+	}
+	
+	// Initialize performance tracking
+	gcc.deliveryRateEstimator = NewDeliveryRateEstimator()
+	gcc.congestionEventHistory = make([]CongestionEvent, 0)
+	
+	// Start cross-prefix coordination
+	coordinator := NewCrossPrefixCongestionCoordinator(gcc, communicator)
+	go gcc.runCrossPrefixCoordination(coordinator)
+}
+
+// Enhanced congestion control with cross-prefix coordination
+
+// CoordinatedRegisterPrefix registers a prefix with enhanced coordination features.
+func (gcc *GlobalCongestionController) CoordinatedRegisterPrefix(prefixID string, capacity float64) error {
+	gcc.mu.Lock()
+	defer gcc.mu.Unlock()
+	
+	// Register with basic allocation
+	gcc.prefixAllocation[prefixID] = &PrefixAllocation{
+		PrefixID:               prefixID,
+		AllocatedBandwidthMBps: capacity * 0.6, // Conservative start
+		CongestionWindow:       minInt(gcc.globalCongestionWindow/4, 8), // Start small
+		InFlight:               0,
+		Utilization:            0,
+		Priority:               1,
+		LastAdjustment:         time.Now(),
+	}
+	
+	// Update total bandwidth if this is larger
+	if capacity > gcc.totalBandwidthMBps {
+		gcc.totalBandwidthMBps = capacity
+	}
+	
+	// Send coordination registration message
+	if gcc.communicator != nil {
+		message := &CoordinationMessage{
+			Type:         MessageTypeSystemStatus,
+			SourcePrefix: "global_controller",
+			TargetPrefix: prefixID,
+			Priority:     2,
+			Payload: map[string]interface{}{
+				"event":         "prefix_registered",
+				"capacity":      capacity,
+				"initial_alloc": capacity * 0.6,
+				"mode":          "coordinated",
+			},
+		}
+		_ = gcc.communicator.SendMessage(message) // Fire and forget for system status
+	}
+	
+	return nil
+}
+
+// ApplyBBRCongestionControl applies BBR-style congestion control algorithm.
+func (gcc *GlobalCongestionController) ApplyBBRCongestionControl(allocation *PrefixAllocation, metrics *PrefixPerformanceMetrics) {
+	now := time.Now()
+	
+	// Update delivery rate estimate
+	if gcc.adaptiveParameters != nil && gcc.adaptiveParameters.BTLBandwidthFilter != nil {
+		sample := BandwidthSample{
+			Timestamp:     now,
+			BandwidthMBps: metrics.ThroughputMBps,
+			RTT:           time.Duration(metrics.LatencyMs) * time.Millisecond,
+			InFlight:      metrics.ActiveUploads,
+		}
+		gcc.adaptiveParameters.BTLBandwidthFilter.AddSample(sample)
+	}
+	
+	// BBR state machine
+	switch gcc.bbrMode {
+	case BBRModeStartup:
+		gcc.applyBBRStartup(allocation, metrics)
+	case BBRModeDrain:
+		gcc.applyBBRDrain(allocation, metrics)
+	case BBRModeProbeBW:
+		gcc.applyBBRProbeBW(allocation, metrics)
+	case BBRModeProbeRTT:
+		gcc.applyBBRProbeRTT(allocation, metrics)
+	}
+	
+	// Apply pacing and congestion window adjustments
+	gcc.updatePacingAndCongestionWindow(allocation, metrics)
+	
+	// Update global RTT estimate
+	if metrics.LatencyMs > 0 {
+		newRTT := time.Duration(metrics.LatencyMs) * time.Millisecond
+		if gcc.globalRTTEstimate == 0 {
+			gcc.globalRTTEstimate = newRTT
+		} else {
+			// Exponential weighted moving average
+			alpha := 0.125
+			gcc.globalRTTEstimate = time.Duration(float64(gcc.globalRTTEstimate)*(1-alpha) + float64(newRTT)*alpha)
+		}
+	}
+}
+
+// applyBBRStartup implements BBR startup phase.
+func (gcc *GlobalCongestionController) applyBBRStartup(allocation *PrefixAllocation, metrics *PrefixPerformanceMetrics) {
+	// High gain to probe for bandwidth
+	if metrics.ErrorRate < 0.005 && metrics.ThroughputMBps > 0 {
+		// Increase aggressively
+		allocation.CongestionWindow = int(float64(allocation.CongestionWindow) * gcc.cwndGain)
+		allocation.AllocatedBandwidthMBps *= gcc.pacingGain
+		
+		// Check if we should transition to drain
+		if gcc.adaptiveParameters != nil && gcc.adaptiveParameters.BTLBandwidthFilter != nil {
+			maxBW := gcc.adaptiveParameters.BTLBandwidthFilter.GetMaxBandwidth()
+			if metrics.ThroughputMBps > maxBW*0.75 {
+				gcc.bbrMode = BBRModeDrain
+				gcc.pacingGain = 1.0 / 2.77 // Drain quickly
+			}
+		}
+	} else {
+		// Congestion detected, transition to drain
+		gcc.bbrMode = BBRModeDrain
+		gcc.pacingGain = 1.0 / 2.77
+	}
+}
+
+// applyBBRDrain implements BBR drain phase.
+func (gcc *GlobalCongestionController) applyBBRDrain(allocation *PrefixAllocation, metrics *PrefixPerformanceMetrics) {
+	// Reduce sending rate to drain queues
+	if allocation.InFlight <= allocation.CongestionWindow {
+		// Queue is drained, transition to steady state
+		gcc.bbrMode = BBRModeProbeBW
+		gcc.pacingGain = 1.0
+		gcc.bbrCycleIndex = 0
+	} else {
+		// Continue draining
+		allocation.AllocatedBandwidthMBps *= gcc.pacingGain
+	}
+}
+
+// applyBBRProbeBW implements BBR probe bandwidth phase.
+func (gcc *GlobalCongestionController) applyBBRProbeBW(allocation *PrefixAllocation, metrics *PrefixPerformanceMetrics) {
+	// Cycle through different gains
+	gcc.pacingGain = gcc.gainCycleGains[gcc.bbrCycleIndex]
+	allocation.AllocatedBandwidthMBps *= gcc.pacingGain
+	
+	// Advance cycle
+	gcc.bbrCycleIndex = (gcc.bbrCycleIndex + 1) % len(gcc.gainCycleGains)
+	
+	// Check for RTT probe (use last congestion event time as proxy)
+	if time.Since(gcc.lastCongestionEvent) > gcc.adaptiveParameters.CycleLength*10 {
+		gcc.bbrMode = BBRModeProbeRTT
+	}
+}
+
+// applyBBRProbeRTT implements BBR probe RTT phase.
+func (gcc *GlobalCongestionController) applyBBRProbeRTT(allocation *PrefixAllocation, metrics *PrefixPerformanceMetrics) {
+	// Reduce congestion window to measure minimum RTT
+	allocation.CongestionWindow = maxInt(allocation.CongestionWindow/2, 4)
+	allocation.AllocatedBandwidthMBps *= 0.8
+	
+	// Update minimum RTT if we see improvement
+	currentRTT := time.Duration(metrics.LatencyMs) * time.Millisecond
+	if currentRTT < gcc.adaptiveParameters.RTTMin || gcc.adaptiveParameters.RTTMin == 0 {
+		gcc.adaptiveParameters.RTTMin = currentRTT
+	}
+	
+	// Return to probe bandwidth after measuring RTT
+	if time.Since(gcc.lastCongestionEvent) > time.Millisecond*200 {
+		gcc.bbrMode = BBRModeProbeBW
+		gcc.pacingGain = 1.0
+	}
+}
+
+// updatePacingAndCongestionWindow updates pacing rate and congestion window.
+func (gcc *GlobalCongestionController) updatePacingAndCongestionWindow(allocation *PrefixAllocation, metrics *PrefixPerformanceMetrics) {
+	if gcc.adaptiveParameters == nil || gcc.adaptiveParameters.BTLBandwidthFilter == nil {
+		return
+	}
+	
+	// Get bottleneck bandwidth estimate
+	btlBW := gcc.adaptiveParameters.BTLBandwidthFilter.GetMaxBandwidth()
+	if btlBW == 0 {
+		btlBW = allocation.AllocatedBandwidthMBps
+	}
+	
+	// Calculate pacing rate
+	pacingRate := btlBW * gcc.pacingGain
+	allocation.AllocatedBandwidthMBps = math.Min(pacingRate, allocation.AllocatedBandwidthMBps*1.5)
+	
+	// Update congestion window based on BDP
+	if gcc.globalRTTEstimate > 0 {
+		bdp := float64(btlBW) * gcc.globalRTTEstimate.Seconds()
+		targetCwnd := int(bdp * gcc.cwndGain)
+		
+		// Smooth congestion window changes
+		if targetCwnd > allocation.CongestionWindow {
+			allocation.CongestionWindow = minInt(targetCwnd, allocation.CongestionWindow+2)
+		} else if targetCwnd < allocation.CongestionWindow {
+			allocation.CongestionWindow = maxInt(targetCwnd, allocation.CongestionWindow-1)
+		}
+	}
+}
+
+// Cross-prefix coordination algorithms
+
+// runCrossPrefixCoordination runs the cross-prefix coordination loop.
+func (gcc *GlobalCongestionController) runCrossPrefixCoordination(coordinator *CrossPrefixCongestionCoordinator) {
+	ticker := time.NewTicker(time.Second * 5)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ticker.C:
+			gcc.performCrossPrefixOptimization(coordinator)
+		case msg := <-coordinator.coordMessages:
+			gcc.handleCongestionCoordinationMessage(coordinator, msg)
+		}
+	}
+}
+
+// performCrossPrefixOptimization performs cross-prefix optimization.
+func (gcc *GlobalCongestionController) performCrossPrefixOptimization(coordinator *CrossPrefixCongestionCoordinator) {
+	gcc.mu.Lock()
+	defer gcc.mu.Unlock()
+	
+	// Calculate global system state
+	totalUtilization := gcc.calculateTotalUtilization()
+	fairnessIndex := gcc.calculateFairnessIndex()
+	
+	// Update coordinator state
+	coordinator.mu.Lock()
+	coordinator.fairnessWeight = fairnessIndex
+	coordinator.mu.Unlock()
+	
+	// Perform bandwidth redistribution if needed
+	if gcc.shouldRedistributeBandwidth(totalUtilization, fairnessIndex) {
+		gcc.redistributeBandwidthFairly(coordinator)
+	}
+	
+	// Send coordination updates
+	gcc.sendCrossePrefixUpdates(coordinator)
+}
+
+// calculateTotalUtilization calculates total system utilization.
+func (gcc *GlobalCongestionController) calculateTotalUtilization() float64 {
+	totalAllocated := 0.0
+	totalUsed := 0.0
+	
+	for _, allocation := range gcc.prefixAllocation {
+		totalAllocated += allocation.AllocatedBandwidthMBps
+		totalUsed += allocation.AllocatedBandwidthMBps * allocation.Utilization
+	}
+	
+	if totalAllocated == 0 {
+		return 0
+	}
+	
+	return totalUsed / totalAllocated
+}
+
+// calculateFairnessIndex calculates Jain's fairness index.
+func (gcc *GlobalCongestionController) calculateFairnessIndex() float64 {
+	if len(gcc.prefixAllocation) == 0 {
+		return 1.0
+	}
+	
+	var throughputs []float64
+	for _, allocation := range gcc.prefixAllocation {
+		throughputs = append(throughputs, allocation.AllocatedBandwidthMBps*allocation.Utilization)
+	}
+	
+	sum := 0.0
+	sumSquares := 0.0
+	
+	for _, tp := range throughputs {
+		sum += tp
+		sumSquares += tp * tp
+	}
+	
+	n := float64(len(throughputs))
+	if sumSquares == 0 {
+		return 1.0
+	}
+	
+	return (sum * sum) / (n * sumSquares)
+}
+
+// shouldRedistributeBandwidth determines if bandwidth redistribution is needed.
+func (gcc *GlobalCongestionController) shouldRedistributeBandwidth(utilization, fairness float64) bool {
+	return utilization > 0.9 || fairness < 0.8
+}
+
+// redistributeBandwidthFairly redistributes bandwidth fairly across prefixes.
+func (gcc *GlobalCongestionController) redistributeBandwidthFairly(coordinator *CrossPrefixCongestionCoordinator) {
+	// Identify underutilized and overutilized prefixes
+	var underutilized, overutilized []*PrefixAllocation
+	
+	avgUtilization := gcc.calculateAverageUtilization()
+	
+	for _, allocation := range gcc.prefixAllocation {
+		if allocation.Utilization < avgUtilization*0.7 {
+			underutilized = append(underutilized, allocation)
+		} else if allocation.Utilization > avgUtilization*1.3 {
+			overutilized = append(overutilized, allocation)
+		}
+	}
+	
+	// Redistribute from underutilized to overutilized
+	for i, under := range underutilized {
+		if i >= len(overutilized) {
+			break
+		}
+		
+		over := overutilized[i]
+		transferAmount := under.AllocatedBandwidthMBps * 0.2 // Transfer 20%
+		
+		under.AllocatedBandwidthMBps -= transferAmount
+		over.AllocatedBandwidthMBps += transferAmount
+		
+		// Send coordination message
+		gcc.sendBandwidthReallocationMessage(coordinator, under.PrefixID, over.PrefixID, transferAmount)
+	}
+}
+
+// sendCrossePrefixUpdates sends periodic updates to all prefixes.
+func (gcc *GlobalCongestionController) sendCrossePrefixUpdates(coordinator *CrossPrefixCongestionCoordinator) {
+	if gcc.communicator == nil {
+		return
+	}
+	
+	globalState := map[string]interface{}{
+		"total_bandwidth":   gcc.totalBandwidthMBps,
+		"global_rtt":       gcc.globalRTTEstimate.Milliseconds(),
+		"fairness_index":   gcc.fairnessIndex,
+		"system_efficiency": gcc.systemEfficiency,
+		"active_prefixes":  len(gcc.prefixAllocation),
+		"bbr_mode":         gcc.bbrMode,
+	}
+	
+	message := &CoordinationMessage{
+		Type:         MessageTypeSystemStatus,
+		SourcePrefix: "global_controller",
+		Priority:     2,
+		Payload:      globalState,
+	}
+	
+	_ = gcc.communicator.BroadcastMessage(message) // Fire and forget for broadcast updates
+}
+
+// sendBandwidthReallocationMessage sends bandwidth reallocation message.
+func (gcc *GlobalCongestionController) sendBandwidthReallocationMessage(coordinator *CrossPrefixCongestionCoordinator, fromPrefix, toPrefix string, amount float64) {
+	if gcc.communicator == nil {
+		return
+	}
+	
+	message := &CoordinationMessage{
+		Type:         MessageTypeResourceAllocation,
+		SourcePrefix: fromPrefix,
+		TargetPrefix: toPrefix,
+		Priority:     3,
+		Payload: map[string]interface{}{
+			"bandwidth_transfer": amount,
+			"reason":            "load_balancing",
+			"timestamp":         time.Now().Unix(),
+		},
+	}
+	
+	_ = gcc.communicator.SendMessage(message) // Fire and forget for coordination messages
+}
+
+// handleCongestionCoordinationMessage handles coordination messages.
+func (gcc *GlobalCongestionController) handleCongestionCoordinationMessage(coordinator *CrossPrefixCongestionCoordinator, msg *CongestionCoordinationMessage) {
+	gcc.mu.Lock()
+	defer gcc.mu.Unlock()
+	
+	switch msg.Type {
+	case CongestionMsgBandwidthRequest:
+		gcc.handleBandwidthRequest(coordinator, msg)
+	case CongestionMsgCongestionAlert:
+		gcc.handleCongestionAlert(coordinator, msg)
+	case CongestionMsgLoadUpdate:
+		gcc.handleLoadUpdate(coordinator, msg)
+	}
+}
+
+// handleBandwidthRequest handles bandwidth requests from prefixes.
+func (gcc *GlobalCongestionController) handleBandwidthRequest(coordinator *CrossPrefixCongestionCoordinator, msg *CongestionCoordinationMessage) {
+	allocation, exists := gcc.prefixAllocation[msg.SourcePrefixID]
+	if !exists {
+		return
+	}
+	
+	// Evaluate request based on current system state
+	if gcc.calculateTotalUtilization() < 0.8 && allocation.Utilization > 0.9 {
+		// Grant additional bandwidth
+		additionalBW := msg.BandwidthRequest * 0.5 // Grant 50% of request
+		allocation.AllocatedBandwidthMBps += additionalBW
+		
+		// Send acknowledgment
+		gcc.sendBandwidthGrantMessage(msg.SourcePrefixID, additionalBW)
+	}
+}
+
+// handleCongestionAlert handles congestion alerts from prefixes.
+func (gcc *GlobalCongestionController) handleCongestionAlert(coordinator *CrossPrefixCongestionCoordinator, msg *CongestionCoordinationMessage) {
+	// Record congestion event
+	event := CongestionEvent{
+		Timestamp:        time.Now(),
+		EventType:        CongestionEventBandwidth,
+		PrefixID:         msg.SourcePrefixID,
+		CongestionWindow: 0, // Will be filled from allocation
+		RTT:              gcc.globalRTTEstimate,
+		LossRate:         msg.CongestionLevel,
+	}
+	
+	gcc.congestionEventHistory = append(gcc.congestionEventHistory, event)
+	
+	// Adjust global parameters
+	gcc.handleGlobalCongestionResponse(msg.SourcePrefixID, msg.CongestionLevel)
+}
+
+// handleLoadUpdate handles load updates from prefixes.
+func (gcc *GlobalCongestionController) handleLoadUpdate(coordinator *CrossPrefixCongestionCoordinator, msg *CongestionCoordinationMessage) {
+	allocation, exists := gcc.prefixAllocation[msg.SourcePrefixID]
+	if !exists {
+		return
+	}
+	
+	allocation.Utilization = msg.CurrentLoad
+	allocation.LastAdjustment = time.Now()
+}
+
+// sendBandwidthGrantMessage sends bandwidth grant confirmation.
+func (gcc *GlobalCongestionController) sendBandwidthGrantMessage(prefixID string, amount float64) {
+	if gcc.communicator == nil {
+		return
+	}
+	
+	message := &CoordinationMessage{
+		Type:         MessageTypeResourceAllocation,
+		SourcePrefix: "global_controller",
+		TargetPrefix: prefixID,
+		Priority:     3,
+		Payload: map[string]interface{}{
+			"bandwidth_granted": amount,
+			"granted_at":       time.Now().Unix(),
+		},
+	}
+	
+	_ = gcc.communicator.SendMessage(message) // Fire and forget for coordination messages
+}
+
+// handleGlobalCongestionResponse handles global congestion response.
+func (gcc *GlobalCongestionController) handleGlobalCongestionResponse(prefixID string, congestionLevel float64) {
+	// Apply proportional response to congestion
+	if congestionLevel > 0.5 {
+		// High congestion - reduce global parameters
+		gcc.globalCongestionWindow = int(float64(gcc.globalCongestionWindow) * 0.8)
+		gcc.pacingGain *= 0.9
+		
+		// Force BBR to probe RTT to find new operating point
+		if gcc.bbrMode == BBRModeProbeBW {
+			gcc.bbrMode = BBRModeProbeRTT
+		}
+	}
+}
+
+// Enhanced metrics and monitoring
+
+// GetEnhancedMetrics returns enhanced congestion control metrics.
+func (gcc *GlobalCongestionController) GetEnhancedMetrics() *EnhancedCongestionMetrics {
+	gcc.mu.RLock()
+	defer gcc.mu.RUnlock()
+	
+	base := gcc.GetMetrics()
+	
+	return &EnhancedCongestionMetrics{
+		CongestionMetrics:     *base,
+		BBRMode:              gcc.bbrMode,
+		GlobalRTTEstimate:    gcc.globalRTTEstimate,
+		FairnessIndex:        gcc.fairnessIndex,
+		SystemEfficiency:     gcc.systemEfficiency,
+		CoordinationOverhead: gcc.coordinationOverhead,
+		PacingGain:          gcc.pacingGain,
+		CWNDGain:            gcc.cwndGain,
+		MaxDeliveryRate:     gcc.getMaxDeliveryRate(),
+		CongestionEvents:    len(gcc.congestionEventHistory),
+		CrossPrefixActive:   gcc.communicator != nil,
+	}
+}
+
+// EnhancedCongestionMetrics provides comprehensive enhanced metrics.
+type EnhancedCongestionMetrics struct {
+	CongestionMetrics
+	BBRMode              BBRMode
+	GlobalRTTEstimate    time.Duration
+	FairnessIndex        float64
+	SystemEfficiency     float64
+	CoordinationOverhead float64
+	PacingGain          float64
+	CWNDGain            float64
+	MaxDeliveryRate     float64
+	CongestionEvents    int
+	CrossPrefixActive   bool
+}
+
+// getMaxDeliveryRate gets the maximum delivery rate from the bandwidth filter.
+func (gcc *GlobalCongestionController) getMaxDeliveryRate() float64 {
+	if gcc.adaptiveParameters != nil && gcc.adaptiveParameters.BTLBandwidthFilter != nil {
+		return gcc.adaptiveParameters.BTLBandwidthFilter.GetMaxBandwidth()
+	}
+	return 0
 }
 
