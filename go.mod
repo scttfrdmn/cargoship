@@ -7,6 +7,7 @@ toolchain go1.24.3
 require (
 	github.com/ProtonMail/go-crypto v1.3.0
 	github.com/ProtonMail/gopenpgp/v2 v2.9.0
+	github.com/andybalholm/brotli v1.2.0
 	github.com/aws/aws-sdk-go-v2 v1.36.5
 	github.com/aws/aws-sdk-go-v2/config v1.29.17
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.70
@@ -81,7 +82,6 @@ require (
 	github.com/PuerkitoBio/goquery v1.10.3 // indirect
 	github.com/aalpar/deheap v0.0.0-20210914013432-0cc84d79dec3 // indirect
 	github.com/abbot/go-http-auth v0.4.0 // indirect
-	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/appscode/go-querystring v0.0.0-20170504095604-0126cfb3f1dc // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect

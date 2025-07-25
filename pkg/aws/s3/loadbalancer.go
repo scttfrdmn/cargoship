@@ -146,15 +146,11 @@ type PerformancePredictor struct {
 	
 	// Model performance
 	predictionAccuracy  map[string]float64
-	modelConfidence     float64
-	lastTraining        time.Time
 	trainingInterval    time.Duration
 	
 	// Configuration
 	lookbackWindow      time.Duration
 	predictionHorizon   time.Duration
-	
-	mu                  sync.RWMutex
 }
 
 // LinearRegressionModel implements simple linear regression for prediction.
@@ -177,11 +173,7 @@ type CapacityPredictionModel struct {
 
 // FeatureExtractor extracts features for ML models.
 type FeatureExtractor struct {
-	timeFeatures        bool
-	trendFeatures       bool
-	loadFeatures        bool
-	seasonalFeatures    bool
-	crossPrefixFeatures bool
+	// Feature extraction configuration - fields available for ML enhancements
 }
 
 // LoadBalanceOptimizer implements optimization algorithms for load balancing.
@@ -202,13 +194,7 @@ type LoadBalanceOptimizer struct {
 	
 	// Optimization state
 	currentSolution      *LoadBalanceSolution
-	bestSolution         *LoadBalanceSolution
 	optimizationHistory  []OptimizationStep
-	
-	// Performance tracking
-	optimizationCount    int
-	averageImprovement   float64
-	lastOptimization     time.Time
 }
 
 // OptimizationStrategy defines different optimization approaches.

@@ -507,15 +507,15 @@ func TestGlobalCongestionControllerPerformanceFastRecovery(t *testing.T) {
 }
 
 func TestUtilityFunctions(t *testing.T) {
-	// Test maxInt function
-	assert.Equal(t, 10, maxInt(5, 10))
-	assert.Equal(t, 10, maxInt(10, 5))
-	assert.Equal(t, 10, maxInt(10, 10))
+	// Test maxIntCongestion function
+	assert.Equal(t, 10, maxIntCongestion(5, 10))
+	assert.Equal(t, 10, maxIntCongestion(10, 5))
+	assert.Equal(t, 10, maxIntCongestion(10, 10))
 	
-	// Test minInt function
-	assert.Equal(t, 5, minInt(5, 10))
-	assert.Equal(t, 5, minInt(10, 5))
-	assert.Equal(t, 5, minInt(5, 5))
+	// Test minIntCongestion function
+	assert.Equal(t, 5, minIntCongestion(5, 10))
+	assert.Equal(t, 5, minIntCongestion(10, 5))
+	assert.Equal(t, 5, minIntCongestion(5, 5))
 }
 
 // Tests for 0% coverage functions

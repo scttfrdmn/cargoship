@@ -15,7 +15,7 @@ import (
 
 // PipelineOptimizer manages dynamic pipeline depth optimization across prefixes.
 type PipelineOptimizer struct {
-	strategy            OptimizationStrategy
+	strategy            PipelineOptimizationStrategy
 	prefixPipelines     map[string]*PipelineMeta
 	globalPipelineState *GlobalPipelineState
 	performanceTracker  *PipelinePerformanceTracker
@@ -43,15 +43,15 @@ type PipelineOptimizer struct {
 	networkThreshold    float64
 }
 
-// OptimizationStrategy defines pipeline depth optimization strategies.
-type OptimizationStrategy string
+// PipelineOptimizationStrategy defines pipeline depth optimization strategies.
+type PipelineOptimizationStrategy string
 
 const (
-	OptimizationAdaptive    OptimizationStrategy = "adaptive"
-	OptimizationThroughput  OptimizationStrategy = "throughput"
-	OptimizationLatency     OptimizationStrategy = "latency"
-	OptimizationResource    OptimizationStrategy = "resource"
-	OptimizationHybrid      OptimizationStrategy = "hybrid"
+	PipelineOptimizationAdaptive    PipelineOptimizationStrategy = "adaptive"
+	PipelineOptimizationThroughput  PipelineOptimizationStrategy = "throughput"
+	PipelineOptimizationLatency     PipelineOptimizationStrategy = "latency"
+	PipelineOptimizationResource    PipelineOptimizationStrategy = "resource"
+	PipelineOptimizationHybrid      PipelineOptimizationStrategy = "hybrid"
 )
 
 // PipelineMeta contains metadata and state for a single prefix pipeline.
@@ -74,7 +74,7 @@ type PipelineMeta struct {
 	ResourceScore         float64
 	
 	// Congestion control
-	CongestionState       CongestionState
+	CongestionState       PipelineCongestionState
 	BackoffMultiplier     float64
 	ProbePhase           bool
 	
@@ -142,7 +142,7 @@ type GlobalPipelineState struct {
 	GlobalCPUUsage          float64
 	
 	// System-wide optimization state
-	OptimizationMode        OptimizationStrategy
+	OptimizationMode        PipelineOptimizationStrategy
 	AdaptationPhase         AdaptationPhase
 	SystemLoad              SystemLoadLevel
 	PerformanceTrend        TrendDirection
@@ -180,14 +180,14 @@ const (
 	ReasonSystemRebalance     AdjustmentReason = "system_rebalance"
 )
 
-// CongestionState represents the congestion state of a pipeline.
-type CongestionState string
+// PipelineCongestionState represents the congestion state of a pipeline.
+type PipelineCongestionState string
 
 const (
-	CongestionNone     CongestionState = "none"
-	CongestionMild     CongestionState = "mild"
-	CongestionModerate CongestionState = "moderate"
-	CongestionSevere   CongestionState = "severe"
+	PipelineCongestionNone     PipelineCongestionState = "none"
+	PipelineCongestionMild     PipelineCongestionState = "mild"
+	PipelineCongestionModerate PipelineCongestionState = "moderate"
+	PipelineCongestionSevere   PipelineCongestionState = "severe"
 )
 
 // AdaptationPhase represents the current adaptation phase.
@@ -211,7 +211,7 @@ const (
 )
 
 // NewPipelineOptimizer creates a new pipeline optimizer with specified strategy.
-func NewPipelineOptimizer(strategy OptimizationStrategy) *PipelineOptimizer {
+func NewPipelineOptimizer(strategy PipelineOptimizationStrategy) *PipelineOptimizer {
 	return &PipelineOptimizer{
 		strategy:            strategy,
 		prefixPipelines:     make(map[string]*PipelineMeta),
@@ -248,7 +248,7 @@ func (po *PipelineOptimizer) RegisterPipeline(prefixID string, initialDepth int,
 		CurrentDepth:         initialDepth,
 		OptimalDepth:         initialDepth,
 		MinDepth:             po.minPipelineDepth,
-		MaxDepth:             min(maxDepth, po.maxPipelineDepth),
+		MaxDepth:             minIntPipeline(maxDepth, po.maxPipelineDepth),
 		LastAdjustment:       time.Now(),
 		AdjustmentHistory:    make([]DepthAdjustment, 0, 100),
 		PerformanceMetrics:   NewPipelinePerformanceMetrics(prefixID),
@@ -257,7 +257,7 @@ func (po *PipelineOptimizer) RegisterPipeline(prefixID string, initialDepth int,
 		StabilityScore:       1.0,
 		PerformanceScore:     1.0,
 		ResourceScore:        1.0,
-		CongestionState:      CongestionNone,
+		CongestionState:      PipelineCongestionNone,
 		BackoffMultiplier:    1.0,
 	}
 	
@@ -519,13 +519,13 @@ func (po *PipelineOptimizer) updateCongestionState(pipeline *PipelineMeta) {
 	// Update congestion state
 	switch {
 	case congestionScore >= 0.7:
-		pipeline.CongestionState = CongestionSevere
+		pipeline.CongestionState = PipelineCongestionSevere
 	case congestionScore >= 0.4:
-		pipeline.CongestionState = CongestionModerate
+		pipeline.CongestionState = PipelineCongestionModerate
 	case congestionScore >= 0.2:
-		pipeline.CongestionState = CongestionMild
+		pipeline.CongestionState = PipelineCongestionMild
 	default:
-		pipeline.CongestionState = CongestionNone
+		pipeline.CongestionState = PipelineCongestionNone
 	}
 }
 
@@ -541,7 +541,7 @@ func (po *PipelineOptimizer) shouldOptimize(pipeline *PipelineMeta) bool {
 	}
 	
 	// Check if congestion is detected
-	if pipeline.CongestionState != CongestionNone {
+	if pipeline.CongestionState != PipelineCongestionNone {
 		return true
 	}
 	
@@ -559,20 +559,20 @@ func (po *PipelineOptimizer) optimizePipelineDepth(pipeline *PipelineMeta) {
 	var reason AdjustmentReason
 	
 	switch po.strategy {
-	case OptimizationThroughput:
+	case PipelineOptimizationThroughput:
 		newDepth, reason = po.optimizeForThroughput(pipeline)
-	case OptimizationLatency:
+	case PipelineOptimizationLatency:
 		newDepth, reason = po.optimizeForLatency(pipeline)
-	case OptimizationResource:
+	case PipelineOptimizationResource:
 		newDepth, reason = po.optimizeForResource(pipeline)
-	case OptimizationHybrid:
+	case PipelineOptimizationHybrid:
 		newDepth, reason = po.optimizeHybrid(pipeline)
 	default:
 		newDepth, reason = po.optimizeAdaptive(pipeline)
 	}
 	
 	// Apply constraints
-	newDepth = max(pipeline.MinDepth, min(newDepth, pipeline.MaxDepth))
+	newDepth = maxIntPipeline(pipeline.MinDepth, minIntPipeline(newDepth, pipeline.MaxDepth))
 	
 	if newDepth != currentDepth {
 		po.applyDepthAdjustment(pipeline, newDepth, reason)
@@ -585,19 +585,19 @@ func (po *PipelineOptimizer) optimizeAdaptive(pipeline *PipelineMeta) (int, Adju
 	
 	// Adaptive algorithm based on current state
 	switch pipeline.CongestionState {
-	case CongestionSevere:
+	case PipelineCongestionSevere:
 		// Aggressive reduction
 		return max(pipeline.MinDepth, int(float64(currentDepth)*0.5)), ReasonCongestionControl
-	case CongestionModerate:
+	case PipelineCongestionModerate:
 		// Moderate reduction
 		return max(pipeline.MinDepth, int(float64(currentDepth)*0.75)), ReasonCongestionControl
-	case CongestionMild:
+	case PipelineCongestionMild:
 		// Small reduction
 		return max(pipeline.MinDepth, currentDepth-1), ReasonCongestionControl
 	default:
 		// No congestion, consider increasing if performance allows
 		if pipeline.PerformanceScore > 1.2 && pipeline.StabilityScore > 0.8 && metrics.ResourceEfficiency > 0.7 {
-			return min(pipeline.MaxDepth, currentDepth+1), ReasonThroughputIncrease
+			return minIntPipeline(pipeline.MaxDepth, currentDepth+1), ReasonThroughputIncrease
 		}
 	}
 	
@@ -606,11 +606,11 @@ func (po *PipelineOptimizer) optimizeAdaptive(pipeline *PipelineMeta) (int, Adju
 
 func (po *PipelineOptimizer) optimizeForThroughput(pipeline *PipelineMeta) (int, AdjustmentReason) {
 	// Prioritize maximum throughput
-	if pipeline.PerformanceScore < 1.0 && pipeline.CongestionState == CongestionNone {
-		return min(pipeline.MaxDepth, pipeline.CurrentDepth+2), ReasonThroughputIncrease
+	if pipeline.PerformanceScore < 1.0 && pipeline.CongestionState == PipelineCongestionNone {
+		return minIntPipeline(pipeline.MaxDepth, pipeline.CurrentDepth+2), ReasonThroughputIncrease
 	}
 	
-	if pipeline.CongestionState != CongestionNone {
+	if pipeline.CongestionState != PipelineCongestionNone {
 		return max(pipeline.MinDepth, pipeline.CurrentDepth-1), ReasonCongestionControl
 	}
 	
@@ -646,8 +646,8 @@ func (po *PipelineOptimizer) optimizeHybrid(pipeline *PipelineMeta) (int, Adjust
 	
 	if score < 0.8 {
 		return max(pipeline.MinDepth, pipeline.CurrentDepth-1), ReasonSystemRebalance
-	} else if score > 1.2 && pipeline.CongestionState == CongestionNone {
-		return min(pipeline.MaxDepth, pipeline.CurrentDepth+1), ReasonThroughputIncrease
+	} else if score > 1.2 && pipeline.CongestionState == PipelineCongestionNone {
+		return minIntPipeline(pipeline.MaxDepth, pipeline.CurrentDepth+1), ReasonThroughputIncrease
 	}
 	
 	return pipeline.CurrentDepth, ReasonSystemRebalance
@@ -1017,15 +1017,14 @@ func (po *PipelineOptimizer) updateResourceUsage() {
 }
 
 // Utility functions
-
-func min(a, b int) int {
+func minIntPipeline(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
 }
 
-func max(a, b int) int {
+func maxIntPipeline(a, b int) int {
 	if a > b {
 		return a
 	}

@@ -10,10 +10,10 @@ import (
 )
 
 func TestNewPipelineOptimizer(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	
 	assert.NotNil(t, po)
-	assert.Equal(t, OptimizationAdaptive, po.strategy)
+	assert.Equal(t, PipelineOptimizationAdaptive, po.strategy)
 	assert.NotNil(t, po.prefixPipelines)
 	assert.NotNil(t, po.globalPipelineState)
 	assert.NotNil(t, po.performanceTracker)
@@ -28,7 +28,7 @@ func TestNewPipelineOptimizer(t *testing.T) {
 }
 
 func TestPipelineOptimizerRegisterPipeline(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	
 	// Register test pipeline
 	po.RegisterPipeline("test-prefix", 8, 16)
@@ -45,13 +45,13 @@ func TestPipelineOptimizerRegisterPipeline(t *testing.T) {
 	assert.Equal(t, 1.0, pipeline.StabilityScore)
 	assert.Equal(t, 1.0, pipeline.PerformanceScore)
 	assert.Equal(t, 1.0, pipeline.ResourceScore)
-	assert.Equal(t, CongestionNone, pipeline.CongestionState)
+	assert.Equal(t, PipelineCongestionNone, pipeline.CongestionState)
 	assert.NotNil(t, pipeline.PerformanceMetrics)
 	assert.NotNil(t, pipeline.ResourceUsage)
 }
 
 func TestPipelineOptimizerUpdatePipelineMetrics(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("test-prefix", 4, 16)
 	
 	// Update with good performance metrics
@@ -77,7 +77,7 @@ func TestPipelineOptimizerUpdatePipelineMetrics(t *testing.T) {
 	pipeline := po.prefixPipelines["test-prefix"]
 	assert.Equal(t, metrics, pipeline.PerformanceMetrics)
 	assert.Greater(t, pipeline.PerformanceScore, 0.0)
-	assert.Equal(t, CongestionNone, pipeline.CongestionState)
+	assert.Equal(t, PipelineCongestionNone, pipeline.CongestionState)
 	assert.Len(t, pipeline.PerformanceMetrics.ThroughputHistory, 1)
 	assert.Len(t, pipeline.PerformanceMetrics.LatencyHistory, 1)
 	assert.Len(t, pipeline.PerformanceMetrics.ErrorRateHistory, 1)
@@ -85,7 +85,7 @@ func TestPipelineOptimizerUpdatePipelineMetrics(t *testing.T) {
 }
 
 func TestPipelineOptimizerCongestionDetection(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("test-prefix", 8, 16)
 	
 	// Add some baseline metrics
@@ -112,12 +112,12 @@ func TestPipelineOptimizerCongestionDetection(t *testing.T) {
 	
 	// Verify congestion was detected
 	pipeline := po.prefixPipelines["test-prefix"]
-	assert.NotEqual(t, CongestionNone, pipeline.CongestionState)
+	assert.NotEqual(t, PipelineCongestionNone, pipeline.CongestionState)
 	assert.Less(t, pipeline.PerformanceScore, 1.0)
 }
 
 func TestPipelineOptimizerGetOptimalDepth(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("test-prefix", 8, 16)
 	
 	// Test getting optimal depth
@@ -130,7 +130,7 @@ func TestPipelineOptimizerGetOptimalDepth(t *testing.T) {
 }
 
 func TestPipelineOptimizerAdaptiveOptimization(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("test-prefix", 4, 16)
 	
 	pipeline := po.prefixPipelines["test-prefix"]
@@ -139,42 +139,42 @@ func TestPipelineOptimizerAdaptiveOptimization(t *testing.T) {
 	pipeline.PerformanceScore = 1.5
 	pipeline.StabilityScore = 0.9
 	pipeline.PerformanceMetrics.ResourceEfficiency = 0.8
-	pipeline.CongestionState = CongestionNone
+	pipeline.CongestionState = PipelineCongestionNone
 	
 	newDepth, reason := po.optimizeAdaptive(pipeline)
 	assert.Equal(t, 5, newDepth) // Should increase by 1
 	assert.Equal(t, ReasonThroughputIncrease, reason)
 	
 	// Test optimization with severe congestion
-	pipeline.CongestionState = CongestionSevere
+	pipeline.CongestionState = PipelineCongestionSevere
 	newDepth, reason = po.optimizeAdaptive(pipeline)
 	assert.Equal(t, 2, newDepth) // Should reduce to 50%
 	assert.Equal(t, ReasonCongestionControl, reason)
 }
 
 func TestPipelineOptimizerThroughputOptimization(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationThroughput)
+	po := NewPipelineOptimizer(PipelineOptimizationThroughput)
 	po.RegisterPipeline("test-prefix", 4, 16)
 	
 	pipeline := po.prefixPipelines["test-prefix"]
 	
 	// Test throughput optimization
 	pipeline.PerformanceScore = 0.8 // Below 1.0
-	pipeline.CongestionState = CongestionNone
+	pipeline.CongestionState = PipelineCongestionNone
 	
 	newDepth, reason := po.optimizeForThroughput(pipeline)
 	assert.Equal(t, 6, newDepth) // Should increase by 2
 	assert.Equal(t, ReasonThroughputIncrease, reason)
 	
 	// Test with congestion
-	pipeline.CongestionState = CongestionMild
+	pipeline.CongestionState = PipelineCongestionMild
 	newDepth, reason = po.optimizeForThroughput(pipeline)
 	assert.Equal(t, 3, newDepth) // Should decrease by 1
 	assert.Equal(t, ReasonCongestionControl, reason)
 }
 
 func TestPipelineOptimizerLatencyOptimization(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationLatency)
+	po := NewPipelineOptimizer(PipelineOptimizationLatency)
 	po.RegisterPipeline("test-prefix", 4, 16)
 	
 	pipeline := po.prefixPipelines["test-prefix"]
@@ -194,7 +194,7 @@ func TestPipelineOptimizerLatencyOptimization(t *testing.T) {
 }
 
 func TestPipelineOptimizerResourceOptimization(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationResource)
+	po := NewPipelineOptimizer(PipelineOptimizationResource)
 	po.RegisterPipeline("test-prefix", 4, 16)
 	
 	pipeline := po.prefixPipelines["test-prefix"]
@@ -208,7 +208,7 @@ func TestPipelineOptimizerResourceOptimization(t *testing.T) {
 }
 
 func TestPipelineOptimizerHybridOptimization(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationHybrid)
+	po := NewPipelineOptimizer(PipelineOptimizationHybrid)
 	po.RegisterPipeline("test-prefix", 4, 16)
 	
 	pipeline := po.prefixPipelines["test-prefix"]
@@ -217,7 +217,7 @@ func TestPipelineOptimizerHybridOptimization(t *testing.T) {
 	pipeline.PerformanceScore = 1.3
 	pipeline.StabilityScore = 1.2
 	pipeline.ResourceScore = 1.1
-	pipeline.CongestionState = CongestionNone
+	pipeline.CongestionState = PipelineCongestionNone
 	
 	newDepth, reason := po.optimizeHybrid(pipeline)
 	assert.Equal(t, 5, newDepth) // Should increase by 1
@@ -234,7 +234,7 @@ func TestPipelineOptimizerHybridOptimization(t *testing.T) {
 }
 
 func TestPipelineOptimizerDepthAdjustment(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("test-prefix", 4, 16)
 	
 	pipeline := po.prefixPipelines["test-prefix"]
@@ -257,7 +257,7 @@ func TestPipelineOptimizerDepthAdjustment(t *testing.T) {
 }
 
 func TestPipelineOptimizerShouldOptimize(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("test-prefix", 4, 16)
 	
 	pipeline := po.prefixPipelines["test-prefix"]
@@ -273,11 +273,11 @@ func TestPipelineOptimizerShouldOptimize(t *testing.T) {
 	
 	// Test congestion detection (should optimize)
 	pipeline.PerformanceScore = 1.0
-	pipeline.CongestionState = CongestionModerate
+	pipeline.CongestionState = PipelineCongestionModerate
 	assert.True(t, po.shouldOptimize(pipeline))
 	
 	// Test potential for improvement (should optimize)
-	pipeline.CongestionState = CongestionNone
+	pipeline.CongestionState = PipelineCongestionNone
 	pipeline.StabilityScore = 0.9
 	pipeline.PerformanceScore = 1.2
 	assert.True(t, po.shouldOptimize(pipeline))
@@ -288,7 +288,7 @@ func TestPipelineOptimizerShouldOptimize(t *testing.T) {
 }
 
 func TestPipelineOptimizerOptimizeAllPipelines(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("prefix-1", 4, 16)
 	po.RegisterPipeline("prefix-2", 6, 16)
 	
@@ -310,7 +310,7 @@ func TestPipelineOptimizerOptimizeAllPipelines(t *testing.T) {
 }
 
 func TestPipelineOptimizerGetPipelineMetrics(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("prefix-1", 4, 16)
 	po.RegisterPipeline("prefix-2", 6, 16)
 	
@@ -326,7 +326,7 @@ func TestPipelineOptimizerGetPipelineMetrics(t *testing.T) {
 }
 
 func TestPipelineOptimizerGlobalStateUpdate(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("prefix-1", 4, 16)
 	po.RegisterPipeline("prefix-2", 6, 16)
 	
@@ -354,7 +354,7 @@ func TestPipelineOptimizerGlobalStateUpdate(t *testing.T) {
 }
 
 func TestPipelineOptimizerVarianceCalculation(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	
 	// Test with simple data
 	history := []TimeSeriesPoint{
@@ -378,7 +378,7 @@ func TestPipelineOptimizerVarianceCalculation(t *testing.T) {
 }
 
 func TestPipelineOptimizerAverageCalculations(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	
 	history := []TimeSeriesPoint{
 		{Value: 10.0}, {Value: 20.0}, {Value: 30.0}, {Value: 40.0}, {Value: 50.0},
@@ -405,7 +405,7 @@ func TestPipelineOptimizerAverageCalculations(t *testing.T) {
 }
 
 func TestPipelineOptimizerResourceUtilizationCalculation(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("prefix-1", 4, 16)
 	po.RegisterPipeline("prefix-2", 6, 16)
 	
@@ -432,7 +432,7 @@ func TestPipelineOptimizerResourceUtilizationCalculation(t *testing.T) {
 }
 
 func TestPipelineOptimizerDepthVarianceCalculation(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("prefix-1", 4, 16)
 	po.RegisterPipeline("prefix-2", 8, 16)
 	po.RegisterPipeline("prefix-3", 2, 16)
@@ -445,7 +445,7 @@ func TestPipelineOptimizerDepthVarianceCalculation(t *testing.T) {
 }
 
 func TestPipelineOptimizerShouldPerformGlobalRebalance(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("prefix-1", 4, 16)
 	po.RegisterPipeline("prefix-2", 12, 16) // High variance
 	
@@ -479,7 +479,7 @@ func TestPipelineOptimizerRealtimeMonitoring(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 	
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.optimizationInterval = time.Millisecond * 100 // Fast optimization for test
 	po.RegisterPipeline("test-prefix", 4, 16)
 	
@@ -506,7 +506,7 @@ func TestPipelineOptimizerRealtimeMonitoring(t *testing.T) {
 }
 
 func TestPipelineOptimizerExpectedImprovementCalculation(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("test-prefix", 4, 16)
 	
 	pipeline := po.prefixPipelines["test-prefix"]
@@ -526,12 +526,12 @@ func TestPipelineOptimizerExpectedImprovementCalculation(t *testing.T) {
 }
 
 func TestPipelineOptimizerOptimizationStrategies(t *testing.T) {
-	strategies := []OptimizationStrategy{
-		OptimizationAdaptive,
-		OptimizationThroughput,
-		OptimizationLatency,
-		OptimizationResource,
-		OptimizationHybrid,
+	strategies := []PipelineOptimizationStrategy{
+		PipelineOptimizationAdaptive,
+		PipelineOptimizationThroughput,
+		PipelineOptimizationLatency,
+		PipelineOptimizationResource,
+		PipelineOptimizationHybrid,
 	}
 	
 	for _, strategy := range strategies {
@@ -552,7 +552,7 @@ func TestPipelineOptimizerOptimizationStrategies(t *testing.T) {
 }
 
 func TestPipelineOptimizerConstraintEnforcement(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("test-prefix", 4, 8) // Limited max depth
 	
 	pipeline := po.prefixPipelines["test-prefix"]
@@ -567,7 +567,7 @@ func TestPipelineOptimizerConstraintEnforcement(t *testing.T) {
 }
 
 func TestPipelineOptimizerHistoryManagement(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("test-prefix", 4, 16)
 	
 	pipeline := po.prefixPipelines["test-prefix"]
@@ -583,7 +583,7 @@ func TestPipelineOptimizerHistoryManagement(t *testing.T) {
 }
 
 func TestPipelineOptimizerConcurrentAccess(t *testing.T) {
-	po := NewPipelineOptimizer(OptimizationAdaptive)
+	po := NewPipelineOptimizer(PipelineOptimizationAdaptive)
 	po.RegisterPipeline("test-prefix", 4, 16)
 	
 	// Test concurrent access to pipeline metrics

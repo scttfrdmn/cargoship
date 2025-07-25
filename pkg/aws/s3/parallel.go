@@ -149,7 +149,7 @@ func (p *ParallelUploader) generatePrefixes(archiveCount int) []string {
 	switch p.config.PrefixPattern {
 	case "custom":
 		if len(p.config.CustomPrefixes) > 0 {
-			return p.config.CustomPrefixes[:min(len(p.config.CustomPrefixes), p.config.MaxPrefixes)]
+			return p.config.CustomPrefixes[:minIntParallel(len(p.config.CustomPrefixes), p.config.MaxPrefixes)]
 		}
 		fallthrough
 	case "date":
@@ -513,7 +513,7 @@ func (p *ParallelUploader) OptimizePrefixDistribution(archives []Archive) *Prefi
 	
 	return &PrefixOptimization{
 		RecommendedPrefixes:    optimalPrefixes,
-		RecommendedConcurrency: min(optimalPrefixes*3, 16),
+		RecommendedConcurrency: minIntParallel(optimalPrefixes*3, 16),
 		TotalSize:              totalSize,
 		ArchiveCount:           len(archives),
 		SizeVariation:          float64(maxSize-minSize) / float64(totalSize),
@@ -720,7 +720,7 @@ func (p *ParallelUploader) Close() error {
 }
 
 // Helper function for min
-func min(a, b int) int {
+func minIntParallel(a, b int) int {
 	if a < b {
 		return a
 	}

@@ -192,7 +192,7 @@ func (gcc *GlobalCongestionController) applyFastRecovery(allocation *PrefixAlloc
 		allocation.CongestionWindow = gcc.slowStartThreshold
 	} else {
 		// Continue fast recovery
-		allocation.CongestionWindow = maxInt(allocation.CongestionWindow-1, 1)
+		allocation.CongestionWindow = maxIntCongestion(allocation.CongestionWindow-1, 1)
 		allocation.AllocatedBandwidthMBps *= 0.95
 	}
 }
@@ -202,7 +202,7 @@ func (gcc *GlobalCongestionController) handleCongestionDetected(allocation *Pref
 	gcc.lastCongestionEvent = time.Now()
 	
 	// Multiplicative decrease
-	gcc.slowStartThreshold = maxInt(allocation.CongestionWindow/2, 2)
+	gcc.slowStartThreshold = maxIntCongestion(allocation.CongestionWindow/2, 2)
 	allocation.CongestionWindow = gcc.slowStartThreshold
 	allocation.AllocatedBandwidthMBps *= 0.7 // 30% reduction
 	
@@ -263,7 +263,7 @@ func (gcc *GlobalCongestionController) detectCongestionEvents(allocation *Prefix
 // handleTimeoutCongestion handles timeout-based congestion.
 func (gcc *GlobalCongestionController) handleTimeoutCongestion(allocation *PrefixAllocation) {
 	// More aggressive reduction for timeout congestion
-	allocation.CongestionWindow = maxInt(allocation.CongestionWindow/4, 1)
+	allocation.CongestionWindow = maxIntCongestion(allocation.CongestionWindow/4, 1)
 	allocation.AllocatedBandwidthMBps *= 0.5
 	gcc.congestionState = CongestionStateRecovery
 }
@@ -271,7 +271,7 @@ func (gcc *GlobalCongestionController) handleTimeoutCongestion(allocation *Prefi
 // handleBandwidthCongestion handles bandwidth-based congestion.
 func (gcc *GlobalCongestionController) handleBandwidthCongestion(allocation *PrefixAllocation) {
 	// Moderate reduction for bandwidth congestion
-	allocation.CongestionWindow = maxInt(allocation.CongestionWindow*2/3, 1)
+	allocation.CongestionWindow = maxIntCongestion(allocation.CongestionWindow*2/3, 1)
 	allocation.AllocatedBandwidthMBps *= 0.8
 }
 
@@ -507,11 +507,11 @@ func (gcc *GlobalCongestionController) updateGlobalCongestionWindow() {
 	if avgUtilization > 0.9 {
 		// High utilization, increase capacity
 		gcc.globalCongestionWindow = int(float64(gcc.globalCongestionWindow) * 1.1)
-		gcc.globalCongestionWindow = minInt(gcc.globalCongestionWindow, 1024) // Cap at 1024
+		gcc.globalCongestionWindow = minIntCongestion(gcc.globalCongestionWindow, 1024) // Cap at 1024
 	} else if avgUtilization < 0.3 {
 		// Low utilization, decrease capacity to improve efficiency
 		gcc.globalCongestionWindow = int(float64(gcc.globalCongestionWindow) * 0.9)
-		gcc.globalCongestionWindow = maxInt(gcc.globalCongestionWindow, 8) // Minimum of 8
+		gcc.globalCongestionWindow = maxIntCongestion(gcc.globalCongestionWindow, 8) // Minimum of 8
 	}
 }
 
@@ -646,14 +646,14 @@ func (bf *BandwidthFilter) updateCurrentMax() {
 
 // Utility functions for congestion control
 
-func maxInt(a, b int) int {
+func maxIntCongestion(a, b int) int {
 	if a > b {
 		return a
 	}
 	return b
 }
 
-func minInt(a, b int) int {
+func minIntCongestion(a, b int) int {
 	if a < b {
 		return a
 	}
@@ -844,7 +844,7 @@ func (gcc *GlobalCongestionController) CoordinatedRegisterPrefix(prefixID string
 	gcc.prefixAllocation[prefixID] = &PrefixAllocation{
 		PrefixID:               prefixID,
 		AllocatedBandwidthMBps: capacity * 0.6, // Conservative start
-		CongestionWindow:       minInt(gcc.globalCongestionWindow/4, 8), // Start small
+		CongestionWindow:       minIntCongestion(gcc.globalCongestionWindow/4, 8), // Start small
 		InFlight:               0,
 		Utilization:            0,
 		Priority:               1,
@@ -974,7 +974,7 @@ func (gcc *GlobalCongestionController) applyBBRProbeBW(allocation *PrefixAllocat
 // applyBBRProbeRTT implements BBR probe RTT phase.
 func (gcc *GlobalCongestionController) applyBBRProbeRTT(allocation *PrefixAllocation, metrics *PrefixPerformanceMetrics) {
 	// Reduce congestion window to measure minimum RTT
-	allocation.CongestionWindow = maxInt(allocation.CongestionWindow/2, 4)
+	allocation.CongestionWindow = maxIntCongestion(allocation.CongestionWindow/2, 4)
 	allocation.AllocatedBandwidthMBps *= 0.8
 	
 	// Update minimum RTT if we see improvement
@@ -1013,9 +1013,9 @@ func (gcc *GlobalCongestionController) updatePacingAndCongestionWindow(allocatio
 		
 		// Smooth congestion window changes
 		if targetCwnd > allocation.CongestionWindow {
-			allocation.CongestionWindow = minInt(targetCwnd, allocation.CongestionWindow+2)
+			allocation.CongestionWindow = minIntCongestion(targetCwnd, allocation.CongestionWindow+2)
 		} else if targetCwnd < allocation.CongestionWindow {
-			allocation.CongestionWindow = maxInt(targetCwnd, allocation.CongestionWindow-1)
+			allocation.CongestionWindow = maxIntCongestion(targetCwnd, allocation.CongestionWindow-1)
 		}
 	}
 }
