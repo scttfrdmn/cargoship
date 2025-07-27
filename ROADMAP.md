@@ -48,53 +48,66 @@ This document outlines the planned feature releases for CargoShip, organized by 
 
 ---
 
-## 🔬 **v0.5.0 - Research & Scientific Computing** (Target: December 2025)
-**Focus**: Academic Workflows and Advanced Budget Management
+## 🔬 **v0.5.0 - Universal Quota System & Content Intelligence** (Target: December 2025)
+**Focus**: Flexible Time-Based Quotas and Content Optimization
 
 ### Core Features:
-- **Volume-Based Budget Controls** - `--max-volume 100GB` alongside existing `--max-cost-per-month`
-- **Grant Period Budget Management** - Multi-year budget tracking with monthly spending limits
-- **Budget Fungibility System** - Roll forward unused budget with intelligent allocation
-- **Burn Rate Monitoring** - Real-time spend tracking with optimization recommendations
+- **Universal Quota System** - Flexible spend/volume quotas over any time period with rollover
+- **Volume Growth Rate Controls** - Prevent quota exhaustion with configurable growth rates
+- **Time-Based Rollover** - Daily, weekly, monthly, or custom period rollover with accumulation
+- **Dual Quota Types** - Cost quotas (`$50/day`) AND volume quotas (`100GB/day`) 
 - **Content-Aware Chunking** - File content and compression-based optimization
-- **Data Mover Agents** - Remote system agents via WireGuard tunnels for campus networks
+- **Data Mover Agents** - Remote system agents via WireGuard tunnels for secure data movement
 
-### Budget Intelligence Features:
-- 💰 **Dual Budget Controls**: Cost (`$500/month`) OR volume (`500GB/month`) limits
-- 📊 **Grant Period Tracking**: 1-3 year budget periods with monthly allocations
-- 🔄 **Budget Rollover**: Automatic unused budget transfer to following months
-- ⚠️ **Burn Rate Alerts**: Proactive warnings when spending exceeds projections
-- 💡 **Optimization Suggestions**: Automated recommendations for tiering, compression, lifecycle policies
+### Quota System Features:
+- 💰 **Flexible Time Periods**: Daily, weekly, monthly, quarterly, yearly, or custom periods
+- 📊 **Rollover Mechanics**: Unused quota accumulates up to configurable maximum
+- 🔄 **Growth Rate Controls**: Volume quotas can expand over time to prevent premature exhaustion
+- ⚠️ **Threshold Alerts**: Configurable warnings at 50%, 75%, 90% quota usage
+- 💡 **Optimization Suggestions**: Automated recommendations when approaching quota limits
 
-### Research Features:
+### Technical Features:
 - 🧠 File type specific chunk optimization (algorithmic, not ML)
 - 🔄 Contextual error recovery strategies with circuit breakers
-- 🏛️ Campus/lab network integration with secure tunneling
-- 📚 Academic dataset management and cataloging
+- 🏛️ Secure tunneling for remote data movement
+- 📚 Flexible workflow templates for any use case
 
-### Budget Management Examples:
+### Quota Management Examples:
 ```bash
-# Volume-based controls (easier for researchers to understand)
-cargoship ship /research-data --max-volume 2TB --storage-class glacier
+# Daily spend quota with weekly rollover
+cargoship quota create \
+  --name "production-daily" \
+  --type cost \
+  --amount 50 \
+  --period daily \
+  --rollover-period weekly \
+  --max-accumulation 350
 
-# Grant period budget (2-year NSF grant with monthly limits)
-cargoship budget create-grant \
-  --name "NSF-2024-XYZ" \
-  --duration 24months \
-  --total-budget 10000 \
-  --monthly-limit 500 \
-  --enable-rollover
+# Volume quota with growth rate (prevents early exhaustion)
+cargoship quota create \
+  --name "data-ingestion" \
+  --type volume \
+  --amount 100GB \
+  --period daily \
+  --growth-rate 5%/month \
+  --rollover-period daily \
+  --max-accumulation 1TB
 
-# Real-time burn rate monitoring
-cargoship budget status --show-burn-rate --show-projections
+# Combined quotas for comprehensive control
+cargoship ship /data \
+  --quota "production-daily,data-ingestion" \
+  --storage-class intelligent-tiering
+
+# Real-time quota monitoring
+cargoship quota status --show-usage --show-projections --show-rollover
 ```
 
 ### Success Criteria:
-- ✅ Intuitive volume-based budget controls for non-financial users
-- ✅ Complete grant period lifecycle management (1-3+ years)
-- ✅ Intelligent budget fungibility with automatic optimization suggestions
-- ✅ Real-time burn rate monitoring with actionable recommendations
-- ✅ Seamless integration with academic computing environments
+- ✅ Universal quota system supporting any time period and rollover schedule
+- ✅ Volume quotas with growth rate controls preventing premature exhaustion
+- ✅ Flexible rollover mechanics supporting daily to yearly periods
+- ✅ Real-time quota monitoring with predictive usage analysis
+- ✅ Content-aware optimization for different file types
 
 ---
 

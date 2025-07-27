@@ -7,11 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned for v0.5.0 (TBD)
-- Machine learning integration for predictive optimization
-- Multi-path network support and load balancing
-- Hardware acceleration for compression and networking
-- Cloud-specific algorithm tuning and optimization
+### Planned for v0.5.0 (December 2025)
+- Universal quota system supporting flexible time periods and rollover schedules
+- Volume quotas with growth rate controls preventing premature exhaustion
+- Content-aware chunking with algorithmic optimization (not ML)
+- Data mover agents via secure WireGuard tunnels
+- Real-time quota monitoring with predictive usage analysis
 
 See [ROADMAP.md](ROADMAP.md) for complete version planning.
 
