@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data mover agents via secure WireGuard tunnels
 - Real-time quota monitoring with predictive usage analysis
 
+### Planned for v0.5.1 (March 2026)
+- Globus transfer integration with institutional endpoint discovery
+- Multi-grant data tracking and budget allocation for research workflows
+- Hybrid transfer modes combining S3 direct uploads with Globus institutional transfers
+- Federal compliance features meeting OSTP 2025 data sharing requirements
+- Cost optimization comparing Globus vs S3 transfer methods
+
 See [ROADMAP.md](ROADMAP.md) for complete version planning.
 
 ## [0.4.1] - 2025-07-27

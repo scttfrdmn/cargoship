@@ -111,8 +111,8 @@ cargoship quota status --show-usage --show-projections --show-rollover
 
 ---
 
-## 💼 **v0.5.1 - Enterprise Budget Management** (Target: March 2026)
-**Focus**: Advanced Financial Controls and Multi-Grant Management
+## 💼 **v0.5.1 - Enterprise Budget Management & Globus Integration** (Target: March 2026)
+**Focus**: Advanced Financial Controls, Multi-Grant Management, and Research Data Transfer
 
 ### Core Features:
 - **Multi-Grant Portfolio Management** - Track multiple concurrent grants/budgets
@@ -120,6 +120,8 @@ cargoship quota status --show-usage --show-projections --show-rollover
 - **Advanced Burn Rate Analytics** - Predictive spending with seasonality analysis
 - **Budget Approval Workflows** - Multi-stage approval for large transfers
 - **Cost Center Integration** - Enterprise cost accounting and chargeback systems
+- **Globus Transfer Integration** - Direct integration with institutional Globus endpoints
+- **Research Workflow Support** - Seamless academic data archiving with federal compliance
 
 ### Enterprise Budget Features:
 - 🏢 **Multi-Tenant Budgets**: Separate budgets for different departments/projects
@@ -127,6 +129,14 @@ cargoship quota status --show-usage --show-projections --show-rollover
 - 📈 **Predictive Analytics**: Machine learning for budget forecasting and optimization
 - 🔄 **Automated Optimization**: Dynamic storage class changes based on budget pressure
 - 📊 **Executive Reporting**: Budget utilization dashboards and compliance reports
+
+### Globus Integration Features:
+- 🌐 **Institutional Endpoint Discovery**: Auto-detect university/lab Globus endpoints
+- 🔄 **Hybrid Transfer Modes**: Choose between S3 direct uploads or Globus for institutional data
+- 📊 **Multi-Grant Data Tracking**: Track Globus transfers against specific grant budgets
+- 🏛️ **Federal Compliance**: Meet OSTP 2025 data sharing requirements with institutional workflows
+- 💰 **Cost Optimization**: Compare S3 vs Globus transfer costs for different data types
+- 🔐 **Endpoint Authentication**: Secure OAuth2 integration with institutional Globus accounts
 
 ### Advanced Budget Controls:
 ```bash
@@ -148,6 +158,25 @@ cargoship budget set-optimization \
   --auto-tier-when-over 80% \
   --emergency-glacier-at 95% \
   --notification-threshold 75%
+
+# Discover available Globus endpoints at institution
+cargoship endpoints discover --institutional --university duke.edu
+
+# Transfer via Globus with budget tracking
+cargoship ship /research/genomics-data \
+  --via globus \
+  --endpoint duke-cluster \
+  --destination endpoint:duke-archive \
+  --grant NSF-2024 \
+  --budget-limit 500
+
+# Hybrid approach - stage via Globus, archive to S3
+cargoship ship /large-dataset \
+  --stage-via globus \
+  --endpoint compute-cluster \
+  --destination s3://archive-bucket \
+  --storage-class deep-archive \
+  --cost-optimize
 ```
 
 ### Success Criteria:
@@ -156,6 +185,10 @@ cargoship budget set-optimization \
 - ✅ Integration with university financial systems and cost centers
 - ✅ Executive-level reporting and compliance tracking
 - ✅ Approval workflows reducing unauthorized spending by 90%+
+- ✅ Seamless Globus endpoint discovery and authentication
+- ✅ Hybrid transfer modes (S3 direct, Globus institutional, combined workflows)
+- ✅ OSTP 2025 federal data sharing compliance integration
+- ✅ Cost comparison between Globus and S3 transfer methods
 
 ---
 
