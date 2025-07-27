@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/assets/cargoship-logo.svg" alt="CargoShip Logo" width="200" height="200">
+  <img src="docs/assets/cargoship-logo.svg" alt="CargoShip Logo" width="128" height="128">
   <h1>CargoShip</h1>
   <p><strong>Enterprise data archiving for AWS, built for speed and intelligence</strong></p>
 </div>
