@@ -31,6 +31,9 @@ cargoship-launch
 SESSION_PROGRESS.md
 DEVELOPMENT_NOTES.md
 
+# Archive directory (historical docs not tracked in repo)
+docs/archive/
+
 # Temporary development artifacts
 temp_*
 working_*
