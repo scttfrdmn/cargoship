@@ -21,12 +21,12 @@ CargoShip is a next-generation data archiving tool optimized for AWS infrastruct
 
 ## 🚀 Key Features
 
-- **🚢 Ship It Smart**: Advanced flow control algorithms with BBR and CUBIC optimization
-- **⚡ Ship It Fast**: 3x faster uploads with sophisticated network adaptation (v0.4.0)
+- **🚢 Ship It Smart**: Production-proven flow control with BBR and CUBIC algorithms
+- **⚡ Ship It Fast**: 4.6x faster uploads with advanced network protocols (v0.4.0)
 - **💰 Ship It Cheap**: 50% cost reduction through intelligent storage class selection
 - **📊 Ship It Visible**: Complete observability with real-time network metrics
 - **🔒 Ship It Secure**: KMS encryption, IAM integration, and enterprise audit logging
-- **🧠 Ship It Optimized**: RTT estimation, loss detection, and bandwidth-delay product calculations
+- **🧠 Ship It Optimized**: Signal processing, deterministic loss detection, and adaptive buffer sizing
 
 ## Quick Start
 
@@ -50,11 +50,11 @@ docker run --rm -v $(pwd):/data scttfrdmn/cargoship:latest survey /data
 cargoship survey /path/to/research/data
 cargoship estimate /path/to/data --storage-class glacier
 
-# Ship your data with advanced optimization
+# Ship your data with proven network algorithms
 cargoship ship /path/to/data \
   --destination s3://my-enterprise-bucket/archives \
   --storage-class intelligent-tiering \
-  --enable-bbr-optimization \
+  --enable-bbr-congestion-control \
   --encrypt-kms arn:aws:kms:us-east-1:123:key/abc \
   --max-cost-per-month 2000
 
@@ -67,11 +67,11 @@ cargoship costs optimize --dry-run
 
 ### Built for AWS, Optimized for Performance (v0.4.0)
 
-- **Native S3 Integration**: Direct AWS SDK with BBR congestion control
-- **Advanced Flow Control**: CUBIC algorithm and RTT estimation for optimal throughput
-- **Intelligent Multipart Uploads**: Adaptive chunk sizing with bandwidth-delay optimization
-- **Storage Class Intelligence**: ML-driven optimization based on access patterns
-- **Network Adaptation**: Real-time parameter adjustment during transfers
+- **Native S3 Integration**: Direct AWS SDK with production-tested BBR congestion control
+- **Advanced Flow Control**: CUBIC algorithm and signal processing for optimal throughput
+- **Intelligent Multipart Uploads**: Adaptive chunk sizing with network-aware optimization
+- **Storage Class Intelligence**: Algorithm-driven optimization based on access patterns
+- **Network Adaptation**: Real-time parameter adjustment with deterministic algorithms
 
 ### Cost Intelligence That Saves Money
 
@@ -117,8 +117,8 @@ CargoShip significantly outperforms generic cloud tools:
 |--------|-----------|---------------|-------------|
 | Upload Speed | 300 MB/s | 65 MB/s | 4.6x faster |
 | Memory Usage | 512 MB | 1.2 GB | 57% less |
-| Cost Optimization | AI-Driven | Manual | Intelligent |
-| Network Optimization | BBR/CUBIC | None | State-of-art |
+| Cost Optimization | Algorithm-Driven | Manual | Intelligent |
+| Network Optimization | BBR/CUBIC | None | Production-Proven |
 | AWS Integration | Native | External | Seamless |
 
 ## Contributing

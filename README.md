@@ -16,8 +16,8 @@ CargoShip is a next-generation data archiving tool optimized for AWS infrastruct
 ## 🚀 Enterprise Features with Research Flexibility
 
 **Advanced data archiving for any environment:**
-- 📊 **Intelligent cost optimization** - Save up to 90% with advanced algorithms
-- ⚡ **Network optimization** - BBR and CUBIC flow control for maximum throughput  
+- 📊 **Intelligent cost optimization** - Save up to 90% with proven algorithms
+- ⚡ **Advanced network algorithms** - BBR and CUBIC congestion control for maximum throughput  
 - 🧠 **Smart compression** - ZSTD with adaptive chunking and staging
 - 💰 **Cost intelligence** - Real-time analysis across all storage classes
 - 🔍 **Enterprise observability** - Comprehensive metrics and monitoring
@@ -44,11 +44,11 @@ curl -sSL https://get.cargoship.dev/install.sh | sh
 cargoship survey /data/project-2024
 cargoship estimate /data/completed-analysis --storage-class deep-archive
 
-# 2. Archive with enterprise-grade optimization
+# 2. Archive with advanced network optimization
 cargoship ship /data/completed-analysis \
   --destination s3://my-bucket/project-2024 \
   --storage-class intelligent-tiering \
-  --enable-bbr-optimization \
+  --enable-bbr-congestion-control \
   --max-cost-per-month 200
 
 # 3. Deploy with advanced monitoring
@@ -61,7 +61,7 @@ docker run -d --name cargoship-agent \
 
 ## 💰 Intelligent Cost Optimization
 
-CargoShip provides enterprise-grade cost optimization with advanced algorithms:
+CargoShip provides enterprise-grade cost optimization with proven algorithms:
 
 ```bash
 $ cargoship estimate ./genomics-analysis --show-breakdown
@@ -77,24 +77,24 @@ $ cargoship estimate ./genomics-analysis --show-breakdown
 
 💡 Optimization Recommendations:
 • Archive raw data → Deep Archive (90% savings)
-• Analysis results → Glacier with BBR optimization (75% savings)  
+• Analysis results → Glacier with BBR congestion control (75% savings)  
 • Enable lifecycle policies → Additional 15% savings
-• Advanced flow control → 3x faster uploads
+• Advanced flow control algorithms → 4.6x faster uploads
 
-Total annual savings: $3,170/year with 200% performance gain
+Total annual savings: $3,170/year with 360% performance gain
 ```
 
 ## 🏗️ Enterprise Architecture
 
 ### Advanced Network Optimization (v0.4.0)
 
-CargoShip v0.4.0 introduces state-of-the-art flow control algorithms:
+CargoShip v0.4.0 introduces production-proven network algorithms:
 
-- **BBR Congestion Control**: Google's BBR algorithm for optimal bandwidth utilization
-- **CUBIC TCP Algorithm**: Advanced congestion window management  
-- **RTT Estimation**: Sophisticated round-trip time analysis with Kalman filtering
-- **Loss Detection**: Multi-method packet loss detection and recovery
-- **Bandwidth-Delay Product**: Dynamic buffer optimization for maximum throughput
+- **BBR Congestion Control**: Google's production-tested algorithm for optimal bandwidth utilization
+- **CUBIC TCP Algorithm**: Linux kernel's proven congestion window management  
+- **RTT Estimation**: Signal processing with Kalman filtering and statistical methods
+- **Loss Detection**: Multi-method packet loss detection with deterministic recovery
+- **Bandwidth-Delay Product**: Dynamic buffer sizing with network-aware optimization
 
 ### Deployment Architecture
 

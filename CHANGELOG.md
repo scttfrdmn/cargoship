@@ -18,21 +18,24 @@ See [ROADMAP.md](ROADMAP.md) for complete version planning.
 ## [0.4.1] - 2025-07-27
 
 ### Changed
-- **Documentation Overhaul**: Unified enterprise messaging across all documentation
-- **Performance Metrics**: Updated benchmarks showing 4.6x speed improvements with BBR optimization
+- **Documentation Accuracy**: Corrected ML claims to accurately reflect proven algorithm implementations
+- **Performance Transparency**: Updated benchmarks to emphasize BBR congestion control and CUBIC algorithms
 - **Test Coverage**: Standardized 95% test coverage reporting across all files
-- **Enterprise Positioning**: Aligned README.md and docs/index.md for consistent enterprise focus
-- **GitHub Pages**: Enhanced site with v0.4.0 advanced flow control features
+- **Enterprise Messaging**: Aligned all documentation for consistent professional positioning
+- **GitHub Pages**: Enhanced site highlighting production-proven network algorithms
 
 ### Added
-- **Advanced Flow Control Documentation**: Linked comprehensive Task 4 documentation from main docs
-- **Network Optimization Examples**: Added BBR and CUBIC configuration examples
-- **Enterprise Architecture**: Updated deployment patterns for enterprise environments
+- **Algorithm Transparency**: Clear descriptions of BBR (Google), CUBIC (Linux kernel), and signal processing methods
+- **Technical Honesty**: Accurate representation of deterministic algorithms vs future ML capabilities
+- **Realistic Roadmap**: Updated roadmap with honest ML implementation timeline (v0.6.0 - September 2026)
 
 ### Fixed
-- **Messaging Inconsistency**: Resolved research vs enterprise positioning conflicts
-- **Outdated Metrics**: Updated all coverage percentages and performance statistics
-- **Link References**: Corrected documentation cross-references and URLs
+- **ML Overclaims**: Removed misleading references to "AI-driven" optimization where deterministic algorithms are used
+- **Documentation Inconsistency**: Unified messaging across README, docs, and GitHub Pages
+- **Link References**: Corrected documentation cross-references and outdated URLs
+
+### Transparency Note
+This release prioritizes honest representation of CargoShip's capabilities. The 4.6x performance improvements are achieved through Google's production-tested BBR algorithm and Linux kernel's CUBIC implementation, not machine learning. Future ML capabilities are planned for v0.6.0 with proper data collection and model training infrastructure.
 
 ## [0.4.0] - 2025-07-27
 
