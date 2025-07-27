@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned for v0.5.0 (December 2025)
 - Universal quota system supporting flexible time periods and rollover schedules
 - Volume quotas with growth rate controls preventing premature exhaustion
+- Enhanced data retrieval with selective file restoration from archived suitcases
+- Interactive browse experience with TUI and web-based archived data navigation
+- S3 Glacier/Deep Archive restoration workflow management with quota tracking
+- Bulk restoration operations with comprehensive progress tracking
 - Content-aware chunking with algorithmic optimization (not ML)
 - Data mover agents via secure WireGuard tunnels
 - Real-time quota monitoring with predictive usage analysis

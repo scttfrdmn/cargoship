@@ -48,14 +48,16 @@ This document outlines the planned feature releases for CargoShip, organized by 
 
 ---
 
-## 🔬 **v0.5.0 - Universal Quota System & Content Intelligence** (Target: December 2025)
-**Focus**: Flexible Time-Based Quotas and Content Optimization
+## 🔬 **v0.5.0 - Universal Quota System & Enhanced Data Retrieval** (Target: December 2025)
+**Focus**: Flexible Time-Based Quotas, Content Optimization, and Comprehensive Data Retrieval
 
 ### Core Features:
 - **Universal Quota System** - Flexible spend/volume quotas over any time period with rollover
 - **Volume Growth Rate Controls** - Prevent quota exhaustion with configurable growth rates
 - **Time-Based Rollover** - Daily, weekly, monthly, or custom period rollover with accumulation
 - **Dual Quota Types** - Cost quotas (`$50/day`) AND volume quotas (`100GB/day`) 
+- **Enhanced Data Retrieval** - Comprehensive restoration capabilities with quota tracking
+- **Interactive Browse Experience** - Visual navigation and exploration of archived data
 - **Content-Aware Chunking** - File content and compression-based optimization
 - **Data Mover Agents** - Remote system agents via WireGuard tunnels for secure data movement
 
@@ -65,6 +67,14 @@ This document outlines the planned feature releases for CargoShip, organized by 
 - 🔄 **Growth Rate Controls**: Volume quotas can expand over time to prevent premature exhaustion
 - ⚠️ **Threshold Alerts**: Configurable warnings at 50%, 75%, 90% quota usage
 - 💡 **Optimization Suggestions**: Automated recommendations when approaching quota limits
+
+### Enhanced Data Retrieval Features:
+- 🔍 **Selective File Restoration** - Extract specific files from compressed suitcases without full restoration
+- 🌊 **S3 Glacier Restoration Management** - Automated handling of Deep Archive and Glacier restoration workflows
+- 💰 **Quota-Aware Restoration** - Track restoration costs against quota budgets with real-time monitoring
+- 📦 **Bulk Restoration Operations** - Restore entire datasets or directory trees with progress tracking
+- 🖥️ **Interactive Browse Interface** - TUI and web-based browsing of archived data with search and preview
+- ⏱️ **Restoration Job Management** - Queue, schedule, and monitor long-running restoration processes
 
 ### Technical Features:
 - 🧠 File type specific chunk optimization (algorithmic, not ML)
@@ -100,6 +110,36 @@ cargoship ship /data \
 
 # Real-time quota monitoring
 cargoship quota status --show-usage --show-projections --show-rollover
+
+# Enhanced data retrieval and browsing
+cargoship browse s3://archive-bucket/project-2024 --interactive
+cargoship browse --tui --search "*.fastq.gz" --preview
+
+# Selective file restoration with quota tracking
+cargoship restore s3://archive-bucket/genomics-data/sample-001.bam \
+  --destination /tmp/restored \
+  --quota restoration-budget \
+  --priority expedited
+
+# Bulk restoration with progress tracking
+cargoship restore s3://archive-bucket/analysis-results/ \
+  --destination /data/restored-analysis \
+  --quota research-restoration \
+  --restoration-tier standard \
+  --track-progress
+
+# S3 Glacier restoration management
+cargoship restore request s3://archive-bucket/large-dataset/ \
+  --tier expedited \
+  --quota emergency-restore \
+  --notify-when-ready \
+  --max-cost 500
+
+# Browse and restore workflow
+cargoship browse s3://archive-bucket --filter "genomics/**/*.bam" \
+  | cargoship restore --batch \
+  --destination /analysis/restored \
+  --quota monthly-restore
 ```
 
 ### Success Criteria:
@@ -108,6 +148,11 @@ cargoship quota status --show-usage --show-projections --show-rollover
 - ✅ Flexible rollover mechanics supporting daily to yearly periods
 - ✅ Real-time quota monitoring with predictive usage analysis
 - ✅ Content-aware optimization for different file types
+- ✅ Selective file restoration without full suitcase extraction
+- ✅ Interactive TUI and web-based browsing of archived data
+- ✅ S3 Glacier/Deep Archive restoration workflow automation
+- ✅ Quota-aware restoration cost tracking and budget management
+- ✅ Bulk restoration operations with comprehensive progress tracking
 
 ---
 
