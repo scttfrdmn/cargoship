@@ -209,10 +209,10 @@ type StreamingCompressionJob struct {
 type CompressionPriority string
 
 const (
-	PriorityLow         CompressionPriority = "low"
-	PriorityNormal      CompressionPriority = "normal"
-	PriorityHigh        CompressionPriority = "high"
-	PriorityCritical    CompressionPriority = "critical"
+	CompressionPriorityLow      CompressionPriority = "low"
+	CompressionPriorityNormal   CompressionPriority = "normal"
+	CompressionPriorityHigh     CompressionPriority = "high"
+	CompressionPriorityCritical CompressionPriority = "critical"
 )
 
 // CompressionContentAnalyzer analyzes content for optimal compression.

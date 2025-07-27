@@ -164,7 +164,7 @@ func TestStreamingCompressorCreateCompressionJob(t *testing.T) {
 	input := strings.NewReader(testData)
 	output := &bytes.Buffer{}
 	
-	job := sc.CreateCompressionJob(input, output, int64(len(testData)), ContentTypeText, PriorityNormal)
+	job := sc.CreateCompressionJob(input, output, int64(len(testData)), ContentTypeText, CompressionPriorityNormal)
 	
 	assert.NotNil(t, job)
 	assert.NotEmpty(t, job.ID)
@@ -174,7 +174,7 @@ func TestStreamingCompressorCreateCompressionJob(t *testing.T) {
 	assert.Equal(t, CompressionBalanced, job.Level)
 	assert.Equal(t, int64(len(testData)), job.ExpectedSize)
 	assert.Equal(t, ContentTypeText, job.ContentType)
-	assert.Equal(t, PriorityNormal, job.Priority)
+	assert.Equal(t, CompressionPriorityNormal, job.Priority)
 	assert.NotNil(t, job.Context)
 	assert.NotNil(t, job.Cancel)
 	assert.NotZero(t, job.StartTime)
@@ -188,7 +188,7 @@ func TestStreamingCompressorProcessJobAsync(t *testing.T) {
 	input := strings.NewReader(testData)
 	output := &bytes.Buffer{}
 	
-	job := sc.CreateCompressionJob(input, output, int64(len(testData)), ContentTypeText, PriorityHigh)
+	job := sc.CreateCompressionJob(input, output, int64(len(testData)), ContentTypeText, CompressionPriorityHigh)
 	
 	// Set up completion callback
 	completed := make(chan *CompressionResult, 1)
@@ -570,7 +570,7 @@ func TestStreamingCompressorJobCancellation(t *testing.T) {
 	input := strings.NewReader(testData)
 	output := &bytes.Buffer{}
 	
-	job := sc.CreateCompressionJob(input, output, int64(len(testData)), ContentTypeText, PriorityNormal)
+	job := sc.CreateCompressionJob(input, output, int64(len(testData)), ContentTypeText, CompressionPriorityNormal)
 	
 	// Cancel the job immediately
 	job.Cancel()
