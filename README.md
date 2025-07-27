@@ -19,7 +19,7 @@ CargoShip is a next-generation data archiving tool optimized for AWS infrastruct
 - 📊 **Intelligent cost optimization** - Save up to 90% with proven algorithms
 - ⚡ **Advanced network algorithms** - BBR and CUBIC congestion control for maximum throughput  
 - 🧠 **Smart compression** - ZSTD with adaptive chunking and staging
-- 💰 **Cost intelligence** - Real-time analysis across all storage classes
+- 💰 **Advanced budget controls** - Cost AND volume limits with grant period management
 - 🔍 **Enterprise observability** - Comprehensive metrics and monitoring
 - 🛡️ **Security first** - KMS encryption and compliance-ready audit trails
 
@@ -44,12 +44,13 @@ curl -sSL https://get.cargoship.dev/install.sh | sh
 cargoship survey /data/project-2024
 cargoship estimate /data/completed-analysis --storage-class deep-archive
 
-# 2. Archive with advanced network optimization
+# 2. Archive with advanced network optimization and budget controls
 cargoship ship /data/completed-analysis \
   --destination s3://my-bucket/project-2024 \
   --storage-class intelligent-tiering \
   --enable-bbr-congestion-control \
-  --max-cost-per-month 200
+  --max-cost-per-month 200 \
+  --max-volume 500GB
 
 # 3. Deploy with advanced monitoring
 docker run -d --name cargoship-agent \
@@ -82,6 +83,11 @@ $ cargoship estimate ./genomics-analysis --show-breakdown
 • Advanced flow control algorithms → 4.6x faster uploads
 
 Total annual savings: $3,170/year with 360% performance gain
+
+💡 Coming in v0.5.0 (Dec 2025):
+• Volume-based budget controls (--max-volume 100GB)
+• Grant period management (1-3 year budgets with rollover)
+• Real-time burn rate monitoring with optimization suggestions
 ```
 
 ## 🏗️ Enterprise Architecture

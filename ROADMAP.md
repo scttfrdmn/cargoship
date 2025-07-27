@@ -49,25 +49,100 @@ This document outlines the planned feature releases for CargoShip, organized by 
 ---
 
 ## 🔬 **v0.5.0 - Research & Scientific Computing** (Target: December 2025)
-**Focus**: Academic Workflows and Content Intelligence
+**Focus**: Academic Workflows and Advanced Budget Management
 
 ### Core Features:
+- **Volume-Based Budget Controls** - `--max-volume 100GB` alongside existing `--max-cost-per-month`
+- **Grant Period Budget Management** - Multi-year budget tracking with monthly spending limits
+- **Budget Fungibility System** - Roll forward unused budget with intelligent allocation
+- **Burn Rate Monitoring** - Real-time spend tracking with optimization recommendations
 - **Content-Aware Chunking** - File content and compression-based optimization
-- **Intelligent Retry & Error Recovery** - Circuit breakers and adaptive backoff strategies  
 - **Data Mover Agents** - Remote system agents via WireGuard tunnels for campus networks
-- **Research Workflow Templates** - Pre-configured workflows for common academic use cases
 
-### Intelligence Features:
+### Budget Intelligence Features:
+- 💰 **Dual Budget Controls**: Cost (`$500/month`) OR volume (`500GB/month`) limits
+- 📊 **Grant Period Tracking**: 1-3 year budget periods with monthly allocations
+- 🔄 **Budget Rollover**: Automatic unused budget transfer to following months
+- ⚠️ **Burn Rate Alerts**: Proactive warnings when spending exceeds projections
+- 💡 **Optimization Suggestions**: Automated recommendations for tiering, compression, lifecycle policies
+
+### Research Features:
 - 🧠 File type specific chunk optimization (algorithmic, not ML)
 - 🔄 Contextual error recovery strategies with circuit breakers
 - 🏛️ Campus/lab network integration with secure tunneling
 - 📚 Academic dataset management and cataloging
 
+### Budget Management Examples:
+```bash
+# Volume-based controls (easier for researchers to understand)
+cargoship ship /research-data --max-volume 2TB --storage-class glacier
+
+# Grant period budget (2-year NSF grant with monthly limits)
+cargoship budget create-grant \
+  --name "NSF-2024-XYZ" \
+  --duration 24months \
+  --total-budget 10000 \
+  --monthly-limit 500 \
+  --enable-rollover
+
+# Real-time burn rate monitoring
+cargoship budget status --show-burn-rate --show-projections
+```
+
 ### Success Criteria:
-- ✅ Content-aware optimization for different file types
-- ✅ Sub-second error detection and recovery  
+- ✅ Intuitive volume-based budget controls for non-financial users
+- ✅ Complete grant period lifecycle management (1-3+ years)
+- ✅ Intelligent budget fungibility with automatic optimization suggestions
+- ✅ Real-time burn rate monitoring with actionable recommendations
 - ✅ Seamless integration with academic computing environments
-- ✅ Cost optimization for academic/educational budgets
+
+---
+
+## 💼 **v0.5.1 - Enterprise Budget Management** (Target: March 2026)
+**Focus**: Advanced Financial Controls and Multi-Grant Management
+
+### Core Features:
+- **Multi-Grant Portfolio Management** - Track multiple concurrent grants/budgets
+- **Hierarchical Budget Controls** - Department → Lab → Project → User budget inheritance
+- **Advanced Burn Rate Analytics** - Predictive spending with seasonality analysis
+- **Budget Approval Workflows** - Multi-stage approval for large transfers
+- **Cost Center Integration** - Enterprise cost accounting and chargeback systems
+
+### Enterprise Budget Features:
+- 🏢 **Multi-Tenant Budgets**: Separate budgets for different departments/projects
+- 🔐 **Approval Workflows**: Required approvals for transfers exceeding thresholds
+- 📈 **Predictive Analytics**: Machine learning for budget forecasting and optimization
+- 🔄 **Automated Optimization**: Dynamic storage class changes based on budget pressure
+- 📊 **Executive Reporting**: Budget utilization dashboards and compliance reports
+
+### Advanced Budget Controls:
+```bash
+# Multi-grant portfolio with hierarchical limits
+cargoship budget create-portfolio \
+  --grants "NSF-2024:$10k,NIH-2025:$15k,DOE-2026:$8k" \
+  --department-limit 50000 \
+  --lab-limit 5000 \
+  --user-limit 1000
+
+# Approval workflow for large transfers
+cargoship ship /large-dataset \
+  --max-cost 2000 \
+  --require-approval \
+  --approvers "pi@university.edu,admin@university.edu"
+
+# Automated cost optimization under budget pressure
+cargoship budget set-optimization \
+  --auto-tier-when-over 80% \
+  --emergency-glacier-at 95% \
+  --notification-threshold 75%
+```
+
+### Success Criteria:
+- ✅ Support for 10+ concurrent grant periods with separate tracking
+- ✅ Automated budget optimization recommendations saving 15%+ costs
+- ✅ Integration with university financial systems and cost centers
+- ✅ Executive-level reporting and compliance tracking
+- ✅ Approval workflows reducing unauthorized spending by 90%+
 
 ---
 
