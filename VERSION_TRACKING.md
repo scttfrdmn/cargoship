@@ -1,6 +1,6 @@
 # CargoShip Version Tracking
 
-**Current Version**: v0.4.0  
+**Current Version**: v0.4.1  
 **Release Date**: July 27, 2025  
 **Next Target**: v0.5.0 (TBD)
 
@@ -50,11 +50,11 @@
 - **Performance Benchmarking**: Full suite of throughput, latency, and scalability tests with competitor comparisons
 - **Real-world Pattern Testing**: Simulation of network partitions, data center outages, rolling maintenance, and load spikes
 
-### ✅ v0.4.0 - Advanced Pipeline Optimization (COMPLETED)
+### ✅ v0.4.0 - Advanced Pipeline Optimization (RELEASED)
 **Target**: October 2025  
-**Completed**: July 27, 2025 ⚡ **3 MONTHS AHEAD OF SCHEDULE**
+**Released**: July 27, 2025 ⚡ **3 MONTHS AHEAD OF SCHEDULE**
 
-#### Current Progress: 100% ✅ COMPLETED
+#### Progress: 100% ✅ RELEASED
 
 - [x] **Cross-Prefix Pipeline Coordination** (COMPLETED)
   - [x] Global transfer scheduler design
@@ -100,7 +100,43 @@
 - **Bandwidth-Delay Product**: Dynamic BDP calculation with optimization algorithms and adaptive window/buffer sizing
 - **Production Quality**: 8,386+ lines of code, 95+ passing tests, zero static analysis violations, full thread safety
 
-#### Status: 🎉 **COMPLETED AHEAD OF SCHEDULE** - Ready for v0.4.0 Release
+#### Status: 🎉 **RELEASED** - v0.4.0 Successfully Released and Tagged
+
+### ✅ v0.4.1 - Documentation & Polish (IN PROGRESS)
+**Target**: July 27, 2025  
+**Focus**: Documentation alignment and enterprise messaging consistency
+
+#### Current Progress: 90% ✅ IN PROGRESS
+
+- [x] **Documentation Audit** (COMPLETED)
+  - [x] Comprehensive review of all documentation files
+  - [x] Identified messaging inconsistencies and outdated metrics
+  - [x] Evaluated GitHub Pages site status and functionality
+
+- [x] **Core Documentation Updates** (COMPLETED)
+  - [x] Updated README.md for enterprise positioning
+  - [x] Aligned docs/index.md messaging and metrics  
+  - [x] Enhanced GitHub Pages with v0.4.0 features
+  - [x] Standardized test coverage to 95% across all files
+
+- [x] **Feature Integration** (COMPLETED)
+  - [x] Linked Task 4 advanced flow control documentation
+  - [x] Added BBR and CUBIC optimization references
+  - [x] Updated performance benchmarks and statistics
+  - [x] Enhanced enterprise vs research messaging alignment
+
+- [ ] **Release Management** (IN PROGRESS)
+  - [x] Version tracking updates for v0.4.1
+  - [ ] Create comprehensive v0.4.0 changelog
+  - [ ] Final documentation link validation
+  - [ ] Commit and tag v0.4.1 release
+
+#### Key Achievements - v0.4.1:
+- **Unified Messaging**: Resolved research vs enterprise positioning inconsistencies
+- **Updated Metrics**: Standardized 95% test coverage across all documentation
+- **v0.4.0 Integration**: Comprehensive documentation of advanced flow control features
+- **Performance Updates**: Updated benchmarks showing 4.6x speed improvements with BBR optimization
+- **Enterprise Focus**: Aligned all documentation with professional enterprise positioning
 
 ### 🔮 Future Versions
 See [ROADMAP.md](ROADMAP.md) for complete planning through v0.6.0

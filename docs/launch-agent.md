@@ -426,7 +426,7 @@ docker exec cargoship-agent aws sts get-caller-identity
 
 ### Support and Community
 
-- **Documentation**: [https://cargoship.dev/docs/launch-agent](https://cargoship.dev/docs/launch-agent)
+- **Documentation**: [https://cargoship.app](https://cargoship.app)
 - **GitHub Issues**: [Report agent-specific issues](https://github.com/scttfrdmn/cargoship/issues)
 - **Research Community**: [Join agent discussions](https://github.com/scttfrdmn/cargoship/discussions)
 

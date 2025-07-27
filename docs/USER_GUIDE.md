@@ -424,7 +424,7 @@ cargoship network test --region us-east-1
 
 ### Getting Help
 
-- **Documentation**: [https://cargoship.dev](https://cargoship.dev)
+- **Documentation**: [https://cargoship.app](https://cargoship.app)
 - **GitHub Issues**: [Report bugs and request features](https://github.com/scttfrdmn/cargoship/issues)
 - **Research Community**: [Join discussions](https://github.com/scttfrdmn/cargoship/discussions)
 - **Slack Channel**: `#cargoship` on Research Computing Slack
