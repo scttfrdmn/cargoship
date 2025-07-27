@@ -23,8 +23,6 @@ CargoShip is a next-generation data archiving tool optimized for AWS infrastruct
 - 🔍 **Enterprise observability** - Comprehensive metrics and monitoring
 - 🛡️ **Security first** - KMS encryption and compliance-ready audit trails
 
-![CargoShip Research Demo](docs/vhs/demo.gif)
-
 ## 🚀 Quick Start
 
 ### Installation
