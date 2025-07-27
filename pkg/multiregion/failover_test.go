@@ -603,15 +603,14 @@ func TestDefaultFailoverManager_IsRegionInFailover_edgeCases(t *testing.T) {
 // COMPREHENSIVE FAILOVER SCENARIO TESTS - Phase 3 Task 5 Requirements
 
 func TestFailoverScenarios_RegionFailureSimulation(t *testing.T) {
-	config := createValidMultiRegionConfig()
-	config.Failover.RetryAttempts = 3
-	config.Failover.FailoverTimeout = 5 * time.Second
-	config.Failover.DetectionInterval = 100 * time.Millisecond
-	logger := log.New(nil)
-	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
-	ctx := context.Background()
-	
 	t.Run("gradual region degradation", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.RetryAttempts = 3
+		config.Failover.FailoverTimeout = 5 * time.Second
+		config.Failover.DetectionInterval = 100 * time.Millisecond
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
 		regionName := "us-east-1"
 		
 		// Stage 1: Initial failures (below threshold)
@@ -635,6 +634,13 @@ func TestFailoverScenarios_RegionFailureSimulation(t *testing.T) {
 	})
 	
 	t.Run("sudden region failure", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.RetryAttempts = 3
+		config.Failover.FailoverTimeout = 5 * time.Second
+		config.Failover.DetectionInterval = 100 * time.Millisecond
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
 		regionName := "us-west-2"
 		
 		// Simulate sudden failure with multiple consecutive failures
@@ -654,6 +660,13 @@ func TestFailoverScenarios_RegionFailureSimulation(t *testing.T) {
 	})
 	
 	t.Run("intermittent failures", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.RetryAttempts = 3
+		config.Failover.FailoverTimeout = 5 * time.Second
+		config.Failover.DetectionInterval = 100 * time.Millisecond
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
 		regionName := "eu-west-1"
 		
 		// Simulate intermittent failures
@@ -674,6 +687,13 @@ func TestFailoverScenarios_RegionFailureSimulation(t *testing.T) {
 	})
 	
 	t.Run("high failure rate detection", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.RetryAttempts = 3
+		config.Failover.FailoverTimeout = 5 * time.Second
+		config.Failover.DetectionInterval = 100 * time.Millisecond
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
 		regionName := "ap-south-1"
 		
 		// Create a pattern with high failure rate but low consecutive failures
@@ -694,13 +714,12 @@ func TestFailoverScenarios_RegionFailureSimulation(t *testing.T) {
 }
 
 func TestFailoverScenarios_RecoveryValidation(t *testing.T) {
-	config := createValidMultiRegionConfig()
-	config.Failover.FailoverTimeout = 2 * time.Second
-	logger := log.New(nil)
-	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
-	ctx := context.Background()
-	
 	t.Run("successful failover and recovery", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.FailoverTimeout = 2 * time.Second
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
 		fromRegion := "us-east-1"
 		toRegion := "us-west-2"
 		
@@ -724,6 +743,11 @@ func TestFailoverScenarios_RecoveryValidation(t *testing.T) {
 	})
 	
 	t.Run("failover with subsequent failure", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.FailoverTimeout = 2 * time.Second
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
 		fromRegion := "us-west-1"
 		toRegion := "eu-west-1"
 		
@@ -747,6 +771,11 @@ func TestFailoverScenarios_RecoveryValidation(t *testing.T) {
 	})
 	
 	t.Run("failed recovery attempt", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.FailoverTimeout = 2 * time.Second
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
 		regionName := "us-central-1"
 		
 		// Record failures
@@ -768,14 +797,13 @@ func TestFailoverScenarios_RecoveryValidation(t *testing.T) {
 }
 
 func TestFailoverScenarios_CrossRegionRetry(t *testing.T) {
-	config := createValidMultiRegionConfig()
-	config.Failover.RetryAttempts = 2
-	config.Failover.FailoverTimeout = 3 * time.Second
-	logger := log.New(nil)
-	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
-	ctx := context.Background()
-	
 	t.Run("multi-region cascading failover", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.RetryAttempts = 2
+		config.Failover.FailoverTimeout = 3 * time.Second
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
 		regions := []string{"primary", "backup1", "backup2", "backup3"}
 		
 		// Simulate cascading failures across regions
@@ -805,6 +833,12 @@ func TestFailoverScenarios_CrossRegionRetry(t *testing.T) {
 	})
 	
 	t.Run("circular failover prevention", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.RetryAttempts = 2
+		config.Failover.FailoverTimeout = 3 * time.Second
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
 		region1 := "circular-1"
 		region2 := "circular-2"
 		
@@ -824,6 +858,12 @@ func TestFailoverScenarios_CrossRegionRetry(t *testing.T) {
 	})
 	
 	t.Run("parallel failover handling", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.RetryAttempts = 2
+		config.Failover.FailoverTimeout = 3 * time.Second
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
 		region1 := "parallel-1"
 		region2 := "parallel-2"
 		targetRegion := "parallel-target"
@@ -856,12 +896,11 @@ func TestFailoverScenarios_CrossRegionRetry(t *testing.T) {
 }
 
 func TestFailoverScenarios_TimeoutHandling(t *testing.T) {
-	config := createValidMultiRegionConfig()
-	config.Failover.FailoverTimeout = 50 * time.Millisecond // Very short timeout
-	logger := log.New(nil)
-	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
-	
 	t.Run("failover timeout", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.FailoverTimeout = 50 * time.Millisecond // Very short timeout
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
 		
@@ -876,6 +915,10 @@ func TestFailoverScenarios_TimeoutHandling(t *testing.T) {
 	})
 	
 	t.Run("context cancellation during failover", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.FailoverTimeout = 50 * time.Millisecond // Very short timeout
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
 		ctx, cancel := context.WithCancel(context.Background())
 		
 		fromRegion := "cancel-source"
@@ -904,6 +947,10 @@ func TestFailoverScenarios_TimeoutHandling(t *testing.T) {
 	})
 	
 	t.Run("prolonged failure detection", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.FailoverTimeout = 50 * time.Millisecond // Very short timeout
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
 		regionName := "prolonged-failure"
 		ctx := context.Background()
 		
@@ -927,7 +974,9 @@ func TestFailoverScenarios_TimeoutHandling(t *testing.T) {
 	})
 	
 	t.Run("concurrent failover prevention", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
 		config.Failover.FailoverTimeout = 1 * time.Second
+		logger := log.New(nil)
 		managerNew := NewFailoverManager(config, logger).(*DefaultFailoverManager)
 		ctx := context.Background()
 		
@@ -967,14 +1016,13 @@ func TestFailoverScenarios_TimeoutHandling(t *testing.T) {
 }
 
 func TestFailoverScenarios_RealWorldPatterns(t *testing.T) {
-	config := createValidMultiRegionConfig()
-	config.Failover.RetryAttempts = 3
-	config.Failover.FailoverTimeout = 2 * time.Second
-	logger := log.New(nil)
-	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
-	ctx := context.Background()
-	
 	t.Run("network partition simulation", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.RetryAttempts = 3
+		config.Failover.FailoverTimeout = 2 * time.Second
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
 		eastRegion := "us-east-network"
 		westRegion := "us-west-network"
 		
@@ -997,6 +1045,12 @@ func TestFailoverScenarios_RealWorldPatterns(t *testing.T) {
 	})
 	
 	t.Run("data center outage simulation", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.RetryAttempts = 3
+		config.Failover.FailoverTimeout = 2 * time.Second
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
 		dcRegions := []string{"dc-region-1", "dc-region-2", "dc-region-3"}
 		backupRegion := "backup-dc"
 		
@@ -1026,6 +1080,12 @@ func TestFailoverScenarios_RealWorldPatterns(t *testing.T) {
 	})
 	
 	t.Run("rolling maintenance simulation", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.RetryAttempts = 3
+		config.Failover.FailoverTimeout = 2 * time.Second
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
 		maintenanceRegion := "maintenance-region"
 		activeRegion := "active-region"
 		
@@ -1051,6 +1111,12 @@ func TestFailoverScenarios_RealWorldPatterns(t *testing.T) {
 	})
 	
 	t.Run("load spike induced failure", func(t *testing.T) {
+		config := createValidMultiRegionConfig()
+		config.Failover.RetryAttempts = 3
+		config.Failover.FailoverTimeout = 2 * time.Second
+		logger := log.New(nil)
+		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+		ctx := context.Background()
 		loadRegion := "high-load-region"
 		spillRegion := "spill-region"
 		

@@ -4,6 +4,8 @@ package config
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -119,6 +121,19 @@ func (c *AWSConfig) Validate() error {
 	return nil
 }
 
+// isLocalStackEndpoint checks if the current configuration is using LocalStack
+func isLocalStackEndpoint() bool {
+	endpointURL := os.Getenv("AWS_ENDPOINT_URL")
+	if endpointURL == "" {
+		endpointURL = os.Getenv("LOCALSTACK_ENDPOINT")
+	}
+	
+	// Check for common LocalStack endpoint patterns
+	return strings.Contains(endpointURL, "localhost:4566") ||
+		strings.Contains(endpointURL, "127.0.0.1:4566") ||
+		strings.Contains(endpointURL, "localstack")
+}
+
 // LoadAWSConfig loads AWS configuration with CargoShip defaults
 func LoadAWSConfig(ctx context.Context, profile, region string) (aws.Config, error) {
 	var opts []func(*awsconfig.LoadOptions) error
@@ -131,5 +146,37 @@ func LoadAWSConfig(ctx context.Context, profile, region string) (aws.Config, err
 		opts = append(opts, awsconfig.WithRegion(region))
 	}
 	
-	return awsconfig.LoadDefaultConfig(ctx, opts...)
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
+	if err != nil {
+		return cfg, err
+	}
+	
+	// Configure for LocalStack compatibility if detected
+	if isLocalStackEndpoint() {
+		// Create custom endpoint resolver for LocalStack
+		cfg.BaseEndpoint = aws.String(getLocalStackEndpoint())
+		
+		// Note: S3 UsePathStyle must be configured on the S3 client options
+		// See: IsLocalStackConfig() and CreateLocalStackS3Client() functions
+	}
+	
+	return cfg, nil
+}
+
+// getLocalStackEndpoint returns the LocalStack endpoint URL
+func getLocalStackEndpoint() string {
+	endpointURL := os.Getenv("AWS_ENDPOINT_URL")
+	if endpointURL == "" {
+		endpointURL = os.Getenv("LOCALSTACK_ENDPOINT")
+	}
+	if endpointURL == "" {
+		endpointURL = "http://localhost:4566" // Default LocalStack endpoint
+	}
+	return endpointURL
+}
+
+// IsLocalStackConfig returns true if the current configuration is using LocalStack
+// This function can be used by other packages to determine LocalStack usage
+func IsLocalStackConfig() bool {
+	return isLocalStackEndpoint()
 }

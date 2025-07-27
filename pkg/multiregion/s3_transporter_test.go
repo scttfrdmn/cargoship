@@ -918,7 +918,7 @@ func TestMultiRegionS3Transporter_uploadSingle(t *testing.T) {
 		},
 		Archive: s3transport.Archive{
 			Key:              "test-key",
-			Reader:           strings.NewReader("test data"),
+			Reader:           strings.NewReader(strings.Repeat("a", 1024)),
 			Size:             1024,
 			StorageClass:     awsconfig.StorageClassStandard,
 			OriginalSize:     1024,
@@ -979,7 +979,7 @@ func TestMultiRegionS3Transporter_uploadRedundant(t *testing.T) {
 		},
 		Archive: s3transport.Archive{
 			Key:              "test-key",
-			Reader:           strings.NewReader("test data"),
+			Reader:           strings.NewReader(strings.Repeat("a", 1024)),
 			Size:             1024,
 			StorageClass:     awsconfig.StorageClassStandard,
 			OriginalSize:     1024,
@@ -1029,7 +1029,7 @@ func TestMultiRegionS3Transporter_uploadWithFailover(t *testing.T) {
 		},
 		Archive: s3transport.Archive{
 			Key:              "test-key",
-			Reader:           strings.NewReader("test data"),
+			Reader:           strings.NewReader(strings.Repeat("a", 1024)),
 			Size:             1024,
 			StorageClass:     awsconfig.StorageClassStandard,
 			OriginalSize:     1024,
@@ -1090,7 +1090,7 @@ func TestMultiRegionS3Transporter_executeUpload(t *testing.T) {
 		},
 		Archive: s3transport.Archive{
 			Key:              "test-key",
-			Reader:           strings.NewReader("test data"),
+			Reader:           strings.NewReader(strings.Repeat("a", 1024)),
 			Size:             1024,
 			StorageClass:     awsconfig.StorageClassStandard,
 			OriginalSize:     1024,

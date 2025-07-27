@@ -148,8 +148,8 @@ func (f *DefaultFailoverManager) DetectFailure(ctx context.Context, regionName s
 	}
 	
 	// Check if region has been failing for too long
-	if !history.LastFailure.IsZero() && time.Since(history.LastFailure) < 5*time.Minute {
-		if history.LastSuccess.IsZero() || history.LastFailure.After(history.LastSuccess) {
+	if !history.LastFailure.IsZero() {
+		if !history.LastSuccess.IsZero() && history.LastFailure.After(history.LastSuccess) {
 			timeSinceSuccess := time.Since(history.LastSuccess)
 			if timeSinceSuccess > 15*time.Minute {
 				f.logger.Warn("Region prolonged failure detected",
