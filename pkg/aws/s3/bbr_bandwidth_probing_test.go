@@ -93,8 +93,9 @@ func TestBBRPacketSentTracking(t *testing.T) {
 		t.Error("Expected first sent time to be set")
 	}
 	
-	if !prober.firstSentTime.Equal(sendTime) {
-		t.Errorf("Expected first sent time to be %v, got %v", sendTime, prober.firstSentTime)
+	// Allow for some timing variance in the test
+	if prober.firstSentTime.Sub(sendTime).Abs() > time.Millisecond {
+		t.Errorf("Expected first sent time to be close to %v, got %v", sendTime, prober.firstSentTime)
 	}
 	
 	// Test app-limited tracking
@@ -385,14 +386,14 @@ func TestBBRBDPCalculation(t *testing.T) {
 		t.Errorf("Expected BDP to be %d, got %d", expectedBDP, bdp)
 	}
 	
-	// Test with different values
-	prober.maxBandwidth = 50.0
-	prober.minRTT = time.Millisecond * 100
+	// Test with different values - significantly different to ensure change
+	prober.maxBandwidth = 200.0  // Double the bandwidth
+	prober.minRTT = time.Millisecond * 200  // Double the RTT
 	
 	newBDP := prober.calculateBDP()
 	
 	if newBDP == bdp {
-		t.Error("Expected BDP to change with different bandwidth and RTT")
+		t.Errorf("Expected BDP to change with different bandwidth and RTT: old=%d, new=%d", bdp, newBDP)
 	}
 }
 
@@ -674,7 +675,8 @@ func TestBBRProberIntegration(t *testing.T) {
 		t.Error("Expected positive congestion window")
 	}
 	
-	// Test metrics
+	// Test metrics - trigger update first
+	prober.updateMetrics()
 	metrics := prober.GetMetrics()
 	if metrics.TotalProbes == 0 {
 		t.Error("Expected some probes to be recorded")

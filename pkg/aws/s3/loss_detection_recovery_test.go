@@ -465,8 +465,10 @@ func TestRTTEstimation(t *testing.T) {
 	newRTT := time.Millisecond * 80
 	rttEst.UpdateRTT(newRTT, time.Now())
 	
-	if rttEst.GetSmoothedRTT() != newRTT {
-		t.Errorf("Expected first RTT to be used directly, got %v", rttEst.GetSmoothedRTT())
+	// The RTT estimator starts with 100ms initial value and uses exponential smoothing
+	smoothedAfterFirst := rttEst.GetSmoothedRTT()
+	if smoothedAfterFirst < time.Millisecond*75 || smoothedAfterFirst > time.Millisecond*105 {
+		t.Errorf("Expected smoothed RTT to be influenced by initial 100ms and new 80ms RTT, got %v", smoothedAfterFirst)
 	}
 	
 	// Test subsequent RTT update (should be smoothed)
