@@ -11,4 +11,26 @@ coverage-all.txt
 docs/CLI Reference/
 test/
 manpages/
+
+# Build artifacts and executables
 cargoship
+cargoship-launch
+*.test
+
+# Coverage files and reports
+*.out
+*coverage*.html
+*coverage*.out
+
+# Temporary analysis and status files
+*_analysis.out
+*_status.out
+*_check.out
+
+# Development session files (should be archived manually)
+SESSION_PROGRESS.md
+DEVELOPMENT_NOTES.md
+
+# Temporary development artifacts
+temp_*
+working_*

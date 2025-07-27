@@ -1,5 +1,0 @@
-ok  	github.com/scttfrdmn/cargoship/cmd/cargoship	0.504s
-ok  	github.com/scttfrdmn/cargoship/cmd/cargoship/cmd	12.596s
-ok  	github.com/scttfrdmn/cargoship/cmd/cargoship-launch	0.720s
-ok  	github.com/scttfrdmn/cargoship/pkg/controller	0.789s
-?   	github.com/scttfrdmn/cargoship/pkg/tui	[no test files]
