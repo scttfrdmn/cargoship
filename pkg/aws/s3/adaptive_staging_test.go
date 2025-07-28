@@ -425,7 +425,7 @@ func TestResourceAllocator(t *testing.T) {
 	usage := ra.GetCurrentUsage()
 	assert.NotNil(t, usage)
 	assert.GreaterOrEqual(t, usage.CPUUsage, 0.0)
-	assert.GreaterOrEqual(t, usage.MemoryUsage, 0)
+	assert.GreaterOrEqual(t, usage.MemoryUsage, int64(0))
 	assert.GreaterOrEqual(t, usage.NetworkUsage, 0.0)
 	assert.GreaterOrEqual(t, usage.DiskUsage, 0.0)
 	

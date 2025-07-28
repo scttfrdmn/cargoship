@@ -853,7 +853,7 @@ func (ca *ContentAnalyzer) detectContentType(data []byte, hint string) ContentTy
 		return ContentTypeImage
 	case bytes.HasPrefix(data, []byte("ID3")) || bytes.HasPrefix(data, []byte{0xFF, 0xFB}):
 		return ContentTypeAudio
-	case hint == "video" || bytes.Contains(data[:32], []byte("ftyp")):
+	case hint == "video" || bytes.Contains(data[:minIntChunk(32, len(data))], []byte("ftyp")):
 		return ContentTypeVideo
 	case ca.isTextContent(data):
 		return ContentTypeText
@@ -1061,15 +1061,28 @@ func (cpd *ContentPatternDetector) DetectPatterns(data []byte) []ContentPattern 
 	// Simple pattern detection - look for repeated sequences
 	patterns := make([]ContentPattern, 0)
 	
+	if len(data) < 1024 {
+		return patterns
+	}
+	
 	// Detect null byte sequences (potential padding)
-	for i := 0; i < len(data)-1024; i += 1024 {
+	for i := 0; i <= len(data)-1024; i += 1024 {
 		nullCount := 0
-		for j := i; j < i+1024 && j < len(data); j++ {
+		end := i + 1024
+		if end > len(data) {
+			end = len(data)
+		}
+		
+		for j := i; j < end; j++ {
 			if data[j] == 0 {
 				nullCount++
 			}
 		}
-		if nullCount > 512 { // More than 50% nulls
+		
+		windowSize := end - i
+		threshold := windowSize / 2 // More than 50% nulls
+		
+		if nullCount > threshold {
 			patterns = append(patterns, ContentPattern{
 				Type:   "structural_break",
 				Offset: int64(i),
