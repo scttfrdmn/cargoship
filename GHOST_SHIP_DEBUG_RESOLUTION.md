@@ -146,11 +146,36 @@ File Detection → Job Queuing → Transporter Creation → S3 Upload Attempts
 - ✅ **End-to-end testing**: Real genomics files successfully archived
 - ✅ **Performance validated**: Throughput within expected range for hardware
 
-### 4. Outstanding Issues & Future Work
-- 🔍 **Low Priority**: Investigate S3 301 redirect errors on Synology uploads
+### 4. S3 Redirect Issue Resolution ✅
+
+**Issue**: Synology ghost ship experiencing S3 301 redirect errors while QNAP worked correctly
+
+**Root Cause**: AWS region environment variable mismatch
+- **QNAP container**: `AWS_DEFAULT_REGION=us-west-2` ✅ (correct)
+- **Synology container**: `AWS_DEFAULT_REGION=us-east-1` ❌ (wrong region)
+
+**Technical Details**: 
+- AWS SDK Go v2 prioritizes environment variables over `.aws/config` file settings
+- Both containers had identical AWS config files specifying `us-west-2`
+- Synology container's environment override caused SDK to attempt uploads to wrong regional endpoint
+- S3 returned 301 redirects instructing client to use correct regional endpoint
+
+**Solution**: Updated Synology container deployment with correct region:
+```bash
+-e AWS_DEFAULT_REGION=us-west-2
+```
+
+**Verification Results**:
+- ✅ **Synology uploads**: Now successfully completing without redirects
+- ✅ **Performance improvement**: 1.3 Mbps vs previous failures  
+- ✅ **S3 bucket verification**: Files confirmed in `cargoship-synology-aws` bucket
+- ✅ **Both systems operational**: QNAP and Synology both archiving autonomously
+
+### 5. Outstanding Issues & Future Work
 - 🚀 **Future Optimization**: QNAP performance tuning (increase memory allocation from 4GB)
-- 🧹 **Future Cleanup**: Standardize deployment process for both QNAP Container Station and Synology Container Manager
+- 🧹 **Future Cleanup**: Standardize deployment process for both QNAP Container Station and Synology Container Manager  
 - 📊 **Future Enhancement**: Implement proper monitoring dashboard for both ghost ships
+- 🔧 **Code Quality**: Fix linting violations preventing clean commits
 
 ## 🔧 Technical Files Modified
 

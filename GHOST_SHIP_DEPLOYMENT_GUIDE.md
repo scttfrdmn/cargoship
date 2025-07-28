@@ -105,6 +105,7 @@ archival_rules:
   --platform linux/amd64 \
   -u 1027:100 \
   -e AWS_PROFILE=aws \
+  -e AWS_DEFAULT_REGION=us-west-2 \
   --memory=2g \
   -v /volume1/homes/scttfrdmn/.aws:/home/cargoship/.aws:ro \
   -v /volume1/docker/cargoship/ghost_ship.yaml:/etc/cargoship/ghost_ship.yaml:ro \
@@ -112,6 +113,8 @@ archival_rules:
   --restart unless-stopped \
   cargoship-ghost:synology-fixed
 ```
+
+**⚠️ Critical**: The `AWS_DEFAULT_REGION=us-west-2` environment variable is essential. The AWS SDK Go v2 prioritizes environment variables over config file settings, so omitting this will cause S3 301 redirect errors.
 
 ### 4. Verification
 ```bash
@@ -138,10 +141,11 @@ archival_rules:
 **Symptom**: Container can't read `.aws/credentials`
 **Solution**: Fix file permissions: `chmod 600 ~/.aws/credentials`
 
-#### 4. S3 301 Redirect Errors (Synology)
-**Symptom**: "PermanentRedirect" errors in logs
-**Status**: Known issue, files are being detected and queued correctly
-**Priority**: Low (interface functionality confirmed working)
+#### 4. S3 301 Redirect Errors ✅ RESOLVED
+**Symptom**: "PermanentRedirect" errors in Synology logs
+**Root Cause**: AWS region environment variable mismatch (`AWS_DEFAULT_REGION=us-east-1` instead of `us-west-2`)
+**Solution**: Add `-e AWS_DEFAULT_REGION=us-west-2` to container deployment
+**Status**: ✅ **RESOLVED** - Both QNAP and Synology now operational
 
 ### Performance Optimization
 
@@ -152,8 +156,10 @@ archival_rules:
 
 #### Synology (Atom/32GB RAM)  
 - **Memory**: 2GB allocation appropriate for Atom processor
-- **Concurrency**: Default 15 concurrent uploads suitable
+- **Concurrency**: Default 15 concurrent uploads suitable  
+- **Performance**: 1.3 Mbps throughput (better than QNAP for smaller files)
 - **CPU Limits**: Avoid CPU constraints due to kernel limitations
+- **Critical**: Must include `AWS_DEFAULT_REGION=us-west-2` environment variable
 
 ## 📊 Monitoring
 
@@ -166,14 +172,14 @@ ssh scttfrdmn@astrapi.local "/share/ZFS530_DATA/.qpkg/container-station/bin/dock
 ssh scttfrdmn@chubchub.local "/usr/local/bin/docker logs cargoship-ghost-container | grep -E '(queued|error)' | tail -10"
 ```
 
-### Performance Metrics
-- **QNAP**: ~0.5-0.6 Mbps throughput typical
-- **Synology**: File detection and queuing active (S3 uploads pending redirect fix)
+### Performance Metrics  
+- **QNAP**: ~0.5-0.6 Mbps throughput (memory constrained)
+- **Synology**: ~1.3 Mbps throughput (fully operational after region fix)
 
 ## 🚀 Future Improvements
 
 ### High Priority
-- [ ] Resolve S3 301 redirect issue on Synology
+- [x] **COMPLETED**: Resolve S3 301 redirect issue on Synology ✅
 - [ ] Implement centralized monitoring dashboard
 
 ### Medium Priority  
