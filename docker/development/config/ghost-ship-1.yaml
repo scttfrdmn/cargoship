@@ -1,0 +1,101 @@
+# Ghost Ship 1 - Development Configuration (simulates astrapi.local)
+
+# Ghost ship identification
+id: "dev-ghost-ship-1"
+name: "Development Ghost Ship 1 (astrapi simulation)"
+description: "Simulates astrapi.local NAS for development testing"
+
+# S3 Configuration - using LocalStack
+s3_config:
+  bucket: "cargoship-dev-bucket-1"
+  region: "us-west-2"
+  concurrency: 5
+  multipart_threshold: 10485760   # 10MB
+  multipart_chunk_size: 5242880   # 5MB
+  timeout: 60                     # 1 minute
+
+# S3 Optimization Configuration
+optimization_config:
+  enable_bbr: true
+  enable_cubic: true
+  predictive_mode: true
+  max_connections: 10
+  buffer_size: 1048576  # 1MB
+  chunk_size_mb: 8
+  network_optimization: true
+
+# Watch Paths - simulated NAS directories
+watch_paths:
+  - path: "/data/public/documents"
+    include_patterns: ["*.pdf", "*.doc", "*.docx", "*.txt"]
+    exclude_patterns: ["*.tmp", "~*", ".~*"]
+    min_age: "30s"         # Quick for development
+    storage_class: "STANDARD"
+    recursive: true
+    
+  - path: "/data/public/images"
+    include_patterns: ["*.jpg", "*.jpeg", "*.png", "*.gif"]
+    exclude_patterns: ["thumbnail*", "preview*"]
+    min_age: "60s"
+    storage_class: "STANDARD_IA"
+    recursive: true
+
+# Archival Rules - development-friendly rules
+archival_rules:
+  - name: "dev_document_archival"
+    description: "Archive documents for development testing"
+    path_pattern: "/data/public/documents/**"
+    file_pattern: "*.{pdf,doc,docx,txt}"
+    min_size: 100         # Very small for testing
+    max_size: 10485760    # 10MB
+    min_age: "30s"        # Quick archival for development
+    storage_class: "STANDARD"
+    compression: "gzip"
+    encryption: false     # Disabled for development
+    delete_after_archive: false
+    priority: 1
+    enabled: true
+    tags:
+      environment: "development"
+      ghost_ship: "dev-ghost-ship-1"
+      type: "document"
+    metadata:
+      archived_by: "cargoship-ghost-ship-dev"
+      test_mode: "true"
+      
+  - name: "dev_image_archival"
+    description: "Archive images for development testing"
+    path_pattern: "/data/public/images/**"
+    file_pattern: "*.{jpg,jpeg,png,gif}"
+    min_size: 100
+    max_size: 52428800     # 50MB
+    min_age: "60s"
+    storage_class: "STANDARD_IA"
+    compression: "none"
+    encryption: false
+    delete_after_archive: false
+    priority: 2
+    enabled: true
+    tags:
+      environment: "development"
+      ghost_ship: "dev-ghost-ship-1"
+      type: "image"
+    metadata:
+      archived_by: "cargoship-ghost-ship-dev"
+      test_mode: "true"
+
+# Performance Settings - tuned for development
+max_concurrent_jobs: 3
+worker_pool_size: 2
+scan_interval: "30s"     # Frequent scanning for development
+
+# Controller Integration
+controller_url: "ws://cargoship-controller:8080"
+auth_token: "dev-ghost-token-111"
+tls_config:
+  enabled: false         # Disabled for local development
+  insecure_skip_verify: true
+
+# Monitoring and Reporting
+reporting_enabled: true
+report_interval: "30s"   # Frequent reporting for development

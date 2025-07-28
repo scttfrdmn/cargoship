@@ -12,16 +12,18 @@ import (
 	
 	awsconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
+	"github.com/scttfrdmn/cargoship/pkg/s3optimization"
 )
 
 // MultiRegionS3Transporter implements multi-region S3 uploads with intelligent failover
 type MultiRegionS3Transporter struct {
-	coordinator  Coordinator
-	transporters map[string]*s3transport.AdaptiveTransporter
-	clients      map[string]*s3.Client
-	config       *MultiRegionS3Config
-	logger       *slog.Logger
-	mu           sync.RWMutex
+	coordinator         Coordinator
+	transporters        map[string]*s3transport.AdaptiveTransporter
+	optimizedTransporters map[string]*s3transport.OptimizedTransporter // Enhanced with S3 optimization
+	clients             map[string]*s3.Client
+	config              *MultiRegionS3Config
+	logger              *slog.Logger
+	mu                  sync.RWMutex
 }
 
 // MultiRegionS3Config configures multi-region S3 transport behavior
@@ -29,6 +31,8 @@ type MultiRegionS3Config struct {
 	*MultiRegionConfig
 	S3Config             awsconfig.S3Config                       `yaml:"s3_config" json:"s3_config"`
 	AdaptiveConfig       *s3transport.AdaptiveTransporterConfig   `yaml:"adaptive_config" json:"adaptive_config"`
+	OptimizationConfig   *s3optimization.Config                   `yaml:"optimization_config" json:"optimization_config"` // S3 optimization settings
+	UseOptimization      bool                                     `yaml:"use_optimization" json:"use_optimization"`        // Enable optimization
 	CrossRegionRetries   int                                      `yaml:"cross_region_retries" json:"cross_region_retries"`
 	FailoverDelay        time.Duration                            `yaml:"failover_delay" json:"failover_delay"`
 	RedundantUploads     bool                                     `yaml:"redundant_uploads" json:"redundant_uploads"`
@@ -74,11 +78,12 @@ func NewMultiRegionS3Transporter(ctx context.Context, config *MultiRegionS3Confi
 	}
 	
 	t := &MultiRegionS3Transporter{
-		coordinator:  coordinator,
-		transporters: make(map[string]*s3transport.AdaptiveTransporter),
-		clients:      make(map[string]*s3.Client),
-		config:       config,
-		logger:       logger,
+		coordinator:           coordinator,
+		transporters:          make(map[string]*s3transport.AdaptiveTransporter),
+		optimizedTransporters: make(map[string]*s3transport.OptimizedTransporter),
+		clients:               make(map[string]*s3.Client),
+		config:                config,
+		logger:                logger,
 	}
 	
 	// Initialize S3 clients and transporters for each region
@@ -345,8 +350,32 @@ func (t *MultiRegionS3Transporter) uploadWithFailover(ctx context.Context, reque
 
 // executeUpload executes the actual upload using the appropriate transporter
 func (t *MultiRegionS3Transporter) executeUpload(ctx context.Context, transporter *s3transport.AdaptiveTransporter, request *MultiRegionUploadRequest) (*s3transport.UploadResult, error) {
-	// Use adaptive upload if available
+	// Determine the region for the transporter
+	var regionName string
+	for region, transport := range t.transporters {
+		if transport == transporter {
+			regionName = region
+			break
+		}
+	}
+	
+	// Use optimized transporter if available and enabled
+	if t.config.UseOptimization && regionName != "" {
+		if optimizedTransporter, exists := t.optimizedTransporters[regionName]; exists {
+			t.logger.Debug("using optimized transporter for upload",
+				"region", regionName,
+				"request_id", request.ID,
+				"optimization_enabled", true)
+			return optimizedTransporter.Upload(ctx, &request.Archive)
+		}
+	}
+	
+	// Fall back to adaptive upload if available
 	if transporter != nil {
+		t.logger.Debug("using adaptive transporter for upload",
+			"region", regionName,
+			"request_id", request.ID,
+			"optimization_enabled", false)
 		return transporter.UploadWithStaging(ctx, request.Archive)
 	}
 	
@@ -401,9 +430,31 @@ func (t *MultiRegionS3Transporter) initializeRegionTransporters(ctx context.Cont
 		
 		t.transporters[region.Name] = transporter
 		
-		t.logger.Info("initialized transporter for region",
-			"region", region.Name,
-			"adaptive_enabled", adaptiveConfig.EnableRealTimeAdaptation)
+		// Create optimized transporter if enabled
+		if t.config.UseOptimization {
+			optimizationConfig := t.config.OptimizationConfig
+			if optimizationConfig == nil {
+				optimizationConfig = s3optimization.DefaultConfig()
+			}
+			
+			optimizedTransporter, err := s3transport.NewOptimizedTransporter(ctx, client, t.config.S3Config, t.logger)
+			if err != nil {
+				return fmt.Errorf("failed to create optimized transporter for region %s: %w", region.Name, err)
+			}
+			
+			t.optimizedTransporters[region.Name] = optimizedTransporter
+			
+			t.logger.Info("initialized transporter for region",
+				"region", region.Name,
+				"adaptive_enabled", adaptiveConfig.EnableRealTimeAdaptation,
+				"optimization_enabled", true,
+				"bbr_enabled", optimizationConfig.EnableBBR,
+				"cubic_enabled", optimizationConfig.EnableCUBIC)
+		} else {
+			t.logger.Info("initialized transporter for region",
+				"region", region.Name,
+				"adaptive_enabled", adaptiveConfig.EnableRealTimeAdaptation)
+		}
 	}
 	
 	return nil
@@ -424,6 +475,17 @@ func (t *MultiRegionS3Transporter) Shutdown(ctx context.Context) error {
 	// Shutdown transporters
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	
+	// Shutdown optimized transporters first
+	for region, optimizedTransporter := range t.optimizedTransporters {
+		t.logger.Info("shutting down transporter", "region", region, "type", "optimized")
+		err := optimizedTransporter.Shutdown(ctx)
+		if err != nil {
+			t.logger.Warn("error shutting down optimized transporter",
+				"region", region,
+				"error", err.Error())
+		}
+	}
 	
 	for region, transporter := range t.transporters {
 		if transporter != nil {

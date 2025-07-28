@@ -1,0 +1,64 @@
+# CargoShip Ghost Ship Configuration for Astrapi QNAP Production
+id: "astrapi-ghost-ship"
+name: "Astrapi QNAP Ghost Ship"
+description: "Production autonomous archival for astrapi.local QNAP system"
+
+# S3 Configuration - Production S3 with corrected region
+s3_config:
+  bucket: "cargoship-qnap-production"
+  region: "us-west-2"
+  concurrency: 10
+  multipart_threshold: 104857600  # 100MB
+  multipart_chunk_size: 16777216  # 16MB
+  timeout: 600                    # 10 minutes for large files
+
+# S3 Optimization Configuration - 4.6x Performance Boost
+optimization_config:
+  enable_bbr: true
+  enable_cubic: true
+  predictive_mode: true
+  max_connections: 20
+  buffer_size: 8388608            # 8MB buffer
+  chunk_size_mb: 16
+  network_optimization: true
+
+# Watch Paths - Production genomics data directories
+watch_paths:
+  - path: "/volume1/genomics_training"
+    include_patterns: ["*.fasta", "*.fastq", "*.vcf", "*.sam", "*.bam", "*.bed", "*.gff", "*.gtf"]
+    exclude_patterns: ["*.tmp", "*.lock", "*~"]
+    min_age: "1h"                 # Archive files older than 1 hour
+    storage_class: "STANDARD"
+    recursive: true
+
+# Archival Rules - Production genomics archival
+archival_rules:
+  - name: "genomics_production_archival"
+    description: "Archive production genomics files from QNAP training directory"
+    path_pattern: "/volume1/genomics_training/**"
+    file_pattern: "*.{fasta,fastq,vcf,sam,bam,bed,gff,gtf}"
+    min_size: 1024                # 1KB minimum
+    max_size: 107374182400        # 100GB maximum
+    min_age: "1h"                 # Archive after 1 hour
+    storage_class: "STANDARD"
+    compression: "gzip"
+    encryption: true
+    delete_after_archive: false
+    priority: 1
+    enabled: true
+    tags:
+      environment: "production"
+      source: "astrapi_qnap"
+      type: "genomics"
+    metadata:
+      archived_by: "cargoship-astrapi-ghost"
+      archive_policy: "genomics_training"
+
+# Performance Settings
+max_concurrent_jobs: 3
+worker_pool_size: 2
+scan_interval: "5m"              # Scan every 5 minutes for production
+
+# Monitoring and Reporting
+reporting_enabled: true
+report_interval: "60s"

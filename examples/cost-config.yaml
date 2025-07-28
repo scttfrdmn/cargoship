@@ -1,0 +1,191 @@
+# CargoShip AWS Cost Configuration Example
+# This configuration demonstrates various discount scenarios and cost management features
+
+# AWS Profile and Region
+profile: "production"
+region: "us-east-1"
+
+# S3 Configuration
+s3:
+  bucket: "my-company-archive"
+  storage_class: "INTELLIGENT_TIERING"
+  multipart_threshold: 104857600  # 100MB
+  multipart_chunk_size: 10485760  # 10MB
+  concurrency: 8
+  use_transfer_acceleration: false
+
+# Cost Control Configuration
+cost_control:
+  max_monthly_budget: 5000.0      # USD
+  alert_threshold: 0.85           # Alert at 85% of budget
+  auto_optimize: true
+  require_approval_over: 1000.0   # Require approval for operations > $1000
+
+  # Pricing Configuration
+  pricing:
+    use_aws_pricing_api: true
+    currency: "USD"
+    pricing_cache_duration: "24h"
+    
+    # Global discount (e.g., 15% Enterprise Agreement discount)
+    global_discount: 0.15
+    
+    # Service-specific discounts
+    service_discounts:
+      s3: 0.20          # 20% discount on S3 due to volume commitment
+      ec2: 0.25         # 25% discount on EC2 from Reserved Instances
+      glacier: 0.10     # 10% discount on Glacier
+    
+    # Custom pricing overrides (useful for testing or special contracts)
+    custom_pricing:
+      us-east-1:
+        s3_storage:
+          STANDARD: 0.019          # Custom rate instead of $0.023/GB
+          STANDARD_IA: 0.010       # Custom rate instead of $0.0125/GB
+          GLACIER: 0.003           # Custom rate instead of $0.004/GB
+          DEEP_ARCHIVE: 0.0008     # Custom rate instead of $0.00099/GB
+        s3_requests:
+          put_requests: 0.0004     # Per 1000 PUT requests
+          get_requests: 0.0003     # Per 1000 GET requests
+          delete_requests: 0.0     # DELETE requests are free
+        data_transfer:
+          out_to_internet:
+            first_1gb: 0.0         # First 1GB free
+            next_9gb: 0.08         # Next 9GB
+            next_40gb: 0.075       # Next 40GB
+            over_50gb: 0.07        # Over 50GB
+          between_regions:
+            us_east_to_us_west: 0.02
+            us_to_eu: 0.02
+          cloudfront: 0.085
+    
+    # Reserved Instance Discounts
+    reserved_instance_discounts:
+      s3:
+        discount: 0.30             # 30% discount
+        term: "3 years"
+        payment_option: "All Upfront"
+        instance_types: ["standard", "ia"]
+      
+    # Savings Plans Discounts  
+    savings_plans_discounts:
+      compute:
+        discount: 0.28             # 28% discount
+        commitment: 500.0          # $500/hour commitment
+        term: "3 years"
+        plan_type: "Compute"
+    
+    # Enterprise Discount Configuration
+    enterprise_discount:
+      enabled: true
+      annual_commitment_discount: 0.05  # 5% additional discount for annual commitment
+      
+      # Volume discount tiers
+      volume_tiers:
+        - minimum_spend: 1000.0    # $1000/month minimum
+          discount: 0.05           # 5% additional discount
+          services: ["s3", "glacier"]
+        - minimum_spend: 5000.0    # $5000/month minimum  
+          discount: 0.10           # 10% additional discount
+          services: ["s3", "glacier", "ec2"]
+        - minimum_spend: 25000.0   # $25000/month minimum
+          discount: 0.18           # 18% additional discount
+          services: []             # Empty = all services
+      
+      # Custom negotiated rates (overrides everything else)
+      custom_rates:
+        s3_glacier_expedited_retrieval: 0.025  # $0.025/GB instead of $0.03/GB
+        s3_intelligent_tiering_monitoring: 0.0020  # $0.002/1000 objects
+
+  # Cost Reporting Configuration
+  reporting:
+    enabled: true
+    frequency: "weekly"          # daily, weekly, monthly
+    detailed_breakdown: true
+    export_format: "json"        # json, csv, pdf
+    report_bucket: "cost-reports-bucket"
+    
+    email_recipients:
+      - "finance@company.com"
+      - "ops-team@company.com"
+      - "cto@company.com"
+
+---
+# Alternative Configuration Examples
+
+# Example 1: Small startup with basic discounts
+startup_example:
+  cost_control:
+    max_monthly_budget: 500.0
+    alert_threshold: 0.90
+    pricing:
+      use_aws_pricing_api: true
+      global_discount: 0.05      # 5% startup credit
+      service_discounts:
+        s3: 0.10                 # 10% volume discount
+      enterprise_discount:
+        enabled: false
+
+# Example 2: Large enterprise with complex discount structure  
+enterprise_example:
+  cost_control:
+    max_monthly_budget: 100000.0
+    pricing:
+      use_aws_pricing_api: true
+      global_discount: 0.20      # 20% Enterprise Discount Program
+      
+      # Heavy use of Reserved Instances
+      reserved_instance_discounts:
+        s3:
+          discount: 0.35         # 35% RI discount
+          term: "3 years"
+          payment_option: "All Upfront"
+        ec2:
+          discount: 0.45         # 45% RI discount
+          term: "3 years"
+          payment_option: "All Upfront"
+      
+      # Compute Savings Plan
+      savings_plans_discounts:
+        compute:
+          discount: 0.32         # 32% discount
+          commitment: 2000.0     # $2000/hour commitment
+          term: "3 years"
+      
+      # Volume discounts
+      enterprise_discount:
+        enabled: true
+        annual_commitment_discount: 0.08
+        volume_tiers:
+          - minimum_spend: 50000.0
+            discount: 0.25
+            services: []         # All services
+
+# Example 3: Development/Testing environment with LocalStack
+development_example:
+  cost_control:
+    max_monthly_budget: 100.0
+    pricing:
+      use_aws_pricing_api: false
+      custom_pricing:
+        us-east-1:
+          s3_storage:
+            STANDARD: 0.001      # Very low rates for testing
+            GLACIER: 0.0001
+          s3_requests:
+            put_requests: 0.00001
+            get_requests: 0.00001
+
+# Example 4: Government/Non-profit with special pricing
+government_example:
+  cost_control:
+    pricing:
+      use_aws_pricing_api: true
+      global_discount: 0.10      # 10% government discount
+      enterprise_discount:
+        enabled: true
+        custom_rates:
+          # Special government rates
+          s3_standard_storage: 0.015
+          s3_glacier_storage: 0.002
+          data_transfer_government: 0.05

@@ -1,0 +1,103 @@
+# Ghost Ship 2 - Development Configuration (simulates another NAS)
+
+# Ghost ship identification
+id: "dev-ghost-ship-2"
+name: "Development Ghost Ship 2 (secondary NAS simulation)"
+description: "Simulates secondary NAS device for multi-agent testing"
+
+# S3 Configuration - using LocalStack
+s3_config:
+  bucket: "cargoship-dev-bucket-2"
+  region: "us-west-2"
+  concurrency: 3
+  multipart_threshold: 10485760   # 10MB
+  multipart_chunk_size: 5242880   # 5MB
+  timeout: 60                     # 1 minute
+
+# S3 Optimization Configuration
+optimization_config:
+  enable_bbr: true
+  enable_cubic: true
+  predictive_mode: false  # Different config for testing
+  max_connections: 8
+  buffer_size: 524288     # 512KB - different from ghost-ship-1
+  chunk_size_mb: 4
+  network_optimization: true
+
+# Watch Paths - different structure from ghost-ship-1
+watch_paths:
+  - path: "/data/public/backups"
+    include_patterns: ["*.zip", "*.tar.gz", "*.7z"]
+    exclude_patterns: ["*.tmp", "temp*"]
+    min_age: "2m"          # Longer than ghost-ship-1
+    storage_class: "GLACIER"
+    recursive: true
+    
+  - path: "/data/public/videos"
+    include_patterns: ["*.mp4", "*.avi", "*.mkv", "*.mov"]
+    exclude_patterns: ["cache*", "preview*"]
+    min_age: "5m"
+    storage_class: "DEEP_ARCHIVE"
+    recursive: true
+
+# Archival Rules - different priorities and settings
+archival_rules:
+  - name: "backup_deep_archival"
+    description: "Deep archive backup files"
+    path_pattern: "/data/public/backups/**"
+    file_pattern: "*.{zip,tar.gz,7z}"
+    min_size: 1024        # 1KB
+    max_size: 1073741824  # 1GB
+    min_age: "2m"
+    storage_class: "GLACIER"
+    compression: "none"   # Backups are already compressed
+    encryption: false
+    delete_after_archive: true  # Different from ghost-ship-1
+    priority: 1
+    enabled: true
+    tags:
+      environment: "development"
+      ghost_ship: "dev-ghost-ship-2"
+      type: "backup"
+    metadata:
+      archived_by: "cargoship-ghost-ship-dev"
+      test_mode: "true"
+      retention: "long_term"
+      
+  - name: "video_cold_storage"
+    description: "Cold storage for video files"
+    path_pattern: "/data/public/videos/**"
+    file_pattern: "*.{mp4,avi,mkv,mov}"
+    min_size: 10485760    # 10MB - videos are typically large
+    max_size: 5368709120  # 5GB
+    min_age: "5m"
+    storage_class: "DEEP_ARCHIVE"
+    compression: "none"
+    encryption: false
+    delete_after_archive: false
+    priority: 3           # Lower priority
+    enabled: true
+    tags:
+      environment: "development"
+      ghost_ship: "dev-ghost-ship-2"
+      type: "video"
+    metadata:
+      archived_by: "cargoship-ghost-ship-dev"
+      test_mode: "true"
+      retention: "archive"
+
+# Performance Settings - different from ghost-ship-1
+max_concurrent_jobs: 2
+worker_pool_size: 1
+scan_interval: "45s"     # Different interval for testing
+
+# Controller Integration
+controller_url: "ws://cargoship-controller:8080"
+auth_token: "dev-ghost-token-222"
+tls_config:
+  enabled: false
+  insecure_skip_verify: true
+
+# Monitoring and Reporting
+reporting_enabled: true
+report_interval: "45s"   # Different reporting interval

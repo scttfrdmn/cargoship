@@ -63,6 +63,12 @@ type CostControlConfig struct {
 	
 	// Require approval for uploads over this amount
 	RequireApprovalOver float64 `yaml:"require_approval_over" json:"require_approval_over"`
+	
+	// Pricing configuration
+	Pricing PricingConfig `yaml:"pricing" json:"pricing"`
+	
+	// Cost reporting settings
+	Reporting CostReportingConfig `yaml:"reporting" json:"reporting"`
 }
 
 // StorageClass represents S3 storage classes
@@ -76,6 +82,165 @@ const (
 	StorageClassGlacier           StorageClass = "GLACIER"
 	StorageClassDeepArchive       StorageClass = "DEEP_ARCHIVE"
 )
+
+// PricingConfig holds pricing and discount configuration
+type PricingConfig struct {
+	// Use AWS Pricing API for current rates
+	UseAWSPricingAPI bool `yaml:"use_aws_pricing_api" json:"use_aws_pricing_api"`
+	
+	// Custom pricing overrides (overrides AWS API if set)
+	CustomPricing map[string]ServicePricing `yaml:"custom_pricing" json:"custom_pricing"`
+	
+	// Global discount percentage (0.0-1.0)
+	GlobalDiscount float64 `yaml:"global_discount" json:"global_discount"`
+	
+	// Service-specific discounts
+	ServiceDiscounts map[string]float64 `yaml:"service_discounts" json:"service_discounts"`
+	
+	// Reserved Instance discounts
+	ReservedInstanceDiscounts map[string]ReservedInstanceDiscount `yaml:"reserved_instance_discounts" json:"reserved_instance_discounts"`
+	
+	// Savings Plans discounts
+	SavingsPlansDiscounts map[string]SavingsPlansDiscount `yaml:"savings_plans_discounts" json:"savings_plans_discounts"`
+	
+	// Enterprise discount (for large volume customers)
+	EnterpriseDiscount EnterpriseDiscountConfig `yaml:"enterprise_discount" json:"enterprise_discount"`
+	
+	// Currency for cost calculations (default: USD)
+	Currency string `yaml:"currency" json:"currency"`
+	
+	// AWS Pricing API cache duration (default: 24h)
+	PricingCacheDuration string `yaml:"pricing_cache_duration" json:"pricing_cache_duration"`
+}
+
+// ServicePricing holds pricing for a specific AWS service
+type ServicePricing struct {
+	// S3 Storage pricing per GB per month
+	S3Storage map[StorageClass]float64 `yaml:"s3_storage" json:"s3_storage"`
+	
+	// S3 Request pricing
+	S3Requests S3RequestPricing `yaml:"s3_requests" json:"s3_requests"`
+	
+	// Data transfer pricing
+	DataTransfer DataTransferPricing `yaml:"data_transfer" json:"data_transfer"`
+	
+	// Glacier retrieval pricing
+	GlacierRetrieval GlacierRetrievalPricing `yaml:"glacier_retrieval" json:"glacier_retrieval"`
+}
+
+// S3RequestPricing holds S3 request pricing
+type S3RequestPricing struct {
+	// PUT, COPY, POST, LIST requests per 1000
+	PutRequests float64 `yaml:"put_requests" json:"put_requests"`
+	
+	// GET, SELECT requests per 1000
+	GetRequests float64 `yaml:"get_requests" json:"get_requests"`
+	
+	// DELETE requests (usually free)
+	DeleteRequests float64 `yaml:"delete_requests" json:"delete_requests"`
+}
+
+// DataTransferPricing holds data transfer pricing
+type DataTransferPricing struct {
+	// Data transfer out to internet (per GB)
+	OutToInternet map[string]float64 `yaml:"out_to_internet" json:"out_to_internet"`
+	
+	// Data transfer between regions (per GB)
+	BetweenRegions map[string]float64 `yaml:"between_regions" json:"between_regions"`
+	
+	// CloudFront distribution (per GB)
+	CloudFront float64 `yaml:"cloudfront" json:"cloudfront"`
+}
+
+// GlacierRetrievalPricing holds Glacier retrieval pricing
+type GlacierRetrievalPricing struct {
+	// Expedited retrieval (per GB)
+	Expedited float64 `yaml:"expedited" json:"expedited"`
+	
+	// Standard retrieval (per GB)
+	Standard float64 `yaml:"standard" json:"standard"`
+	
+	// Bulk retrieval (per GB)
+	Bulk float64 `yaml:"bulk" json:"bulk"`
+}
+
+// ReservedInstanceDiscount holds Reserved Instance discount configuration
+type ReservedInstanceDiscount struct {
+	// Discount percentage (0.0-1.0)
+	Discount float64 `yaml:"discount" json:"discount"`
+	
+	// Term length (1 year, 3 years)
+	Term string `yaml:"term" json:"term"`
+	
+	// Payment option (No Upfront, Partial Upfront, All Upfront)
+	PaymentOption string `yaml:"payment_option" json:"payment_option"`
+	
+	// Instance types covered
+	InstanceTypes []string `yaml:"instance_types" json:"instance_types"`
+}
+
+// SavingsPlansDiscount holds Savings Plans discount configuration
+type SavingsPlansDiscount struct {
+	// Discount percentage (0.0-1.0)
+	Discount float64 `yaml:"discount" json:"discount"`
+	
+	// Commitment amount (USD per hour)
+	Commitment float64 `yaml:"commitment" json:"commitment"`
+	
+	// Term length (1 year, 3 years)
+	Term string `yaml:"term" json:"term"`
+	
+	// Plan type (Compute, EC2 Instance, SageMaker)
+	PlanType string `yaml:"plan_type" json:"plan_type"`
+}
+
+// EnterpriseDiscountConfig holds enterprise discount configuration
+type EnterpriseDiscountConfig struct {
+	// Enable enterprise discounts
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	
+	// Volume discount tiers
+	VolumeTiers []VolumeDiscountTier `yaml:"volume_tiers" json:"volume_tiers"`
+	
+	// Annual commitment discounts
+	AnnualCommitmentDiscount float64 `yaml:"annual_commitment_discount" json:"annual_commitment_discount"`
+	
+	// Custom negotiated rates
+	CustomRates map[string]float64 `yaml:"custom_rates" json:"custom_rates"`
+}
+
+// VolumeDiscountTier represents volume-based discount tiers
+type VolumeDiscountTier struct {
+	// Minimum monthly spend to qualify
+	MinimumSpend float64 `yaml:"minimum_spend" json:"minimum_spend"`
+	
+	// Discount percentage for this tier
+	Discount float64 `yaml:"discount" json:"discount"`
+	
+	// Services this tier applies to
+	Services []string `yaml:"services" json:"services"`
+}
+
+// CostReportingConfig holds cost reporting settings
+type CostReportingConfig struct {
+	// Enable cost reporting
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	
+	// Report frequency (daily, weekly, monthly)
+	Frequency string `yaml:"frequency" json:"frequency"`
+	
+	// Email recipients for cost reports
+	EmailRecipients []string `yaml:"email_recipients" json:"email_recipients"`
+	
+	// Include detailed breakdowns
+	DetailedBreakdown bool `yaml:"detailed_breakdown" json:"detailed_breakdown"`
+	
+	// Export format (json, csv, pdf)
+	ExportFormat string `yaml:"export_format" json:"export_format"`
+	
+	// S3 bucket for report storage
+	ReportBucket string `yaml:"report_bucket" json:"report_bucket"`
+}
 
 // DefaultAWSConfig returns a sensible default configuration
 func DefaultAWSConfig() *AWSConfig {
@@ -92,6 +257,21 @@ func DefaultAWSConfig() *AWSConfig {
 			AlertThreshold:      0.8,
 			AutoOptimize:        true,
 			RequireApprovalOver: 500.0,
+			Pricing: PricingConfig{
+				UseAWSPricingAPI:     true,
+				Currency:             "USD",
+				PricingCacheDuration: "24h",
+				CustomPricing: make(map[string]ServicePricing),
+				ServiceDiscounts: make(map[string]float64),
+				ReservedInstanceDiscounts: make(map[string]ReservedInstanceDiscount),
+				SavingsPlansDiscounts: make(map[string]SavingsPlansDiscount),
+			},
+			Reporting: CostReportingConfig{
+				Enabled:           false,
+				Frequency:         "monthly",
+				DetailedBreakdown: true,
+				ExportFormat:      "json",
+			},
 		},
 	}
 }

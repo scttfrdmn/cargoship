@@ -1,0 +1,175 @@
+# CargoShip Ghost Ship Configuration for QNAP NAS
+# Generic production-ready configuration for QNAP Container Station deployment
+
+# Ghost ship identification
+id: "qnap-production-ghost"
+name: "QNAP Production Ghost Ship"
+description: "Production ghost ship running on QNAP NAS with Container Station"
+
+# S3 Configuration - Real AWS S3
+s3_config:
+  bucket: "cargoship-qnap-production"
+  region: "us-west-2"
+  concurrency: 15                 # Higher for production
+  multipart_threshold: 104857600  # 100MB
+  multipart_chunk_size: 16777216  # 16MB
+  timeout: 600                    # 10 minutes for large files
+
+# S3 Optimization Configuration - Tuned for QNAP's high-bandwidth networking
+optimization_config:
+  enable_bbr: true
+  enable_cubic: true
+  predictive_mode: true
+  max_connections: 25             # Higher for production bandwidth
+  buffer_size: 4194304            # 4MB buffer
+  chunk_size_mb: 32               # Larger chunks for high bandwidth
+  network_optimization: true
+
+# Watch Paths - QNAP directories using standard paths
+watch_paths:
+  - path: "/data/public/Documents"
+    include_patterns: ["*.pdf", "*.doc", "*.docx", "*.xls", "*.xlsx", "*.ppt", "*.pptx"]
+    exclude_patterns: ["*.tmp", "~*", ".~*", "Thumbs.db", ".DS_Store"]
+    min_age: "1h"                 # Archive files older than 1 hour
+    storage_class: "STANDARD_IA"
+    recursive: true
+    
+  - path: "/data/public/Media/Photos"
+    include_patterns: ["*.jpg", "*.jpeg", "*.png", "*.tiff", "*.raw", "*.cr2", "*.nef", "*.dng"]
+    exclude_patterns: ["thumbnail*", "preview*", "cache*", "@eaDir/*"]
+    min_age: "24h"                # Archive photos after 24 hours
+    storage_class: "GLACIER"
+    recursive: true
+    
+  - path: "/data/public/Projects/Archive"
+    include_patterns: ["*.zip", "*.tar.gz", "*.7z", "*.rar"]
+    exclude_patterns: ["temp*", "backup*", "*.tmp"]
+    min_age: "168h"               # Archive completed projects after 7 days (168h = 7*24h)
+    storage_class: "DEEP_ARCHIVE"
+    recursive: true
+    
+  - path: "/data/public/genomics_training"
+    include_patterns: ["*.fasta", "*.fastq", "*.vcf", "*.sam", "*.bam", "*.bed", "*.gff", "*.gtf"]
+    exclude_patterns: ["*.tmp", ".test*", "*.fai", "*.dict"]
+    min_age: "10m"                # Archive genomics files after 10 minutes
+    storage_class: "STANDARD"
+    recursive: true
+
+# Archival Rules - Production rules with proper lifecycle management
+archival_rules:
+  - name: "document_compliance_archival"
+    description: "Archive business documents for compliance and backup"
+    path_pattern: "/data/public/Documents/**"
+    file_pattern: "*.{pdf,doc,docx,xls,xlsx,ppt,pptx}"
+    min_size: 1024               # 1KB minimum
+    max_size: 104857600          # 100MB maximum
+    min_age: "1h"
+    max_age: "720h"              # Archive before 30 days for cost efficiency (720h = 30*24h)
+    file_types: ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx"]
+    storage_class: "STANDARD_IA"
+    compression: "gzip"
+    encryption: true
+    delete_after_archive: false  # Keep local copies for access
+    priority: 2
+    enabled: true
+    tags:
+      environment: "production"
+      source: "qnap"
+      type: "document"
+      compliance: "required"
+      auto_archived: "true"
+    metadata:
+      archived_by: "cargoship-qnap-ghost"
+      archive_policy: "business_document_retention"
+      local_nas: "qnap.local"
+      
+  - name: "photo_long_term_storage"
+    description: "Archive photos to Glacier for long-term preservation"
+    path_pattern: "/data/public/Media/Photos/**"
+    file_pattern: "*.{jpg,jpeg,png,tiff,raw,cr2,nef,dng}"
+    min_size: 10240              # 10KB minimum (avoid thumbnails)
+    max_size: 524288000          # 500MB maximum
+    min_age: "24h"
+    storage_class: "GLACIER"
+    compression: "none"          # Don't compress images
+    encryption: true
+    delete_after_archive: false  # Keep originals on NAS
+    priority: 1
+    enabled: true
+    tags:
+      environment: "production"
+      source: "qnap"
+      type: "photo"
+      retention: "long_term"
+      backup: "glacier"
+    metadata:
+      archived_by: "cargoship-qnap-ghost"
+      archive_policy: "photo_preservation"
+      original_nas: "qnap.local"
+      
+  - name: "project_deep_archive"
+    description: "Deep archive completed project files to minimize costs"
+    path_pattern: "/data/public/Projects/Archive/**"
+    file_pattern: "*.{zip,tar.gz,7z,rar}"
+    min_size: 1048576            # 1MB minimum
+    min_age: "168h"              # 7 days (168h = 7*24h)
+    storage_class: "DEEP_ARCHIVE"
+    compression: "gzip"          # Additional compression for archives
+    encryption: true
+    delete_after_archive: true   # Remove local files to save space
+    priority: 3
+    enabled: true
+    schedule: "0 2 * * *"        # Run at 2 AM daily
+    tags:
+      environment: "production"
+      source: "qnap"
+      type: "project_archive"
+      lifecycle: "completed"
+      cost_optimized: "true"
+    metadata:
+      archived_by: "cargoship-qnap-ghost"
+      archive_policy: "project_lifecycle"
+      cleanup: "automated"
+      
+  - name: "genomics_data_archival"
+    description: "Archive genomics training data for long-term storage"
+    path_pattern: "/data/public/genomics_training/**"
+    file_pattern: "*.{fasta,fastq,vcf,sam,bam,bed,gff,gtf}"
+    min_size: 1024               # 1KB minimum
+    max_size: 5368709120         # 5GB maximum for large genome files
+    min_age: "10m"               # Archive after 10 minutes
+    storage_class: "STANDARD"
+    compression: "gzip"          # Compress genomics data
+    encryption: true
+    delete_after_archive: false  # Keep local copies for research access
+    priority: 1
+    enabled: true
+    tags:
+      environment: "production"
+      source: "qnap"
+      type: "genomics_data"
+      research: "training"
+      data_type: "biological"
+    metadata:
+      archived_by: "cargoship-qnap-ghost"
+      archive_policy: "genomics_training_backup"
+      research_data: "true"
+
+# Performance Settings - Optimized for QNAP hardware
+max_concurrent_jobs: 8          # QNAP can handle higher concurrency
+worker_pool_size: 4             # Utilize multiple CPU cores
+scan_interval: "5m"             # Scan every 5 minutes
+
+# Controller Integration - Disabled for autonomous operation
+# controller_url: "wss://cargoship-controller.local:8080"
+# auth_token: "${CARGOSHIP_PRODUCTION_TOKEN}"
+# tls_config:
+#   enabled: true
+#   insecure_skip_verify: false
+#   cert_file: "/etc/cargoship/client.crt"
+#   key_file: "/etc/cargoship/client.key"
+#   ca_file: "/etc/cargoship/ca.crt"
+
+# Monitoring and Reporting - Production monitoring
+reporting_enabled: true
+report_interval: "1m"           # Report every minute for production visibility

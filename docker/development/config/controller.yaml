@@ -1,0 +1,29 @@
+# CargoShip Central Controller - Development Configuration
+
+# Server Configuration
+listen_address: "0.0.0.0"
+port: 8080
+tls_enabled: false  # Disabled for local development
+cert_file: ""
+key_file: ""
+
+# Authentication - relaxed for development
+auth_enabled: true
+auth_tokens:
+  - "dev-controller-token-123"
+  - "dev-admin-token-456"
+  - "dev-ghost-token-111"
+  - "dev-ghost-token-222"
+
+# Health and Monitoring
+health_check:
+  enabled: true
+  check_interval: "30s"
+  report_interval: "1m"
+  metrics_enabled: true
+
+metrics_port: 9090
+
+# Agent Management
+agent_timeout: "2m"      # Shorter timeout for development
+ping_interval: "15s"     # More frequent pings for development

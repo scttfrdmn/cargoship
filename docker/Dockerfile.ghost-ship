@@ -1,0 +1,77 @@
+# CargoShip Ghost Ship Dockerfile
+FROM golang:1.23-alpine AS builder
+
+# Install dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the ghost ship binary
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ghost-ship ./cmd/ghost-ship
+
+# Build test utilities
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o cargoship-test ./cmd/cargoship-test
+
+# Final stage
+FROM alpine:latest
+
+# Install required packages
+RUN apk --no-cache add \
+    ca-certificates \
+    curl \
+    aws-cli \
+    inotify-tools \
+    bash
+
+# Create app directory
+WORKDIR /root/
+
+# Copy binaries from builder stage
+COPY --from=builder /app/ghost-ship .
+COPY --from=builder /app/cargoship-test /usr/local/bin/
+
+# Copy configuration templates
+COPY --from=builder /app/configs /etc/cargoship/
+
+# Create directories for logs, data, and temporary files
+RUN mkdir -p \
+    /var/log/cargoship \
+    /var/lib/cargoship \
+    /tmp/cargoship \
+    /data/public
+
+# Expose metrics port
+EXPOSE 9090
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:9090/health || exit 1
+
+# Set default environment variables
+ENV CARGOSHIP_LOG_LEVEL=info
+ENV CARGOSHIP_CONFIG_FILE=/etc/cargoship/ghost_ship.yaml
+ENV CARGOSHIP_METRICS_PORT=9090
+ENV AWS_DEFAULT_REGION=us-west-2
+
+# Create non-root user for security
+RUN addgroup -g 1000 cargoship && \
+    adduser -u 1000 -G cargoship -s /bin/sh -D cargoship
+
+# Set ownership
+RUN chown -R cargoship:cargoship /var/log/cargoship /var/lib/cargoship /tmp/cargoship
+
+# Switch to non-root user
+USER cargoship
+
+# Run the ghost ship
+CMD ["./ghost-ship", "--config", "/etc/cargoship/ghost_ship.yaml", "--log-level", "info"]

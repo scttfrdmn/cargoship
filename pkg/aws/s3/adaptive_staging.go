@@ -14,6 +14,11 @@ import (
 	"time"
 )
 
+// Context key type to avoid collisions
+type contextKey string
+
+const startTimeKey contextKey = "start_time"
+
 // AdaptiveStaging manages intelligent staging adaptation based on upload progress.
 type AdaptiveStaging struct {
 	// Core configuration
@@ -631,9 +636,18 @@ func (as *AdaptiveStaging) performStaging(request *StagingRequest, optimalSize i
 		StagedSize:       processedSize,
 		CompressionRatio: compressionRatio,
 		Metrics: &ChunkStagingMetrics{
-			StagingTime: time.Since(request.Context.Value("start_time").(time.Time)),
+			StagingTime: getStagingTime(request.Context),
 		},
 	}, nil
+}
+
+// getStagingTime safely extracts staging time from context
+func getStagingTime(ctx context.Context) time.Duration {
+	if startTime, ok := ctx.Value(startTimeKey).(time.Time); ok {
+		return time.Since(startTime)
+	}
+	// Default to 0 if no start_time in context
+	return time.Duration(0)
 }
 
 func (as *AdaptiveStaging) processChunkData(data io.Reader, buffer []byte, size int64) (int64, float64, error) {

@@ -1,0 +1,132 @@
+# CargoShip Ghost Ship Configuration
+# This configuration deploys an autonomous archival agent on astrapi NAS
+
+# Ghost ship identification
+id: "astrapi-ghost-01"
+name: "Astrapi Autonomous Archival Ghost Ship"
+description: "Autonomous archival agent running on astrapi NAS for CargoShip"
+
+# S3 Configuration
+s3_config:
+  bucket: "cargoship-autonomous-archive"
+  region: "us-west-2"
+  concurrency: 10
+  multipart_threshold: 104857600  # 100MB
+  multipart_chunk_size: 16777216  # 16MB
+  timeout: 300                    # 5 minutes
+
+# S3 Optimization Configuration
+optimization_config:
+  enable_bbr: true
+  enable_cubic: true
+  predictive_mode: true
+  max_connections: 20
+  buffer_size: 2097152  # 2MB
+  chunk_size_mb: 16
+  network_optimization: true
+
+# Watch Paths - directories to monitor for archival
+watch_paths:
+  - path: "/volume1/Public/Documents"
+    include_patterns: ["*.pdf", "*.doc", "*.docx", "*.xls", "*.xlsx", "*.ppt", "*.pptx"]
+    exclude_patterns: ["*.tmp", "~*", ".~*"]
+    min_age: "1h"          # Only archive files older than 1 hour
+    storage_class: "STANDARD_IA"
+    recursive: true
+    
+  - path: "/volume1/Public/Media/Photos"
+    include_patterns: ["*.jpg", "*.jpeg", "*.png", "*.tiff", "*.raw", "*.cr2", "*.nef"]
+    exclude_patterns: ["thumbnail*", "preview*"]
+    min_age: "24h"         # Only archive photos older than 24 hours
+    storage_class: "GLACIER"
+    recursive: true
+    
+  - path: "/volume1/Public/Projects/Completed"
+    include_patterns: ["*.zip", "*.tar.gz", "*.7z"]
+    exclude_patterns: ["temp*", "backup*"]
+    min_age: "7d"          # Archive completed projects after 7 days
+    storage_class: "DEEP_ARCHIVE"
+    recursive: true
+
+# Archival Rules - define what gets archived and how
+archival_rules:
+  - name: "document_archival"
+    description: "Archive office documents to S3 Infrequent Access for compliance"
+    path_pattern: "/volume1/Public/Documents/**"
+    file_pattern: "*.{pdf,doc,docx,xls,xlsx,ppt,pptx}"
+    min_size: 1024        # Minimum 1KB
+    max_size: 104857600   # Maximum 100MB
+    min_age: "1h"
+    storage_class: "STANDARD_IA"
+    compression: "gzip"
+    encryption: true
+    delete_after_archive: false
+    priority: 2
+    enabled: true
+    tags:
+      type: "document"
+      source: "astrapi"
+      auto_archived: "true"
+    metadata:
+      archived_by: "cargoship-ghost-ship"
+      archive_policy: "document_retention"
+      
+  - name: "photo_cold_storage"
+    description: "Archive photos to Glacier for long-term storage"
+    path_pattern: "/volume1/Public/Media/Photos/**"
+    file_pattern: "*.{jpg,jpeg,png,tiff,raw,cr2,nef}"
+    min_size: 10240       # Minimum 10KB
+    max_size: 524288000   # Maximum 500MB
+    min_age: "24h"
+    storage_class: "GLACIER"
+    compression: "none"   # Don't compress images
+    encryption: true
+    delete_after_archive: false
+    priority: 1
+    enabled: true
+    tags:
+      type: "photo"
+      source: "astrapi"
+      retention: "long_term"
+    metadata:
+      archived_by: "cargoship-ghost-ship"
+      archive_policy: "photo_retention"
+      
+  - name: "project_deep_archive"
+    description: "Deep archive completed project files"
+    path_pattern: "/volume1/Public/Projects/Completed/**"
+    file_pattern: "*"
+    min_size: 1048576     # Minimum 1MB
+    min_age: "7d"
+    storage_class: "DEEP_ARCHIVE"
+    compression: "gzip"
+    encryption: true
+    delete_after_archive: true  # Remove local files after successful archive
+    priority: 3
+    enabled: true
+    tags:
+      type: "project_archive"
+      source: "astrapi"
+      lifecycle: "completed"
+    metadata:
+      archived_by: "cargoship-ghost-ship"
+      archive_policy: "project_retention"
+
+# Performance Settings
+max_concurrent_jobs: 5
+worker_pool_size: 3
+scan_interval: "5m"      # Scan directories every 5 minutes
+
+# Controller Integration - connect to central CargoShip controller
+controller_url: "wss://cargoship-controller.local:8080"
+auth_token: "${CARGOSHIP_AUTH_TOKEN}"
+tls_config:
+  enabled: true
+  insecure_skip_verify: false
+  cert_file: "/etc/cargoship/client.crt"
+  key_file: "/etc/cargoship/client.key"
+  ca_file: "/etc/cargoship/ca.crt"
+
+# Monitoring and Reporting
+reporting_enabled: true
+report_interval: "1m"    # Report status every minute

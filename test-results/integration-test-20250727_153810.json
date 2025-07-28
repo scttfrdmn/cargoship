@@ -1,0 +1,49 @@
+{
+  "test_suite": "integration",
+  "timestamp": "2025-07-27T15:38:10-07:00",
+  "environment": "localstack",
+  "bucket": "cargoship-test-1753655890",
+  "tests": [
+    {
+      "name": "localstack_s3_service",
+      "status": "PASSED",
+      "duration": 0,
+      "details": "S3 service is running"
+    },
+    {
+      "name": "controller_health",
+      "status": "FAILED",
+      "duration": 0,
+      "details": "Controller not responding"
+    },
+    {
+      "name": "s3_bucket_operations",
+      "status": "PASSED",
+      "duration": 1,
+      "details": "Bucket create/upload/download successful"
+    },
+    {
+      "name": "docker_services_status",
+      "status": "FAILED",
+      "duration": 0,
+      "details": "Some services down: cargoship-controller-dev:DOWN cargoship-localstack:DOWN cargoship-grafana:DOWN"
+    },
+    {
+      "name": "test_data_generation",
+      "status": "PASSED",
+      "duration": 0,
+      "details": "All test files present"
+    },
+    {
+      "name": "monitoring_endpoints",
+      "status": "FAILED",
+      "duration": 0,
+      "details": "Failed endpoints: prometheus"
+    }
+  ],
+  "summary": {
+    "total": 6,
+    "passed": 3,
+    "failed": 3
+  }
+}

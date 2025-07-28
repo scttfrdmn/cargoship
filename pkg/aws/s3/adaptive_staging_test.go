@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Context key is now defined in adaptive_staging.go
+
 func TestNewAdaptiveStaging(t *testing.T) {
 	ctx := context.Background()
 	as := NewAdaptiveStaging(ctx)
@@ -42,7 +44,10 @@ func TestAdaptiveStagingStageChunk(t *testing.T) {
 	testData := strings.Repeat("Hello, World! ", 1000)
 	reader := strings.NewReader(testData)
 	
-	result, err := as.StageChunk(ctx, "test-chunk-1", reader, int64(len(testData)), ChunkPriorityNormal)
+	// Create context with start_time for timing metrics
+	ctxWithTime := context.WithValue(ctx, startTimeKey, time.Now())
+	
+	result, err := as.StageChunk(ctxWithTime, "test-chunk-1", reader, int64(len(testData)), ChunkPriorityNormal)
 	
 	require.NoError(t, err)
 	assert.NotNil(t, result)
@@ -73,7 +78,10 @@ func TestAdaptiveStagingStageChunkWithDifferentPriorities(t *testing.T) {
 			reader := strings.NewReader(testData)
 			chunkID := fmt.Sprintf("priority-test-%d", i)
 			
-			result, err := as.StageChunk(ctx, chunkID, reader, int64(len(testData)), priority)
+			// Create context with start_time for timing metrics
+			ctxWithTime := context.WithValue(ctx, startTimeKey, time.Now())
+			
+			result, err := as.StageChunk(ctxWithTime, chunkID, reader, int64(len(testData)), priority)
 			
 			require.NoError(t, err)
 			assert.NotNil(t, result)
@@ -129,7 +137,8 @@ func TestAdaptiveStagingStagingStrategies(t *testing.T) {
 			testData := "Test data for strategy testing"
 			reader := strings.NewReader(testData)
 			
-			result, err := as.StageChunk(ctx, "strategy-test", reader, int64(len(testData)), ChunkPriorityNormal)
+			ctxWithTime := context.WithValue(ctx, startTimeKey, time.Now())
+			result, err := as.StageChunk(ctxWithTime, "strategy-test", reader, int64(len(testData)), ChunkPriorityNormal)
 			require.NoError(t, err)
 			assert.True(t, result.Success)
 		})
@@ -147,7 +156,8 @@ func TestAdaptiveStagingGetStagingStatus(t *testing.T) {
 		reader := strings.NewReader(testData)
 		chunkID := fmt.Sprintf("status-test-%d", i)
 		
-		_, err := as.StageChunk(ctx, chunkID, reader, int64(len(testData)), ChunkPriorityNormal)
+		ctxWithTime := context.WithValue(ctx, startTimeKey, time.Now())
+		_, err := as.StageChunk(ctxWithTime, chunkID, reader, int64(len(testData)), ChunkPriorityNormal)
 		require.NoError(t, err)
 	}
 	
@@ -181,7 +191,8 @@ func TestAdaptiveStagingConcurrentStaging(t *testing.T) {
 			reader := strings.NewReader(testData)
 			chunkID := fmt.Sprintf("concurrent-%d", id)
 			
-			result, err := as.StageChunk(ctx, chunkID, reader, int64(len(testData)), ChunkPriorityNormal)
+			ctxWithTime := context.WithValue(ctx, startTimeKey, time.Now())
+			result, err := as.StageChunk(ctxWithTime, chunkID, reader, int64(len(testData)), ChunkPriorityNormal)
 			if err != nil {
 				errors <- err
 				return
@@ -217,7 +228,8 @@ func TestAdaptiveStagingLargeChunk(t *testing.T) {
 	largeData := bytes.Repeat([]byte("Large chunk test data. "), 45000) // ~1MB
 	reader := bytes.NewReader(largeData)
 	
-	result, err := as.StageChunk(ctx, "large-chunk", reader, int64(len(largeData)), ChunkPriorityHigh)
+	ctxWithTime := context.WithValue(ctx, startTimeKey, time.Now())
+	result, err := as.StageChunk(ctxWithTime, "large-chunk", reader, int64(len(largeData)), ChunkPriorityHigh)
 	
 	require.NoError(t, err)
 	assert.NotNil(t, result)
@@ -235,7 +247,8 @@ func TestAdaptiveStagingEmptyChunk(t *testing.T) {
 	// Test empty chunk
 	reader := strings.NewReader("")
 	
-	result, err := as.StageChunk(ctx, "empty-chunk", reader, 0, ChunkPriorityNormal)
+	ctxWithTime := context.WithValue(ctx, startTimeKey, time.Now())
+	result, err := as.StageChunk(ctxWithTime, "empty-chunk", reader, 0, ChunkPriorityNormal)
 	
 	require.NoError(t, err)
 	assert.NotNil(t, result)
@@ -255,7 +268,8 @@ func TestAdaptiveStagingContextCancellation(t *testing.T) {
 	testData := "Context cancellation test"
 	reader := strings.NewReader(testData)
 	
-	result, err := as.StageChunk(ctx, "cancelled-chunk", reader, int64(len(testData)), ChunkPriorityNormal)
+	ctxWithTime := context.WithValue(ctx, startTimeKey, time.Now())
+	result, err := as.StageChunk(ctxWithTime, "cancelled-chunk", reader, int64(len(testData)), ChunkPriorityNormal)
 	
 	// Should still work since we're not checking context in the simplified implementation
 	require.NoError(t, err)
@@ -436,7 +450,8 @@ func TestAdaptiveStagingShutdown(t *testing.T) {
 	testData := "Shutdown test data"
 	reader := strings.NewReader(testData)
 	
-	result, err := as.StageChunk(ctx, "shutdown-test", reader, int64(len(testData)), ChunkPriorityNormal)
+	ctxWithTime := context.WithValue(ctx, startTimeKey, time.Now())
+	result, err := as.StageChunk(ctxWithTime, "shutdown-test", reader, int64(len(testData)), ChunkPriorityNormal)
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 	
@@ -467,7 +482,8 @@ func TestAdaptiveStagingAdaptationTriggers(t *testing.T) {
 		reader := strings.NewReader(testData)
 		chunkID := fmt.Sprintf("trigger-test-%d", i)
 		
-		result, err := as.StageChunk(ctx, chunkID, reader, int64(len(testData)), ChunkPriorityNormal)
+		ctxWithTime := context.WithValue(ctx, startTimeKey, time.Now())
+		result, err := as.StageChunk(ctxWithTime, chunkID, reader, int64(len(testData)), ChunkPriorityNormal)
 		require.NoError(t, err)
 		assert.True(t, result.Success)
 	}
@@ -513,14 +529,16 @@ func TestAdaptiveStagingEdgeCases(t *testing.T) {
 	
 	// Test staging with zero-length data
 	emptyReader := strings.NewReader("")
-	result, err := as.StageChunk(ctx, "empty", emptyReader, 0, ChunkPriorityNormal)
+	ctxWithTime := context.WithValue(ctx, startTimeKey, time.Now())
+	result, err := as.StageChunk(ctxWithTime, "empty", emptyReader, 0, ChunkPriorityNormal)
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 	assert.Equal(t, int64(0), result.StagedSize)
 	
 	// Test staging with very small data
 	smallReader := strings.NewReader("x")
-	result, err = as.StageChunk(ctx, "small", smallReader, 1, ChunkPriorityLow)
+	ctxWithTime = context.WithValue(ctx, startTimeKey, time.Now())
+	result, err = as.StageChunk(ctxWithTime, "small", smallReader, 1, ChunkPriorityLow)
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 	

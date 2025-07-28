@@ -1,0 +1,64 @@
+# Prometheus Configuration for CargoShip Development Environment
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  # CargoShip Central Controller
+  - job_name: 'cargoship-controller'
+    static_configs:
+      - targets: ['cargoship-controller:9090']
+        labels:
+          service: 'controller'
+          environment: 'development'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # Ghost Ship 1 (astrapi simulation)
+  - job_name: 'ghost-ship-1'
+    static_configs:
+      - targets: ['ghost-ship-1:9090']
+        labels:
+          service: 'ghost-ship'
+          ghost_ship_id: 'dev-ghost-ship-1'
+          environment: 'development'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # Ghost Ship 2 (secondary NAS simulation)
+  - job_name: 'ghost-ship-2'
+    static_configs:
+      - targets: ['ghost-ship-2:9090']
+        labels:
+          service: 'ghost-ship'
+          ghost_ship_id: 'dev-ghost-ship-2'
+          environment: 'development'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # LocalStack (AWS simulation)
+  - job_name: 'localstack'
+    static_configs:
+      - targets: ['localstack:4566']
+        labels:
+          service: 'localstack'
+          environment: 'development'
+    metrics_path: '/_localstack/health'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          environment: 'development'

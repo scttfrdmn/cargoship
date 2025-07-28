@@ -1,0 +1,154 @@
+# Docker Compose for CargoShip Astrapi Test Environment
+# Optimized for high-performance S3 testing on astrapi NAS
+
+version: '3.8'
+
+services:
+  cargoship-ghost-ship:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.astrapi
+    image: cargoship:astrapi-latest
+    container_name: cargoship-astrapi-ghost-ship
+    command: ["/usr/local/bin/ghost-ship", "-config", "/etc/cargoship/config.yaml", "-log-level", "info"]
+    
+    # Network configuration for maximum performance
+    network_mode: host
+    
+    # Resource limits optimized for astrapi
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: '4'
+        reservations:
+          memory: 4G
+          cpus: '2'
+    
+    # Environment variables
+    environment:
+      - GOMAXPROCS=4
+      - GOGC=100
+      - CARGOSHIP_LOG_LEVEL=info
+      - CARGOSHIP_METRICS_ENABLED=true
+      - CARGOSHIP_NETWORK_OPTIMIZE=true
+      - CARGOSHIP_BBR_ENABLED=true
+      - CARGOSHIP_CUBIC_ENABLED=true
+      - CARGOSHIP_PREDICTIVE_MODE=true
+      - CARGOSHIP_MAX_CONNECTIONS=200
+      - CARGOSHIP_BUFFER_SIZE=134217728
+      - AWS_PROFILE=aws
+      - AWS_DEFAULT_REGION=us-east-1
+    
+    # Volume mounts for genomics data access and AWS credentials
+    volumes:
+      # Genomics training data directory
+      - /volume1/genomics_training:/volume1/genomics_training:ro
+      
+      # AWS credentials (adjust path for astrapi)
+      - /volume1/homes/admin/.aws:/root/.aws:ro
+      
+      # Ghost ship configuration
+      - ./astrapi-config.yaml:/etc/cargoship/ghost_ship.yaml:ro
+    
+    # Port mappings (when not using host networking)
+    # ports:
+    #   - "8080:8080"  # Launch API
+    #   - "9090:9090"  # Metrics
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+    
+    # User namespace (if not running as root)
+    # user: "1000:1000"
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    
+    # Labels for container management
+    labels:
+      - "com.cargoship.service=ghost-ship"
+      - "com.cargoship.environment=astrapi-production"
+      - "com.cargoship.version=1.0.0"
+
+  # Optional: Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cargoship-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /volume1/docker/cargoship/prometheus:/prometheus:rw
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Optional: Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cargoship-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=cargoship
+    ports:
+      - "3000:3000"
+    volumes:
+      - /volume1/docker/cargoship/grafana:/var/lib/grafana:rw
+      - ./grafana-dashboards:/etc/grafana/provisioning/dashboards:ro
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+# Networks (if not using host networking)
+networks:
+  cargoship:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+
+# Volumes for persistent data
+volumes:
+  cargoship-results:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /volume1/docker/cargoship/results
+  
+  cargoship-prometheus:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /volume1/docker/cargoship/prometheus
+  
+  cargoship-grafana:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /volume1/docker/cargoship/grafana

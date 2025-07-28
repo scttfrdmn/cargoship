@@ -1,0 +1,151 @@
+# CargoShip Ghost Ship for astrapi.local QNAP NAS
+# Optimized for autonomous archival operations
+FROM golang:1.23-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Set working directory
+WORKDIR /build
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the ghost ship binary with optimizations
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags='-w -s -extldflags "-static"' \
+    -tags netgo \
+    -o ghost-ship \
+    ./cmd/ghost-ship
+
+# Build the test binary for validation
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags='-w -s -extldflags "-static"' \
+    -tags netgo \
+    -o cargoship-test \
+    ./cmd/cargoship-test
+
+# Final runtime image
+FROM alpine:3.18
+
+# Install runtime dependencies for astrapi operations
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    curl \
+    aws-cli \
+    inotify-tools \
+    bash \
+    htop \
+    iftop \
+    tcpdump \
+    netcat-openbsd \
+    && rm -rf /var/cache/apk/*
+
+# Create non-root user for security
+RUN addgroup -g 1000 cargoship && \
+    adduser -D -s /bin/sh -u 1000 -G cargoship cargoship
+
+# Create directory structure for astrapi
+RUN mkdir -p \
+    /var/log/cargoship \
+    /var/lib/cargoship \
+    /tmp/cargoship \
+    /data/public \
+    /etc/cargoship \
+    /results && \
+    chown -R cargoship:cargoship \
+        /var/log/cargoship \
+        /var/lib/cargoship \
+        /tmp/cargoship \
+        /results
+
+# Copy binaries from builder
+COPY --from=builder /build/ghost-ship /usr/local/bin/ghost-ship
+COPY --from=builder /build/cargoship-test /usr/local/bin/cargoship-test
+
+# Copy astrapi-specific configuration if it exists
+COPY --from=builder /build/configs/astrapi/ /etc/cargoship/
+
+# Make binaries executable
+RUN chmod +x /usr/local/bin/ghost-ship /usr/local/bin/cargoship-test
+
+# Create startup script for astrapi
+RUN echo '#!/bin/bash' > /usr/local/bin/astrapi-startup.sh && \
+    echo 'set -euo pipefail' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'echo "🚢 CargoShip Ghost Ship starting on astrapi.local"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'echo "📊 System Information:"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'echo "  - Host: $(hostname)"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'echo "  - Date: $(date)"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'echo "  - User: $(whoami)"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'echo "  - CPU: $(nproc) cores"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '# Check network connectivity' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'echo "🌐 Network Status:"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'ping -c 1 8.8.8.8 >/dev/null 2>&1 && echo "  - Internet: ✅" || echo "  - Internet: ❌"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '# Check AWS connectivity' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'echo "☁️ AWS S3 Status:"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'aws s3 ls >/dev/null 2>&1 && echo "  - S3 Access: ✅" || echo "  - S3 Access: ❌ (check credentials)"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '# Check genomics data directory' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'echo "📁 Data Access:"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'if [ -d "/volume1/genomics_training" ]; then' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '    count=$(find /volume1/genomics_training -type f -name "*.fasta" -o -name "*.fastq" -o -name "*.vcf" -o -name "*.sam" -o -name "*.bam" 2>/dev/null | wc -l || echo "0")' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '    echo "  - /volume1/genomics_training: ✅ ($count genomics files)"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'else' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '    echo "  - /volume1/genomics_training: ❌ Not mounted"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'fi' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '# Check configuration' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'echo "⚙️ Configuration:"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'config_file="${CARGOSHIP_CONFIG_FILE:-/etc/cargoship/ghost_ship.yaml}"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'if [ -f "$config_file" ]; then' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '    echo "  - Config: ✅ $config_file"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'else' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '    echo "  - Config: ❌ Missing $config_file"' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '    exit 1' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'fi' >> /usr/local/bin/astrapi-startup.sh && \
+    echo '' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'echo "🚀 Launching Ghost Ship..."' >> /usr/local/bin/astrapi-startup.sh && \
+    echo 'exec ghost-ship "$@"' >> /usr/local/bin/astrapi-startup.sh
+
+RUN chmod +x /usr/local/bin/astrapi-startup.sh
+
+# Set environment variables optimized for astrapi
+ENV GOMAXPROCS=0 \
+    GOGC=100 \
+    CARGOSHIP_LOG_LEVEL=info \
+    CARGOSHIP_CONFIG_FILE=/etc/cargoship/ghost_ship.yaml \
+    CARGOSHIP_METRICS_PORT=9090 \
+    CARGOSHIP_NETWORK_OPTIMIZE=true \
+    AWS_DEFAULT_REGION=us-east-1
+
+# Expose metrics port
+EXPOSE 9090
+
+# Health check optimized for astrapi
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+    CMD curl -f http://localhost:9090/health || exit 1
+
+# Switch to non-root user
+USER cargoship
+
+# Default working directory
+WORKDIR /var/lib/cargoship
+
+# Labels for identification
+LABEL org.cargoship.component="ghost-ship"
+LABEL org.cargoship.deployment="astrapi"
+LABEL org.cargoship.version="latest"
+
+# Use startup script as entrypoint
+ENTRYPOINT ["/usr/local/bin/astrapi-startup.sh"]
+CMD ["--config", "/etc/cargoship/ghost_ship.yaml", "--log-level", "info"]
