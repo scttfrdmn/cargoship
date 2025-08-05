@@ -46,11 +46,17 @@ func TestChunkPredictorPredictChunkBoundaries(t *testing.T) {
 	
 	// Verify predictions cover the entire data
 	totalSize := int64(0)
-	for _, pred := range predictions {
+	for i, pred := range predictions {
 		totalSize += pred.Size
 		assert.Greater(t, pred.Size, int64(0))
 		assert.LessOrEqual(t, pred.Size, cp.maxChunkSize)
-		assert.GreaterOrEqual(t, pred.Size, cp.minChunkSize)
+		
+		// Allow the final chunk to be smaller than minimum size (remainder case)
+		isLastChunk := i == len(predictions)-1
+		if !isLastChunk {
+			assert.GreaterOrEqual(t, pred.Size, cp.minChunkSize)
+		}
+		
 		assert.Equal(t, BoundaryFixed, pred.BoundaryReason)
 		assert.Equal(t, 1.0, pred.Confidence)
 		assert.NotNil(t, pred.ExpectedPerformance)

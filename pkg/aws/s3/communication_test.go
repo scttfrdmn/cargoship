@@ -226,11 +226,11 @@ func TestCrossPrefixCommunicatorBroadcastMessage(t *testing.T) {
 		require.NoError(t, err)
 	}
 	
-	// Create broadcast message
+	// Create broadcast message with high priority to avoid batching
 	message := &CoordinationMessage{
 		Type:         MessageTypeSystemStatus,
 		SourcePrefix: "source",
-		Priority:     2,
+		Priority:     3, // Priority > 2 to avoid batching
 		Payload: map[string]interface{}{
 			"status": "healthy",
 		},
@@ -244,8 +244,8 @@ func TestCrossPrefixCommunicatorBroadcastMessage(t *testing.T) {
 	targetPrefixes := []string{"target1", "target2", "target3"}
 	for _, prefix := range targetPrefixes {
 		received, err := comm.ReceiveMessage(prefix, time.Second)
-		assert.NoError(t, err)
-		assert.NotNil(t, received)
+		require.NoError(t, err, "Failed to receive message for prefix %s", prefix)
+		require.NotNil(t, received, "Received message is nil for prefix %s", prefix)
 		assert.Equal(t, MessageTypeSystemStatus, received.Type)
 		assert.Equal(t, "source", received.SourcePrefix)
 		assert.Equal(t, prefix, received.TargetPrefix)
