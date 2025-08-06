@@ -24,7 +24,7 @@ func TestNewStreamingCompressor(t *testing.T) {
 	assert.Equal(t, 4, sc.maxConcurrency)
 	assert.Equal(t, int64(1024*1024), sc.chunkThreshold)
 	assert.NotNil(t, sc.compressionMetrics)
-	assert.Len(t, sc.algorithmPerformance, 3) // gzip, brotli, zstd
+	assert.Len(t, sc.algorithmPerformance, 4) // none, gzip, brotli, zstd
 	assert.True(t, sc.adaptationEnabled)
 	assert.Equal(t, 0.1, sc.learningRate)
 }

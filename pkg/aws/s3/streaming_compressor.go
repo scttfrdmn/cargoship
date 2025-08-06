@@ -280,7 +280,7 @@ func NewStreamingCompressor(algorithm CompressionAlgorithm, level CompressionLev
 	}
 	
 	// Initialize algorithm performance tracking
-	for _, alg := range []CompressionAlgorithm{CompressionGzip, CompressionBrotli, CompressionZstd} {
+	for _, alg := range []CompressionAlgorithm{CompressionNone, CompressionGzip, CompressionBrotli, CompressionZstd} {
 		sc.algorithmPerformance[alg] = &AlgorithmPerformance{
 			Algorithm:           alg,
 			PerformanceByContent: make(map[ContentType]*ContentPerformance),
@@ -424,6 +424,10 @@ func (sc *StreamingCompressor) SelectOptimalAlgorithm(contentType ContentType, s
 	scores := make(map[CompressionAlgorithm]float64)
 	
 	for algorithm, performance := range sc.algorithmPerformance {
+		// Skip "none" algorithm in optimal selection - prefer actual compression
+		if algorithm == CompressionNone {
+			continue
+		}
 		score := sc.calculateAlgorithmScore(algorithm, performance, contentType, size, networkConditions)
 		scores[algorithm] = score
 	}
@@ -652,6 +656,16 @@ func (sc *StreamingCompressor) updatePerformanceMetrics(result *CompressionResul
 	
 	// Update algorithm-specific performance
 	algPerf := sc.algorithmPerformance[result.Algorithm]
+	if algPerf == nil {
+		// Initialize performance tracking for unknown algorithm
+		sc.algorithmPerformance[result.Algorithm] = &AlgorithmPerformance{
+			Algorithm:           result.Algorithm,
+			PerformanceByContent: make(map[ContentType]*ContentPerformance),
+			RecentRatios:        make([]float64, 0, 100),
+			RecentThroughputs:   make([]float64, 0, 100),
+		}
+		algPerf = sc.algorithmPerformance[result.Algorithm]
+	}
 	algPerf.TotalOperations++
 	algPerf.AverageRatio = ((algPerf.AverageRatio * float64(algPerf.TotalOperations-1)) + result.CompressionRatio) / float64(algPerf.TotalOperations)
 	algPerf.AverageThroughput = ((algPerf.AverageThroughput * float64(algPerf.TotalOperations-1)) + result.ThroughputMBps) / float64(algPerf.TotalOperations)
