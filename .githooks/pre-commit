@@ -93,11 +93,16 @@ run_linting() {
 
 # Run tests with coverage
 run_tests() {
-    log_info "Running tests with coverage analysis..."
+    log_info "Running tests with coverage analysis (excluding LocalStack integration tests)..."
     
-    # Run tests with timeout, now including AWS integration tests with LocalStack
-    # Note: Benchmarks should be run separately using 'go test -bench=.' or dedicated benchmark scripts
-    if ! timeout 180s go test -timeout=120s -cover ./... > test_output.tmp 2>&1; then
+    # Export environment variables to skip slow/flaky tests
+    export SKIP_LOCALSTACK=1
+    export SKIP_INTEGRATION=1
+    
+    # Run tests with timeout, EXCLUDING LocalStack integration tests for speed
+    # Skip integration tests requiring Docker/LocalStack for fast pre-commit validation
+    # Integration tests should run in CI where Docker is guaranteed available
+    if ! timeout 60s go test -short -timeout=45s -cover ./... > test_output.tmp 2>&1; then
         log_error "Tests failed:"
         cat test_output.tmp
         rm -f test_output.tmp
@@ -121,8 +126,8 @@ run_tests() {
         fi
     done < test_output.tmp
     
-    # Calculate overall project coverage using go tool cover
-    timeout 180s go test -timeout=120s -coverprofile=coverage.out ./... > /dev/null 2>&1
+    # Calculate overall project coverage using go tool cover (skip integration tests)
+    timeout 60s go test -short -timeout=45s -coverprofile=coverage.out ./... > /dev/null 2>&1
     local project_coverage=0
     if [ -f coverage.out ]; then
         project_coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')

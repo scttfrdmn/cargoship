@@ -30,6 +30,18 @@ func startLocalStack(t *testing.T) {
 	if localStackStarted {
 		return
 	}
+	
+	// Skip LocalStack tests if explicitly requested (e.g., in pre-commit hooks)
+	if os.Getenv("SKIP_LOCALSTACK") != "" || os.Getenv("SKIP_INTEGRATION") != "" {
+		t.Skip("Skipping LocalStack tests (SKIP_LOCALSTACK or SKIP_INTEGRATION set)")
+		return
+	}
+	
+	// Skip in short mode (go test -short)
+	if testing.Short() {
+		t.Skip("Skipping LocalStack integration tests in short mode")
+		return
+	}
 
 	// Check if LocalStack is already running
 	conn, err := net.DialTimeout("tcp", "localhost:4566", 2*time.Second)
