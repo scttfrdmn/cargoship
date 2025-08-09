@@ -39,7 +39,12 @@ func TestNewPredictiveStagerWithNilConfig(t *testing.T) {
 }
 
 func TestPredictiveStager_Start(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	if testing.Short() {
+		t.Skip("Skipping predictive stager test in short mode")
+	}
+	
+	// Use longer timeout - 100ms is too short for goroutine startup/cleanup
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 
 	config := DefaultStagingConfig()
@@ -57,7 +62,12 @@ func TestPredictiveStager_Start(t *testing.T) {
 	err = stager.Start()
 	assert.NoError(t, err)
 
-	// Wait for context to be done to allow goroutines to finish
+	// Explicitly stop to cleanup goroutines
+	err = stager.Stop()
+	assert.NoError(t, err)
+	assert.False(t, stager.active)
+
+	// Wait for context to be done to allow any remaining goroutines to finish
 	<-ctx.Done()
 }
 

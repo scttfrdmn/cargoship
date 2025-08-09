@@ -21,36 +21,88 @@ func TestNewNetworkAdaptationEngine(t *testing.T) {
 }
 
 func TestNetworkAdaptationEngine_StartStop(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping network adaptation test in short mode")
+	}
+	
 	config := DefaultAdaptationConfig()
-	ctx := context.Background()
+	
+	// Use cancellable context for proper cleanup
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Ensure cleanup happens
+	
 	engine := NewNetworkAdaptationEngine(ctx, config)
 
 	// Start in a goroutine since it blocks
-	go func() { _ = engine.Start() }()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = engine.Start()
+	}()
 
 	// Give it a moment to start up
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
-	// Stop the engine (no direct stop method, so we just let it run)
-	time.Sleep(10 * time.Millisecond)
+	// Stop the engine by cancelling context
+	cancel()
+	
+	// Wait for goroutine to finish or timeout
+	select {
+	case <-done:
+		// Good - goroutine stopped
+	case <-time.After(time.Second):
+		t.Error("NetworkAdaptationEngine goroutine did not stop within timeout")
+	}
 }
 
 func TestNetworkAdaptationEngine_DoubleStart(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping network adaptation test in short mode")
+	}
+	
 	config := DefaultAdaptationConfig()
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Ensure cleanup
+	
 	engine := NewNetworkAdaptationEngine(ctx, config)
 
-	// Start in a goroutine since it blocks
-	go func() { _ = engine.Start() }()
+	// Start first instance
+	done1 := make(chan struct{})
+	go func() {
+		defer close(done1)
+		_ = engine.Start()
+	}()
 
 	// Give it a moment to start up
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
-	// Try to start again - should not panic
-	go func() { _ = engine.Start() }()
+	// Try to start again - should not panic and should handle gracefully
+	done2 := make(chan struct{})
+	go func() {
+		defer close(done2)
+		_ = engine.Start() // This should handle already-started state
+	}()
 
 	// Give it a moment
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
+	
+	// Cancel to stop both
+	cancel()
+	
+	// Wait for both to finish
+	select {
+	case <-done1:
+		// First goroutine stopped
+	case <-time.After(time.Second):
+		t.Error("First NetworkAdaptationEngine goroutine did not stop")
+	}
+	
+	select {
+	case <-done2:
+		// Second goroutine stopped
+	case <-time.After(time.Second):
+		t.Error("Second NetworkAdaptationEngine goroutine did not stop")
+	}
 }
 
 func TestNetworkAdaptationEngine_GetCurrentAdaptation(t *testing.T) {
