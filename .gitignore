@@ -12,9 +12,11 @@ docs/CLI Reference/
 test/
 manpages/
 
-# Build artifacts and executables
-cargoship
-cargoship-launch
+# Build artifacts and executables  
+/cargoship
+/cargoship-launch
+bin/cargoship
+bin/cargoship-*
 *.test
 
 # Coverage files and reports
