@@ -20,23 +20,23 @@ func (m *MockCloudWatchClient) PutMetricData(ctx context.Context, params *cloudw
 		m.putMetricDataCalls = make([]cloudwatch.PutMetricDataInput, 0)
 	}
 	m.putMetricDataCalls = append(m.putMetricDataCalls, *params)
-	
+
 	if m.returnError != nil {
 		return nil, m.returnError
 	}
-	
+
 	return &cloudwatch.PutMetricDataOutput{}, nil
 }
 
 func TestNewCloudWatchPublisher(t *testing.T) {
 	mockClient := &MockCloudWatchClient{}
-	
+
 	tests := []struct {
-		name           string
-		config         MetricConfig
-		expectedNS     string
-		expectedBatch  int
-		expectedFlush  time.Duration
+		name          string
+		config        MetricConfig
+		expectedNS    string
+		expectedBatch int
+		expectedFlush time.Duration
 	}{
 		{
 			name: "default values",
@@ -84,23 +84,23 @@ func TestNewCloudWatchPublisher(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			publisher := NewCloudWatchPublisher(mockClient, tt.config)
-			
+
 			if publisher == nil {
 				t.Fatalf("NewCloudWatchPublisher() returned nil")
 			}
-			
+
 			if publisher.namespace != tt.expectedNS {
 				t.Errorf("namespace = %v, want %v", publisher.namespace, tt.expectedNS)
 			}
-			
+
 			if publisher.batchSize != tt.expectedBatch {
 				t.Errorf("batchSize = %v, want %v", publisher.batchSize, tt.expectedBatch)
 			}
-			
+
 			if publisher.flushInterval != tt.expectedFlush {
 				t.Errorf("flushInterval = %v, want %v", publisher.flushInterval, tt.expectedFlush)
 			}
-			
+
 			// Clean up
 			if tt.config.Enabled {
 				_ = publisher.Stop(context.Background())
@@ -116,10 +116,10 @@ func TestCloudWatchPublisher_PublishUploadMetrics(t *testing.T) {
 		BatchSize: 20,
 		Enabled:   false, // Don't start timer
 	}
-	
+
 	publisher := NewCloudWatchPublisher(mockClient, config)
 	publisher.region = "us-east-1"
-	
+
 	metrics := &UploadMetrics{
 		Duration:        5 * time.Minute,
 		ThroughputMBps:  125.5,
@@ -132,50 +132,50 @@ func TestCloudWatchPublisher_PublishUploadMetrics(t *testing.T) {
 		ContentType:     "application/octet-stream",
 		CompressionType: "gzip",
 	}
-	
+
 	ctx := context.Background()
 	err := publisher.PublishUploadMetrics(ctx, metrics)
 	if err != nil {
 		t.Errorf("PublishUploadMetrics() error = %v", err)
 	}
-	
+
 	// Verify metrics were buffered (not yet sent)
 	if len(mockClient.putMetricDataCalls) != 0 {
 		t.Errorf("Expected metrics to be buffered, but %d calls were made", len(mockClient.putMetricDataCalls))
 	}
-	
+
 	// Flush and verify
 	err = publisher.Flush(ctx)
 	if err != nil {
 		t.Errorf("Flush() error = %v", err)
 	}
-	
+
 	if len(mockClient.putMetricDataCalls) == 0 {
 		t.Fatalf("Expected metrics to be sent after flush")
 	}
-	
+
 	call := mockClient.putMetricDataCalls[0]
 	if *call.Namespace != "TestNamespace" {
 		t.Errorf("namespace = %v, want TestNamespace", *call.Namespace)
 	}
-	
+
 	// Should have core metrics plus error metrics plus success metric
 	expectedMetricCount := 8 // Duration, Throughput, Size, ChunkCount, Concurrency, Errors, ErrorRate, Success
 	if len(call.MetricData) != expectedMetricCount {
 		t.Errorf("metric count = %d, want %d", len(call.MetricData), expectedMetricCount)
 	}
-	
+
 	// Verify specific metrics
 	metricNames := make(map[string]bool)
 	for _, metric := range call.MetricData {
 		metricNames[*metric.MetricName] = true
 	}
-	
+
 	expectedMetrics := []string{
-		"UploadDuration", "UploadThroughput", "UploadSize", "ChunkCount", 
+		"UploadDuration", "UploadThroughput", "UploadSize", "ChunkCount",
 		"Concurrency", "UploadErrors", "UploadErrorRate", "UploadSuccess",
 	}
-	
+
 	for _, expected := range expectedMetrics {
 		if !metricNames[expected] {
 			t.Errorf("Missing expected metric: %s", expected)
@@ -187,7 +187,7 @@ func TestCloudWatchPublisher_PublishUploadMetrics_NoErrors(t *testing.T) {
 	mockClient := &MockCloudWatchClient{}
 	config := MetricConfig{Enabled: false}
 	publisher := NewCloudWatchPublisher(mockClient, config)
-	
+
 	metrics := &UploadMetrics{
 		Duration:        1 * time.Minute,
 		ThroughputMBps:  100.0,
@@ -200,18 +200,18 @@ func TestCloudWatchPublisher_PublishUploadMetrics_NoErrors(t *testing.T) {
 		ContentType:     "text/plain",
 		CompressionType: "none",
 	}
-	
+
 	ctx := context.Background()
 	err := publisher.PublishUploadMetrics(ctx, metrics)
 	if err != nil {
 		t.Errorf("PublishUploadMetrics() error = %v", err)
 	}
-	
+
 	err = publisher.Flush(ctx)
 	if err != nil {
 		t.Errorf("Flush() error = %v", err)
 	}
-	
+
 	// Should have core metrics plus success metric, but no error metrics
 	expectedMetricCount := 6 // Duration, Throughput, Size, ChunkCount, Concurrency, Success
 	call := mockClient.putMetricDataCalls[0]
@@ -225,7 +225,7 @@ func TestCloudWatchPublisher_PublishCostMetrics(t *testing.T) {
 	config := MetricConfig{Enabled: false}
 	publisher := NewCloudWatchPublisher(mockClient, config)
 	publisher.region = "us-west-2"
-	
+
 	metrics := &CostMetrics{
 		EstimatedMonthlyCost:    150.75,
 		EstimatedAnnualCost:     1809.0,
@@ -235,18 +235,18 @@ func TestCloudWatchPublisher_PublishCostMetrics(t *testing.T) {
 		StorageClass:            "INTELLIGENT_TIERING",
 		OptimizationType:        "lifecycle",
 	}
-	
+
 	ctx := context.Background()
 	err := publisher.PublishCostMetrics(ctx, metrics)
 	if err != nil {
 		t.Errorf("PublishCostMetrics() error = %v", err)
 	}
-	
+
 	err = publisher.Flush(ctx)
 	if err != nil {
 		t.Errorf("Flush() error = %v", err)
 	}
-	
+
 	call := mockClient.putMetricDataCalls[0]
 	expectedMetricCount := 5 // EstimatedMonthlyCost, EstimatedAnnualCost, ActualMonthlyCost, DataSizeGB, PotentialSavingsPercent
 	if len(call.MetricData) != expectedMetricCount {
@@ -258,27 +258,27 @@ func TestCloudWatchPublisher_PublishNetworkMetrics(t *testing.T) {
 	mockClient := &MockCloudWatchClient{}
 	config := MetricConfig{Enabled: false}
 	publisher := NewCloudWatchPublisher(mockClient, config)
-	
+
 	metrics := &NetworkMetrics{
-		BandwidthMBps:        100.5,
-		LatencyMs:            25.5,
-		PacketLossPercent:    0.1,
-		OptimalChunkSizeMB:   16,
-		OptimalConcurrency:   8,
-		NetworkCondition:     "good",
+		BandwidthMBps:      100.5,
+		LatencyMs:          25.5,
+		PacketLossPercent:  0.1,
+		OptimalChunkSizeMB: 16,
+		OptimalConcurrency: 8,
+		NetworkCondition:   "good",
 	}
-	
+
 	ctx := context.Background()
 	err := publisher.PublishNetworkMetrics(ctx, metrics)
 	if err != nil {
 		t.Errorf("PublishNetworkMetrics() error = %v", err)
 	}
-	
+
 	err = publisher.Flush(ctx)
 	if err != nil {
 		t.Errorf("Flush() error = %v", err)
 	}
-	
+
 	call := mockClient.putMetricDataCalls[0]
 	expectedMetricCount := 5 // Bandwidth, Latency, OptimalChunkSize, OptimalConcurrency, PacketLoss
 	if len(call.MetricData) != expectedMetricCount {
@@ -290,27 +290,27 @@ func TestCloudWatchPublisher_PublishNetworkMetrics_NoPacketLoss(t *testing.T) {
 	mockClient := &MockCloudWatchClient{}
 	config := MetricConfig{Enabled: false}
 	publisher := NewCloudWatchPublisher(mockClient, config)
-	
+
 	metrics := &NetworkMetrics{
-		BandwidthMBps:        100.5,
-		LatencyMs:            25.5,
-		PacketLossPercent:    -1, // Negative value indicates no measurement
-		OptimalChunkSizeMB:   16,
-		OptimalConcurrency:   8,
-		NetworkCondition:     "good",
+		BandwidthMBps:      100.5,
+		LatencyMs:          25.5,
+		PacketLossPercent:  -1, // Negative value indicates no measurement
+		OptimalChunkSizeMB: 16,
+		OptimalConcurrency: 8,
+		NetworkCondition:   "good",
 	}
-	
+
 	ctx := context.Background()
 	err := publisher.PublishNetworkMetrics(ctx, metrics)
 	if err != nil {
 		t.Errorf("PublishNetworkMetrics() error = %v", err)
 	}
-	
+
 	err = publisher.Flush(ctx)
 	if err != nil {
 		t.Errorf("Flush() error = %v", err)
 	}
-	
+
 	call := mockClient.putMetricDataCalls[0]
 	expectedMetricCount := 4 // Should not include PacketLoss
 	if len(call.MetricData) != expectedMetricCount {
@@ -322,27 +322,27 @@ func TestCloudWatchPublisher_PublishOperationalMetrics(t *testing.T) {
 	mockClient := &MockCloudWatchClient{}
 	config := MetricConfig{Enabled: false}
 	publisher := NewCloudWatchPublisher(mockClient, config)
-	
+
 	metrics := &OperationalMetrics{
-		ActiveUploads:     5,
-		QueuedUploads:     15,
-		CompletedUploads:  100,
-		FailedUploads:     3,
-		MemoryUsageMB:     512.5,
-		CPUUsagePercent:   75.2,
+		ActiveUploads:    5,
+		QueuedUploads:    15,
+		CompletedUploads: 100,
+		FailedUploads:    3,
+		MemoryUsageMB:    512.5,
+		CPUUsagePercent:  75.2,
 	}
-	
+
 	ctx := context.Background()
 	err := publisher.PublishOperationalMetrics(ctx, metrics)
 	if err != nil {
 		t.Errorf("PublishOperationalMetrics() error = %v", err)
 	}
-	
+
 	err = publisher.Flush(ctx)
 	if err != nil {
 		t.Errorf("Flush() error = %v", err)
 	}
-	
+
 	call := mockClient.putMetricDataCalls[0]
 	expectedMetricCount := 6 // All operational metrics
 	if len(call.MetricData) != expectedMetricCount {
@@ -354,7 +354,7 @@ func TestCloudWatchPublisher_PublishLifecycleMetrics(t *testing.T) {
 	mockClient := &MockCloudWatchClient{}
 	config := MetricConfig{Enabled: false}
 	publisher := NewCloudWatchPublisher(mockClient, config)
-	
+
 	metrics := &LifecycleMetrics{
 		ActivePolicies:          3,
 		EstimatedSavingsPercent: 25.5,
@@ -362,18 +362,18 @@ func TestCloudWatchPublisher_PublishLifecycleMetrics(t *testing.T) {
 		PolicyTemplate:          "archive-after-30-days",
 		BucketName:              "test-bucket",
 	}
-	
+
 	ctx := context.Background()
 	err := publisher.PublishLifecycleMetrics(ctx, metrics)
 	if err != nil {
 		t.Errorf("PublishLifecycleMetrics() error = %v", err)
 	}
-	
+
 	err = publisher.Flush(ctx)
 	if err != nil {
 		t.Errorf("Flush() error = %v", err)
 	}
-	
+
 	call := mockClient.putMetricDataCalls[0]
 	expectedMetricCount := 3 // ActivePolicies, EstimatedSavingsPercent, ObjectsTransitioned
 	if len(call.MetricData) != expectedMetricCount {
@@ -388,27 +388,27 @@ func TestCloudWatchPublisher_BufferManagement(t *testing.T) {
 		Enabled:   false,
 	}
 	publisher := NewCloudWatchPublisher(mockClient, config)
-	
+
 	ctx := context.Background()
-	
+
 	// Publish one metric - should be buffered (operational metrics have 6 metrics each)
 	metrics1 := &OperationalMetrics{ActiveUploads: 1}
 	err := publisher.PublishOperationalMetrics(ctx, metrics1)
 	if err != nil {
 		t.Errorf("PublishOperationalMetrics() error = %v", err)
 	}
-	
+
 	if len(mockClient.putMetricDataCalls) != 0 {
 		t.Errorf("Expected no calls yet, got %d", len(mockClient.putMetricDataCalls))
 	}
-	
+
 	// Publish second metric - should still be buffered (total 12 metrics, batch size 10)
 	metrics2 := &OperationalMetrics{QueuedUploads: 2}
 	err = publisher.PublishOperationalMetrics(ctx, metrics2)
 	if err != nil {
 		t.Errorf("PublishOperationalMetrics() error = %v", err)
 	}
-	
+
 	if len(mockClient.putMetricDataCalls) == 0 {
 		t.Errorf("Expected metrics to be flushed when buffer exceeds batch size")
 	}
@@ -419,27 +419,27 @@ func TestCloudWatchPublisher_Dimensions(t *testing.T) {
 	config := MetricConfig{Enabled: false}
 	publisher := NewCloudWatchPublisher(mockClient, config)
 	publisher.region = "us-east-1"
-	
+
 	metrics := &UploadMetrics{
 		Duration:        1 * time.Minute,
 		StorageClass:    "GLACIER",
 		ContentType:     "application/json",
 		CompressionType: "zstd",
 	}
-	
+
 	dimensions := publisher.buildUploadDimensions(metrics)
-	
+
 	expectedDimensions := map[string]string{
 		"Region":          "us-east-1",
 		"StorageClass":    "GLACIER",
 		"ContentType":     "application/json",
 		"CompressionType": "zstd",
 	}
-	
+
 	if len(dimensions) != len(expectedDimensions) {
 		t.Errorf("dimension count = %d, want %d", len(dimensions), len(expectedDimensions))
 	}
-	
+
 	for _, dim := range dimensions {
 		expectedValue, exists := expectedDimensions[*dim.Name]
 		if !exists {
@@ -456,15 +456,15 @@ func TestCloudWatchPublisher_ErrorHandling(t *testing.T) {
 	}
 	config := MetricConfig{Enabled: false}
 	publisher := NewCloudWatchPublisher(mockClient, config)
-	
+
 	metrics := &OperationalMetrics{ActiveUploads: 1}
-	
+
 	ctx := context.Background()
 	err := publisher.PublishOperationalMetrics(ctx, metrics)
 	if err != nil {
 		t.Errorf("PublishOperationalMetrics() should not error on buffering, got: %v", err)
 	}
-	
+
 	// Flush should return the error
 	err = publisher.Flush(ctx)
 	if err == nil {
@@ -479,7 +479,7 @@ func TestCloudWatchPublisher_Stop(t *testing.T) {
 		Enabled:       true, // Start the timer
 	}
 	publisher := NewCloudWatchPublisher(mockClient, config)
-	
+
 	// Add some metrics
 	metrics := &OperationalMetrics{ActiveUploads: 1}
 	ctx := context.Background()
@@ -487,13 +487,13 @@ func TestCloudWatchPublisher_Stop(t *testing.T) {
 	if err != nil {
 		t.Errorf("PublishOperationalMetrics() error = %v", err)
 	}
-	
+
 	// Stop should flush remaining metrics
 	err = publisher.Stop(ctx)
 	if err != nil {
 		t.Errorf("Stop() error = %v", err)
 	}
-	
+
 	// Verify metrics were flushed
 	if len(mockClient.putMetricDataCalls) == 0 {
 		t.Errorf("Expected metrics to be flushed on Stop()")
@@ -507,7 +507,7 @@ func TestCloudWatchPublisher_StartFlushTimer(t *testing.T) {
 		Enabled:       true,
 	}
 	publisher := NewCloudWatchPublisher(mockClient, config)
-	
+
 	// Add some metrics to buffer
 	metrics := &OperationalMetrics{ActiveUploads: 1}
 	ctx := context.Background()
@@ -515,15 +515,15 @@ func TestCloudWatchPublisher_StartFlushTimer(t *testing.T) {
 	if err != nil {
 		t.Errorf("PublishOperationalMetrics() error = %v", err)
 	}
-	
+
 	// Wait for the timer to trigger at least once
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Verify timer triggered and flushed metrics
 	if len(mockClient.putMetricDataCalls) == 0 {
 		t.Error("Expected timer to trigger and flush metrics")
 	}
-	
+
 	// Stop the publisher
 	err = publisher.Stop(ctx)
 	if err != nil {
@@ -540,7 +540,7 @@ func TestCloudWatchPublisher_StartFlushTimer_Error(t *testing.T) {
 		Enabled:       true,
 	}
 	publisher := NewCloudWatchPublisher(mockClient, config)
-	
+
 	// Add some metrics to buffer
 	metrics := &OperationalMetrics{ActiveUploads: 1}
 	ctx := context.Background()
@@ -548,21 +548,21 @@ func TestCloudWatchPublisher_StartFlushTimer_Error(t *testing.T) {
 	if err != nil {
 		t.Errorf("PublishOperationalMetrics() error = %v", err)
 	}
-	
+
 	// Wait for the timer to trigger and handle the error
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Verify timer attempted to flush (error should be logged but not returned)
 	if len(mockClient.putMetricDataCalls) == 0 {
 		t.Error("Expected timer to attempt flush even with error")
 	}
-	
+
 	// Add more metrics after the timer flush to ensure buffer has content for final flush
 	err = publisher.PublishOperationalMetrics(ctx, &OperationalMetrics{ActiveUploads: 2})
 	if err != nil {
 		t.Errorf("PublishOperationalMetrics() error = %v", err)
 	}
-	
+
 	// Stop the publisher - final flush will fail with same error
 	err = publisher.Stop(ctx)
 	if err == nil {
@@ -584,14 +584,14 @@ func TestMetricStructFields(t *testing.T) {
 		ContentType:     "application/octet-stream",
 		CompressionType: "gzip",
 	}
-	
+
 	if upload.Duration != 5*time.Minute {
 		t.Errorf("UploadMetrics.Duration = %v, want %v", upload.Duration, 5*time.Minute)
 	}
 	if upload.ThroughputMBps != 125.5 {
 		t.Errorf("UploadMetrics.ThroughputMBps = %v, want 125.5", upload.ThroughputMBps)
 	}
-	
+
 	// Test CostMetrics
 	cost := CostMetrics{
 		EstimatedMonthlyCost:    150.75,
@@ -602,39 +602,39 @@ func TestMetricStructFields(t *testing.T) {
 		StorageClass:            "INTELLIGENT_TIERING",
 		OptimizationType:        "lifecycle",
 	}
-	
+
 	if cost.EstimatedMonthlyCost != 150.75 {
 		t.Errorf("CostMetrics.EstimatedMonthlyCost = %v, want 150.75", cost.EstimatedMonthlyCost)
 	}
-	
+
 	// Test NetworkMetrics
 	network := NetworkMetrics{
-		BandwidthMBps:        100.5,
-		LatencyMs:            25.5,
-		PacketLossPercent:    0.1,
-		OptimalChunkSizeMB:   16,
-		OptimalConcurrency:   8,
-		NetworkCondition:     "good",
+		BandwidthMBps:      100.5,
+		LatencyMs:          25.5,
+		PacketLossPercent:  0.1,
+		OptimalChunkSizeMB: 16,
+		OptimalConcurrency: 8,
+		NetworkCondition:   "good",
 	}
-	
+
 	if network.BandwidthMBps != 100.5 {
 		t.Errorf("NetworkMetrics.BandwidthMBps = %v, want 100.5", network.BandwidthMBps)
 	}
-	
+
 	// Test OperationalMetrics
 	operational := OperationalMetrics{
-		ActiveUploads:     5,
-		QueuedUploads:     15,
-		CompletedUploads:  100,
-		FailedUploads:     3,
-		MemoryUsageMB:     512.5,
-		CPUUsagePercent:   75.2,
+		ActiveUploads:    5,
+		QueuedUploads:    15,
+		CompletedUploads: 100,
+		FailedUploads:    3,
+		MemoryUsageMB:    512.5,
+		CPUUsagePercent:  75.2,
 	}
-	
+
 	if operational.ActiveUploads != 5 {
 		t.Errorf("OperationalMetrics.ActiveUploads = %v, want 5", operational.ActiveUploads)
 	}
-	
+
 	// Test LifecycleMetrics
 	lifecycle := LifecycleMetrics{
 		ActivePolicies:          3,
@@ -643,7 +643,7 @@ func TestMetricStructFields(t *testing.T) {
 		PolicyTemplate:          "archive-after-30-days",
 		BucketName:              "test-bucket",
 	}
-	
+
 	if lifecycle.ActivePolicies != 3 {
 		t.Errorf("LifecycleMetrics.ActivePolicies = %v, want 3", lifecycle.ActivePolicies)
 	}
@@ -651,11 +651,11 @@ func TestMetricStructFields(t *testing.T) {
 
 func TestMetricConfig_Defaults(t *testing.T) {
 	mockClient := &MockCloudWatchClient{}
-	
+
 	// Test empty config gets defaults
 	config := MetricConfig{}
 	publisher := NewCloudWatchPublisher(mockClient, config)
-	
+
 	if publisher.namespace != "CargoShip" {
 		t.Errorf("default namespace = %v, want CargoShip", publisher.namespace)
 	}

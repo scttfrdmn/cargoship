@@ -10,11 +10,11 @@ func TestNewNetworkAdaptationEngine(t *testing.T) {
 	config := DefaultAdaptationConfig()
 	ctx := context.Background()
 	engine := NewNetworkAdaptationEngine(ctx, config)
-	
+
 	if engine == nil {
 		t.Fatal("Expected non-nil NetworkAdaptationEngine")
 	}
-	
+
 	if engine.config != config {
 		t.Error("Expected config to be set correctly")
 	}
@@ -24,13 +24,13 @@ func TestNetworkAdaptationEngine_StartStop(t *testing.T) {
 	config := DefaultAdaptationConfig()
 	ctx := context.Background()
 	engine := NewNetworkAdaptationEngine(ctx, config)
-	
+
 	// Start in a goroutine since it blocks
 	go func() { _ = engine.Start() }()
-	
+
 	// Give it a moment to start up
 	time.Sleep(10 * time.Millisecond)
-	
+
 	// Stop the engine (no direct stop method, so we just let it run)
 	time.Sleep(10 * time.Millisecond)
 }
@@ -39,16 +39,16 @@ func TestNetworkAdaptationEngine_DoubleStart(t *testing.T) {
 	config := DefaultAdaptationConfig()
 	ctx := context.Background()
 	engine := NewNetworkAdaptationEngine(ctx, config)
-	
+
 	// Start in a goroutine since it blocks
 	go func() { _ = engine.Start() }()
-	
+
 	// Give it a moment to start up
 	time.Sleep(10 * time.Millisecond)
-	
+
 	// Try to start again - should not panic
 	go func() { _ = engine.Start() }()
-	
+
 	// Give it a moment
 	time.Sleep(10 * time.Millisecond)
 }
@@ -57,9 +57,9 @@ func TestNetworkAdaptationEngine_GetCurrentAdaptation(t *testing.T) {
 	config := DefaultAdaptationConfig()
 	ctx := context.Background()
 	engine := NewNetworkAdaptationEngine(ctx, config)
-	
+
 	state := engine.GetCurrentAdaptation()
-	
+
 	// State might be nil initially, which is acceptable
 	if state != nil {
 		// If state is not nil, verify it has expected fields
@@ -73,16 +73,16 @@ func TestNetworkAdaptationEngine_ForceAdaptation(t *testing.T) {
 	config := DefaultAdaptationConfig()
 	ctx := context.Background()
 	engine := NewNetworkAdaptationEngine(ctx, config)
-	
+
 	// Start in a goroutine since it blocks
 	go func() { _ = engine.Start() }()
-	
+
 	// Give it a moment to start up
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Force adaptation
 	engine.ForceAdaptation()
-	
+
 	// Give it a moment to process
 	time.Sleep(100 * time.Millisecond)
 }
@@ -91,15 +91,15 @@ func TestNetworkAdaptationEngine_GetCurrentAdaptationAfterStart(t *testing.T) {
 	config := DefaultAdaptationConfig()
 	ctx := context.Background()
 	engine := NewNetworkAdaptationEngine(ctx, config)
-	
+
 	// Start in a goroutine since it blocks
 	go func() { _ = engine.Start() }()
-	
+
 	// Give it a moment to start up
 	time.Sleep(100 * time.Millisecond)
-	
+
 	state := engine.GetCurrentAdaptation()
-	
+
 	if state == nil {
 		t.Error("Expected non-nil adaptation state after start")
 	}
@@ -107,19 +107,19 @@ func TestNetworkAdaptationEngine_GetCurrentAdaptationAfterStart(t *testing.T) {
 
 func TestDefaultAdaptationConfig(t *testing.T) {
 	config := DefaultAdaptationConfig()
-	
+
 	if config == nil {
 		t.Fatal("Expected non-nil config")
 	}
-	
+
 	if config.AdaptationInterval <= 0 {
 		t.Error("Expected positive adaptation interval")
 	}
-	
+
 	if config.MaxChunkSizeMB <= 0 {
 		t.Error("Expected positive max chunk size")
 	}
-	
+
 	if config.MaxConcurrency <= 0 {
 		t.Error("Expected positive max concurrency")
 	}
@@ -135,19 +135,19 @@ func TestAdaptationState_Fields(t *testing.T) {
 			LatencyMs:     50,
 		},
 	}
-	
+
 	if state.ChunkSizeMB != 10 {
 		t.Error("Expected chunk size to be set")
 	}
-	
+
 	if state.Concurrency != 5 {
 		t.Error("Expected concurrency to be set")
 	}
-	
+
 	if state.CompressionLevel != "zstd" {
 		t.Error("Expected compression level to be set")
 	}
-	
+
 	if state.NetworkCondition == nil {
 		t.Error("Expected network condition to be set")
 	}
@@ -158,13 +158,13 @@ func TestNetworkAdaptationEngine_scoreCompression(t *testing.T) {
 	config := DefaultAdaptationConfig()
 	ctx := context.Background()
 	engine := NewNetworkAdaptationEngine(ctx, config)
-	
+
 	condition := &NetworkCondition{
 		BandwidthMBps: 100,
 		LatencyMs:     50,
 		PacketLoss:    0.01,
 	}
-	
+
 	tests := []struct {
 		name        string
 		compression string
@@ -186,19 +186,19 @@ func TestNetworkAdaptationEngine_scoreCompression(t *testing.T) {
 			expected:    0.5,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			score := engine.scoreCompression(tt.compression, condition)
-			
+
 			if tt.name == "optimal compression" && score != tt.expected {
 				t.Errorf("Expected score %f, got %f", tt.expected, score)
 			}
-			
+
 			if tt.name == "invalid compression" && score != tt.expected {
 				t.Errorf("Expected score %f, got %f", tt.expected, score)
 			}
-			
+
 			if score < 0 || score > 1 {
 				t.Errorf("Expected score between 0 and 1, got %f", score)
 			}
@@ -211,7 +211,7 @@ func TestNetworkAdaptationEngine_predictPerformanceImprovement(t *testing.T) {
 	config := DefaultAdaptationConfig()
 	ctx := context.Background()
 	engine := NewNetworkAdaptationEngine(ctx, config)
-	
+
 	oldState := &AdaptationState{
 		ChunkSizeMB:      10,
 		Concurrency:      5,
@@ -225,7 +225,7 @@ func TestNetworkAdaptationEngine_predictPerformanceImprovement(t *testing.T) {
 			ErrorRate:             0.01,
 		},
 	}
-	
+
 	newState := &AdaptationState{
 		ChunkSizeMB:      20,
 		Concurrency:      10,
@@ -235,20 +235,20 @@ func TestNetworkAdaptationEngine_predictPerformanceImprovement(t *testing.T) {
 			LatencyMs:     50,
 		},
 	}
-	
+
 	improvement := engine.predictPerformanceImprovement(oldState, newState)
-	
+
 	if improvement < 0 {
 		t.Error("Expected non-negative improvement")
 	}
-	
+
 	// Test with nil old state
 	nilOldState := &AdaptationState{
 		PerformanceMetrics: nil,
 	}
-	
+
 	improvement = engine.predictPerformanceImprovement(nilOldState, newState)
-	
+
 	if improvement != 0.1 {
 		t.Errorf("Expected improvement of 0.1 for nil old state, got %f", improvement)
 	}
@@ -256,11 +256,11 @@ func TestNetworkAdaptationEngine_predictPerformanceImprovement(t *testing.T) {
 
 func TestNetworkTrend_Values(t *testing.T) {
 	trend := TrendImproving
-	
+
 	if trend != TrendImproving {
 		t.Error("Expected trend to be set")
 	}
-	
+
 	// Test other trend values
 	if TrendDegrading == TrendImproving {
 		t.Error("Expected different trend values")
@@ -269,34 +269,34 @@ func TestNetworkTrend_Values(t *testing.T) {
 
 func TestNetworkCondition_Fields(t *testing.T) {
 	condition := &NetworkCondition{
-		BandwidthMBps:    100,
-		LatencyMs:        50,
-		PacketLoss:       0.01,
-		Jitter:           0.02,
-		CongestionLevel:  0.3,
-		Reliability:      0.95,
+		BandwidthMBps:   100,
+		LatencyMs:       50,
+		PacketLoss:      0.01,
+		Jitter:          0.02,
+		CongestionLevel: 0.3,
+		Reliability:     0.95,
 	}
-	
+
 	if condition.BandwidthMBps != 100 {
 		t.Error("Expected bandwidth to be set")
 	}
-	
+
 	if condition.LatencyMs != 50 {
 		t.Error("Expected latency to be set")
 	}
-	
+
 	if condition.PacketLoss != 0.01 {
 		t.Error("Expected packet loss to be set")
 	}
-	
+
 	if condition.Jitter != 0.02 {
 		t.Error("Expected jitter to be set")
 	}
-	
+
 	if condition.CongestionLevel != 0.3 {
 		t.Error("Expected congestion to be set")
 	}
-	
+
 	if condition.Reliability != 0.95 {
 		t.Error("Expected reliability to be set")
 	}

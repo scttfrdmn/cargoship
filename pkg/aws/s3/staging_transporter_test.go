@@ -27,16 +27,16 @@ type MockStagingS3Client struct {
 // Helper function to create LocalStack S3 client for staging tests
 func createStagingLocalStackS3Client(t *testing.T) *s3.Client {
 	t.Helper()
-	
+
 	// Check if LocalStack is available
 	localStackURL := os.Getenv("LOCALSTACK_ENDPOINT")
 	if localStackURL == "" {
 		localStackURL = "http://localhost:4566" // Default LocalStack endpoint
 	}
-	
+
 	// Create AWS config for LocalStack
 	cfg := aws.Config{
-		Region: "us-east-1",
+		Region:       "us-east-1",
 		BaseEndpoint: aws.String(localStackURL),
 		Credentials: credentials.StaticCredentialsProvider{
 			Value: aws.Credentials{
@@ -46,14 +46,14 @@ func createStagingLocalStackS3Client(t *testing.T) *s3.Client {
 			},
 		},
 	}
-	
+
 	return s3.NewFromConfig(cfg)
 }
 
 // Helper function to create test bucket for staging tests
 func createStagingTestBucket(t *testing.T, client *s3.Client, bucketName string) {
 	t.Helper()
-	
+
 	ctx := context.Background()
 	_, err := client.CreateBucket(ctx, &s3.CreateBucketInput{
 		Bucket: aws.String(bucketName),
@@ -61,7 +61,7 @@ func createStagingTestBucket(t *testing.T, client *s3.Client, bucketName string)
 	if err != nil {
 		t.Logf("Warning: Could not create test bucket (may already exist): %v", err)
 	}
-	
+
 	// Clean up on test completion
 	t.Cleanup(func() {
 		// List and delete all objects in bucket
@@ -76,7 +76,7 @@ func createStagingTestBucket(t *testing.T, client *s3.Client, bucketName string)
 				})
 			}
 		}
-		
+
 		// Delete bucket
 		_, _ = client.DeleteBucket(ctx, &s3.DeleteBucketInput{
 			Bucket: aws.String(bucketName),
@@ -92,7 +92,7 @@ func TestNewStagingTransporter_WithStagingDisabled(t *testing.T) {
 		MultipartChunkSize: 16 * 1024 * 1024, // 16MB chunks
 		Concurrency:        4,
 	}
-	
+
 	config := &StagingConfig{
 		EnableStaging:       false,
 		EnableNetworkAdapt:  false,
@@ -100,11 +100,11 @@ func TestNewStagingTransporter_WithStagingDisabled(t *testing.T) {
 		MaxStagingMemoryMB:  256,
 		NetworkMonitoringHz: 0.2,
 	}
-	
+
 	logger := slog.Default()
-	
+
 	st, err := NewStagingTransporter(ctx, client, s3Config, config, logger)
-	
+
 	assert.NoError(t, err)
 	assert.NotNil(t, st)
 	assert.NotNil(t, st.Transporter)
@@ -121,7 +121,7 @@ func TestNewStagingTransporter_WithStagingEnabled(t *testing.T) {
 		MultipartChunkSize: 16 * 1024 * 1024, // 16MB chunks
 		Concurrency:        4,
 	}
-	
+
 	config := &StagingConfig{
 		EnableStaging:       true,
 		EnableNetworkAdapt:  true,
@@ -129,11 +129,11 @@ func TestNewStagingTransporter_WithStagingEnabled(t *testing.T) {
 		MaxStagingMemoryMB:  256,
 		NetworkMonitoringHz: 0.2,
 	}
-	
+
 	logger := slog.Default()
-	
+
 	st, err := NewStagingTransporter(ctx, client, s3Config, config, logger)
-	
+
 	assert.NoError(t, err)
 	assert.NotNil(t, st)
 	assert.NotNil(t, st.Transporter)
@@ -150,14 +150,14 @@ func TestNewStagingTransporter_WithNilConfig(t *testing.T) {
 		MultipartChunkSize: 16 * 1024 * 1024, // 16MB chunks
 		Concurrency:        4,
 	}
-	
+
 	st, err := NewStagingTransporter(ctx, client, s3Config, nil, nil)
-	
+
 	assert.NoError(t, err)
 	assert.NotNil(t, st)
 	assert.NotNil(t, st.config)
 	assert.NotNil(t, st.logger)
-	
+
 	// Should use default config
 	assert.True(t, st.config.EnableStaging)
 	assert.True(t, st.config.EnableNetworkAdapt)
@@ -168,7 +168,7 @@ func TestNewStagingTransporter_WithNilConfig(t *testing.T) {
 
 func TestDefaultStagingConfig(t *testing.T) {
 	config := DefaultStagingConfig()
-	
+
 	assert.NotNil(t, config)
 	assert.True(t, config.EnableStaging)
 	assert.True(t, config.EnableNetworkAdapt)
@@ -185,18 +185,18 @@ func TestStagingTransporter_UploadWithStaging_StagingDisabled(t *testing.T) {
 		MultipartChunkSize: 16 * 1024 * 1024,
 		Concurrency:        4,
 	}
-	
+
 	config := &StagingConfig{
 		EnableStaging: false,
 	}
-	
+
 	st, err := NewStagingTransporter(ctx, client, s3Config, config, nil)
 	assert.NoError(t, err)
-	
+
 	// Verify that staging is disabled and staging system is nil
 	assert.False(t, st.config.EnableStaging)
 	assert.Nil(t, st.stagingSystem)
-	
+
 	// We can't test the actual upload without mocking AWS, but we can verify the configuration
 }
 
@@ -208,10 +208,10 @@ func TestStagingTransporter_InitializeStagingSystem(t *testing.T) {
 		MultipartChunkSize: 16 * 1024 * 1024,
 		Concurrency:        4,
 	}
-	
+
 	st, err := NewStagingTransporter(ctx, client, s3Config, DefaultStagingConfig(), nil)
 	assert.NoError(t, err)
-	
+
 	stagingConfig := &staging.StagingConfig{
 		MaxBufferSizeMB:         256,
 		TargetChunkSizeMB:       16,
@@ -226,9 +226,9 @@ func TestStagingTransporter_InitializeStagingSystem(t *testing.T) {
 		MemoryPressureThreshold: 0.8,
 		GCTriggerThreshold:      0.9,
 	}
-	
+
 	stager, err := st.initializeStagingSystem(ctx, stagingConfig)
-	
+
 	assert.NoError(t, err)
 	assert.NotNil(t, stager)
 }
@@ -241,23 +241,23 @@ func TestStagingTransporter_GetStagingMetrics(t *testing.T) {
 		MultipartChunkSize: 16 * 1024 * 1024,
 		Concurrency:        4,
 	}
-	
+
 	// Test with staging disabled
 	config := &StagingConfig{
 		EnableStaging: false,
 	}
-	
+
 	st, err := NewStagingTransporter(ctx, client, s3Config, config, nil)
 	assert.NoError(t, err)
-	
+
 	metrics := st.GetStagingMetrics()
 	assert.Nil(t, metrics) // Should be nil when staging is disabled
-	
+
 	// Test with staging enabled
 	config.EnableStaging = true
 	st, err = NewStagingTransporter(ctx, client, s3Config, config, nil)
 	assert.NoError(t, err)
-	
+
 	metrics = st.GetStagingMetrics()
 	assert.NotNil(t, metrics) // Should return metrics when staging is enabled
 }
@@ -270,23 +270,23 @@ func TestStagingTransporter_Stop(t *testing.T) {
 		MultipartChunkSize: 16 * 1024 * 1024,
 		Concurrency:        4,
 	}
-	
+
 	// Test with staging disabled
 	config := &StagingConfig{
 		EnableStaging: false,
 	}
-	
+
 	st, err := NewStagingTransporter(ctx, client, s3Config, config, nil)
 	assert.NoError(t, err)
-	
+
 	err = st.Stop()
 	assert.NoError(t, err) // Should succeed even with staging disabled
-	
+
 	// Test with staging enabled
 	config.EnableStaging = true
 	st, err = NewStagingTransporter(ctx, client, s3Config, config, nil)
 	assert.NoError(t, err)
-	
+
 	err = st.Stop()
 	assert.NoError(t, err) // Should succeed with staging enabled
 }
@@ -299,24 +299,24 @@ func TestStagingTransporter_PerformStagedUpload_SmallFile(t *testing.T) {
 		MultipartChunkSize: 16 * 1024 * 1024,
 		Concurrency:        4,
 	}
-	
+
 	config := &StagingConfig{
-		EnableStaging:       true,
-		MaxStagingMemoryMB:  256, // 256MB, so files < 64MB are considered small
+		EnableStaging:      true,
+		MaxStagingMemoryMB: 256, // 256MB, so files < 64MB are considered small
 	}
-	
+
 	st, err := NewStagingTransporter(ctx, client, s3Config, config, nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, st)
-	
+
 	// Test the small file threshold logic
 	smallFileThreshold := int64(config.MaxStagingMemoryMB / 4 * 1024 * 1024)
 	assert.Equal(t, int64(64*1024*1024), smallFileThreshold) // 64MB threshold
-	
+
 	// Verify that a 1KB file would be considered small
 	smallFileSize := int64(1024)
 	assert.True(t, smallFileSize < smallFileThreshold)
-	
+
 	// Verify that a 100MB file would be considered large
 	largeFileSize := int64(100 * 1024 * 1024)
 	assert.False(t, largeFileSize < smallFileThreshold)
@@ -330,20 +330,20 @@ func TestStagingTransporter_CalculateCompressionRatio(t *testing.T) {
 		MultipartChunkSize: 16 * 1024 * 1024,
 		Concurrency:        4,
 	}
-	
+
 	st, err := NewStagingTransporter(ctx, client, s3Config, DefaultStagingConfig(), nil)
 	assert.NoError(t, err)
-	
+
 	// Test different compression types
 	testCases := []struct {
 		archive  Archive
 		expected float64
 	}{
-		{Archive{CompressionType: "gzip", Size: 300, OriginalSize: 1000}, 0.3},   // Gzip compression
-		{Archive{CompressionType: "none", Size: 1000, OriginalSize: 1000}, 1.0},  // No compression
+		{Archive{CompressionType: "gzip", Size: 300, OriginalSize: 1000}, 0.3},  // Gzip compression
+		{Archive{CompressionType: "none", Size: 1000, OriginalSize: 1000}, 1.0}, // No compression
 		{Archive{CompressionType: "zstd", Size: 250, OriginalSize: 1000}, 0.25}, // Better compression
 	}
-	
+
 	for _, tc := range testCases {
 		ratio := st.calculateCompressionRatio(tc.archive)
 		assert.Equal(t, tc.expected, ratio)
@@ -358,10 +358,10 @@ func TestStagingTransporter_ClassifyContentType(t *testing.T) {
 		MultipartChunkSize: 16 * 1024 * 1024,
 		Concurrency:        4,
 	}
-	
+
 	st, err := NewStagingTransporter(ctx, client, s3Config, DefaultStagingConfig(), nil)
 	assert.NoError(t, err)
-	
+
 	testCases := []struct {
 		compressionType string
 		expected        string
@@ -373,7 +373,7 @@ func TestStagingTransporter_ClassifyContentType(t *testing.T) {
 		{"tar", "binary"},
 		{"unknown", "binary"}, // Default case
 	}
-	
+
 	for _, tc := range testCases {
 		contentType := st.classifyContentType(tc.compressionType)
 		assert.Equal(t, tc.expected, contentType)
@@ -388,10 +388,10 @@ func TestStagingTransporter_CalculateStagingEfficiency(t *testing.T) {
 		MultipartChunkSize: 16 * 1024 * 1024,
 		Concurrency:        4,
 	}
-	
+
 	st, err := NewStagingTransporter(ctx, client, s3Config, DefaultStagingConfig(), nil)
 	assert.NoError(t, err)
-	
+
 	// Create test upload context
 	uploadCtx := &StagedUploadContext{
 		Archive: Archive{
@@ -410,9 +410,9 @@ func TestStagingTransporter_CalculateStagingEfficiency(t *testing.T) {
 			PeakThroughput:    120.0,
 		},
 	}
-	
+
 	efficiency := st.calculateStagingEfficiency(uploadCtx)
-	
+
 	// Efficiency should be a positive value (can be > 1.0 for better than expected performance)
 	assert.GreaterOrEqual(t, efficiency, 0.0)
 }
@@ -425,12 +425,12 @@ func TestStagingTransporter_GetCurrentNetworkCondition(t *testing.T) {
 		MultipartChunkSize: 16 * 1024 * 1024,
 		Concurrency:        4,
 	}
-	
+
 	st, err := NewStagingTransporter(ctx, client, s3Config, DefaultStagingConfig(), nil)
 	assert.NoError(t, err)
-	
+
 	condition := st.getCurrentNetworkCondition()
-	
+
 	// Should return a default network condition
 	assert.NotNil(t, condition)
 	assert.Greater(t, condition.BandwidthMBps, 0.0)
@@ -446,20 +446,20 @@ func TestStagedUploadContext_Fields(t *testing.T) {
 		CompressionType: "gzip",
 		Reader:          strings.NewReader("test content"),
 	}
-	
+
 	ctx := &StagedUploadContext{
-		Archive:       archive,
-		StartTime:     time.Now(),
-		TotalSize:     1024,
-		UploadedSize:  512,
-		ChunkCount:    2,
-		UploadID:      "test-upload-id",
-		Errors:        make([]error, 0),
+		Archive:      archive,
+		StartTime:    time.Now(),
+		TotalSize:    1024,
+		UploadedSize: 512,
+		ChunkCount:   2,
+		UploadID:     "test-upload-id",
+		Errors:       make([]error, 0),
 		NetworkMetrics: &NetworkMetrics{
 			StartTime: time.Now(),
 		},
 	}
-	
+
 	assert.Equal(t, archive, ctx.Archive)
 	assert.Equal(t, int64(1024), ctx.TotalSize)
 	assert.Equal(t, int64(512), ctx.UploadedSize)
@@ -477,7 +477,7 @@ func TestNetworkMetrics_Fields(t *testing.T) {
 		AverageThroughput: 100.0,
 		PeakThroughput:    120.0,
 	}
-	
+
 	assert.Equal(t, 80.0, metrics.CurrentThroughput)
 	assert.Equal(t, 100.0, metrics.AverageThroughput)
 	assert.Equal(t, 120.0, metrics.PeakThroughput)
@@ -493,7 +493,7 @@ func TestStagingConfig_Fields(t *testing.T) {
 		MaxStagingMemoryMB:  512,
 		NetworkMonitoringHz: 1.0,
 	}
-	
+
 	assert.True(t, config.EnableStaging)
 	assert.False(t, config.EnableNetworkAdapt)
 	assert.Equal(t, 5, config.StageAheadChunks)
@@ -508,27 +508,27 @@ func TestChunkReader_Read(t *testing.T) {
 		data:   []byte(testData),
 		offset: 0,
 	}
-	
+
 	// Test reading partial data
 	buf := make([]byte, 10)
 	n, err := reader.Read(buf)
-	
+
 	assert.NoError(t, err)
 	assert.Equal(t, 10, n)
 	assert.Equal(t, testData[:10], string(buf))
 	assert.Equal(t, 10, reader.offset)
-	
+
 	// Test reading remaining data
 	remainingBuf := make([]byte, len(testData))
 	n, _ = reader.Read(remainingBuf)
-	
+
 	assert.Equal(t, len(testData)-10, n)
 	assert.Equal(t, testData[10:], string(remainingBuf[:n]))
-	
+
 	// Test reading beyond end
 	emptyBuf := make([]byte, 10)
 	n, err = reader.Read(emptyBuf)
-	
+
 	assert.Equal(t, io.EOF, err)
 	assert.Equal(t, 0, n)
 }
@@ -539,31 +539,31 @@ func TestChunkReader_Seek(t *testing.T) {
 		data:   []byte(testData),
 		offset: 0,
 	}
-	
+
 	// Test seeking from start
 	pos, err := reader.Seek(5, io.SeekStart)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(5), pos)
 	assert.Equal(t, 5, reader.offset)
-	
+
 	// Test seeking from current position
 	pos, err = reader.Seek(3, io.SeekCurrent)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(8), pos)
 	assert.Equal(t, 8, reader.offset)
-	
+
 	// Test seeking from end
 	pos, err = reader.Seek(-2, io.SeekEnd)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(len(testData)-2), pos)
 	assert.Equal(t, len(testData)-2, reader.offset)
-	
+
 	// Test seeking beyond bounds (should clamp)
 	pos, err = reader.Seek(1000, io.SeekStart)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(len(testData)), pos)
 	assert.Equal(t, len(testData), reader.offset)
-	
+
 	// Test seeking before start (should clamp to 0)
 	pos, err = reader.Seek(-1000, io.SeekStart)
 	assert.NoError(t, err)
@@ -715,10 +715,10 @@ func TestStagingTransporter_UploadWithStaging(t *testing.T) {
 	ctx := context.Background()
 	client := createStagingLocalStackS3Client(t)
 	bucketName := "test-staging-bucket"
-	
+
 	// Create test bucket
 	createStagingTestBucket(t, client, bucketName)
-	
+
 	s3Config := awsconfig.S3Config{
 		Bucket:             bucketName,
 		MultipartChunkSize: 16 * 1024 * 1024,
@@ -738,14 +738,14 @@ func TestStagingTransporter_UploadWithStaging(t *testing.T) {
 
 	// Test upload with staging using LocalStack
 	result, err := st.UploadWithStaging(ctx, archive)
-	
+
 	// Should succeed with LocalStack
 	if err != nil {
 		t.Logf("Upload error (may be expected if LocalStack unavailable): %v", err)
 		// Even if it fails, we're testing the function coverage
 		return
 	}
-	
+
 	assert.NotNil(t, result)
 	assert.NotEmpty(t, result.Location)
 	assert.Greater(t, result.Duration, time.Duration(0))
@@ -765,7 +765,7 @@ func TestStagingTransporter_PerformStagedUpload(t *testing.T) {
 
 	// Test that the function exists and transporter is initialized
 	assert.NotNil(t, st)
-	
+
 	// Test private function indirectly by testing staging efficiency calculation
 	uploadCtx := &StagedUploadContext{
 		Archive: Archive{

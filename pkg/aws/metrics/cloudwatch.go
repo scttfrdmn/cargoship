@@ -20,15 +20,15 @@ type CloudWatchClient interface {
 
 // CloudWatchPublisher publishes CargoShip metrics to AWS CloudWatch
 type CloudWatchPublisher struct {
-	client     CloudWatchClient
-	namespace  string
-	region     string
-	batchSize  int
+	client        CloudWatchClient
+	namespace     string
+	region        string
+	batchSize     int
 	flushInterval time.Duration
-	buffer     []types.MetricDatum
-	mutex      sync.Mutex
-	stopChan   chan struct{}
-	wg         sync.WaitGroup
+	buffer        []types.MetricDatum
+	mutex         sync.Mutex
+	stopChan      chan struct{}
+	wg            sync.WaitGroup
 }
 
 // MetricConfig configures CloudWatch metrics publishing
@@ -418,7 +418,7 @@ func (c *CloudWatchPublisher) flushBuffer(ctx context.Context) error {
 	// Create a copy of buffer for sending
 	metricsToSend := make([]types.MetricDatum, len(c.buffer))
 	copy(metricsToSend, c.buffer)
-	
+
 	// Clear buffer
 	c.buffer = c.buffer[:0]
 
@@ -430,21 +430,21 @@ func (c *CloudWatchPublisher) flushBuffer(ctx context.Context) error {
 		}
 
 		batch := metricsToSend[i:end]
-		
+
 		_, err := c.client.PutMetricData(ctx, &cloudwatch.PutMetricDataInput{
 			Namespace:  aws.String(c.namespace),
 			MetricData: batch,
 		})
 
 		if err != nil {
-			slog.Error("failed to publish metrics to CloudWatch", 
-				"error", err, 
+			slog.Error("failed to publish metrics to CloudWatch",
+				"error", err,
 				"batch_size", len(batch),
 				"namespace", c.namespace)
 			return fmt.Errorf("failed to publish metrics: %w", err)
 		}
 
-		slog.Debug("published metrics to CloudWatch", 
+		slog.Debug("published metrics to CloudWatch",
 			"count", len(batch),
 			"namespace", c.namespace)
 	}
@@ -468,7 +468,7 @@ func (c *CloudWatchPublisher) startFlushTimer() {
 				err := c.flushBuffer(ctx)
 				c.mutex.Unlock()
 				cancel()
-				
+
 				if err != nil {
 					slog.Error("periodic flush failed", "error", err)
 				}
@@ -490,7 +490,7 @@ func (c *CloudWatchPublisher) Flush(ctx context.Context) error {
 func (c *CloudWatchPublisher) Stop(ctx context.Context) error {
 	close(c.stopChan)
 	c.wg.Wait()
-	
+
 	// Final flush
 	return c.Flush(ctx)
 }
@@ -510,37 +510,37 @@ type UploadMetrics struct {
 }
 
 type CostMetrics struct {
-	EstimatedMonthlyCost     float64 `json:"estimated_monthly_cost"`
-	EstimatedAnnualCost      float64 `json:"estimated_annual_cost"`
-	ActualMonthlyCost        float64 `json:"actual_monthly_cost"`
-	DataSizeGB               float64 `json:"data_size_gb"`
-	PotentialSavingsPercent  float64 `json:"potential_savings_percent"`
-	StorageClass             string  `json:"storage_class"`
-	OptimizationType         string  `json:"optimization_type"`
+	EstimatedMonthlyCost    float64 `json:"estimated_monthly_cost"`
+	EstimatedAnnualCost     float64 `json:"estimated_annual_cost"`
+	ActualMonthlyCost       float64 `json:"actual_monthly_cost"`
+	DataSizeGB              float64 `json:"data_size_gb"`
+	PotentialSavingsPercent float64 `json:"potential_savings_percent"`
+	StorageClass            string  `json:"storage_class"`
+	OptimizationType        string  `json:"optimization_type"`
 }
 
 type NetworkMetrics struct {
-	BandwidthMBps        float64 `json:"bandwidth_mbps"`
-	LatencyMs            float64 `json:"latency_ms"`
-	PacketLossPercent    float64 `json:"packet_loss_percent"`
-	OptimalChunkSizeMB   int     `json:"optimal_chunk_size_mb"`
-	OptimalConcurrency   int     `json:"optimal_concurrency"`
-	NetworkCondition     string  `json:"network_condition"`
+	BandwidthMBps      float64 `json:"bandwidth_mbps"`
+	LatencyMs          float64 `json:"latency_ms"`
+	PacketLossPercent  float64 `json:"packet_loss_percent"`
+	OptimalChunkSizeMB int     `json:"optimal_chunk_size_mb"`
+	OptimalConcurrency int     `json:"optimal_concurrency"`
+	NetworkCondition   string  `json:"network_condition"`
 }
 
 type OperationalMetrics struct {
-	ActiveUploads      int     `json:"active_uploads"`
-	QueuedUploads      int     `json:"queued_uploads"`
-	CompletedUploads   int     `json:"completed_uploads"`
-	FailedUploads      int     `json:"failed_uploads"`
-	MemoryUsageMB      float64 `json:"memory_usage_mb"`
-	CPUUsagePercent    float64 `json:"cpu_usage_percent"`
+	ActiveUploads    int     `json:"active_uploads"`
+	QueuedUploads    int     `json:"queued_uploads"`
+	CompletedUploads int     `json:"completed_uploads"`
+	FailedUploads    int     `json:"failed_uploads"`
+	MemoryUsageMB    float64 `json:"memory_usage_mb"`
+	CPUUsagePercent  float64 `json:"cpu_usage_percent"`
 }
 
 type LifecycleMetrics struct {
-	ActivePolicies           int     `json:"active_policies"`
-	EstimatedSavingsPercent  float64 `json:"estimated_savings_percent"`
-	ObjectsTransitioned      int     `json:"objects_transitioned"`
-	PolicyTemplate           string  `json:"policy_template"`
-	BucketName               string  `json:"bucket_name"`
+	ActivePolicies          int     `json:"active_policies"`
+	EstimatedSavingsPercent float64 `json:"estimated_savings_percent"`
+	ObjectsTransitioned     int     `json:"objects_transitioned"`
+	PolicyTemplate          string  `json:"policy_template"`
+	BucketName              string  `json:"bucket_name"`
 }

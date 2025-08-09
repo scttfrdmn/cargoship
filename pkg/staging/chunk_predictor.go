@@ -12,11 +12,11 @@ import (
 // NewChunkBoundaryPredictor creates a new chunk boundary predictor.
 func NewChunkBoundaryPredictor(config *StagingConfig) *ChunkBoundaryPredictor {
 	return &ChunkBoundaryPredictor{
-		contentAnalyzer:   NewContentAnalyzer(config),
-		boundaryDetector:  NewBoundaryDetector(config),
-		compressionRatio:  NewCompressionRatioPredictor(config),
-		historicalData:    &ChunkPerformanceHistory{},
-		config:            config,
+		contentAnalyzer:  NewContentAnalyzer(config),
+		boundaryDetector: NewBoundaryDetector(config),
+		compressionRatio: NewCompressionRatioPredictor(config),
+		historicalData:   &ChunkPerformanceHistory{},
+		config:           config,
 	}
 }
 
@@ -24,33 +24,33 @@ func NewChunkBoundaryPredictor(config *StagingConfig) *ChunkBoundaryPredictor {
 func (cbp *ChunkBoundaryPredictor) PredictBoundaries(reader io.Reader, contentType string, expectedSize int64) ([]ChunkBoundary, error) {
 	cbp.mu.Lock()
 	defer cbp.mu.Unlock()
-	
+
 	// Analyze content characteristics
 	contentProfile, err := cbp.contentAnalyzer.AnalyzeContent(reader, contentType)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Generate boundary candidates
 	candidates := cbp.boundaryDetector.GenerateCandidates(contentProfile, expectedSize)
-	
+
 	// Score boundaries based on compression and alignment
 	scoredBoundaries := make([]ChunkBoundary, 0, len(candidates))
 	for _, candidate := range candidates {
 		// Predict compression ratio for this boundary
 		compressionScore := cbp.compressionRatio.PredictRatio(candidate, contentProfile)
 		candidate.CompressionScore = compressionScore
-		
+
 		// Calculate alignment score
 		alignmentScore := cbp.boundaryDetector.CalculateAlignmentScore(candidate, contentProfile)
 		candidate.PredictedRatio = alignmentScore
-		
+
 		scoredBoundaries = append(scoredBoundaries, candidate)
 	}
-	
+
 	// Sort by composite score
 	cbp.rankBoundaries(scoredBoundaries)
-	
+
 	return scoredBoundaries, nil
 }
 
@@ -73,7 +73,7 @@ func (cbp *ChunkBoundaryPredictor) calculateCompositeScore(boundary ChunkBoundar
 	compressionWeight := 0.4
 	alignmentWeight := 0.3
 	sizeWeight := 0.3
-	
+
 	// Normalize size score (prefer sizes close to target)
 	targetSize := float64(cbp.config.TargetChunkSizeMB * 1024 * 1024)
 	sizeDiff := math.Abs(float64(boundary.Size) - targetSize)
@@ -81,7 +81,7 @@ func (cbp *ChunkBoundaryPredictor) calculateCompositeScore(boundary ChunkBoundar
 	if sizeScore < 0 {
 		sizeScore = 0
 	}
-	
+
 	return (boundary.CompressionScore * compressionWeight) +
 		(boundary.PredictedRatio * alignmentWeight) +
 		(sizeScore * sizeWeight)
@@ -113,10 +113,10 @@ type ContentProfile struct {
 
 // ContentPattern represents detected patterns in content.
 type ContentPattern struct {
-	Type        PatternType
-	Offset      int64
-	Length      int64
-	Frequency   float64
+	Type            PatternType
+	Offset          int64
+	Length          int64
+	Frequency       float64
 	Compressibility float64
 }
 
@@ -133,9 +133,9 @@ const (
 
 // CompressionHint provides hints for optimal compression.
 type CompressionHint struct {
-	Algorithm    string
-	WindowSize   int
-	Dictionary   []byte
+	Algorithm      string
+	WindowSize     int
+	Dictionary     []byte
 	EstimatedRatio float64
 }
 
@@ -150,16 +150,16 @@ type FileAlignment struct {
 // AnalyzeContent analyzes content characteristics for boundary prediction.
 func (ca *ContentAnalyzer) AnalyzeContent(reader io.Reader, contentType string) (*ContentProfile, error) {
 	profile := &ContentProfile{
-		ContentType: contentType,
-		Patterns:    make([]ContentPattern, 0),
+		ContentType:      contentType,
+		Patterns:         make([]ContentPattern, 0),
 		CompressionHints: make([]CompressionHint, 0),
-		FileAlignment: make([]FileAlignment, 0),
+		FileAlignment:    make([]FileAlignment, 0),
 	}
-	
+
 	// Analyze content in windows
 	offset := int64(0)
 	buffer := make([]byte, ca.analysisWindow)
-	
+
 	for {
 		n, err := reader.Read(buffer)
 		if err == io.EOF {
@@ -168,52 +168,52 @@ func (ca *ContentAnalyzer) AnalyzeContent(reader io.Reader, contentType string) 
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Analyze this window
 		windowProfile := ca.analyzeWindow(buffer[:n], offset)
 		ca.mergeWindowProfile(profile, windowProfile)
-		
+
 		offset += int64(n)
-		
+
 		// Limit analysis to prevent excessive processing
 		if offset > 10*1024*1024 { // 10MB analysis limit
 			break
 		}
 	}
-	
+
 	// Calculate overall metrics
 	profile.Entropy = ca.entropyCalculator.CalculateOverallEntropy(profile.Patterns)
 	profile.EstimatedRatio = ca.estimateCompressionRatio(profile)
 	profile.AnalysisQuality = ca.calculateAnalysisQuality(profile, offset)
-	
+
 	return profile, nil
 }
 
 // analyzeWindow analyzes a single content window.
 func (ca *ContentAnalyzer) analyzeWindow(data []byte, offset int64) *ContentProfile {
 	window := &ContentProfile{
-		Patterns: make([]ContentPattern, 0),
+		Patterns:         make([]ContentPattern, 0),
 		CompressionHints: make([]CompressionHint, 0),
-		FileAlignment: make([]FileAlignment, 0),
+		FileAlignment:    make([]FileAlignment, 0),
 	}
-	
+
 	// Calculate entropy for this window
 	entropy := ca.entropyCalculator.CalculateEntropy(data)
-	
+
 	// Detect patterns
 	patterns := ca.patternDetector.DetectPatterns(data, offset)
 	window.Patterns = append(window.Patterns, patterns...)
-	
+
 	// Classify content type
 	classifiedType := ca.typeClassifier.ClassifyContent(data)
 	window.ContentType = classifiedType
-	
+
 	// Detect file boundaries (for tar archives)
 	alignments := ca.detectFileAlignments(data, offset)
 	window.FileAlignment = append(window.FileAlignment, alignments...)
-	
+
 	window.Entropy = entropy
-	
+
 	return window
 }
 
@@ -227,10 +227,10 @@ func (ca *ContentAnalyzer) mergeWindowProfile(overall, window *ContentProfile) {
 // detectFileAlignments detects file boundaries within tar archives.
 func (ca *ContentAnalyzer) detectFileAlignments(data []byte, offset int64) []FileAlignment {
 	alignments := make([]FileAlignment, 0)
-	
+
 	// Look for tar header signatures
 	for i := 0; i < len(data)-512; i += 512 {
-		if ca.isTarHeader(data[i:i+512]) {
+		if ca.isTarHeader(data[i : i+512]) {
 			// Extract file information from tar header
 			alignment := ca.parseTarHeader(data[i:i+512], offset+int64(i))
 			if alignment.FileName != "" {
@@ -238,7 +238,7 @@ func (ca *ContentAnalyzer) detectFileAlignments(data []byte, offset int64) []Fil
 			}
 		}
 	}
-	
+
 	return alignments
 }
 
@@ -247,7 +247,7 @@ func (ca *ContentAnalyzer) isTarHeader(data []byte) bool {
 	if len(data) < 512 {
 		return false
 	}
-	
+
 	// Check tar magic number at offset 257
 	magic := string(data[257:262])
 	return magic == "ustar"
@@ -258,7 +258,7 @@ func (ca *ContentAnalyzer) parseTarHeader(data []byte, offset int64) FileAlignme
 	if len(data) < 512 {
 		return FileAlignment{}
 	}
-	
+
 	// Extract filename (first 100 bytes)
 	nameBytes := data[0:100]
 	nameEnd := bytes.IndexByte(nameBytes, 0)
@@ -266,7 +266,7 @@ func (ca *ContentAnalyzer) parseTarHeader(data []byte, offset int64) FileAlignme
 		nameEnd = 100
 	}
 	fileName := string(nameBytes[:nameEnd])
-	
+
 	// Extract file size (12 bytes starting at offset 124)
 	sizeBytes := data[124:136]
 	sizeEnd := bytes.IndexByte(sizeBytes, 0)
@@ -274,7 +274,7 @@ func (ca *ContentAnalyzer) parseTarHeader(data []byte, offset int64) FileAlignme
 		sizeEnd = 12
 	}
 	sizeStr := string(sizeBytes[:sizeEnd])
-	
+
 	// Parse octal size
 	var fileSize int64
 	for _, b := range sizeStr {
@@ -282,7 +282,7 @@ func (ca *ContentAnalyzer) parseTarHeader(data []byte, offset int64) FileAlignme
 			fileSize = fileSize*8 + int64(b-'0')
 		}
 	}
-	
+
 	return FileAlignment{
 		Offset:   offset,
 		FileName: fileName,
@@ -296,7 +296,7 @@ func (ca *ContentAnalyzer) classifyFileType(fileName string) string {
 	if fileName == "" {
 		return "unknown"
 	}
-	
+
 	// Simple file type classification
 	lastDot := -1
 	for i := len(fileName) - 1; i >= 0; i-- {
@@ -305,11 +305,11 @@ func (ca *ContentAnalyzer) classifyFileType(fileName string) string {
 			break
 		}
 	}
-	
+
 	if lastDot == -1 {
 		return "no_extension"
 	}
-	
+
 	ext := fileName[lastDot+1:]
 	switch ext {
 	case "txt", "log", "csv", "json", "xml", "yaml", "yml":
@@ -336,10 +336,10 @@ func (ca *ContentAnalyzer) estimateCompressionRatio(profile *ContentProfile) flo
 	if profile.Entropy == 0 {
 		return 1.0 // No compression possible
 	}
-	
+
 	// Base ratio from entropy (higher entropy = lower compression)
 	baseRatio := 1.0 - (profile.Entropy / 8.0) // Entropy is 0-8 bits
-	
+
 	// Adjust based on content type
 	switch profile.ContentType {
 	case "text":
@@ -353,7 +353,7 @@ func (ca *ContentAnalyzer) estimateCompressionRatio(profile *ContentProfile) flo
 	default:
 		baseRatio *= 0.5 // Average compression
 	}
-	
+
 	// Ensure ratio is reasonable
 	if baseRatio < 0.1 {
 		baseRatio = 0.1
@@ -361,7 +361,7 @@ func (ca *ContentAnalyzer) estimateCompressionRatio(profile *ContentProfile) flo
 	if baseRatio > 0.9 {
 		baseRatio = 0.9
 	}
-	
+
 	return baseRatio
 }
 
@@ -372,7 +372,7 @@ func (ca *ContentAnalyzer) calculateAnalysisQuality(profile *ContentProfile, ana
 	if analyzedBytes >= minBytes {
 		return 1.0
 	}
-	
+
 	return float64(analyzedBytes) / float64(minBytes)
 }
 
@@ -390,17 +390,17 @@ func (ec *EntropyCalculator) CalculateEntropy(data []byte) float64 {
 	if len(data) == 0 {
 		return 0
 	}
-	
+
 	// Count byte frequencies
 	freq := make(map[byte]int)
 	for _, b := range data {
 		freq[b]++
 	}
-	
+
 	// Calculate entropy
 	dataLen := float64(len(data))
 	entropy := 0.0
-	
+
 	for _, count := range freq {
 		if count == 0 {
 			continue
@@ -408,7 +408,7 @@ func (ec *EntropyCalculator) CalculateEntropy(data []byte) float64 {
 		p := float64(count) / dataLen
 		entropy -= p * math.Log2(p)
 	}
-	
+
 	return entropy
 }
 
@@ -417,23 +417,23 @@ func (ec *EntropyCalculator) CalculateOverallEntropy(patterns []ContentPattern) 
 	if len(patterns) == 0 {
 		return 4.0 // Average entropy
 	}
-	
+
 	// Weight entropy by pattern frequency and length
 	totalEntropy := 0.0
 	totalWeight := 0.0
-	
+
 	for _, pattern := range patterns {
 		weight := float64(pattern.Length) * pattern.Frequency
 		entropy := ec.patternTypeEntropy(pattern.Type)
-		
+
 		totalEntropy += entropy * weight
 		totalWeight += weight
 	}
-	
+
 	if totalWeight == 0 {
 		return 4.0
 	}
-	
+
 	return totalEntropy / totalWeight
 }
 
@@ -474,12 +474,12 @@ func NewContentPatternDetector() *ContentPatternDetector {
 func (cpd *ContentPatternDetector) DetectPatterns(data []byte, offset int64) []ContentPattern {
 	cpd.mu.Lock()
 	defer cpd.mu.Unlock()
-	
+
 	// Create cache key
 	hasher := md5.New()
 	hasher.Write(data[:minInt(len(data), 1024)]) // Hash first 1KB for cache key
 	cacheKey := fmt.Sprintf("%x", hasher.Sum(nil))
-	
+
 	// Check cache
 	if patterns, exists := cpd.patternCache[cacheKey]; exists {
 		// Adjust offsets for cached patterns
@@ -490,10 +490,10 @@ func (cpd *ContentPatternDetector) DetectPatterns(data []byte, offset int64) []C
 		}
 		return adjustedPatterns
 	}
-	
+
 	// Detect patterns
 	patterns := cpd.detectPatternsInternal(data, offset)
-	
+
 	// Cache results (with relative offsets)
 	if len(cpd.patternCache) < cpd.cacheSize {
 		cachedPatterns := make([]ContentPattern, len(patterns))
@@ -503,26 +503,26 @@ func (cpd *ContentPatternDetector) DetectPatterns(data []byte, offset int64) []C
 		}
 		cpd.patternCache[cacheKey] = cachedPatterns
 	}
-	
+
 	return patterns
 }
 
 // detectPatternsInternal performs the actual pattern detection.
 func (cpd *ContentPatternDetector) detectPatternsInternal(data []byte, offset int64) []ContentPattern {
 	patterns := make([]ContentPattern, 0)
-	
+
 	// Detect repetitive patterns
 	repetitivePatterns := cpd.detectRepetitivePatterns(data, offset)
 	patterns = append(patterns, repetitivePatterns...)
-	
+
 	// Detect structured patterns
 	structuredPatterns := cpd.detectStructuredPatterns(data, offset)
 	patterns = append(patterns, structuredPatterns...)
-	
+
 	// Detect random regions
 	randomPatterns := cpd.detectRandomPatterns(data, offset)
 	patterns = append(patterns, randomPatterns...)
-	
+
 	return patterns
 }
 
@@ -531,12 +531,12 @@ func (cpd *ContentPatternDetector) detectRepetitivePatterns(data []byte, offset 
 	patterns := make([]ContentPattern, 0)
 	minPatternLength := 16
 	minRepetitions := 3
-	
+
 	for patternLen := minPatternLength; patternLen <= 256 && patternLen < len(data)/minRepetitions; patternLen++ {
 		for start := 0; start <= len(data)-patternLen*minRepetitions; start++ {
 			pattern := data[start : start+patternLen]
 			repetitions := 1
-			
+
 			// Count consecutive repetitions
 			pos := start + patternLen
 			for pos+patternLen <= len(data) {
@@ -547,34 +547,34 @@ func (cpd *ContentPatternDetector) detectRepetitivePatterns(data []byte, offset 
 					break
 				}
 			}
-			
+
 			if repetitions >= minRepetitions {
 				totalLength := int64(repetitions * patternLen)
 				patterns = append(patterns, ContentPattern{
-					Type:      PatternRepetitive,
-					Offset:    offset + int64(start),
-					Length:    totalLength,
-					Frequency: float64(repetitions),
+					Type:            PatternRepetitive,
+					Offset:          offset + int64(start),
+					Length:          totalLength,
+					Frequency:       float64(repetitions),
 					Compressibility: 0.95, // Highly compressible
 				})
-				
+
 				// Skip past this pattern
 				start = pos - 1
 			}
 		}
 	}
-	
+
 	return patterns
 }
 
 // detectStructuredPatterns detects structured data patterns.
 func (cpd *ContentPatternDetector) detectStructuredPatterns(data []byte, offset int64) []ContentPattern {
 	patterns := make([]ContentPattern, 0)
-	
+
 	// Look for JSON/XML-like structures
 	structureChars := []byte{'{', '}', '[', ']', '<', '>', '"', ':'}
 	structureCount := 0
-	
+
 	for _, b := range data {
 		for _, sc := range structureChars {
 			if b == sc {
@@ -583,18 +583,18 @@ func (cpd *ContentPatternDetector) detectStructuredPatterns(data []byte, offset 
 			}
 		}
 	}
-	
+
 	structureDensity := float64(structureCount) / float64(len(data))
 	if structureDensity > 0.05 { // 5% structure characters
 		patterns = append(patterns, ContentPattern{
-			Type:      PatternStructured,
-			Offset:    offset,
-			Length:    int64(len(data)),
-			Frequency: structureDensity,
+			Type:            PatternStructured,
+			Offset:          offset,
+			Length:          int64(len(data)),
+			Frequency:       structureDensity,
 			Compressibility: 0.7, // Good compressibility
 		})
 	}
-	
+
 	return patterns
 }
 
@@ -602,28 +602,28 @@ func (cpd *ContentPatternDetector) detectStructuredPatterns(data []byte, offset 
 func (cpd *ContentPatternDetector) detectRandomPatterns(data []byte, offset int64) []ContentPattern {
 	patterns := make([]ContentPattern, 0)
 	windowSize := 1024
-	
+
 	for start := 0; start < len(data); start += windowSize {
 		end := start + windowSize
 		if end > len(data) {
 			end = len(data)
 		}
-		
+
 		window := data[start:end]
 		entropy := NewEntropyCalculator().CalculateEntropy(window)
-		
+
 		// High entropy indicates random data
 		if entropy > 7.0 {
 			patterns = append(patterns, ContentPattern{
-				Type:      PatternRandom,
-				Offset:    offset + int64(start),
-				Length:    int64(end - start),
-				Frequency: 1.0,
+				Type:            PatternRandom,
+				Offset:          offset + int64(start),
+				Length:          int64(end - start),
+				Frequency:       1.0,
 				Compressibility: 0.1, // Poor compressibility
 			})
 		}
 	}
-	
+
 	return patterns
 }
 
@@ -639,11 +639,11 @@ func NewContentTypeClassifier() *ContentTypeClassifier {
 			"text":       []byte("text"),
 			"json":       []byte("{"),
 			"xml":        []byte("<?xml"),
-			"binary":     []byte{0x00},
-			"image_jpeg": []byte{0xFF, 0xD8, 0xFF},
-			"image_png":  []byte{0x89, 0x50, 0x4E, 0x47},
+			"binary":     {0x00},
+			"image_jpeg": {0xFF, 0xD8, 0xFF},
+			"image_png":  {0x89, 0x50, 0x4E, 0x47},
 			"pdf":        []byte("%PDF"),
-			"zip":        []byte{0x50, 0x4B, 0x03, 0x04},
+			"zip":        {0x50, 0x4B, 0x03, 0x04},
 		},
 	}
 }
@@ -653,14 +653,14 @@ func (ctc *ContentTypeClassifier) ClassifyContent(data []byte) string {
 	if len(data) == 0 {
 		return "empty"
 	}
-	
+
 	// Check for binary signatures first
 	for contentType, signature := range ctc.signatures {
 		if len(data) >= len(signature) && bytes.Equal(data[:len(signature)], signature) {
 			return contentType
 		}
 	}
-	
+
 	// Check for text content (printable ASCII)
 	printableCount := 0
 	for _, b := range data[:min(len(data), 1024)] {
@@ -668,12 +668,12 @@ func (ctc *ContentTypeClassifier) ClassifyContent(data []byte) string {
 			printableCount++
 		}
 	}
-	
+
 	printableRatio := float64(printableCount) / float64(minInt(len(data), 1024))
 	if printableRatio > 0.8 {
 		return "text"
 	}
-	
+
 	return "binary"
 }
 

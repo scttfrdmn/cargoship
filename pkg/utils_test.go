@@ -5,9 +5,9 @@ import (
 	"path"
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	"github.com/scttfrdmn/cargoship/pkg/config"
 	"github.com/scttfrdmn/cargoship/pkg/inventory"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHashInner(t *testing.T) {

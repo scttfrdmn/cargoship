@@ -215,7 +215,7 @@ func testLargeFileUpload(t *testing.T, ctx context.Context, s3Client *s3.Client,
 			"/media/astrapi/Public",
 			"//astrapi.local/Public",
 		}
-		
+
 		found := false
 		for _, alt := range alternatives {
 			if _, err := os.Stat(alt); err == nil {
@@ -224,7 +224,7 @@ func testLargeFileUpload(t *testing.T, ctx context.Context, s3Client *s3.Client,
 				break
 			}
 		}
-		
+
 		if !found {
 			t.Skip("Cannot access astrapi.local Public directory - skipping large file test")
 		}
@@ -236,7 +236,7 @@ func testLargeFileUpload(t *testing.T, ctx context.Context, s3Client *s3.Client,
 		if err != nil {
 			return nil // Continue walking
 		}
-		
+
 		// Look for files between 10MB and 100MB
 		if !info.IsDir() && info.Size() > 10*1024*1024 && info.Size() < 100*1024*1024 {
 			testFile = path
@@ -323,7 +323,7 @@ func testBatchOperations(t *testing.T, ctx context.Context, s3Client *s3.Client,
 		startTime := time.Now()
 
 		results, err := optimizer.PutObjectsBatch(ctx, putRequests)
-		
+
 		batchDuration := time.Since(startTime)
 		require.NoError(t, err)
 		assert.Len(t, results, batchSize)
@@ -344,7 +344,7 @@ func testBatchOperations(t *testing.T, ctx context.Context, s3Client *s3.Client,
 		startTime := time.Now()
 
 		results, err := optimizer.GetObjectsBatch(ctx, getRequests)
-		
+
 		batchDuration := time.Since(startTime)
 		require.NoError(t, err)
 		assert.Len(t, results, batchSize)
@@ -421,7 +421,7 @@ func testNetworkConditionsAdaptation(t *testing.T, ctx context.Context, s3Client
 			require.NoError(t, err)
 
 			t.Logf("Network condition %d: Upload completed in %s", i+1, duration)
-			t.Logf("  Bandwidth: %.1f Mbps, RTT: %s, Loss: %.1f%%", 
+			t.Logf("  Bandwidth: %.1f Mbps, RTT: %s, Loss: %.1f%%",
 				condition.Bandwidth, condition.RTT, condition.PacketLoss)
 
 			// Cleanup
@@ -447,7 +447,7 @@ func ensureTestBucket(ctx context.Context, s3Client *s3.Client, bucket string) e
 	_, err := s3Client.HeadBucket(ctx, &s3.HeadBucketInput{
 		Bucket: aws.String(bucket),
 	})
-	
+
 	if err == nil {
 		return nil // Bucket exists
 	}

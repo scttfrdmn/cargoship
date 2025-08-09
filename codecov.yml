@@ -1,0 +1,143 @@
+# Codecov configuration for CargoShip
+# https://docs.codecov.com/docs/codecovyml-reference
+
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"
+  
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        base: auto
+        informational: false
+        only_pulls: false
+    patch:
+      default:
+        target: auto
+        threshold: 1%
+        base: auto
+        informational: false
+        only_pulls: false
+
+ignore:
+  # Generated files
+  - "**/*_generated.go"
+  - "**/mock_*.go"
+  - "**/*.pb.go"
+  
+  # Test files (but we want to see test coverage stats)
+  # - "**/*_test.go"
+  
+  # Build and tooling
+  - "scripts/"
+  - "tools/"
+  - "vendor/"
+  - ".github/"
+  - "docs/"
+  
+  # Main functions (typically hard to test meaningfully)
+  - "**/main.go"
+  
+  # Example and demo code
+  - "examples/"
+  - "**/testdata/"
+
+flags:
+  unittests:
+    paths:
+      - pkg/
+    carryforward: true
+  integration:
+    paths:
+      - pkg/aws/
+      - pkg/multiregion/
+    carryforward: true
+
+comment:
+  layout: "reach,diff,flags,tree,footer"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+  branches:
+    - main
+    - develop
+
+github_checks:
+  annotations: true
+
+# Pull request comments
+pull_request_rules:
+  - name: "WIP"
+    conditions:
+      - title~=^.*\[WIP\].*$
+    actions:
+      comment:
+        message: |
+          This PR is marked as **Work In Progress (WIP)**.
+          
+          Coverage reports are informational only for WIP PRs.
+          Please remove `[WIP]` from the title when ready for review.
+
+# Coverage goals by component
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+        threshold: 1%
+      - type: patch
+        target: auto
+        threshold: 1%
+  individual_components:
+    # Core components should have high coverage
+    - component_id: "compression"
+      name: "Compression"
+      paths:
+        - pkg/compression/
+      statuses:
+        - type: project
+          target: 95%
+    
+    - component_id: "s3optimization"
+      name: "S3 Optimization" 
+      paths:
+        - pkg/s3optimization/
+        - pkg/aws/s3/
+      statuses:
+        - type: project
+          target: 80%
+    
+    - component_id: "suitcase"
+      name: "Suitcase Archives"
+      paths:
+        - pkg/suitcase/
+      statuses:
+        - type: project
+          target: 90%
+    
+    - component_id: "tui"
+      name: "Terminal UI"
+      paths:
+        - pkg/tui/
+      statuses:
+        - type: project
+          target: 70%
+    
+    - component_id: "controller"
+      name: "Controller"
+      paths:
+        - pkg/controller/
+      statuses:
+        - type: project
+          target: 60%
+
+# Profiling and performance tracking
+profiling:
+  critical_files_paths:
+    - pkg/aws/s3/
+    - pkg/compression/
+    - pkg/s3optimization/

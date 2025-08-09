@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
-	"github.com/stretchr/testify/require"
 	"github.com/scttfrdmn/cargoship/pkg/config"
 	"github.com/scttfrdmn/cargoship/pkg/gpg"
 	"github.com/scttfrdmn/cargoship/pkg/inventory"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTarGPGFileCorrupt(t *testing.T) {

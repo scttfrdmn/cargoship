@@ -30,10 +30,25 @@ test: ## Run all tests
 
 test-coverage: ## Run tests with detailed coverage report
 	@echo "📊 Running tests with coverage analysis..."
-	go test -race -coverprofile=coverage.out ./...
+	go test -race -coverprofile=coverage.out -coverpkg=./... ./...
 	go tool cover -html=coverage.out -o coverage.html
 	go tool cover -func=coverage.out | grep total
 	@echo "📄 Coverage report generated: coverage.html"
+
+codecov-test: ## Run tests for Codecov (with coverage profile)
+	@echo "📊 Running tests for Codecov reporting..."
+	go test -race -coverprofile=coverage.txt -coverpkg=./... ./...
+	@echo "✅ Coverage data ready for Codecov upload"
+
+codecov-upload: codecov-test ## Upload coverage to Codecov (requires CODECOV_TOKEN)
+	@echo "📤 Uploading coverage to Codecov..."
+	@if [ -z "$$CODECOV_TOKEN" ]; then \
+		echo "❌ CODECOV_TOKEN environment variable not set"; \
+		echo "💡 Get your token from https://codecov.io/gh/scttfrdmn/cargoship"; \
+		exit 1; \
+	fi
+	bash <(curl -s https://codecov.io/bash) -f coverage.txt -t $$CODECOV_TOKEN
+	@echo "✅ Coverage uploaded to Codecov"
 
 test-benchmark: ## Run benchmark tests
 	@echo "⚡ Running benchmarks..."
@@ -108,7 +123,7 @@ mod-update: ## Update dependencies
 clean: ## Clean build artifacts
 	@echo "🧽 Cleaning build artifacts..."
 	rm -rf bin/
-	rm -f coverage.out coverage.html
+	rm -f coverage.out coverage.txt coverage.html
 	rm -f gosec-report.sarif
 	rm -f licenses.txt
 	rm -f *.prof

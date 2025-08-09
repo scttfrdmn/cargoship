@@ -46,10 +46,10 @@ func TestControllerMessageSerialization(t *testing.T) {
 
 func TestRegistrationRequest(t *testing.T) {
 	req := RegistrationRequest{
-		AgentID:     "test-agent",
-		Name:        "Test Agent",
-		Description: "Test description",
-		Version:     "0.3.0",
+		AgentID:      "test-agent",
+		Name:         "Test Agent",
+		Description:  "Test description",
+		Version:      "0.3.0",
 		Capabilities: []string{"file_watching", "s3_upload"},
 		WatchPaths: []WatchPath{
 			{
@@ -91,7 +91,7 @@ func TestRegistrationResponse(t *testing.T) {
 
 func TestJobAssignment(t *testing.T) {
 	deadline := time.Now().Add(time.Hour)
-	
+
 	assignment := JobAssignment{
 		JobID:        "job-789",
 		Type:         "archive",

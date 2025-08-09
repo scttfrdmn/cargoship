@@ -568,7 +568,7 @@ func TestHashAlgorithmString(t *testing.T) {
 		{"SHA512Hash", SHA512Hash, "sha512"},
 		{"NullHash", NullHash, ""},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.hash.String()
@@ -605,12 +605,12 @@ func TestHashAlgorithmSet(t *testing.T) {
 		{"invalid value", "invalid", NullHash, true},
 		{"case sensitive", "MD5", NullHash, true},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var hash HashAlgorithm
 			err := hash.Set(tt.value)
-			
+
 			if tt.expectError {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "HashAlgorithm should be one of")
@@ -634,7 +634,7 @@ func TestHashAlgorithmMarshalJSON(t *testing.T) {
 		{"SHA512Hash", SHA512Hash, `"sha512"`},
 		{"NullHash", NullHash, `""`},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := tt.hash.MarshalJSON()
@@ -655,7 +655,7 @@ func TestFormatString(t *testing.T) {
 		{"JSONFormat", JSONFormat, "json"},
 		{"NullFormat", NullFormat, ""},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.format.String()
@@ -690,12 +690,12 @@ func TestFormatSet(t *testing.T) {
 		{"invalid value", "invalid", NullFormat, true},
 		{"case sensitive", "YAML", NullFormat, true},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var format Format
 			err := format.Set(tt.value)
-			
+
 			if tt.expectError {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "ProductionLevel should be one of")
@@ -717,7 +717,7 @@ func TestFormatMarshalJSON(t *testing.T) {
 		{"JSONFormat", JSONFormat, `"json"`},
 		{"NullFormat", NullFormat, `""`},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := tt.format.MarshalJSON()
@@ -735,7 +735,7 @@ func TestInventoryJSONString(t *testing.T) {
 		},
 		Options: NewOptions(),
 	}
-	
+
 	jsonStr, err := inventory.JSONString()
 	require.NoError(t, err)
 	require.Contains(t, jsonStr, "test.txt")
@@ -750,7 +750,7 @@ func TestInventoryMustJSONString(t *testing.T) {
 		},
 		Options: NewOptions(),
 	}
-	
+
 	// Should not panic with valid inventory
 	require.NotPanics(t, func() {
 		jsonStr := inventory.MustJSONString()
@@ -765,9 +765,9 @@ func TestReverseMapString(t *testing.T) {
 		"key2": "value2",
 		"key3": "value3",
 	}
-	
+
 	reversed := reverseMap(original)
-	
+
 	require.Equal(t, "key1", reversed["value1"])
 	require.Equal(t, "key2", reversed["value2"])
 	require.Equal(t, "key3", reversed["value3"])
@@ -776,7 +776,7 @@ func TestReverseMapString(t *testing.T) {
 
 func TestReverseMapHashAlgorithm(t *testing.T) {
 	reversed := reverseMap(hashMap)
-	
+
 	require.Equal(t, "md5", reversed[MD5Hash])
 	require.Equal(t, "sha1", reversed[SHA1Hash])
 	require.Equal(t, "sha256", reversed[SHA256Hash])
@@ -786,7 +786,7 @@ func TestReverseMapHashAlgorithm(t *testing.T) {
 
 func TestReverseMapFormat(t *testing.T) {
 	reversed := reverseMap(formatMap)
-	
+
 	require.Equal(t, "yaml", reversed[YAMLFormat])
 	require.Equal(t, "json", reversed[JSONFormat])
 	require.Equal(t, "", reversed[NullFormat])
@@ -798,12 +798,12 @@ func TestDclose(t *testing.T) {
 	file, err := os.CreateTemp("", "test_dclose_*.txt")
 	require.NoError(t, err)
 	defer func() { _ = os.Remove(file.Name()) }()
-	
+
 	// Should not panic
 	require.NotPanics(t, func() {
 		dclose(file)
 	})
-	
+
 	// File should be closed
 	_, err = file.Write([]byte("test"))
 	require.Error(t, err) // Should error because file is closed
@@ -813,11 +813,11 @@ func TestDcloseWithAlreadyClosedFile(t *testing.T) {
 	file, err := os.CreateTemp("", "test_dclose_*.txt")
 	require.NoError(t, err)
 	defer func() { _ = os.Remove(file.Name()) }()
-	
+
 	// Close file first
 	err = file.Close()
 	require.NoError(t, err)
-	
+
 	// dclose should handle already closed file gracefully
 	require.NotPanics(t, func() {
 		dclose(file)
@@ -832,10 +832,10 @@ func TestInventorySummaryLog(t *testing.T) {
 			{Path: "file2.txt", Size: 200},
 			{Path: "file3.txt", Size: 300},
 		},
-		Options: NewOptions(),
+		Options:      NewOptions(),
 		TotalIndexes: 2,
 	}
-	
+
 	// Should not panic when calling SummaryLog
 	require.NotPanics(t, func() {
 		inventory.SummaryLog()
@@ -847,7 +847,7 @@ func TestInventorySummaryLogEmpty(t *testing.T) {
 		Files:   []*File{},
 		Options: NewOptions(),
 	}
-	
+
 	// Should not panic with empty inventory
 	require.NotPanics(t, func() {
 		inventory.SummaryLog()
@@ -866,7 +866,7 @@ func TestWithHashAlgorithms(t *testing.T) {
 		{"SHA512Hash", SHA512Hash},
 		{"NullHash", NullHash},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			options := NewOptions(WithHashAlgorithms(tt.hash))
@@ -881,7 +881,7 @@ func TestWithWizardForm(t *testing.T) {
 		TravelAgentToken: "test-token",
 		MaxSize:          "1GB",
 	}
-	
+
 	options := NewOptions(WithWizardForm(form))
 	require.Equal(t, []string{"/tmp/"}, options.Directories)
 }
@@ -890,7 +890,7 @@ func TestWithWizardFormRelative(t *testing.T) {
 	form := WizardForm{
 		Source: ".",
 	}
-	
+
 	options := NewOptions(WithWizardForm(form))
 	// Should convert relative path to absolute
 	require.Len(t, options.Directories, 1)
@@ -902,11 +902,11 @@ func TestWithCobra(t *testing.T) {
 	// Create a test cobra command with basic flags
 	cmd := &cobra.Command{}
 	BindCobra(cmd)
-	
+
 	// Set command line arguments (avoid the problematic array flags for now)
 	cmd.SetArgs([]string{
 		"--user", "test-user",
-		"--prefix", "test-prefix", 
+		"--prefix", "test-prefix",
 		"--max-suitcase-size", "500MB",
 		"--follow-symlinks",
 		"--hash-inner",
@@ -916,15 +916,15 @@ func TestWithCobra(t *testing.T) {
 		"--limit-file-count", "100",
 		"--internal-metadata-glob", "*.meta",
 	})
-	
+
 	// Execute to parse flags
 	err := cmd.Execute()
 	require.NoError(t, err)
-	
+
 	// Test WithCobra with arguments
 	args := []string{"/tmp"}
 	options := NewOptions(WithCobra(cmd, args))
-	
+
 	// Verify basic options are set correctly
 	require.Equal(t, "test-user", options.User)
 	require.Equal(t, "test-prefix", options.Prefix)
@@ -943,18 +943,18 @@ func TestWithCobraNoArgs(t *testing.T) {
 	// Test WithCobra without arguments
 	cmd := &cobra.Command{}
 	BindCobra(cmd)
-	
+
 	cmd.SetArgs([]string{
 		"--user", "test-user",
 		"--prefix", "test-prefix",
 	})
-	
+
 	err := cmd.Execute()
 	require.NoError(t, err)
-	
+
 	// Test WithCobra without args (empty slice)
 	options := NewOptions(WithCobra(cmd, []string{}))
-	
+
 	require.Equal(t, "test-user", options.User)
 	require.Equal(t, "test-prefix", options.Prefix)
 	require.Empty(t, options.Directories) // Should remain empty when no args provided
@@ -962,32 +962,32 @@ func TestWithCobraNoArgs(t *testing.T) {
 
 func TestNewInventoryCmd(t *testing.T) {
 	cmd := NewInventoryCmd()
-	
+
 	// Verify command is created and bound properly
 	require.NotNil(t, cmd)
 	require.NotNil(t, cmd.PersistentFlags())
-	
+
 	// Check that key flags are bound by BindCobra
 	flag := cmd.PersistentFlags().Lookup("concurrency")
 	require.NotNil(t, flag)
 	require.Equal(t, "10", flag.DefValue)
-	
+
 	flag = cmd.PersistentFlags().Lookup("inventory-file")
 	require.NotNil(t, flag)
 	require.Equal(t, "", flag.DefValue)
-	
+
 	flag = cmd.PersistentFlags().Lookup("max-suitcase-size")
 	require.NotNil(t, flag)
 	require.Equal(t, "500GiB", flag.DefValue)
-	
+
 	flag = cmd.PersistentFlags().Lookup("internal-metadata-glob")
 	require.NotNil(t, flag)
 	require.Equal(t, "suitcase-meta*", flag.DefValue)
-	
+
 	// Check array flags
 	flag = cmd.PersistentFlags().Lookup("external-metadata-file")
 	require.NotNil(t, flag)
-	
+
 	flag = cmd.PersistentFlags().Lookup("ignore-glob")
 	require.NotNil(t, flag)
 }

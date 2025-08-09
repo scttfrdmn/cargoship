@@ -25,9 +25,9 @@ func NewCommandFilter(logger *slog.Logger) *CommandFilter {
 func (cf *CommandFilter) ApplyContextFiltering(rootCmd *cobra.Command) {
 	currentCtx := cf.manager.Current()
 	availableCommands := cf.getContextCommands(currentCtx)
-	
+
 	cf.logger.Debug("Applying context filtering", "context", currentCtx, "total_commands", len(rootCmd.Commands()))
-	
+
 	hidden := 0
 	for _, cmd := range rootCmd.Commands() {
 		if !cf.isCommandAvailable(cmd.Name(), availableCommands) {
@@ -38,7 +38,7 @@ func (cf *CommandFilter) ApplyContextFiltering(rootCmd *cobra.Command) {
 			cmd.Hidden = false // Ensure command is visible
 		}
 	}
-	
+
 	cf.logger.Debug("Context filtering applied", "context", currentCtx, "hidden_commands", hidden)
 }
 
@@ -46,12 +46,12 @@ func (cf *CommandFilter) ApplyContextFiltering(rootCmd *cobra.Command) {
 func (cf *CommandFilter) GetAvailableCommands() []string {
 	currentCtx := cf.manager.Current()
 	availableCommands := cf.getContextCommands(currentCtx)
-	
+
 	var commands []string
 	for cmd := range availableCommands {
 		commands = append(commands, cmd)
 	}
-	
+
 	return commands
 }
 
@@ -60,16 +60,16 @@ func (cf *CommandFilter) GetContextDescription(ctx ExecutionContext) string {
 	switch ctx {
 	case ContextLocal:
 		return "Full CargoShip functionality: archive creation, analysis, configuration, and infrastructure management"
-		
+
 	case ContextAgent:
 		return "Agent operations: configuration management, monitoring, and status reporting"
-		
+
 	case ContextController:
 		return "Controller operations: agent management, job coordination, and monitoring dashboards"
-		
+
 	case ContextREPL:
 		return "Interactive mode: all commands available with enhanced discovery and help"
-		
+
 	default:
 		return "Standard CargoShip operations"
 	}
@@ -79,7 +79,7 @@ func (cf *CommandFilter) GetContextDescription(ctx ExecutionContext) string {
 func (cf *CommandFilter) ShowContextSummary(rootCmd *cobra.Command) {
 	currentCtx := cf.manager.Current()
 	availableCommands := cf.getContextCommands(currentCtx)
-	
+
 	// Count available commands
 	availableCount := 0
 	for _, cmd := range rootCmd.Commands() {
@@ -87,7 +87,7 @@ func (cf *CommandFilter) ShowContextSummary(rootCmd *cobra.Command) {
 			availableCount++
 		}
 	}
-	
+
 	cf.logger.Info("Context summary",
 		"context", currentCtx,
 		"available_commands", availableCount,
@@ -101,97 +101,97 @@ func (cf *CommandFilter) getContextCommands(ctx ExecutionContext) map[string]boo
 	case ContextLocal:
 		return map[string]bool{
 			// Core archive operations
-			"create":     true,
-			"analyze":    true,
-			"find":       true,
-			"tree":       true,
-			"estimate":   true,
-			"wizard":     true,
-			
+			"create":   true,
+			"analyze":  true,
+			"find":     true,
+			"tree":     true,
+			"estimate": true,
+			"wizard":   true,
+
 			// File operations
-			"rclone":     true,
-			"benchmark":  true,
-			
+			"rclone":    true,
+			"benchmark": true,
+
 			// Configuration and management
-			"config":     true,
-			"lifecycle":  true,
-			"metrics":    true,
-			"retier":     true,
-			"context":    true,
-			
+			"config":    true,
+			"lifecycle": true,
+			"metrics":   true,
+			"retier":    true,
+			"context":   true,
+
 			// Infrastructure (can be started from local)
-			"controller": true,
+			"controller":  true,
 			"travelagent": true,
-			"shell":      true,
-			
+			"shell":       true,
+
 			// Utilities and documentation
-			"schema":     true,
-			"man":        true,
-			"mddocs":     true,
+			"schema": true,
+			"man":    true,
+			"mddocs": true,
 		}
-		
+
 	case ContextAgent:
 		return map[string]bool{
 			// Agent-specific operations (future commands)
-			"agent":      true,  // Future: agent status, logs, config reload
-			
+			"agent": true, // Future: agent status, logs, config reload
+
 			// Configuration management
-			"config":     true,
-			"context":    true,
-			
+			"config":  true,
+			"context": true,
+
 			// Monitoring
-			"metrics":    true,
-			
+			"metrics": true,
+
 			// Interactive mode
-			"shell":      true,
-			
+			"shell": true,
+
 			// Documentation
-			"schema":     true,
-			"man":        true,
+			"schema": true,
+			"man":    true,
 		}
-		
+
 	case ContextController:
 		return map[string]bool{
 			// Controller operations
 			"controller": true,
 			"context":    true,
-			
+
 			// Monitoring and management
-			"metrics":    true,
-			"config":     true,
-			
+			"metrics": true,
+			"config":  true,
+
 			// Interactive mode
-			"shell":      true,
-			
+			"shell": true,
+
 			// Documentation
-			"schema":     true,
-			"man":        true,
+			"schema": true,
+			"man":    true,
 		}
-		
+
 	case ContextREPL:
 		// REPL mode provides access to all commands through interactive discovery
 		return map[string]bool{
-			"create":     true,
-			"analyze":    true,
-			"find":       true,
-			"tree":       true,
-			"estimate":   true,
-			"wizard":     true,
-			"rclone":     true,
-			"benchmark":  true,
-			"config":     true,
-			"lifecycle":  true,
-			"metrics":    true,
-			"retier":     true,
-			"context":    true,
-			"controller": true,
+			"create":      true,
+			"analyze":     true,
+			"find":        true,
+			"tree":        true,
+			"estimate":    true,
+			"wizard":      true,
+			"rclone":      true,
+			"benchmark":   true,
+			"config":      true,
+			"lifecycle":   true,
+			"metrics":     true,
+			"retier":      true,
+			"context":     true,
+			"controller":  true,
 			"travelagent": true,
-			"shell":      true,
-			"schema":     true,
-			"man":        true,
-			"mddocs":     true,
+			"shell":       true,
+			"schema":      true,
+			"man":         true,
+			"mddocs":      true,
 		}
-		
+
 	default:
 		// Default to local context commands
 		return cf.getContextCommands(ContextLocal)

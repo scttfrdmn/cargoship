@@ -49,17 +49,17 @@ func TestCargoShipTransporterIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	s3Client := s3.NewFromConfig(cfg)
-	
+
 	// Ensure test bucket exists
 	err = ensureTestBucket(ctx, s3Client, transpTestBucket)
 	require.NoError(t, err)
 
 	// CargoShip S3 config optimized for high bandwidth (10Gbps to astrapi.local, 5Gbps internet)
 	s3Config := awsconfig.S3Config{
-		Bucket:              transpTestBucket,
-		Concurrency:         20, // Higher concurrency for 5Gbps internet
-		MultipartChunkSize:  128 * 1024 * 1024, // 128MB chunks for high bandwidth
-		MultipartThreshold:  200 * 1024 * 1024, // 200MB threshold
+		Bucket:             transpTestBucket,
+		Concurrency:        20,                // Higher concurrency for 5Gbps internet
+		MultipartChunkSize: 128 * 1024 * 1024, // 128MB chunks for high bandwidth
+		MultipartThreshold: 200 * 1024 * 1024, // 200MB threshold
 	}
 
 	t.Run("OptimizedTransporter", func(t *testing.T) {
@@ -101,15 +101,15 @@ func testOptimizedTransporter(t *testing.T, ctx context.Context, s3Client *s3.Cl
 	testData := strings.Repeat("CargoShip OptimizedTransporter test data with high performance networking between local 10Gbps astrapi.local and 5Gbps internet to AWS S3. ", 1000) // ~140KB
 
 	archive := &Archive{
-		Key:             testKey,
-		Reader:          strings.NewReader(testData),
-		Size:            int64(len(testData)),
-		StorageClass:    awsconfig.StorageClassStandard,
-		Metadata:        map[string]string{
-			"test": "optimized-transporter", 
-			"local_network": "10gbps", 
-			"internet": "5gbps",
-			"source": "integration-test",
+		Key:          testKey,
+		Reader:       strings.NewReader(testData),
+		Size:         int64(len(testData)),
+		StorageClass: awsconfig.StorageClassStandard,
+		Metadata: map[string]string{
+			"test":          "optimized-transporter",
+			"local_network": "10gbps",
+			"internet":      "5gbps",
+			"source":        "integration-test",
 		},
 		CompressionType: "none",
 		AccessPattern:   "frequent",
@@ -202,9 +202,9 @@ func testStagingTransporter(t *testing.T, ctx context.Context, s3Client *s3.Clie
 		EnableNetworkAdapt:  true,
 		EnableOptimization:  true, // Enable S3 optimization
 		OptimizationConfig:  s3optimization.DefaultConfig(),
-		StageAheadChunks:    10, // Higher for high bandwidth network
+		StageAheadChunks:    10,   // Higher for high bandwidth network
 		MaxStagingMemoryMB:  1024, // 1GB for high bandwidth staging
-		NetworkMonitoringHz: 5.0, // More frequent monitoring for dynamic conditions
+		NetworkMonitoringHz: 5.0,  // More frequent monitoring for dynamic conditions
 	}
 
 	transporter, err := NewStagingTransporter(ctx, s3Client, s3Config, stagingConfig, logger)
@@ -215,15 +215,15 @@ func testStagingTransporter(t *testing.T, ctx context.Context, s3Client *s3.Clie
 	testData := strings.Repeat("CargoShip StagingTransporter with S3 optimization - designed for high bandwidth networks with predictive staging for optimal performance on 10Gbps local and 5Gbps internet connections. ", 10000) // ~1.4MB
 
 	archive := Archive{
-		Key:             testKey,
-		Reader:          strings.NewReader(testData),
-		Size:            int64(len(testData)),
-		StorageClass:    awsconfig.StorageClassStandard,
-		Metadata:        map[string]string{
-			"test": "staging-transporter", 
+		Key:          testKey,
+		Reader:       strings.NewReader(testData),
+		Size:         int64(len(testData)),
+		StorageClass: awsconfig.StorageClassStandard,
+		Metadata: map[string]string{
+			"test":         "staging-transporter",
 			"optimization": "enabled",
-			"staging": "predictive",
-			"network": "high-bandwidth",
+			"staging":      "predictive",
+			"network":      "high-bandwidth",
 		},
 		CompressionType: "none",
 		AccessPattern:   "archive",
@@ -281,15 +281,15 @@ func testAdaptiveTransporter(t *testing.T, ctx context.Context, s3Client *s3.Cli
 	testData := strings.Repeat("CargoShip AdaptiveTransporter with S3 optimization - real-time network adaptation for variable bandwidth conditions between 10Gbps local network and 5Gbps internet connection to AWS S3. ", 5000) // ~700KB
 
 	archive := Archive{
-		Key:             testKey,
-		Reader:          strings.NewReader(testData),
-		Size:            int64(len(testData)),
-		StorageClass:    awsconfig.StorageClassStandard,
-		Metadata:        map[string]string{
-			"test": "adaptive-transporter", 
+		Key:          testKey,
+		Reader:       strings.NewReader(testData),
+		Size:         int64(len(testData)),
+		StorageClass: awsconfig.StorageClassStandard,
+		Metadata: map[string]string{
+			"test":         "adaptive-transporter",
 			"optimization": "s3-optimization-enabled",
-			"adaptation": "real-time",
-			"sensitivity": "high-bandwidth",
+			"adaptation":   "real-time",
+			"sensitivity":  "high-bandwidth",
 		},
 		CompressionType: "none",
 		AccessPattern:   "frequent",
@@ -332,13 +332,13 @@ func testTransporterPerformanceComparison(t *testing.T, ctx context.Context, s3C
 
 	t.Run("RegularTransporter", func(t *testing.T) {
 		transporter := NewTransporter(s3Client, s3Config)
-		
+
 		archive := Archive{
-			Key:             testKeyBase + "-regular",
-			Reader:          strings.NewReader(testData),
-			Size:            int64(len(testData)),
-			StorageClass:    awsconfig.StorageClassStandard,
-			Metadata:        map[string]string{"test": "regular-transporter", "optimization": "none"},
+			Key:          testKeyBase + "-regular",
+			Reader:       strings.NewReader(testData),
+			Size:         int64(len(testData)),
+			StorageClass: awsconfig.StorageClassStandard,
+			Metadata:     map[string]string{"test": "regular-transporter", "optimization": "none"},
 		}
 
 		t.Logf("Regular Transporter - uploading %.2f MB...", float64(archive.Size)/(1024*1024))
@@ -352,7 +352,7 @@ func testTransporterPerformanceComparison(t *testing.T, ctx context.Context, s3C
 		t.Logf("Regular Transporter Results:")
 		t.Logf("  Duration: %s", regularDuration)
 		t.Logf("  Throughput: %.2f MB/s (%.1f Mbps)", regularThroughput, regularThroughput*8)
-		
+
 		// Cleanup
 		_, err = s3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
 			Bucket: aws.String(transpTestBucket),
@@ -367,11 +367,11 @@ func testTransporterPerformanceComparison(t *testing.T, ctx context.Context, s3C
 		defer transporter.Shutdown(ctx)
 
 		archive := &Archive{
-			Key:             testKeyBase + "-optimized",
-			Reader:          strings.NewReader(testData),
-			Size:            int64(len(testData)),
-			StorageClass:    awsconfig.StorageClassStandard,
-			Metadata:        map[string]string{"test": "optimized-transporter", "optimization": "s3-optimization"},
+			Key:          testKeyBase + "-optimized",
+			Reader:       strings.NewReader(testData),
+			Size:         int64(len(testData)),
+			StorageClass: awsconfig.StorageClassStandard,
+			Metadata:     map[string]string{"test": "optimized-transporter", "optimization": "s3-optimization"},
 		}
 
 		t.Logf("Optimized Transporter - uploading %.2f MB...", float64(archive.Size)/(1024*1024))
@@ -405,7 +405,7 @@ func testTransporterPerformanceComparison(t *testing.T, ctx context.Context, s3C
 		if regularDuration > 0 && optimizedDuration > 0 {
 			speedupRatio := regularDuration.Seconds() / optimizedDuration.Seconds()
 			throughputRatio := optimizedThroughput / regularThroughput
-			
+
 			t.Logf("Performance Comparison:")
 			t.Logf("  Regular duration: %s", regularDuration)
 			t.Logf("  Optimized duration: %s", optimizedDuration)
@@ -413,11 +413,11 @@ func testTransporterPerformanceComparison(t *testing.T, ctx context.Context, s3C
 			t.Logf("  Regular throughput: %.2f MB/s", regularThroughput)
 			t.Logf("  Optimized throughput: %.2f MB/s", optimizedThroughput)
 			t.Logf("  Throughput improvement: %.2fx", throughputRatio)
-			
+
 			// Performance assertions
 			assert.Greater(t, speedupRatio, 1.0, "Optimized transporter should be faster")
 			assert.Greater(t, throughputRatio, 1.0, "Optimized transporter should have higher throughput")
-			
+
 			if throughputRatio >= 2.0 {
 				t.Logf("🎉 Excellent performance: %.2fx improvement achieved!", throughputRatio)
 			} else if throughputRatio >= 1.5 {
@@ -432,10 +432,10 @@ func testTransporterPerformanceComparison(t *testing.T, ctx context.Context, s3C
 func testHighBandwidthLargeFileFromAstrapi(t *testing.T, ctx context.Context, s3Client *s3.Client, s3Config awsconfig.S3Config, logger *slog.Logger) {
 	// Look for large files in astrapi.local Public directory
 	publicPaths := []string{
-		"/Volumes/Public",              // macOS network mount
-		"/mnt/astrapi-public",         // Linux mount point
-		"//astrapi.local/Public",      // Windows UNC path
-		"/media/astrapi/Public",       // Alternative Linux mount
+		"/Volumes/Public",        // macOS network mount
+		"/mnt/astrapi-public",    // Linux mount point
+		"//astrapi.local/Public", // Windows UNC path
+		"/media/astrapi/Public",  // Alternative Linux mount
 	}
 
 	var testFile string
@@ -482,7 +482,7 @@ func testHighBandwidthLargeFileFromAstrapi(t *testing.T, ctx context.Context, s3
 
 	// Configure optimized transporter for high bandwidth scenario
 	highBandwidthConfig := s3Config
-	highBandwidthConfig.Concurrency = 30 // Increase for large file
+	highBandwidthConfig.Concurrency = 30                       // Increase for large file
 	highBandwidthConfig.MultipartChunkSize = 256 * 1024 * 1024 // 256MB chunks
 
 	transporter, err := NewOptimizedTransporter(ctx, s3Client, highBandwidthConfig, logger)
@@ -490,22 +490,22 @@ func testHighBandwidthLargeFileFromAstrapi(t *testing.T, ctx context.Context, s3
 	defer transporter.Shutdown(ctx)
 
 	archive := &Archive{
-		Key:             testKey,
-		Reader:          file,
-		Size:            testFileSize,
-		StorageClass:    awsconfig.StorageClassStandard,
-		Metadata:        map[string]string{
-			"test": "high-bandwidth-large-file",
-			"source": "astrapi.local",
+		Key:          testKey,
+		Reader:       file,
+		Size:         testFileSize,
+		StorageClass: awsconfig.StorageClassStandard,
+		Metadata: map[string]string{
+			"test":          "high-bandwidth-large-file",
+			"source":        "astrapi.local",
 			"local_network": "10gbps",
-			"internet": "5gbps",
-			"optimization": "enabled",
+			"internet":      "5gbps",
+			"optimization":  "enabled",
 		},
 	}
 
 	t.Logf("Starting large file upload test...")
 	t.Logf("Network path: astrapi.local (10Gbps) -> local machine -> internet (5Gbps) -> AWS S3")
-	
+
 	startTime := time.Now()
 	result, err := transporter.Upload(ctx, archive)
 	duration := time.Since(startTime)
@@ -576,11 +576,11 @@ func testHighBandwidthLargeFileFromAstrapi(t *testing.T, ctx context.Context, s3
 	buffer := make([]byte, 1024*1024) // 1MB buffer
 	totalDownloaded := int64(0)
 	lastProgress := time.Now()
-	
+
 	for {
 		n, err := reader.Read(buffer)
 		totalDownloaded += int64(n)
-		
+
 		// Progress logging every 5 seconds for large files
 		if time.Since(lastProgress) > 5*time.Second {
 			progress := float64(totalDownloaded) / float64(testFileSize) * 100
@@ -588,7 +588,7 @@ func testHighBandwidthLargeFileFromAstrapi(t *testing.T, ctx context.Context, s3
 			t.Logf("  Download progress: %.1f%% (%.2f MB/s)", progress, currentThroughput)
 			lastProgress = time.Now()
 		}
-		
+
 		if err == io.EOF {
 			break
 		}
@@ -628,17 +628,17 @@ func testMultipleConcurrentUploads(t *testing.T, ctx context.Context, s3Client *
 
 	// Generate test data
 	testData := strings.Repeat("Concurrent upload test data for CargoShip S3 optimization validation. ", fileSize/100)
-	
+
 	t.Logf("Testing %d concurrent uploads of %.2f MB each...", numUploads, float64(fileSize)/(1024*1024))
-	
+
 	// Channel to collect results
 	type uploadResult struct {
-		id        int
-		duration  time.Duration
+		id         int
+		duration   time.Duration
 		throughput float64
-		err       error
+		err        error
 	}
-	
+
 	results := make(chan uploadResult, numUploads)
 	startTime := time.Now()
 
@@ -647,12 +647,12 @@ func testMultipleConcurrentUploads(t *testing.T, ctx context.Context, s3Client *
 		go func(uploadID int) {
 			testKey := fmt.Sprintf("%s/concurrent-test-%d-%d.txt", transpTestPrefix, time.Now().Unix(), uploadID)
 			archive := &Archive{
-				Key:             testKey,
-				Reader:          strings.NewReader(testData),
-				Size:            int64(len(testData)),
-				StorageClass:    awsconfig.StorageClassStandard,
-				Metadata:        map[string]string{
-					"test": "concurrent-upload",
+				Key:          testKey,
+				Reader:       strings.NewReader(testData),
+				Size:         int64(len(testData)),
+				StorageClass: awsconfig.StorageClassStandard,
+				Metadata: map[string]string{
+					"test":      "concurrent-upload",
 					"upload_id": fmt.Sprintf("%d", uploadID),
 				},
 			}
@@ -660,14 +660,14 @@ func testMultipleConcurrentUploads(t *testing.T, ctx context.Context, s3Client *
 			uploadStart := time.Now()
 			_, err := transporter.Upload(ctx, archive)
 			duration := time.Since(uploadStart)
-			
+
 			throughput := float64(archive.Size) / (1024 * 1024) / duration.Seconds()
-			
+
 			results <- uploadResult{
-				id:        uploadID,
-				duration:  duration,
+				id:         uploadID,
+				duration:   duration,
 				throughput: throughput,
-				err:       err,
+				err:        err,
 			}
 		}(i)
 	}
@@ -683,17 +683,17 @@ func testMultipleConcurrentUploads(t *testing.T, ctx context.Context, s3Client *
 			t.Errorf("Upload %d failed: %v", result.id, result.err)
 			continue
 		}
-		
+
 		successCount++
 		totalDuration += result.duration
 		totalThroughput += result.throughput
-		
+
 		t.Logf("Upload %d: %.2f MB/s in %s", result.id, result.throughput, result.duration)
 	}
 
 	overallDuration := time.Since(startTime)
 	avgThroughput := totalThroughput / float64(successCount)
-	totalDataMB := float64(fileSize * successCount) / (1024 * 1024)
+	totalDataMB := float64(fileSize*successCount) / (1024 * 1024)
 	aggregateThroughput := totalDataMB / overallDuration.Seconds()
 
 	t.Logf("Concurrent Upload Results:")
@@ -728,7 +728,7 @@ func ensureTestBucket(ctx context.Context, s3Client *s3.Client, bucket string) e
 	_, err := s3Client.HeadBucket(ctx, &s3.HeadBucketInput{
 		Bucket: aws.String(bucket),
 	})
-	
+
 	if err == nil {
 		return nil
 	}

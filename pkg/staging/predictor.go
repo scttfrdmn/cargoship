@@ -29,52 +29,52 @@ type PredictiveStager struct {
 // StagingConfig configures predictive chunk staging behavior.
 type StagingConfig struct {
 	// Buffer management
-	MaxBufferSizeMB         int           `yaml:"max_buffer_size_mb" json:"max_buffer_size_mb"`
-	TargetChunkSizeMB       int           `yaml:"target_chunk_size_mb" json:"target_chunk_size_mb"`
-	MaxConcurrentStaging    int           `yaml:"max_concurrent_staging" json:"max_concurrent_staging"`
-	StagingQueueDepth       int           `yaml:"staging_queue_depth" json:"staging_queue_depth"`
-	
+	MaxBufferSizeMB      int `yaml:"max_buffer_size_mb" json:"max_buffer_size_mb"`
+	TargetChunkSizeMB    int `yaml:"target_chunk_size_mb" json:"target_chunk_size_mb"`
+	MaxConcurrentStaging int `yaml:"max_concurrent_staging" json:"max_concurrent_staging"`
+	StagingQueueDepth    int `yaml:"staging_queue_depth" json:"staging_queue_depth"`
+
 	// Prediction parameters
 	ContentAnalysisWindow   int           `yaml:"content_analysis_window" json:"content_analysis_window"`
 	NetworkPredictionWindow time.Duration `yaml:"network_prediction_window" json:"network_prediction_window"`
 	ChunkBoundaryLookahead  int           `yaml:"chunk_boundary_lookahead" json:"chunk_boundary_lookahead"`
-	
+
 	// Performance tuning
-	EnableAdaptiveSizing    bool          `yaml:"enable_adaptive_sizing" json:"enable_adaptive_sizing"`
-	EnableContentAnalysis   bool          `yaml:"enable_content_analysis" json:"enable_content_analysis"`
-	EnableNetworkPrediction bool          `yaml:"enable_network_prediction" json:"enable_network_prediction"`
-	
+	EnableAdaptiveSizing    bool `yaml:"enable_adaptive_sizing" json:"enable_adaptive_sizing"`
+	EnableContentAnalysis   bool `yaml:"enable_content_analysis" json:"enable_content_analysis"`
+	EnableNetworkPrediction bool `yaml:"enable_network_prediction" json:"enable_network_prediction"`
+
 	// Memory management
-	MemoryPressureThreshold float64       `yaml:"memory_pressure_threshold" json:"memory_pressure_threshold"`
-	GCTriggerThreshold      float64       `yaml:"gc_trigger_threshold" json:"gc_trigger_threshold"`
+	MemoryPressureThreshold float64 `yaml:"memory_pressure_threshold" json:"memory_pressure_threshold"`
+	GCTriggerThreshold      float64 `yaml:"gc_trigger_threshold" json:"gc_trigger_threshold"`
 }
 
 // DefaultStagingConfig returns sensible defaults for predictive staging.
 func DefaultStagingConfig() *StagingConfig {
 	return &StagingConfig{
-		MaxBufferSizeMB:         256,  // 256MB staging buffer
-		TargetChunkSizeMB:       32,   // 32MB target chunks
-		MaxConcurrentStaging:    4,    // 4 concurrent staging operations
-		StagingQueueDepth:       8,    // 8 chunks in staging queue
-		ContentAnalysisWindow:   16,   // Analyze 16KB windows
-		NetworkPredictionWindow: time.Second * 30,  // 30s prediction window
-		ChunkBoundaryLookahead:  3,    // Look ahead 3 chunks
+		MaxBufferSizeMB:         256,              // 256MB staging buffer
+		TargetChunkSizeMB:       32,               // 32MB target chunks
+		MaxConcurrentStaging:    4,                // 4 concurrent staging operations
+		StagingQueueDepth:       8,                // 8 chunks in staging queue
+		ContentAnalysisWindow:   16,               // Analyze 16KB windows
+		NetworkPredictionWindow: time.Second * 30, // 30s prediction window
+		ChunkBoundaryLookahead:  3,                // Look ahead 3 chunks
 		EnableAdaptiveSizing:    true,
 		EnableContentAnalysis:   true,
 		EnableNetworkPrediction: true,
-		MemoryPressureThreshold: 0.8,  // 80% memory usage threshold
-		GCTriggerThreshold:      0.9,  // 90% trigger GC
+		MemoryPressureThreshold: 0.8, // 80% memory usage threshold
+		GCTriggerThreshold:      0.9, // 90% trigger GC
 	}
 }
 
 // ChunkBoundaryPredictor analyzes content to predict optimal chunk boundaries.
 type ChunkBoundaryPredictor struct {
-	contentAnalyzer   *ContentAnalyzer
-	boundaryDetector  *BoundaryDetector
-	compressionRatio  *CompressionRatioPredictor
-	historicalData    *ChunkPerformanceHistory
-	config            *StagingConfig
-	mu                sync.RWMutex
+	contentAnalyzer  *ContentAnalyzer
+	boundaryDetector *BoundaryDetector
+	compressionRatio *CompressionRatioPredictor
+	historicalData   *ChunkPerformanceHistory
+	config           *StagingConfig
+	mu               sync.RWMutex
 }
 
 // ContentAnalyzer analyzes content patterns for boundary prediction.
@@ -88,51 +88,51 @@ type ContentAnalyzer struct {
 
 // BoundaryDetector identifies optimal chunk boundaries based on content characteristics.
 type BoundaryDetector struct {
-	compressionThresholds map[string]float64  // Content type -> compression ratio threshold
-	sizeTargets          map[string]int       // Content type -> optimal size
-	alignmentRules       *AlignmentRules      // File boundary alignment rules
+	compressionThresholds map[string]float64 // Content type -> compression ratio threshold
+	sizeTargets           map[string]int     // Content type -> optimal size
+	alignmentRules        *AlignmentRules    // File boundary alignment rules
 }
 
 // CompressionRatioPredictor predicts compression efficiency for different boundary choices.
 type CompressionRatioPredictor struct {
-	compressionStats map[string]*CompressionStats  // Algorithm -> stats
-	contentPatterns  map[string]float64            // Pattern -> predicted ratio
+	compressionStats map[string]*CompressionStats // Algorithm -> stats
+	contentPatterns  map[string]float64           // Pattern -> predicted ratio
 	historicalData   *CompressionHistory
 	mu               sync.RWMutex
 }
 
 // StagingBufferManager manages memory buffers for chunk staging.
 type StagingBufferManager struct {
-	bufferPool       *BufferPool
-	activeBuffers    map[string]*StagedChunk
-	stagingQueue     chan *StagingRequest
-	memoryMonitor    *MemoryMonitor
-	config           *StagingConfig
-	mu               sync.RWMutex
+	bufferPool    *BufferPool
+	activeBuffers map[string]*StagedChunk
+	stagingQueue  chan *StagingRequest
+	memoryMonitor *MemoryMonitor
+	config        *StagingConfig
+	mu            sync.RWMutex
 }
 
 // StagedChunk represents a chunk that has been pre-processed and staged.
 type StagedChunk struct {
-	ID                string
-	Data              []byte
-	CompressedSize    int
-	UncompressedSize  int
-	CompressionRatio  float64
-	Boundary          ChunkBoundary
+	ID                  string
+	Data                []byte
+	CompressedSize      int
+	UncompressedSize    int
+	CompressionRatio    float64
+	Boundary            ChunkBoundary
 	PredictedUploadTime time.Duration
-	StagedAt          time.Time
-	ContentType       string
-	Entropy           float64
+	StagedAt            time.Time
+	ContentType         string
+	Entropy             float64
 }
 
 // ChunkBoundary defines the boundaries and characteristics of a chunk.
 type ChunkBoundary struct {
-	StartOffset      int64
-	EndOffset        int64
-	Size             int64
-	AlignedWithFile  bool
-	CompressionScore float64
-	PredictedRatio   float64
+	StartOffset       int64
+	EndOffset         int64
+	Size              int64
+	AlignedWithFile   bool
+	CompressionScore  float64
+	PredictedRatio    float64
 	OptimalForNetwork bool
 }
 
@@ -149,25 +149,25 @@ type StagingRequest struct {
 
 // NetworkConditionMonitor tracks and predicts network conditions.
 type NetworkConditionMonitor struct {
-	currentCondition  *NetworkCondition
-	conditionHistory  []*NetworkCondition
-	trendAnalyzer     *NetworkTrendAnalyzer
-	predictor         *NetworkPredictor
-	updateInterval    time.Duration
-	predictionWindow  time.Duration
-	mu                sync.RWMutex
+	currentCondition *NetworkCondition
+	conditionHistory []*NetworkCondition
+	trendAnalyzer    *NetworkTrendAnalyzer
+	predictor        *NetworkPredictor
+	updateInterval   time.Duration
+	predictionWindow time.Duration
+	mu               sync.RWMutex
 }
 
 // NetworkCondition represents current network performance characteristics.
 type NetworkCondition struct {
-	Timestamp        time.Time
-	BandwidthMBps    float64
-	LatencyMs        float64
-	PacketLoss       float64
-	Jitter           float64
-	CongestionLevel  float64
-	Reliability      float64
-	PredictedTrend   NetworkTrend
+	Timestamp       time.Time
+	BandwidthMBps   float64
+	LatencyMs       float64
+	PacketLoss      float64
+	Jitter          float64
+	CongestionLevel float64
+	Reliability     float64
+	PredictedTrend  NetworkTrend
 }
 
 // NetworkTrend indicates predicted network performance direction.
@@ -194,14 +194,14 @@ type PerformancePredictor struct {
 
 // PerformancePrediction represents predicted performance for a chunk.
 type PerformancePrediction struct {
-	EstimatedUploadTime   time.Duration
-	PredictedThroughput   float64
-	SuccessProbability    float64
-	OptimalChunkSize      int64
+	EstimatedUploadTime    time.Duration
+	PredictedThroughput    float64
+	SuccessProbability     float64
+	OptimalChunkSize       int64
 	RecommendedCompression string
-	NetworkSuitability    float64
-	Confidence            float64
-	GeneratedAt           time.Time
+	NetworkSuitability     float64
+	Confidence             float64
+	GeneratedAt            time.Time
 }
 
 // ChunkPerformanceHistory maintains historical performance data for learning.
@@ -215,15 +215,15 @@ type ChunkPerformanceHistory struct {
 
 // ChunkPerformanceRecord records the actual performance of an uploaded chunk.
 type ChunkPerformanceRecord struct {
-	ChunkID           string
-	Size              int64
-	CompressionRatio  float64
-	UploadTime        time.Duration
-	ThroughputMBps    float64
-	NetworkCondition  *NetworkCondition
-	Success           bool
-	ErrorType         string
-	Timestamp         time.Time
+	ChunkID          string
+	Size             int64
+	CompressionRatio float64
+	UploadTime       time.Duration
+	ThroughputMBps   float64
+	NetworkCondition *NetworkCondition
+	Success          bool
+	ErrorType        string
+	Timestamp        time.Time
 }
 
 // NewPredictiveStager creates a new predictive chunk stager.
@@ -231,9 +231,9 @@ func NewPredictiveStager(ctx context.Context, config *StagingConfig) *Predictive
 	if config == nil {
 		config = DefaultStagingConfig()
 	}
-	
+
 	stagingCtx, cancel := context.WithCancel(ctx)
-	
+
 	ps := &PredictiveStager{
 		chunkPredictor:    NewChunkBoundaryPredictor(config),
 		stagingBuffer:     NewStagingBufferManager(config),
@@ -244,7 +244,7 @@ func NewPredictiveStager(ctx context.Context, config *StagingConfig) *Predictive
 		ctx:               stagingCtx,
 		cancel:            cancel,
 	}
-	
+
 	return ps
 }
 
@@ -252,21 +252,21 @@ func NewPredictiveStager(ctx context.Context, config *StagingConfig) *Predictive
 func (ps *PredictiveStager) Start() error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
-	
+
 	if ps.active {
 		return nil // Already active
 	}
-	
+
 	ps.active = true
-	
+
 	// Start subsystems
 	go ps.networkMonitor.Start(ps.ctx)
 	go ps.stagingBuffer.Start(ps.ctx)
 	go ps.performanceEngine.Start(ps.ctx)
-	
+
 	// Start main staging loop
 	go ps.stagingLoop(ps.ctx)
-	
+
 	return nil
 }
 
@@ -274,14 +274,14 @@ func (ps *PredictiveStager) Start() error {
 func (ps *PredictiveStager) Stop() error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
-	
+
 	if !ps.active {
 		return nil // Already stopped
 	}
-	
+
 	ps.active = false
 	ps.cancel()
-	
+
 	return nil
 }
 
@@ -290,23 +290,23 @@ func (ps *PredictiveStager) StageChunks(req *StagingRequest) error {
 	ps.mu.RLock()
 	active := ps.active
 	ps.mu.RUnlock()
-	
+
 	if !active {
 		return &StagingError{
 			Type:    "stager_inactive",
 			Message: "predictive stager is not active",
 		}
 	}
-	
+
 	// Analyze content for optimal boundaries
 	boundaries, err := ps.chunkPredictor.PredictBoundaries(req.Reader, req.ContentType, req.ExpectedSize)
 	if err != nil {
 		return err
 	}
-	
+
 	// Get current network condition
 	networkCondition := ps.networkMonitor.GetCurrentCondition()
-	
+
 	// Predict performance for each boundary option
 	predictions := make([]*PerformancePrediction, len(boundaries))
 	for i, boundary := range boundaries {
@@ -316,10 +316,10 @@ func (ps *PredictiveStager) StageChunks(req *StagingRequest) error {
 		}
 		predictions[i] = prediction
 	}
-	
+
 	// Select optimal boundary based on predictions
 	optimalBoundary := ps.selectOptimalBoundary(boundaries, predictions)
-	
+
 	// Stage the chunk with optimal boundary
 	return ps.stagingBuffer.StageChunk(req, optimalBoundary)
 }
@@ -337,12 +337,12 @@ func (ps *PredictiveStager) UpdatePerformance(chunkID string, record *ChunkPerfo
 // GetMetrics returns current staging performance metrics.
 func (ps *PredictiveStager) GetMetrics() *StagingMetrics {
 	return &StagingMetrics{
-		ActiveChunks:        ps.stagingBuffer.GetActiveCount(),
-		StagingQueueLength:  ps.stagingBuffer.GetQueueLength(),
-		BufferUtilization:   ps.stagingBuffer.GetUtilization(),
-		PredictionAccuracy:  ps.performanceEngine.GetAccuracy(),
-		NetworkCondition:    ps.networkMonitor.GetCurrentCondition(),
-		LastUpdate:          time.Now(),
+		ActiveChunks:       ps.stagingBuffer.GetActiveCount(),
+		StagingQueueLength: ps.stagingBuffer.GetQueueLength(),
+		BufferUtilization:  ps.stagingBuffer.GetUtilization(),
+		PredictionAccuracy: ps.performanceEngine.GetAccuracy(),
+		NetworkCondition:   ps.networkMonitor.GetCurrentCondition(),
+		LastUpdate:         time.Now(),
 	}
 }
 
@@ -350,7 +350,7 @@ func (ps *PredictiveStager) GetMetrics() *StagingMetrics {
 func (ps *PredictiveStager) stagingLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -365,13 +365,13 @@ func (ps *PredictiveStager) stagingLoop(ctx context.Context) {
 func (ps *PredictiveStager) performStagingOptimizations() {
 	// Update network predictions
 	ps.networkMonitor.UpdatePredictions()
-	
+
 	// Cleanup expired staged chunks
 	ps.stagingBuffer.CleanupExpired()
-	
+
 	// Update performance models
 	ps.performanceEngine.UpdateModels()
-	
+
 	// Adjust buffer sizes based on memory pressure
 	ps.stagingBuffer.AdjustBufferSizes()
 }
@@ -381,15 +381,15 @@ func (ps *PredictiveStager) selectOptimalBoundary(boundaries []ChunkBoundary, pr
 	if len(boundaries) == 0 {
 		return ChunkBoundary{}
 	}
-	
+
 	bestScore := -1.0
 	bestIndex := 0
-	
+
 	for i, prediction := range predictions {
 		if prediction == nil {
 			continue
 		}
-		
+
 		// Calculate composite score
 		score := ps.calculateBoundaryScore(boundaries[i], prediction)
 		if score > bestScore {
@@ -397,7 +397,7 @@ func (ps *PredictiveStager) selectOptimalBoundary(boundaries []ChunkBoundary, pr
 			bestIndex = i
 		}
 	}
-	
+
 	return boundaries[bestIndex]
 }
 
@@ -408,22 +408,22 @@ func (ps *PredictiveStager) calculateBoundaryScore(boundary ChunkBoundary, predi
 	reliabilityWeight := 0.3
 	compressionWeight := 0.2
 	networkWeight := 0.1
-	
+
 	// Normalize scores to 0-1 range
-	throughputScore := prediction.PredictedThroughput / 100.0  // Assume 100 MB/s max
+	throughputScore := prediction.PredictedThroughput / 100.0 // Assume 100 MB/s max
 	reliabilityScore := prediction.SuccessProbability
 	compressionScore := boundary.CompressionScore
 	networkScore := prediction.NetworkSuitability
-	
+
 	// Calculate weighted score
 	score := (throughputScore * throughputWeight) +
 		(reliabilityScore * reliabilityWeight) +
 		(compressionScore * compressionWeight) +
 		(networkScore * networkWeight)
-	
+
 	// Apply confidence multiplier
 	score *= prediction.Confidence
-	
+
 	return score
 }
 

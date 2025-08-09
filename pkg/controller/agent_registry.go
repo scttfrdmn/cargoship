@@ -16,11 +16,11 @@ type AgentRegistry struct {
 	// Agent connections
 	agents map[string]*ConnectedAgent
 	mu     sync.RWMutex
-	
+
 	// Configuration
-	logger   *slog.Logger
+	logger    *slog.Logger
 	authToken string
-	
+
 	// Lifecycle
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -30,22 +30,22 @@ type AgentRegistry struct {
 // ConnectedAgent represents a connected launch agent
 type ConnectedAgent struct {
 	// Agent information
-	ID          string                   `json:"id"`
-	Name        string                   `json:"name"`
-	Description string                   `json:"description"`
-	Version     string                   `json:"version"`
-	Capabilities []string               `json:"capabilities"`
-	WatchPaths  []launch.WatchPath      `json:"watch_paths"`
-	Metadata    map[string]string       `json:"metadata"`
-	
+	ID           string             `json:"id"`
+	Name         string             `json:"name"`
+	Description  string             `json:"description"`
+	Version      string             `json:"version"`
+	Capabilities []string           `json:"capabilities"`
+	WatchPaths   []launch.WatchPath `json:"watch_paths"`
+	Metadata     map[string]string  `json:"metadata"`
+
 	// Connection details
 	Connection  AgentConnectionInterface `json:"-"`
-	ConnectedAt time.Time               `json:"connected_at"`
-	LastSeen    time.Time               `json:"last_seen"`
-	
+	ConnectedAt time.Time                `json:"connected_at"`
+	LastSeen    time.Time                `json:"last_seen"`
+
 	// Status tracking
-	Status      launch.AgentStatus      `json:"status"`
-	Jobs        map[string]*AssignedJob `json:"jobs"`
+	Status launch.AgentStatus      `json:"status"`
+	Jobs   map[string]*AssignedJob `json:"jobs"`
 }
 
 // AssignedJob represents a job assigned to an agent
@@ -67,17 +67,17 @@ type AssignedJob struct {
 type JobStatus string
 
 const (
-	JobStatusAssigned   JobStatus = "assigned"
-	JobStatusRunning    JobStatus = "running"
-	JobStatusCompleted  JobStatus = "completed"
-	JobStatusFailed     JobStatus = "failed"
-	JobStatusCancelled  JobStatus = "cancelled"
+	JobStatusAssigned  JobStatus = "assigned"
+	JobStatusRunning   JobStatus = "running"
+	JobStatusCompleted JobStatus = "completed"
+	JobStatusFailed    JobStatus = "failed"
+	JobStatusCancelled JobStatus = "cancelled"
 )
 
 // NewAgentRegistry creates a new agent registry
 func NewAgentRegistry(authToken string, logger *slog.Logger) *AgentRegistry {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	return &AgentRegistry{
 		agents:    make(map[string]*ConnectedAgent),
 		logger:    logger.With("component", "agent-registry"),
@@ -90,31 +90,31 @@ func NewAgentRegistry(authToken string, logger *slog.Logger) *AgentRegistry {
 // Start starts the agent registry background services
 func (ar *AgentRegistry) Start() error {
 	ar.logger.Info("Starting agent registry")
-	
+
 	// Start health check monitor
 	ar.wg.Add(1)
 	go ar.runHealthMonitor()
-	
+
 	return nil
 }
 
 // Stop gracefully stops the agent registry
 func (ar *AgentRegistry) Stop() error {
 	ar.logger.Info("Stopping agent registry")
-	
+
 	ar.cancel()
 	ar.wg.Wait()
-	
+
 	// Disconnect all agents
 	ar.mu.Lock()
 	defer ar.mu.Unlock()
-	
+
 	for _, agent := range ar.agents {
 		if agent.Connection != nil {
 			_ = agent.Connection.Close()
 		}
 	}
-	
+
 	ar.logger.Info("Agent registry stopped")
 	return nil
 }
@@ -131,9 +131,9 @@ type AgentConnectionInterface interface {
 func (ar *AgentRegistry) RegisterAgent(conn AgentConnectionInterface, req *launch.RegistrationRequest) (*launch.RegistrationResponse, error) {
 	ar.mu.Lock()
 	defer ar.mu.Unlock()
-	
+
 	ar.logger.Info("Registering new agent", "agent_id", req.AgentID, "name", req.Name)
-	
+
 	// Check if agent already exists
 	if existing, exists := ar.agents[req.AgentID]; exists {
 		// Close existing connection if any
@@ -142,7 +142,7 @@ func (ar *AgentRegistry) RegisterAgent(conn AgentConnectionInterface, req *launc
 		}
 		ar.logger.Warn("Agent reconnecting", "agent_id", req.AgentID)
 	}
-	
+
 	// Create connected agent
 	agent := &ConnectedAgent{
 		ID:           req.AgentID,
@@ -161,22 +161,22 @@ func (ar *AgentRegistry) RegisterAgent(conn AgentConnectionInterface, req *launc
 		},
 		Jobs: make(map[string]*AssignedJob),
 	}
-	
+
 	// Store agent
 	ar.agents[req.AgentID] = agent
-	
+
 	// Set up connection callbacks
 	conn.SetAgent(agent)
 	conn.OnClose(func() {
 		ar.handleAgentDisconnection(req.AgentID)
 	})
-	
-	ar.logger.Info("Agent registered successfully", 
-		"agent_id", req.AgentID, 
+
+	ar.logger.Info("Agent registered successfully",
+		"agent_id", req.AgentID,
 		"name", req.Name,
 		"capabilities", req.Capabilities,
 		"watch_paths", len(req.WatchPaths))
-	
+
 	// Return success response
 	return &launch.RegistrationResponse{
 		Success:   true,
@@ -184,7 +184,7 @@ func (ar *AgentRegistry) RegisterAgent(conn AgentConnectionInterface, req *launc
 		SessionID: generateSessionID(),
 		Configuration: map[string]interface{}{
 			"heartbeat_interval": "30s",
-			"log_level":         "info",
+			"log_level":          "info",
 		},
 		Message: "Registration successful",
 	}, nil
@@ -194,12 +194,12 @@ func (ar *AgentRegistry) RegisterAgent(conn AgentConnectionInterface, req *launc
 func (ar *AgentRegistry) GetAgent(agentID string) (*ConnectedAgent, bool) {
 	ar.mu.RLock()
 	defer ar.mu.RUnlock()
-	
+
 	agent, exists := ar.agents[agentID]
 	if !exists {
 		return nil, false
 	}
-	
+
 	// Return a copy to avoid race conditions
 	agentCopy := *agent
 	agentCopy.Jobs = make(map[string]*AssignedJob)
@@ -207,7 +207,7 @@ func (ar *AgentRegistry) GetAgent(agentID string) (*ConnectedAgent, bool) {
 		jobCopy := *v
 		agentCopy.Jobs[k] = &jobCopy
 	}
-	
+
 	return &agentCopy, true
 }
 
@@ -215,7 +215,7 @@ func (ar *AgentRegistry) GetAgent(agentID string) (*ConnectedAgent, bool) {
 func (ar *AgentRegistry) GetAllAgents() []*ConnectedAgent {
 	ar.mu.RLock()
 	defer ar.mu.RUnlock()
-	
+
 	agents := make([]*ConnectedAgent, 0, len(ar.agents))
 	for _, agent := range ar.agents {
 		agentCopy := *agent
@@ -226,7 +226,7 @@ func (ar *AgentRegistry) GetAllAgents() []*ConnectedAgent {
 		}
 		agents = append(agents, &agentCopy)
 	}
-	
+
 	return agents
 }
 
@@ -234,16 +234,16 @@ func (ar *AgentRegistry) GetAllAgents() []*ConnectedAgent {
 func (ar *AgentRegistry) AssignJob(agentID string, jobAssignment *launch.JobAssignment) error {
 	ar.mu.Lock()
 	defer ar.mu.Unlock()
-	
+
 	agent, exists := ar.agents[agentID]
 	if !exists {
 		return ErrAgentNotFound
 	}
-	
+
 	if agent.Connection == nil {
 		return ErrAgentNotConnected
 	}
-	
+
 	// Create assigned job
 	assignedJob := &AssignedJob{
 		ID:           jobAssignment.JobID,
@@ -257,22 +257,22 @@ func (ar *AgentRegistry) AssignJob(agentID string, jobAssignment *launch.JobAssi
 		Status:       JobStatusAssigned,
 		Progress:     0.0,
 	}
-	
+
 	// Store job
 	agent.Jobs[jobAssignment.JobID] = assignedJob
-	
+
 	// Send job to agent
 	err := agent.Connection.SendMessage(launch.MsgTypeJobAssign, jobAssignment)
 	if err != nil {
 		delete(agent.Jobs, jobAssignment.JobID)
 		return err
 	}
-	
-	ar.logger.Info("Job assigned to agent", 
-		"agent_id", agentID, 
+
+	ar.logger.Info("Job assigned to agent",
+		"agent_id", agentID,
 		"job_id", jobAssignment.JobID,
 		"path", jobAssignment.Path)
-	
+
 	return nil
 }
 
@@ -280,12 +280,12 @@ func (ar *AgentRegistry) AssignJob(agentID string, jobAssignment *launch.JobAssi
 func (ar *AgentRegistry) UpdateAgentStatus(agentID string, status *launch.StatusUpdate) error {
 	ar.mu.Lock()
 	defer ar.mu.Unlock()
-	
+
 	agent, exists := ar.agents[agentID]
 	if !exists {
 		return ErrAgentNotFound
 	}
-	
+
 	// Update agent status
 	agent.Status.State = status.State
 	agent.Status.ActiveJobs = status.ActiveJobs
@@ -295,12 +295,12 @@ func (ar *AgentRegistry) UpdateAgentStatus(agentID string, status *launch.Status
 	agent.Status.Uptime = status.Uptime
 	agent.Status.LastError = status.LastError
 	agent.LastSeen = time.Now()
-	
-	ar.logger.Debug("Agent status updated", 
+
+	ar.logger.Debug("Agent status updated",
 		"agent_id", agentID,
 		"state", status.State,
 		"active_jobs", status.ActiveJobs)
-	
+
 	return nil
 }
 
@@ -308,7 +308,7 @@ func (ar *AgentRegistry) UpdateAgentStatus(agentID string, status *launch.Status
 func (ar *AgentRegistry) GetAgentCount() int {
 	ar.mu.RLock()
 	defer ar.mu.RUnlock()
-	
+
 	return len(ar.agents)
 }
 
@@ -316,18 +316,18 @@ func (ar *AgentRegistry) GetAgentCount() int {
 func (ar *AgentRegistry) handleAgentDisconnection(agentID string) {
 	ar.mu.Lock()
 	defer ar.mu.Unlock()
-	
+
 	agent, exists := ar.agents[agentID]
 	if !exists {
 		return
 	}
-	
+
 	ar.logger.Info("Agent disconnected", "agent_id", agentID, "name", agent.Name)
-	
+
 	// Update agent status
 	agent.Status.State = launch.AgentStateDisconnected
 	agent.Connection = nil
-	
+
 	// Mark running jobs as failed
 	for _, job := range agent.Jobs {
 		if job.Status == JobStatusRunning || job.Status == JobStatusAssigned {
@@ -340,10 +340,10 @@ func (ar *AgentRegistry) handleAgentDisconnection(agentID string) {
 // runHealthMonitor monitors agent health and removes stale connections
 func (ar *AgentRegistry) runHealthMonitor() {
 	defer ar.wg.Done()
-	
+
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ar.ctx.Done():
@@ -358,16 +358,16 @@ func (ar *AgentRegistry) runHealthMonitor() {
 func (ar *AgentRegistry) checkAgentHealth() {
 	ar.mu.Lock()
 	defer ar.mu.Unlock()
-	
+
 	now := time.Now()
 	staleThreshold := 5 * time.Minute
-	
+
 	for agentID, agent := range ar.agents {
 		if now.Sub(agent.LastSeen) > staleThreshold && agent.Connection != nil {
-			ar.logger.Warn("Agent appears stale, disconnecting", 
+			ar.logger.Warn("Agent appears stale, disconnecting",
 				"agent_id", agentID,
 				"last_seen", agent.LastSeen)
-			
+
 			_ = agent.Connection.Close()
 			agent.Connection = nil
 			agent.Status.State = launch.AgentStateDisconnected

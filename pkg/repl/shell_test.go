@@ -15,9 +15,9 @@ import (
 func TestNewShell(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	rootCmd := &cobra.Command{Use: "test"}
-	
+
 	shell := NewShell(rootCmd, logger)
-	
+
 	assert.NotNil(t, shell)
 	assert.Equal(t, rootCmd, shell.rootCmd)
 	assert.NotNil(t, shell.contextManager)
@@ -31,7 +31,7 @@ func TestGetPrompt(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	rootCmd := &cobra.Command{Use: "test"}
 	shell := NewShell(rootCmd, logger)
-	
+
 	tests := []struct {
 		context  context.ExecutionContext
 		expected string
@@ -41,13 +41,13 @@ func TestGetPrompt(t *testing.T) {
 		{context.ContextController, "controller> "},
 		{context.ContextREPL, "repl> "},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(string(tt.context), func(t *testing.T) {
 			// Switch to context
 			err := shell.contextManager.SwitchTo(tt.context)
 			require.NoError(t, err)
-			
+
 			// Check prompt
 			prompt := shell.getPrompt()
 			assert.Equal(t, tt.expected, prompt)
@@ -59,7 +59,7 @@ func TestHandleSpecialCommands(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	rootCmd := &cobra.Command{Use: "test"}
 	shell := NewShell(rootCmd, logger)
-	
+
 	tests := []struct {
 		input    string
 		expected bool
@@ -75,14 +75,14 @@ func TestHandleSpecialCommands(t *testing.T) {
 		{"regular command", false, true},
 		{"", false, true},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			shell.running = true
-			
+
 			result := shell.handleSpecialCommands(tt.input)
 			assert.Equal(t, tt.expected, result)
-			
+
 			if tt.input == "exit" || tt.input == "quit" || tt.input == "q" {
 				assert.Equal(t, tt.running, shell.running)
 			}
@@ -94,12 +94,12 @@ func TestAddToHistory(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	rootCmd := &cobra.Command{Use: "test"}
 	shell := NewShell(rootCmd, logger)
-	
+
 	// Add some commands
 	shell.addToHistory("command1")
 	shell.addToHistory("command2")
 	shell.addToHistory("command3")
-	
+
 	assert.Len(t, shell.history, 3)
 	assert.Equal(t, "command1", shell.history[0])
 	assert.Equal(t, "command2", shell.history[1])
@@ -111,12 +111,12 @@ func TestAddToHistoryLimit(t *testing.T) {
 	rootCmd := &cobra.Command{Use: "test"}
 	shell := NewShell(rootCmd, logger)
 	shell.maxHistory = 2 // Set small limit for testing
-	
+
 	// Add commands beyond limit
 	shell.addToHistory("command1")
 	shell.addToHistory("command2")
 	shell.addToHistory("command3")
-	
+
 	assert.Len(t, shell.history, 2)
 	assert.Equal(t, "command2", shell.history[0]) // First command should be removed
 	assert.Equal(t, "command3", shell.history[1])
@@ -124,19 +124,19 @@ func TestAddToHistoryLimit(t *testing.T) {
 
 func TestFindCommand(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	
+
 	// Create root command with subcommands
 	rootCmd := &cobra.Command{Use: "test"}
 	subCmd := &cobra.Command{Use: "subcmd", Short: "Test subcommand"}
 	rootCmd.AddCommand(subCmd)
-	
+
 	shell := NewShell(rootCmd, logger)
-	
+
 	// Test finding existing command
 	found := shell.findCommand("subcmd")
 	assert.NotNil(t, found)
 	assert.Equal(t, "subcmd", found.Name())
-	
+
 	// Test finding non-existent command
 	notFound := shell.findCommand("nonexistent")
 	assert.Nil(t, notFound)
@@ -146,11 +146,11 @@ func TestGetAvailableCommands(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	rootCmd := &cobra.Command{Use: "test"}
 	shell := NewShell(rootCmd, logger)
-	
+
 	tests := []struct {
-		context  context.ExecutionContext
-		hasCreate bool
-		hasConfig bool
+		context       context.ExecutionContext
+		hasCreate     bool
+		hasConfig     bool
 		hasController bool
 	}{
 		{context.ContextLocal, true, true, true},
@@ -158,11 +158,11 @@ func TestGetAvailableCommands(t *testing.T) {
 		{context.ContextController, false, true, true},
 		{context.ContextREPL, true, true, true},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(string(tt.context), func(t *testing.T) {
 			commands := shell.getAvailableCommands(tt.context)
-			
+
 			assert.Equal(t, tt.hasCreate, commands["create"])
 			assert.Equal(t, tt.hasConfig, commands["config"])
 			assert.Equal(t, tt.hasController, commands["controller"])
@@ -174,9 +174,9 @@ func TestStop(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	rootCmd := &cobra.Command{Use: "test"}
 	shell := NewShell(rootCmd, logger)
-	
+
 	shell.running = true
 	shell.Stop()
-	
+
 	assert.False(t, shell.running)
 }

@@ -146,7 +146,7 @@ func TestMockDataFunctions(t *testing.T) {
 		jobs := dashboard.fetchMockArchivalJobs()
 		assert.NotNil(t, jobs)
 		assert.NotEmpty(t, jobs, "Should return at least one mock archival job")
-		
+
 		for _, job := range jobs {
 			assert.NotEmpty(t, job.ID, "Job ID should not be empty")
 			assert.NotEmpty(t, job.Source, "Job source should not be empty")
@@ -159,7 +159,7 @@ func TestMockDataFunctions(t *testing.T) {
 		items := dashboard.fetchMockInventoryItems()
 		assert.NotNil(t, items)
 		assert.NotEmpty(t, items, "Should return at least one mock inventory item")
-		
+
 		for _, item := range items {
 			// InventoryItem doesn't have Name field, test Path instead
 			assert.NotEmpty(t, item.Path, "Item path should not be empty")
@@ -173,7 +173,7 @@ func TestMockDataFunctions(t *testing.T) {
 		configs := dashboard.fetchMockConfigurations()
 		assert.NotNil(t, configs)
 		assert.NotEmpty(t, configs, "Should return at least one mock configuration")
-		
+
 		for _, config := range configs {
 			assert.NotEmpty(t, config.Key, "Config key should not be empty")
 			assert.NotEmpty(t, config.Value, "Config value should not be empty")
@@ -189,7 +189,7 @@ func TestMockDataQuality(t *testing.T) {
 	t.Run("archival jobs data quality", func(t *testing.T) {
 		jobs := dashboard.fetchMockArchivalJobs()
 		require.NotEmpty(t, jobs)
-		
+
 		// Check data types and reasonable values
 		for _, job := range jobs {
 			assert.IsType(t, "", job.ID)
@@ -200,7 +200,7 @@ func TestMockDataQuality(t *testing.T) {
 			// Priority field doesn't exist in ArchivalJob
 			assert.IsType(t, "", job.Status)
 			assert.IsType(t, "", job.EstimatedCost)
-			
+
 			// Reasonable value ranges
 			assert.NotEmpty(t, job.Size)
 			// EstimatedCost is a string field
@@ -211,14 +211,14 @@ func TestMockDataQuality(t *testing.T) {
 	t.Run("inventory items data quality", func(t *testing.T) {
 		items := dashboard.fetchMockInventoryItems()
 		require.NotEmpty(t, items)
-		
+
 		for _, item := range items {
 			// InventoryItem doesn't have Name field
 			assert.IsType(t, "", item.Path)
 			assert.IsType(t, "", item.Size)
 			assert.IsType(t, "", item.Type)
 			// Archived field doesn't exist in InventoryItem
-			
+
 			assert.NotEmpty(t, item.Size)
 			assert.Contains(t, []string{"file", "directory", "folder", "archive"}, item.Type)
 		}
@@ -227,14 +227,14 @@ func TestMockDataQuality(t *testing.T) {
 	t.Run("configurations data quality", func(t *testing.T) {
 		configs := dashboard.fetchMockConfigurations()
 		require.NotEmpty(t, configs)
-		
+
 		for _, config := range configs {
 			assert.IsType(t, "", config.Key)
 			assert.IsType(t, "", config.Value)
 			assert.IsType(t, "", config.Description)
 			assert.IsType(t, "", config.Source)
 			// Editable field doesn't exist in ConfigItem
-			
+
 			assert.NotEmpty(t, config.Key)
 			assert.NotEmpty(t, config.Value)
 		}
@@ -243,7 +243,7 @@ func TestMockDataQuality(t *testing.T) {
 
 func TestTableConsistency(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	
+
 	// Test each dashboard type has consistent table initialization
 	dashboardTypes := []DashboardType{
 		DashboardOverview, DashboardArchival, DashboardInventory,
@@ -253,12 +253,12 @@ func TestTableConsistency(t *testing.T) {
 	for _, dashType := range dashboardTypes {
 		t.Run(dashType.String(), func(t *testing.T) {
 			dashboard := NewDashboard(dashType, logger)
-			
+
 			// All dashboards should have basic tables initialized
 			assert.NotNil(t, dashboard.agentTable, "Agent table should be initialized")
 			assert.NotNil(t, dashboard.jobsTable, "Jobs table should be initialized")
 			assert.NotNil(t, dashboard.archivalQueue, "Archival queue should be initialized")
-			
+
 			// Test that update functions don't panic
 			assert.NotPanics(t, func() {
 				dashboard.updateArchivalTables()

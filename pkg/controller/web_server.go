@@ -19,21 +19,21 @@ type WebServer struct {
 	addr      string
 	authToken string
 	logger    *slog.Logger
-	
+
 	// Dependencies
 	registry *AgentRegistry
-	
+
 	// HTTP server
 	server *http.Server
 	router *mux.Router
-	
+
 	// WebSocket upgrader for real-time updates
 	upgrader websocket.Upgrader
-	
+
 	// Active WebSocket connections for real-time updates
 	wsClients map[*websocket.Conn]bool
 	wsMutex   sync.RWMutex
-	
+
 	// Lifecycle
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -41,19 +41,19 @@ type WebServer struct {
 
 // WebAgentInfo represents agent information for web API responses
 type WebAgentInfo struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Status      string            `json:"status"`
-	Endpoint    string            `json:"endpoint"`
-	Jobs        int               `json:"jobs"`
-	Throughput  string            `json:"throughput"`
-	LastSeen    time.Time         `json:"last_seen"`
-	Progress    float64           `json:"progress"`
-	Metadata    map[string]string `json:"metadata"`
-	Connected   bool              `json:"connected"`
+	ID         string            `json:"id"`
+	Name       string            `json:"name"`
+	Status     string            `json:"status"`
+	Endpoint   string            `json:"endpoint"`
+	Jobs       int               `json:"jobs"`
+	Throughput string            `json:"throughput"`
+	LastSeen   time.Time         `json:"last_seen"`
+	Progress   float64           `json:"progress"`
+	Metadata   map[string]string `json:"metadata"`
+	Connected  bool              `json:"connected"`
 }
 
-// WebJobInfo represents job information for web API responses  
+// WebJobInfo represents job information for web API responses
 type WebJobInfo struct {
 	ID        string    `json:"id"`
 	AgentID   string    `json:"agent_id"`
@@ -82,7 +82,7 @@ type WebMetrics struct {
 // NewWebServer creates a new web server instance
 func NewWebServer(addr, authToken string, registry *AgentRegistry, logger *slog.Logger) *WebServer {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	ws := &WebServer{
 		addr:      addr,
 		authToken: authToken,
@@ -98,9 +98,9 @@ func NewWebServer(addr, authToken string, registry *AgentRegistry, logger *slog.
 		ctx:       ctx,
 		cancel:    cancel,
 	}
-	
+
 	ws.setupRoutes()
-	
+
 	return ws
 }
 
@@ -109,24 +109,24 @@ func (ws *WebServer) setupRoutes() {
 	// API routes
 	api := ws.router.PathPrefix("/api/v1").Subrouter()
 	api.Use(ws.authMiddleware)
-	
+
 	// Agent management endpoints
 	api.HandleFunc("/agents", ws.handleGetAgents).Methods("GET")
 	api.HandleFunc("/agents/{id}", ws.handleGetAgent).Methods("GET")
 	api.HandleFunc("/agents/{id}/jobs", ws.handleGetAgentJobs).Methods("GET")
 	api.HandleFunc("/agents/{id}/disconnect", ws.handleDisconnectAgent).Methods("POST")
-	
+
 	// Job management endpoints
 	api.HandleFunc("/jobs", ws.handleGetJobs).Methods("GET")
 	api.HandleFunc("/jobs/{id}", ws.handleGetJob).Methods("GET")
 	api.HandleFunc("/jobs/{id}/cancel", ws.handleCancelJob).Methods("POST")
-	
+
 	// Metrics endpoint
 	api.HandleFunc("/metrics", ws.handleGetMetrics).Methods("GET")
-	
+
 	// WebSocket endpoint for real-time updates
 	api.HandleFunc("/ws", ws.handleWebSocket)
-	
+
 	// Static file server for web UI
 	ws.router.PathPrefix("/").Handler(http.FileServer(http.Dir("./web/static/")))
 }
@@ -147,22 +147,22 @@ func (ws *WebServer) authMiddleware(next http.Handler) http.Handler {
 func (ws *WebServer) handleGetAgents(w http.ResponseWriter, r *http.Request) {
 	agents := ws.registry.GetAllAgents()
 	webAgents := make([]WebAgentInfo, 0, len(agents))
-	
+
 	for _, agent := range agents {
 		webAgents = append(webAgents, WebAgentInfo{
-			ID:          agent.ID,
-			Name:        agent.Name,
-			Status:      string(agent.Status.State),
-			Endpoint:    "", // Will need to get from connection
-			Jobs:        len(agent.Jobs),
-			Throughput:  "0 MB/s", // Will calculate from agent data
-			LastSeen:    agent.LastSeen,
-			Progress:    0.0, // Will calculate from jobs
-			Metadata:    agent.Metadata,
-			Connected:   true, // If in registry, it's connected
+			ID:         agent.ID,
+			Name:       agent.Name,
+			Status:     string(agent.Status.State),
+			Endpoint:   "", // Will need to get from connection
+			Jobs:       len(agent.Jobs),
+			Throughput: "0 MB/s", // Will calculate from agent data
+			LastSeen:   agent.LastSeen,
+			Progress:   0.0, // Will calculate from jobs
+			Metadata:   agent.Metadata,
+			Connected:  true, // If in registry, it's connected
 		})
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(webAgents)
 }
@@ -171,26 +171,26 @@ func (ws *WebServer) handleGetAgents(w http.ResponseWriter, r *http.Request) {
 func (ws *WebServer) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	agentID := vars["id"]
-	
+
 	agent, exists := ws.registry.GetAgent(agentID)
 	if !exists {
 		http.Error(w, "Agent not found", http.StatusNotFound)
 		return
 	}
-	
+
 	webAgent := WebAgentInfo{
-		ID:          agent.ID,
-		Name:        agent.Name,
-		Status:      string(agent.Status.State),
-		Endpoint:    "", // Will need to get from connection
-		Jobs:        len(agent.Jobs),
-		Throughput:  "0 MB/s", // Will calculate from agent data
-		LastSeen:    agent.LastSeen,
-		Progress:    0.0, // Will calculate from jobs
-		Metadata:    agent.Metadata,
-		Connected:   true, // If in registry, it's connected
+		ID:         agent.ID,
+		Name:       agent.Name,
+		Status:     string(agent.Status.State),
+		Endpoint:   "", // Will need to get from connection
+		Jobs:       len(agent.Jobs),
+		Throughput: "0 MB/s", // Will calculate from agent data
+		LastSeen:   agent.LastSeen,
+		Progress:   0.0, // Will calculate from jobs
+		Metadata:   agent.Metadata,
+		Connected:  true, // If in registry, it's connected
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(webAgent)
 }
@@ -199,13 +199,13 @@ func (ws *WebServer) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 func (ws *WebServer) handleGetAgentJobs(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	agentID := vars["id"]
-	
+
 	agent, exists := ws.registry.GetAgent(agentID)
 	if !exists {
 		http.Error(w, "Agent not found", http.StatusNotFound)
 		return
 	}
-	
+
 	webJobs := make([]WebJobInfo, 0, len(agent.Jobs))
 	for _, job := range agent.Jobs {
 		webJobs = append(webJobs, WebJobInfo{
@@ -216,11 +216,11 @@ func (ws *WebServer) handleGetAgentJobs(w http.ResponseWriter, r *http.Request) 
 			Status:    string(job.Status),
 			Progress:  job.Progress,
 			StartTime: job.AssignedAt,
-			Size:      "0 MB", // Will calculate from job data
+			Size:      "0 MB",   // Will calculate from job data
 			Rate:      "0 MB/s", // Will calculate from job data
 		})
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(webJobs)
 }
@@ -229,18 +229,18 @@ func (ws *WebServer) handleGetAgentJobs(w http.ResponseWriter, r *http.Request) 
 func (ws *WebServer) handleDisconnectAgent(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	agentID := vars["id"]
-	
+
 	agent, exists := ws.registry.GetAgent(agentID)
 	if !exists {
 		http.Error(w, "Agent not found", http.StatusNotFound)
 		return
 	}
-	
+
 	// Disconnect the agent through its connection
 	if agent.Connection != nil {
 		_ = agent.Connection.Close()
 	}
-	
+
 	w.WriteHeader(http.StatusOK)
 	ws.broadcastUpdate("agent_disconnected", map[string]string{"agent_id": agentID})
 }
@@ -249,7 +249,7 @@ func (ws *WebServer) handleDisconnectAgent(w http.ResponseWriter, r *http.Reques
 func (ws *WebServer) handleGetJobs(w http.ResponseWriter, r *http.Request) {
 	agents := ws.registry.GetAllAgents()
 	var allJobs []WebJobInfo
-	
+
 	for _, agent := range agents {
 		for _, job := range agent.Jobs {
 			allJobs = append(allJobs, WebJobInfo{
@@ -260,12 +260,12 @@ func (ws *WebServer) handleGetJobs(w http.ResponseWriter, r *http.Request) {
 				Status:    string(job.Status),
 				Progress:  job.Progress,
 				StartTime: job.AssignedAt,
-				Size:      "0 MB", // Will calculate from job data
+				Size:      "0 MB",   // Will calculate from job data
 				Rate:      "0 MB/s", // Will calculate from job data
 			})
 		}
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(allJobs)
 }
@@ -274,7 +274,7 @@ func (ws *WebServer) handleGetJobs(w http.ResponseWriter, r *http.Request) {
 func (ws *WebServer) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	jobID := vars["id"]
-	
+
 	// Find job across all agents
 	agents := ws.registry.GetAllAgents()
 	for _, agent := range agents {
@@ -288,17 +288,17 @@ func (ws *WebServer) handleGetJob(w http.ResponseWriter, r *http.Request) {
 					Status:    string(job.Status),
 					Progress:  job.Progress,
 					StartTime: job.AssignedAt,
-					Size:      "0 MB", // Will calculate from job data
+					Size:      "0 MB",   // Will calculate from job data
 					Rate:      "0 MB/s", // Will calculate from job data
 				}
-				
+
 				w.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(w).Encode(webJob)
 				return
 			}
 		}
 	}
-	
+
 	http.Error(w, "Job not found", http.StatusNotFound)
 }
 
@@ -306,7 +306,7 @@ func (ws *WebServer) handleGetJob(w http.ResponseWriter, r *http.Request) {
 func (ws *WebServer) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	jobID := vars["id"]
-	
+
 	// Implementation would depend on job management system
 	// For now, return success
 	w.WriteHeader(http.StatusOK)
@@ -316,11 +316,11 @@ func (ws *WebServer) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 // handleGetMetrics returns system metrics
 func (ws *WebServer) handleGetMetrics(w http.ResponseWriter, r *http.Request) {
 	agents := ws.registry.GetAllAgents()
-	
+
 	totalAgents := len(agents)
 	activeJobs := 0
 	var completedJobs, failedJobs int64
-	
+
 	for _, agent := range agents {
 		for _, job := range agent.Jobs {
 			switch job.Status {
@@ -333,19 +333,19 @@ func (ws *WebServer) handleGetMetrics(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	metrics := WebMetrics{
 		TotalAgents:     totalAgents,
 		ActiveJobs:      activeJobs,
 		CompletedJobs:   completedJobs,
 		FailedJobs:      failedJobs,
-		TotalThroughput: "0 MB/s", // Would calculate from agent data
+		TotalThroughput: "0 MB/s",               // Would calculate from agent data
 		Uptime:          time.Since(time.Now()), // Would track actual uptime
-		MemoryUsage:     "0 MB", // Would get from system metrics
-		CPUUsage:        0.0,    // Would get from system metrics
+		MemoryUsage:     "0 MB",                 // Would get from system metrics
+		CPUUsage:        0.0,                    // Would get from system metrics
 		LastUpdate:      time.Now(),
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(metrics)
 }
@@ -358,23 +358,23 @@ func (ws *WebServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = conn.Close() }()
-	
+
 	// Add to active connections
 	ws.wsMutex.Lock()
 	ws.wsClients[conn] = true
 	ws.wsMutex.Unlock()
-	
+
 	// Remove on disconnect
 	defer func() {
 		ws.wsMutex.Lock()
 		delete(ws.wsClients, conn)
 		ws.wsMutex.Unlock()
 	}()
-	
+
 	// Keep connection alive
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ticker.C:
@@ -391,20 +391,20 @@ func (ws *WebServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 // broadcastUpdate sends updates to all connected WebSocket clients
 func (ws *WebServer) broadcastUpdate(eventType string, data interface{}) {
 	message := map[string]interface{}{
-		"type": eventType,
-		"data": data,
+		"type":      eventType,
+		"data":      data,
 		"timestamp": time.Now(),
 	}
-	
+
 	messageBytes, err := json.Marshal(message)
 	if err != nil {
 		ws.logger.Error("Failed to marshal WebSocket message", "error", err)
 		return
 	}
-	
+
 	ws.wsMutex.RLock()
 	defer ws.wsMutex.RUnlock()
-	
+
 	for conn := range ws.wsClients {
 		if err := conn.WriteMessage(websocket.TextMessage, messageBytes); err != nil {
 			ws.logger.Debug("Failed to send WebSocket message", "error", err)
@@ -420,25 +420,25 @@ func (ws *WebServer) Start() error {
 		Addr:    ws.addr,
 		Handler: ws.router,
 	}
-	
+
 	ws.logger.Info("Starting web server", "addr", ws.addr)
-	
+
 	if err := ws.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("web server failed: %w", err)
 	}
-	
+
 	return nil
 }
 
 // Stop stops the web server
 func (ws *WebServer) Stop() error {
 	ws.cancel()
-	
+
 	if ws.server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return ws.server.Shutdown(ctx)
 	}
-	
+
 	return nil
 }

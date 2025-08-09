@@ -164,7 +164,7 @@ func TestCompressor_Compress_Zlib(t *testing.T) {
 
 func TestCompressor_Compress_Zstd(t *testing.T) {
 	levels := []Level{LevelFastest, LevelFast, LevelDefault, LevelBetter, LevelBest}
-	
+
 	for _, level := range levels {
 		t.Run(string(rune(level)), func(t *testing.T) {
 			comp, err := NewCompressor(AlgorithmZstd, level)
@@ -392,12 +392,12 @@ func TestRecommendAlgorithm(t *testing.T) {
 func TestCompressionResult_Fields(t *testing.T) {
 	result := &CompressionResult{
 		Algorithm:        AlgorithmGzip,
-		Level:           LevelDefault,
-		OriginalSize:    1000,
-		CompressedSize:  800,
+		Level:            LevelDefault,
+		OriginalSize:     1000,
+		CompressedSize:   800,
 		CompressionRatio: 1.25,
 		CompressionTime:  100,
-		Throughput:      10.0,
+		Throughput:       10.0,
 	}
 
 	if result.Algorithm != AlgorithmGzip {
@@ -431,7 +431,7 @@ func TestCompressor_PoolReuse(t *testing.T) {
 	}
 
 	testData := "Test data for pool reuse"
-	
+
 	// Perform multiple compressions to test pool reuse
 	for i := 0; i < 10; i++ {
 		reader := strings.NewReader(testData)
@@ -543,7 +543,7 @@ func TestLevelConstants(t *testing.T) {
 func TestCompressor_ErrorHandling(t *testing.T) {
 	// Test compression with read error
 	comp, _ := NewCompressor(AlgorithmGzip, LevelDefault)
-	
+
 	errorReader := &errorReader{}
 	_, _, err := comp.Compress(errorReader)
 	if err == nil {
@@ -560,7 +560,7 @@ func (r *errorReader) Read(p []byte) (n int, err error) {
 
 func TestCompressor_EmptyData(t *testing.T) {
 	algorithms := []Algorithm{AlgorithmNone, AlgorithmGzip, AlgorithmZlib, AlgorithmZstd, AlgorithmS2, AlgorithmLZ4}
-	
+
 	for _, alg := range algorithms {
 		t.Run(string(alg), func(t *testing.T) {
 			comp, err := NewCompressor(alg, LevelDefault)
@@ -601,7 +601,7 @@ func TestCompressor_EmptyData(t *testing.T) {
 
 func TestBenchmarkCompression_ReadError(t *testing.T) {
 	errorReader := &errorReader{}
-	
+
 	_, err := BenchmarkCompression(errorReader, 100)
 	if err == nil {
 		t.Errorf("BenchmarkCompression() should fail with error reader")
@@ -628,19 +628,19 @@ func TestCompressor_CompressionStatistics(t *testing.T) {
 	if result.OriginalSize != int64(len(testData)) {
 		t.Errorf("OriginalSize = %v, want %v", result.OriginalSize, len(testData))
 	}
-	
+
 	if result.CompressedSize >= result.OriginalSize {
 		t.Errorf("CompressedSize (%v) should be less than OriginalSize (%v)", result.CompressedSize, result.OriginalSize)
 	}
-	
+
 	if result.CompressionRatio <= 1.0 {
 		t.Errorf("CompressionRatio should be > 1.0, got %v", result.CompressionRatio)
 	}
-	
+
 	if result.CompressionTime < 0 {
 		t.Errorf("CompressionTime should be >= 0, got %v", result.CompressionTime)
 	}
-	
+
 	if result.Throughput < 0 {
 		t.Errorf("Throughput should be >= 0, got %v", result.Throughput)
 	}

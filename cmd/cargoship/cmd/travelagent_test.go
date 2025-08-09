@@ -11,12 +11,12 @@ import (
 
 func TestNewTravelAgentCmd(t *testing.T) {
 	cmd := newTravelAgentCmd()
-	
+
 	require.NotNil(t, cmd)
 	assert.Equal(t, "travelagent CREDENTIAL_FILE", cmd.Use)
 	assert.Equal(t, "Run a travel agent server. NOT FOR PRODUCTION USE", cmd.Short)
 	assert.NotNil(t, cmd.RunE)
-	
+
 	// Test that it requires exactly one argument
 	assert.Error(t, cmd.Args(cmd, []string{}))
 	assert.NoError(t, cmd.Args(cmd, []string{"one"}))
@@ -25,7 +25,7 @@ func TestNewTravelAgentCmd(t *testing.T) {
 
 func TestTravelAgentCmdNonexistentFile(t *testing.T) {
 	cmd := newTravelAgentCmd()
-	
+
 	// Test with nonexistent file
 	err := cmd.RunE(cmd, []string{"/nonexistent/file.yaml"})
 	assert.Error(t, err)
@@ -37,12 +37,12 @@ func TestTravelAgentCmdInvalidYAML(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "invalid_*.yaml")
 	require.NoError(t, err)
 	defer func() { _ = os.Remove(tmpFile.Name()) }()
-	
+
 	// Write invalid YAML
 	invalidYAML := "invalid: yaml: content: ["
 	err = os.WriteFile(tmpFile.Name(), []byte(invalidYAML), 0644)
 	require.NoError(t, err)
-	
+
 	cmd := newTravelAgentCmd()
 	err = cmd.RunE(cmd, []string{tmpFile.Name()})
 	assert.Error(t, err)
@@ -54,13 +54,13 @@ func TestTravelAgentCmdNoTransfers(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "no_transfers_*.yaml")
 	require.NoError(t, err)
 	defer func() { _ = os.Remove(tmpFile.Name()) }()
-	
+
 	// Write YAML with no transfers
 	validYAMLNoTransfers := `admin_token: "test-token"
 transfers: []`
 	err = os.WriteFile(tmpFile.Name(), []byte(validYAMLNoTransfers), 0644)
 	require.NoError(t, err)
-	
+
 	cmd := newTravelAgentCmd()
 	err = cmd.RunE(cmd, []string{tmpFile.Name()})
 	assert.Error(t, err)
@@ -72,7 +72,7 @@ func TestTravelAgentCmdValidCredentials(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "valid_*.yaml")
 	require.NoError(t, err)
 	defer func() { _ = os.Remove(tmpFile.Name()) }()
-	
+
 	// Write valid YAML with transfers
 	validYAML := `admin_token: "test-admin-token"
 transfers:
@@ -84,13 +84,13 @@ transfers:
     destination: "local:///tmp/test"`
 	err = os.WriteFile(tmpFile.Name(), []byte(validYAML), 0644)
 	require.NoError(t, err)
-	
+
 	cmd := newTravelAgentCmd()
-	
+
 	// Verify the command is properly structured
 	assert.NotNil(t, cmd.RunE)
 	assert.Equal(t, "travelagent CREDENTIAL_FILE", cmd.Use)
-	
+
 	// Test the command would attempt to start server (but we can't test the actual server start
 	// without proper logger setup and network resources)
 	// The command should at least parse the YAML correctly before failing on server start
@@ -101,7 +101,7 @@ func TestTravelAgentCmdFilePermissions(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "permissions_*.yaml")
 	require.NoError(t, err)
 	defer func() { _ = os.Remove(tmpFile.Name()) }()
-	
+
 	// Write valid YAML
 	validYAML := `admin_token: "test-token"
 transfers:
@@ -110,7 +110,7 @@ transfers:
     destination: "local:///tmp"`
 	err = os.WriteFile(tmpFile.Name(), []byte(validYAML), 0644)
 	require.NoError(t, err)
-	
+
 	// Change permissions to make file unreadable
 	err = os.Chmod(tmpFile.Name(), 0000)
 	if err != nil {
@@ -120,7 +120,7 @@ transfers:
 		// Restore permissions for cleanup
 		_ = os.Chmod(tmpFile.Name(), 0644)
 	}()
-	
+
 	cmd := newTravelAgentCmd()
 	err = cmd.RunE(cmd, []string{tmpFile.Name()})
 	assert.Error(t, err)
@@ -133,13 +133,13 @@ func TestTravelAgentCmdRelativePath(t *testing.T) {
 	require.NoError(t, err)
 	fileName := filepath.Base(tmpFile.Name())
 	defer func() { _ = os.Remove(tmpFile.Name()) }()
-	
+
 	// Write YAML with no transfers to trigger early error
 	validYAMLNoTransfers := `admin_token: "test-token"
 transfers: []`
 	err = os.WriteFile(tmpFile.Name(), []byte(validYAMLNoTransfers), 0644)
 	require.NoError(t, err)
-	
+
 	cmd := newTravelAgentCmd()
 	err = cmd.RunE(cmd, []string{fileName})
 	assert.Error(t, err)
@@ -151,7 +151,7 @@ func TestTravelAgentCmdEmptyFile(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "empty_*.yaml")
 	require.NoError(t, err)
 	defer func() { _ = os.Remove(tmpFile.Name()) }()
-	
+
 	cmd := newTravelAgentCmd()
 	err = cmd.RunE(cmd, []string{tmpFile.Name()})
 	assert.Error(t, err)
@@ -164,7 +164,7 @@ func TestTravelAgentCmdComplexYAMLStructure(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "complex_*.yaml")
 	require.NoError(t, err)
 	defer func() { _ = os.Remove(tmpFile.Name()) }()
-	
+
 	// Write complex YAML structure
 	complexYAML := `admin_token: "admin-123"
 transfers:
@@ -182,13 +182,13 @@ transfers:
       - "option2"`
 	err = os.WriteFile(tmpFile.Name(), []byte(complexYAML), 0644)
 	require.NoError(t, err)
-	
+
 	cmd := newTravelAgentCmd()
-	
+
 	// Verify command structure
 	assert.NotNil(t, cmd.RunE)
 	assert.Equal(t, "travelagent CREDENTIAL_FILE", cmd.Use)
-	
+
 	// Test that complex YAML would be processed (but we can't test server start)
 }
 
@@ -197,7 +197,7 @@ func TestTravelAgentCmdYAMLWithComments(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "comments_*.yaml")
 	require.NoError(t, err)
 	defer func() { _ = os.Remove(tmpFile.Name()) }()
-	
+
 	// Write YAML with comments
 	yamlWithComments := `# Travel agent configuration
 admin_token: "admin-token" # Administrative token
@@ -209,19 +209,19 @@ transfers:
     destination: "local:///tmp/test" # Local destination`
 	err = os.WriteFile(tmpFile.Name(), []byte(yamlWithComments), 0644)
 	require.NoError(t, err)
-	
+
 	cmd := newTravelAgentCmd()
-	
+
 	// Verify command structure
 	assert.NotNil(t, cmd.RunE)
 	assert.Equal(t, "travelagent CREDENTIAL_FILE", cmd.Use)
-	
+
 	// YAML with comments should parse correctly
 }
 
 func TestTravelAgentCmdArgValidation(t *testing.T) {
 	cmd := newTravelAgentCmd()
-	
+
 	// Test various argument combinations
 	testCases := []struct {
 		name          string
@@ -249,7 +249,7 @@ func TestTravelAgentCmdArgValidation(t *testing.T) {
 			expectedValid: false,
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := cmd.Args(cmd, tc.args)
@@ -264,7 +264,7 @@ func TestTravelAgentCmdArgValidation(t *testing.T) {
 
 func TestTravelAgentCmdStringFormatting(t *testing.T) {
 	cmd := newTravelAgentCmd()
-	
+
 	// Test command structure
 	assert.Contains(t, cmd.Use, "CREDENTIAL_FILE")
 	assert.Contains(t, cmd.Short, "NOT FOR PRODUCTION USE")
@@ -278,37 +278,37 @@ func TestTravelAgentCmdMalformedYAMLStructures(t *testing.T) {
 		expectedError string
 	}{
 		{
-			name:          "empty transfers",
-			yamlContent:   `admin_token: "test"
+			name: "empty transfers",
+			yamlContent: `admin_token: "test"
 transfers: []`,
 			expectedError: "could not find any transfers",
 		},
 		{
-			name:          "invalid YAML syntax",
-			yamlContent:   `admin_token: test
+			name: "invalid YAML syntax",
+			yamlContent: `admin_token: test
   invalid:
     - unclosed`,
 			expectedError: "yaml",
 		},
 		{
-			name:          "mixed indentation",
-			yamlContent:   `admin_token: "test"
+			name: "mixed indentation",
+			yamlContent: `admin_token: "test"
 transfers:
 	- id: "mixed"
   token: "token"`,
 			expectedError: "yaml",
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			tmpFile, err := os.CreateTemp("", "malformed_*.yaml")
 			require.NoError(t, err)
 			defer func() { _ = os.Remove(tmpFile.Name()) }()
-			
+
 			err = os.WriteFile(tmpFile.Name(), []byte(tc.yamlContent), 0644)
 			require.NoError(t, err)
-			
+
 			cmd := newTravelAgentCmd()
 			err = cmd.RunE(cmd, []string{tmpFile.Name()})
 			assert.Error(t, err)

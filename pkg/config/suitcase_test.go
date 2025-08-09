@@ -53,7 +53,7 @@ func TestSuitCaseOpts_EncryptToCobra_NoEncryption(t *testing.T) {
 	}
 
 	cmd := &cobra.Command{}
-	
+
 	err := opts.EncryptToCobra(cmd)
 	if err != nil {
 		t.Errorf("EncryptToCobra() with no encryption should not return error, got %v", err)
@@ -75,7 +75,7 @@ func TestSuitCaseOpts_EncryptToCobra_WithGPGFormat(t *testing.T) {
 	// Add the required GPG flags that the gpg.EncryptToWithCmd function expects
 	cmd.Flags().StringSlice("encrypt-to", []string{}, "GPG recipient keys")
 	cmd.Flags().String("gpg-home", "", "GPG home directory")
-	
+
 	err := opts.EncryptToCobra(cmd)
 	// This will likely return an error since we don't have actual GPG setup,
 	// but we're testing that the function is called
@@ -100,7 +100,7 @@ func TestSuitCaseOpts_EncryptToCobra_WithInnerEncryption(t *testing.T) {
 	// Add the required GPG flags
 	cmd.Flags().StringSlice("encrypt-to", []string{}, "GPG recipient keys")
 	cmd.Flags().String("gpg-home", "", "GPG home directory")
-	
+
 	err := opts.EncryptToCobra(cmd)
 	// This will likely return an error since we don't have actual GPG setup,
 	// but we're testing that the function is called
@@ -125,7 +125,7 @@ func TestSuitCaseOpts_EncryptToCobra_MultipleConditions(t *testing.T) {
 	// Add the required GPG flags
 	cmd.Flags().StringSlice("encrypt-to", []string{}, "GPG recipient keys")
 	cmd.Flags().String("gpg-home", "", "GPG home directory")
-	
+
 	err := opts.EncryptToCobra(cmd)
 	// This will likely return an error since we don't have actual GPG setup,
 	// but we're testing that the function is called when either condition is true
@@ -208,7 +208,7 @@ func TestSuitCaseOpts_EncryptToCobra_NilCommand(t *testing.T) {
 			t.Errorf("EncryptToCobra() with nil command should panic or return error")
 		}
 	}()
-	
+
 	_ = opts.EncryptToCobra(nil)
 }
 
@@ -219,7 +219,7 @@ func TestSuitCaseOpts_EncryptToCobra_EmptyFormat(t *testing.T) {
 	}
 
 	cmd := &cobra.Command{}
-	
+
 	err := opts.EncryptToCobra(cmd)
 	if err != nil {
 		t.Errorf("EncryptToCobra() with empty format and no inner encryption should not return error, got %v", err)
@@ -237,7 +237,7 @@ func TestSuitCaseOpts_EncryptToCobra_NoGPGSuffix(t *testing.T) {
 	}
 
 	cmd := &cobra.Command{}
-	
+
 	err := opts.EncryptToCobra(cmd)
 	if err != nil {
 		t.Errorf("EncryptToCobra() with non-GPG format and no inner encryption should not return error, got %v", err)
@@ -263,7 +263,7 @@ func TestHashSet_Collection(t *testing.T) {
 	for i, hs := range hashSets {
 		expectedFilename := fmt.Sprintf("file%d.txt", i+1)
 		expectedHash := fmt.Sprintf("hash%d", i+1)
-		
+
 		if hs.Filename != expectedFilename {
 			t.Errorf("HashSet[%d].Filename = %v, want %v", i, hs.Filename, expectedFilename)
 		}
@@ -272,4 +272,3 @@ func TestHashSet_Collection(t *testing.T) {
 		}
 	}
 }
-

@@ -1,5 +1,9 @@
 # Documentation Organization
 
+<div align="center">
+  <img src="../assets/images/logo.png" alt="CargoShip Logo" width="120" height="120">
+</div>
+
 This document describes the current documentation organization for CargoShip and the rationale behind the structure.
 
 ## Overview

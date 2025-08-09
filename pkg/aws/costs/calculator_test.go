@@ -18,7 +18,7 @@ func TestNewCalculator(t *testing.T) {
 	if calc == nil {
 		t.Fatal("NewCalculator returned nil")
 	}
-	
+
 	if calc.region != "us-east-1" {
 		t.Errorf("Expected region 'us-east-1', got %s", calc.region)
 	}
@@ -30,11 +30,11 @@ func TestNewCalculatorWithPricing(t *testing.T) {
 	if calc == nil {
 		t.Fatal("NewCalculatorWithPricing returned nil")
 	}
-	
+
 	if calc.region != "us-west-2" {
 		t.Errorf("Expected region 'us-west-2', got %s", calc.region)
 	}
-	
+
 	if calc.pricingService != nil {
 		t.Error("Expected pricingService to be nil")
 	}
@@ -43,7 +43,7 @@ func TestNewCalculatorWithPricing(t *testing.T) {
 func TestCalculateStorageCost(t *testing.T) {
 	calc := NewCalculator("us-east-1")
 	ctx := context.Background()
-	
+
 	tests := []struct {
 		name         string
 		sizeGB       float64
@@ -73,13 +73,13 @@ func TestCalculateStorageCost(t *testing.T) {
 			wantMax:      2.5,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cost := calc.calculateStorageCost(ctx, tt.sizeGB, tt.storageClass)
-			
+
 			if cost < tt.wantMin || cost > tt.wantMax {
-				t.Errorf("calculateStorageCost() = %v, want between %v and %v", 
+				t.Errorf("calculateStorageCost() = %v, want between %v and %v",
 					cost, tt.wantMin, tt.wantMax)
 			}
 		})
@@ -89,11 +89,11 @@ func TestCalculateStorageCost(t *testing.T) {
 func TestCalculateTransferCost(t *testing.T) {
 	calc := NewCalculator("us-east-1")
 	ctx := context.Background()
-	
+
 	tests := []struct {
-		name    string
-		sizeGB  float64
-		want    float64
+		name   string
+		sizeGB float64
+		want   float64
 	}{
 		{
 			name:   "under 1GB free tier",
@@ -111,11 +111,11 @@ func TestCalculateTransferCost(t *testing.T) {
 			want:   0.36, // 4GB * $0.09/GB
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cost := calc.calculateTransferCost(ctx, tt.sizeGB)
-			
+
 			if cost != tt.want {
 				t.Errorf("calculateTransferCost() = %v, want %v", cost, tt.want)
 			}
@@ -126,11 +126,11 @@ func TestCalculateTransferCost(t *testing.T) {
 func TestCalculateTransferCostEdgeCases(t *testing.T) {
 	calc := NewCalculator("us-east-1")
 	ctx := context.Background()
-	
+
 	tests := []struct {
-		name    string
-		sizeGB  float64
-		want    float64
+		name   string
+		sizeGB float64
+		want   float64
 	}{
 		{
 			name:   "exactly free tier boundary",
@@ -153,11 +153,11 @@ func TestCalculateTransferCostEdgeCases(t *testing.T) {
 			want:   0.0,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cost := calc.calculateTransferCost(ctx, tt.sizeGB)
-			
+
 			if cost != tt.want {
 				t.Errorf("calculateTransferCost() = %v, want %v", cost, tt.want)
 			}
@@ -168,7 +168,7 @@ func TestCalculateTransferCostEdgeCases(t *testing.T) {
 func TestCalculateRequestCostComprehensive(t *testing.T) {
 	calc := NewCalculator("us-east-1")
 	ctx := context.Background()
-	
+
 	tests := []struct {
 		name         string
 		numRequests  int
@@ -205,13 +205,13 @@ func TestCalculateRequestCostComprehensive(t *testing.T) {
 			wantMax:      0.0,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cost := calc.calculateRequestCost(ctx, tt.numRequests, tt.storageClass)
-			
+
 			if cost < tt.wantMin || cost > tt.wantMax {
-				t.Errorf("calculateRequestCost() = %v, want between %v and %v", 
+				t.Errorf("calculateRequestCost() = %v, want between %v and %v",
 					cost, tt.wantMin, tt.wantMax)
 			}
 		})
@@ -221,7 +221,7 @@ func TestCalculateRequestCostComprehensive(t *testing.T) {
 func TestEstimateArchives(t *testing.T) {
 	calc := NewCalculator("us-east-1")
 	ctx := context.Background()
-	
+
 	archives := []s3.Archive{
 		{
 			Key:             "test1.tar.zst",
@@ -242,48 +242,48 @@ func TestEstimateArchives(t *testing.T) {
 			RetentionDays:   1000,
 		},
 	}
-	
+
 	estimate, err := calc.EstimateArchives(ctx, archives)
 	if err != nil {
 		t.Fatalf("EstimateArchives() error = %v", err)
 	}
-	
+
 	// Basic sanity checks
 	if estimate.TotalSizeGB <= 0 {
 		t.Error("Expected TotalSizeGB > 0")
 	}
-	
+
 	if estimate.ArchiveCount != 2 {
 		t.Errorf("Expected ArchiveCount = 2, got %d", estimate.ArchiveCount)
 	}
-	
+
 	if estimate.Region != "us-east-1" {
 		t.Errorf("Expected Region = 'us-east-1', got %s", estimate.Region)
 	}
-	
+
 	// Storage costs should be reasonable
 	if estimate.StorageCosts.Standard <= 0 {
 		t.Error("Expected Standard storage cost > 0")
 	}
-	
+
 	if estimate.StorageCosts.DeepArchive <= 0 {
 		t.Error("Expected Deep Archive storage cost > 0")
 	}
-	
+
 	// Deep Archive should be cheaper than Standard
 	if estimate.StorageCosts.DeepArchive >= estimate.StorageCosts.Standard {
 		t.Error("Expected Deep Archive to be cheaper than Standard")
 	}
-	
+
 	// Total costs should be calculated
 	if estimate.TotalMonthlyCost <= 0 {
 		t.Error("Expected TotalMonthlyCost > 0")
 	}
-	
+
 	if estimate.TotalAnnualCost != estimate.TotalMonthlyCost*12 {
 		t.Error("TotalAnnualCost should be 12x TotalMonthlyCost")
 	}
-	
+
 	// Timestamp should be recent
 	if time.Since(estimate.CalculatedAt) > time.Minute {
 		t.Error("CalculatedAt timestamp should be recent")
@@ -292,7 +292,7 @@ func TestEstimateArchives(t *testing.T) {
 
 func TestGenerateRecommendations(t *testing.T) {
 	calc := NewCalculator("us-east-1")
-	
+
 	// Test with large archive that should trigger Deep Archive recommendation
 	archives := []s3.Archive{
 		{
@@ -302,17 +302,17 @@ func TestGenerateRecommendations(t *testing.T) {
 			RetentionDays: 2000,
 		},
 	}
-	
+
 	estimate := &CostEstimate{
 		TotalSizeGB: 10.0,
 	}
-	
+
 	recommendations := calc.generateRecommendations(archives, estimate)
-	
+
 	if len(recommendations) == 0 {
 		t.Error("Expected at least one recommendation for large archive")
 	}
-	
+
 	// Should recommend something for archive access pattern and long retention
 	foundRecommendation := false
 	for _, rec := range recommendations {
@@ -321,7 +321,7 @@ func TestGenerateRecommendations(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if !foundRecommendation {
 		t.Error("Expected storage class or lifecycle recommendation for archival data")
 	}
@@ -329,7 +329,7 @@ func TestGenerateRecommendations(t *testing.T) {
 
 func TestGenerateRecommendationsComprehensive(t *testing.T) {
 	calc := NewCalculator("us-east-1")
-	
+
 	tests := []struct {
 		name          string
 		archives      []s3.Archive
@@ -429,29 +429,29 @@ func TestGenerateRecommendationsComprehensive(t *testing.T) {
 					RetentionDays: 100,
 				},
 			},
-			totalSizeGB:   15.0, // > 10GB but only 50% unknown
+			totalSizeGB:   15.0,       // > 10GB but only 50% unknown
 			expectedTypes: []string{}, // < 50% unknown patterns
 			minCount:      0,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			estimate := &CostEstimate{
 				TotalSizeGB: tt.totalSizeGB,
 			}
-			
+
 			recommendations := calc.generateRecommendations(tt.archives, estimate)
-			
+
 			if len(recommendations) < tt.minCount {
 				t.Errorf("Expected at least %d recommendations, got %d", tt.minCount, len(recommendations))
 			}
-			
+
 			// Check for expected recommendation types
 			foundTypes := make(map[string]bool)
 			for _, rec := range recommendations {
 				foundTypes[rec.Type] = true
-				
+
 				// Validate recommendation structure
 				if rec.Description == "" {
 					t.Error("Recommendation should have description")
@@ -466,7 +466,7 @@ func TestGenerateRecommendationsComprehensive(t *testing.T) {
 					t.Error("Recommendation should have impact level")
 				}
 			}
-			
+
 			for _, expectedType := range tt.expectedTypes {
 				if !foundTypes[expectedType] {
 					t.Errorf("Expected recommendation type %s not found", expectedType)
@@ -481,7 +481,7 @@ func TestGenerateRecommendationsComprehensive(t *testing.T) {
 func TestCalculateStorageCostEdgeCases(t *testing.T) {
 	calc := NewCalculator("us-east-1")
 	ctx := context.Background()
-	
+
 	tests := []struct {
 		name         string
 		sizeGB       float64
@@ -519,7 +519,7 @@ func TestCalculateStorageCostEdgeCases(t *testing.T) {
 			want:         0.023, // Standard fallback
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cost := calc.calculateStorageCost(ctx, tt.sizeGB, tt.storageClass)
@@ -533,7 +533,7 @@ func TestCalculateStorageCostEdgeCases(t *testing.T) {
 func TestCalculateRequestCostAllStorageClasses(t *testing.T) {
 	calc := NewCalculator("us-east-1")
 	ctx := context.Background()
-	
+
 	tests := []struct {
 		name         string
 		numRequests  int
@@ -577,7 +577,7 @@ func TestCalculateRequestCostAllStorageClasses(t *testing.T) {
 			wantCost:     0.0025, // 500/1000 * 0.005
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cost := calc.calculateRequestCost(ctx, tt.numRequests, tt.storageClass)
@@ -591,7 +591,7 @@ func TestCalculateRequestCostAllStorageClasses(t *testing.T) {
 func TestCalculateTransferCostLargeTransfers(t *testing.T) {
 	calc := NewCalculator("us-east-1")
 	ctx := context.Background()
-	
+
 	tests := []struct {
 		name   string
 		sizeGB float64
@@ -618,7 +618,7 @@ func TestCalculateTransferCostLargeTransfers(t *testing.T) {
 			want:   0.045, // 0.5 * 0.09
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cost := calc.calculateTransferCost(ctx, tt.sizeGB)
@@ -632,7 +632,7 @@ func TestCalculateTransferCostLargeTransfers(t *testing.T) {
 func BenchmarkEstimateArchives(b *testing.B) {
 	calc := NewCalculator("us-east-1")
 	ctx := context.Background()
-	
+
 	// Create test archives
 	archives := make([]s3.Archive, 100)
 	for i := range archives {
@@ -645,9 +645,9 @@ func BenchmarkEstimateArchives(b *testing.B) {
 			AccessPattern:   "unknown",
 		}
 	}
-	
+
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		_, err := calc.EstimateArchives(ctx, archives)
 		if err != nil {

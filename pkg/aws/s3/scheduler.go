@@ -25,23 +25,23 @@ func (ts *TransferScheduler) Start(ctx context.Context) {
 func (ts *TransferScheduler) RegisterPrefix(prefixID string, capacity float64) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	
+
 	ts.prefixMetrics[prefixID] = &PrefixPerformanceMetrics{
-		PrefixID:               prefixID,
-		ActiveUploads:          0,
-		ThroughputMBps:         0,
-		LatencyMs:              50, // Default baseline
-		ErrorRate:              0,
-		CongestionWindow:       ts.config.GlobalCongestionWindow / 4, // Start conservative
-		LastUpdate:             time.Now(),
-		BandwidthUtilization:   0,
-		ThroughputHistory:      make([]float64, 0, 20),
-		LatencyHistory:         make([]float64, 0, 20),
-		ErrorHistory:           make([]float64, 0, 20),
-		QueueLength:            0,
-		ProcessingCapacity:     capacity,
+		PrefixID:             prefixID,
+		ActiveUploads:        0,
+		ThroughputMBps:       0,
+		LatencyMs:            50, // Default baseline
+		ErrorRate:            0,
+		CongestionWindow:     ts.config.GlobalCongestionWindow / 4, // Start conservative
+		LastUpdate:           time.Now(),
+		BandwidthUtilization: 0,
+		ThroughputHistory:    make([]float64, 0, 20),
+		LatencyHistory:       make([]float64, 0, 20),
+		ErrorHistory:         make([]float64, 0, 20),
+		QueueLength:          0,
+		ProcessingCapacity:   capacity,
 	}
-	
+
 	ts.globalState.ActivePrefixes[prefixID] = true
 	ts.loadBalancer.RegisterPrefix(prefixID, capacity)
 }
@@ -50,11 +50,11 @@ func (ts *TransferScheduler) RegisterPrefix(prefixID string, capacity float64) {
 func (ts *TransferScheduler) SelectOptimalPrefix(upload *ScheduledUpload) (string, error) {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
-	
+
 	if len(ts.prefixMetrics) == 0 {
 		return "", fmt.Errorf("no prefixes registered")
 	}
-	
+
 	switch ts.config.Strategy {
 	case "tcp_like":
 		return ts.selectPrefixTCPLike(upload)
@@ -74,9 +74,9 @@ func (ts *TransferScheduler) selectPrefixTCPLike(upload *ScheduledUpload) (strin
 		score    float64
 		metrics  *PrefixPerformanceMetrics
 	}
-	
+
 	var candidates []prefixScore
-	
+
 	for prefixID, metrics := range ts.prefixMetrics {
 		// Calculate TCP-like score based on congestion window and performance
 		congestionFactor := float64(metrics.CongestionWindow) / float64(ts.config.GlobalCongestionWindow)
@@ -84,26 +84,26 @@ func (ts *TransferScheduler) selectPrefixTCPLike(upload *ScheduledUpload) (strin
 		latencyFactor := 1.0 / (1.0 + metrics.LatencyMs/100.0) // Lower latency = higher score
 		errorFactor := 1.0 - metrics.ErrorRate
 		loadFactor := 1.0 - (float64(metrics.QueueLength) / (metrics.ProcessingCapacity + 1))
-		
+
 		// Combine factors with weights
-		score := (congestionFactor * 0.3) + 
-				(throughputFactor * 0.25) + 
-				(latencyFactor * 0.2) + 
-				(errorFactor * 0.15) + 
-				(loadFactor * 0.1)
-		
+		score := (congestionFactor * 0.3) +
+			(throughputFactor * 0.25) +
+			(latencyFactor * 0.2) +
+			(errorFactor * 0.15) +
+			(loadFactor * 0.1)
+
 		candidates = append(candidates, prefixScore{
 			prefixID: prefixID,
 			score:    score,
 			metrics:  metrics,
 		})
 	}
-	
+
 	// Sort by score (highest first)
 	sort.Slice(candidates, func(i, j int) bool {
 		return candidates[i].score > candidates[j].score
 	})
-	
+
 	// Apply some randomization to avoid thundering herd
 	if len(candidates) > 1 && candidates[0].score-candidates[1].score < 0.1 {
 		// Scores are close, add some randomization
@@ -111,7 +111,7 @@ func (ts *TransferScheduler) selectPrefixTCPLike(upload *ScheduledUpload) (strin
 			return candidates[1].prefixID, nil
 		}
 	}
-	
+
 	return candidates[0].prefixID, nil
 }
 
@@ -119,19 +119,19 @@ func (ts *TransferScheduler) selectPrefixTCPLike(upload *ScheduledUpload) (strin
 func (ts *TransferScheduler) selectPrefixFairShare(upload *ScheduledUpload) (string, error) {
 	var bestPrefix string
 	lowestUtilization := math.Inf(1)
-	
+
 	for prefixID, metrics := range ts.prefixMetrics {
 		utilization := metrics.BandwidthUtilization
 		if metrics.ProcessingCapacity > 0 {
 			utilization += float64(metrics.QueueLength) / metrics.ProcessingCapacity
 		}
-		
+
 		if utilization < lowestUtilization {
 			lowestUtilization = utilization
 			bestPrefix = prefixID
 		}
 	}
-	
+
 	if bestPrefix == "" {
 		// Fallback to first available prefix
 		for prefixID := range ts.prefixMetrics {
@@ -139,7 +139,7 @@ func (ts *TransferScheduler) selectPrefixFairShare(upload *ScheduledUpload) (str
 		}
 		return "", fmt.Errorf("no available prefixes")
 	}
-	
+
 	return bestPrefix, nil
 }
 
@@ -150,25 +150,25 @@ func (ts *TransferScheduler) selectPrefixAdaptive(upload *ScheduledUpload) (stri
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Apply adaptive adjustments based on historical performance
 	adaptivePrefix := ts.applyAdaptiveAdjustments(tcpPrefix, upload)
-	
+
 	// Use network profile learning to refine selection
 	finalPrefix := ts.applyNetworkProfileLearning(adaptivePrefix, upload)
-	
+
 	return finalPrefix, nil
 }
 
 // applyAdaptiveAdjustments applies adaptive learning to prefix selection.
 func (ts *TransferScheduler) applyAdaptiveAdjustments(selectedPrefix string, upload *ScheduledUpload) string {
 	metrics := ts.prefixMetrics[selectedPrefix]
-	
+
 	// Check if this prefix has been consistently underperforming
 	if len(metrics.ThroughputHistory) >= 5 {
 		recentAvg := ts.calculateRecentAverage(metrics.ThroughputHistory, 5)
 		overallAvg := ts.calculateOverallAverage(metrics.ThroughputHistory)
-		
+
 		// If recent performance is significantly worse, consider alternatives
 		if recentAvg < overallAvg*0.7 {
 			// Look for a better alternative
@@ -182,7 +182,7 @@ func (ts *TransferScheduler) applyAdaptiveAdjustments(selectedPrefix string, upl
 			}
 		}
 	}
-	
+
 	return selectedPrefix
 }
 
@@ -191,7 +191,7 @@ func (ts *TransferScheduler) applyNetworkProfileLearning(selectedPrefix string, 
 	// Use network profile to predict optimal prefix based on upload characteristics
 	if ts.networkProfile.LearningConfidence > 0.7 {
 		// High confidence in network profile, apply learned optimizations
-		
+
 		// For large uploads, prefer prefixes with higher bandwidth trends
 		if upload.EstimatedSize > 1024*1024*1024 { // > 1GB
 			if ts.networkProfile.BandwidthTrend == TrendIncreasing {
@@ -202,7 +202,7 @@ func (ts *TransferScheduler) applyNetworkProfileLearning(selectedPrefix string, 
 				}
 			}
 		}
-		
+
 		// For time-sensitive uploads, prefer low-latency prefixes
 		if !upload.Deadline.IsZero() && time.Until(upload.Deadline) < time.Hour {
 			lowLatencyPrefix := ts.findLowestLatencyPrefix()
@@ -211,7 +211,7 @@ func (ts *TransferScheduler) applyNetworkProfileLearning(selectedPrefix string, 
 			}
 		}
 	}
-	
+
 	return selectedPrefix
 }
 
@@ -219,12 +219,12 @@ func (ts *TransferScheduler) applyNetworkProfileLearning(selectedPrefix string, 
 func (ts *TransferScheduler) UpdatePrefixMetrics(prefixID string, metrics *PrefixPerformanceMetrics) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	
+
 	existing, exists := ts.prefixMetrics[prefixID]
 	if !exists {
 		return
 	}
-	
+
 	// Update current metrics
 	existing.ThroughputMBps = metrics.ThroughputMBps
 	existing.LatencyMs = metrics.LatencyMs
@@ -233,13 +233,13 @@ func (ts *TransferScheduler) UpdatePrefixMetrics(prefixID string, metrics *Prefi
 	existing.BandwidthUtilization = metrics.BandwidthUtilization
 	existing.QueueLength = metrics.QueueLength
 	existing.LastUpdate = time.Now()
-	
+
 	// Update historical data
 	ts.updateHistoricalMetrics(existing, metrics)
-	
+
 	// Update global state
 	ts.updateGlobalState()
-	
+
 	// Trigger network profile learning
 	ts.updateNetworkProfile(metrics)
 }
@@ -247,19 +247,19 @@ func (ts *TransferScheduler) UpdatePrefixMetrics(prefixID string, metrics *Prefi
 // updateHistoricalMetrics updates historical performance data.
 func (ts *TransferScheduler) updateHistoricalMetrics(existing, new *PrefixPerformanceMetrics) {
 	maxHistory := 20
-	
+
 	// Update throughput history
 	existing.ThroughputHistory = append(existing.ThroughputHistory, new.ThroughputMBps)
 	if len(existing.ThroughputHistory) > maxHistory {
 		existing.ThroughputHistory = existing.ThroughputHistory[1:]
 	}
-	
+
 	// Update latency history
 	existing.LatencyHistory = append(existing.LatencyHistory, new.LatencyMs)
 	if len(existing.LatencyHistory) > maxHistory {
 		existing.LatencyHistory = existing.LatencyHistory[1:]
 	}
-	
+
 	// Update error history
 	existing.ErrorHistory = append(existing.ErrorHistory, new.ErrorRate)
 	if len(existing.ErrorHistory) > maxHistory {
@@ -273,7 +273,7 @@ func (ts *TransferScheduler) updateGlobalState() {
 	totalUploads := 0
 	totalErrors := 0.0
 	activeCount := 0
-	
+
 	for _, metrics := range ts.prefixMetrics {
 		totalThroughput += metrics.ThroughputMBps
 		totalUploads += metrics.ActiveUploads
@@ -282,7 +282,7 @@ func (ts *TransferScheduler) updateGlobalState() {
 			activeCount++
 		}
 	}
-	
+
 	ts.globalState.TotalActiveUploads = totalUploads
 	ts.globalState.GlobalThroughputMBps = totalThroughput
 	if activeCount > 0 {
@@ -297,11 +297,11 @@ func (ts *TransferScheduler) updateNetworkProfile(metrics *PrefixPerformanceMetr
 	if metrics.ThroughputMBps > ts.networkProfile.EstimatedBandwidthMBps {
 		// New peak observed, update estimate
 		learningRate := 0.1
-		ts.networkProfile.EstimatedBandwidthMBps = 
-			(1-learningRate)*ts.networkProfile.EstimatedBandwidthMBps + 
-			learningRate*metrics.ThroughputMBps
+		ts.networkProfile.EstimatedBandwidthMBps =
+			(1-learningRate)*ts.networkProfile.EstimatedBandwidthMBps +
+				learningRate*metrics.ThroughputMBps
 	}
-	
+
 	// Update baseline RTT
 	if metrics.LatencyMs > 0 {
 		newRTT := time.Duration(metrics.LatencyMs) * time.Millisecond
@@ -309,16 +309,16 @@ func (ts *TransferScheduler) updateNetworkProfile(metrics *PrefixPerformanceMetr
 			ts.networkProfile.BaselineRTT = newRTT
 		}
 	}
-	
+
 	// Update trends
 	ts.updatePerformanceTrends()
-	
+
 	// Increase learning confidence over time
 	ts.networkProfile.LearningConfidence = math.Min(
-		ts.networkProfile.LearningConfidence + 0.01, 
+		ts.networkProfile.LearningConfidence+0.01,
 		1.0,
 	)
-	
+
 	ts.networkProfile.LastProfileUpdate = time.Now()
 }
 
@@ -328,24 +328,24 @@ func (ts *TransferScheduler) updatePerformanceTrends() {
 	recentBandwidth := 0.0
 	historicalBandwidth := 0.0
 	prefixCount := 0
-	
+
 	for _, metrics := range ts.prefixMetrics {
 		if len(metrics.ThroughputHistory) >= 5 {
 			recent := ts.calculateRecentAverage(metrics.ThroughputHistory, 3)
 			historical := ts.calculateOverallAverage(metrics.ThroughputHistory)
-			
+
 			recentBandwidth += recent
 			historicalBandwidth += historical
 			prefixCount++
 		}
 	}
-	
+
 	if prefixCount > 0 {
 		avgRecent := recentBandwidth / float64(prefixCount)
 		avgHistorical := historicalBandwidth / float64(prefixCount)
-		
+
 		diff := (avgRecent - avgHistorical) / avgHistorical
-		
+
 		if diff > 0.1 {
 			ts.networkProfile.BandwidthTrend = TrendIncreasing
 		} else if diff < -0.1 {
@@ -360,7 +360,7 @@ func (ts *TransferScheduler) updatePerformanceTrends() {
 func (ts *TransferScheduler) GetMetrics() *SchedulerMetrics {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
-	
+
 	return &SchedulerMetrics{
 		GlobalThroughputMBps:  ts.globalState.GlobalThroughputMBps,
 		LoadBalanceEfficiency: ts.calculateLoadBalanceEfficiency(),
@@ -389,17 +389,17 @@ func (ts *TransferScheduler) calculateRecentAverage(values []float64, count int)
 	if len(values) == 0 {
 		return 0
 	}
-	
+
 	start := len(values) - count
 	if start < 0 {
 		start = 0
 	}
-	
+
 	sum := 0.0
 	for i := start; i < len(values); i++ {
 		sum += values[i]
 	}
-	
+
 	return sum / float64(len(values)-start)
 }
 
@@ -407,46 +407,46 @@ func (ts *TransferScheduler) calculateOverallAverage(values []float64) float64 {
 	if len(values) == 0 {
 		return 0
 	}
-	
+
 	sum := 0.0
 	for _, v := range values {
 		sum += v
 	}
-	
+
 	return sum / float64(len(values))
 }
 
 func (ts *TransferScheduler) findPrefixWithBandwidthTrend(trend TrendDirection) string {
 	bestPrefix := ""
 	bestTrend := 0.0
-	
+
 	for prefixID, metrics := range ts.prefixMetrics {
 		if len(metrics.ThroughputHistory) >= 5 {
 			recent := ts.calculateRecentAverage(metrics.ThroughputHistory, 3)
 			historical := ts.calculateOverallAverage(metrics.ThroughputHistory)
 			trendValue := (recent - historical) / historical
-			
+
 			if trend == TrendIncreasing && trendValue > bestTrend {
 				bestTrend = trendValue
 				bestPrefix = prefixID
 			}
 		}
 	}
-	
+
 	return bestPrefix
 }
 
 func (ts *TransferScheduler) findLowestLatencyPrefix() string {
 	bestPrefix := ""
 	lowestLatency := math.Inf(1)
-	
+
 	for prefixID, metrics := range ts.prefixMetrics {
 		if metrics.LatencyMs < lowestLatency && metrics.QueueLength < int(metrics.ProcessingCapacity*0.8) {
 			lowestLatency = metrics.LatencyMs
 			bestPrefix = prefixID
 		}
 	}
-	
+
 	return bestPrefix
 }
 
@@ -454,24 +454,24 @@ func (ts *TransferScheduler) calculateLoadBalanceEfficiency() float64 {
 	if len(ts.prefixMetrics) == 0 {
 		return 1.0
 	}
-	
+
 	utilizationSum := 0.0
 	utilizationVariance := 0.0
-	
+
 	// Calculate average utilization
 	for _, metrics := range ts.prefixMetrics {
 		utilization := metrics.BandwidthUtilization
 		utilizationSum += utilization
 	}
 	avgUtilization := utilizationSum / float64(len(ts.prefixMetrics))
-	
+
 	// Calculate variance
 	for _, metrics := range ts.prefixMetrics {
 		diff := metrics.BandwidthUtilization - avgUtilization
 		utilizationVariance += diff * diff
 	}
 	utilizationVariance /= float64(len(ts.prefixMetrics))
-	
+
 	// Efficiency is inversely related to variance (lower variance = better balance)
 	efficiency := 1.0 / (1.0 + utilizationVariance)
 	return math.Min(efficiency, 1.0)
@@ -481,12 +481,12 @@ func (ts *TransferScheduler) calculateAverageQueueLength() float64 {
 	if len(ts.prefixMetrics) == 0 {
 		return 0
 	}
-	
+
 	totalQueue := 0
 	for _, metrics := range ts.prefixMetrics {
 		totalQueue += metrics.QueueLength
 	}
-	
+
 	return float64(totalQueue) / float64(len(ts.prefixMetrics))
 }
 
@@ -494,15 +494,15 @@ func (ts *TransferScheduler) calculateNetworkUtilization() float64 {
 	if ts.networkProfile.EstimatedBandwidthMBps == 0 {
 		return 0
 	}
-	
-	return math.Min(ts.globalState.GlobalThroughputMBps / ts.networkProfile.EstimatedBandwidthMBps, 1.0)
+
+	return math.Min(ts.globalState.GlobalThroughputMBps/ts.networkProfile.EstimatedBandwidthMBps, 1.0)
 }
 
 // schedulingLoop runs the main scheduling coordination loop.
 func (ts *TransferScheduler) schedulingLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 2)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -517,7 +517,7 @@ func (ts *TransferScheduler) schedulingLoop(ctx context.Context) {
 func (ts *TransferScheduler) metricsCollectionLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -532,7 +532,7 @@ func (ts *TransferScheduler) metricsCollectionLoop(ctx context.Context) {
 func (ts *TransferScheduler) adaptiveOptimizationLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -546,13 +546,13 @@ func (ts *TransferScheduler) adaptiveOptimizationLoop(ctx context.Context) {
 func (ts *TransferScheduler) performSchedulingOptimizations() {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	
+
 	// Rebalance load if needed
 	ts.loadBalancer.RebalanceIfNeeded(ts.prefixMetrics)
-	
+
 	// Adjust congestion windows based on performance
 	ts.adjustCongestionWindows()
-	
+
 	// Update network profile confidence
 	ts.updateLearningConfidence()
 }
@@ -560,13 +560,13 @@ func (ts *TransferScheduler) performSchedulingOptimizations() {
 func (ts *TransferScheduler) collectAndAnalyzeMetrics() {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	
+
 	// Analyze performance patterns
 	ts.analyzePerformancePatterns()
-	
+
 	// Detect anomalies
 	ts.detectPerformanceAnomalies()
-	
+
 	// Update predictions
 	ts.updatePerformancePredictions()
 }
@@ -574,13 +574,13 @@ func (ts *TransferScheduler) collectAndAnalyzeMetrics() {
 func (ts *TransferScheduler) performAdaptiveOptimizations() {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	
+
 	// Apply machine learning optimizations
 	ts.applyMLOptimizations()
-	
+
 	// Optimize prefix allocation
 	ts.optimizePrefixAllocation()
-	
+
 	// Update adaptive parameters
 	ts.updateAdaptiveParameters()
 }
@@ -601,7 +601,7 @@ func (ts *TransferScheduler) adjustCongestionWindows() {
 				metrics.CongestionWindow = ts.config.GlobalCongestionWindow
 			}
 		}
-		
+
 		ts.prefixMetrics[prefixID] = metrics
 	}
 }
@@ -648,7 +648,7 @@ func (ts *TransferScheduler) updateAdaptiveParameters() {
 func (plb *PrefixLoadBalancer) RegisterPrefix(prefixID string, capacity float64) {
 	plb.mu.Lock()
 	defer plb.mu.Unlock()
-	
+
 	plb.prefixWeights[prefixID] = 1.0 // Start with equal weight
 	plb.prefixCapacities[prefixID] = capacity
 }
@@ -657,11 +657,11 @@ func (plb *PrefixLoadBalancer) RegisterPrefix(prefixID string, capacity float64)
 func (plb *PrefixLoadBalancer) RebalanceIfNeeded(prefixMetrics map[string]*PrefixPerformanceMetrics) {
 	plb.mu.Lock()
 	defer plb.mu.Unlock()
-	
+
 	if time.Since(plb.lastRebalance) < plb.rebalanceInterval {
 		return
 	}
-	
+
 	// Check if rebalancing is needed
 	if plb.shouldRebalance(prefixMetrics) {
 		plb.performRebalance(prefixMetrics)
@@ -673,26 +673,26 @@ func (plb *PrefixLoadBalancer) shouldRebalance(prefixMetrics map[string]*PrefixP
 	if len(prefixMetrics) < 2 {
 		return false
 	}
-	
+
 	var utilizationValues []float64
 	for _, metrics := range prefixMetrics {
 		utilizationValues = append(utilizationValues, metrics.BandwidthUtilization)
 	}
-	
+
 	// Calculate coefficient of variation
 	mean := 0.0
 	for _, v := range utilizationValues {
 		mean += v
 	}
 	mean /= float64(len(utilizationValues))
-	
+
 	variance := 0.0
 	for _, v := range utilizationValues {
 		diff := v - mean
 		variance += diff * diff
 	}
 	variance /= float64(len(utilizationValues))
-	
+
 	cv := math.Sqrt(variance) / mean
 	return cv > plb.rebalanceThreshold
 }
@@ -704,11 +704,11 @@ func (plb *PrefixLoadBalancer) performRebalance(prefixMetrics map[string]*Prefix
 			// Increase weight for well-performing prefixes
 			performanceScore := metrics.ThroughputMBps / (1.0 + metrics.ErrorRate + metrics.LatencyMs/100.0)
 			newWeight := weight * (1.0 + performanceScore*0.1)
-			
+
 			// Normalize to prevent unbounded growth
 			newWeight = math.Min(newWeight, 2.0)
 			newWeight = math.Max(newWeight, 0.1)
-			
+
 			plb.prefixWeights[prefixID] = newWeight
 		}
 	}

@@ -1,5 +1,9 @@
 # Architecture Documentation
 
+<div align="center">
+  <img src="../../assets/images/logo.png" alt="CargoShip Logo" width="100" height="100">
+</div>
+
 This directory contains detailed architectural documentation, design decisions, and technical implementation details for CargoShip.
 
 ## Contents

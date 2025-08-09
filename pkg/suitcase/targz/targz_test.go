@@ -8,13 +8,13 @@ import (
 	"strings"
 	"testing"
 
-	gzip "github.com/klauspost/pgzip"
 	"github.com/ProtonMail/go-crypto/openpgp"
+	gzip "github.com/klauspost/pgzip"
 
-	"github.com/stretchr/testify/require"
 	"github.com/scttfrdmn/cargoship/pkg/config"
-	"github.com/scttfrdmn/cargoship/pkg/inventory"
 	"github.com/scttfrdmn/cargoship/pkg/gpg"
+	"github.com/scttfrdmn/cargoship/pkg/inventory"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTarGzFile(t *testing.T) {
@@ -76,15 +76,15 @@ func TestConfig(t *testing.T) {
 		HashInner:    true,
 		EncryptInner: false,
 	}
-	
+
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar.gz"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, opts)
 	defer func() { _ = archive.Close() }()
-	
+
 	// Test that Config() returns the same options we passed in
 	config := archive.Config()
 	require.Equal(t, opts, config)
@@ -99,15 +99,15 @@ func TestGetHashes(t *testing.T) {
 		Format:    "tar.gz",
 		HashInner: false,
 	}
-	
+
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar.gz"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, opts)
 	defer func() { _ = archive.Close() }()
-	
+
 	// Initially should be empty
 	hashes := archive.GetHashes()
 	require.Len(t, hashes, 0)
@@ -121,10 +121,10 @@ func TestAddEncrypt(t *testing.T) {
 		KeyType: "rsa",
 		Bits:    1024, // Use smaller key for faster testing
 	}
-	
+
 	keyPair, err := gpg.NewKeyPair(keyOpts)
 	require.NoError(t, err)
-	
+
 	// Read the public key to create entity list
 	keyFiles, err := gpg.NewKeyFilesWithPair(keyPair, "")
 	require.NoError(t, err)
@@ -133,7 +133,7 @@ func TestAddEncrypt(t *testing.T) {
 			_ = os.Remove(kf)
 		}
 	}()
-	
+
 	// Find public key file
 	var pubKeyFile string
 	for _, kf := range keyFiles {
@@ -143,33 +143,33 @@ func TestAddEncrypt(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, pubKeyFile)
-	
+
 	// Read entity from public key
 	entity, err := gpg.ReadEntity(pubKeyFile)
 	require.NoError(t, err)
-	
+
 	encryptTo := &openpgp.EntityList{entity}
-	
+
 	// Create test archive with encryption
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar.gz"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format:       "tar.gz",
 		EncryptInner: true,
 		EncryptTo:    encryptTo,
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	// Test AddEncrypt with valid file
 	err = archive.AddEncrypt(inventory.File{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
 	})
 	require.NoError(t, err)
-	
+
 	// Test AddEncrypt with non-existent file
 	err = archive.AddEncrypt(inventory.File{
 		Path:        "../testdata/never-exist.txt",
@@ -184,14 +184,14 @@ func TestAddEncrypt_InvalidEncryption(t *testing.T) {
 	f, err := os.Create(filepath.Join(tmp, "test.tar.gz"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format:       "tar.gz",
 		EncryptInner: true,
 		EncryptTo:    &openpgp.EntityList{}, // Empty entity list
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	err = archive.AddEncrypt(inventory.File{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
@@ -205,12 +205,12 @@ func TestNew(t *testing.T) {
 	f, err := os.Create(filepath.Join(tmp, "test.tar.gz"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	opts := &config.SuitCaseOpts{
 		Format:    "tar.gz",
 		HashInner: true,
 	}
-	
+
 	suitcase := New(f, opts)
 	require.NotNil(t, suitcase.tw)
 	require.NotNil(t, suitcase.gw)
@@ -224,20 +224,20 @@ func TestClose(t *testing.T) {
 	f, err := os.Create(filepath.Join(tmp, "test.tar.gz"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	opts := &config.SuitCaseOpts{
 		Format: "tar.gz",
 	}
-	
+
 	archive := New(f, opts)
-	
+
 	// Add some content
 	_, err = archive.Add(inventory.File{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
 	})
 	require.NoError(t, err)
-	
+
 	// Close should work without error
 	err = archive.Close()
 	require.NoError(t, err)

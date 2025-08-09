@@ -218,3 +218,41 @@ func TestBuildTLSConfig(t *testing.T) {
 		})
 	}
 }
+
+// Additional tests for methods with 0% coverage
+
+func TestControllerGetWebServer(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	config := &Config{
+		ListenAddr: ":0",
+		AuthToken:  "test-token",
+		TLSEnabled: false,
+		LogLevel:   "error",
+	}
+
+	ctrl, err := NewController(config, logger)
+	require.NoError(t, err)
+	require.NotNil(t, ctrl)
+
+	webServer := ctrl.GetWebServer()
+	assert.NotNil(t, webServer)
+}
+
+func TestControllerGetAuthManager(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	config := &Config{
+		ListenAddr: ":0",
+		AuthToken:  "test-token",
+		TLSEnabled: false,
+		LogLevel:   "error",
+	}
+
+	ctrl, err := NewController(config, logger)
+	require.NoError(t, err)
+	require.NotNil(t, ctrl)
+
+	authManager := ctrl.GetAuthManager()
+	assert.NotNil(t, authManager)
+}

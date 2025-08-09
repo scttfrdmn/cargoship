@@ -1,5 +1,9 @@
 # Deployment Documentation
 
+<div align="center">
+  <img src="../../assets/images/logo.png" alt="CargoShip Logo" width="100" height="100">
+</div>
+
 This directory contains documentation for deploying CargoShip in various environments and configurations.
 
 ## Contents

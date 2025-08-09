@@ -22,35 +22,35 @@ import (
 
 // Command-line flags
 var (
-	testType           = flag.String("test-type", "", "Type of test to run (performance, stress, large-file, benchmark-suite)")
-	testFiles          = flag.String("test-files", "", "Comma-separated list of test files")
-	awsProfile         = flag.String("aws-profile", "aws", "AWS profile to use")
-	awsRegion          = flag.String("aws-region", "us-west-2", "AWS region")
-	s3Bucket           = flag.String("s3-bucket", "", "S3 bucket for testing")
-	outputFormat       = flag.String("output-format", "json", "Output format (json, text)")
-	verbose            = flag.Bool("verbose", false, "Enable verbose logging")
-	enableOptimization = flag.Bool("enable-optimization", true, "Enable S3 optimization")
-	enableBBR          = flag.Bool("enable-bbr", true, "Enable BBR congestion control")
-	enableCUBIC        = flag.Bool("enable-cubic", true, "Enable CUBIC congestion control")
-	concurrency        = flag.Int("concurrency", 50, "S3 concurrency level")
-	multipartThreshold = flag.Int64("multipart-threshold", 500*1024*1024, "Multipart upload threshold")
-	multipartChunkSize = flag.Int64("multipart-chunk-size", 256*1024*1024, "Multipart chunk size")
-	maxConcurrency     = flag.Int("max-concurrency", 200, "Maximum concurrency for stress tests")
-	chunkSizeMB        = flag.Int("chunk-size-mb", 256, "Chunk size in MB")
-	_ = flag.Bool("stress-mode", false, "Enable stress testing mode") // Currently unused
-	enableMonitoring   = flag.Bool("enable-monitoring", true, "Enable resource monitoring")
-	networkOptimization = flag.Bool("network-optimization", true, "Enable network optimization")
-	_ = flag.Bool("enable-progress-tracking", false, "Enable progress tracking for large files") // Currently unused
-	maxFileSizeGB      = flag.Int("max-file-size-gb", 10, "Maximum file size in GB")
-	_ = flag.Bool("enable-resume", false, "Enable resumable uploads") // Currently unused
-	_ = flag.Bool("verify-integrity", true, "Verify file integrity") // Currently unused
-	runAllTests        = flag.Bool("run-all-tests", false, "Run all available tests")
-	includeStressTests = flag.Bool("include-stress-tests", false, "Include stress tests in suite")
+	testType              = flag.String("test-type", "", "Type of test to run (performance, stress, large-file, benchmark-suite)")
+	testFiles             = flag.String("test-files", "", "Comma-separated list of test files")
+	awsProfile            = flag.String("aws-profile", "aws", "AWS profile to use")
+	awsRegion             = flag.String("aws-region", "us-west-2", "AWS region")
+	s3Bucket              = flag.String("s3-bucket", "", "S3 bucket for testing")
+	outputFormat          = flag.String("output-format", "json", "Output format (json, text)")
+	verbose               = flag.Bool("verbose", false, "Enable verbose logging")
+	enableOptimization    = flag.Bool("enable-optimization", true, "Enable S3 optimization")
+	enableBBR             = flag.Bool("enable-bbr", true, "Enable BBR congestion control")
+	enableCUBIC           = flag.Bool("enable-cubic", true, "Enable CUBIC congestion control")
+	concurrency           = flag.Int("concurrency", 50, "S3 concurrency level")
+	multipartThreshold    = flag.Int64("multipart-threshold", 500*1024*1024, "Multipart upload threshold")
+	multipartChunkSize    = flag.Int64("multipart-chunk-size", 256*1024*1024, "Multipart chunk size")
+	maxConcurrency        = flag.Int("max-concurrency", 200, "Maximum concurrency for stress tests")
+	chunkSizeMB           = flag.Int("chunk-size-mb", 256, "Chunk size in MB")
+	_                     = flag.Bool("stress-mode", false, "Enable stress testing mode") // Currently unused
+	enableMonitoring      = flag.Bool("enable-monitoring", true, "Enable resource monitoring")
+	networkOptimization   = flag.Bool("network-optimization", true, "Enable network optimization")
+	_                     = flag.Bool("enable-progress-tracking", false, "Enable progress tracking for large files") // Currently unused
+	maxFileSizeGB         = flag.Int("max-file-size-gb", 10, "Maximum file size in GB")
+	_                     = flag.Bool("enable-resume", false, "Enable resumable uploads") // Currently unused
+	_                     = flag.Bool("verify-integrity", true, "Verify file integrity")  // Currently unused
+	runAllTests           = flag.Bool("run-all-tests", false, "Run all available tests")
+	includeStressTests    = flag.Bool("include-stress-tests", false, "Include stress tests in suite")
 	includeLargeFileTests = flag.Bool("include-large-file-tests", false, "Include large file tests in suite")
-	_ = flag.Bool("include-concurrent-tests", false, "Include concurrent tests in suite") // Currently unused
-	_ = flag.Bool("generate-report", true, "Generate test report") // Currently unused
-	_ = flag.Bool("network-analysis", true, "Enable network analysis") // Currently unused
-	_ = flag.Bool("resource-monitoring", true, "Enable resource monitoring") // Currently unused
+	_                     = flag.Bool("include-concurrent-tests", false, "Include concurrent tests in suite") // Currently unused
+	_                     = flag.Bool("generate-report", true, "Generate test report")                        // Currently unused
+	_                     = flag.Bool("network-analysis", true, "Enable network analysis")                    // Currently unused
+	_                     = flag.Bool("resource-monitoring", true, "Enable resource monitoring")              // Currently unused
 )
 
 func main() {
@@ -61,7 +61,7 @@ func main() {
 	if *verbose {
 		logLevel = slog.LevelDebug
 	}
-	
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: logLevel,
 	}))
@@ -124,24 +124,24 @@ func runTest(ctx context.Context, logger *slog.Logger) (*launch.TestResults, err
 
 	// Configure S3 settings
 	s3Config := awsconfig.S3Config{
-		Bucket:              *s3Bucket,
-		Concurrency:         *concurrency,
-		MultipartThreshold:  *multipartThreshold,
-		MultipartChunkSize:  *multipartChunkSize,
+		Bucket:             *s3Bucket,
+		Concurrency:        *concurrency,
+		MultipartThreshold: *multipartThreshold,
+		MultipartChunkSize: *multipartChunkSize,
 	}
 
 	// Configure optimization if enabled
 	var optimizationConfig *s3optimization.Config
 	if *enableOptimization {
 		optimizationConfig = &s3optimization.Config{
-			EnableBBR:           *enableBBR,
-			EnableCUBIC:         *enableCUBIC,
-			NetworkAdaptation:   *networkOptimization,
-			PredictiveMode:      true,
-			MaxConnections:      *maxConcurrency,
-			ConnectionPoolSize:  *concurrency,
-			BufferSize:          int64(*chunkSizeMB) * 1024 * 1024,
-			MetricsEnabled:      *enableMonitoring,
+			EnableBBR:          *enableBBR,
+			EnableCUBIC:        *enableCUBIC,
+			NetworkAdaptation:  *networkOptimization,
+			PredictiveMode:     true,
+			MaxConnections:     *maxConcurrency,
+			ConnectionPoolSize: *concurrency,
+			BufferSize:         int64(*chunkSizeMB) * 1024 * 1024,
+			MetricsEnabled:     *enableMonitoring,
 		}
 	}
 
@@ -187,7 +187,7 @@ func runPerformanceTest(ctx context.Context, s3Client *s3.Client, s3Config awsco
 			errors = append(errors, fmt.Sprintf("failed to upload %s: %v", file, err))
 			continue
 		}
-		
+
 		fileInfo, _ := os.Stat(file)
 		if fileInfo != nil {
 			totalBytes += fileInfo.Size()
@@ -236,11 +236,11 @@ func runStressTest(ctx context.Context, s3Client *s3.Client, s3Config awsconfig.
 	}()
 
 	startTime := time.Now()
-	
+
 	// Run concurrent stress test
 	files := getTestFiles()
 	results := make(chan uploadResult, len(files))
-	
+
 	for _, file := range files {
 		go func(f string) {
 			err := uploadFile(ctx, transporter, f, logger)
@@ -457,14 +457,14 @@ func uploadFile(ctx context.Context, transporter *s3transport.OptimizedTransport
 	}
 
 	key := fmt.Sprintf("test/%s", filepath.Base(filePath))
-	
+
 	archive := &s3transport.Archive{
-		Key:             key,
-		Reader:          file,
-		Size:            fileInfo.Size(),
-		StorageClass:    awsconfig.StorageClassStandard,
+		Key:          key,
+		Reader:       file,
+		Size:         fileInfo.Size(),
+		StorageClass: awsconfig.StorageClassStandard,
 		Metadata: map[string]string{
-			"source": "astrapi-test",
+			"source":        "astrapi-test",
 			"original_path": filePath,
 		},
 	}
@@ -486,16 +486,16 @@ func getTestFiles() []string {
 	// Auto-discover test files in /data/public
 	var files []string
 	publicDir := "/data/public"
-	
+
 	_ = filepath.Walk(publicDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
-		
+
 		if !info.IsDir() && info.Size() > 1024*1024 { // Files > 1MB
 			files = append(files, path)
 		}
-		
+
 		return nil
 	})
 
@@ -510,17 +510,17 @@ func getTestFiles() []string {
 func getLargeTestFiles(maxSize int64) []string {
 	var files []string
 	publicDir := "/data/public"
-	
+
 	_ = filepath.Walk(publicDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
-		
+
 		// Look for files between 100MB and maxSize
 		if !info.IsDir() && info.Size() > 100*1024*1024 && info.Size() <= maxSize {
 			files = append(files, path)
 		}
-		
+
 		return nil
 	})
 

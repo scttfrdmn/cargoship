@@ -17,19 +17,19 @@ import (
 // AuthManager manages agent authentication and authorization
 type AuthManager struct {
 	// JWT configuration
-	jwtSecret    []byte
-	jwtIssuer    string
-	jwtExpiry    time.Duration
-	
+	jwtSecret []byte
+	jwtIssuer string
+	jwtExpiry time.Duration
+
 	// RSA keys for signing
-	privateKey   *rsa.PrivateKey
-	publicKey    *rsa.PublicKey
-	
+	privateKey *rsa.PrivateKey
+	publicKey  *rsa.PublicKey
+
 	// Agent registry for role checking
-	agents       map[string]*RegisteredAgent
-	roles        map[string]*AgentRole
-	logger       *slog.Logger
-	mu           sync.RWMutex
+	agents map[string]*RegisteredAgent
+	roles  map[string]*AgentRole
+	logger *slog.Logger
+	mu     sync.RWMutex
 }
 
 // RegisteredAgent represents a registered agent with authentication details
@@ -59,34 +59,34 @@ type AgentRole struct {
 type Permission string
 
 const (
-	PermissionRead           Permission = "read"
-	PermissionWrite          Permission = "write"
-	PermissionExecute        Permission = "execute"
-	PermissionArchive        Permission = "archive"
-	PermissionRestore        Permission = "restore"
-	PermissionConfig         Permission = "config"
-	PermissionMetrics        Permission = "metrics"
-	PermissionAdministrator  Permission = "administrator"
+	PermissionRead          Permission = "read"
+	PermissionWrite         Permission = "write"
+	PermissionExecute       Permission = "execute"
+	PermissionArchive       Permission = "archive"
+	PermissionRestore       Permission = "restore"
+	PermissionConfig        Permission = "config"
+	PermissionMetrics       Permission = "metrics"
+	PermissionAdministrator Permission = "administrator"
 )
 
 // Claims represents JWT claims for agent authentication
 type Claims struct {
-	AgentID      string   `json:"agent_id"`
-	AgentName    string   `json:"agent_name"`
-	Role         string   `json:"role"`
-	Permissions  []string `json:"permissions"`
-	SessionID    string   `json:"session_id"`
+	AgentID     string   `json:"agent_id"`
+	AgentName   string   `json:"agent_name"`
+	Role        string   `json:"role"`
+	Permissions []string `json:"permissions"`
+	SessionID   string   `json:"session_id"`
 	jwt.RegisteredClaims
 }
 
 // AuthConfig holds authentication configuration
 type AuthConfig struct {
-	JWTSecret         string        `json:"jwt_secret" yaml:"jwt_secret"`
-	JWTIssuer         string        `json:"jwt_issuer" yaml:"jwt_issuer"`
-	JWTExpiry         time.Duration `json:"jwt_expiry" yaml:"jwt_expiry"`
-	EnableRSASigning  bool          `json:"enable_rsa_signing" yaml:"enable_rsa_signing"`
-	RequireClientCert bool          `json:"require_client_cert" yaml:"require_client_cert"`
-	MaxSessionsPerAgent int         `json:"max_sessions_per_agent" yaml:"max_sessions_per_agent"`
+	JWTSecret           string        `json:"jwt_secret" yaml:"jwt_secret"`
+	JWTIssuer           string        `json:"jwt_issuer" yaml:"jwt_issuer"`
+	JWTExpiry           time.Duration `json:"jwt_expiry" yaml:"jwt_expiry"`
+	EnableRSASigning    bool          `json:"enable_rsa_signing" yaml:"enable_rsa_signing"`
+	RequireClientCert   bool          `json:"require_client_cert" yaml:"require_client_cert"`
+	MaxSessionsPerAgent int           `json:"max_sessions_per_agent" yaml:"max_sessions_per_agent"`
 }
 
 // NewAuthManager creates a new authentication manager
@@ -99,7 +99,7 @@ func NewAuthManager(config *AuthConfig, logger *slog.Logger) (*AuthManager, erro
 			MaxSessionsPerAgent: 3,
 		}
 	}
-	
+
 	// Generate JWT secret if not provided
 	jwtSecret := []byte(config.JWTSecret)
 	if len(jwtSecret) == 0 {
@@ -109,7 +109,7 @@ func NewAuthManager(config *AuthConfig, logger *slog.Logger) (*AuthManager, erro
 		}
 		logger.Info("Generated random JWT secret for session")
 	}
-	
+
 	am := &AuthManager{
 		jwtSecret: jwtSecret,
 		jwtIssuer: config.JWTIssuer,
@@ -118,22 +118,22 @@ func NewAuthManager(config *AuthConfig, logger *slog.Logger) (*AuthManager, erro
 		roles:     make(map[string]*AgentRole),
 		logger:    logger.With("component", "auth-manager"),
 	}
-	
+
 	// Generate RSA keys if enabled
 	if config.EnableRSASigning {
 		if err := am.generateRSAKeys(); err != nil {
 			return nil, fmt.Errorf("failed to generate RSA keys: %w", err)
 		}
 	}
-	
+
 	// Initialize default roles
 	am.initializeDefaultRoles()
-	
+
 	logger.Info("Authentication manager initialized",
 		"jwt_issuer", config.JWTIssuer,
 		"jwt_expiry", config.JWTExpiry,
 		"rsa_signing", config.EnableRSASigning)
-	
+
 	return am, nil
 }
 
@@ -143,10 +143,10 @@ func (am *AuthManager) generateRSAKeys() error {
 	if err != nil {
 		return fmt.Errorf("failed to generate RSA private key: %w", err)
 	}
-	
+
 	am.privateKey = privateKey
 	am.publicKey = &privateKey.PublicKey
-	
+
 	am.logger.Info("Generated RSA key pair for JWT signing")
 	return nil
 }
@@ -171,7 +171,7 @@ func (am *AuthManager) initializeDefaultRoles() {
 		MaxSessions: 3,
 		SessionTTL:  24 * time.Hour,
 	}
-	
+
 	// Admin role - full access
 	adminRole := &AgentRole{
 		Name:        "admin",
@@ -194,7 +194,7 @@ func (am *AuthManager) initializeDefaultRoles() {
 		MaxSessions: 10,
 		SessionTTL:  7 * 24 * time.Hour,
 	}
-	
+
 	// Read-only role - monitoring and metrics
 	readOnlyRole := &AgentRole{
 		Name:        "readonly",
@@ -210,11 +210,11 @@ func (am *AuthManager) initializeDefaultRoles() {
 		MaxSessions: 5,
 		SessionTTL:  12 * time.Hour,
 	}
-	
+
 	am.roles["agent"] = agentRole
 	am.roles["admin"] = adminRole
 	am.roles["readonly"] = readOnlyRole
-	
+
 	am.logger.Info("Initialized default agent roles", "roles", []string{"agent", "admin", "readonly"})
 }
 
@@ -222,24 +222,24 @@ func (am *AuthManager) initializeDefaultRoles() {
 func (am *AuthManager) RegisterAgent(id, name, publicKey, role string, capabilities []string, metadata map[string]string) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	
+
 	// Validate role exists
 	if _, exists := am.roles[role]; !exists {
 		return fmt.Errorf("role '%s' does not exist", role)
 	}
-	
+
 	// Check if agent already exists
 	if _, exists := am.agents[id]; exists {
 		return fmt.Errorf("agent with ID '%s' already registered", id)
 	}
-	
+
 	// Validate public key format
 	if publicKey != "" {
 		if err := am.validatePublicKey(publicKey); err != nil {
 			return fmt.Errorf("invalid public key: %w", err)
 		}
 	}
-	
+
 	agent := &RegisteredAgent{
 		ID:           id,
 		Name:         name,
@@ -250,15 +250,15 @@ func (am *AuthManager) RegisterAgent(id, name, publicKey, role string, capabilit
 		RegisteredAt: time.Now(),
 		Enabled:      true,
 	}
-	
+
 	am.agents[id] = agent
-	
+
 	am.logger.Info("Agent registered successfully",
 		"agent_id", id,
 		"agent_name", name,
 		"role", role,
 		"capabilities", capabilities)
-	
+
 	return nil
 }
 
@@ -267,31 +267,31 @@ func (am *AuthManager) AuthenticateAgent(agentID, signature string) (string, err
 	am.mu.RLock()
 	agent, exists := am.agents[agentID]
 	am.mu.RUnlock()
-	
+
 	if !exists {
 		return "", fmt.Errorf("agent not found: %s", agentID)
 	}
-	
+
 	if !agent.Enabled {
 		return "", fmt.Errorf("agent is disabled: %s", agentID)
 	}
-	
+
 	// Verify signature if public key is provided
 	if agent.PublicKey != "" {
 		if err := am.verifySignature(agentID, signature, agent.PublicKey); err != nil {
 			return "", fmt.Errorf("signature verification failed: %w", err)
 		}
 	}
-	
+
 	// Get role permissions
 	role, exists := am.roles[agent.Role]
 	if !exists {
 		return "", fmt.Errorf("role not found: %s", agent.Role)
 	}
-	
+
 	// Generate session ID
 	sessionID := am.generateSessionID()
-	
+
 	// Create JWT claims
 	claims := &Claims{
 		AgentID:     agentID,
@@ -308,11 +308,11 @@ func (am *AuthManager) AuthenticateAgent(agentID, signature string) (string, err
 			NotBefore: jwt.NewNumericDate(time.Now()),
 		},
 	}
-	
+
 	// Create and sign token
 	var token string
 	var err error
-	
+
 	if am.privateKey != nil {
 		// Use RSA signing
 		jwtToken := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
@@ -322,21 +322,21 @@ func (am *AuthManager) AuthenticateAgent(agentID, signature string) (string, err
 		jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 		token, err = jwtToken.SignedString(am.jwtSecret)
 	}
-	
+
 	if err != nil {
 		return "", fmt.Errorf("failed to sign JWT token: %w", err)
 	}
-	
+
 	// Update last auth time
 	am.mu.Lock()
 	agent.LastAuth = time.Now()
 	am.mu.Unlock()
-	
+
 	am.logger.Info("Agent authenticated successfully",
 		"agent_id", agentID,
 		"session_id", sessionID,
 		"role", agent.Role)
-	
+
 	return token, nil
 }
 
@@ -357,29 +357,29 @@ func (am *AuthManager) ValidateToken(tokenString string) (*Claims, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 	})
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse token: %w", err)
 	}
-	
+
 	// Validate token and extract claims
 	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
 		// Check if agent still exists and is enabled
 		am.mu.RLock()
 		agent, exists := am.agents[claims.AgentID]
 		am.mu.RUnlock()
-		
+
 		if !exists {
 			return nil, fmt.Errorf("agent no longer exists: %s", claims.AgentID)
 		}
-		
+
 		if !agent.Enabled {
 			return nil, fmt.Errorf("agent is disabled: %s", claims.AgentID)
 		}
-		
+
 		return claims, nil
 	}
-	
+
 	return nil, fmt.Errorf("invalid token")
 }
 
@@ -388,17 +388,17 @@ func (am *AuthManager) HasPermission(claims *Claims, permission Permission) bool
 	am.mu.RLock()
 	role, exists := am.roles[claims.Role]
 	am.mu.RUnlock()
-	
+
 	if !exists {
 		return false
 	}
-	
+
 	for _, p := range role.Permissions {
 		if p == permission || p == PermissionAdministrator {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -407,11 +407,11 @@ func (am *AuthManager) GetAgentCapabilities(claims *Claims) map[string]interface
 	am.mu.RLock()
 	role, exists := am.roles[claims.Role]
 	am.mu.RUnlock()
-	
+
 	if !exists {
 		return map[string]interface{}{}
 	}
-	
+
 	return role.Capabilities
 }
 
@@ -423,19 +423,19 @@ func (am *AuthManager) validatePublicKey(publicKey string) error {
 	if err != nil {
 		return fmt.Errorf("invalid base64 encoding: %w", err)
 	}
-	
+
 	// Parse PEM block
 	block, _ := pem.Decode(keyBytes)
 	if block == nil {
 		return fmt.Errorf("invalid PEM format")
 	}
-	
+
 	// Parse public key
 	_, err = x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
 		return fmt.Errorf("invalid public key: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -466,7 +466,7 @@ func (am *AuthManager) permissionsToStrings(permissions []Permission) []string {
 func (am *AuthManager) GetRegisteredAgents() map[string]*RegisteredAgent {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
-	
+
 	result := make(map[string]*RegisteredAgent)
 	for k, v := range am.agents {
 		result[k] = v
@@ -478,7 +478,7 @@ func (am *AuthManager) GetRegisteredAgents() map[string]*RegisteredAgent {
 func (am *AuthManager) GetRoles() map[string]*AgentRole {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
-	
+
 	result := make(map[string]*AgentRole)
 	for k, v := range am.roles {
 		result[k] = v

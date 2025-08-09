@@ -13,29 +13,29 @@ import (
 func TestTransferSchedulerStart(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	
+
 	// Start scheduler (should not block)
 	scheduler.Start(ctx)
-	
+
 	// Give it a moment to start background loops
 	time.Sleep(time.Millisecond * 100)
-	
+
 	// Should not panic or error
 }
 
 func TestTransferSchedulerRegisterPrefix(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	scheduler.mu.RLock()
 	metrics, exists := scheduler.prefixMetrics["test-prefix"]
 	scheduler.mu.RUnlock()
-	
+
 	assert.True(t, exists)
 	assert.NotNil(t, metrics)
 	assert.Equal(t, "test-prefix", metrics.PrefixID)
@@ -49,13 +49,13 @@ func TestTransferSchedulerRegisterPrefix(t *testing.T) {
 func TestTransferSchedulerSelectOptimalPrefixNoPrefix(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	upload := &ScheduledUpload{
 		ArchivePath:   "/test/archive.tar",
 		Priority:      3,
 		EstimatedSize: 1024 * 1024,
 	}
-	
+
 	_, err := scheduler.SelectOptimalPrefix(upload)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no prefixes registered")
@@ -65,12 +65,12 @@ func TestTransferSchedulerSelectOptimalPrefixTCPLike(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	config.Strategy = "tcp_like"
 	scheduler := NewTransferScheduler(config)
-	
+
 	// Register multiple prefixes with different performance characteristics
 	scheduler.RegisterPrefix("prefix-1", 100.0)
 	scheduler.RegisterPrefix("prefix-2", 100.0)
 	scheduler.RegisterPrefix("prefix-3", 100.0)
-	
+
 	// Update metrics for different performance levels
 	scheduler.UpdatePrefixMetrics("prefix-1", &PrefixPerformanceMetrics{
 		PrefixID:             "prefix-1",
@@ -83,7 +83,7 @@ func TestTransferSchedulerSelectOptimalPrefixTCPLike(t *testing.T) {
 		QueueLength:          5,
 		ProcessingCapacity:   100.0,
 	})
-	
+
 	scheduler.UpdatePrefixMetrics("prefix-2", &PrefixPerformanceMetrics{
 		PrefixID:             "prefix-2",
 		ActiveUploads:        1,
@@ -95,13 +95,13 @@ func TestTransferSchedulerSelectOptimalPrefixTCPLike(t *testing.T) {
 		QueueLength:          2,
 		ProcessingCapacity:   100.0,
 	})
-	
+
 	upload := &ScheduledUpload{
 		ArchivePath:   "/test/archive.tar",
 		Priority:      3,
 		EstimatedSize: 1024 * 1024,
 	}
-	
+
 	selectedPrefix, err := scheduler.SelectOptimalPrefix(upload)
 	assert.NoError(t, err)
 	// prefix-2 should be selected as it has better performance metrics
@@ -112,10 +112,10 @@ func TestTransferSchedulerSelectOptimalPrefixFairShare(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	config.Strategy = "fair_share"
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("prefix-1", 100.0)
 	scheduler.RegisterPrefix("prefix-2", 100.0)
-	
+
 	// Set different utilization levels
 	scheduler.UpdatePrefixMetrics("prefix-1", &PrefixPerformanceMetrics{
 		PrefixID:             "prefix-1",
@@ -123,20 +123,20 @@ func TestTransferSchedulerSelectOptimalPrefixFairShare(t *testing.T) {
 		QueueLength:          10,
 		ProcessingCapacity:   100.0,
 	})
-	
+
 	scheduler.UpdatePrefixMetrics("prefix-2", &PrefixPerformanceMetrics{
 		PrefixID:             "prefix-2",
 		BandwidthUtilization: 0.3,
 		QueueLength:          3,
 		ProcessingCapacity:   100.0,
 	})
-	
+
 	upload := &ScheduledUpload{
 		ArchivePath:   "/test/archive.tar",
 		Priority:      3,
 		EstimatedSize: 1024 * 1024,
 	}
-	
+
 	selectedPrefix, err := scheduler.SelectOptimalPrefix(upload)
 	assert.NoError(t, err)
 	// prefix-2 should be selected as it has lower utilization
@@ -147,15 +147,15 @@ func TestTransferSchedulerSelectOptimalPrefixAdaptive(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	config.Strategy = "adaptive"
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("prefix-1", 100.0)
-	
+
 	upload := &ScheduledUpload{
 		ArchivePath:   "/test/archive.tar",
 		Priority:      3,
 		EstimatedSize: 1024 * 1024,
 	}
-	
+
 	selectedPrefix, err := scheduler.SelectOptimalPrefix(upload)
 	assert.NoError(t, err)
 	assert.Equal(t, "prefix-1", selectedPrefix)
@@ -164,9 +164,9 @@ func TestTransferSchedulerSelectOptimalPrefixAdaptive(t *testing.T) {
 func TestTransferSchedulerUpdatePrefixMetrics(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	newMetrics := &PrefixPerformanceMetrics{
 		PrefixID:             "test-prefix",
 		ActiveUploads:        5,
@@ -176,20 +176,20 @@ func TestTransferSchedulerUpdatePrefixMetrics(t *testing.T) {
 		BandwidthUtilization: 0.6,
 		QueueLength:          8,
 	}
-	
+
 	scheduler.UpdatePrefixMetrics("test-prefix", newMetrics)
-	
+
 	scheduler.mu.RLock()
 	updated := scheduler.prefixMetrics["test-prefix"]
 	scheduler.mu.RUnlock()
-	
+
 	assert.Equal(t, 5, updated.ActiveUploads)
 	assert.Equal(t, 75.0, updated.ThroughputMBps)
 	assert.Equal(t, 80.0, updated.LatencyMs)
 	assert.Equal(t, 0.02, updated.ErrorRate)
 	assert.Equal(t, 0.6, updated.BandwidthUtilization)
 	assert.Equal(t, 8, updated.QueueLength)
-	
+
 	// Check that historical data was updated
 	assert.Len(t, updated.ThroughputHistory, 1)
 	assert.Equal(t, 75.0, updated.ThroughputHistory[0])
@@ -202,13 +202,13 @@ func TestTransferSchedulerUpdatePrefixMetrics(t *testing.T) {
 func TestTransferSchedulerUpdatePrefixMetricsNonExistent(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	newMetrics := &PrefixPerformanceMetrics{
-		PrefixID:             "non-existent",
-		ActiveUploads:        5,
-		ThroughputMBps:       75.0,
+		PrefixID:       "non-existent",
+		ActiveUploads:  5,
+		ThroughputMBps: 75.0,
 	}
-	
+
 	// Should not panic or error when updating non-existent prefix
 	scheduler.UpdatePrefixMetrics("non-existent", newMetrics)
 }
@@ -216,10 +216,10 @@ func TestTransferSchedulerUpdatePrefixMetricsNonExistent(t *testing.T) {
 func TestTransferSchedulerGetMetrics(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("prefix-1", 100.0)
 	scheduler.RegisterPrefix("prefix-2", 100.0)
-	
+
 	// Update some metrics
 	scheduler.UpdatePrefixMetrics("prefix-1", &PrefixPerformanceMetrics{
 		PrefixID:             "prefix-1",
@@ -228,7 +228,7 @@ func TestTransferSchedulerGetMetrics(t *testing.T) {
 		BandwidthUtilization: 0.4,
 		QueueLength:          6,
 	})
-	
+
 	scheduler.UpdatePrefixMetrics("prefix-2", &PrefixPerformanceMetrics{
 		PrefixID:             "prefix-2",
 		ActiveUploads:        2,
@@ -236,9 +236,9 @@ func TestTransferSchedulerGetMetrics(t *testing.T) {
 		BandwidthUtilization: 0.6,
 		QueueLength:          4,
 	})
-	
+
 	metrics := scheduler.GetMetrics()
-	
+
 	assert.NotNil(t, metrics)
 	assert.Equal(t, 100.0, metrics.GlobalThroughputMBps) // 40 + 60
 	assert.Equal(t, 2, metrics.ActivePrefixes)
@@ -248,9 +248,9 @@ func TestTransferSchedulerGetMetrics(t *testing.T) {
 func TestTransferSchedulerHistoricalMetricsLimit(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	// Add more than the maximum history size (20)
 	for i := 0; i < 25; i++ {
 		metrics := &PrefixPerformanceMetrics{
@@ -261,16 +261,16 @@ func TestTransferSchedulerHistoricalMetricsLimit(t *testing.T) {
 		}
 		scheduler.UpdatePrefixMetrics("test-prefix", metrics)
 	}
-	
+
 	scheduler.mu.RLock()
 	updated := scheduler.prefixMetrics["test-prefix"]
 	scheduler.mu.RUnlock()
-	
+
 	// Should be limited to 20 entries
 	assert.Len(t, updated.ThroughputHistory, 20)
 	assert.Len(t, updated.LatencyHistory, 20)
 	assert.Len(t, updated.ErrorHistory, 20)
-	
+
 	// Should contain the most recent values
 	assert.Equal(t, 24.0, updated.ThroughputHistory[19]) // Last value
 	assert.Equal(t, 5.0, updated.ThroughputHistory[0])   // First retained value
@@ -279,12 +279,12 @@ func TestTransferSchedulerHistoricalMetricsLimit(t *testing.T) {
 func TestTransferSchedulerNetworkProfileUpdate(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	initialBandwidth := scheduler.networkProfile.EstimatedBandwidthMBps
 	initialRTT := scheduler.networkProfile.BaselineRTT
-	
+
 	// Update with higher bandwidth
 	metrics := &PrefixPerformanceMetrics{
 		PrefixID:       "test-prefix",
@@ -292,13 +292,13 @@ func TestTransferSchedulerNetworkProfileUpdate(t *testing.T) {
 		LatencyMs:      30.0,  // Lower than initial RTT
 	}
 	scheduler.UpdatePrefixMetrics("test-prefix", metrics)
-	
+
 	// Bandwidth should be updated (with learning rate)
 	assert.Greater(t, scheduler.networkProfile.EstimatedBandwidthMBps, initialBandwidth)
-	
+
 	// RTT should be updated to lower value
 	assert.Less(t, scheduler.networkProfile.BaselineRTT, initialRTT)
-	
+
 	// Learning confidence should increase
 	assert.Greater(t, scheduler.networkProfile.LearningConfidence, 0.5)
 }
@@ -306,10 +306,10 @@ func TestTransferSchedulerNetworkProfileUpdate(t *testing.T) {
 func TestTransferSchedulerAdaptiveAdjustments(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("prefix-1", 100.0)
 	scheduler.RegisterPrefix("prefix-2", 100.0)
-	
+
 	// Build up history for prefix-1 showing declining performance
 	for i := 0; i < 10; i++ {
 		throughput := 100.0 - float64(i)*5 // Declining from 100 to 55
@@ -319,7 +319,7 @@ func TestTransferSchedulerAdaptiveAdjustments(t *testing.T) {
 		}
 		scheduler.UpdatePrefixMetrics("prefix-1", metrics)
 	}
-	
+
 	// Build up history for prefix-2 showing stable performance
 	for i := 0; i < 5; i++ {
 		metrics := &PrefixPerformanceMetrics{
@@ -330,13 +330,13 @@ func TestTransferSchedulerAdaptiveAdjustments(t *testing.T) {
 		}
 		scheduler.UpdatePrefixMetrics("prefix-2", metrics)
 	}
-	
+
 	upload := &ScheduledUpload{
 		ArchivePath:   "/test/archive.tar",
 		Priority:      3,
 		EstimatedSize: 1024 * 1024,
 	}
-	
+
 	// The adaptive selection should detect the poor performance of prefix-1
 	// and potentially select prefix-2 instead
 	selectedPrefix, err := scheduler.SelectOptimalPrefix(upload)
@@ -347,22 +347,22 @@ func TestTransferSchedulerAdaptiveAdjustments(t *testing.T) {
 func TestTransferSchedulerNetworkProfileLearning(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("prefix-1", 100.0)
 	scheduler.RegisterPrefix("prefix-2", 100.0)
-	
+
 	// Set high learning confidence and increasing bandwidth trend
 	scheduler.networkProfile.LearningConfidence = 0.8
 	scheduler.networkProfile.BandwidthTrend = TrendIncreasing
-	
+
 	// Create upload with deadline
 	upload := &ScheduledUpload{
 		ArchivePath:   "/test/archive.tar",
 		Priority:      3,
-		EstimatedSize: 2 * 1024 * 1024 * 1024, // 2GB - large upload
+		EstimatedSize: 2 * 1024 * 1024 * 1024,           // 2GB - large upload
 		Deadline:      time.Now().Add(time.Minute * 30), // Not urgent
 	}
-	
+
 	// Build bandwidth trends for prefixes
 	for i := 0; i < 10; i++ {
 		// prefix-1 with increasing trend
@@ -371,7 +371,7 @@ func TestTransferSchedulerNetworkProfileLearning(t *testing.T) {
 			ThroughputMBps: 50.0 + float64(i)*2, // Increasing
 		}
 		scheduler.UpdatePrefixMetrics("prefix-1", metrics1)
-		
+
 		// prefix-2 with stable performance
 		metrics2 := &PrefixPerformanceMetrics{
 			PrefixID:       "prefix-2",
@@ -379,7 +379,7 @@ func TestTransferSchedulerNetworkProfileLearning(t *testing.T) {
 		}
 		scheduler.UpdatePrefixMetrics("prefix-2", metrics2)
 	}
-	
+
 	selectedPrefix, err := scheduler.SelectOptimalPrefix(upload)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, selectedPrefix)
@@ -388,9 +388,9 @@ func TestTransferSchedulerNetworkProfileLearning(t *testing.T) {
 func TestTransferSchedulerConcurrency(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	var wg sync.WaitGroup
-	
+
 	// First, register prefixes concurrently and wait for completion
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
@@ -401,7 +401,7 @@ func TestTransferSchedulerConcurrency(t *testing.T) {
 		}(i)
 	}
 	wg.Wait() // Wait for all prefixes to be registered
-	
+
 	// Now update metrics and select prefixes concurrently
 	// Update metrics concurrently
 	for i := 0; i < 50; i++ {
@@ -417,7 +417,7 @@ func TestTransferSchedulerConcurrency(t *testing.T) {
 			scheduler.UpdatePrefixMetrics(prefixID, metrics)
 		}(i)
 	}
-	
+
 	// Select prefixes concurrently (now that prefixes are registered)
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
@@ -432,9 +432,9 @@ func TestTransferSchedulerConcurrency(t *testing.T) {
 			assert.NoError(t, err)
 		}(i)
 	}
-	
+
 	wg.Wait()
-	
+
 	// Verify final state
 	metrics := scheduler.GetMetrics()
 	assert.NotNil(t, metrics)
@@ -445,18 +445,18 @@ func TestTransferSchedulerBackgroundLoops(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	config.UpdateInterval = time.Millisecond * 50 // Fast for testing
 	scheduler := NewTransferScheduler(config)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*200)
 	defer cancel()
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	// Start background loops
 	scheduler.Start(ctx)
-	
+
 	// Wait for loops to run
 	time.Sleep(time.Millisecond * 150)
-	
+
 	// Should complete without errors or panics
 }
 
@@ -465,10 +465,10 @@ func TestTransferSchedulerBackgroundLoops(t *testing.T) {
 func TestTransferScheduler_FindPrefixWithBandwidthTrend(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("prefix-1", 100.0)
 	scheduler.RegisterPrefix("prefix-2", 100.0)
-	
+
 	// Build increasing trend for prefix-1
 	for i := 0; i < 10; i++ {
 		metrics := &PrefixPerformanceMetrics{
@@ -477,7 +477,7 @@ func TestTransferScheduler_FindPrefixWithBandwidthTrend(t *testing.T) {
 		}
 		scheduler.UpdatePrefixMetrics("prefix-1", metrics)
 	}
-	
+
 	// Build stable trend for prefix-2
 	for i := 0; i < 10; i++ {
 		metrics := &PrefixPerformanceMetrics{
@@ -486,7 +486,7 @@ func TestTransferScheduler_FindPrefixWithBandwidthTrend(t *testing.T) {
 		}
 		scheduler.UpdatePrefixMetrics("prefix-2", metrics)
 	}
-	
+
 	// Test finding prefix with increasing trend
 	prefixID := scheduler.findPrefixWithBandwidthTrend(TrendIncreasing)
 	assert.NotEmpty(t, prefixID)
@@ -495,9 +495,9 @@ func TestTransferScheduler_FindPrefixWithBandwidthTrend(t *testing.T) {
 func TestTransferScheduler_PerformSchedulingOptimizations(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	// Test performing scheduling optimizations (function exists)
 	scheduler.performSchedulingOptimizations()
 	// Should not panic
@@ -506,9 +506,9 @@ func TestTransferScheduler_PerformSchedulingOptimizations(t *testing.T) {
 func TestTransferScheduler_CollectAndAnalyzeMetrics(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	// Test collecting and analyzing metrics (function exists)
 	scheduler.collectAndAnalyzeMetrics()
 	// Should not panic
@@ -517,9 +517,9 @@ func TestTransferScheduler_CollectAndAnalyzeMetrics(t *testing.T) {
 func TestTransferScheduler_PerformAdaptiveOptimizations(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	// Test performing adaptive optimizations (function exists)
 	scheduler.performAdaptiveOptimizations()
 	// Should not panic
@@ -528,9 +528,9 @@ func TestTransferScheduler_PerformAdaptiveOptimizations(t *testing.T) {
 func TestTransferScheduler_AdjustCongestionWindows(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	// Test adjusting congestion windows (function exists)
 	scheduler.adjustCongestionWindows()
 	// Should not panic
@@ -539,7 +539,7 @@ func TestTransferScheduler_AdjustCongestionWindows(t *testing.T) {
 func TestTransferScheduler_UpdateLearningConfidence(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	// Test updating learning confidence (function exists)
 	scheduler.updateLearningConfidence()
 	// Should not panic
@@ -548,9 +548,9 @@ func TestTransferScheduler_UpdateLearningConfidence(t *testing.T) {
 func TestTransferScheduler_AnalyzePerformancePatterns(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	// Test analyzing performance patterns (function exists)
 	scheduler.analyzePerformancePatterns()
 	// Should not panic
@@ -559,9 +559,9 @@ func TestTransferScheduler_AnalyzePerformancePatterns(t *testing.T) {
 func TestTransferScheduler_DetectPerformanceAnomalies(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	// Test detecting performance anomalies (function exists)
 	scheduler.detectPerformanceAnomalies()
 	// Should not panic
@@ -570,9 +570,9 @@ func TestTransferScheduler_DetectPerformanceAnomalies(t *testing.T) {
 func TestTransferScheduler_UpdatePerformancePredictions(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	// Test updating performance predictions (function exists)
 	scheduler.updatePerformancePredictions()
 	// Should not panic
@@ -581,9 +581,9 @@ func TestTransferScheduler_UpdatePerformancePredictions(t *testing.T) {
 func TestTransferScheduler_ApplyMLOptimizations(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	// Test applying ML optimizations (function exists)
 	scheduler.applyMLOptimizations()
 	// Should not panic
@@ -592,9 +592,9 @@ func TestTransferScheduler_ApplyMLOptimizations(t *testing.T) {
 func TestTransferScheduler_OptimizePrefixAllocation(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	// Test optimizing prefix allocation (function exists)
 	scheduler.optimizePrefixAllocation()
 	// Should not panic
@@ -603,9 +603,9 @@ func TestTransferScheduler_OptimizePrefixAllocation(t *testing.T) {
 func TestTransferScheduler_UpdateAdaptiveParameters(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	scheduler.RegisterPrefix("test-prefix", 100.0)
-	
+
 	// Test updating adaptive parameters (function exists)
 	scheduler.updateAdaptiveParameters()
 	// Should not panic
@@ -616,7 +616,7 @@ func TestTransferScheduler_UpdateAdaptiveParameters(t *testing.T) {
 
 func TestPrefixLoadBalancer_ShouldRebalance(t *testing.T) {
 	plb := NewPrefixLoadBalancer(LoadBalanceRoundRobin)
-	
+
 	// Create metrics with different utilization levels
 	prefixMetrics := map[string]*PrefixPerformanceMetrics{
 		"prefix-1": {
@@ -628,42 +628,42 @@ func TestPrefixLoadBalancer_ShouldRebalance(t *testing.T) {
 			BandwidthUtilization: 0.1,
 		},
 	}
-	
+
 	// Test that the function exists and can be called
 	shouldRebalance := plb.shouldRebalance(prefixMetrics)
-	
+
 	// Should return true when there's significant imbalance
 	assert.True(t, shouldRebalance)
 }
 
 func TestPrefixLoadBalancer_PerformRebalance(t *testing.T) {
 	plb := NewPrefixLoadBalancer(LoadBalanceRoundRobin)
-	
+
 	// Initialize prefix weights
 	plb.prefixWeights = map[string]float64{
 		"prefix-1": 1.0,
 		"prefix-2": 1.0,
 	}
-	
+
 	// Create metrics with different performance levels
 	prefixMetrics := map[string]*PrefixPerformanceMetrics{
 		"prefix-1": {
-			PrefixID:        "prefix-1",
-			ThroughputMBps:  80.0,
-			ErrorRate:       0.01,
-			LatencyMs:       50.0,
+			PrefixID:       "prefix-1",
+			ThroughputMBps: 80.0,
+			ErrorRate:      0.01,
+			LatencyMs:      50.0,
 		},
 		"prefix-2": {
-			PrefixID:        "prefix-2",
-			ThroughputMBps:  40.0,
-			ErrorRate:       0.05,
-			LatencyMs:       100.0,
+			PrefixID:       "prefix-2",
+			ThroughputMBps: 40.0,
+			ErrorRate:      0.05,
+			LatencyMs:      100.0,
 		},
 	}
-	
+
 	// Test that the function exists and can be called
 	plb.performRebalance(prefixMetrics)
-	
+
 	// Should not panic or cause issues
 	assert.NotNil(t, plb)
 }

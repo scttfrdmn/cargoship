@@ -1,5 +1,9 @@
 # Contributing to CargoShip
 
+<div align="center">
+  <img src="../assets/images/logo.png" alt="CargoShip Logo" width="150" height="150">
+</div>
+
 Thank you for your interest in contributing to CargoShip! This project builds upon the foundation of Duke University's excellent [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl) with enterprise enhancements for AWS and modern cloud infrastructure.
 
 ## 🚀 Getting Started

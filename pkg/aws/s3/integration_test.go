@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package s3
@@ -107,7 +108,7 @@ func cleanupTestEnvironment() {
 
 func getTestS3Client() *s3.Client {
 	cfg := aws.Config{
-		Region: testRegion,
+		Region:      testRegion,
 		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
 		EndpointResolverWithOptions: aws.EndpointResolverWithOptionsFunc(
 			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
@@ -150,14 +151,14 @@ func TestTransporterUploadIntegration(t *testing.T) {
 		{
 			name: "simple upload",
 			archive: Archive{
-				Key:              "test/simple.txt",
-				Reader:           bytes.NewReader([]byte("Hello, LocalStack!")),
-				Size:             18,
-				StorageClass:     awsconfig.StorageClassStandard,
-				OriginalSize:     18,
-				CompressionType:  "none",
-				AccessPattern:    "frequent",
-				RetentionDays:    30,
+				Key:             "test/simple.txt",
+				Reader:          bytes.NewReader([]byte("Hello, LocalStack!")),
+				Size:            18,
+				StorageClass:    awsconfig.StorageClassStandard,
+				OriginalSize:    18,
+				CompressionType: "none",
+				AccessPattern:   "frequent",
+				RetentionDays:   30,
 				Metadata: map[string]string{
 					"test-key": "test-value",
 				},
@@ -167,28 +168,28 @@ func TestTransporterUploadIntegration(t *testing.T) {
 		{
 			name: "large file upload",
 			archive: Archive{
-				Key:              "test/large-file.dat",
-				Reader:           bytes.NewReader(make([]byte, 10*1024*1024)), // 10MB
-				Size:             10 * 1024 * 1024,
-				StorageClass:     awsconfig.StorageClassStandard,
-				OriginalSize:     15 * 1024 * 1024,
-				CompressionType:  "gzip",
-				AccessPattern:    "infrequent",
-				RetentionDays:    365,
+				Key:             "test/large-file.dat",
+				Reader:          bytes.NewReader(make([]byte, 10*1024*1024)), // 10MB
+				Size:            10 * 1024 * 1024,
+				StorageClass:    awsconfig.StorageClassStandard,
+				OriginalSize:    15 * 1024 * 1024,
+				CompressionType: "gzip",
+				AccessPattern:   "infrequent",
+				RetentionDays:   365,
 			},
 			wantErr: false,
 		},
 		{
 			name: "upload with intelligent tiering",
 			archive: Archive{
-				Key:              "test/intelligent.tar.gz",
-				Reader:           bytes.NewReader([]byte("Archive content for intelligent tiering")),
-				Size:             39,
-				StorageClass:     awsconfig.StorageClassIntelligentTiering,
-				OriginalSize:     100,
-				CompressionType:  "gzip",
-				AccessPattern:    "unknown",
-				RetentionDays:    90,
+				Key:             "test/intelligent.tar.gz",
+				Reader:          bytes.NewReader([]byte("Archive content for intelligent tiering")),
+				Size:            39,
+				StorageClass:    awsconfig.StorageClassIntelligentTiering,
+				OriginalSize:    100,
+				CompressionType: "gzip",
+				AccessPattern:   "unknown",
+				RetentionDays:   90,
 			},
 			wantErr: false,
 		},
@@ -317,13 +318,13 @@ func TestTransporterGetObjectInfoIntegration(t *testing.T) {
 
 	// Upload an object with metadata
 	archive := Archive{
-		Key:              "test-info.txt",
-		Reader:           bytes.NewReader([]byte("test content for info")),
-		Size:             21,
-		OriginalSize:     50,
-		CompressionType:  "gzip",
-		AccessPattern:    "rare",
-		RetentionDays:    180,
+		Key:             "test-info.txt",
+		Reader:          bytes.NewReader([]byte("test content for info")),
+		Size:            21,
+		OriginalSize:    50,
+		CompressionType: "gzip",
+		AccessPattern:   "rare",
+		RetentionDays:   180,
 		Metadata: map[string]string{
 			"project":     "cargoship-test",
 			"environment": "integration",
@@ -360,12 +361,12 @@ func TestTransporterGetObjectInfoIntegration(t *testing.T) {
 
 	// Verify metadata
 	expectedMetadata := map[string]string{
-		"cargoship-created-by":      "cargoship",
+		"cargoship-created-by":       "cargoship",
 		"cargoship-compression-type": "gzip",
-		"cargoship-access-pattern":  "rare",
-		"cargoship-retention-days":  "180",
-		"project":                   "cargoship-test",
-		"environment":               "integration",
+		"cargoship-access-pattern":   "rare",
+		"cargoship-retention-days":   "180",
+		"project":                    "cargoship-test",
+		"environment":                "integration",
 	}
 
 	for key, expectedValue := range expectedMetadata {
@@ -377,7 +378,7 @@ func TestTransporterGetObjectInfoIntegration(t *testing.T) {
 
 func TestParallelUploaderIntegration(t *testing.T) {
 	transporter := getTestTransporter()
-	
+
 	config := ParallelConfig{
 		MaxPrefixes:          2,
 		MaxConcurrentUploads: 2,
@@ -396,7 +397,7 @@ func TestParallelUploaderIntegration(t *testing.T) {
 			Size:   20,
 		},
 		{
-			Key:    "archive-2.txt", 
+			Key:    "archive-2.txt",
 			Reader: bytes.NewReader([]byte("Content of archive 2")),
 			Size:   20,
 		},
@@ -448,7 +449,7 @@ func TestParallelUploaderIntegration(t *testing.T) {
 	for _, archive := range archives {
 		// Check both possible prefixes (since round-robin distribution)
 		prefixes := []string{"archives/batch-0000/", "archives/batch-0001/"}
-		
+
 		found := false
 		for _, prefix := range prefixes {
 			key := prefix + archive.Key
@@ -508,34 +509,34 @@ func TestUploadStorageClassOptimization(t *testing.T) {
 	ctx := context.Background()
 
 	testCases := []struct {
-		name            string
-		accessPattern   string
-		retentionDays   int
-		expectedClass   types.StorageClass
+		name          string
+		accessPattern string
+		retentionDays int
+		expectedClass types.StorageClass
 	}{
 		{
-			name:            "deep archive for long-term",
-			accessPattern:   "archive",
-			retentionDays:   400,
-			expectedClass:   types.StorageClassDeepArchive,
+			name:          "deep archive for long-term",
+			accessPattern: "archive",
+			retentionDays: 400,
+			expectedClass: types.StorageClassDeepArchive,
 		},
 		{
-			name:            "glacier for rare access",
-			accessPattern:   "rare",
-			retentionDays:   100,
-			expectedClass:   types.StorageClassGlacier,
+			name:          "glacier for rare access",
+			accessPattern: "rare",
+			retentionDays: 100,
+			expectedClass: types.StorageClassGlacier,
 		},
 		{
-			name:            "standard-ia for infrequent",
-			accessPattern:   "infrequent",
-			retentionDays:   30,
-			expectedClass:   types.StorageClassStandardIa,
+			name:          "standard-ia for infrequent",
+			accessPattern: "infrequent",
+			retentionDays: 30,
+			expectedClass: types.StorageClassStandardIa,
 		},
 		{
-			name:            "intelligent tiering for unknown",
-			accessPattern:   "unknown",
-			retentionDays:   60,
-			expectedClass:   types.StorageClassIntelligentTiering,
+			name:          "intelligent tiering for unknown",
+			accessPattern: "unknown",
+			retentionDays: 60,
+			expectedClass: types.StorageClassIntelligentTiering,
 		},
 	}
 

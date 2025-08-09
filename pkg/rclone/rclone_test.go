@@ -159,10 +159,10 @@ func TestClone_Error(t *testing.T) {
 
 func TestMarshalParams(t *testing.T) {
 	params := map[string]interface{}{
-		"srcFs":     "/source",
-		"dstFs":     "remote:/dest",
-		"_async":    true,
-		"_group":    "test",
+		"srcFs":  "/source",
+		"dstFs":  "remote:/dest",
+		"_async": true,
+		"_group": "test",
 	}
 
 	result, err := marshalParams(params)
@@ -348,7 +348,7 @@ func TestErrWithRPCOut_EdgeCases(t *testing.T) {
 
 	// Test with valid JSON but no error field - will create error with empty string
 	err = errWithRPCOut(`{"status": "ok"}`)
-	require.Error(t, err) // Function creates error even with empty error field
+	require.Error(t, err)             // Function creates error even with empty error field
 	require.Equal(t, "", err.Error()) // Error message will be empty
 
 	// Test with valid error JSON

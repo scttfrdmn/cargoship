@@ -159,7 +159,7 @@ func outputBenchmarkTable(results []compression.CompressionResult, originalSize 
 	table := tablewriter.NewWriter(os.Stdout)
 	table.Header(
 		"Algorithm",
-		"Level", 
+		"Level",
 		"Compressed Size",
 		"Ratio",
 		"Time (ms)",
@@ -179,7 +179,7 @@ func outputBenchmarkTable(results []compression.CompressionResult, originalSize 
 
 	// Add recommendation
 	best := findBestAlgorithm(results)
-	
+
 	for _, result := range results {
 		efficiency := fmt.Sprintf("%.1f", result.Throughput)
 		if result.Algorithm == best.Algorithm && result.Level == best.Level {
@@ -201,15 +201,15 @@ func outputBenchmarkTable(results []compression.CompressionResult, originalSize 
 
 	// Show recommendations
 	fmt.Printf("\n🎯 Recommendations:\n")
-	fmt.Printf("   Best Overall: %s (level %d) - %.2fx compression in %dms\n", 
+	fmt.Printf("   Best Overall: %s (level %d) - %.2fx compression in %dms\n",
 		best.Algorithm, best.Level, best.CompressionRatio, best.CompressionTime)
 
 	fastest := findFastestAlgorithm(results)
-	fmt.Printf("   Fastest: %s (level %d) - %.1f MB/s\n", 
+	fmt.Printf("   Fastest: %s (level %d) - %.1f MB/s\n",
 		fastest.Algorithm, fastest.Level, fastest.Throughput)
 
-	bestRatio := findBestRatioAlgorithm(results) 
-	fmt.Printf("   Best Compression: %s (level %d) - %.2fx ratio\n", 
+	bestRatio := findBestRatioAlgorithm(results)
+	fmt.Printf("   Best Compression: %s (level %d) - %.2fx ratio\n",
 		bestRatio.Algorithm, bestRatio.Level, bestRatio.CompressionRatio)
 
 	return nil
@@ -221,7 +221,7 @@ func outputBenchmarkJSON(results []compression.CompressionResult) error {
 		"results":   results,
 		"recommendations": map[string]interface{}{
 			"best_overall":     findBestAlgorithm(results),
-			"fastest":         findFastestAlgorithm(results),
+			"fastest":          findFastestAlgorithm(results),
 			"best_compression": findBestRatioAlgorithm(results),
 		},
 	}
@@ -284,8 +284,8 @@ func calculateScore(result compression.CompressionResult) float64 {
 	// Balance compression ratio and speed
 	// Higher compression ratio is better, lower time is better
 	ratioScore := result.CompressionRatio * 10 // Weight compression ratio
-	speedScore := result.Throughput           // Weight speed
-	
+	speedScore := result.Throughput            // Weight speed
+
 	return ratioScore + speedScore
 }
 

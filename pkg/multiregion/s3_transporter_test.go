@@ -20,9 +20,9 @@ import (
 )
 
 var (
-	localStackContainer   string
-	localStackStarted     bool
-	localStackWasRunning  bool
+	localStackContainer  string
+	localStackStarted    bool
+	localStackWasRunning bool
 )
 
 // startLocalStack starts a LocalStack container for testing
@@ -122,12 +122,12 @@ func createValidMultiRegionS3Config() *MultiRegionS3Config {
 	return &MultiRegionS3Config{
 		MultiRegionConfig: createValidMultiRegionConfig(),
 		S3Config: awsconfig.S3Config{
-			Bucket:             "test-bucket",
-			StorageClass:       awsconfig.StorageClassStandard,
-			MultipartThreshold: 100 * 1024 * 1024, // 100MB
-			MultipartChunkSize: 10 * 1024 * 1024,  // 10MB
-			Concurrency:        8,
-			KMSKeyID:          "",
+			Bucket:                  "test-bucket",
+			StorageClass:            awsconfig.StorageClassStandard,
+			MultipartThreshold:      100 * 1024 * 1024, // 100MB
+			MultipartChunkSize:      10 * 1024 * 1024,  // 10MB
+			Concurrency:             8,
+			KMSKeyID:                "",
 			UseTransferAcceleration: false,
 		},
 		AdaptiveConfig: &s3transport.AdaptiveTransporterConfig{
@@ -144,16 +144,16 @@ func createValidMultiRegionS3Config() *MultiRegionS3Config {
 				BandwidthChangeThreshold: 0.1,
 				LatencyChangeThreshold:   0.2,
 				LossChangeThreshold:      0.001,
-				MinChunkSizeMB:          5,
-				MaxChunkSizeMB:          100,
-				MinConcurrency:          1,
-				MaxConcurrency:          8,
-				AggressiveAdaptation:    false,
-				ConservativeMode:        true,
-				AdaptationSensitivity:   1.0,
-				TargetThroughputMBps:    50.0,
-				TargetLatencyMs:         50.0,
-				MaxTolerableLoss:        0.01,
+				MinChunkSizeMB:           5,
+				MaxChunkSizeMB:           100,
+				MinConcurrency:           1,
+				MaxConcurrency:           8,
+				AggressiveAdaptation:     false,
+				ConservativeMode:         true,
+				AdaptationSensitivity:    1.0,
+				TargetThroughputMBps:     50.0,
+				TargetLatencyMs:          50.0,
+				MaxTolerableLoss:         0.01,
 			},
 			EnableRealTimeAdaptation: true,
 			AdaptationSensitivity:    1.0,
@@ -180,17 +180,17 @@ func createTestMultiRegionUploadRequest() *MultiRegionUploadRequest {
 			Priority:        5,
 		},
 		Archive: s3transport.Archive{
-			Key:              "test-uploads/file.txt",
-			Reader:           strings.NewReader(strings.Repeat("a", 1024)),
-			Size:             1024,
-			StorageClass:     awsconfig.StorageClassStandard,
-			Metadata:         map[string]string{
+			Key:          "test-uploads/file.txt",
+			Reader:       strings.NewReader(strings.Repeat("a", 1024)),
+			Size:         1024,
+			StorageClass: awsconfig.StorageClassStandard,
+			Metadata: map[string]string{
 				"source": "test",
 			},
-			OriginalSize:     1024,
-			CompressionType:  "gzip",
-			AccessPattern:    "archive",
-			RetentionDays:    365,
+			OriginalSize:    1024,
+			CompressionType: "gzip",
+			AccessPattern:   "archive",
+			RetentionDays:   365,
 		},
 		TargetBucket:        "test-bucket",
 		PreferredRegions:    []string{"us-east-1", "us-west-2"},
@@ -262,7 +262,7 @@ func TestNewMultiRegionS3Transporter(t *testing.T) {
 					assert.NotNil(t, transporter.clients)
 					assert.NotNil(t, transporter.config)
 					assert.NotNil(t, transporter.logger)
-					
+
 					// Cleanup
 					_ = transporter.Shutdown(ctx)
 				}
@@ -306,14 +306,14 @@ func TestMultiRegionS3Transporter_Upload(t *testing.T) {
 				UploadRequest: nil,
 				TargetBucket:  "test-bucket",
 				Archive: s3transport.Archive{
-					Key:              "test.txt",
-					Reader:           strings.NewReader("test content"),
-					Size:             12,
-					StorageClass:     awsconfig.StorageClassStandard,
-					OriginalSize:     12,
-					CompressionType:  "none",
-					AccessPattern:    "archive",
-					RetentionDays:    30,
+					Key:             "test.txt",
+					Reader:          strings.NewReader("test content"),
+					Size:            12,
+					StorageClass:    awsconfig.StorageClassStandard,
+					OriginalSize:    12,
+					CompressionType: "none",
+					AccessPattern:   "archive",
+					RetentionDays:   30,
 				},
 			},
 			expectError: true, // Will fail due to no AWS credentials/invalid bucket
@@ -329,14 +329,14 @@ func TestMultiRegionS3Transporter_Upload(t *testing.T) {
 				},
 				TargetBucket: "",
 				Archive: s3transport.Archive{
-					Key:              "test.txt",
-					Reader:           strings.NewReader(strings.Repeat("c", 100)),
-					Size:             100,
-					StorageClass:     awsconfig.StorageClassStandard,
-					OriginalSize:     100,
-					CompressionType:  "none",
-					AccessPattern:    "archive",
-					RetentionDays:    30,
+					Key:             "test.txt",
+					Reader:          strings.NewReader(strings.Repeat("c", 100)),
+					Size:            100,
+					StorageClass:    awsconfig.StorageClassStandard,
+					OriginalSize:    100,
+					CompressionType: "none",
+					AccessPattern:   "archive",
+					RetentionDays:   30,
 				},
 			},
 			expectError: true, // Will fail due to empty bucket and no AWS credentials
@@ -394,7 +394,7 @@ func TestMultiRegionS3Transporter_UploadSingle(t *testing.T) {
 
 	// Test uploadSingle (this will likely fail due to no actual file, but tests the method exists and validates input)
 	result, err := transporter.uploadSingle(ctx, request)
-	
+
 	// We expect an error due to no actual file/AWS access
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -431,7 +431,7 @@ func TestMultiRegionS3Transporter_UploadRedundant(t *testing.T) {
 
 	// Test uploadRedundant (this will likely fail due to no actual file, but tests the method exists)
 	result, err := transporter.uploadRedundant(ctx, request)
-	
+
 	// We expect an error due to no actual file/AWS access
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -467,7 +467,7 @@ func TestMultiRegionS3Transporter_UploadWithFailover(t *testing.T) {
 
 	// Test uploadWithFailover (this will likely fail due to no actual file, but tests the method exists)
 	result, err := transporter.uploadWithFailover(ctx, request, "us-east-1", fmt.Errorf("test error"))
-	
+
 	// We expect an error due to no actual file/AWS access
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -505,7 +505,7 @@ func TestMultiRegionS3Transporter_ExecuteUpload(t *testing.T) {
 
 	// Test executeUpload (this will likely fail due to no actual file, but tests the method exists)
 	result, err := transporter.executeUpload(ctx, regionTransporter, request)
-	
+
 	// We expect an error due to no actual file/AWS access
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -579,7 +579,7 @@ func TestMultiRegionS3Transporter_InitializeRegionTransporters(t *testing.T) {
 
 	// This may succeed if AWS credentials are available, or fail if not
 	err := transporter.initializeRegionTransporters(ctx)
-	
+
 	// Either outcome is acceptable - we're testing the method exists and validation logic
 	if err != nil {
 		// Expected case when no AWS credentials
@@ -623,7 +623,7 @@ func TestMultiRegionS3Transporter_Shutdown(t *testing.T) {
 func TestDefaultMultiRegionS3Config(t *testing.T) {
 	// Test the default configuration creation
 	config := DefaultMultiRegionS3Config()
-	
+
 	assert.NotNil(t, config)
 	assert.NotNil(t, config.MultiRegionConfig)
 	assert.True(t, config.Enabled)
@@ -633,7 +633,7 @@ func TestDefaultMultiRegionS3Config(t *testing.T) {
 	assert.False(t, config.RedundantUploads)
 	assert.Equal(t, 2, config.RedundantRegionCount)
 	assert.True(t, config.SyncValidation)
-	
+
 	// The default config doesn't populate S3Config or AdaptiveConfig - they should be nil/empty
 	assert.Empty(t, config.S3Config.Bucket)
 	assert.Nil(t, config.AdaptiveConfig)
@@ -651,7 +651,7 @@ func TestMultiRegionUploadRequest_Validation(t *testing.T) {
 			valid:   false,
 		},
 		{
-			name: "valid request",
+			name:    "valid request",
 			request: createTestMultiRegionUploadRequest(),
 			valid:   true,
 		},
@@ -666,14 +666,14 @@ func TestMultiRegionUploadRequest_Validation(t *testing.T) {
 				},
 				TargetBucket: "",
 				Archive: s3transport.Archive{
-					Key:              "test.txt",
-					Reader:           strings.NewReader(strings.Repeat("b", 100)),
-					Size:             100,
-					StorageClass:     awsconfig.StorageClassStandard,
-					OriginalSize:     100,
-					CompressionType:  "none",
-					AccessPattern:    "archive",
-					RetentionDays:    30,
+					Key:             "test.txt",
+					Reader:          strings.NewReader(strings.Repeat("b", 100)),
+					Size:            100,
+					StorageClass:    awsconfig.StorageClassStandard,
+					OriginalSize:    100,
+					CompressionType: "none",
+					AccessPattern:   "archive",
+					RetentionDays:   30,
 				},
 			},
 			valid: false,
@@ -820,7 +820,7 @@ func TestMultiRegionS3Config_Validation(t *testing.T) {
 func TestMain(m *testing.M) {
 	// Run tests
 	code := m.Run()
-	
+
 	// Clean up LocalStack only if we started it ourselves
 	if localStackContainer != "" && !localStackWasRunning {
 		cmd := exec.Command("docker", "stop", localStackContainer)
@@ -830,7 +830,7 @@ func TestMain(m *testing.M) {
 			fmt.Printf("Stopped LocalStack container: %s\n", localStackContainer)
 		}
 	}
-	
+
 	os.Exit(code)
 }
 
@@ -863,7 +863,7 @@ func TestMultiRegionS3Transporter_ConcurrentAccess(t *testing.T) {
 	// Test concurrent access to getRegionTransporter
 	const numGoroutines = 10
 	results := make(chan *s3transport.AdaptiveTransporter, numGoroutines)
-	
+
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			transporter, _ := transporter.getRegionTransporter("us-east-1")
@@ -898,16 +898,16 @@ func TestMultiRegionS3Transporter_uploadSingle(t *testing.T) {
 
 	config := createValidMultiRegionS3Config()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
 		t.Skip("Skipping upload test: failed to create transporter (LocalStack not available)")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
-	
+
 	request := &MultiRegionUploadRequest{
 		TargetBucket: "test-bucket",
 		UploadRequest: &UploadRequest{
@@ -917,20 +917,20 @@ func TestMultiRegionS3Transporter_uploadSingle(t *testing.T) {
 			Size:           1024,
 		},
 		Archive: s3transport.Archive{
-			Key:              "test-key",
-			Reader:           strings.NewReader(strings.Repeat("a", 1024)),
-			Size:             1024,
-			StorageClass:     awsconfig.StorageClassStandard,
-			OriginalSize:     1024,
-			CompressionType:  "gzip",
-			AccessPattern:    "archive",
-			RetentionDays:    365,
+			Key:             "test-key",
+			Reader:          strings.NewReader(strings.Repeat("a", 1024)),
+			Size:            1024,
+			StorageClass:    awsconfig.StorageClassStandard,
+			OriginalSize:    1024,
+			CompressionType: "gzip",
+			AccessPattern:   "archive",
+			RetentionDays:   365,
 		},
 	}
-	
+
 	// Test successful upload
 	result, err := transporter.uploadSingle(ctx, request)
-	
+
 	// This will likely fail due to missing AWS credentials, but that's expected
 	if err != nil {
 		assert.Error(t, err)
@@ -959,16 +959,16 @@ func TestMultiRegionS3Transporter_uploadRedundant(t *testing.T) {
 	config.RedundantUploads = true
 	config.RedundantRegionCount = 2
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
 		t.Skip("Skipping redundant upload test: failed to create transporter (LocalStack not available)")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
-	
+
 	request := &MultiRegionUploadRequest{
 		TargetBucket: "test-bucket",
 		UploadRequest: &UploadRequest{
@@ -978,20 +978,20 @@ func TestMultiRegionS3Transporter_uploadRedundant(t *testing.T) {
 			Size:           1024,
 		},
 		Archive: s3transport.Archive{
-			Key:              "test-key",
-			Reader:           strings.NewReader(strings.Repeat("a", 1024)),
-			Size:             1024,
-			StorageClass:     awsconfig.StorageClassStandard,
-			OriginalSize:     1024,
-			CompressionType:  "gzip",
-			AccessPattern:    "archive",
-			RetentionDays:    365,
+			Key:             "test-key",
+			Reader:          strings.NewReader(strings.Repeat("a", 1024)),
+			Size:            1024,
+			StorageClass:    awsconfig.StorageClassStandard,
+			OriginalSize:    1024,
+			CompressionType: "gzip",
+			AccessPattern:   "archive",
+			RetentionDays:   365,
 		},
 	}
-	
+
 	// Test redundant upload
 	result, err := transporter.uploadRedundant(ctx, request)
-	
+
 	// This will likely fail due to missing AWS credentials, but that's expected
 	if err != nil {
 		assert.Error(t, err)
@@ -1009,16 +1009,16 @@ func TestMultiRegionS3Transporter_uploadWithFailover(t *testing.T) {
 
 	config := createValidMultiRegionS3Config()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
 		t.Skip("Skipping failover upload test: failed to create transporter (LocalStack not available)")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
-	
+
 	request := &MultiRegionUploadRequest{
 		TargetBucket: "test-bucket",
 		UploadRequest: &UploadRequest{
@@ -1028,20 +1028,20 @@ func TestMultiRegionS3Transporter_uploadWithFailover(t *testing.T) {
 			Size:           1024,
 		},
 		Archive: s3transport.Archive{
-			Key:              "test-key",
-			Reader:           strings.NewReader(strings.Repeat("a", 1024)),
-			Size:             1024,
-			StorageClass:     awsconfig.StorageClassStandard,
-			OriginalSize:     1024,
-			CompressionType:  "gzip",
-			AccessPattern:    "archive",
-			RetentionDays:    365,
+			Key:             "test-key",
+			Reader:          strings.NewReader(strings.Repeat("a", 1024)),
+			Size:            1024,
+			StorageClass:    awsconfig.StorageClassStandard,
+			OriginalSize:    1024,
+			CompressionType: "gzip",
+			AccessPattern:   "archive",
+			RetentionDays:   365,
 		},
 	}
-	
+
 	// Test upload with failover
 	result, err := transporter.uploadWithFailover(ctx, request, "us-east-1", fmt.Errorf("test error"))
-	
+
 	// This will likely fail due to missing AWS credentials, but that's expected
 	if err != nil {
 		assert.Error(t, err)
@@ -1068,18 +1068,18 @@ func TestMultiRegionS3Transporter_executeUpload(t *testing.T) {
 
 	config := createValidMultiRegionS3Config()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
 		t.Skip("Skipping execute upload test: failed to create transporter (LocalStack not available)")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
-	
+
 	regionTransporter, _ := transporter.getRegionTransporter("us-east-1")
-	
+
 	request := &MultiRegionUploadRequest{
 		TargetBucket: "test-bucket",
 		UploadRequest: &UploadRequest{
@@ -1089,21 +1089,21 @@ func TestMultiRegionS3Transporter_executeUpload(t *testing.T) {
 			Size:           1024,
 		},
 		Archive: s3transport.Archive{
-			Key:              "test-key",
-			Reader:           strings.NewReader(strings.Repeat("a", 1024)),
-			Size:             1024,
-			StorageClass:     awsconfig.StorageClassStandard,
-			OriginalSize:     1024,
-			CompressionType:  "gzip",
-			AccessPattern:    "archive",
-			RetentionDays:    365,
+			Key:             "test-key",
+			Reader:          strings.NewReader(strings.Repeat("a", 1024)),
+			Size:            1024,
+			StorageClass:    awsconfig.StorageClassStandard,
+			OriginalSize:    1024,
+			CompressionType: "gzip",
+			AccessPattern:   "archive",
+			RetentionDays:   365,
 		},
 	}
-	
+
 	// Test execute upload
 	result, err := transporter.executeUpload(ctx, regionTransporter, request)
-	
-	// This will likely fail due to missing AWS credentials, but that's expected  
+
+	// This will likely fail due to missing AWS credentials, but that's expected
 	if err != nil {
 		assert.Error(t, err)
 		assert.Nil(t, result)

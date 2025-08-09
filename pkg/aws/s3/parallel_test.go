@@ -47,9 +47,9 @@ func TestParallelUploader_Close(t *testing.T) {
 	transporter := NewTransporter(client, s3Config)
 
 	config := ParallelConfig{
-		MaxPrefixes:              8,
-		PrefixPattern:            "hash",
-		EnableCoordination:       true,
+		MaxPrefixes:        8,
+		PrefixPattern:      "hash",
+		EnableCoordination: true,
 		CoordinationConfig: DefaultCoordinationConfig(),
 	}
 
@@ -71,9 +71,9 @@ func TestParallelUploader_UpdateCoordinationMetrics(t *testing.T) {
 	transporter := NewTransporter(client, s3Config)
 
 	config := ParallelConfig{
-		MaxPrefixes:              8,
-		PrefixPattern:            "hash",
-		EnableCoordination:       true,
+		MaxPrefixes:        8,
+		PrefixPattern:      "hash",
+		EnableCoordination: true,
 		CoordinationConfig: DefaultCoordinationConfig(),
 	}
 
@@ -103,9 +103,9 @@ func TestParallelUploader_UploadPrefixBatchCoordinated(t *testing.T) {
 	transporter := NewTransporter(client, s3Config)
 
 	config := ParallelConfig{
-		MaxPrefixes:              8,
-		PrefixPattern:            "hash",
-		EnableCoordination:       true,
+		MaxPrefixes:        8,
+		PrefixPattern:      "hash",
+		EnableCoordination: true,
 		CoordinationConfig: DefaultCoordinationConfig(),
 	}
 
@@ -126,10 +126,10 @@ func TestParallelUploader_UploadPrefixBatchCoordinated(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	
+
 	// Test upload prefix batch coordinated (will fail without proper AWS setup but tests function exists)
 	_, err := uploader.uploadPrefixBatchCoordinated(ctx, prefixBatch)
-	
+
 	// Expect error due to AWS config but function should be callable
 	assert.Error(t, err)
 }

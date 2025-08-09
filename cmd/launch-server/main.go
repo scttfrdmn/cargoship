@@ -30,19 +30,19 @@ type Server struct {
 
 // JobStatus tracks the status of a running job
 type JobStatus struct {
-	JobID       string                  `json:"job_id"`
-	Status      string                  `json:"status"` // pending, running, completed, failed
-	Command     []string                `json:"command"`
-	Environment map[string]string       `json:"environment"`
-	StartTime   time.Time               `json:"start_time"`
-	EndTime     *time.Time              `json:"end_time,omitempty"`
-	Duration    *time.Duration          `json:"duration,omitempty"`
-	Results     *launch.TestResults     `json:"results,omitempty"`
-	Logs        []string                `json:"logs,omitempty"`
-	Error       string                  `json:"error,omitempty"`
-	Process     *exec.Cmd               `json:"-"`
-	ctx         context.Context         `json:"-"`
-	cancel      context.CancelFunc      `json:"-"`
+	JobID       string              `json:"job_id"`
+	Status      string              `json:"status"` // pending, running, completed, failed
+	Command     []string            `json:"command"`
+	Environment map[string]string   `json:"environment"`
+	StartTime   time.Time           `json:"start_time"`
+	EndTime     *time.Time          `json:"end_time,omitempty"`
+	Duration    *time.Duration      `json:"duration,omitempty"`
+	Results     *launch.TestResults `json:"results,omitempty"`
+	Logs        []string            `json:"logs,omitempty"`
+	Error       string              `json:"error,omitempty"`
+	Process     *exec.Cmd           `json:"-"`
+	ctx         context.Context     `json:"-"`
+	cancel      context.CancelFunc  `json:"-"`
 }
 
 // JobSubmission represents a job submission request
@@ -188,14 +188,14 @@ func (s *Server) jobStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Create response (exclude internal fields)
 	response := &launch.LaunchResponse{
-		JobID:         job.JobID,
-		Status:        job.Status,
-		Results:       job.Results,
-		Logs:          job.Logs,
-		Error:         job.Error,
-		StartTime:     job.StartTime,
-		EndTime:       job.EndTime,
-		Duration:      job.Duration,
+		JobID:     job.JobID,
+		Status:    job.Status,
+		Results:   job.Results,
+		Logs:      job.Logs,
+		Error:     job.Error,
+		StartTime: job.StartTime,
+		EndTime:   job.EndTime,
+		Duration:  job.Duration,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -289,7 +289,7 @@ func (s *Server) executeJob(job *JobStatus) {
 
 	// Execute the command
 	cmd := exec.CommandContext(job.ctx, job.Command[0], job.Command[1:]...)
-	
+
 	// Set environment variables
 	cmd.Env = os.Environ()
 	for key, value := range job.Environment {
@@ -306,7 +306,7 @@ func (s *Server) executeJob(job *JobStatus) {
 	s.jobsMu.Lock()
 	job.EndTime = &endTime
 	job.Duration = &duration
-	
+
 	if err != nil {
 		job.Status = "failed"
 		job.Error = err.Error()
@@ -315,13 +315,13 @@ func (s *Server) executeJob(job *JobStatus) {
 	} else {
 		job.Status = "completed"
 		job.Logs = append(job.Logs, string(output))
-		
+
 		// Try to parse results from output (assuming JSON output)
 		var results launch.TestResults
 		if err := json.Unmarshal(output, &results); err == nil {
 			job.Results = &results
 		}
-		
+
 		s.logger.Info("job completed", "job_id", job.JobID, "duration", duration)
 	}
 	s.jobsMu.Unlock()

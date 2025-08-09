@@ -128,7 +128,7 @@ func TestKeyType_Set(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var keyType KeyType
 			err := keyType.Set(tt.value)
-			
+
 			if tt.expectError {
 				require.Error(t, err)
 			} else {
@@ -210,12 +210,12 @@ func TestNewKeyFilesWithPair_SpecifiedDest(t *testing.T) {
 		Bits:    1024,
 	})
 	require.NoError(t, err)
-	
+
 	tempDir := t.TempDir()
 	files, err := NewKeyFilesWithPair(kp, tempDir)
 	require.NoError(t, err)
 	require.Len(t, files, 2)
-	
+
 	// Verify files were created in the specified directory
 	require.Contains(t, files[0], tempDir)
 	require.Contains(t, files[1], tempDir)
@@ -246,7 +246,7 @@ func TestNewKeyPair_EdgeCaseBits(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, kp)
-	
+
 	// Test with larger key size
 	kp, err = NewKeyPair(&KeyOpts{
 		Name:    "test",
@@ -267,7 +267,7 @@ func TestNewKeyFilesWithPair_ErrorHandling(t *testing.T) {
 		Bits:    1024,
 	})
 	require.NoError(t, err)
-	
+
 	// Test with invalid destination path (non-existent directory)
 	_, err = NewKeyFilesWithPair(kp, "/nonexistent/path")
 	require.Error(t, err)
@@ -277,7 +277,7 @@ func TestNewKeyFilesWithPair_ErrorHandling(t *testing.T) {
 func TestKeyType_MarshalJSON_AllTypes(t *testing.T) {
 	// Test all key types to ensure comprehensive coverage
 	types := []KeyType{RSAKeyType, X25519Type, NullKeyType}
-	
+
 	for _, keyType := range types {
 		_, err := keyType.MarshalJSON()
 		require.NoError(t, err)

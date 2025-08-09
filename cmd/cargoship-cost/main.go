@@ -11,23 +11,23 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
 	cargoconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
+	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
 	"gopkg.in/yaml.v3"
 )
 
 var (
-	configFile    = flag.String("config", "", "Path to CargoShip configuration file")
-	command       = flag.String("command", "", "Command to execute: estimate, report, budget, pricing, validate")
-	operation     = flag.String("operation", "upload", "Operation type for estimate (upload, download)")
-	size          = flag.String("size", "", "Size for estimate (e.g., 1GB, 500MB, 2TB)")
-	storageClass  = flag.String("storage-class", "STANDARD", "Storage class (STANDARD, STANDARD_IA, GLACIER, etc.)")
-	region        = flag.String("region", "us-east-1", "AWS region")
-	period        = flag.String("period", "month", "Report period (today, week, month, last_month)")
-	format        = flag.String("format", "json", "Output format (json, csv, table)")
-	output        = flag.String("output", "", "Output file path (default: stdout)")
-	verbose       = flag.Bool("verbose", false, "Enable verbose logging")
-	awsProfile    = flag.String("aws-profile", "", "AWS profile to use")
+	configFile   = flag.String("config", "", "Path to CargoShip configuration file")
+	command      = flag.String("command", "", "Command to execute: estimate, report, budget, pricing, validate")
+	operation    = flag.String("operation", "upload", "Operation type for estimate (upload, download)")
+	size         = flag.String("size", "", "Size for estimate (e.g., 1GB, 500MB, 2TB)")
+	storageClass = flag.String("storage-class", "STANDARD", "Storage class (STANDARD, STANDARD_IA, GLACIER, etc.)")
+	region       = flag.String("region", "us-east-1", "AWS region")
+	period       = flag.String("period", "month", "Report period (today, week, month, last_month)")
+	format       = flag.String("format", "json", "Output format (json, csv, table)")
+	output       = flag.String("output", "", "Output file path (default: stdout)")
+	verbose      = flag.Bool("verbose", false, "Enable verbose logging")
+	awsProfile   = flag.String("aws-profile", "", "AWS profile to use")
 )
 
 func main() {
@@ -225,7 +225,7 @@ func loadConfig(filename string) (*cargoconfig.AWSConfig, error) {
 
 func parseSize(sizeStr string) (int64, error) {
 	sizeStr = strings.ToUpper(strings.TrimSpace(sizeStr))
-	
+
 	var multiplier int64 = 1
 	var numStr string
 
@@ -308,25 +308,25 @@ func outputReportTable(summary *cost.CostSummary) error {
 	fmt.Printf("Total Cost:      $%.2f %s\n", summary.TotalCost, summary.Currency)
 	fmt.Printf("Total Savings:   $%.2f %s\n", summary.TotalSavings, summary.Currency)
 	fmt.Printf("\n")
-	
+
 	fmt.Printf("By Service:\n")
 	for service, cost := range summary.ByService {
 		fmt.Printf("  %-15s $%.2f\n", service, cost)
 	}
 	fmt.Printf("\n")
-	
+
 	fmt.Printf("By Region:\n")
 	for region, cost := range summary.ByRegion {
 		fmt.Printf("  %-15s $%.2f\n", region, cost)
 	}
 	fmt.Printf("\n")
-	
+
 	fmt.Printf("Trends:\n")
 	fmt.Printf("  Daily Average:     $%.2f\n", summary.Trends.DailyAverage)
 	fmt.Printf("  Weekly Average:    $%.2f\n", summary.Trends.WeeklyAverage)
 	fmt.Printf("  Monthly Projection: $%.2f\n", summary.Trends.MonthlyProjection)
 	fmt.Printf("  Cost per GB:       $%.4f\n", summary.Trends.CostPerGB)
-	
+
 	if len(summary.Recommendations) > 0 {
 		fmt.Printf("\nRecommendations:\n")
 		for _, rec := range summary.Recommendations {
@@ -334,7 +334,7 @@ func outputReportTable(summary *cost.CostSummary) error {
 			fmt.Printf("      Potential Saving: $%.2f\n", rec.PotentialSaving)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -346,7 +346,7 @@ func outputBudgetTable(status map[string]interface{}) error {
 	fmt.Printf("Remaining:       $%.2f\n", status["budget_remaining"])
 	fmt.Printf("Usage:           %.1f%%\n", status["budget_used"].(float64)*100)
 	fmt.Printf("Alert Threshold: %.1f%%\n", status["alert_threshold"].(float64)*100)
-	
+
 	if status["over_budget"].(bool) {
 		fmt.Printf("\n⚠️  OVER BUDGET!\n")
 	} else if status["alert_triggered"].(bool) {
@@ -354,7 +354,7 @@ func outputBudgetTable(status map[string]interface{}) error {
 	} else {
 		fmt.Printf("\n✅ Within budget\n")
 	}
-	
+
 	return nil
 }
 
@@ -365,7 +365,7 @@ func outputPricingTable(pricing map[string]interface{}) error {
 	fmt.Printf("Source: %s\n", pricing["source"])
 	fmt.Printf("Last Updated: %s\n", pricing["last_updated"])
 	fmt.Printf("\n")
-	
+
 	if storage, ok := pricing["storage_per_gb_month"].(map[string]float64); ok {
 		fmt.Printf("Storage Pricing (per GB per month):\n")
 		for class, price := range storage {
@@ -373,13 +373,13 @@ func outputPricingTable(pricing map[string]interface{}) error {
 		}
 		fmt.Printf("\n")
 	}
-	
+
 	if requests, ok := pricing["requests"].(map[string]float64); ok {
 		fmt.Printf("Request Pricing:\n")
 		for reqType, price := range requests {
 			fmt.Printf("  %-20s $%.6f\n", reqType, price)
 		}
 	}
-	
+
 	return nil
 }

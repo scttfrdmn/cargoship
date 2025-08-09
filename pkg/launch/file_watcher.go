@@ -15,17 +15,17 @@ import (
 
 // FileWatcher monitors filesystem changes for archival candidates
 type FileWatcher struct {
-	logger      *slog.Logger
-	watchPaths  []WatchPath
-	watcher     *fsnotify.Watcher
-	events      chan FileEvent
-	mu          sync.RWMutex
-	
+	logger     *slog.Logger
+	watchPaths []WatchPath
+	watcher    *fsnotify.Watcher
+	events     chan FileEvent
+	mu         sync.RWMutex
+
 	// State
-	watching    map[string]bool
-	ctx         context.Context
-	cancel      context.CancelFunc
-	wg          sync.WaitGroup
+	watching map[string]bool
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
 }
 
 // FileEvent represents a filesystem event
@@ -70,8 +70,8 @@ func (fw *FileWatcher) Start() error {
 	// Add watch paths
 	for _, watchPath := range fw.watchPaths {
 		if err := fw.addWatchPath(watchPath); err != nil {
-			fw.logger.Error("Failed to add watch path", 
-				"path", watchPath.Path, 
+			fw.logger.Error("Failed to add watch path",
+				"path", watchPath.Path,
 				"error", err)
 			continue
 		}
@@ -90,7 +90,7 @@ func (fw *FileWatcher) Stop() error {
 	fw.logger.Info("Stopping file watcher")
 
 	fw.cancel()
-	
+
 	if fw.watcher != nil {
 		if err := fw.watcher.Close(); err != nil {
 			fw.logger.Error("Failed to close filesystem watcher", "error", err)
@@ -143,16 +143,16 @@ func (fw *FileWatcher) addWatchPath(watchPath WatchPath) error {
 	// If recursive, add subdirectories
 	if watchPath.Recursive {
 		if err := fw.addSubdirectories(watchPath.Path); err != nil {
-			fw.logger.Warn("Failed to add some subdirectories", 
-				"path", watchPath.Path, 
+			fw.logger.Warn("Failed to add some subdirectories",
+				"path", watchPath.Path,
 				"error", err)
 		}
 	}
 
-	fw.logger.Info("Added watch path", 
-		"path", watchPath.Path, 
+	fw.logger.Info("Added watch path",
+		"path", watchPath.Path,
 		"recursive", watchPath.Recursive)
-	
+
 	return nil
 }
 
@@ -165,8 +165,8 @@ func (fw *FileWatcher) addSubdirectories(root string) error {
 
 		if info.IsDir() && path != root {
 			if err := fw.watcher.Add(path); err != nil {
-				fw.logger.Debug("Failed to add subdirectory", 
-					"path", path, 
+				fw.logger.Debug("Failed to add subdirectory",
+					"path", path,
 					"error", err)
 			} else {
 				fw.mu.Lock()
@@ -237,11 +237,11 @@ func (fw *FileWatcher) handleFsnotifyEvent(event fsnotify.Event) {
 	// Send event (non-blocking)
 	select {
 	case fw.events <- fileEvent:
-		fw.logger.Debug("File event processed", 
-			"path", fileEvent.Path, 
+		fw.logger.Debug("File event processed",
+			"path", fileEvent.Path,
 			"operation", fileEvent.Operation)
 	default:
-		fw.logger.Warn("File event channel full, dropping event", 
+		fw.logger.Warn("File event channel full, dropping event",
 			"path", fileEvent.Path)
 	}
 }
@@ -249,31 +249,31 @@ func (fw *FileWatcher) handleFsnotifyEvent(event fsnotify.Event) {
 // shouldIgnoreFile checks if a file should be ignored
 func (fw *FileWatcher) shouldIgnoreFile(path string) bool {
 	basename := filepath.Base(path)
-	
+
 	// Ignore hidden files
 	if strings.HasPrefix(basename, ".") {
 		return true
 	}
-	
+
 	// Ignore temporary files
-	if strings.HasSuffix(basename, ".tmp") || 
-	   strings.HasSuffix(basename, ".temp") ||
-	   strings.HasPrefix(basename, "~") {
+	if strings.HasSuffix(basename, ".tmp") ||
+		strings.HasSuffix(basename, ".temp") ||
+		strings.HasPrefix(basename, "~") {
 		return true
 	}
-	
+
 	// Ignore common system files
 	systemFiles := []string{
 		"Thumbs.db", "Desktop.ini", ".DS_Store",
 		"$RECYCLE.BIN", "System Volume Information",
 	}
-	
+
 	for _, sysFile := range systemFiles {
 		if strings.Contains(path, sysFile) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -284,7 +284,7 @@ func (fw *FileWatcher) matchesWatchCriteria(path string) bool {
 		if !strings.HasPrefix(path, watchPath.Path) {
 			continue
 		}
-		
+
 		// Apply include patterns
 		if len(watchPath.IncludePatterns) > 0 {
 			matched := false
@@ -298,7 +298,7 @@ func (fw *FileWatcher) matchesWatchCriteria(path string) bool {
 				continue
 			}
 		}
-		
+
 		// Apply exclude patterns
 		excluded := false
 		for _, pattern := range watchPath.ExcludePatterns {
@@ -310,7 +310,7 @@ func (fw *FileWatcher) matchesWatchCriteria(path string) bool {
 		if excluded {
 			continue
 		}
-		
+
 		// Check minimum age if specified
 		if watchPath.MinAge > 0 {
 			if info, err := os.Stat(path); err == nil {
@@ -319,10 +319,10 @@ func (fw *FileWatcher) matchesWatchCriteria(path string) bool {
 				}
 			}
 		}
-		
+
 		return true
 	}
-	
+
 	return false
 }
 
@@ -348,48 +348,48 @@ func (fw *FileWatcher) fsnotifyOpToString(op fsnotify.Op) string {
 func (fw *FileWatcher) GetWatchedPaths() []string {
 	fw.mu.RLock()
 	defer fw.mu.RUnlock()
-	
+
 	paths := make([]string, 0, len(fw.watching))
 	for path := range fw.watching {
 		paths = append(paths, path)
 	}
-	
+
 	return paths
 }
 
 // ScanDirectory performs a one-time scan of a directory for files
 func (fw *FileWatcher) ScanDirectory(path string, patterns []string) ([]string, error) {
 	var matches []string
-	
+
 	err := filepath.Walk(path, func(filePath string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // Skip errors, continue walking
 		}
-		
+
 		if info.IsDir() {
 			return nil
 		}
-		
+
 		// Skip ignored files
 		if fw.shouldIgnoreFile(filePath) {
 			return nil
 		}
-		
+
 		// Check patterns
 		if len(patterns) == 0 {
 			matches = append(matches, filePath)
 			return nil
 		}
-		
+
 		for _, pattern := range patterns {
 			if matched, _ := filepath.Match(pattern, filepath.Base(filePath)); matched {
 				matches = append(matches, filePath)
 				break
 			}
 		}
-		
+
 		return nil
 	})
-	
+
 	return matches, err
 }

@@ -17,78 +17,78 @@ import (
 // RealTimeNetworkMonitor provides continuous real-time network monitoring capabilities
 type RealTimeNetworkMonitor struct {
 	// Configuration
-	monitoringInterval  time.Duration
+	monitoringInterval time.Duration
 	samplingWindow     time.Duration
 	stabilityThreshold float64
 	qualityThreshold   float64
-	
-	// Network measurement components  
-	bandwidthTracker   *RealTimeBandwidthTracker
-	latencyTracker     *RealTimeLatencyTracker
-	stabilityAnalyzer  *RealTimeConnectionStabilityAnalyzer
-	qualityAssessor    *RealTimeNetworkQualityAssessor
-	pathDetector       *RealTimeMultiPathDetector
-	pathManager        *RealTimeNetworkPathManager
-	
+
+	// Network measurement components
+	bandwidthTracker  *RealTimeBandwidthTracker
+	latencyTracker    *RealTimeLatencyTracker
+	stabilityAnalyzer *RealTimeConnectionStabilityAnalyzer
+	qualityAssessor   *RealTimeNetworkQualityAssessor
+	pathDetector      *RealTimeMultiPathDetector
+	pathManager       *RealTimeNetworkPathManager
+
 	// Current state
-	currentConditions  *RealTimeNetworkConditions
-	historicalData     *RealTimeNetworkHistoryBuffer
-	trendAnalyzer      *RealTimeNetworkTrendAnalyzer
-	alertSystem        *RealTimeNetworkAlertSystem
-	
+	currentConditions *RealTimeNetworkConditions
+	historicalData    *RealTimeNetworkHistoryBuffer
+	trendAnalyzer     *RealTimeNetworkTrendAnalyzer
+	alertSystem       *RealTimeNetworkAlertSystem
+
 	// Worker management
-	monitoringWorkers  []RealTimeMonitoringWorker
-	
+	monitoringWorkers []RealTimeMonitoringWorker
+
 	// Control and synchronization
-	ctx                context.Context
-	cancel             context.CancelFunc
-	isMonitoring       bool
-	mu                 sync.RWMutex
+	ctx          context.Context
+	cancel       context.CancelFunc
+	isMonitoring bool
+	mu           sync.RWMutex
 }
 
 // RealTimeNetworkConditions represents current network state
 type RealTimeNetworkConditions struct {
 	Timestamp           time.Time
 	BandwidthMBps       float64
-	LatencyMs          float64
-	JitterMs           float64
-	PacketLossRate     float64
+	LatencyMs           float64
+	JitterMs            float64
+	PacketLossRate      float64
 	ConnectionStability float64
-	NetworkQuality     float64
-	PathCount          int
-	Confidence         float64
+	NetworkQuality      float64
+	PathCount           int
+	Confidence          float64
 }
 
 // Constructor
 func NewRealTimeNetworkMonitor(ctx context.Context) *RealTimeNetworkMonitor {
 	monitorCtx, cancel := context.WithCancel(ctx)
-	
+
 	nm := &RealTimeNetworkMonitor{
-		monitoringInterval:  time.Second * 10,  // 10 seconds
-		samplingWindow:     time.Minute * 5,    // 5 minutes
+		monitoringInterval: time.Second * 10, // 10 seconds
+		samplingWindow:     time.Minute * 5,  // 5 minutes
 		stabilityThreshold: 0.95,
 		qualityThreshold:   0.8,
-		
-		bandwidthTracker:   NewRealTimeBandwidthTracker(),
-		latencyTracker:     NewRealTimeLatencyTracker(),
-		stabilityAnalyzer:  NewRealTimeConnectionStabilityAnalyzer(),
-		qualityAssessor:    NewRealTimeNetworkQualityAssessor(),
-		pathDetector:       NewRealTimeMultiPathDetector(),
-		pathManager:        NewRealTimeNetworkPathManager(),
-		
-		currentConditions:  &RealTimeNetworkConditions{Timestamp: time.Now(), BandwidthMBps: 50.0, LatencyMs: 30.0, NetworkQuality: 0.8, ConnectionStability: 0.9, Confidence: 0.7},
-		historicalData:     NewRealTimeNetworkHistoryBuffer(),
-		trendAnalyzer:      NewRealTimeNetworkTrendAnalyzer(),
-		alertSystem:        NewRealTimeNetworkAlertSystem(),
-		
-		ctx:                monitorCtx,
-		cancel:             cancel,
-		isMonitoring:       false,
+
+		bandwidthTracker:  NewRealTimeBandwidthTracker(),
+		latencyTracker:    NewRealTimeLatencyTracker(),
+		stabilityAnalyzer: NewRealTimeConnectionStabilityAnalyzer(),
+		qualityAssessor:   NewRealTimeNetworkQualityAssessor(),
+		pathDetector:      NewRealTimeMultiPathDetector(),
+		pathManager:       NewRealTimeNetworkPathManager(),
+
+		currentConditions: &RealTimeNetworkConditions{Timestamp: time.Now(), BandwidthMBps: 50.0, LatencyMs: 30.0, NetworkQuality: 0.8, ConnectionStability: 0.9, Confidence: 0.7},
+		historicalData:    NewRealTimeNetworkHistoryBuffer(),
+		trendAnalyzer:     NewRealTimeNetworkTrendAnalyzer(),
+		alertSystem:       NewRealTimeNetworkAlertSystem(),
+
+		ctx:          monitorCtx,
+		cancel:       cancel,
+		isMonitoring: false,
 	}
-	
+
 	// Initialize monitoring workers
 	nm.initializeMonitoringWorkers()
-	
+
 	return nm
 }
 
@@ -96,36 +96,36 @@ func NewRealTimeNetworkMonitor(ctx context.Context) *RealTimeNetworkMonitor {
 func (nm *RealTimeNetworkMonitor) StartMonitoring() error {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
-	
+
 	if nm.isMonitoring {
 		return fmt.Errorf("network monitoring already active")
 	}
-	
+
 	nm.isMonitoring = true
-	
+
 	// Start monitoring loop
 	go nm.runMonitoringLoop()
-	
+
 	return nil
 }
 
 func (nm *RealTimeNetworkMonitor) StopMonitoring() error {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
-	
+
 	if !nm.isMonitoring {
 		return fmt.Errorf("network monitoring not active")
 	}
-	
+
 	nm.isMonitoring = false
-	
+
 	return nil
 }
 
 func (nm *RealTimeNetworkMonitor) GetCurrentConditions() *RealTimeNetworkConditions {
 	nm.mu.RLock()
 	defer nm.mu.RUnlock()
-	
+
 	// Return a copy
 	conditions := *nm.currentConditions
 	return &conditions
@@ -134,24 +134,24 @@ func (nm *RealTimeNetworkMonitor) GetCurrentConditions() *RealTimeNetworkConditi
 func (nm *RealTimeNetworkMonitor) GetNetworkTrends() *RealTimeNetworkTrends {
 	nm.mu.RLock()
 	defer nm.mu.RUnlock()
-	
+
 	return nm.trendAnalyzer.GetCurrentTrends()
 }
 
 func (nm *RealTimeNetworkMonitor) GetPathInformation() *RealTimePathInformation {
 	nm.mu.RLock()
 	defer nm.mu.RUnlock()
-	
+
 	return nm.pathManager.GetPathInformation()
 }
 
 func (nm *RealTimeNetworkMonitor) Shutdown() error {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
-	
+
 	nm.isMonitoring = false
 	nm.cancel()
-	
+
 	return nil
 }
 
@@ -159,7 +159,7 @@ func (nm *RealTimeNetworkMonitor) Shutdown() error {
 func (nm *RealTimeNetworkMonitor) runMonitoringLoop() {
 	ticker := time.NewTicker(nm.monitoringInterval)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-nm.ctx.Done():
@@ -179,7 +179,7 @@ func (nm *RealTimeNetworkMonitor) performMonitoringCycle() {
 			_ = nm.executeWorkerTask(worker)
 		}(&nm.monitoringWorkers[i])
 	}
-	
+
 	// Update current conditions
 	nm.updateCurrentConditions()
 }
@@ -192,7 +192,7 @@ func (nm *RealTimeNetworkMonitor) initializeMonitoringWorkers() {
 		RealTimeWorkerQualityAssessor,
 		RealTimeWorkerPathDetector,
 	}
-	
+
 	nm.monitoringWorkers = make([]RealTimeMonitoringWorker, len(workerTypes))
 	for i, workerType := range workerTypes {
 		nm.monitoringWorkers[i] = RealTimeMonitoringWorker{
@@ -210,10 +210,10 @@ func (nm *RealTimeNetworkMonitor) initializeMonitoringWorkers() {
 func (nm *RealTimeNetworkMonitor) executeWorkerTask(worker *RealTimeMonitoringWorker) error {
 	worker.IsActive = true
 	defer func() { worker.IsActive = false }()
-	
+
 	worker.ExecutionCount++
 	worker.LastExecution = time.Now()
-	
+
 	switch worker.Type {
 	case RealTimeWorkerBandwidthMonitor:
 		_, err := nm.bandwidthTracker.MeasureBandwidth()
@@ -238,37 +238,37 @@ func (nm *RealTimeNetworkMonitor) executeWorkerTask(worker *RealTimeMonitoringWo
 			worker.LastError = err
 		}
 	}
-	
+
 	return nil
 }
 
 func (nm *RealTimeNetworkMonitor) updateCurrentConditions() {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
-	
+
 	// Collect latest measurements
 	bandwidth := nm.bandwidthTracker.GetCurrentBandwidth()
 	latency := nm.latencyTracker.GetCurrentLatency()
 	stability := nm.stabilityAnalyzer.GetCurrentStability()
 	quality := nm.qualityAssessor.GetCurrentQuality()
 	pathCount := nm.pathDetector.GetPathCount()
-	
+
 	// Update conditions
 	nm.currentConditions = &RealTimeNetworkConditions{
 		Timestamp:           time.Now(),
 		BandwidthMBps:       bandwidth,
-		LatencyMs:          float64(latency.Milliseconds()),
-		JitterMs:           nm.latencyTracker.GetCurrentJitter(),
-		PacketLossRate:     nm.latencyTracker.GetPacketLossRate(),
+		LatencyMs:           float64(latency.Milliseconds()),
+		JitterMs:            nm.latencyTracker.GetCurrentJitter(),
+		PacketLossRate:      nm.latencyTracker.GetPacketLossRate(),
 		ConnectionStability: stability,
-		NetworkQuality:     quality,
-		PathCount:          pathCount,
-		Confidence:         nm.calculateConfidence(),
+		NetworkQuality:      quality,
+		PathCount:           pathCount,
+		Confidence:          nm.calculateConfidence(),
 	}
-	
+
 	// Record in history
 	nm.historicalData.AddConditions(nm.currentConditions)
-	
+
 	// Update trend analysis
 	nm.trendAnalyzer.UpdateTrends(nm.currentConditions)
 }
@@ -276,22 +276,23 @@ func (nm *RealTimeNetworkMonitor) updateCurrentConditions() {
 func (nm *RealTimeNetworkMonitor) calculateConfidence() float64 {
 	// Simple confidence calculation based on sample sizes and measurement consistency
 	baseConfidence := 0.7
-	
+
 	// Adjust based on monitoring duration
 	if len(nm.historicalData.GetHistory()) > 10 {
 		baseConfidence += 0.2
 	}
-	
+
 	// Clamp to valid range
 	if baseConfidence > 1.0 {
 		baseConfidence = 1.0
 	}
-	
+
 	return baseConfidence
 }
 
 // Supporting types and enums
 type RealTimeWorkerType string
+
 const (
 	RealTimeWorkerBandwidthMonitor RealTimeWorkerType = "bandwidth_monitor"
 	RealTimeWorkerLatencyMonitor   RealTimeWorkerType = "latency_monitor"
@@ -337,7 +338,7 @@ type RealTimePathMetrics struct {
 
 // Component implementations
 type RealTimeBandwidthTracker struct {
-	probeInterval        time.Duration
+	probeInterval       time.Duration
 	probeSize           int64
 	maxConcurrentProbes int
 	adaptiveProbing     bool
@@ -349,12 +350,12 @@ type RealTimeBandwidthTracker struct {
 }
 
 type RealTimeBandwidthMeasurement struct {
-	Timestamp          time.Time
-	MeasuredBandwidth  float64
-	Direction          RealTimeTrafficDirection
-	MeasurementMethod  RealTimeMeasurementMethod
-	Accuracy           float64
-	Duration           time.Duration
+	Timestamp         time.Time
+	MeasuredBandwidth float64
+	Direction         RealTimeTrafficDirection
+	MeasurementMethod RealTimeMeasurementMethod
+	Accuracy          float64
+	Duration          time.Duration
 }
 
 type RealTimeBandwidthProbe struct {
@@ -365,6 +366,7 @@ type RealTimeBandwidthProbe struct {
 }
 
 type RealTimeTrafficDirection string
+
 const (
 	RealTimeDirectionUpload   RealTimeTrafficDirection = "upload"
 	RealTimeDirectionDownload RealTimeTrafficDirection = "download"
@@ -372,6 +374,7 @@ const (
 )
 
 type RealTimeMeasurementMethod string
+
 const (
 	RealTimeMethodActiveProbing  RealTimeMeasurementMethod = "active_probing"
 	RealTimeMethodPassiveMonitor RealTimeMeasurementMethod = "passive_monitor"
@@ -380,7 +383,7 @@ const (
 
 func NewRealTimeBandwidthTracker() *RealTimeBandwidthTracker {
 	return &RealTimeBandwidthTracker{
-		probeInterval:        time.Second * 30,
+		probeInterval:       time.Second * 30,
 		probeSize:           1024 * 1024, // 1MB
 		maxConcurrentProbes: 3,
 		adaptiveProbing:     true,
@@ -394,25 +397,25 @@ func NewRealTimeBandwidthTracker() *RealTimeBandwidthTracker {
 func (bt *RealTimeBandwidthTracker) MeasureBandwidth() (*RealTimeBandwidthMeasurement, error) {
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
-	
+
 	// Simulate bandwidth measurement
 	measurement := &RealTimeBandwidthMeasurement{
-		Timestamp:          time.Now(),
-		MeasuredBandwidth:  bt.currentBandwidth * (0.8 + 0.4*randomFloat64()),
-		Direction:          RealTimeDirectionUpload,
-		MeasurementMethod:  RealTimeMethodActiveProbing,
-		Accuracy:           0.9,
-		Duration:           time.Millisecond * 100,
+		Timestamp:         time.Now(),
+		MeasuredBandwidth: bt.currentBandwidth * (0.8 + 0.4*randomFloat64()),
+		Direction:         RealTimeDirectionUpload,
+		MeasurementMethod: RealTimeMethodActiveProbing,
+		Accuracy:          0.9,
+		Duration:          time.Millisecond * 100,
 	}
-	
+
 	// Update history
 	bt.bandwidthHistory = append(bt.bandwidthHistory, *measurement)
 	if len(bt.bandwidthHistory) > 1000 {
 		bt.bandwidthHistory = bt.bandwidthHistory[1:]
 	}
-	
+
 	bt.currentBandwidth = measurement.MeasuredBandwidth
-	
+
 	return measurement, nil
 }
 
@@ -423,18 +426,18 @@ func (bt *RealTimeBandwidthTracker) GetCurrentBandwidth() float64 {
 }
 
 type RealTimeLatencyTracker struct {
-	pingInterval      time.Duration
-	timeoutThreshold  time.Duration
-	jitterThreshold   float64
-	sampleSize        int
-	latencyHistory    []RealTimeLatencyMeasurement
-	targetEndpoints   []RealTimeNetworkEndpoint
-	activePings       map[string]*RealTimeLatencyProbe
-	rttEstimator      *RealTimeRTTEstimator
-	currentLatency    time.Duration
-	currentJitter     float64
-	packetLossRate    float64
-	mu                sync.RWMutex
+	pingInterval     time.Duration
+	timeoutThreshold time.Duration
+	jitterThreshold  float64
+	sampleSize       int
+	latencyHistory   []RealTimeLatencyMeasurement
+	targetEndpoints  []RealTimeNetworkEndpoint
+	activePings      map[string]*RealTimeLatencyProbe
+	rttEstimator     *RealTimeRTTEstimator
+	currentLatency   time.Duration
+	currentJitter    float64
+	packetLossRate   float64
+	mu               sync.RWMutex
 }
 
 type RealTimeLatencyMeasurement struct {
@@ -447,6 +450,7 @@ type RealTimeLatencyMeasurement struct {
 }
 
 type RealTimeMeasurementType string
+
 const (
 	RealTimeMeasurementICMP  RealTimeMeasurementType = "icmp"
 	RealTimeMeasurementTCP   RealTimeMeasurementType = "tcp"
@@ -473,34 +477,34 @@ type RealTimeRTTEstimator struct {
 	// TODO: Implement RTT estimation algorithm
 	// smoothedRTT time.Duration
 	// rttVar      time.Duration
-	alpha       float64
-	beta        float64
+	alpha float64
+	beta  float64
 }
 
 func NewRealTimeLatencyTracker() *RealTimeLatencyTracker {
 	return &RealTimeLatencyTracker{
-		pingInterval:      time.Second * 10,
-		timeoutThreshold:  time.Second * 5,
-		jitterThreshold:   10.0, // 10ms
-		sampleSize:        10,
-		latencyHistory:    make([]RealTimeLatencyMeasurement, 0, 1000),
-		targetEndpoints:   []RealTimeNetworkEndpoint{
+		pingInterval:     time.Second * 10,
+		timeoutThreshold: time.Second * 5,
+		jitterThreshold:  10.0, // 10ms
+		sampleSize:       10,
+		latencyHistory:   make([]RealTimeLatencyMeasurement, 0, 1000),
+		targetEndpoints: []RealTimeNetworkEndpoint{
 			{Address: "8.8.8.8", Port: 53, Protocol: "icmp", Priority: 1},
 			{Address: "1.1.1.1", Port: 53, Protocol: "icmp", Priority: 2},
 		},
-		activePings:       make(map[string]*RealTimeLatencyProbe),
-		rttEstimator:      &RealTimeRTTEstimator{alpha: 0.125, beta: 0.25},
-		currentLatency:    time.Millisecond * 30,
-		currentJitter:     5.0,
-		packetLossRate:    0.01,
+		activePings:    make(map[string]*RealTimeLatencyProbe),
+		rttEstimator:   &RealTimeRTTEstimator{alpha: 0.125, beta: 0.25},
+		currentLatency: time.Millisecond * 30,
+		currentJitter:  5.0,
+		packetLossRate: 0.01,
 	}
 }
 
 func (lt *RealTimeLatencyTracker) MeasureLatency() (*RealTimeLatencyMeasurement, error) {
 	lt.mu.Lock()
 	defer lt.mu.Unlock()
-	
-	// Simulate latency measurement  
+
+	// Simulate latency measurement
 	measurement := &RealTimeLatencyMeasurement{
 		Timestamp:       time.Now(),
 		Latency:         lt.currentLatency + time.Duration(randomFloat64()*10)*time.Millisecond,
@@ -509,15 +513,15 @@ func (lt *RealTimeLatencyTracker) MeasureLatency() (*RealTimeLatencyMeasurement,
 		PacketSize:      64,
 		Success:         true,
 	}
-	
+
 	// Update history
 	lt.latencyHistory = append(lt.latencyHistory, *measurement)
 	if len(lt.latencyHistory) > 1000 {
 		lt.latencyHistory = lt.latencyHistory[1:]
 	}
-	
+
 	lt.currentLatency = measurement.Latency
-	
+
 	return measurement, nil
 }
 
@@ -540,16 +544,16 @@ func (lt *RealTimeLatencyTracker) GetPacketLossRate() float64 {
 }
 
 type RealTimeConnectionStabilityAnalyzer struct {
-	stabilityWindow      time.Duration
-	connectionEvents     []RealTimeConnectionEvent
-	disconnectionEvents  []RealTimeConnectionEvent
-	qualityDegradations  []RealTimeQualityEvent
-	eventCorrelator      *RealTimeEventCorrelator
-	anomalyDetector      *RealTimeStabilityAnomalyDetector
-	stabilityPredictor   *RealTimeStabilityPredictor
-	failurePrediction    *RealTimeFailurePrediction
-	stabilityScore       float64
-	mu                   sync.RWMutex
+	stabilityWindow     time.Duration
+	connectionEvents    []RealTimeConnectionEvent
+	disconnectionEvents []RealTimeConnectionEvent
+	qualityDegradations []RealTimeQualityEvent
+	eventCorrelator     *RealTimeEventCorrelator
+	anomalyDetector     *RealTimeStabilityAnomalyDetector
+	stabilityPredictor  *RealTimeStabilityPredictor
+	failurePrediction   *RealTimeFailurePrediction
+	stabilityScore      float64
+	mu                  sync.RWMutex
 }
 
 type RealTimeConnectionEvent struct {
@@ -560,6 +564,7 @@ type RealTimeConnectionEvent struct {
 }
 
 type RealTimeEventType string
+
 const (
 	RealTimeEventConnect    RealTimeEventType = "connect"
 	RealTimeEventDisconnect RealTimeEventType = "disconnect"
@@ -576,43 +581,43 @@ type RealTimeQualityEvent struct {
 
 func NewRealTimeConnectionStabilityAnalyzer() *RealTimeConnectionStabilityAnalyzer {
 	return &RealTimeConnectionStabilityAnalyzer{
-		stabilityWindow:      time.Minute * 10,
-		connectionEvents:     make([]RealTimeConnectionEvent, 0, 1000),
-		disconnectionEvents:  make([]RealTimeConnectionEvent, 0, 1000),
-		qualityDegradations:  make([]RealTimeQualityEvent, 0, 1000),
-		eventCorrelator:      &RealTimeEventCorrelator{},
-		anomalyDetector:      &RealTimeStabilityAnomalyDetector{},
-		stabilityPredictor:   &RealTimeStabilityPredictor{},
-		failurePrediction:    &RealTimeFailurePrediction{},
-		stabilityScore:       0.95,
+		stabilityWindow:     time.Minute * 10,
+		connectionEvents:    make([]RealTimeConnectionEvent, 0, 1000),
+		disconnectionEvents: make([]RealTimeConnectionEvent, 0, 1000),
+		qualityDegradations: make([]RealTimeQualityEvent, 0, 1000),
+		eventCorrelator:     &RealTimeEventCorrelator{},
+		anomalyDetector:     &RealTimeStabilityAnomalyDetector{},
+		stabilityPredictor:  &RealTimeStabilityPredictor{},
+		failurePrediction:   &RealTimeFailurePrediction{},
+		stabilityScore:      0.95,
 	}
 }
 
 func (csa *RealTimeConnectionStabilityAnalyzer) AnalyzeStability() float64 {
 	csa.mu.Lock()
 	defer csa.mu.Unlock()
-	
+
 	// Simple stability calculation based on recent events
 	baseStability := 0.95
-	
+
 	// Reduce stability for recent disconnection events
 	recentEvents := 0
 	cutoff := time.Now().Add(-time.Minute * 5)
-	
+
 	for _, event := range csa.connectionEvents {
 		if event.Timestamp.After(cutoff) && event.EventType == RealTimeEventDisconnect {
 			recentEvents++
 		}
 	}
-	
+
 	// Each recent disconnection reduces stability by 0.1
 	adjustment := float64(recentEvents) * 0.1
 	result := baseStability - adjustment
-	
+
 	if result < 0.0 {
 		result = 0.0
 	}
-	
+
 	csa.stabilityScore = result
 	return result
 }
@@ -624,18 +629,19 @@ func (csa *RealTimeConnectionStabilityAnalyzer) GetCurrentStability() float64 {
 }
 
 type RealTimeNetworkQualityAssessor struct {
-	qualityScorer       *RealTimeQualityScorer
-	weightingAlgorithm  RealTimeWeightingAlgorithm
-	qualityThresholds   map[string]float64
-	qualityHistory      []RealTimeQualityAssessment
-	qualityTrends       *RealTimeQualityTrendAnalyzer
-	adaptiveWeighting   bool
-	contextAwareness    bool
-	applicationProfile  *RealTimeApplicationQualityProfile
-	mu                  sync.RWMutex
+	qualityScorer      *RealTimeQualityScorer
+	weightingAlgorithm RealTimeWeightingAlgorithm
+	qualityThresholds  map[string]float64
+	qualityHistory     []RealTimeQualityAssessment
+	qualityTrends      *RealTimeQualityTrendAnalyzer
+	adaptiveWeighting  bool
+	contextAwareness   bool
+	applicationProfile *RealTimeApplicationQualityProfile
+	mu                 sync.RWMutex
 }
 
 type RealTimeWeightingAlgorithm string
+
 const (
 	RealTimeWeightingFixed    RealTimeWeightingAlgorithm = "fixed"
 	RealTimeWeightingAdaptive RealTimeWeightingAlgorithm = "adaptive"
@@ -651,6 +657,7 @@ type RealTimeQualityAssessment struct {
 }
 
 type RealTimeQualityLevel string
+
 const (
 	RealTimeQualityExcellent RealTimeQualityLevel = "excellent"
 	RealTimeQualityGood      RealTimeQualityLevel = "good"
@@ -660,36 +667,36 @@ const (
 
 func NewRealTimeNetworkQualityAssessor() *RealTimeNetworkQualityAssessor {
 	return &RealTimeNetworkQualityAssessor{
-		qualityScorer:       &RealTimeQualityScorer{},
-		weightingAlgorithm:  RealTimeWeightingAdaptive,
-		qualityThresholds:   map[string]float64{"excellent": 0.9, "good": 0.7, "fair": 0.5, "poor": 0.3},
-		qualityHistory:      make([]RealTimeQualityAssessment, 0, 1000),
-		qualityTrends:       &RealTimeQualityTrendAnalyzer{},
-		adaptiveWeighting:   true,
-		contextAwareness:    true,
-		applicationProfile:  NewRealTimeApplicationQualityProfile("default"),
+		qualityScorer:      &RealTimeQualityScorer{},
+		weightingAlgorithm: RealTimeWeightingAdaptive,
+		qualityThresholds:  map[string]float64{"excellent": 0.9, "good": 0.7, "fair": 0.5, "poor": 0.3},
+		qualityHistory:     make([]RealTimeQualityAssessment, 0, 1000),
+		qualityTrends:      &RealTimeQualityTrendAnalyzer{},
+		adaptiveWeighting:  true,
+		contextAwareness:   true,
+		applicationProfile: NewRealTimeApplicationQualityProfile("default"),
 	}
 }
 
 func (nqa *RealTimeNetworkQualityAssessor) AssessQuality(conditions *RealTimeNetworkConditions) *RealTimeQualityAssessment {
 	nqa.mu.Lock()
 	defer nqa.mu.Unlock()
-	
+
 	// Calculate component scores
 	componentScores := map[string]float64{
-		"bandwidth":  math_min(conditions.BandwidthMBps/100.0, 1.0), // Normalize to 100 Mbps
-		"latency":    math_max(0.0, 1.0-conditions.LatencyMs/100.0), // Lower latency is better
-		"stability":  conditions.ConnectionStability,
+		"bandwidth": math_min(conditions.BandwidthMBps/100.0, 1.0), // Normalize to 100 Mbps
+		"latency":   math_max(0.0, 1.0-conditions.LatencyMs/100.0), // Lower latency is better
+		"stability": conditions.ConnectionStability,
 	}
-	
+
 	// Calculate overall score
 	overallScore := 0.0
 	weights := map[string]float64{"bandwidth": 0.4, "latency": 0.3, "stability": 0.3}
-	
+
 	for component, score := range componentScores {
 		overallScore += weights[component] * score
 	}
-	
+
 	// Determine quality level
 	var qualityLevel RealTimeQualityLevel
 	if overallScore >= 0.9 {
@@ -701,7 +708,7 @@ func (nqa *RealTimeNetworkQualityAssessor) AssessQuality(conditions *RealTimeNet
 	} else {
 		qualityLevel = RealTimeQualityPoor
 	}
-	
+
 	assessment := &RealTimeQualityAssessment{
 		Timestamp:       time.Now(),
 		OverallScore:    overallScore,
@@ -709,24 +716,24 @@ func (nqa *RealTimeNetworkQualityAssessor) AssessQuality(conditions *RealTimeNet
 		QualityLevel:    qualityLevel,
 		Confidence:      conditions.Confidence,
 	}
-	
+
 	// Update history
 	nqa.qualityHistory = append(nqa.qualityHistory, *assessment)
 	if len(nqa.qualityHistory) > 1000 {
 		nqa.qualityHistory = nqa.qualityHistory[1:]
 	}
-	
+
 	return assessment
 }
 
 func (nqa *RealTimeNetworkQualityAssessor) GetCurrentQuality() float64 {
 	nqa.mu.RLock()
 	defer nqa.mu.RUnlock()
-	
+
 	if len(nqa.qualityHistory) == 0 {
 		return 0.8 // Default quality
 	}
-	
+
 	return nqa.qualityHistory[len(nqa.qualityHistory)-1].OverallScore
 }
 
@@ -746,21 +753,22 @@ type RealTimeMultiPathDetector struct {
 }
 
 type RealTimeDetectionAlgorithm string
+
 const (
-	RealTimeDetectionProbing    RealTimeDetectionAlgorithm = "probing"
-	RealTimeDetectionPassive    RealTimeDetectionAlgorithm = "passive"
-	RealTimeDetectionHybrid     RealTimeDetectionAlgorithm = "hybrid"
+	RealTimeDetectionProbing RealTimeDetectionAlgorithm = "probing"
+	RealTimeDetectionPassive RealTimeDetectionAlgorithm = "passive"
+	RealTimeDetectionHybrid  RealTimeDetectionAlgorithm = "hybrid"
 )
 
 type RealTimeNetworkPath struct {
-	ID           string
-	Gateway      net.IP
-	Interface    string
-	MTU          int
-	IsActive     bool
-	Priority     int
-	Metrics      *RealTimePathMetrics
-	Timestamp    time.Time
+	ID        string
+	Gateway   net.IP
+	Interface string
+	MTU       int
+	IsActive  bool
+	Priority  int
+	Metrics   *RealTimePathMetrics
+	Timestamp time.Time
 }
 
 func NewRealTimeMultiPathDetector() *RealTimeMultiPathDetector {
@@ -776,7 +784,7 @@ func NewRealTimeMultiPathDetector() *RealTimeMultiPathDetector {
 		loadBalancer:        &RealTimePathLoadBalancer{},
 		trafficDistribution: make(map[string]float64),
 	}
-	
+
 	// Create a default primary path
 	mpd.primaryPath = &RealTimeNetworkPath{
 		ID:        "default",
@@ -794,19 +802,19 @@ func NewRealTimeMultiPathDetector() *RealTimeMultiPathDetector {
 		},
 		Timestamp: time.Now(),
 	}
-	
+
 	mpd.availablePaths = append(mpd.availablePaths, *mpd.primaryPath)
 	mpd.activePaths = append(mpd.activePaths, *mpd.primaryPath)
 	mpd.pathMetrics["default"] = mpd.primaryPath.Metrics
 	mpd.trafficDistribution["default"] = 1.0
-	
+
 	return mpd
 }
 
 func (mpd *RealTimeMultiPathDetector) DetectPaths() ([]RealTimeNetworkPath, error) {
 	mpd.mu.Lock()
 	defer mpd.mu.Unlock()
-	
+
 	// Return available paths (already initialized with default path)
 	return mpd.availablePaths, nil
 }
@@ -836,7 +844,7 @@ func (nhb *RealTimeNetworkHistoryBuffer) AddConditions(conditions *RealTimeNetwo
 	// TODO: Add proper synchronization
 	// nhb.mu.Lock()
 	// defer nhb.mu.Unlock()
-	
+
 	nhb.history = append(nhb.history, *conditions)
 	if len(nhb.history) > nhb.maxSize {
 		nhb.history = nhb.history[1:]
@@ -847,7 +855,7 @@ func (nhb *RealTimeNetworkHistoryBuffer) GetHistory() []RealTimeNetworkCondition
 	// TODO: Add proper synchronization
 	// nhb.mu.RLock()
 	// defer nhb.mu.RUnlock()
-	
+
 	result := make([]RealTimeNetworkConditions, len(nhb.history))
 	copy(result, nhb.history)
 	return result
@@ -877,7 +885,7 @@ func (nta *RealTimeNetworkTrendAnalyzer) UpdateTrends(conditions *RealTimeNetwor
 	// TODO: Add proper synchronization
 	// nta.mu.Lock()
 	// defer nta.mu.Unlock()
-	
+
 	nta.trends.LastUpdate = time.Now()
 	// Trend analysis would be implemented here
 }
@@ -886,7 +894,7 @@ func (nta *RealTimeNetworkTrendAnalyzer) GetCurrentTrends() *RealTimeNetworkTren
 	// TODO: Add proper synchronization
 	// nta.mu.RLock()
 	// defer nta.mu.RUnlock()
-	
+
 	trends := *nta.trends
 	return &trends
 }
@@ -930,7 +938,7 @@ func (npm *RealTimeNetworkPathManager) GetPathInformation() *RealTimePathInforma
 	// TODO: Add proper synchronization
 	// npm.mu.RLock()
 	// defer npm.mu.RUnlock()
-	
+
 	info := *npm.pathInfo
 	return &info
 }

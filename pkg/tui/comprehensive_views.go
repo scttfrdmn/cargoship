@@ -12,39 +12,39 @@ import (
 // renderOverviewDashboard renders the main overview dashboard
 func (d *Dashboard) renderOverviewDashboard() string {
 	title := d.titleStyle.Render("🚢 CargoShip Overview Dashboard")
-	
+
 	// System overview metrics
 	overview := d.renderSystemOverview()
-	
+
 	// Recent activity
 	recentActivity := d.renderRecentActivity()
-	
+
 	// Quick stats
 	quickStats := d.renderQuickStats()
-	
+
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,
 		overview,
 		quickStats,
 		recentActivity,
 	)
-	
+
 	return content
 }
 
 // renderArchivalDashboard renders the archival operations dashboard
 func (d *Dashboard) renderArchivalDashboard() string {
 	title := d.titleStyle.Render("📦 Data Archival Operations")
-	
+
 	// Active archival jobs
 	activeJobs := d.baseStyle.Render("Active Archival Jobs\n" + d.archivalQueue.View())
-	
+
 	// Cost estimates
 	estimates := d.baseStyle.Render("Cost Estimates\n" + d.estimateTable.View())
-	
+
 	// Survey results
 	surveys := d.baseStyle.Render("Survey Results\n" + d.surveyResults.View())
-	
+
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,
 		lipgloss.JoinHorizontal(lipgloss.Top,
@@ -52,58 +52,58 @@ func (d *Dashboard) renderArchivalDashboard() string {
 			lipgloss.JoinVertical(lipgloss.Left, estimates, surveys),
 		),
 	)
-	
+
 	return content
 }
 
 // renderInventoryDashboard renders the inventory management dashboard
 func (d *Dashboard) renderInventoryDashboard() string {
 	title := d.titleStyle.Render("📋 Inventory Management")
-	
+
 	// Inventory tree
 	inventory := d.baseStyle.Render("Inventory Browser\n" + d.inventoryTree.View())
-	
+
 	// Search results
 	search := d.baseStyle.Render("Search Results\n" + d.searchResults.View())
-	
+
 	// Restore queue
 	restore := d.baseStyle.Render("Restore Queue\n" + d.restoreQueue.View())
-	
+
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,
 		inventory,
 		lipgloss.JoinHorizontal(lipgloss.Top, search, restore),
 	)
-	
+
 	return content
 }
 
 // renderCostsDashboard renders the cost analysis dashboard
 func (d *Dashboard) renderCostsDashboard() string {
 	title := d.titleStyle.Render("💰 Cost Analysis & Optimization")
-	
+
 	// Cost breakdown
 	breakdown := d.baseStyle.Render("Cost Breakdown\n" + d.costBreakdown.View())
-	
+
 	// Optimization suggestions
 	optimizations := d.baseStyle.Render("Optimization Suggestions\n" + d.optimizations.View())
-	
+
 	// Budget tracking
 	budget := d.baseStyle.Render("Budget Tracking\n" + d.budgetChart.View())
-	
+
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,
 		lipgloss.JoinHorizontal(lipgloss.Top, breakdown, budget),
 		optimizations,
 	)
-	
+
 	return content
 }
 
 // renderAgentsDashboard renders the agents management dashboard
 func (d *Dashboard) renderAgentsDashboard() string {
 	title := d.titleStyle.Render("🤖 Launch Agents Management")
-	
+
 	// Agent table
 	agentTitle := "Connected Agents"
 	if d.focused == 0 {
@@ -113,7 +113,7 @@ func (d *Dashboard) renderAgentsDashboard() string {
 		agentTitle,
 		d.agentTable.View(),
 	)
-	
+
 	// Jobs table
 	jobTitle := "Agent Jobs"
 	if d.focused == 1 {
@@ -123,46 +123,46 @@ func (d *Dashboard) renderAgentsDashboard() string {
 		jobTitle,
 		d.jobsTable.View(),
 	)
-	
+
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,
 		agentSection,
 		jobSection,
 	)
-	
+
 	return content
 }
 
 // renderConfigDashboard renders the configuration dashboard
 func (d *Dashboard) renderConfigDashboard() string {
 	title := d.titleStyle.Render("⚙️ Configuration Management")
-	
+
 	// Configuration table
 	config := d.baseStyle.Render("Current Configuration\n" + d.configTable.View())
-	
+
 	// Profiles list
 	profiles := d.baseStyle.Render("Configuration Profiles\n" + d.profilesList.View())
-	
+
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,
 		lipgloss.JoinHorizontal(lipgloss.Top, config, profiles),
 	)
-	
+
 	return content
 }
 
 // renderLogsDashboard renders the logs dashboard
 func (d *Dashboard) renderLogsDashboard() string {
 	title := d.titleStyle.Render("📝 Logs & Monitoring")
-	
+
 	// TODO: Implement log viewer
 	logContent := d.baseStyle.Render("Log viewer coming soon...")
-	
+
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,
 		logContent,
 	)
-	
+
 	return content
 }
 
@@ -176,7 +176,7 @@ func (d *Dashboard) renderSystemOverview() string {
 		fmt.Sprintf("Active Jobs: %d", d.metrics.ActiveJobs),
 		fmt.Sprintf("Completed: %d", d.metrics.CompletedJobs),
 	}
-	
+
 	return d.baseStyle.Render("System Overview\n" + strings.Join(metrics, "\n"))
 }
 
@@ -194,7 +194,7 @@ func (d *Dashboard) renderQuickStats() string {
 		"⚡ Throughput: 150MB/s",
 		"🔄 Uptime: 99.9%",
 	}
-	
+
 	return d.baseStyle.Render("Quick Stats\n" + strings.Join(stats, "\n"))
 }
 
@@ -203,11 +203,11 @@ func (d *Dashboard) renderHelpText() string {
 	helpStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("244")).
 		Italic(true)
-	
+
 	help := []string{
 		"Navigation: Tab/→ ← | 1-7 (quick switch) | ↑↓ (focus) | Enter (select) | R (refresh) | Q (quit)",
 	}
-	
+
 	return helpStyle.Render(strings.Join(help, " | "))
 }
 
@@ -222,13 +222,13 @@ func createArchivalTable() table.Model {
 		{Title: "Progress", Width: 10},
 		{Title: "Cost", Width: 12},
 	}
-	
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithFocused(true),
 		table.WithHeight(10),
 	)
-	
+
 	return t
 }
 
@@ -240,12 +240,12 @@ func createEstimateTable() table.Model {
 		{Title: "Monthly Cost", Width: 12},
 		{Title: "Annual Cost", Width: 12},
 	}
-	
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithHeight(8),
 	)
-	
+
 	return t
 }
 
@@ -257,12 +257,12 @@ func createSurveyTable() table.Model {
 		{Title: "Last Modified", Width: 12},
 		{Title: "Recommendation", Width: 15},
 	}
-	
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithHeight(8),
 	)
-	
+
 	return t
 }
 
@@ -274,13 +274,13 @@ func createInventoryTable() table.Model {
 		{Title: "Storage Class", Width: 15},
 		{Title: "Cost", Width: 12},
 	}
-	
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithFocused(true),
 		table.WithHeight(12),
 	)
-	
+
 	return t
 }
 
@@ -291,12 +291,12 @@ func createSearchTable() table.Model {
 		{Title: "Size", Width: 12},
 		{Title: "Modified", Width: 12},
 	}
-	
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithHeight(8),
 	)
-	
+
 	return t
 }
 
@@ -308,12 +308,12 @@ func createRestoreTable() table.Model {
 		{Title: "ETA", Width: 12},
 		{Title: "Cost", Width: 12},
 	}
-	
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithHeight(8),
 	)
-	
+
 	return t
 }
 
@@ -324,12 +324,12 @@ func createCostBreakdownTable() table.Model {
 		{Title: "Percentage", Width: 10},
 		{Title: "Trend", Width: 10},
 	}
-	
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithHeight(10),
 	)
-	
+
 	return t
 }
 
@@ -340,12 +340,12 @@ func createOptimizationTable() table.Model {
 		{Title: "Impact", Width: 10},
 		{Title: "Effort", Width: 10},
 	}
-	
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithHeight(8),
 	)
-	
+
 	return t
 }
 
@@ -357,12 +357,12 @@ func createBudgetTable() table.Model {
 		{Title: "Remaining", Width: 12},
 		{Title: "Days Left", Width: 10},
 	}
-	
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithHeight(8),
 	)
-	
+
 	return t
 }
 
@@ -373,13 +373,13 @@ func createConfigTable() table.Model {
 		{Title: "Source", Width: 15},
 		{Title: "Description", Width: 30},
 	}
-	
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithFocused(true),
 		table.WithHeight(12),
 	)
-	
+
 	return t
 }
 
@@ -390,12 +390,12 @@ func createProfilesTable() table.Model {
 		{Title: "Description", Width: 30},
 		{Title: "Last Used", Width: 12},
 	}
-	
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithHeight(8),
 	)
-	
+
 	return t
 }
 

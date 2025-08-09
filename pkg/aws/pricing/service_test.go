@@ -79,7 +79,7 @@ func createMockS3StorageProduct(storageClass, price string) string {
 			},
 		},
 	}
-	
+
 	jsonData, _ := json.Marshal(product)
 	return string(jsonData)
 }
@@ -107,7 +107,7 @@ func createMockDataTransferProduct(price string) string {
 			},
 		},
 	}
-	
+
 	jsonData, _ := json.Marshal(product)
 	return string(jsonData)
 }
@@ -137,7 +137,7 @@ func createMockRequestProduct(requestType, storageClass, price string) string {
 			},
 		},
 	}
-	
+
 	jsonData, _ := json.Marshal(product)
 	return string(jsonData)
 }
@@ -162,7 +162,7 @@ func TestNewService(t *testing.T) {
 func TestService_GetPricing_CacheHit(t *testing.T) {
 	mockClient := &MockPricingClient{}
 	service := NewService(mockClient)
-	
+
 	// Pre-populate cache with fresh data
 	cachedData := &PriceData{
 		StoragePrice: map[config.StorageClass]float64{
@@ -229,7 +229,7 @@ func TestService_GetPricing_FetchError_FallbackToCache(t *testing.T) {
 		returnError: fmt.Errorf("API error"),
 	}
 	service := NewService(mockClient)
-	
+
 	// Pre-populate cache with expired data
 	cachedData := &PriceData{
 		StoragePrice: map[config.StorageClass]float64{
@@ -293,7 +293,7 @@ func TestService_fetchPricingData_Success(t *testing.T) {
 	for _, call := range mockClient.callHistory {
 		serviceCodes[call.ServiceCode]++
 	}
-	
+
 	if serviceCodes["AmazonS3"] != 3 {
 		t.Errorf("fetchPricingData() should call AmazonS3 service 3 times, got %d", serviceCodes["AmazonS3"])
 	}
@@ -307,9 +307,9 @@ func TestService_extractStorageClass(t *testing.T) {
 	service := NewService(&MockPricingClient{})
 
 	tests := []struct {
-		name        string
-		attributes  map[string]interface{}
-		expected    string
+		name       string
+		attributes map[string]interface{}
+		expected   string
 	}{
 		{
 			name:       "General Purpose",
@@ -367,9 +367,9 @@ func TestService_extractStorageClassFromRequest(t *testing.T) {
 	service := NewService(&MockPricingClient{})
 
 	tests := []struct {
-		name        string
-		attributes  map[string]interface{}
-		expected    string
+		name       string
+		attributes map[string]interface{}
+		expected   string
 	}{
 		{
 			name: "PUT request with General Purpose",
@@ -544,8 +544,8 @@ func TestService_setFallbackStoragePricing(t *testing.T) {
 	}
 
 	tests := []struct {
-		name             string
-		region           string
+		name               string
+		region             string
 		expectedMultiplier float64
 	}{
 		{"US region", "us-east-1", 1.0},
@@ -558,7 +558,7 @@ func TestService_setFallbackStoragePricing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset price data
 			priceData.StoragePrice = make(map[config.StorageClass]float64)
-			
+
 			service.setFallbackStoragePricing(priceData, tt.region)
 
 			// Check that all storage classes are set
@@ -624,7 +624,7 @@ func TestService_setFallbackRequestPricing(t *testing.T) {
 
 func TestService_InvalidateCache(t *testing.T) {
 	service := NewService(&MockPricingClient{})
-	
+
 	// Populate cache
 	service.cache["us-east-1"] = &PriceData{Region: "us-east-1"}
 	service.cache["eu-west-1"] = &PriceData{Region: "eu-west-1"}
@@ -643,7 +643,7 @@ func TestService_InvalidateCache(t *testing.T) {
 
 func TestService_InvalidateAllCache(t *testing.T) {
 	service := NewService(&MockPricingClient{})
-	
+
 	// Populate cache
 	service.cache["us-east-1"] = &PriceData{Region: "us-east-1"}
 	service.cache["eu-west-1"] = &PriceData{Region: "eu-west-1"}
@@ -702,9 +702,9 @@ func TestService_parseS3StorageProduct(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset price data
 			priceData.StoragePrice = make(map[config.StorageClass]float64)
-			
+
 			err := service.parseS3StorageProduct(tt.product, priceData)
-			
+
 			if tt.expectError && err == nil {
 				t.Errorf("parseS3StorageProduct() expected error but got nil")
 			}
@@ -798,9 +798,9 @@ func TestService_parseS3RequestProduct(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset price data
 			priceData.RequestPrice = make(map[config.StorageClass]float64)
-			
+
 			err := service.parseS3RequestProduct(tt.product, priceData)
-			
+
 			if tt.expectError && err == nil {
 				t.Errorf("parseS3RequestProduct() expected error but got nil")
 			}
@@ -881,26 +881,26 @@ func TestService_fetchRequestPricing_APIError(t *testing.T) {
 // Concurrent access tests
 func TestService_ConcurrentCacheAccess(t *testing.T) {
 	service := NewService(&MockPricingClient{})
-	
+
 	// Test concurrent cache access using only public methods
 	done := make(chan bool, 10)
-	
+
 	for i := 0; i < 10; i++ {
 		go func(id int) {
 			region := fmt.Sprintf("us-east-%d", id%2+1)
-			
+
 			// Use public methods only - GetPricing will populate cache
 			_, err := service.GetPricing(context.Background(), region)
 			if err != nil {
 				t.Errorf("Concurrent GetPricing() failed: %v", err)
 			}
-			
+
 			// Invalidate using public method
 			service.InvalidateCache(region)
 			done <- true
 		}(i)
 	}
-	
+
 	// Wait for all goroutines
 	for i := 0; i < 10; i++ {
 		<-done
@@ -910,7 +910,7 @@ func TestService_ConcurrentCacheAccess(t *testing.T) {
 // Benchmark tests for performance verification
 func BenchmarkService_GetPricing_CacheHit(b *testing.B) {
 	service := NewService(&MockPricingClient{})
-	
+
 	// Pre-populate cache
 	service.cache["us-east-1"] = &PriceData{
 		StoragePrice: map[config.StorageClass]float64{
@@ -922,7 +922,7 @@ func BenchmarkService_GetPricing_CacheHit(b *testing.B) {
 	}
 
 	ctx := context.Background()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = service.GetPricing(ctx, "us-east-1")
@@ -940,5 +940,3 @@ func BenchmarkService_extractStorageClass(b *testing.B) {
 		_ = service.extractStorageClass(attributes)
 	}
 }
-
-

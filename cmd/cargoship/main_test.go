@@ -13,11 +13,11 @@ import (
 func TestNewRootCmd(t *testing.T) {
 	var buf bytes.Buffer
 	rootCmd := cmd.NewRootCmd(&buf)
-	
+
 	if rootCmd == nil {
 		t.Fatal("NewRootCmd should not return nil")
 	}
-	
+
 	// Test that the command has basic properties set
 	if rootCmd.Use == "" {
 		t.Error("Root command should have Use field set")
@@ -28,14 +28,14 @@ func TestNewRootCmd(t *testing.T) {
 func TestRootCmdExecution(t *testing.T) {
 	var buf bytes.Buffer
 	rootCmd := cmd.NewRootCmd(&buf)
-	
+
 	// Test help command
 	rootCmd.SetArgs([]string{"--help"})
 	err := rootCmd.ExecuteContext(context.Background())
 	if err != nil {
 		t.Errorf("Help command should not error, got: %v", err)
 	}
-	
+
 	// Verify some output was written
 	if buf.Len() == 0 {
 		t.Error("Help command should produce output")
@@ -46,7 +46,7 @@ func TestRootCmdExecution(t *testing.T) {
 func TestRootCmdInvalidArgs(t *testing.T) {
 	var buf bytes.Buffer
 	rootCmd := cmd.NewRootCmd(&buf)
-	
+
 	// Test invalid command
 	rootCmd.SetArgs([]string{"nonexistent-command"})
 	err := rootCmd.ExecuteContext(context.Background())
@@ -61,12 +61,12 @@ func TestContextBackground(t *testing.T) {
 	if ctx == nil {
 		t.Error("context.Background() should not return nil")
 	}
-	
+
 	// Verify context can be used with commands
 	var buf bytes.Buffer
 	rootCmd := cmd.NewRootCmd(&buf)
 	rootCmd.SetArgs([]string{"--version"})
-	
+
 	// This tests the context path through ExecuteContext
 	err := rootCmd.ExecuteContext(ctx)
 	// Version command might not exist, but context should work
@@ -78,7 +78,7 @@ func TestOsStdout(t *testing.T) {
 	if os.Stdout == nil {
 		t.Error("os.Stdout should not be nil")
 	}
-	
+
 	// Test that we can create command with os.Stdout
 	rootCmd := cmd.NewRootCmd(os.Stdout)
 	if rootCmd == nil {
@@ -89,19 +89,19 @@ func TestOsStdout(t *testing.T) {
 // TestMainFunctionComponents tests the individual components that main() uses
 func TestMainFunctionComponents(t *testing.T) {
 	// Test the core components main() relies on
-	
+
 	// 1. Creating root command with os.Stdout
 	rootCmd := cmd.NewRootCmd(os.Stdout)
 	if rootCmd == nil {
 		t.Fatal("NewRootCmd should create valid command")
 	}
-	
+
 	// 2. Creating context
 	ctx := context.Background()
 	if ctx == nil {
 		t.Fatal("context.Background() should create valid context")
 	}
-	
+
 	// 3. Test ExecuteContext with valid args (help)
 	rootCmd.SetArgs([]string{"--help"})
 	err := rootCmd.ExecuteContext(ctx)
@@ -128,19 +128,19 @@ func TestVersionVariables(t *testing.T) {
 func TestNewRootCmdWithVersion(t *testing.T) {
 	var buf bytes.Buffer
 	versionInfo := "test-version (test-commit) built on test-date"
-	
+
 	rootCmd := cmd.NewRootCmdWithVersion(&buf, versionInfo)
 	if rootCmd == nil {
 		t.Fatal("NewRootCmdWithVersion should not return nil")
 	}
-	
+
 	// Test version command
 	rootCmd.SetArgs([]string{"--version"})
 	err := rootCmd.ExecuteContext(context.Background())
 	if err != nil {
 		t.Errorf("Version command should not error: %v", err)
 	}
-	
+
 	// Check that version info appears in output
 	output := buf.String()
 	if output == "" {
@@ -154,7 +154,7 @@ func TestBuildVersionInfo(t *testing.T) {
 	origVersion := version
 	origCommit := commit
 	origDate := date
-	
+
 	// Test with all unknown values
 	version = "dev"
 	commit = "unknown"
@@ -164,7 +164,7 @@ func TestBuildVersionInfo(t *testing.T) {
 	if result != expected {
 		t.Errorf("buildVersionInfo() = %q, want %q", result, expected)
 	}
-	
+
 	// Test with commit but no date
 	version = "v1.0.0"
 	commit = "abc123"
@@ -174,7 +174,7 @@ func TestBuildVersionInfo(t *testing.T) {
 	if result != expected {
 		t.Errorf("buildVersionInfo() = %q, want %q", result, expected)
 	}
-	
+
 	// Test with all values
 	version = "v1.0.0"
 	commit = "abc123"
@@ -184,7 +184,7 @@ func TestBuildVersionInfo(t *testing.T) {
 	if result != expected {
 		t.Errorf("buildVersionInfo() = %q, want %q", result, expected)
 	}
-	
+
 	// Restore original values
 	version = origVersion
 	commit = origCommit

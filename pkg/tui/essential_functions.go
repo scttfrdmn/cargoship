@@ -11,13 +11,13 @@ import (
 // Message types for Bubble Tea
 type tickMsg time.Time
 type dataUpdateMsg struct {
-	Type            string
-	agents          []AgentInfo
-	jobs            []JobInfo
-	metrics         SystemMetrics
-	archivalJobs    []ArchivalJob
-	inventoryItems  []InventoryItem
-	configurations  []ConfigItem
+	Type           string
+	agents         []AgentInfo
+	jobs           []JobInfo
+	metrics        SystemMetrics
+	archivalJobs   []ArchivalJob
+	inventoryItems []InventoryItem
+	configurations []ConfigItem
 }
 
 // tickCmd returns a command that sends periodic tick messages
@@ -33,13 +33,13 @@ func (d *Dashboard) fetchDataCmd() tea.Cmd {
 		// TODO: Implement actual data fetching from controller/agent APIs
 		// For now, return mock data
 		return dataUpdateMsg{
-			Type:            "data_refresh",
-			agents:          d.fetchMockAgents(),
-			jobs:            d.fetchMockJobs(),
-			metrics:         d.fetchMockMetrics(),
-			archivalJobs:    d.fetchMockArchivalJobs(),
-			inventoryItems:  d.fetchMockInventoryItems(),
-			configurations:  d.fetchMockConfigurations(),
+			Type:           "data_refresh",
+			agents:         d.fetchMockAgents(),
+			jobs:           d.fetchMockJobs(),
+			metrics:        d.fetchMockMetrics(),
+			archivalJobs:   d.fetchMockArchivalJobs(),
+			inventoryItems: d.fetchMockInventoryItems(),
+			configurations: d.fetchMockConfigurations(),
 		}
 	}
 }
@@ -64,7 +64,7 @@ func (d *Dashboard) updateData(msg dataUpdateMsg) {
 	if len(msg.configurations) > 0 {
 		d.configurations = msg.configurations
 	}
-	
+
 	// Update tables based on current view
 	switch d.currentView {
 	case DashboardAgents:
@@ -91,13 +91,13 @@ func createAgentTable() table.Model {
 		{Title: "Throughput", Width: 15},
 		{Title: "Progress", Width: 12},
 	}
-	
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithFocused(true),
 		table.WithHeight(10),
 	)
-	
+
 	return t
 }
 
@@ -112,12 +112,12 @@ func createJobsTable() table.Model {
 		{Title: "Size", Width: 12},
 		{Title: "Rate", Width: 12},
 	}
-	
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithHeight(8),
 	)
-	
+
 	return t
 }
 

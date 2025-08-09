@@ -154,8 +154,8 @@ func TestPerformancePredictor_GetAccuracy(t *testing.T) {
 				LatencyMs:     20.0,
 				Reliability:   0.9,
 			},
-			Success:        true,
-			Timestamp:      time.Now(),
+			Success:   true,
+			Timestamp: time.Now(),
 		}
 		predictor.UpdateHistory("test-chunk", record)
 	}
@@ -362,8 +362,8 @@ func TestPerformancePredictor_DetermineOptimalChunkSize(t *testing.T) {
 			optimalSize := predictor.determineOptimalChunkSize(tc.boundary, tc.networkCondition)
 
 			// Should be within bounds
-			assert.GreaterOrEqual(t, optimalSize, int64(5*1024*1024))   // 5MB min
-			assert.LessOrEqual(t, optimalSize, int64(100*1024*1024))    // 100MB max
+			assert.GreaterOrEqual(t, optimalSize, int64(5*1024*1024)) // 5MB min
+			assert.LessOrEqual(t, optimalSize, int64(100*1024*1024))  // 100MB max
 
 			if tc.expectSmaller {
 				assert.Less(t, optimalSize, tc.boundary.Size)
@@ -551,7 +551,7 @@ func TestPerformancePredictor_CleanupExpiredCache(t *testing.T) {
 
 	// Manually expire cache by setting very short expiry
 	predictor.cacheExpiry = time.Nanosecond
-	
+
 	// Wait a bit to ensure expiry
 	time.Sleep(time.Millisecond)
 
@@ -818,13 +818,13 @@ func TestPerformanceHistory_GetConfidenceForSize(t *testing.T) {
 		record := &ChunkPerformanceRecord{
 			ChunkID: "test-chunk",
 			Size:    testSize + int64(i*1024*1024), // Vary size slightly
-			Success: i < 12, // 12 successful, 3 failed
+			Success: i < 12,                        // 12 successful, 3 failed
 		}
 		history.AddRecord("test-chunk", record)
 	}
 
 	confidence = history.GetConfidenceForSize(testSize)
-	
+
 	// Should be higher than default due to success rate and data boost
 	assert.Greater(t, confidence, 0.5)
 	assert.LessOrEqual(t, confidence, 0.95)
@@ -838,9 +838,9 @@ func TestPerformanceHistory_GetSizeCategory(t *testing.T) {
 		size     int64
 		expected string
 	}{
-		{1024 * 1024 * 5, "small"},   // 5MB
-		{1024 * 1024 * 25, "medium"}, // 25MB
-		{1024 * 1024 * 75, "large"},  // 75MB
+		{1024 * 1024 * 5, "small"},    // 5MB
+		{1024 * 1024 * 25, "medium"},  // 25MB
+		{1024 * 1024 * 75, "large"},   // 75MB
 		{1024 * 1024 * 150, "xlarge"}, // 150MB
 	}
 

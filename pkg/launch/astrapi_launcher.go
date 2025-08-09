@@ -26,65 +26,65 @@ type AstrapiLauncher struct {
 
 // LaunchRequest represents a test execution request for astrapi
 type LaunchRequest struct {
-	TestType        string                    `json:"test_type"`
-	TestFiles       []string                  `json:"test_files"`
-	S3Config        config.S3Config           `json:"s3_config"`
+	TestType           string                 `json:"test_type"`
+	TestFiles          []string               `json:"test_files"`
+	S3Config           config.S3Config        `json:"s3_config"`
 	OptimizationConfig *s3optimization.Config `json:"optimization_config,omitempty"`
-	AWSProfile      string                    `json:"aws_profile"`
-	AWSRegion       string                    `json:"aws_region"`
-	Parameters      map[string]interface{}    `json:"parameters,omitempty"`
-	Timeout         time.Duration             `json:"timeout"`
+	AWSProfile         string                 `json:"aws_profile"`
+	AWSRegion          string                 `json:"aws_region"`
+	Parameters         map[string]interface{} `json:"parameters,omitempty"`
+	Timeout            time.Duration          `json:"timeout"`
 }
 
 // LaunchResponse represents the response from astrapi test execution
 type LaunchResponse struct {
-	JobID           string                 `json:"job_id"`
-	Status          string                 `json:"status"`
-	Results         *TestResults           `json:"results,omitempty"`
-	Logs            []string               `json:"logs,omitempty"`
-	Error           string                 `json:"error,omitempty"`
-	StartTime       time.Time              `json:"start_time"`
-	EndTime         *time.Time             `json:"end_time,omitempty"`
-	Duration        *time.Duration         `json:"duration,omitempty"`
-	ResourceUsage   *ResourceUsage         `json:"resource_usage,omitempty"`
+	JobID         string         `json:"job_id"`
+	Status        string         `json:"status"`
+	Results       *TestResults   `json:"results,omitempty"`
+	Logs          []string       `json:"logs,omitempty"`
+	Error         string         `json:"error,omitempty"`
+	StartTime     time.Time      `json:"start_time"`
+	EndTime       *time.Time     `json:"end_time,omitempty"`
+	Duration      *time.Duration `json:"duration,omitempty"`
+	ResourceUsage *ResourceUsage `json:"resource_usage,omitempty"`
 }
 
 // TestResults contains comprehensive test execution results
 type TestResults struct {
-	TestType              string                         `json:"test_type"`
-	Success               bool                           `json:"success"`
-	TotalFiles            int                            `json:"total_files"`
-	ProcessedFiles        int                            `json:"processed_files"`
-	TotalBytes            int64                          `json:"total_bytes"`
-	ProcessedBytes        int64                          `json:"processed_bytes"`
-	Duration              time.Duration                  `json:"duration"`
-	AverageThroughputMBps float64                        `json:"average_throughput_mbps"`
-	PeakThroughputMBps    float64                        `json:"peak_throughput_mbps"`
-	OptimizationStats     interface{} `json:"optimization_stats,omitempty"`
-	NetworkUtilization    *NetworkUtilization            `json:"network_utilization,omitempty"`
-	ErrorCount            int                            `json:"error_count"`
-	Errors                []string                       `json:"errors,omitempty"`
+	TestType              string              `json:"test_type"`
+	Success               bool                `json:"success"`
+	TotalFiles            int                 `json:"total_files"`
+	ProcessedFiles        int                 `json:"processed_files"`
+	TotalBytes            int64               `json:"total_bytes"`
+	ProcessedBytes        int64               `json:"processed_bytes"`
+	Duration              time.Duration       `json:"duration"`
+	AverageThroughputMBps float64             `json:"average_throughput_mbps"`
+	PeakThroughputMBps    float64             `json:"peak_throughput_mbps"`
+	OptimizationStats     interface{}         `json:"optimization_stats,omitempty"`
+	NetworkUtilization    *NetworkUtilization `json:"network_utilization,omitempty"`
+	ErrorCount            int                 `json:"error_count"`
+	Errors                []string            `json:"errors,omitempty"`
 }
 
 // ResourceUsage tracks container resource consumption during test execution
 type ResourceUsage struct {
-	CPUUsagePercent    float64 `json:"cpu_usage_percent"`
-	MemoryUsageMB      float64 `json:"memory_usage_mb"`
-	NetworkInMB        float64 `json:"network_in_mb"`
-	NetworkOutMB       float64 `json:"network_out_mb"`
-	DiskReadMB         float64 `json:"disk_read_mb"`
-	DiskWriteMB        float64 `json:"disk_write_mb"`
-	PeakMemoryUsageMB  float64 `json:"peak_memory_usage_mb"`
-	AverageCPUPercent  float64 `json:"average_cpu_percent"`
+	CPUUsagePercent   float64 `json:"cpu_usage_percent"`
+	MemoryUsageMB     float64 `json:"memory_usage_mb"`
+	NetworkInMB       float64 `json:"network_in_mb"`
+	NetworkOutMB      float64 `json:"network_out_mb"`
+	DiskReadMB        float64 `json:"disk_read_mb"`
+	DiskWriteMB       float64 `json:"disk_write_mb"`
+	PeakMemoryUsageMB float64 `json:"peak_memory_usage_mb"`
+	AverageCPUPercent float64 `json:"average_cpu_percent"`
 }
 
 // NetworkUtilization provides detailed network performance metrics
 type NetworkUtilization struct {
-	LocalNetworkMbps    float64 `json:"local_network_mbps"`    // astrapi local network (10Gbps)
-	InternetMbps        float64 `json:"internet_mbps"`         // Internet to AWS (5Gbps)
-	LocalEfficiency     float64 `json:"local_efficiency"`      // % of 10Gbps utilized
-	InternetEfficiency  float64 `json:"internet_efficiency"`   // % of 5Gbps utilized
-	OptimalPathUsed     bool    `json:"optimal_path_used"`     // Whether optimal network path was used
+	LocalNetworkMbps   float64 `json:"local_network_mbps"`  // astrapi local network (10Gbps)
+	InternetMbps       float64 `json:"internet_mbps"`       // Internet to AWS (5Gbps)
+	LocalEfficiency    float64 `json:"local_efficiency"`    // % of 10Gbps utilized
+	InternetEfficiency float64 `json:"internet_efficiency"` // % of 5Gbps utilized
+	OptimalPathUsed    bool    `json:"optimal_path_used"`   // Whether optimal network path was used
 }
 
 // NewAstrapiLauncher creates a new launcher for astrapi-based test execution
@@ -144,17 +144,17 @@ func (al *AstrapiLauncher) LaunchPerformanceTest(ctx context.Context, req *Launc
 // LaunchStressTest launches intensive stress testing on astrapi
 func (al *AstrapiLauncher) LaunchStressTest(ctx context.Context, testType string, files []string, s3Config config.S3Config) (*LaunchResponse, error) {
 	req := &LaunchRequest{
-		TestType:        testType,
-		TestFiles:       files,
-		S3Config:        s3Config,
+		TestType:           testType,
+		TestFiles:          files,
+		S3Config:           s3Config,
 		OptimizationConfig: s3optimization.DefaultConfig(),
-		AWSProfile:      "aws",
-		AWSRegion:       "us-west-2",
+		AWSProfile:         "aws",
+		AWSRegion:          "us-west-2",
 		Parameters: map[string]interface{}{
-			"stress_mode": true,
-			"max_concurrency": 200,
-			"chunk_size_mb": 512,
-			"enable_monitoring": true,
+			"stress_mode":          true,
+			"max_concurrency":      200,
+			"chunk_size_mb":        512,
+			"enable_monitoring":    true,
 			"network_optimization": true,
 		},
 		Timeout: 30 * time.Minute,
@@ -166,18 +166,18 @@ func (al *AstrapiLauncher) LaunchStressTest(ctx context.Context, testType string
 // LaunchLargeFileTest launches large file transfer testing on astrapi
 func (al *AstrapiLauncher) LaunchLargeFileTest(ctx context.Context, files []string, s3Config config.S3Config) (*LaunchResponse, error) {
 	req := &LaunchRequest{
-		TestType:        "large_file_transfer",
-		TestFiles:       files,
-		S3Config:        s3Config,
+		TestType:           "large_file_transfer",
+		TestFiles:          files,
+		S3Config:           s3Config,
 		OptimizationConfig: s3optimization.DefaultConfig(),
-		AWSProfile:      "aws",
-		AWSRegion:       "us-west-2",
+		AWSProfile:         "aws",
+		AWSRegion:          "us-west-2",
 		Parameters: map[string]interface{}{
 			"enable_progress_tracking": true,
-			"chunk_size_mb": 256,
-			"max_file_size_gb": 10,
-			"enable_resume": true,
-			"verify_integrity": true,
+			"chunk_size_mb":            256,
+			"max_file_size_gb":         10,
+			"enable_resume":            true,
+			"verify_integrity":         true,
 		},
 		Timeout: 60 * time.Minute,
 	}
@@ -188,20 +188,20 @@ func (al *AstrapiLauncher) LaunchLargeFileTest(ctx context.Context, files []stri
 // LaunchBenchmarkSuite launches the complete CargoShip benchmark suite on astrapi
 func (al *AstrapiLauncher) LaunchBenchmarkSuite(ctx context.Context, s3Config config.S3Config) (*LaunchResponse, error) {
 	req := &LaunchRequest{
-		TestType:        "benchmark_suite",
-		TestFiles:       []string{}, // Will discover files on astrapi
-		S3Config:        s3Config,
+		TestType:           "benchmark_suite",
+		TestFiles:          []string{}, // Will discover files on astrapi
+		S3Config:           s3Config,
 		OptimizationConfig: s3optimization.DefaultConfig(),
-		AWSProfile:      "aws",
-		AWSRegion:       "us-west-2",
+		AWSProfile:         "aws",
+		AWSRegion:          "us-west-2",
 		Parameters: map[string]interface{}{
-			"run_all_tests": true,
-			"include_stress_tests": true,
+			"run_all_tests":            true,
+			"include_stress_tests":     true,
 			"include_large_file_tests": true,
 			"include_concurrent_tests": true,
-			"generate_report": true,
-			"network_analysis": true,
-			"resource_monitoring": true,
+			"generate_report":          true,
+			"network_analysis":         true,
+			"resource_monitoring":      true,
 		},
 		Timeout: 120 * time.Minute, // 2 hours for complete suite
 	}
@@ -212,16 +212,16 @@ func (al *AstrapiLauncher) LaunchBenchmarkSuite(ctx context.Context, s3Config co
 // submitJob submits a job to astrapi container orchestration
 func (al *AstrapiLauncher) submitJob(ctx context.Context, req *LaunchRequest) (string, error) {
 	url := fmt.Sprintf("http://%s:%d/api/v1/launch", al.host, al.port)
-	
+
 	// Create job submission payload
 	jobPayload := map[string]interface{}{
-		"image": al.containerImage,
-		"command": al.buildTestCommand(req),
-		"environment": al.buildEnvironment(req),
-		"volumes": al.buildVolumes(),
-		"resources": al.buildResourceLimits(),
+		"image":        al.containerImage,
+		"command":      al.buildTestCommand(req),
+		"environment":  al.buildEnvironment(req),
+		"volumes":      al.buildVolumes(),
+		"resources":    al.buildResourceLimits(),
 		"network_mode": "host", // Use host networking for maximum performance
-		"timeout": req.Timeout.Seconds(),
+		"timeout":      req.Timeout.Seconds(),
 	}
 
 	jsonPayload, err := json.Marshal(jobPayload)
@@ -403,12 +403,12 @@ func (al *AstrapiLauncher) buildEnvironment(req *LaunchRequest) map[string]strin
 func (al *AstrapiLauncher) buildVolumes() []map[string]string {
 	return []map[string]string{
 		{
-			"host_path":      "/volume1/Public",       // astrapi public data
+			"host_path":      "/volume1/Public", // astrapi public data
 			"container_path": "/data/public",
 			"readonly":       "true",
 		},
 		{
-			"host_path":      "/volume1/homes/.aws",   // AWS credentials
+			"host_path":      "/volume1/homes/.aws", // AWS credentials
 			"container_path": "/root/.aws",
 			"readonly":       "true",
 		},
@@ -423,9 +423,9 @@ func (al *AstrapiLauncher) buildVolumes() []map[string]string {
 // buildResourceLimits defines container resource constraints
 func (al *AstrapiLauncher) buildResourceLimits() map[string]interface{} {
 	return map[string]interface{}{
-		"memory":     "8GB",    // 8GB memory limit
-		"cpu_cores":  4,        // 4 CPU cores
-		"network_mbps": 10000,  // 10Gbps network limit (astrapi max)
+		"memory":       "8GB", // 8GB memory limit
+		"cpu_cores":    4,     // 4 CPU cores
+		"network_mbps": 10000, // 10Gbps network limit (astrapi max)
 	}
 }
 

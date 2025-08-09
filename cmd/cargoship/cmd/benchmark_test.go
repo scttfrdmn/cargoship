@@ -22,19 +22,19 @@ func TestNewBenchmarkCmd(t *testing.T) {
 	// Test flags
 	flags := cmd.Flags()
 	assert.True(t, flags.HasFlags())
-	
+
 	sizeFlag := flags.Lookup("size")
 	require.NotNil(t, sizeFlag)
 	assert.Equal(t, "10MB", sizeFlag.DefValue)
-	
+
 	dataTypeFlag := flags.Lookup("data-type")
 	require.NotNil(t, dataTypeFlag)
 	assert.Equal(t, "mixed", dataTypeFlag.DefValue)
-	
+
 	formatFlag := flags.Lookup("format")
 	require.NotNil(t, formatFlag)
 	assert.Equal(t, "table", formatFlag.DefValue)
-	
+
 	fileFlag := flags.Lookup("file")
 	require.NotNil(t, fileFlag)
 	assert.Equal(t, "", fileFlag.DefValue)
@@ -117,14 +117,14 @@ func TestGenerateTestData(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.dataType, func(t *testing.T) {
 			data, err := generateTestData(tc.size, tc.dataType)
-			
+
 			if tc.hasError {
 				assert.Error(t, err)
 				assert.Nil(t, data)
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.size, int64(len(data)))
-				
+
 				// Test specific data type characteristics
 				switch tc.dataType {
 				case "random":
@@ -330,7 +330,7 @@ func TestOutputBenchmarkJSON(t *testing.T) {
 	}
 
 	err := outputBenchmarkJSON(results)
-	
+
 	// Restore stdout
 	_ = w.Close()
 	os.Stdout = originalStdout
@@ -362,10 +362,10 @@ func TestRunBenchmark(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping benchmark execution test in short mode")
 	}
-	
+
 	t.Run("benchmark with flag-based input", func(t *testing.T) {
 		cmd := NewBenchmarkCmd()
-		
+
 		// Set flags instead of global variables
 		err := cmd.Flags().Set("size", "1KB")
 		require.NoError(t, err)
@@ -373,50 +373,50 @@ func TestRunBenchmark(t *testing.T) {
 		require.NoError(t, err)
 		err = cmd.Flags().Set("format", "json")
 		require.NoError(t, err)
-		
+
 		// Test execution (should complete without error for small data)
 		err = cmd.RunE(cmd, []string{})
 		assert.NoError(t, err)
 	})
-	
+
 	t.Run("benchmark with file input via flags", func(t *testing.T) {
 		// Create temporary test file
 		tmpFile, err := os.CreateTemp("", "benchmark_test_*.txt")
 		require.NoError(t, err)
 		defer func() { _ = os.Remove(tmpFile.Name()) }()
-		
+
 		// Write test data
 		testData := []byte("This is test data for benchmark testing. It should compress reasonably well.")
 		err = os.WriteFile(tmpFile.Name(), testData, 0644)
 		require.NoError(t, err)
-		
+
 		cmd := NewBenchmarkCmd()
 		err = cmd.Flags().Set("file", tmpFile.Name())
 		require.NoError(t, err)
 		err = cmd.Flags().Set("format", "table")
 		require.NoError(t, err)
-		
+
 		err = cmd.RunE(cmd, []string{})
 		assert.NoError(t, err)
 	})
-	
+
 	t.Run("non-existent file", func(t *testing.T) {
 		cmd := NewBenchmarkCmd()
 		err := cmd.Flags().Set("file", "/non/existent/file.txt")
 		require.NoError(t, err)
-		
+
 		err = cmd.RunE(cmd, []string{})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to read file")
 	})
-	
+
 	t.Run("invalid format", func(t *testing.T) {
 		cmd := NewBenchmarkCmd()
 		err := cmd.Flags().Set("size", "1KB")
 		require.NoError(t, err)
 		err = cmd.Flags().Set("format", "invalid")
 		require.NoError(t, err)
-		
+
 		err = cmd.RunE(cmd, []string{})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "unsupported format")
@@ -428,38 +428,38 @@ func TestOutputBenchmarkTable(t *testing.T) {
 	originalStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	
+
 	results := []compression.CompressionResult{
 		{
 			Algorithm:        "gzip",
-			Level:           6,
+			Level:            6,
 			CompressionRatio: 3.0,
 			CompressionTime:  100,
 			CompressedSize:   1000,
 		},
 		{
-			Algorithm:        "zstd", 
-			Level:           3,
+			Algorithm:        "zstd",
+			Level:            3,
 			CompressionRatio: 4.0,
 			CompressionTime:  80,
 			CompressedSize:   800,
 		},
 	}
-	
+
 	originalSize := int64(3000)
 	err := outputBenchmarkTable(results, originalSize)
-	
+
 	// Restore stdout
 	_ = w.Close()
 	os.Stdout = originalStdout
-	
+
 	assert.NoError(t, err)
-	
+
 	// Read captured output
 	var buf bytes.Buffer
 	_, _ = buf.ReadFrom(r)
 	output := buf.String()
-	
+
 	// Verify table output contains expected content
 	assert.Contains(t, output, "Compression Benchmark Results")
 	assert.Contains(t, output, "Original size:")
@@ -476,19 +476,19 @@ func TestOutputBenchmarkTableEmpty(t *testing.T) {
 	originalStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	
+
 	results := []compression.CompressionResult{}
 	err := outputBenchmarkTable(results, 1000)
-	
+
 	_ = w.Close()
 	os.Stdout = originalStdout
-	
+
 	assert.NoError(t, err)
-	
+
 	var buf bytes.Buffer
 	_, _ = buf.ReadFrom(r)
 	output := buf.String()
-	
+
 	// Should still show headers and basic info
 	assert.Contains(t, output, "Compression Benchmark Results")
 	assert.Contains(t, output, "Original size:")

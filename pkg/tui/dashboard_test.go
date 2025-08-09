@@ -31,16 +31,16 @@ func TestNewDashboard(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dashboard := NewDashboard(tc.dashboardType, logger)
 			require.NotNil(t, dashboard)
-			
+
 			assert.Equal(t, tc.dashboardType, dashboard.dashboardType)
 			assert.Equal(t, DashboardOverview, dashboard.currentView) // Always starts at Overview
 			assert.NotNil(t, dashboard.logger)
 			assert.NotNil(t, dashboard.navigationTabs)
 			assert.GreaterOrEqual(t, dashboard.selectedTab, 0)
-			
+
 			// Verify navigation tabs are set
 			assert.NotEmpty(t, dashboard.navigationTabs)
-			
+
 			// Verify tables are initialized
 			assert.NotNil(t, dashboard.agentTable)
 			assert.NotNil(t, dashboard.jobsTable)
@@ -72,7 +72,7 @@ func TestDashboardDataStructures(t *testing.T) {
 			LastSeen:   time.Now(),
 			Progress:   75.5,
 		}
-		
+
 		assert.Equal(t, "agent-1", agent.ID)
 		assert.Equal(t, "Test Agent", agent.Name)
 		assert.Equal(t, "active", agent.Status)
@@ -94,7 +94,7 @@ func TestDashboardDataStructures(t *testing.T) {
 			Size:      "1GB",
 			Rate:      "10 MB/s",
 		}
-		
+
 		assert.Equal(t, "job-1", job.ID)
 		assert.Equal(t, "agent-1", job.AgentID)
 		assert.Equal(t, "archive", job.Type)
@@ -119,7 +119,7 @@ func TestDashboardDataStructures(t *testing.T) {
 			MonthlySpend:    "$1500.75",
 			ProjectedCost:   "$1800.00",
 		}
-		
+
 		assert.Equal(t, 5, metrics.TotalAgents)
 		assert.Equal(t, 2, metrics.ActiveJobs)
 		assert.Equal(t, int64(100), metrics.CompletedJobs)
@@ -143,7 +143,7 @@ func TestDashboardDataStructures(t *testing.T) {
 			Size:          "500MB",
 			Rate:          "10 MB/s",
 		}
-		
+
 		assert.Equal(t, "arch-1", job.ID)
 		assert.Equal(t, "/data/genomics", job.Source)
 		assert.Equal(t, "s3://genomics-archive/", job.Destination)
@@ -160,11 +160,11 @@ func TestDashboardTickCmd(t *testing.T) {
 
 	cmd := dashboard.tickCmd()
 	assert.NotNil(t, cmd)
-	
+
 	// Execute the command to get a message
 	msg := cmd()
 	assert.NotNil(t, msg)
-	
+
 	// Should return a tickMsg
 	_, ok := msg.(tickMsg)
 	assert.True(t, ok, "Command should return a tickMsg")
@@ -176,11 +176,11 @@ func TestDashboardFetchDataCmd(t *testing.T) {
 
 	cmd := dashboard.fetchDataCmd()
 	assert.NotNil(t, cmd)
-	
+
 	// Execute the command to get a message
 	msg := cmd()
 	assert.NotNil(t, msg)
-	
+
 	// Should return a dataUpdateMsg
 	dataMsg, ok := msg.(dataUpdateMsg)
 	assert.True(t, ok, "Command should return a dataUpdateMsg")
@@ -196,7 +196,7 @@ func TestDashboardUpdateData(t *testing.T) {
 		{ID: "agent-1", Name: "Agent 1", Status: "active"},
 		{ID: "agent-2", Name: "Agent 2", Status: "idle"},
 	}
-	
+
 	testJobs := []JobInfo{
 		{ID: "job-1", Type: "archive", Status: "running"},
 		{ID: "job-2", Type: "restore", Status: "queued"},
@@ -245,7 +245,7 @@ func TestDashboardBubbleTeaInterface(t *testing.T) {
 	updatedModel, cmd := dashboard.Update(tickMessage)
 	assert.NotNil(t, updatedModel)
 	assert.NotNil(t, cmd)
-	
+
 	// Verify it returns the same dashboard
 	updatedDashboard, ok := updatedModel.(*Dashboard)
 	assert.True(t, ok)
@@ -259,12 +259,12 @@ func TestDashboardBubbleTeaInterface(t *testing.T) {
 
 func TestDataUpdateMsg(t *testing.T) {
 	msg := dataUpdateMsg{
-		Type:            "test",
-		agents:          []AgentInfo{{ID: "test-agent"}},
-		jobs:            []JobInfo{{ID: "test-job"}},
-		archivalJobs:    []ArchivalJob{{ID: "test-archival"}},
-		inventoryItems:  []InventoryItem{{Path: "test-item", Type: "file"}},
-		configurations:  []ConfigItem{{Key: "test-config"}},
+		Type:           "test",
+		agents:         []AgentInfo{{ID: "test-agent"}},
+		jobs:           []JobInfo{{ID: "test-job"}},
+		archivalJobs:   []ArchivalJob{{ID: "test-archival"}},
+		inventoryItems: []InventoryItem{{Path: "test-item", Type: "file"}},
+		configurations: []ConfigItem{{Key: "test-config"}},
 	}
 
 	assert.Equal(t, "test", msg.Type)

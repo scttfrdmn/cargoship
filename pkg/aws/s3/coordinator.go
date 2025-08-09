@@ -30,22 +30,22 @@ type PipelineCoordinator struct {
 type CoordinationConfig struct {
 	// Pipeline depth controls how many uploads can be prepared in advance
 	PipelineDepth int `yaml:"pipeline_depth" json:"pipeline_depth"`
-	
+
 	// Global congestion window for TCP-like flow control
 	GlobalCongestionWindow int `yaml:"global_congestion_window" json:"global_congestion_window"`
-	
+
 	// Coordination strategy: "tcp_like", "fair_share", "adaptive"
 	Strategy string `yaml:"coordination_strategy" json:"coordination_strategy"`
-	
+
 	// Maximum number of active prefixes to coordinate
 	MaxActivePrefixes int `yaml:"max_active_prefixes" json:"max_active_prefixes"`
-	
+
 	// Bandwidth allocation strategy
 	BandwidthStrategy string `yaml:"bandwidth_strategy" json:"bandwidth_strategy"`
-	
+
 	// Coordination update interval
 	UpdateInterval time.Duration `yaml:"update_interval" json:"update_interval"`
-	
+
 	// Enable advanced flow control features
 	EnableAdvancedFlowControl bool `yaml:"enable_advanced_flow_control" json:"enable_advanced_flow_control"`
 }
@@ -70,17 +70,17 @@ type ScheduledUpload struct {
 	PrefixID      string
 	Priority      int
 	EstimatedSize int64
-	
+
 	// Scheduling metadata
-	ScheduledAt   time.Time
-	Deadline      time.Time
-	Dependencies  []string
-	
+	ScheduledAt  time.Time
+	Deadline     time.Time
+	Dependencies []string
+
 	// Flow control
-	BandwidthAllocation float64  // MB/s allocated to this upload
-	CongestionWindow    int      // Current congestion window size
+	BandwidthAllocation float64 // MB/s allocated to this upload
+	CongestionWindow    int     // Current congestion window size
 	BackoffDelay        time.Duration
-	
+
 	// Coordination context
 	CoordinationID string
 	GroupID        string
@@ -88,30 +88,30 @@ type ScheduledUpload struct {
 
 // TransferScheduler implements global scheduling logic across all S3 prefixes.
 type TransferScheduler struct {
-	prefixMetrics    map[string]*PrefixPerformanceMetrics
-	networkProfile   *NetworkProfile
-	globalState      *GlobalTransferState
-	loadBalancer     *PrefixLoadBalancer
-	config           *CoordinationConfig
-	mu               sync.RWMutex
+	prefixMetrics  map[string]*PrefixPerformanceMetrics
+	networkProfile *NetworkProfile
+	globalState    *GlobalTransferState
+	loadBalancer   *PrefixLoadBalancer
+	config         *CoordinationConfig
+	mu             sync.RWMutex
 }
 
 // PrefixPerformanceMetrics tracks real-time performance for each S3 prefix.
 type PrefixPerformanceMetrics struct {
-	PrefixID           string
-	ActiveUploads      int
-	ThroughputMBps     float64
-	LatencyMs          float64
-	ErrorRate          float64
-	CongestionWindow   int
-	LastUpdate         time.Time
+	PrefixID             string
+	ActiveUploads        int
+	ThroughputMBps       float64
+	LatencyMs            float64
+	ErrorRate            float64
+	CongestionWindow     int
+	LastUpdate           time.Time
 	BandwidthUtilization float64
-	
+
 	// Historical performance data
-	ThroughputHistory  []float64
-	LatencyHistory     []float64
-	ErrorHistory       []float64
-	
+	ThroughputHistory []float64
+	LatencyHistory    []float64
+	ErrorHistory      []float64
+
 	// Load metrics
 	QueueLength        int
 	ProcessingCapacity float64
@@ -119,46 +119,46 @@ type PrefixPerformanceMetrics struct {
 
 // GlobalCongestionController implements TCP-like congestion control across all prefixes.
 type GlobalCongestionController struct {
-	globalCongestionWindow    int
-	slowStartThreshold        int
-	prefixAllocation         map[string]*PrefixAllocation
-	totalBandwidthMBps       float64
-	congestionState          CongestionState
-	lastCongestionEvent      time.Time
-	adaptiveParameters       *AdaptiveParameters
-	
+	globalCongestionWindow int
+	slowStartThreshold     int
+	prefixAllocation       map[string]*PrefixAllocation
+	totalBandwidthMBps     float64
+	congestionState        CongestionState
+	lastCongestionEvent    time.Time
+	adaptiveParameters     *AdaptiveParameters
+
 	// Cross-prefix communication integration
-	communicator             *CrossPrefixCommunicator
-	
+	communicator *CrossPrefixCommunicator
+
 	// Advanced congestion control state
-	globalRTTEstimate        time.Duration
-	fairnessIndex            float64
-	systemEfficiency         float64
-	coordinationOverhead     float64
-	
+	globalRTTEstimate    time.Duration
+	fairnessIndex        float64
+	systemEfficiency     float64
+	coordinationOverhead float64
+
 	// BBR-style state machine
-	bbrMode                  BBRMode
-	bbrCycleIndex           int
-	gainCycleGains          []float64
-	pacingGain              float64
-	cwndGain                float64
-	
+	bbrMode        BBRMode
+	bbrCycleIndex  int
+	gainCycleGains []float64
+	pacingGain     float64
+	cwndGain       float64
+
 	// Performance tracking
-	deliveryRateEstimator   *DeliveryRateEstimator
-	congestionEventHistory  []CongestionEvent
-	
-	mu                       sync.RWMutex
+	deliveryRateEstimator  *DeliveryRateEstimator
+	congestionEventHistory []CongestionEvent
+
+	mu sync.RWMutex
 }
 
 // PrefixAllocation tracks bandwidth and resource allocation for a specific prefix.
 type PrefixAllocation struct {
-	PrefixID              string
+	PrefixID               string
 	AllocatedBandwidthMBps float64
-	CongestionWindow      int
-	InFlight              int
-	Utilization           float64
-	Priority              int
-	LastAdjustment        time.Time
+	CongestionWindow       int
+	InFlight               int
+	Utilization            float64
+	Priority               int
+	LastAdjustment         time.Time
 }
 
 // CongestionState represents the current global congestion state.
@@ -178,11 +178,11 @@ type AdaptiveParameters struct {
 	BandwidthProbingRate   float64
 	CongestionSensitivity  float64
 	RecoveryAggressiveness float64
-	
+
 	// BBR-style parameters
-	BTLBandwidthFilter    *BandwidthFilter
-	RTTMin                time.Duration
-	CycleLength           time.Duration
+	BTLBandwidthFilter *BandwidthFilter
+	RTTMin             time.Duration
+	CycleLength        time.Duration
 }
 
 // BandwidthFilter implements a windowed max filter for bandwidth estimation.
@@ -195,10 +195,10 @@ type BandwidthFilter struct {
 
 // BandwidthSample represents a single bandwidth measurement.
 type BandwidthSample struct {
-	Timestamp   time.Time
+	Timestamp     time.Time
 	BandwidthMBps float64
-	RTT         time.Duration
-	InFlight    int
+	RTT           time.Duration
+	InFlight      int
 }
 
 // NetworkProfile maintains a profile of network characteristics for optimization.
@@ -208,30 +208,30 @@ type NetworkProfile struct {
 	BaselineRTT            time.Duration
 	NetworkVariance        float64
 	CongestionThreshold    float64
-	
+
 	// Historical learning
-	SessionHistory         []*TransferSession
-	MaxHistorySize         int
-	LastProfileUpdate      time.Time
-	
+	SessionHistory    []*TransferSession
+	MaxHistorySize    int
+	LastProfileUpdate time.Time
+
 	// Adaptive learning
-	BandwidthTrend         TrendDirection
-	LatencyTrend           TrendDirection
-	LearningConfidence     float64
+	BandwidthTrend     TrendDirection
+	LatencyTrend       TrendDirection
+	LearningConfidence float64
 }
 
 // TransferSession captures performance data from a complete transfer session.
 type TransferSession struct {
-	SessionID            string
-	StartTime            time.Time
-	EndTime              time.Time
-	TotalBytes           int64
+	SessionID             string
+	StartTime             time.Time
+	EndTime               time.Time
+	TotalBytes            int64
 	AverageThroughputMBps float64
-	PeakThroughputMBps   float64
-	AverageLatency       time.Duration
-	ErrorCount           int
-	PrefixCount          int
-	CoordinationEnabled  bool
+	PeakThroughputMBps    float64
+	AverageLatency        time.Duration
+	ErrorCount            int
+	PrefixCount           int
+	CoordinationEnabled   bool
 }
 
 // TrendDirection indicates the direction of a performance trend.
@@ -246,34 +246,34 @@ const (
 
 // GlobalTransferState maintains global state across all active transfers.
 type GlobalTransferState struct {
-	ActivePrefixes        map[string]bool
-	TotalActiveUploads    int
-	GlobalThroughputMBps  float64
-	GlobalErrorRate       float64
-	SystemLoad            float64
-	
+	ActivePrefixes       map[string]bool
+	TotalActiveUploads   int
+	GlobalThroughputMBps float64
+	GlobalErrorRate      float64
+	SystemLoad           float64
+
 	// Resource utilization
-	NetworkUtilization    float64
-	CPUUtilization        float64
-	MemoryUtilization     float64
-	
+	NetworkUtilization float64
+	CPUUtilization     float64
+	MemoryUtilization  float64
+
 	// Coordination metrics
 	CoordinationOverhead  float64
 	LoadBalanceEfficiency float64
 	PipelineUtilization   float64
-	
-	LastUpdate            time.Time
+
+	LastUpdate time.Time
 }
 
 // PrefixLoadBalancer implements intelligent load balancing across S3 prefixes.
 type PrefixLoadBalancer struct {
-	strategy            LoadBalanceStrategy
-	prefixWeights       map[string]float64
-	prefixCapacities    map[string]float64
-	rebalanceThreshold  float64
-	rebalanceInterval   time.Duration
-	lastRebalance       time.Time
-	mu                  sync.RWMutex
+	strategy           LoadBalanceStrategy
+	prefixWeights      map[string]float64
+	prefixCapacities   map[string]float64
+	rebalanceThreshold float64
+	rebalanceInterval  time.Duration
+	lastRebalance      time.Time
+	mu                 sync.RWMutex
 }
 
 // LoadBalanceStrategy defines different load balancing approaches.
@@ -293,37 +293,37 @@ type CoordinationMetrics struct {
 	CoordinationOverheadPercent float64
 	LoadBalanceEfficiency       float64
 	PipelineUtilization         float64
-	
+
 	// Performance metrics
-	GlobalThroughputMBps        float64
-	CoordinationEfficiencyGain  float64
-	LatencyReduction            float64
-	
+	GlobalThroughputMBps       float64
+	CoordinationEfficiencyGain float64
+	LatencyReduction           float64
+
 	// Resource utilization
-	ActivePrefixes              int
-	AverageQueueLength          float64
-	BandwidthUtilization        float64
-	
+	ActivePrefixes       int
+	AverageQueueLength   float64
+	BandwidthUtilization float64
+
 	// Congestion control metrics
-	CongestionEvents            int
-	RecoveryTime                time.Duration
-	AdaptationRate              float64
-	
+	CongestionEvents int
+	RecoveryTime     time.Duration
+	AdaptationRate   float64
+
 	// Comparison metrics
-	BaselinePerformance         *PerformanceBaseline
-	CoordinatedPerformance      *PerformanceBaseline
-	ImprovementFactor           float64
-	
-	LastUpdate                  time.Time
+	BaselinePerformance    *PerformanceBaseline
+	CoordinatedPerformance *PerformanceBaseline
+	ImprovementFactor      float64
+
+	LastUpdate time.Time
 }
 
 // PerformanceBaseline captures baseline performance metrics for comparison.
 type PerformanceBaseline struct {
-	ThroughputMBps    float64
-	LatencyMs         float64
-	ErrorRate         float64
-	EfficiencyRating  float64
-	Timestamp         time.Time
+	ThroughputMBps   float64
+	LatencyMs        float64
+	ErrorRate        float64
+	EfficiencyRating float64
+	Timestamp        time.Time
 }
 
 // NewPipelineCoordinator creates a new cross-prefix pipeline coordinator.
@@ -331,9 +331,9 @@ func NewPipelineCoordinator(ctx context.Context, config *CoordinationConfig) *Pi
 	if config == nil {
 		config = DefaultCoordinationConfig()
 	}
-	
+
 	coordCtx, cancel := context.WithCancel(ctx)
-	
+
 	pc := &PipelineCoordinator{
 		scheduler:         NewTransferScheduler(config),
 		congestionControl: NewGlobalCongestionController(config),
@@ -344,7 +344,7 @@ func NewPipelineCoordinator(ctx context.Context, config *CoordinationConfig) *Pi
 		ctx:               coordCtx,
 		cancel:            cancel,
 	}
-	
+
 	return pc
 }
 
@@ -364,11 +364,11 @@ func NewGlobalCongestionController(config *CoordinationConfig) *GlobalCongestion
 	return &GlobalCongestionController{
 		globalCongestionWindow: config.GlobalCongestionWindow,
 		slowStartThreshold:     config.GlobalCongestionWindow / 2,
-		prefixAllocation:      make(map[string]*PrefixAllocation),
-		totalBandwidthMBps:    0,
-		congestionState:       CongestionStateSlowStart,
-		lastCongestionEvent:   time.Now(),
-		adaptiveParameters:    NewAdaptiveParameters(),
+		prefixAllocation:       make(map[string]*PrefixAllocation),
+		totalBandwidthMBps:     0,
+		congestionState:        CongestionStateSlowStart,
+		lastCongestionEvent:    time.Now(),
+		adaptiveParameters:     NewAdaptiveParameters(),
 	}
 }
 
@@ -376,15 +376,15 @@ func NewGlobalCongestionController(config *CoordinationConfig) *GlobalCongestion
 func NewNetworkProfile() *NetworkProfile {
 	return &NetworkProfile{
 		EstimatedBandwidthMBps: 100.0, // Start with reasonable default
-		BaselineRTT:           time.Millisecond * 50,
-		NetworkVariance:       0.1,
-		CongestionThreshold:   0.8,
-		SessionHistory:        make([]*TransferSession, 0),
-		MaxHistorySize:        50,
-		LastProfileUpdate:     time.Now(),
-		BandwidthTrend:        TrendUnknown,
-		LatencyTrend:          TrendUnknown,
-		LearningConfidence:    0.5,
+		BaselineRTT:            time.Millisecond * 50,
+		NetworkVariance:        0.1,
+		CongestionThreshold:    0.8,
+		SessionHistory:         make([]*TransferSession, 0),
+		MaxHistorySize:         50,
+		LastProfileUpdate:      time.Now(),
+		BandwidthTrend:         TrendUnknown,
+		LatencyTrend:           TrendUnknown,
+		LearningConfidence:     0.5,
 	}
 }
 
@@ -426,8 +426,8 @@ func NewAdaptiveParameters() *AdaptiveParameters {
 		CongestionSensitivity:  0.8,
 		RecoveryAggressiveness: 1.2,
 		BTLBandwidthFilter:     NewBandwidthFilter(time.Second * 10),
-		RTTMin:                time.Millisecond * 10,
-		CycleLength:           time.Second * 8,
+		RTTMin:                 time.Millisecond * 10,
+		CycleLength:            time.Second * 8,
 	}
 }
 
@@ -466,18 +466,18 @@ func NewCoordinationMetrics() *CoordinationMetrics {
 func (pc *PipelineCoordinator) Start() error {
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
-	
+
 	if pc.active {
 		return nil // Already active
 	}
-	
+
 	pc.active = true
-	
+
 	// Start coordination subsystems
 	go pc.scheduler.Start(pc.ctx)
 	go pc.congestionControl.Start(pc.ctx)
 	go pc.metricsCollector(pc.ctx)
-	
+
 	return nil
 }
 
@@ -485,19 +485,19 @@ func (pc *PipelineCoordinator) Start() error {
 func (pc *PipelineCoordinator) Stop() error {
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
-	
+
 	if !pc.active {
 		return nil // Already stopped
 	}
-	
+
 	pc.active = false
 	pc.cancel()
-	
+
 	// Close all prefix channels
 	for _, ch := range pc.prefixChannels {
 		close(ch)
 	}
-	
+
 	return nil
 }
 
@@ -505,21 +505,21 @@ func (pc *PipelineCoordinator) Stop() error {
 func (pc *PipelineCoordinator) RegisterPrefix(prefixID string, capacity float64) error {
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
-	
+
 	if !pc.active {
 		return &CoordinationError{
 			Type:    "coordinator_inactive",
 			Message: "pipeline coordinator is not active",
 		}
 	}
-	
+
 	// Create communication channel for this prefix
 	pc.prefixChannels[prefixID] = make(chan *ScheduledUpload, pc.config.PipelineDepth)
-	
+
 	// Register with scheduler and congestion controller
 	pc.scheduler.RegisterPrefix(prefixID, capacity)
 	pc.congestionControl.RegisterPrefix(prefixID, capacity)
-	
+
 	return nil
 }
 
@@ -527,40 +527,40 @@ func (pc *PipelineCoordinator) RegisterPrefix(prefixID string, capacity float64)
 func (pc *PipelineCoordinator) ScheduleUpload(upload *ScheduledUpload) error {
 	pc.mu.RLock()
 	defer pc.mu.RUnlock()
-	
+
 	if !pc.active {
 		return &CoordinationError{
 			Type:    "coordinator_inactive",
 			Message: "pipeline coordinator is not active",
 		}
 	}
-	
+
 	// Get optimal prefix for this upload
 	optimalPrefix, err := pc.scheduler.SelectOptimalPrefix(upload)
 	if err != nil {
 		return err
 	}
-	
+
 	upload.PrefixID = optimalPrefix
 	upload.ScheduledAt = time.Now()
-	
+
 	// Apply congestion control
 	allocation, err := pc.congestionControl.AllocateResources(upload)
 	if err != nil {
 		return err
 	}
-	
+
 	upload.BandwidthAllocation = allocation.AllocatedBandwidthMBps
 	upload.CongestionWindow = allocation.CongestionWindow
-	
+
 	// Schedule the upload
 	select {
 	case pc.prefixChannels[optimalPrefix] <- upload:
 		return nil
 	default:
 		return &CoordinationError{
-			Type:    "prefix_queue_full",
-			Message: "prefix upload queue is full",
+			Type:     "prefix_queue_full",
+			Message:  "prefix upload queue is full",
 			PrefixID: optimalPrefix,
 		}
 	}
@@ -570,7 +570,7 @@ func (pc *PipelineCoordinator) ScheduleUpload(upload *ScheduledUpload) error {
 func (pc *PipelineCoordinator) GetMetrics() *CoordinationMetrics {
 	pc.mu.RLock()
 	defer pc.mu.RUnlock()
-	
+
 	return pc.metrics
 }
 
@@ -584,7 +584,7 @@ func (pc *PipelineCoordinator) UpdatePrefixMetrics(prefixID string, metrics *Pre
 func (pc *PipelineCoordinator) metricsCollector(ctx context.Context) {
 	ticker := time.NewTicker(pc.config.UpdateInterval)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -599,11 +599,11 @@ func (pc *PipelineCoordinator) metricsCollector(ctx context.Context) {
 func (pc *PipelineCoordinator) updateCoordinationMetrics() {
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
-	
+
 	// Collect metrics from all subsystems
 	schedulerMetrics := pc.scheduler.GetMetrics()
 	congestionMetrics := pc.congestionControl.GetMetrics()
-	
+
 	// Update coordination metrics
 	pc.metrics.ActivePrefixes = len(pc.prefixChannels)
 	pc.metrics.GlobalThroughputMBps = schedulerMetrics.GlobalThroughputMBps
@@ -611,11 +611,11 @@ func (pc *PipelineCoordinator) updateCoordinationMetrics() {
 	pc.metrics.CoordinationOverheadPercent = congestionMetrics.OverheadPercent
 	pc.metrics.CongestionEvents = congestionMetrics.CongestionEvents
 	pc.metrics.LastUpdate = time.Now()
-	
+
 	// Calculate efficiency gains
 	if pc.metrics.BaselinePerformance != nil && pc.metrics.CoordinatedPerformance != nil {
-		pc.metrics.ImprovementFactor = pc.metrics.CoordinatedPerformance.ThroughputMBps / 
-										pc.metrics.BaselinePerformance.ThroughputMBps
+		pc.metrics.ImprovementFactor = pc.metrics.CoordinatedPerformance.ThroughputMBps /
+			pc.metrics.BaselinePerformance.ThroughputMBps
 		pc.metrics.CoordinationEfficiencyGain = (pc.metrics.ImprovementFactor - 1.0) * 100
 	}
 }

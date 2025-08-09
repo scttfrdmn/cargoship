@@ -14,10 +14,10 @@ func EnhanceRootCommand(cmd *cobra.Command, logger *slog.Logger) {
 	// Add context information to help text
 	originalLong := cmd.Long
 	cmd.Long = originalLong + "\n\n" + getContextHelpText()
-	
+
 	// Add context flag for explicit context switching
 	cmd.PersistentFlags().String("context", "", "Override execution context (local, agent, controller, repl)")
-	
+
 	// Add pre-run hook to handle context
 	originalPreRun := cmd.PersistentPreRun
 	cmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
@@ -28,15 +28,15 @@ func EnhanceRootCommand(cmd *cobra.Command, logger *slog.Logger) {
 				os.Exit(1)
 			}
 		}
-		
+
 		// Apply context-aware command filtering
 		FilterCommandsByContext(cmd.Root(), logger)
-		
+
 		// Show context in verbose mode
 		if verbose, _ := cmd.Flags().GetBool("verbose"); verbose {
 			showContextInfo(logger)
 		}
-		
+
 		// Call original pre-run if it exists
 		if originalPreRun != nil {
 			originalPreRun(cmd, args)
@@ -48,10 +48,10 @@ func EnhanceRootCommand(cmd *cobra.Command, logger *slog.Logger) {
 func FilterCommandsByContext(cmd *cobra.Command, logger *slog.Logger) {
 	manager := NewManager(logger)
 	currentCtx := manager.Current()
-	
+
 	// Get available commands for current context
 	availableCommands := getAvailableCommands(currentCtx)
-	
+
 	// Hide commands not available in current context
 	for _, subcmd := range cmd.Commands() {
 		if !isCommandAvailable(subcmd.Name(), availableCommands) {
@@ -79,15 +79,15 @@ func getContextHelpText() string {
 // handleContextFlag processes the --context flag
 func handleContextFlag(contextStr string, logger *slog.Logger) error {
 	targetContext := ExecutionContext(contextStr)
-	
+
 	// Validate context
 	if !isValidContext(targetContext) {
 		return fmt.Errorf("invalid context '%s'. Valid contexts: local, agent, controller, repl", contextStr)
 	}
-	
+
 	manager := NewManager(logger)
 	currentCtx := manager.Current()
-	
+
 	// Switch context if different
 	if currentCtx != targetContext {
 		if err := manager.SwitchTo(targetContext); err != nil {
@@ -95,7 +95,7 @@ func handleContextFlag(contextStr string, logger *slog.Logger) error {
 		}
 		logger.Info("Context switched for this command", "from", currentCtx, "to", targetContext)
 	}
-	
+
 	return nil
 }
 
@@ -103,9 +103,9 @@ func handleContextFlag(contextStr string, logger *slog.Logger) error {
 func showContextInfo(logger *slog.Logger) {
 	manager := NewManager(logger)
 	currentCtx := manager.Current()
-	
+
 	logger.Info("Current execution context", "context", currentCtx, "description", FormatContext(currentCtx))
-	
+
 	// Show endpoint if applicable
 	if endpoint := manager.GetEndpoint(); endpoint != "" {
 		logger.Info("Context endpoint", "endpoint", endpoint)
@@ -118,85 +118,85 @@ func getAvailableCommands(ctx ExecutionContext) map[string]bool {
 	case ContextLocal:
 		return map[string]bool{
 			// Core local operations
-			"create":     true,
-			"analyze":    true,
-			"find":       true,
-			"tree":       true,
-			"estimate":   true,
-			"wizard":     true,
-			"rclone":     true,
-			"benchmark":  true,
-			
+			"create":    true,
+			"analyze":   true,
+			"find":      true,
+			"tree":      true,
+			"estimate":  true,
+			"wizard":    true,
+			"rclone":    true,
+			"benchmark": true,
+
 			// Management commands
-			"config":     true,
-			"lifecycle":  true,
-			"metrics":    true,
-			"retier":     true,
-			"context":    true,
-			
+			"config":    true,
+			"lifecycle": true,
+			"metrics":   true,
+			"retier":    true,
+			"context":   true,
+
 			// Infrastructure (can start from local)
-			"controller": true,
+			"controller":  true,
 			"travelagent": true,
-			
+
 			// Utilities
-			"schema":     true,
-			"man":        true,
-			"mddocs":     true,
+			"schema": true,
+			"man":    true,
+			"mddocs": true,
 		}
-		
+
 	case ContextAgent:
 		return map[string]bool{
 			// Agent-specific operations
-			"agent":      true, // Future: agent status/management commands
-			"config":     true, // Config reload/view
-			"context":    true,
-			
+			"agent":   true, // Future: agent status/management commands
+			"config":  true, // Config reload/view
+			"context": true,
+
 			// Monitoring and utilities
-			"metrics":    true,
-			"schema":     true,
-			"man":        true,
+			"metrics": true,
+			"schema":  true,
+			"man":     true,
 		}
-		
+
 	case ContextController:
 		return map[string]bool{
 			// Controller operations
 			"controller": true,
 			"context":    true,
-			
+
 			// Monitoring and management
-			"metrics":    true,
-			"config":     true,
-			
+			"metrics": true,
+			"config":  true,
+
 			// Utilities
-			"schema":     true,
-			"man":        true,
+			"schema": true,
+			"man":    true,
 		}
-		
+
 	case ContextREPL:
 		// REPL mode has access to all commands through interactive discovery
 		return map[string]bool{
-			"create":     true,
-			"analyze":    true,
-			"find":       true,
-			"tree":       true,
-			"estimate":   true,
-			"wizard":     true,
-			"rclone":     true,
-			"benchmark":  true,
-			"config":     true,
-			"lifecycle":  true,
-			"metrics":    true,
-			"retier":     true,
-			"context":    true,
-			"controller": true,
+			"create":      true,
+			"analyze":     true,
+			"find":        true,
+			"tree":        true,
+			"estimate":    true,
+			"wizard":      true,
+			"rclone":      true,
+			"benchmark":   true,
+			"config":      true,
+			"lifecycle":   true,
+			"metrics":     true,
+			"retier":      true,
+			"context":     true,
+			"controller":  true,
 			"travelagent": true,
-			"agent":      true,
-			"schema":     true,
-			"man":        true,
-			"mddocs":     true,
-			"shell":      true, // Future: REPL command
+			"agent":       true,
+			"schema":      true,
+			"man":         true,
+			"mddocs":      true,
+			"shell":       true, // Future: REPL command
 		}
-		
+
 	default:
 		// Default to local context commands
 		return getAvailableCommands(ContextLocal)
@@ -212,7 +212,7 @@ func isCommandAvailable(commandName string, availableCommands map[string]bool) b
 func GetContextPrompt(logger *slog.Logger) string {
 	manager := NewManager(logger)
 	currentCtx := manager.Current()
-	
+
 	switch currentCtx {
 	case ContextLocal:
 		return "cargoship> "
@@ -233,15 +233,15 @@ func DetectContextFromEnvironment() ExecutionContext {
 	if os.Getenv("CARGOSHIP_AGENT_MODE") != "" || os.Getenv("CARGOSHIP_CONTROLLER_URL") != "" {
 		return ContextAgent
 	}
-	
+
 	if os.Getenv("CARGOSHIP_CONTROLLER_MODE") != "" {
 		return ContextController
 	}
-	
+
 	if os.Getenv("CARGOSHIP_REPL_MODE") != "" {
 		return ContextREPL
 	}
-	
+
 	// Default to local
 	return ContextLocal
 }

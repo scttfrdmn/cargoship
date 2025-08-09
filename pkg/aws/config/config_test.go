@@ -7,43 +7,43 @@ import (
 
 func TestDefaultAWSConfig(t *testing.T) {
 	config := DefaultAWSConfig()
-	
+
 	if config == nil {
 		t.Fatalf("DefaultAWSConfig() returned nil")
 	}
-	
+
 	if config.Region != "us-east-1" {
 		t.Errorf("DefaultAWSConfig() Region = %v, want us-east-1", config.Region)
 	}
-	
+
 	if config.S3.StorageClass != StorageClassIntelligentTiering {
 		t.Errorf("DefaultAWSConfig() S3.StorageClass = %v, want %v", config.S3.StorageClass, StorageClassIntelligentTiering)
 	}
-	
+
 	if config.S3.MultipartThreshold != 100*1024*1024 {
 		t.Errorf("DefaultAWSConfig() S3.MultipartThreshold = %v, want %v", config.S3.MultipartThreshold, 100*1024*1024)
 	}
-	
+
 	if config.S3.MultipartChunkSize != 10*1024*1024 {
 		t.Errorf("DefaultAWSConfig() S3.MultipartChunkSize = %v, want %v", config.S3.MultipartChunkSize, 10*1024*1024)
 	}
-	
+
 	if config.S3.Concurrency != 8 {
 		t.Errorf("DefaultAWSConfig() S3.Concurrency = %v, want 8", config.S3.Concurrency)
 	}
-	
+
 	if config.CostControl.MaxMonthlyBudget != 1000.0 {
 		t.Errorf("DefaultAWSConfig() CostControl.MaxMonthlyBudget = %v, want 1000.0", config.CostControl.MaxMonthlyBudget)
 	}
-	
+
 	if config.CostControl.AlertThreshold != 0.8 {
 		t.Errorf("DefaultAWSConfig() CostControl.AlertThreshold = %v, want 0.8", config.CostControl.AlertThreshold)
 	}
-	
+
 	if !config.CostControl.AutoOptimize {
 		t.Errorf("DefaultAWSConfig() CostControl.AutoOptimize = false, want true")
 	}
-	
+
 	if config.CostControl.RequireApprovalOver != 500.0 {
 		t.Errorf("DefaultAWSConfig() CostControl.RequireApprovalOver = %v, want 500.0", config.CostControl.RequireApprovalOver)
 	}
@@ -57,17 +57,17 @@ func TestAWSConfig_Validate(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name:   "valid config",
-			config: DefaultAWSConfig(),
+			name:    "valid config",
+			config:  DefaultAWSConfig(),
 			wantErr: false,
 		},
 		{
 			name: "missing region",
 			config: &AWSConfig{
 				S3: S3Config{
-					Bucket:      "test-bucket",
-					Concurrency: 8,
-					MultipartThreshold: 10*1024*1024,
+					Bucket:             "test-bucket",
+					Concurrency:        8,
+					MultipartThreshold: 10 * 1024 * 1024,
 				},
 				CostControl: CostControlConfig{
 					AlertThreshold: 0.8,
@@ -81,8 +81,8 @@ func TestAWSConfig_Validate(t *testing.T) {
 			config: &AWSConfig{
 				Region: "us-east-1",
 				S3: S3Config{
-					Concurrency: 8,
-					MultipartThreshold: 10*1024*1024,
+					Concurrency:        8,
+					MultipartThreshold: 10 * 1024 * 1024,
 				},
 				CostControl: CostControlConfig{
 					AlertThreshold: 0.8,
@@ -96,9 +96,9 @@ func TestAWSConfig_Validate(t *testing.T) {
 			config: &AWSConfig{
 				Region: "us-east-1",
 				S3: S3Config{
-					Bucket:      "test-bucket",
-					Concurrency: 0,
-					MultipartThreshold: 10*1024*1024,
+					Bucket:             "test-bucket",
+					Concurrency:        0,
+					MultipartThreshold: 10 * 1024 * 1024,
 				},
 				CostControl: CostControlConfig{
 					AlertThreshold: 0.8,
@@ -112,9 +112,9 @@ func TestAWSConfig_Validate(t *testing.T) {
 			config: &AWSConfig{
 				Region: "us-east-1",
 				S3: S3Config{
-					Bucket:      "test-bucket",
-					Concurrency: 8,
-					MultipartThreshold: 1024*1024, // 1MB, too small
+					Bucket:             "test-bucket",
+					Concurrency:        8,
+					MultipartThreshold: 1024 * 1024, // 1MB, too small
 				},
 				CostControl: CostControlConfig{
 					AlertThreshold: 0.8,
@@ -128,9 +128,9 @@ func TestAWSConfig_Validate(t *testing.T) {
 			config: &AWSConfig{
 				Region: "us-east-1",
 				S3: S3Config{
-					Bucket:      "test-bucket",
-					Concurrency: 8,
-					MultipartThreshold: 10*1024*1024,
+					Bucket:             "test-bucket",
+					Concurrency:        8,
+					MultipartThreshold: 10 * 1024 * 1024,
 				},
 				CostControl: CostControlConfig{
 					AlertThreshold: -0.1,
@@ -144,9 +144,9 @@ func TestAWSConfig_Validate(t *testing.T) {
 			config: &AWSConfig{
 				Region: "us-east-1",
 				S3: S3Config{
-					Bucket:      "test-bucket",
-					Concurrency: 8,
-					MultipartThreshold: 10*1024*1024,
+					Bucket:             "test-bucket",
+					Concurrency:        8,
+					MultipartThreshold: 10 * 1024 * 1024,
 				},
 				CostControl: CostControlConfig{
 					AlertThreshold: 1.1,
@@ -163,7 +163,7 @@ func TestAWSConfig_Validate(t *testing.T) {
 			if tt.name == "valid config" {
 				tt.config.S3.Bucket = "test-bucket"
 			}
-			
+
 			err := tt.config.Validate()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AWSConfig.Validate() error = %v, wantErr %v", err, tt.wantErr)
@@ -199,7 +199,7 @@ func TestStorageClassConstants(t *testing.T) {
 
 func TestLoadAWSConfig(t *testing.T) {
 	ctx := context.Background()
-	
+
 	// Test with empty profile and region
 	cfg, err := LoadAWSConfig(ctx, "", "")
 	if err != nil {
@@ -210,7 +210,7 @@ func TestLoadAWSConfig(t *testing.T) {
 			t.Logf("LoadAWSConfig() returned config with empty region (expected in test env)")
 		}
 	}
-	
+
 	// Test with specific region
 	cfg, err = LoadAWSConfig(ctx, "", "us-west-2")
 	if err != nil {
@@ -221,7 +221,7 @@ func TestLoadAWSConfig(t *testing.T) {
 			t.Errorf("LoadAWSConfig() region = %v, want us-west-2", cfg.Region)
 		}
 	}
-	
+
 	// Test with profile
 	cfg, err = LoadAWSConfig(ctx, "test-profile", "us-east-1")
 	if err != nil {
@@ -236,11 +236,11 @@ func TestAWSConfigStructFields(t *testing.T) {
 		Region:  "us-west-1",
 		S3: S3Config{
 			Bucket:                  "test-bucket",
-			StorageClass:           StorageClassStandard,
-			MultipartThreshold:     50*1024*1024,
-			MultipartChunkSize:     5*1024*1024,
-			Concurrency:            16,
-			KMSKeyID:               "test-kms-key",
+			StorageClass:            StorageClassStandard,
+			MultipartThreshold:      50 * 1024 * 1024,
+			MultipartChunkSize:      5 * 1024 * 1024,
+			Concurrency:             16,
+			KMSKeyID:                "test-kms-key",
 			UseTransferAcceleration: true,
 		},
 		CostControl: CostControlConfig{
@@ -250,7 +250,7 @@ func TestAWSConfigStructFields(t *testing.T) {
 			RequireApprovalOver: 1000.0,
 		},
 	}
-	
+
 	if config.Profile != "test-profile" {
 		t.Errorf("Profile = %v, want test-profile", config.Profile)
 	}
@@ -294,7 +294,7 @@ func TestAWSConfigStructFields(t *testing.T) {
 
 func TestS3ConfigDefaults(t *testing.T) {
 	config := DefaultAWSConfig()
-	
+
 	// Test S3 defaults
 	if config.S3.MultipartThreshold <= 0 {
 		t.Errorf("S3.MultipartThreshold should be > 0, got %v", config.S3.MultipartThreshold)
@@ -312,7 +312,7 @@ func TestS3ConfigDefaults(t *testing.T) {
 
 func TestCostControlDefaults(t *testing.T) {
 	config := DefaultAWSConfig()
-	
+
 	// Test CostControl defaults
 	if config.CostControl.MaxMonthlyBudget <= 0 {
 		t.Errorf("CostControl.MaxMonthlyBudget should be > 0, got %v", config.CostControl.MaxMonthlyBudget)
@@ -328,23 +328,23 @@ func TestCostControlDefaults(t *testing.T) {
 func TestAWSConfig_Validate_EdgeCases(t *testing.T) {
 	config := DefaultAWSConfig()
 	config.S3.Bucket = "test-bucket"
-	
+
 	// Test boundary values
-	config.S3.MultipartThreshold = 5*1024*1024 // Exactly 5MB
+	config.S3.MultipartThreshold = 5 * 1024 * 1024 // Exactly 5MB
 	if err := config.Validate(); err != nil {
 		t.Errorf("Validate() should accept 5MB threshold, got error: %v", err)
 	}
-	
+
 	config.S3.Concurrency = 1 // Minimum valid value
 	if err := config.Validate(); err != nil {
 		t.Errorf("Validate() should accept concurrency=1, got error: %v", err)
 	}
-	
+
 	config.CostControl.AlertThreshold = 0.0 // Minimum valid value
 	if err := config.Validate(); err != nil {
 		t.Errorf("Validate() should accept AlertThreshold=0.0, got error: %v", err)
 	}
-	
+
 	config.CostControl.AlertThreshold = 1.0 // Maximum valid value
 	if err := config.Validate(); err != nil {
 		t.Errorf("Validate() should accept AlertThreshold=1.0, got error: %v", err)
@@ -355,11 +355,11 @@ func TestLoadAWSConfig_Contexts(t *testing.T) {
 	// Test with cancelled context
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	
+
 	_, err := LoadAWSConfig(ctx, "", "us-east-1")
 	if err == nil {
 		t.Logf("LoadAWSConfig() with cancelled context didn't fail (may use cached config)")
 	}
-	
+
 	// Test with timeout context would be more complex and may not be reliable in tests
 }

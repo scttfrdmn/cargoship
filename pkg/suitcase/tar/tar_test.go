@@ -2,18 +2,18 @@ package tar
 
 import (
 	"archive/tar"
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"bytes"
 
-	"github.com/stretchr/testify/require"
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/scttfrdmn/cargoship/pkg/config"
-	"github.com/scttfrdmn/cargoship/pkg/inventory"
 	"github.com/scttfrdmn/cargoship/pkg/gpg"
+	"github.com/scttfrdmn/cargoship/pkg/inventory"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTarFile(t *testing.T) {
@@ -94,15 +94,15 @@ func TestConfig(t *testing.T) {
 		HashInner:    true,
 		EncryptInner: false,
 	}
-	
+
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, opts)
 	defer func() { _ = archive.Close() }()
-	
+
 	// Test that Config() returns the same options we passed in
 	config := archive.Config()
 	require.Equal(t, opts, config)
@@ -119,10 +119,10 @@ func TestAddEncrypt(t *testing.T) {
 		KeyType: "rsa",
 		Bits:    1024, // Use smaller key for faster testing
 	}
-	
+
 	keyPair, err := gpg.NewKeyPair(keyOpts)
 	require.NoError(t, err)
-	
+
 	// Read the public key to create entity list
 	keyFiles, err := gpg.NewKeyFilesWithPair(keyPair, "")
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestAddEncrypt(t *testing.T) {
 			_ = os.Remove(kf)
 		}
 	}()
-	
+
 	// Find public key file
 	var pubKeyFile string
 	for _, kf := range keyFiles {
@@ -141,47 +141,47 @@ func TestAddEncrypt(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, pubKeyFile)
-	
+
 	// Read entity from public key
 	entity, err := gpg.ReadEntity(pubKeyFile)
 	require.NoError(t, err)
-	
+
 	encryptTo := &openpgp.EntityList{entity}
-	
+
 	// Create test archive with encryption
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format:       "tar",
 		EncryptInner: true,
 		EncryptTo:    encryptTo,
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	// Test AddEncrypt with valid file
 	err = archive.AddEncrypt(inventory.File{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
 	})
 	require.NoError(t, err)
-	
+
 	// Test AddEncrypt with non-existent file
 	err = archive.AddEncrypt(inventory.File{
 		Path:        "../testdata/never-exist.txt",
 		Destination: "never-exist.txt",
 	})
 	require.Error(t, err)
-	
+
 	require.NoError(t, archive.Close())
-	
+
 	// Verify the encrypted file was added to the archive
 	f, err = os.Open(f.Name())
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	var foundFiles []string
 	r := tar.NewReader(f)
 	for {
@@ -192,7 +192,7 @@ func TestAddEncrypt(t *testing.T) {
 		require.NoError(t, err)
 		foundFiles = append(foundFiles, next.Name)
 	}
-	
+
 	// Should have the encrypted file with .gpg extension
 	require.Contains(t, foundFiles, "name.txt.gpg")
 }
@@ -203,14 +203,14 @@ func TestAddEncrypt_InvalidEncryption(t *testing.T) {
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format:       "tar",
 		EncryptInner: true,
 		EncryptTo:    &openpgp.EntityList{}, // Empty entity list
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	err = archive.AddEncrypt(inventory.File{
 		Path:        "../../testdata/name.txt",
 		Destination: "name.txt",
@@ -221,23 +221,23 @@ func TestAddEncrypt_InvalidEncryption(t *testing.T) {
 func TestAddWithAbsolutePath(t *testing.T) {
 	// Test Add function with files that require absolute path processing
 	tmp := t.TempDir()
-	
+
 	// Create a test file
 	testFile := filepath.Join(tmp, "test.txt")
 	err := os.WriteFile(testFile, []byte("test content"), 0644)
 	require.NoError(t, err)
-	
+
 	// Create archive with HashInner enabled to test absolute path logic
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format:    "tar",
 		HashInner: true,
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	// Add the file - this tests the absolute path creation in the HashInner section
 	hs, err := archive.Add(inventory.File{
 		Path:        testFile,
@@ -247,7 +247,7 @@ func TestAddWithAbsolutePath(t *testing.T) {
 	require.NotNil(t, hs)
 	require.NotEmpty(t, hs.Hash)
 	require.Contains(t, hs.Filename, "test.txt")
-	
+
 	require.NoError(t, archive.Close())
 }
 
@@ -256,11 +256,11 @@ func TestDclose(t *testing.T) {
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.txt"))
 	require.NoError(t, err)
-	
+
 	// Write some data
 	_, err = f.WriteString("test")
 	require.NoError(t, err)
-	
+
 	// dclose should not panic and should handle the close gracefully
 	require.NotPanics(t, func() {
 		dclose(f)
@@ -270,7 +270,7 @@ func TestDclose(t *testing.T) {
 func TestDclose_FailingCloser(t *testing.T) {
 	// Test dclose with a closer that fails
 	closer := &failingCloser{}
-	
+
 	// dclose should not panic even when Close() returns an error
 	require.NotPanics(t, func() {
 		dclose(closer)
@@ -290,18 +290,18 @@ func TestAddWithHashSeekError(t *testing.T) {
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format:    "tar",
 		HashInner: true,
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	// Create a test file
 	testFile := filepath.Join(tmp, "test.txt")
 	err = os.WriteFile(testFile, []byte("test content"), 0644)
 	require.NoError(t, err)
-	
+
 	// Test normal case (this should work)
 	hs, err := archive.Add(inventory.File{
 		Path:        testFile,
@@ -320,7 +320,7 @@ func TestNew(t *testing.T) {
 		Format:    "tar",
 		HashInner: true,
 	}
-	
+
 	suitcase := New(&buf, opts)
 	require.NotNil(t, suitcase)
 	require.Equal(t, opts, suitcase.Config())
@@ -333,12 +333,12 @@ func TestAddReadlinkError(t *testing.T) {
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format: "tar",
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	// Test with non-existent file should fail
 	_, err = archive.Add(inventory.File{
 		Path:        "/nonexistent/file.txt",
@@ -353,19 +353,19 @@ func TestAddErrorPaths(t *testing.T) {
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format: "tar",
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	// Test with file that doesn't exist
 	_, err = archive.Add(inventory.File{
 		Path:        "/completely/nonexistent/path/file.txt",
 		Destination: "file.txt",
 	})
 	require.Error(t, err)
-	
+
 	require.NoError(t, archive.Close())
 }
 
@@ -378,10 +378,10 @@ func TestAddEncryptErrorPaths(t *testing.T) {
 		KeyType: "rsa",
 		Bits:    1024,
 	}
-	
+
 	keyPair, err := gpg.NewKeyPair(keyOpts)
 	require.NoError(t, err)
-	
+
 	keyFiles, err := gpg.NewKeyFilesWithPair(keyPair, "")
 	require.NoError(t, err)
 	defer func() {
@@ -389,7 +389,7 @@ func TestAddEncryptErrorPaths(t *testing.T) {
 			_ = os.Remove(kf)
 		}
 	}()
-	
+
 	// Find public key file
 	var pubKeyFile string
 	for _, kf := range keyFiles {
@@ -399,58 +399,58 @@ func TestAddEncryptErrorPaths(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, pubKeyFile)
-	
+
 	entity, err := gpg.ReadEntity(pubKeyFile)
 	require.NoError(t, err)
-	
+
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format:       "tar",
 		EncryptInner: true,
 		EncryptTo:    &openpgp.EntityList{entity},
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	// Test AddEncrypt with non-existent file path (covers os.ReadFile error)
 	err = archive.AddEncrypt(inventory.File{
 		Path:        "/nonexistent/file.txt",
 		Destination: "file.txt",
 	})
 	require.Error(t, err) // Should fail due to file not found
-	
+
 	require.NoError(t, archive.Close())
 }
 
 // Test additional error path coverage for better results
 func TestAdditionalErrorPaths(t *testing.T) {
 	tmp := t.TempDir()
-	
+
 	// Create a test file
 	targetFile := filepath.Join(tmp, "target.txt")
 	err := os.WriteFile(targetFile, []byte("target content"), 0644)
 	require.NoError(t, err)
-	
+
 	// Create archive
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format: "tar",
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	// Test Add with regular file
 	_, err = archive.Add(inventory.File{
 		Path:        targetFile,
 		Destination: "target.txt",
 	})
 	require.NoError(t, err)
-	
+
 	require.NoError(t, archive.Close())
 }
 
@@ -463,10 +463,10 @@ func TestAddEncryptSymlinkHandling(t *testing.T) {
 		KeyType: "rsa",
 		Bits:    1024,
 	}
-	
+
 	keyPair, err := gpg.NewKeyPair(keyOpts)
 	require.NoError(t, err)
-	
+
 	keyFiles, err := gpg.NewKeyFilesWithPair(keyPair, "")
 	require.NoError(t, err)
 	defer func() {
@@ -474,7 +474,7 @@ func TestAddEncryptSymlinkHandling(t *testing.T) {
 			_ = os.Remove(kf)
 		}
 	}()
-	
+
 	// Find public key file
 	var pubKeyFile string
 	for _, kf := range keyFiles {
@@ -484,53 +484,53 @@ func TestAddEncryptSymlinkHandling(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, pubKeyFile)
-	
+
 	entity, err := gpg.ReadEntity(pubKeyFile)
 	require.NoError(t, err)
-	
+
 	tmp := t.TempDir()
-	
+
 	// Create a simple file to test with
 	targetFile := filepath.Join(tmp, "target.txt")
 	err = os.WriteFile(targetFile, []byte("target content"), 0644)
 	require.NoError(t, err)
-	
+
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format:       "tar",
 		EncryptInner: true,
 		EncryptTo:    &openpgp.EntityList{entity},
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	// Test AddEncrypt with regular file (should test the non-symlink path)
 	err = archive.AddEncrypt(inventory.File{
 		Path:        targetFile,
 		Destination: "target.txt",
 	})
 	require.NoError(t, err)
-	
+
 	require.NoError(t, archive.Close())
 }
 
 // Test Write Header error path
 func TestWriteHeaderError(t *testing.T) {
 	tmp := t.TempDir()
-	
+
 	// Create a file that we'll close early to trigger write errors
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format: "tar",
 	})
-	
+
 	// Close the underlying file to make WriteHeader fail
 	_ = f.Close()
-	
+
 	// This should trigger the WriteHeader error path
 	_, err = archive.Add(inventory.File{
 		Path:        "../../testdata/name.txt",
@@ -542,29 +542,29 @@ func TestWriteHeaderError(t *testing.T) {
 // Test symlink error handling in Add function
 func TestAddSymlinkError(t *testing.T) {
 	tmp := t.TempDir()
-	
+
 	// Create a broken symlink (pointing to non-existent file)
 	symlinkFile := filepath.Join(tmp, "broken-symlink.txt")
 	err := os.Symlink("/nonexistent/target.txt", symlinkFile)
 	require.NoError(t, err)
-	
+
 	// Create archive
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format: "tar",
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	// This should fail when trying to open the broken symlink
 	_, err = archive.Add(inventory.File{
 		Path:        symlinkFile,
 		Destination: "broken-symlink.txt",
 	})
 	require.Error(t, err) // Should fail because symlink target doesn't exist
-	
+
 	require.NoError(t, archive.Close())
 }
 
@@ -577,10 +577,10 @@ func TestAddEncryptSymlinkError(t *testing.T) {
 		KeyType: "rsa",
 		Bits:    1024,
 	}
-	
+
 	keyPair, err := gpg.NewKeyPair(keyOpts)
 	require.NoError(t, err)
-	
+
 	keyFiles, err := gpg.NewKeyFilesWithPair(keyPair, "")
 	require.NoError(t, err)
 	defer func() {
@@ -588,7 +588,7 @@ func TestAddEncryptSymlinkError(t *testing.T) {
 			_ = os.Remove(kf)
 		}
 	}()
-	
+
 	// Find public key file
 	var pubKeyFile string
 	for _, kf := range keyFiles {
@@ -598,60 +598,60 @@ func TestAddEncryptSymlinkError(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, pubKeyFile)
-	
+
 	entity, err := gpg.ReadEntity(pubKeyFile)
 	require.NoError(t, err)
-	
+
 	tmp := t.TempDir()
-	
+
 	// Create a broken symlink (pointing to non-existent file)
 	symlinkFile := filepath.Join(tmp, "broken-symlink.txt")
 	err = os.Symlink("/nonexistent/target.txt", symlinkFile)
 	require.NoError(t, err)
-	
+
 	// Create archive
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format:       "tar",
 		EncryptInner: true,
 		EncryptTo:    &openpgp.EntityList{entity},
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	// This should fail when trying to read the broken symlink target
 	err = archive.AddEncrypt(inventory.File{
 		Path:        symlinkFile,
 		Destination: "broken-symlink.txt",
 	})
 	require.Error(t, err) // Should fail because symlink target doesn't exist
-	
+
 	require.NoError(t, archive.Close())
 }
 
 // Test AddEncrypt with encryption failure
 func TestAddEncryptEncryptionFailure(t *testing.T) {
 	tmp := t.TempDir()
-	
+
 	// Create a test file
 	testFile := filepath.Join(tmp, "test.txt")
 	err := os.WriteFile(testFile, []byte("test content"), 0644)
 	require.NoError(t, err)
-	
+
 	// Create archive
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format:       "tar",
 		EncryptInner: true,
 		EncryptTo:    &openpgp.EntityList{}, // Empty entity list should cause encryption to fail
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	// This should fail due to empty encryption entity list
 	err = archive.AddEncrypt(inventory.File{
 		Path:        testFile,
@@ -663,23 +663,23 @@ func TestAddEncryptEncryptionFailure(t *testing.T) {
 // Test Add function with HashInner and file that can't be seeked
 func TestAddHashInnerCopyError(t *testing.T) {
 	tmp := t.TempDir()
-	
+
 	// Create a test file
 	testFile := filepath.Join(tmp, "test.txt")
 	err := os.WriteFile(testFile, []byte("test content"), 0644)
 	require.NoError(t, err)
-	
+
 	// Create archive
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format:    "tar",
 		HashInner: true,
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	// Test the HashInner path with a regular file
 	hs, err := archive.Add(inventory.File{
 		Path:        testFile,
@@ -689,35 +689,35 @@ func TestAddHashInnerCopyError(t *testing.T) {
 	require.NotNil(t, hs)
 	require.NotEmpty(t, hs.Hash)
 	require.Contains(t, hs.Filename, testFile)
-	
+
 	require.NoError(t, archive.Close())
 }
 
 // Test Add function with directory - the reading step will fail as expected
 func TestAddDirectory(t *testing.T) {
 	tmp := t.TempDir()
-	
+
 	// Create a test directory
 	testDir := filepath.Join(tmp, "testdir")
 	err := os.Mkdir(testDir, 0755)
 	require.NoError(t, err)
-	
+
 	// Create archive
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
-	
+
 	archive := New(f, &config.SuitCaseOpts{
 		Format: "tar",
 	})
 	defer func() { _ = archive.Close() }()
-	
+
 	// Try to add a directory - this should fail when trying to read the directory
 	_, err = archive.Add(inventory.File{
 		Path:        testDir,
 		Destination: "testdir/",
 	})
 	require.Error(t, err) // Should fail because we can't read a directory as a file
-	
+
 	require.NoError(t, archive.Close())
 }

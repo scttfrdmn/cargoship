@@ -87,7 +87,7 @@ func (d *Dashboard) updateInventoryTree() {
 			item.Cost,
 		})
 	}
-	
+
 	// Add some mock data if no real data
 	if len(rows) == 0 {
 		rows = []table.Row{
@@ -97,7 +97,7 @@ func (d *Dashboard) updateInventoryTree() {
 			{"s3://research-bucket/logs.zip", "archive", "45GB", "IA", "$2.88/mo"},
 		}
 	}
-	
+
 	d.inventoryTree.SetRows(rows)
 }
 
@@ -172,7 +172,7 @@ func (d *Dashboard) updateConfigTable() {
 			config.Description,
 		})
 	}
-	
+
 	// Add some mock data if no real data
 	if len(rows) == 0 {
 		rows = []table.Row{
@@ -183,7 +183,7 @@ func (d *Dashboard) updateConfigTable() {
 			{"encryption", "AES256", "config", "Default encryption method"},
 		}
 	}
-	
+
 	d.configTable.SetRows(rows)
 }
 

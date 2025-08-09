@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	porter "github.com/scttfrdmn/cargoship/pkg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	porter "github.com/scttfrdmn/cargoship/pkg"
 )
 
 func BenchmarkGetSha256(b *testing.B) {
@@ -108,7 +108,7 @@ func TestUint64ToInt64(t *testing.T) {
 			panics: true,
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.panics {
@@ -125,25 +125,25 @@ func TestUint64ToInt64(t *testing.T) {
 
 func TestUint64ToInt64EdgeCases(t *testing.T) {
 	// Test boundary conditions
-	
+
 	// Just under the limit
 	justUnderMax := uint64(math.MaxInt64)
 	result := uint64ToInt64(justUnderMax)
 	assert.Equal(t, int64(math.MaxInt64), result)
-	
+
 	// Just over the limit should panic
 	assert.Panics(t, func() {
 		uint64ToInt64(uint64(math.MaxInt64) + 1)
 	})
-	
+
 	// Test with actual memory limit values (common use case)
 	memoryLimits := []uint64{
-		1024,             // 1KB
-		1024 * 1024,      // 1MB  
-		1024 * 1024 * 1024, // 1GB
+		1024,                   // 1KB
+		1024 * 1024,            // 1MB
+		1024 * 1024 * 1024,     // 1GB
 		8 * 1024 * 1024 * 1024, // 8GB
 	}
-	
+
 	for _, limit := range memoryLimits {
 		result := uint64ToInt64(limit)
 		assert.Equal(t, int64(limit), result)

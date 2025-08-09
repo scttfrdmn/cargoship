@@ -25,10 +25,10 @@ func (sbm *StagingBufferManager) Start(ctx context.Context) {
 	for i := 0; i < sbm.config.MaxConcurrentStaging; i++ {
 		go sbm.stagingWorker(ctx, i)
 	}
-	
+
 	// Start memory monitor
 	go sbm.memoryMonitor.Start(ctx)
-	
+
 	// Start cleanup routine
 	go sbm.cleanupLoop(ctx)
 }
@@ -37,7 +37,7 @@ func (sbm *StagingBufferManager) Start(ctx context.Context) {
 func (sbm *StagingBufferManager) StageChunk(req *StagingRequest, boundary ChunkBoundary) error {
 	sbm.mu.Lock()
 	defer sbm.mu.Unlock()
-	
+
 	// Check memory pressure
 	if sbm.memoryMonitor.IsUnderPressure() {
 		return &StagingError{
@@ -49,7 +49,7 @@ func (sbm *StagingBufferManager) StageChunk(req *StagingRequest, boundary ChunkB
 			},
 		}
 	}
-	
+
 	// Check if we have capacity
 	if len(sbm.stagingQueue) >= cap(sbm.stagingQueue) {
 		return &StagingError{
@@ -61,7 +61,7 @@ func (sbm *StagingBufferManager) StageChunk(req *StagingRequest, boundary ChunkB
 			},
 		}
 	}
-	
+
 	// Queue the staging request
 	select {
 	case sbm.stagingQueue <- req:
@@ -78,7 +78,7 @@ func (sbm *StagingBufferManager) StageChunk(req *StagingRequest, boundary ChunkB
 func (sbm *StagingBufferManager) GetStagedChunk(streamID string) (*StagedChunk, error) {
 	sbm.mu.RLock()
 	defer sbm.mu.RUnlock()
-	
+
 	chunk, exists := sbm.activeBuffers[streamID]
 	if !exists {
 		return nil, &StagingError{
@@ -89,7 +89,7 @@ func (sbm *StagingBufferManager) GetStagedChunk(streamID string) (*StagedChunk, 
 			},
 		}
 	}
-	
+
 	return chunk, nil
 }
 
@@ -97,11 +97,11 @@ func (sbm *StagingBufferManager) GetStagedChunk(streamID string) (*StagedChunk, 
 func (sbm *StagingBufferManager) ReleaseStagedChunk(streamID string) {
 	sbm.mu.Lock()
 	defer sbm.mu.Unlock()
-	
+
 	if chunk, exists := sbm.activeBuffers[streamID]; exists {
 		// Return buffer to pool
 		sbm.bufferPool.ReturnBuffer(chunk.Data)
-		
+
 		// Remove from active buffers
 		delete(sbm.activeBuffers, streamID)
 	}
@@ -124,12 +124,12 @@ func (sbm *StagingBufferManager) GetUtilization() float64 {
 	sbm.mu.RLock()
 	activeCount := len(sbm.activeBuffers)
 	sbm.mu.RUnlock()
-	
+
 	maxBuffers := sbm.config.MaxBufferSizeMB / sbm.config.TargetChunkSizeMB
 	if maxBuffers == 0 {
 		return 0
 	}
-	
+
 	return float64(activeCount) / float64(maxBuffers)
 }
 
@@ -137,15 +137,15 @@ func (sbm *StagingBufferManager) GetUtilization() float64 {
 func (sbm *StagingBufferManager) CleanupExpired() {
 	sbm.mu.Lock()
 	defer sbm.mu.Unlock()
-	
+
 	now := time.Now()
 	expiration := time.Minute * 10 // 10 minute expiration
-	
+
 	for streamID, chunk := range sbm.activeBuffers {
 		if now.Sub(chunk.StagedAt) > expiration {
 			// Return buffer to pool
 			sbm.bufferPool.ReturnBuffer(chunk.Data)
-			
+
 			// Remove from active buffers
 			delete(sbm.activeBuffers, streamID)
 		}
@@ -155,12 +155,12 @@ func (sbm *StagingBufferManager) CleanupExpired() {
 // AdjustBufferSizes adjusts buffer allocation based on memory pressure.
 func (sbm *StagingBufferManager) AdjustBufferSizes() {
 	usage := sbm.memoryMonitor.GetUsage()
-	
+
 	// If memory usage is high, trigger garbage collection
 	if usage > sbm.config.GCTriggerThreshold {
 		runtime.GC()
 	}
-	
+
 	// Adjust buffer pool size based on memory pressure
 	if usage > sbm.config.MemoryPressureThreshold {
 		sbm.bufferPool.ReduceSize()
@@ -195,7 +195,7 @@ func (sbm *StagingBufferManager) processStagingRequest(req *StagingRequest, work
 		}
 		return
 	}
-	
+
 	// Read data into buffer
 	bytesRead, err := req.Reader.Read(buffer)
 	if err != nil {
@@ -205,10 +205,10 @@ func (sbm *StagingBufferManager) processStagingRequest(req *StagingRequest, work
 		}
 		return
 	}
-	
+
 	// Trim buffer to actual size
 	actualData := buffer[:bytesRead]
-	
+
 	// Create staged chunk
 	chunk := &StagedChunk{
 		ID:               fmt.Sprintf("%s-%d-%d", req.StreamID, workerID, time.Now().UnixNano()),
@@ -218,15 +218,15 @@ func (sbm *StagingBufferManager) processStagingRequest(req *StagingRequest, work
 		StagedAt:         time.Now(),
 		ContentType:      req.ContentType,
 	}
-	
+
 	// Analyze content for additional metadata
 	sbm.analyzeChunkContent(chunk)
-	
+
 	// Store in active buffers
 	sbm.mu.Lock()
 	sbm.activeBuffers[chunk.ID] = chunk
 	sbm.mu.Unlock()
-	
+
 	// Notify completion
 	if req.Callback != nil {
 		req.Callback(chunk, nil)
@@ -238,10 +238,10 @@ func (sbm *StagingBufferManager) analyzeChunkContent(chunk *StagedChunk) {
 	// Calculate entropy
 	entropy := NewEntropyCalculator().CalculateEntropy(chunk.Data)
 	chunk.Entropy = entropy
-	
+
 	// Estimate compression ratio based on entropy
 	chunk.CompressionRatio = sbm.estimateCompressionRatio(entropy, chunk.ContentType)
-	
+
 	// Estimate compressed size
 	chunk.CompressedSize = int(float64(len(chunk.Data)) * chunk.CompressionRatio)
 }
@@ -250,7 +250,7 @@ func (sbm *StagingBufferManager) analyzeChunkContent(chunk *StagedChunk) {
 func (sbm *StagingBufferManager) estimateCompressionRatio(entropy float64, contentType string) float64 {
 	// Base ratio from entropy
 	baseRatio := 1.0 - (entropy / 8.0)
-	
+
 	// Adjust by content type
 	switch contentType {
 	case "text":
@@ -264,7 +264,7 @@ func (sbm *StagingBufferManager) estimateCompressionRatio(entropy float64, conte
 	default:
 		baseRatio *= 0.5
 	}
-	
+
 	// Ensure reasonable bounds
 	if baseRatio < 0.1 {
 		baseRatio = 0.1
@@ -272,7 +272,7 @@ func (sbm *StagingBufferManager) estimateCompressionRatio(entropy float64, conte
 	if baseRatio > 0.9 {
 		baseRatio = 0.9
 	}
-	
+
 	return baseRatio
 }
 
@@ -280,7 +280,7 @@ func (sbm *StagingBufferManager) estimateCompressionRatio(entropy float64, conte
 func (sbm *StagingBufferManager) cleanupLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -304,7 +304,7 @@ type BufferPool struct {
 func NewBufferPool(config *StagingConfig) *BufferPool {
 	bufferSize := config.TargetChunkSizeMB * 1024 * 1024
 	maxBuffers := config.MaxBufferSizeMB / config.TargetChunkSizeMB
-	
+
 	return &BufferPool{
 		buffers:    make([][]byte, 0, maxBuffers),
 		maxBuffers: maxBuffers,
@@ -316,20 +316,20 @@ func NewBufferPool(config *StagingConfig) *BufferPool {
 func (bp *BufferPool) GetBuffer(size int64) []byte {
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
-	
+
 	// Try to reuse existing buffer
 	if len(bp.buffers) > 0 {
 		buffer := bp.buffers[len(bp.buffers)-1]
 		bp.buffers = bp.buffers[:len(bp.buffers)-1]
-		
+
 		// Resize if needed
 		if int64(len(buffer)) < size {
 			return make([]byte, size)
 		}
-		
+
 		return buffer[:size]
 	}
-	
+
 	// Allocate new buffer
 	return make([]byte, size)
 }
@@ -338,7 +338,7 @@ func (bp *BufferPool) GetBuffer(size int64) []byte {
 func (bp *BufferPool) ReturnBuffer(buffer []byte) {
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
-	
+
 	// Only return if we have space and buffer is reasonable size
 	if len(bp.buffers) < bp.maxBuffers && len(buffer) >= bp.bufferSize/2 {
 		// Reset buffer
@@ -353,7 +353,7 @@ func (bp *BufferPool) ReturnBuffer(buffer []byte) {
 func (bp *BufferPool) ReduceSize() {
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
-	
+
 	// Remove half the buffers
 	if len(bp.buffers) > 2 {
 		newSize := len(bp.buffers) / 2
@@ -365,7 +365,7 @@ func (bp *BufferPool) ReduceSize() {
 func (bp *BufferPool) IncreaseSize() {
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
-	
+
 	// Pre-allocate some buffers if we have room
 	for len(bp.buffers) < bp.maxBuffers/2 {
 		buffer := make([]byte, bp.bufferSize)
@@ -394,7 +394,7 @@ func NewMemoryMonitor(config *StagingConfig) *MemoryMonitor {
 func (mm *MemoryMonitor) Start(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -409,18 +409,18 @@ func (mm *MemoryMonitor) Start(ctx context.Context) {
 func (mm *MemoryMonitor) updateMemoryUsage() {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
-	
+
 	// Calculate memory usage ratio
 	totalMemory := memStats.Sys
 	usedMemory := memStats.Alloc
-	
+
 	if totalMemory > 0 {
 		mm.currentUsage = float64(usedMemory) / float64(totalMemory)
 	}
-	
+
 	// Update pressure detection
 	mm.pressureDetected = mm.currentUsage > mm.config.MemoryPressureThreshold
 	mm.lastUpdate = time.Now()

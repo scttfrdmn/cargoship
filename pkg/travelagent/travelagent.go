@@ -21,11 +21,11 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/sethvargo/go-retry"
-	"github.com/spf13/cobra"
 	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters"
 	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud"
 	"github.com/scttfrdmn/cargoship/pkg/rclone"
+	"github.com/sethvargo/go-retry"
+	"github.com/spf13/cobra"
 	"moul.io/http2curl"
 )
 
@@ -58,16 +58,16 @@ type TravelAgenter interface {
 // StatusUpdate is a little structure that gives our TravelAgent more info on
 // where we are in the process
 type StatusUpdate struct {
-	Status                 Status     `json:"status"`
-	SizeBytes              int64      `json:"size_bytes,omitempty"`
-	Speed                  float64    `json:"speed,omitempty"`
-	TransferredBytes       int64      `json:"transferred_bytes,omitempty"`
-	PercentDone            int        `json:"percent_done,omitempty"`
-	Name                   string     `json:"-"`
-	StartedAt              *time.Time `json:"started_at,omitempty"`
-	CompletedAt            *time.Time `json:"completed_at,omitempty"`
-	MetadataCheckSum       string     `json:"metadata_checksum,omitempty"`
-	Metadata               string     `json:"-"`
+	Status               Status     `json:"status"`
+	SizeBytes            int64      `json:"size_bytes,omitempty"`
+	Speed                float64    `json:"speed,omitempty"`
+	TransferredBytes     int64      `json:"transferred_bytes,omitempty"`
+	PercentDone          int        `json:"percent_done,omitempty"`
+	Name                 string     `json:"-"`
+	StartedAt            *time.Time `json:"started_at,omitempty"`
+	CompletedAt          *time.Time `json:"completed_at,omitempty"`
+	MetadataCheckSum     string     `json:"metadata_checksum,omitempty"`
+	Metadata             string     `json:"-"`
 	CargoshipSource      string     `json:"cargoship_source,omitempty"`
 	CargoshipDestination string     `json:"cargoship_destination,omitempty"`
 }

@@ -17,7 +17,7 @@ func BenchmarkS3OptimizerInitialization(b *testing.B) {
 	s3Client := s3.NewFromConfig(aws.Config{
 		Region: "us-east-1",
 	})
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		optimizer, err := NewS3Optimizer(ctx, s3Client, nil, nil)
@@ -34,7 +34,7 @@ func BenchmarkPerformanceMetricsCollection(b *testing.B) {
 	s3Client := s3.NewFromConfig(aws.Config{
 		Region: "us-east-1",
 	})
-	
+
 	optimizer, err := NewS3Optimizer(ctx, s3Client, nil, nil)
 	if err != nil {
 		b.Fatalf("Failed to create optimizer: %v", err)
@@ -44,13 +44,13 @@ func BenchmarkPerformanceMetricsCollection(b *testing.B) {
 			b.Logf("Warning: failed to shutdown optimizer: %v", err)
 		}
 	}()
-	
+
 	// Simulate some requests to generate metrics
 	for i := 0; i < 10; i++ {
 		optimizer.recordRequest(time.Millisecond*50, nil)
 		optimizer.recordBytes(1024)
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		metrics := optimizer.GetPerformanceMetrics()
@@ -64,7 +64,7 @@ func BenchmarkNetworkConditionsUpdate(b *testing.B) {
 	s3Client := s3.NewFromConfig(aws.Config{
 		Region: "us-east-1",
 	})
-	
+
 	optimizer, err := NewS3Optimizer(ctx, s3Client, nil, nil)
 	if err != nil {
 		b.Fatalf("Failed to create optimizer: %v", err)
@@ -74,7 +74,7 @@ func BenchmarkNetworkConditionsUpdate(b *testing.B) {
 			b.Logf("Warning: failed to shutdown optimizer: %v", err)
 		}
 	}()
-	
+
 	conditions := &NetworkConditions{
 		Bandwidth:   100.0,
 		RTT:         50 * time.Millisecond,
@@ -82,7 +82,7 @@ func BenchmarkNetworkConditionsUpdate(b *testing.B) {
 		Congestion:  10.0,
 		LastUpdated: time.Now(),
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		err := optimizer.UpdateNetworkConditions(conditions)
@@ -95,16 +95,16 @@ func BenchmarkNetworkConditionsUpdate(b *testing.B) {
 // BenchmarkConfigurationValidation benchmarks configuration processing
 func BenchmarkConfigurationValidation(b *testing.B) {
 	config := &Config{
-		EnableBBR:           true,
-		EnableCUBIC:         true,
-		NetworkAdaptation:   true,
-		PredictiveMode:      true,
-		MaxConnections:      20,
-		ConnectionPoolSize:  16,
-		BufferSize:          128 * 1024 * 1024,
-		MetricsEnabled:      true,
+		EnableBBR:          true,
+		EnableCUBIC:        true,
+		NetworkAdaptation:  true,
+		PredictiveMode:     true,
+		MaxConnections:     20,
+		ConnectionPoolSize: 16,
+		BufferSize:         128 * 1024 * 1024,
+		MetricsEnabled:     true,
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// Simulate configuration validation
@@ -123,7 +123,7 @@ func BenchmarkSafeStringOperations(b *testing.B) {
 		aws.String(""),
 		aws.String("very-long-test-key-with-many-characters-to-simulate-real-world-usage"),
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for _, str := range testStrings {
@@ -143,7 +143,7 @@ func BenchmarkOptimizationRatioCalculation(b *testing.B) {
 		totalBytes:         1024 * 1024 * 100, // 100MB
 		startTime:          time.Now().Add(-time.Minute),
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		perfMetrics := metrics.getPerformanceMetrics()
@@ -156,29 +156,29 @@ func BenchmarkOptimizationRatioCalculation(b *testing.B) {
 // BenchmarkBatchOperationsPreparation benchmarks batch operation setup
 func BenchmarkBatchOperationsPreparation(b *testing.B) {
 	ctx := context.Background()
-	
+
 	// Create test requests
 	batchSize := 10
 	getRequests := make([]*s3.GetObjectInput, batchSize)
 	putRequests := make([]*s3.PutObjectInput, batchSize)
-	
+
 	for i := 0; i < batchSize; i++ {
 		getRequests[i] = &s3.GetObjectInput{
 			Bucket: aws.String("test-bucket"),
 			Key:    aws.String("test-key-" + string(rune(i+'0'))),
 		}
-		
+
 		putRequests[i] = &s3.PutObjectInput{
 			Bucket: aws.String("test-bucket"),
 			Key:    aws.String("test-key-" + string(rune(i+'0'))),
 			Body:   strings.NewReader("test data"),
 		}
 	}
-	
+
 	s3Client := s3.NewFromConfig(aws.Config{
 		Region: "us-east-1",
 	})
-	
+
 	optimizer, err := NewS3Optimizer(ctx, s3Client, nil, nil)
 	if err != nil {
 		b.Fatalf("Failed to create optimizer: %v", err)
@@ -188,9 +188,9 @@ func BenchmarkBatchOperationsPreparation(b *testing.B) {
 			b.Logf("Warning: failed to shutdown optimizer: %v", err)
 		}
 	}()
-	
+
 	b.ResetTimer()
-	
+
 	b.Run("BatchGETPreparation", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			// Simulate batch preparation overhead
@@ -203,7 +203,7 @@ func BenchmarkBatchOperationsPreparation(b *testing.B) {
 			_ = batchResults
 		}
 	})
-	
+
 	b.Run("BatchPUTPreparation", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			// Simulate batch preparation overhead
@@ -224,7 +224,7 @@ func BenchmarkHealthCheckOperations(b *testing.B) {
 	s3Client := s3.NewFromConfig(aws.Config{
 		Region: "us-east-1",
 	})
-	
+
 	optimizer, err := NewS3Optimizer(ctx, s3Client, nil, nil)
 	if err != nil {
 		b.Fatalf("Failed to create optimizer: %v", err)
@@ -234,7 +234,7 @@ func BenchmarkHealthCheckOperations(b *testing.B) {
 			b.Logf("Warning: failed to shutdown optimizer: %v", err)
 		}
 	}()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		err := optimizer.HealthCheck(ctx)

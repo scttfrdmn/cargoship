@@ -15,65 +15,65 @@ import (
 	"sync"
 	"time"
 
-	"github.com/klauspost/compress/zstd"
 	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 )
 
 // StreamingCompressor implements real-time compression with algorithm selection and adaptation.
 type StreamingCompressor struct {
 	// Compression configuration
-	algorithm            CompressionAlgorithm
+	algorithm           CompressionAlgorithm
 	level               CompressionLevel
 	adaptiveSelection   bool
 	compressionStrategy CompressionStrategy
-	
+
 	// Performance optimization
-	bufferSize          int
-	maxConcurrency      int
-	chunkThreshold      int64
-	adaptationWindow    time.Duration
-	
+	bufferSize       int
+	maxConcurrency   int
+	chunkThreshold   int64
+	adaptationWindow time.Duration
+
 	// Algorithm-specific compressors
-	gzipPool            sync.Pool
-	brotliPool          sync.Pool
-	zstdEncoderPool     sync.Pool
-	zstdDecoderPool     sync.Pool
-	
+	gzipPool        sync.Pool
+	brotliPool      sync.Pool
+	zstdEncoderPool sync.Pool
+	zstdDecoderPool sync.Pool
+
 	// Performance tracking
-	compressionMetrics  *CompressionMetrics
+	compressionMetrics   *CompressionMetrics
 	algorithmPerformance map[CompressionAlgorithm]*AlgorithmPerformance
-	
+
 	// Real-time adaptation
-	performanceHistory  []CompressionPerformanceSnapshot
-	adaptationEnabled   bool
-	learningRate        float64
-	
+	performanceHistory []CompressionPerformanceSnapshot
+	adaptationEnabled  bool
+	learningRate       float64
+
 	// Content-aware optimization
-	contentAnalyzer     *CompressionContentAnalyzer
-	ratioPredictor      *CompressionRatioPredictor
-	
-	mu                  sync.RWMutex
-	ctx                 context.Context
+	contentAnalyzer *CompressionContentAnalyzer
+	ratioPredictor  *CompressionRatioPredictor
+
+	mu  sync.RWMutex
+	ctx context.Context
 }
 
 // CompressionAlgorithm defines supported compression algorithms.
 type CompressionAlgorithm string
 
 const (
-	CompressionNone     CompressionAlgorithm = "none"
-	CompressionGzip     CompressionAlgorithm = "gzip"
-	CompressionBrotli   CompressionAlgorithm = "brotli"
-	CompressionZstd     CompressionAlgorithm = "zstd"
-	CompressionAuto     CompressionAlgorithm = "auto"
+	CompressionNone   CompressionAlgorithm = "none"
+	CompressionGzip   CompressionAlgorithm = "gzip"
+	CompressionBrotli CompressionAlgorithm = "brotli"
+	CompressionZstd   CompressionAlgorithm = "zstd"
+	CompressionAuto   CompressionAlgorithm = "auto"
 )
 
 // CompressionLevel defines compression effort levels.
 type CompressionLevel string
 
 const (
-	CompressionFast     CompressionLevel = "fast"
-	CompressionBalanced CompressionLevel = "balanced"
-	CompressionBest     CompressionLevel = "best"
+	CompressionFast      CompressionLevel = "fast"
+	CompressionBalanced  CompressionLevel = "balanced"
+	CompressionBest      CompressionLevel = "best"
 	CompressionAutoLevel CompressionLevel = "auto"
 )
 
@@ -81,28 +81,28 @@ const (
 type CompressionStrategy string
 
 const (
-	StrategySpeed       CompressionStrategy = "speed"
-	StrategyRatio       CompressionStrategy = "ratio"
-	StrategyBalanced    CompressionStrategy = "balanced"
-	StrategyAdaptive    CompressionStrategy = "adaptive"
+	StrategySpeed            CompressionStrategy = "speed"
+	StrategyRatio            CompressionStrategy = "ratio"
+	StrategyBalanced         CompressionStrategy = "balanced"
+	StrategyAdaptive         CompressionStrategy = "adaptive"
 	StrategyNetworkOptimized CompressionStrategy = "network_optimized"
 )
 
 // CompressionResult contains the results of a compression operation.
 type CompressionResult struct {
-	Algorithm           CompressionAlgorithm
-	Level              CompressionLevel
-	OriginalSize       int64
-	CompressedSize     int64
-	CompressionRatio   float64
-	CompressionTime    time.Duration
-	ThroughputMBps     float64
-	CPUUsage          float64
-	MemoryUsage       int64
-	Success           bool
-	ErrorMessage      string
-	Quality           CompressionQuality
-	Timestamp         time.Time
+	Algorithm        CompressionAlgorithm
+	Level            CompressionLevel
+	OriginalSize     int64
+	CompressedSize   int64
+	CompressionRatio float64
+	CompressionTime  time.Duration
+	ThroughputMBps   float64
+	CPUUsage         float64
+	MemoryUsage      int64
+	Success          bool
+	ErrorMessage     string
+	Quality          CompressionQuality
+	Timestamp        time.Time
 }
 
 // CompressionQuality represents the quality assessment of compression.
@@ -117,92 +117,92 @@ const (
 
 // CompressionMetrics tracks overall compression performance.
 type CompressionMetrics struct {
-	TotalOperations     int64
-	TotalBytesProcessed int64
+	TotalOperations      int64
+	TotalBytesProcessed  int64
 	TotalCompressionTime time.Duration
-	AverageRatio        float64
-	AverageThroughput   float64
-	AlgorithmUsage      map[CompressionAlgorithm]int64
-	SuccessRate         float64
-	
+	AverageRatio         float64
+	AverageThroughput    float64
+	AlgorithmUsage       map[CompressionAlgorithm]int64
+	SuccessRate          float64
+
 	// Real-time metrics
-	CurrentOperations   int
-	QueuedOperations    int
-	ActiveThreads       int
-	MemoryUsage        int64
-	
-	LastUpdate         time.Time
+	CurrentOperations int
+	QueuedOperations  int
+	ActiveThreads     int
+	MemoryUsage       int64
+
+	LastUpdate time.Time
 }
 
 // AlgorithmPerformance tracks performance for specific algorithms.
 type AlgorithmPerformance struct {
-	Algorithm           CompressionAlgorithm
-	TotalOperations     int64
-	AverageRatio        float64
-	AverageThroughput   float64
+	Algorithm              CompressionAlgorithm
+	TotalOperations        int64
+	AverageRatio           float64
+	AverageThroughput      float64
 	AverageCompressionTime time.Duration
-	SuccessRate         float64
-	CPUEfficiency       float64
-	MemoryEfficiency    float64
-	
+	SuccessRate            float64
+	CPUEfficiency          float64
+	MemoryEfficiency       float64
+
 	// Content-specific performance
 	PerformanceByContent map[ContentType]*ContentPerformance
-	
+
 	// Recent performance
-	RecentRatios        []float64
-	RecentThroughputs   []float64
-	
-	LastUpdate          time.Time
+	RecentRatios      []float64
+	RecentThroughputs []float64
+
+	LastUpdate time.Time
 }
 
 // ContentPerformance tracks algorithm performance for specific content types.
 type ContentPerformance struct {
-	ContentType         ContentType
-	Operations          int64
-	AverageRatio        float64
-	AverageThroughput   float64
-	Confidence          float64
+	ContentType       ContentType
+	Operations        int64
+	AverageRatio      float64
+	AverageThroughput float64
+	Confidence        float64
 }
 
 // CompressionPerformanceSnapshot captures performance at a point in time.
 type CompressionPerformanceSnapshot struct {
-	Timestamp           time.Time
-	Algorithm           CompressionAlgorithm
-	Level              CompressionLevel
-	ContentType         ContentType
-	InputSize          int64
-	OutputSize         int64
-	CompressionTime    time.Duration
-	ThroughputMBps     float64
+	Timestamp         time.Time
+	Algorithm         CompressionAlgorithm
+	Level             CompressionLevel
+	ContentType       ContentType
+	InputSize         int64
+	OutputSize        int64
+	CompressionTime   time.Duration
+	ThroughputMBps    float64
 	CPUUsage          float64
 	MemoryUsage       int64
-	NetworkConditions  *NetworkConditionSummary
+	NetworkConditions *NetworkConditionSummary
 }
 
 // StreamingCompressionJob represents a compression job.
 type StreamingCompressionJob struct {
-	ID                  string
-	Input               io.Reader
-	Output              io.Writer
-	Algorithm           CompressionAlgorithm
-	Level              CompressionLevel
-	ExpectedSize        int64
-	ContentType         ContentType
-	Priority            CompressionPriority
-	Deadline            time.Time
-	
+	ID           string
+	Input        io.Reader
+	Output       io.Writer
+	Algorithm    CompressionAlgorithm
+	Level        CompressionLevel
+	ExpectedSize int64
+	ContentType  ContentType
+	Priority     CompressionPriority
+	Deadline     time.Time
+
 	// Callbacks
-	ProgressCallback    func(bytesProcessed, totalBytes int64)
-	CompletionCallback  func(*CompressionResult)
-	
+	ProgressCallback   func(bytesProcessed, totalBytes int64)
+	CompletionCallback func(*CompressionResult)
+
 	// Context and cancellation
-	Context             context.Context
-	Cancel              context.CancelFunc
-	
+	Context context.Context
+	Cancel  context.CancelFunc
+
 	// Performance tracking
-	StartTime           time.Time
-	EndTime             time.Time
-	Result              *CompressionResult
+	StartTime time.Time
+	EndTime   time.Time
+	Result    *CompressionResult
 }
 
 // CompressionPriority defines job priority levels.
@@ -218,80 +218,80 @@ const (
 // CompressionContentAnalyzer analyzes content for optimal compression.
 type CompressionContentAnalyzer struct {
 	// Analysis capabilities
-	entropyAnalyzer     *EntropyAnalyzer
-	patternAnalyzer     *CompressionPatternAnalyzer
-	redundancyDetector  *RedundancyDetector
-	
+	entropyAnalyzer    *EntropyAnalyzer
+	patternAnalyzer    *CompressionPatternAnalyzer
+	redundancyDetector *RedundancyDetector
+
 	// Prediction models
-	ratioPredictor      *CompressionRatioPredictor
-	speedPredictor      *CompressionSpeedPredictor
-	
+	ratioPredictor *CompressionRatioPredictor
+	speedPredictor *CompressionSpeedPredictor
+
 	// Content classification
-	contentClassifier   *ContentTypeClassifier
-	
+	contentClassifier *ContentTypeClassifier
+
 	// Performance optimization
-	analysisCache       map[string]*CompressionAnalysis
-	cacheExpiry         time.Duration
-	maxCacheSize        int
-	
+	analysisCache map[string]*CompressionAnalysis
+	cacheExpiry   time.Duration
+	maxCacheSize  int
+
 	// mu                  sync.RWMutex // TODO: Add mutex usage for thread safety
 }
 
 // CompressionAnalysis contains content analysis results for compression optimization.
 type CompressionAnalysis struct {
-	ContentType         ContentType
-	Entropy             float64
-	RedundancyLevel     float64
-	PatternComplexity   float64
-	PredictedRatios     map[CompressionAlgorithm]float64
-	PredictedSpeeds     map[CompressionAlgorithm]float64
+	ContentType          ContentType
+	Entropy              float64
+	RedundancyLevel      float64
+	PatternComplexity    float64
+	PredictedRatios      map[CompressionAlgorithm]float64
+	PredictedSpeeds      map[CompressionAlgorithm]float64
 	RecommendedAlgorithm CompressionAlgorithm
-	RecommendedLevel    CompressionLevel
-	Confidence          float64
-	AnalysisTime        time.Duration
-	CacheKey           string
-	Timestamp          time.Time
+	RecommendedLevel     CompressionLevel
+	Confidence           float64
+	AnalysisTime         time.Duration
+	CacheKey             string
+	Timestamp            time.Time
 }
 
 // NewStreamingCompressor creates a new streaming compressor.
 func NewStreamingCompressor(algorithm CompressionAlgorithm, level CompressionLevel, ctx context.Context) *StreamingCompressor {
 	sc := &StreamingCompressor{
 		algorithm:           algorithm,
-		level:              level,
+		level:               level,
 		adaptiveSelection:   algorithm == CompressionAuto,
 		compressionStrategy: StrategyBalanced,
-		
-		bufferSize:         64 * 1024,    // 64KB buffer
-		maxConcurrency:     4,            // 4 concurrent compression jobs
-		chunkThreshold:     1024 * 1024,  // 1MB threshold for chunked compression
-		adaptationWindow:   time.Minute * 5,
-		
+
+		bufferSize:       64 * 1024,   // 64KB buffer
+		maxConcurrency:   4,           // 4 concurrent compression jobs
+		chunkThreshold:   1024 * 1024, // 1MB threshold for chunked compression
+		adaptationWindow: time.Minute * 5,
+
 		compressionMetrics:   NewCompressionMetrics(),
 		algorithmPerformance: make(map[CompressionAlgorithm]*AlgorithmPerformance),
-		
-		performanceHistory:   make([]CompressionPerformanceSnapshot, 0, 1000),
-		adaptationEnabled:    true,
-		learningRate:        0.1,
-		
-		contentAnalyzer:     NewCompressionContentAnalyzer(),
-		ratioPredictor:      NewCompressionRatioPredictor(),
-		
-		ctx:                ctx,
+
+		performanceHistory: make([]CompressionPerformanceSnapshot, 0, 1000),
+		adaptationEnabled:  true,
+		learningRate:       0.1,
+
+		contentAnalyzer: NewCompressionContentAnalyzer(),
+		ratioPredictor:  NewCompressionRatioPredictor(),
+
+		ctx: ctx,
 	}
-	
+
 	// Initialize algorithm performance tracking
 	for _, alg := range []CompressionAlgorithm{CompressionNone, CompressionGzip, CompressionBrotli, CompressionZstd} {
 		sc.algorithmPerformance[alg] = &AlgorithmPerformance{
-			Algorithm:           alg,
+			Algorithm:            alg,
 			PerformanceByContent: make(map[ContentType]*ContentPerformance),
-			RecentRatios:        make([]float64, 0, 100),
-			RecentThroughputs:   make([]float64, 0, 100),
+			RecentRatios:         make([]float64, 0, 100),
+			RecentThroughputs:    make([]float64, 0, 100),
 		}
 	}
-	
+
 	// Initialize compressor pools
 	sc.initializePools()
-	
+
 	return sc
 }
 
@@ -299,67 +299,67 @@ func NewStreamingCompressor(algorithm CompressionAlgorithm, level CompressionLev
 func (sc *StreamingCompressor) CompressStream(input io.Reader, output io.Writer, expectedSize int64, contentType ContentType) (*CompressionResult, error) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
-	
+
 	startTime := time.Now()
-	
+
 	// Analyze content for optimal compression if adaptive
 	var selectedAlgorithm CompressionAlgorithm
 	var selectedLevel CompressionLevel
-	
+
 	if sc.adaptiveSelection {
 		analysis, err := sc.contentAnalyzer.AnalyzeForCompression(input, expectedSize, contentType)
 		if err != nil {
 			return nil, fmt.Errorf("content analysis failed: %w", err)
 		}
-		
+
 		selectedAlgorithm = analysis.RecommendedAlgorithm
 		selectedLevel = analysis.RecommendedLevel
 	} else {
 		selectedAlgorithm = sc.algorithm
 		selectedLevel = sc.level
 	}
-	
+
 	// Perform compression
 	originalSize, compressedSize, err := sc.performCompression(input, output, selectedAlgorithm, selectedLevel)
 	if err != nil {
 		return &CompressionResult{
 			Algorithm:    selectedAlgorithm,
-			Level:       selectedLevel,
-			Success:     false,
+			Level:        selectedLevel,
+			Success:      false,
 			ErrorMessage: err.Error(),
-			Timestamp:   time.Now(),
+			Timestamp:    time.Now(),
 		}, err
 	}
-	
+
 	compressionTime := time.Since(startTime)
-	
+
 	// Calculate metrics
 	compressionRatio := float64(compressedSize) / float64(originalSize)
 	throughputMBps := float64(originalSize) / (compressionTime.Seconds() * 1024 * 1024)
-	
+
 	result := &CompressionResult{
 		Algorithm:        selectedAlgorithm,
-		Level:           selectedLevel,
-		OriginalSize:    originalSize,
-		CompressedSize:  compressedSize,
+		Level:            selectedLevel,
+		OriginalSize:     originalSize,
+		CompressedSize:   compressedSize,
 		CompressionRatio: compressionRatio,
-		CompressionTime: compressionTime,
-		ThroughputMBps:  throughputMBps,
-		CPUUsage:       sc.estimateCPUUsage(selectedAlgorithm, selectedLevel),
-		MemoryUsage:    sc.estimateMemoryUsage(originalSize, selectedAlgorithm),
-		Success:        true,
-		Quality:        sc.assessCompressionQuality(compressionRatio, throughputMBps),
-		Timestamp:      time.Now(),
+		CompressionTime:  compressionTime,
+		ThroughputMBps:   throughputMBps,
+		CPUUsage:         sc.estimateCPUUsage(selectedAlgorithm, selectedLevel),
+		MemoryUsage:      sc.estimateMemoryUsage(originalSize, selectedAlgorithm),
+		Success:          true,
+		Quality:          sc.assessCompressionQuality(compressionRatio, throughputMBps),
+		Timestamp:        time.Now(),
 	}
-	
+
 	// Update performance metrics
 	sc.updatePerformanceMetrics(result, contentType)
-	
+
 	// Record performance snapshot for adaptation
 	if sc.adaptationEnabled {
 		sc.recordPerformanceSnapshot(result, contentType)
 	}
-	
+
 	return result, nil
 }
 
@@ -367,20 +367,20 @@ func (sc *StreamingCompressor) CompressStream(input io.Reader, output io.Writer,
 func (sc *StreamingCompressor) CompressChunk(chunk []byte, contentType ContentType) (*CompressionResult, error) {
 	input := bytes.NewReader(chunk)
 	output := &bytes.Buffer{}
-	
+
 	return sc.CompressStream(input, output, int64(len(chunk)), contentType)
 }
 
 // CreateCompressionJob creates a new compression job for async processing.
 func (sc *StreamingCompressor) CreateCompressionJob(input io.Reader, output io.Writer, expectedSize int64, contentType ContentType, priority CompressionPriority) *StreamingCompressionJob {
 	jobCtx, cancel := context.WithCancel(sc.ctx)
-	
+
 	return &StreamingCompressionJob{
 		ID:           fmt.Sprintf("job_%d", time.Now().UnixNano()),
 		Input:        input,
 		Output:       output,
 		Algorithm:    sc.algorithm,
-		Level:       sc.level,
+		Level:        sc.level,
 		ExpectedSize: expectedSize,
 		ContentType:  contentType,
 		Priority:     priority,
@@ -399,18 +399,18 @@ func (sc *StreamingCompressor) ProcessJobAsync(job *StreamingCompressionJob) {
 				job.CompletionCallback(job.Result)
 			}
 		}()
-		
+
 		result, err := sc.CompressStream(job.Input, job.Output, job.ExpectedSize, job.ContentType)
 		if err != nil {
 			result = &CompressionResult{
 				Algorithm:    job.Algorithm,
-				Level:       job.Level,
-				Success:     false,
+				Level:        job.Level,
+				Success:      false,
 				ErrorMessage: err.Error(),
-				Timestamp:   time.Now(),
+				Timestamp:    time.Now(),
 			}
 		}
-		
+
 		job.Result = result
 	}()
 }
@@ -419,10 +419,10 @@ func (sc *StreamingCompressor) ProcessJobAsync(job *StreamingCompressionJob) {
 func (sc *StreamingCompressor) SelectOptimalAlgorithm(contentType ContentType, size int64, networkConditions *NetworkConditionSummary) CompressionAlgorithm {
 	sc.mu.RLock()
 	defer sc.mu.RUnlock()
-	
+
 	// Get performance data for each algorithm
 	scores := make(map[CompressionAlgorithm]float64)
-	
+
 	for algorithm, performance := range sc.algorithmPerformance {
 		// Skip "none" algorithm in optimal selection - prefer actual compression
 		if algorithm == CompressionNone {
@@ -431,18 +431,18 @@ func (sc *StreamingCompressor) SelectOptimalAlgorithm(contentType ContentType, s
 		score := sc.calculateAlgorithmScore(algorithm, performance, contentType, size, networkConditions)
 		scores[algorithm] = score
 	}
-	
+
 	// Find the best scoring algorithm
 	bestAlgorithm := CompressionGzip // Default
 	bestScore := 0.0
-	
+
 	for algorithm, score := range scores {
 		if score > bestScore {
 			bestScore = score
 			bestAlgorithm = algorithm
 		}
 	}
-	
+
 	return bestAlgorithm
 }
 
@@ -450,11 +450,11 @@ func (sc *StreamingCompressor) SelectOptimalAlgorithm(contentType ContentType, s
 func (sc *StreamingCompressor) GetCompressionMetrics() *CompressionMetrics {
 	sc.mu.RLock()
 	defer sc.mu.RUnlock()
-	
+
 	// Create a copy to avoid race conditions
 	metrics := *sc.compressionMetrics
 	metrics.LastUpdate = time.Now()
-	
+
 	return &metrics
 }
 
@@ -462,26 +462,26 @@ func (sc *StreamingCompressor) GetCompressionMetrics() *CompressionMetrics {
 func (sc *StreamingCompressor) AdaptCompressionStrategy() {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
-	
+
 	if !sc.adaptationEnabled || len(sc.performanceHistory) < 10 {
 		return
 	}
-	
+
 	// Analyze recent performance
 	recentPerformance := sc.performanceHistory[maxIntStreaming(0, len(sc.performanceHistory)-50):]
-	
+
 	// Calculate average performance metrics
 	avgRatio := 0.0
 	avgThroughput := 0.0
-	
+
 	for _, snapshot := range recentPerformance {
 		avgRatio += float64(snapshot.OutputSize) / float64(snapshot.InputSize)
 		avgThroughput += snapshot.ThroughputMBps
 	}
-	
+
 	avgRatio /= float64(len(recentPerformance))
 	avgThroughput /= float64(len(recentPerformance))
-	
+
 	// Adapt strategy based on performance
 	switch sc.compressionStrategy {
 	case StrategyAdaptive:
@@ -510,14 +510,14 @@ func (sc *StreamingCompressor) initializePools() {
 			return gzip.NewWriter(nil)
 		},
 	}
-	
+
 	// Initialize brotli pool
 	sc.brotliPool = sync.Pool{
 		New: func() interface{} {
 			return brotli.NewWriter(nil)
 		},
 	}
-	
+
 	// Initialize zstd encoder pool
 	sc.zstdEncoderPool = sync.Pool{
 		New: func() interface{} {
@@ -525,7 +525,7 @@ func (sc *StreamingCompressor) initializePools() {
 			return encoder
 		},
 	}
-	
+
 	// Initialize zstd decoder pool
 	sc.zstdDecoderPool = sync.Pool{
 		New: func() interface{} {
@@ -553,10 +553,10 @@ func (sc *StreamingCompressor) performCompression(input io.Reader, output io.Wri
 func (sc *StreamingCompressor) compressGzip(input io.Reader, output io.Writer, level CompressionLevel) (int64, int64, error) {
 	writer := sc.gzipPool.Get().(*gzip.Writer)
 	defer sc.gzipPool.Put(writer)
-	
+
 	writer.Reset(output)
 	defer func() { _ = writer.Close() }()
-	
+
 	// Set compression level
 	switch level {
 	case CompressionFast:
@@ -566,57 +566,57 @@ func (sc *StreamingCompressor) compressGzip(input io.Reader, output io.Writer, l
 	default:
 		writer.Comment = "default"
 	}
-	
+
 	originalSize, err := io.Copy(writer, input)
 	if err != nil {
 		return 0, 0, fmt.Errorf("gzip compression failed: %w", err)
 	}
-	
+
 	_ = writer.Close() // Final close
-	
+
 	// Calculate compressed size (approximate)
 	compressedSize := int64(float64(originalSize) * 0.6) // Estimate for gzip
-	
+
 	return originalSize, compressedSize, nil
 }
 
 func (sc *StreamingCompressor) compressBrotli(input io.Reader, output io.Writer, level CompressionLevel) (int64, int64, error) {
 	writer := sc.brotliPool.Get().(*brotli.Writer)
 	defer sc.brotliPool.Put(writer)
-	
+
 	writer.Reset(output)
 	defer func() { _ = writer.Close() }()
-	
+
 	originalSize, err := io.Copy(writer, input)
 	if err != nil {
 		return 0, 0, fmt.Errorf("brotli compression failed: %w", err)
 	}
-	
+
 	_ = writer.Close() // Final close
-	
+
 	// Calculate compressed size (approximate)
 	compressedSize := int64(float64(originalSize) * 0.5) // Brotli typically better than gzip
-	
+
 	return originalSize, compressedSize, nil
 }
 
 func (sc *StreamingCompressor) compressZstd(input io.Reader, output io.Writer, level CompressionLevel) (int64, int64, error) {
 	encoder := sc.zstdEncoderPool.Get().(*zstd.Encoder)
 	defer sc.zstdEncoderPool.Put(encoder)
-	
+
 	encoder.Reset(output)
 	defer func() { _ = encoder.Close() }()
-	
+
 	originalSize, err := io.Copy(encoder, input)
 	if err != nil {
 		return 0, 0, fmt.Errorf("zstd compression failed: %w", err)
 	}
-	
+
 	_ = encoder.Close() // Final close
-	
+
 	// Calculate compressed size (approximate)
 	compressedSize := int64(float64(originalSize) * 0.55) // Zstd balance of speed and ratio
-	
+
 	return originalSize, compressedSize, nil
 }
 
@@ -625,63 +625,63 @@ func (sc *StreamingCompressor) copyUncompressed(input io.Reader, output io.Write
 	if err != nil {
 		return 0, 0, fmt.Errorf("uncompressed copy failed: %w", err)
 	}
-	
+
 	return originalSize, originalSize, nil
 }
 
 func (sc *StreamingCompressor) updatePerformanceMetrics(result *CompressionResult, contentType ContentType) {
 	metrics := sc.compressionMetrics
-	
+
 	metrics.TotalOperations++
 	metrics.TotalBytesProcessed += result.OriginalSize
 	metrics.TotalCompressionTime += result.CompressionTime
-	
+
 	// Update running averages
 	totalOps := float64(metrics.TotalOperations)
 	metrics.AverageRatio = ((metrics.AverageRatio * (totalOps - 1)) + result.CompressionRatio) / totalOps
 	metrics.AverageThroughput = ((metrics.AverageThroughput * (totalOps - 1)) + result.ThroughputMBps) / totalOps
-	
+
 	// Update algorithm usage
 	if metrics.AlgorithmUsage == nil {
 		metrics.AlgorithmUsage = make(map[CompressionAlgorithm]int64)
 	}
 	metrics.AlgorithmUsage[result.Algorithm]++
-	
+
 	// Update success rate
 	if result.Success {
 		metrics.SuccessRate = ((metrics.SuccessRate * (totalOps - 1)) + 1.0) / totalOps
 	} else {
 		metrics.SuccessRate = (metrics.SuccessRate * (totalOps - 1)) / totalOps
 	}
-	
+
 	// Update algorithm-specific performance
 	algPerf := sc.algorithmPerformance[result.Algorithm]
 	if algPerf == nil {
 		// Initialize performance tracking for unknown algorithm
 		sc.algorithmPerformance[result.Algorithm] = &AlgorithmPerformance{
-			Algorithm:           result.Algorithm,
+			Algorithm:            result.Algorithm,
 			PerformanceByContent: make(map[ContentType]*ContentPerformance),
-			RecentRatios:        make([]float64, 0, 100),
-			RecentThroughputs:   make([]float64, 0, 100),
+			RecentRatios:         make([]float64, 0, 100),
+			RecentThroughputs:    make([]float64, 0, 100),
 		}
 		algPerf = sc.algorithmPerformance[result.Algorithm]
 	}
 	algPerf.TotalOperations++
 	algPerf.AverageRatio = ((algPerf.AverageRatio * float64(algPerf.TotalOperations-1)) + result.CompressionRatio) / float64(algPerf.TotalOperations)
 	algPerf.AverageThroughput = ((algPerf.AverageThroughput * float64(algPerf.TotalOperations-1)) + result.ThroughputMBps) / float64(algPerf.TotalOperations)
-	algPerf.AverageCompressionTime = time.Duration((int64(algPerf.AverageCompressionTime) * (algPerf.TotalOperations - 1) + int64(result.CompressionTime)) / algPerf.TotalOperations)
-	
+	algPerf.AverageCompressionTime = time.Duration((int64(algPerf.AverageCompressionTime)*(algPerf.TotalOperations-1) + int64(result.CompressionTime)) / algPerf.TotalOperations)
+
 	// Update recent performance
 	algPerf.RecentRatios = append(algPerf.RecentRatios, result.CompressionRatio)
 	if len(algPerf.RecentRatios) > 100 {
 		algPerf.RecentRatios = algPerf.RecentRatios[1:]
 	}
-	
+
 	algPerf.RecentThroughputs = append(algPerf.RecentThroughputs, result.ThroughputMBps)
 	if len(algPerf.RecentThroughputs) > 100 {
 		algPerf.RecentThroughputs = algPerf.RecentThroughputs[1:]
 	}
-	
+
 	algPerf.LastUpdate = time.Now()
 }
 
@@ -689,19 +689,19 @@ func (sc *StreamingCompressor) recordPerformanceSnapshot(result *CompressionResu
 	snapshot := CompressionPerformanceSnapshot{
 		Timestamp:         time.Now(),
 		Algorithm:         result.Algorithm,
-		Level:            result.Level,
+		Level:             result.Level,
 		ContentType:       contentType,
-		InputSize:        result.OriginalSize,
-		OutputSize:       result.CompressedSize,
-		CompressionTime:  result.CompressionTime,
-		ThroughputMBps:   result.ThroughputMBps,
-		CPUUsage:        result.CPUUsage,
-		MemoryUsage:     result.MemoryUsage,
+		InputSize:         result.OriginalSize,
+		OutputSize:        result.CompressedSize,
+		CompressionTime:   result.CompressionTime,
+		ThroughputMBps:    result.ThroughputMBps,
+		CPUUsage:          result.CPUUsage,
+		MemoryUsage:       result.MemoryUsage,
 		NetworkConditions: sc.getNetworkConditions(),
 	}
-	
+
 	sc.performanceHistory = append(sc.performanceHistory, snapshot)
-	
+
 	// Limit history size
 	if len(sc.performanceHistory) > 1000 {
 		sc.performanceHistory = sc.performanceHistory[1:]
@@ -710,16 +710,16 @@ func (sc *StreamingCompressor) recordPerformanceSnapshot(result *CompressionResu
 
 func (sc *StreamingCompressor) calculateAlgorithmScore(algorithm CompressionAlgorithm, performance *AlgorithmPerformance, contentType ContentType, size int64, networkConditions *NetworkConditionSummary) float64 {
 	// Base score from historical performance
-	ratioScore := (1.0 - performance.AverageRatio) * 0.4      // Better compression = higher score
+	ratioScore := (1.0 - performance.AverageRatio) * 0.4           // Better compression = higher score
 	throughputScore := performance.AverageThroughput / 100.0 * 0.3 // Normalize to 100 MB/s
-	
+
 	// Content-specific performance
 	contentScore := 0.0
 	if contentPerf, exists := performance.PerformanceByContent[contentType]; exists {
-		contentScore = contentPerf.Confidence * ((1.0 - contentPerf.AverageRatio) * 0.5 + contentPerf.AverageThroughput/100.0 * 0.5)
+		contentScore = contentPerf.Confidence * ((1.0-contentPerf.AverageRatio)*0.5 + contentPerf.AverageThroughput/100.0*0.5)
 	}
 	contentScore *= 0.2
-	
+
 	// Network-based scoring
 	networkScore := 0.0
 	if networkConditions != nil {
@@ -732,7 +732,7 @@ func (sc *StreamingCompressor) calculateAlgorithmScore(algorithm CompressionAlgo
 		}
 	}
 	networkScore *= 0.1
-	
+
 	return ratioScore + throughputScore + contentScore + networkScore
 }
 
@@ -744,9 +744,9 @@ func (sc *StreamingCompressor) estimateCPUUsage(algorithm CompressionAlgorithm, 
 		CompressionBrotli: 0.25,
 		CompressionZstd:   0.20,
 	}
-	
+
 	usage := baseUsage[algorithm]
-	
+
 	// Adjust for compression level
 	switch level {
 	case CompressionFast:
@@ -754,7 +754,7 @@ func (sc *StreamingCompressor) estimateCPUUsage(algorithm CompressionAlgorithm, 
 	case CompressionBest:
 		usage *= 1.5
 	}
-	
+
 	return usage
 }
 
@@ -766,15 +766,15 @@ func (sc *StreamingCompressor) estimateMemoryUsage(inputSize int64, algorithm Co
 		CompressionBrotli: 0.4,
 		CompressionZstd:   0.3,
 	}
-	
+
 	multiplier := baseMultiplier[algorithm]
 	memoryUsage := int64(float64(inputSize) * multiplier)
-	
+
 	// Minimum memory usage
 	if memoryUsage < 64*1024 {
 		memoryUsage = 64 * 1024 // 64KB minimum
 	}
-	
+
 	return memoryUsage
 }
 
@@ -795,9 +795,9 @@ func (sc *StreamingCompressor) getNetworkConditions() *NetworkConditionSummary {
 	// Placeholder - would integrate with network monitoring
 	return &NetworkConditionSummary{
 		BandwidthMBps:  100.0,
-		LatencyMs:     50.0,
+		LatencyMs:      50.0,
 		PacketLossRate: 0.001,
-		Stability:     0.95,
+		Stability:      0.95,
 	}
 }
 
@@ -827,19 +827,19 @@ func NewCompressionContentAnalyzer() *CompressionContentAnalyzer {
 func (cca *CompressionContentAnalyzer) AnalyzeForCompression(input io.Reader, size int64, contentType ContentType) (*CompressionAnalysis, error) {
 	// Simple analysis implementation
 	analysis := &CompressionAnalysis{
-		ContentType:         contentType,
-		Entropy:            0.7,
-		RedundancyLevel:     0.4,
-		PatternComplexity:   0.6,
-		PredictedRatios:     make(map[CompressionAlgorithm]float64),
-		PredictedSpeeds:     make(map[CompressionAlgorithm]float64),
+		ContentType:          contentType,
+		Entropy:              0.7,
+		RedundancyLevel:      0.4,
+		PatternComplexity:    0.6,
+		PredictedRatios:      make(map[CompressionAlgorithm]float64),
+		PredictedSpeeds:      make(map[CompressionAlgorithm]float64),
 		RecommendedAlgorithm: CompressionGzip,
-		RecommendedLevel:    CompressionBalanced,
-		Confidence:          0.8,
-		AnalysisTime:        time.Millisecond * 10,
-		Timestamp:          time.Now(),
+		RecommendedLevel:     CompressionBalanced,
+		Confidence:           0.8,
+		AnalysisTime:         time.Millisecond * 10,
+		Timestamp:            time.Now(),
 	}
-	
+
 	// Set predicted ratios based on content type
 	switch contentType {
 	case ContentTypeText:
@@ -863,7 +863,7 @@ func (cca *CompressionContentAnalyzer) AnalyzeForCompression(input io.Reader, si
 		analysis.PredictedRatios[CompressionZstd] = 0.58
 		analysis.RecommendedAlgorithm = CompressionGzip
 	}
-	
+
 	return analysis, nil
 }
 
@@ -882,8 +882,10 @@ type RedundancyDetector struct{}
 type CompressionSpeedPredictor struct{}
 type ContentTypeClassifier struct{}
 
-func NewEntropyAnalyzer() *EntropyAnalyzer                     { return &EntropyAnalyzer{} }
-func NewCompressionPatternAnalyzer() *CompressionPatternAnalyzer { return &CompressionPatternAnalyzer{} }
+func NewEntropyAnalyzer() *EntropyAnalyzer { return &EntropyAnalyzer{} }
+func NewCompressionPatternAnalyzer() *CompressionPatternAnalyzer {
+	return &CompressionPatternAnalyzer{}
+}
 func NewRedundancyDetector() *RedundancyDetector               { return &RedundancyDetector{} }
 func NewCompressionSpeedPredictor() *CompressionSpeedPredictor { return &CompressionSpeedPredictor{} }
 func NewContentTypeClassifier() *ContentTypeClassifier         { return &ContentTypeClassifier{} }

@@ -1,0 +1,28 @@
+{
+    "name": "CargoShip",
+    "short_name": "CargoShip",
+    "description": "Enterprise data archiving for AWS, built for speed and intelligence",
+    "icons": [
+        {
+            "src": "android-chrome-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "android-chrome-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "logo.png",
+            "sizes": "400x400",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ],
+    "theme_color": "#1e3a5f",
+    "background_color": "#ffffff",
+    "display": "standalone",
+    "start_url": "/",
+    "scope": "/"
+}

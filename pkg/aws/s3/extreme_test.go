@@ -46,7 +46,7 @@ func TestExtremePerformance(t *testing.T) {
 	require.NoError(t, err)
 
 	s3Client := s3.NewFromConfig(cfg)
-	
+
 	// Ensure test bucket exists
 	err = ensureStressBucket(ctx, s3Client, extremeTestBucket)
 	require.NoError(t, err)
@@ -73,10 +73,10 @@ func TestExtremePerformance(t *testing.T) {
 func testMaximumConcurrencyPush(t *testing.T, ctx context.Context, s3Client *s3.Client, logger *slog.Logger) {
 	// Maximum performance configuration
 	s3Config := awsconfig.S3Config{
-		Bucket:              extremeTestBucket,
-		Concurrency:         200, // Maximum concurrency
-		MultipartChunkSize:  512 * 1024 * 1024, // 512MB chunks
-		MultipartThreshold:  1024 * 1024 * 1024, // 1GB threshold
+		Bucket:             extremeTestBucket,
+		Concurrency:        200,                // Maximum concurrency
+		MultipartChunkSize: 512 * 1024 * 1024,  // 512MB chunks
+		MultipartThreshold: 1024 * 1024 * 1024, // 1GB threshold
 	}
 
 	transporter, err := NewOptimizedTransporter(ctx, s3Client, s3Config, logger)
@@ -89,54 +89,54 @@ func testMaximumConcurrencyPush(t *testing.T, ctx context.Context, s3Client *s3.
 
 	t.Logf("🚀 EXTREME TEST: %d concurrent uploads of 25MB each (5GB total)...", concurrency)
 	t.Logf("⚙️  Configuration: Concurrency=%d, ChunkSize=%dMB", s3Config.Concurrency, s3Config.MultipartChunkSize/(1024*1024))
-	
+
 	var wg sync.WaitGroup
 	var successCount int64
 	var totalBytes int64
 	var totalLatencyNs int64
-	
+
 	// Track throughput samples for analysis
 	var mu sync.Mutex
 	var throughputSamples []float64
-	
+
 	startTime := time.Now()
-	
+
 	// Launch massive concurrent upload burst
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func(uploadID int) {
 			defer wg.Done()
-			
+
 			testData := strings.Repeat(fmt.Sprintf("EXTREME performance test %d pushing CargoShip to limits. ", uploadID), fileSize/100)
 			testKey := fmt.Sprintf("%s/extreme-concurrent-%d-%d.txt", extremeTestPrefix, time.Now().Unix(), uploadID)
-			
+
 			archive := &Archive{
-				Key:             testKey,
-				Reader:          strings.NewReader(testData),
-				Size:            int64(len(testData)),
-				StorageClass:    awsconfig.StorageClassStandard,
-				Metadata:        map[string]string{
-					"test": "extreme-concurrency",
+				Key:          testKey,
+				Reader:       strings.NewReader(testData),
+				Size:         int64(len(testData)),
+				StorageClass: awsconfig.StorageClassStandard,
+				Metadata: map[string]string{
+					"test":      "extreme-concurrency",
 					"upload_id": fmt.Sprintf("%d", uploadID),
-					"target": "maximum-performance",
+					"target":    "maximum-performance",
 				},
 			}
 
 			uploadStart := time.Now()
 			_, err := transporter.Upload(ctx, archive)
 			uploadDuration := time.Since(uploadStart)
-			
+
 			if err == nil {
 				throughputMBps := float64(archive.Size) / (1024 * 1024) / uploadDuration.Seconds()
-				
+
 				atomic.AddInt64(&successCount, 1)
 				atomic.AddInt64(&totalBytes, archive.Size)
 				atomic.AddInt64(&totalLatencyNs, uploadDuration.Nanoseconds())
-				
+
 				mu.Lock()
 				throughputSamples = append(throughputSamples, throughputMBps)
 				mu.Unlock()
-				
+
 				if uploadID%25 == 0 { // Log every 25th upload
 					t.Logf("  Upload %d: %.2f MB/s", uploadID, throughputMBps)
 				}
@@ -145,30 +145,34 @@ func testMaximumConcurrencyPush(t *testing.T, ctx context.Context, s3Client *s3.
 			}
 		}(i)
 	}
-	
+
 	wg.Wait()
 	overallDuration := time.Since(startTime)
-	
+
 	// Calculate comprehensive metrics
 	success := atomic.LoadInt64(&successCount)
 	bytes := atomic.LoadInt64(&totalBytes)
 	avgLatencyNs := atomic.LoadInt64(&totalLatencyNs) / success
-	
+
 	aggregateThroughputMBps := float64(bytes) / (1024 * 1024) / overallDuration.Seconds()
 	avgThroughputMBps := float64(fileSize) / (1024 * 1024) / (float64(avgLatencyNs) / 1e9)
 	bandwidthGbps := aggregateThroughputMBps * 8 / 1000
 	efficiency := (bandwidthGbps / 5.0) * 100
-	
+
 	// Calculate throughput statistics
 	mu.Lock()
 	var minThroughput, maxThroughput, totalThroughput float64 = 999999, 0, 0
 	for _, sample := range throughputSamples {
-		if sample < minThroughput { minThroughput = sample }
-		if sample > maxThroughput { maxThroughput = sample }
+		if sample < minThroughput {
+			minThroughput = sample
+		}
+		if sample > maxThroughput {
+			maxThroughput = sample
+		}
 		totalThroughput += sample
 	}
 	mu.Unlock()
-	
+
 	t.Logf("🏆 EXTREME CONCURRENCY RESULTS:")
 	t.Logf("  Target concurrency: %d uploads", concurrency)
 	t.Logf("  Successful uploads: %d/%d (%.1f%%)", success, concurrency, float64(success)/float64(concurrency)*100)
@@ -179,7 +183,7 @@ func testMaximumConcurrencyPush(t *testing.T, ctx context.Context, s3Client *s3.
 	t.Logf("  Average upload throughput: %.2f MB/s", avgThroughputMBps)
 	t.Logf("  Throughput range: %.2f - %.2f MB/s", minThroughput, maxThroughput)
 	t.Logf("  Average latency: %.2f seconds", float64(avgLatencyNs)/1e9)
-	
+
 	// Get optimization statistics
 	stats := transporter.GetOptimizationStats()
 	t.Logf("🔧 Optimization Statistics:")
@@ -187,11 +191,11 @@ func testMaximumConcurrencyPush(t *testing.T, ctx context.Context, s3Client *s3.
 	t.Logf("  Total optimizations: %d", stats.TotalOptimizations)
 	t.Logf("  BBR activations: %d", stats.BBRActivations)
 	t.Logf("  CUBIC adjustments: %d", stats.CubicAdjustments)
-	
+
 	// Performance assertions for extreme test
 	assert.Greater(t, float64(success)/float64(concurrency), 0.85, "At least 85% success rate under extreme load")
 	assert.Greater(t, aggregateThroughputMBps, 100.0, "Should achieve >100 MB/s aggregate under extreme load")
-	
+
 	if aggregateThroughputMBps > 300 {
 		t.Logf("🏆🏆🏆 PHENOMENAL: >300 MB/s aggregate throughput!")
 	} else if aggregateThroughputMBps > 200 {
@@ -205,10 +209,10 @@ func testMaximumConcurrencyPush(t *testing.T, ctx context.Context, s3Client *s3.
 func testSustainedHighThroughput(t *testing.T, ctx context.Context, s3Client *s3.Client, logger *slog.Logger) {
 	// High-performance sustained configuration
 	s3Config := awsconfig.S3Config{
-		Bucket:              extremeTestBucket,
-		Concurrency:         100,
-		MultipartChunkSize:  256 * 1024 * 1024, // 256MB chunks
-		MultipartThreshold:  500 * 1024 * 1024, // 500MB threshold
+		Bucket:             extremeTestBucket,
+		Concurrency:        100,
+		MultipartChunkSize: 256 * 1024 * 1024, // 256MB chunks
+		MultipartThreshold: 500 * 1024 * 1024, // 500MB threshold
 	}
 
 	transporter, err := NewOptimizedTransporter(ctx, s3Client, s3Config, logger)
@@ -216,9 +220,9 @@ func testSustainedHighThroughput(t *testing.T, ctx context.Context, s3Client *s3
 	defer transporter.Shutdown(ctx)
 
 	// Sustained test parameters
-	testDuration := 3 * time.Minute // 3 minutes of sustained performance
-	batchSize := 15 // 15 concurrent uploads per batch
-	fileSize := 30 * 1024 * 1024 // 30MB files
+	testDuration := 3 * time.Minute   // 3 minutes of sustained performance
+	batchSize := 15                   // 15 concurrent uploads per batch
+	fileSize := 30 * 1024 * 1024      // 30MB files
 	batchInterval := 15 * time.Second // New batch every 15 seconds
 
 	t.Logf("🔥 SUSTAINED HIGH THROUGHPUT TEST:")
@@ -251,40 +255,40 @@ func testSustainedHighThroughput(t *testing.T, ctx context.Context, s3Client *s3
 			case <-ticker.C:
 				batchID++
 				atomic.AddInt64(&batchCount, 1)
-				
+
 				go func(bid int) {
 					batchStart := time.Now()
 					var wg sync.WaitGroup
 					var batchBytes int64
 					var batchThroughput float64
 					var batchMu sync.Mutex
-					
+
 					// Launch batch of concurrent uploads
 					for i := 0; i < batchSize; i++ {
 						wg.Add(1)
 						go func(uploadID int) {
 							defer wg.Done()
-							
+
 							testData := strings.Repeat(fmt.Sprintf("Sustained test B%d-U%d. ", bid, uploadID), fileSize/50)
 							testKey := fmt.Sprintf("%s/sustained-%d-%d-%d.txt", extremeTestPrefix, time.Now().Unix(), bid, uploadID)
-							
+
 							archive := &Archive{
-								Key:             testKey,
-								Reader:          strings.NewReader(testData),
-								Size:            int64(len(testData)),
-								StorageClass:    awsconfig.StorageClassStandard,
+								Key:          testKey,
+								Reader:       strings.NewReader(testData),
+								Size:         int64(len(testData)),
+								StorageClass: awsconfig.StorageClassStandard,
 							}
 
 							uploadStart := time.Now()
 							_, err := transporter.Upload(ctx, archive)
 							uploadDuration := time.Since(uploadStart)
-							
+
 							if err == nil {
 								throughputMBps := float64(archive.Size) / (1024 * 1024) / uploadDuration.Seconds()
-								
+
 								atomic.AddInt64(&totalUploads, 1)
 								atomic.AddInt64(&totalBytes, archive.Size)
-								
+
 								batchMu.Lock()
 								batchBytes += archive.Size
 								batchThroughput += throughputMBps
@@ -292,23 +296,23 @@ func testSustainedHighThroughput(t *testing.T, ctx context.Context, s3Client *s3
 							}
 						}(i)
 					}
-					
+
 					wg.Wait()
 					batchDuration := time.Since(batchStart)
-					
+
 					batchAggregateThroughput := float64(batchBytes) / (1024 * 1024) / batchDuration.Seconds()
-					
+
 					mu.Lock()
 					totalThroughput += batchThroughput
 					performanceSamples = append(performanceSamples, PerformanceSample{
-						Timestamp: time.Now(),
-						BatchID: bid,
+						Timestamp:           time.Now(),
+						BatchID:             bid,
 						AggregateThroughput: batchAggregateThroughput,
-						AverageThroughput: batchThroughput / float64(batchSize),
-						Duration: batchDuration,
+						AverageThroughput:   batchThroughput / float64(batchSize),
+						Duration:            batchDuration,
 					})
 					mu.Unlock()
-					
+
 					t.Logf("  Batch %d: %.2f MB/s aggregate (%.2f MB/s avg per upload)", bid, batchAggregateThroughput, batchThroughput/float64(batchSize))
 				}(batchID)
 			}
@@ -325,13 +329,17 @@ func testSustainedHighThroughput(t *testing.T, ctx context.Context, s3Client *s3
 	bytes := atomic.LoadInt64(&totalBytes)
 
 	overallThroughput := float64(bytes) / (1024 * 1024) / actualDuration.Seconds()
-	
+
 	// Analyze performance consistency
 	mu.Lock()
 	var minBatchThroughput, maxBatchThroughput, totalBatchThroughput float64 = 999999, 0, 0
 	for _, sample := range performanceSamples {
-		if sample.AggregateThroughput < minBatchThroughput { minBatchThroughput = sample.AggregateThroughput }
-		if sample.AggregateThroughput > maxBatchThroughput { maxBatchThroughput = sample.AggregateThroughput }
+		if sample.AggregateThroughput < minBatchThroughput {
+			minBatchThroughput = sample.AggregateThroughput
+		}
+		if sample.AggregateThroughput > maxBatchThroughput {
+			maxBatchThroughput = sample.AggregateThroughput
+		}
 		totalBatchThroughput += sample.AggregateThroughput
 	}
 	avgBatchThroughput := totalBatchThroughput / float64(len(performanceSamples))
@@ -368,10 +376,10 @@ func testSustainedHighThroughput(t *testing.T, ctx context.Context, s3Client *s3
 func testBurstCapacity(t *testing.T, ctx context.Context, s3Client *s3.Client, logger *slog.Logger) {
 	// Burst configuration
 	s3Config := awsconfig.S3Config{
-		Bucket:              extremeTestBucket,
-		Concurrency:         150,
-		MultipartChunkSize:  128 * 1024 * 1024, // 128MB chunks for burst
-		MultipartThreshold:  256 * 1024 * 1024, // 256MB threshold
+		Bucket:             extremeTestBucket,
+		Concurrency:        150,
+		MultipartChunkSize: 128 * 1024 * 1024, // 128MB chunks for burst
+		MultipartThreshold: 256 * 1024 * 1024, // 256MB threshold
 	}
 
 	transporter, err := NewOptimizedTransporter(ctx, s3Client, s3Config, logger)
@@ -380,7 +388,7 @@ func testBurstCapacity(t *testing.T, ctx context.Context, s3Client *s3.Client, l
 
 	// Burst test: rapid succession of uploads
 	burstCount := 50
-	fileSize := 20 * 1024 * 1024 // 20MB files
+	fileSize := 20 * 1024 * 1024            // 20MB files
 	burstInterval := 100 * time.Millisecond // Very rapid
 
 	t.Logf("⚡ BURST CAPACITY TEST:")
@@ -401,29 +409,33 @@ func testBurstCapacity(t *testing.T, ctx context.Context, s3Client *s3.Client, l
 		go func(uploadID int) {
 			testData := strings.Repeat(fmt.Sprintf("Burst test %d rapid upload. ", uploadID), fileSize/50)
 			testKey := fmt.Sprintf("%s/burst-%d-%d.txt", extremeTestPrefix, time.Now().UnixNano(), uploadID)
-			
+
 			archive := &Archive{
-				Key:             testKey,
-				Reader:          strings.NewReader(testData),
-				Size:            int64(len(testData)),
-				StorageClass:    awsconfig.StorageClassStandard,
+				Key:          testKey,
+				Reader:       strings.NewReader(testData),
+				Size:         int64(len(testData)),
+				StorageClass: awsconfig.StorageClassStandard,
 			}
 
 			uploadStart := time.Now()
 			_, err := transporter.Upload(ctx, archive)
 			uploadLatency := time.Since(uploadStart)
-			
+
 			if err == nil {
 				atomic.AddInt64(&successCount, 1)
 				atomic.AddInt64(&totalBytes, archive.Size)
-				
+
 				// Track latency statistics
-				if uploadLatency < minLatency { minLatency = uploadLatency }
-				if uploadLatency > maxLatency { maxLatency = uploadLatency }
+				if uploadLatency < minLatency {
+					minLatency = uploadLatency
+				}
+				if uploadLatency > maxLatency {
+					maxLatency = uploadLatency
+				}
 				totalLatency += uploadLatency
 			}
 		}(i)
-		
+
 		time.Sleep(burstInterval) // Minimal delay between launches
 	}
 
@@ -436,10 +448,10 @@ func testBurstCapacity(t *testing.T, ctx context.Context, s3Client *s3.Client, l
 	totalDuration := time.Since(startTime)
 	success := atomic.LoadInt64(&successCount)
 	bytes := atomic.LoadInt64(&totalBytes)
-	
+
 	avgLatency := totalLatency / time.Duration(success)
 	burstThroughput := float64(bytes) / (1024 * 1024) / totalDuration.Seconds()
-	
+
 	t.Logf("⚡ BURST CAPACITY RESULTS:")
 	t.Logf("  Launched: %d uploads", burstCount)
 	t.Logf("  Completed: %d uploads (%.1f%%)", success, float64(success)/float64(burstCount)*100)

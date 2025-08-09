@@ -13,10 +13,10 @@ func TestNewRealTimeParameterOptimizer(t *testing.T) {
 	ctx := context.Background()
 	nm := NewRealTimeNetworkMonitor(ctx)
 	defer func() { _ = nm.Shutdown() }()
-	
+
 	po := NewRealTimeParameterOptimizer(ctx, nm)
 	defer func() { _ = po.Shutdown() }()
-	
+
 	assert.NotNil(t, po)
 	assert.Equal(t, time.Second*60, po.optimizationInterval)
 	assert.Equal(t, time.Minute*10, po.performanceWindow)
@@ -41,18 +41,18 @@ func TestRealTimeParameterOptimizerOptimizeParameters(t *testing.T) {
 	ctx := context.Background()
 	nm := NewRealTimeNetworkMonitor(ctx)
 	defer func() { _ = nm.Shutdown() }()
-	
+
 	po := NewRealTimeParameterOptimizer(ctx, nm)
 	defer func() { _ = po.Shutdown() }()
-	
+
 	// Start network monitoring to provide conditions
 	err := nm.StartMonitoring()
 	require.NoError(t, err)
 	defer func() { _ = nm.StopMonitoring() }()
-	
+
 	// Give monitoring time to collect data
 	time.Sleep(time.Millisecond * 100)
-	
+
 	result, err := po.OptimizeParameters(ctx)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
@@ -70,12 +70,12 @@ func TestRealTimeParameterOptimizerGetCurrentParameters(t *testing.T) {
 	ctx := context.Background()
 	nm := NewRealTimeNetworkMonitor(ctx)
 	defer func() { _ = nm.Shutdown() }()
-	
+
 	po := NewRealTimeParameterOptimizer(ctx, nm)
 	defer func() { _ = po.Shutdown() }()
-	
+
 	params := po.GetCurrentParameters()
-	
+
 	assert.NotNil(t, params)
 	assert.Greater(t, params.ChunkSizeMB, 0.0)
 	assert.Greater(t, params.ConcurrentChunks, 0)
@@ -105,12 +105,12 @@ func TestRealTimeParameterOptimizerGetOptimizationStatus(t *testing.T) {
 	ctx := context.Background()
 	nm := NewRealTimeNetworkMonitor(ctx)
 	defer func() { _ = nm.Shutdown() }()
-	
+
 	po := NewRealTimeParameterOptimizer(ctx, nm)
 	defer func() { _ = po.Shutdown() }()
-	
+
 	status := po.GetOptimizationStatus()
-	
+
 	assert.NotNil(t, status)
 	assert.True(t, status.IsActive)
 	assert.False(t, status.IsOptimizing)
@@ -128,12 +128,12 @@ func TestRealTimeParameterOptimizerGetParameterHistory(t *testing.T) {
 	ctx := context.Background()
 	nm := NewRealTimeNetworkMonitor(ctx)
 	defer func() { _ = nm.Shutdown() }()
-	
+
 	po := NewRealTimeParameterOptimizer(ctx, nm)
 	defer func() { _ = po.Shutdown() }()
-	
+
 	history := po.GetParameterHistory()
-	
+
 	assert.NotNil(t, history)
 	// Initially empty until first optimization
 	assert.GreaterOrEqual(t, len(history), 0)
@@ -143,22 +143,22 @@ func TestRealTimeParameterOptimizerConcurrentOptimization(t *testing.T) {
 	ctx := context.Background()
 	nm := NewRealTimeNetworkMonitor(ctx)
 	defer func() { _ = nm.Shutdown() }()
-	
+
 	po := NewRealTimeParameterOptimizer(ctx, nm)
 	defer func() { _ = po.Shutdown() }()
-	
+
 	// Start network monitoring
 	err := nm.StartMonitoring()
 	require.NoError(t, err)
 	defer func() { _ = nm.StopMonitoring() }()
-	
+
 	// Give monitoring time to collect data
 	time.Sleep(time.Millisecond * 100)
-	
+
 	// Try concurrent optimizations
 	done := make(chan *RealTimeOptimizationResult, 2)
 	errors := make(chan error, 2)
-	
+
 	for i := 0; i < 2; i++ {
 		go func() {
 			result, err := po.OptimizeParameters(ctx)
@@ -169,11 +169,11 @@ func TestRealTimeParameterOptimizerConcurrentOptimization(t *testing.T) {
 			done <- result
 		}()
 	}
-	
+
 	// One should succeed, one should fail with "already in progress"
 	successCount := 0
 	errorCount := 0
-	
+
 	for i := 0; i < 2; i++ {
 		select {
 		case result := <-done:
@@ -186,7 +186,7 @@ func TestRealTimeParameterOptimizerConcurrentOptimization(t *testing.T) {
 			t.Fatal("Concurrent optimization test timed out")
 		}
 	}
-	
+
 	assert.Equal(t, 1, successCount)
 	assert.Equal(t, 1, errorCount)
 }
@@ -195,17 +195,17 @@ func TestRealTimeParameterOptimizerShutdown(t *testing.T) {
 	ctx := context.Background()
 	nm := NewRealTimeNetworkMonitor(ctx)
 	defer func() { _ = nm.Shutdown() }()
-	
+
 	po := NewRealTimeParameterOptimizer(ctx, nm)
-	
+
 	// Verify initial state
 	assert.True(t, po.optimizationActive)
-	
+
 	// Shutdown
 	err := po.Shutdown()
 	assert.NoError(t, err)
 	assert.False(t, po.optimizationActive)
-	
+
 	// Verify context is cancelled
 	select {
 	case <-po.ctx.Done():
@@ -217,7 +217,7 @@ func TestRealTimeParameterOptimizerShutdown(t *testing.T) {
 
 func TestNewDefaultRealTimeOptimizationParameters(t *testing.T) {
 	params := NewDefaultRealTimeOptimizationParameters()
-	
+
 	assert.NotNil(t, params)
 	assert.Equal(t, 16.0, params.ChunkSizeMB)
 	assert.Equal(t, 8, params.ConcurrentChunks)
@@ -247,26 +247,26 @@ func TestNewDefaultRealTimeOptimizationParameters(t *testing.T) {
 
 func TestNewRealTimeParameterSpace(t *testing.T) {
 	ps := NewRealTimeParameterSpace()
-	
+
 	assert.NotNil(t, ps)
 	assert.Equal(t, 1.0, ps.chunkSizeRange.Min)
 	assert.Equal(t, 64.0, ps.chunkSizeRange.Max)
 	assert.Equal(t, 0.5, ps.chunkSizeRange.Step)
 	assert.False(t, ps.chunkSizeRange.Discrete)
 	assert.False(t, ps.chunkSizeRange.LogScale)
-	
+
 	assert.Equal(t, 1.0, ps.concurrencyRange.Min)
 	assert.Equal(t, 32.0, ps.concurrencyRange.Max)
 	assert.Equal(t, 1.0, ps.concurrencyRange.Step)
 	assert.True(t, ps.concurrencyRange.Discrete)
 	assert.False(t, ps.concurrencyRange.LogScale)
-	
+
 	assert.Equal(t, 5.0, ps.timeoutRange.Min)
 	assert.Equal(t, 300.0, ps.timeoutRange.Max)
 	assert.Equal(t, 1.0, ps.timeoutRange.Step)
 	assert.False(t, ps.timeoutRange.Discrete)
 	assert.False(t, ps.timeoutRange.LogScale)
-	
+
 	assert.NotNil(t, ps.dependencies)
 	assert.NotNil(t, ps.constraints)
 	assert.NotNil(t, ps.validationRules)
@@ -277,7 +277,7 @@ func TestNewRealTimeParameterSpace(t *testing.T) {
 
 func TestNewRealTimeOptimizationEngine(t *testing.T) {
 	oe := NewRealTimeOptimizationEngine()
-	
+
 	assert.NotNil(t, oe)
 	assert.Equal(t, RealTimeAlgorithmHybrid, oe.algorithm)
 	assert.NotNil(t, oe.hyperparameters)
@@ -301,7 +301,7 @@ func TestNewRealTimeOptimizationEngine(t *testing.T) {
 
 func TestNewRealTimePerformanceTracker(t *testing.T) {
 	pt := NewRealTimePerformanceTracker()
-	
+
 	assert.NotNil(t, pt)
 	assert.NotNil(t, pt.metricsHistory)
 	assert.Nil(t, pt.baselineMetrics)
@@ -320,7 +320,7 @@ func TestNewRealTimePerformanceTracker(t *testing.T) {
 
 func TestNewRealTimeConstraintValidator(t *testing.T) {
 	cv := NewRealTimeConstraintValidator()
-	
+
 	assert.NotNil(t, cv)
 	assert.NotNil(t, cv.constraints)
 	assert.NotNil(t, cv.validationRules)
@@ -329,7 +329,7 @@ func TestNewRealTimeConstraintValidator(t *testing.T) {
 
 func TestNewRealTimeOptimizationGoals(t *testing.T) {
 	og := NewRealTimeOptimizationGoals()
-	
+
 	assert.NotNil(t, og)
 	assert.Equal(t, "throughput", og.PrimaryObjective)
 	assert.Contains(t, og.SecondaryObjectives, "latency")
@@ -348,7 +348,7 @@ func TestNewRealTimeOptimizationGoals(t *testing.T) {
 
 func TestNewRealTimeConvergenceDetector(t *testing.T) {
 	cd := NewRealTimeConvergenceDetector()
-	
+
 	assert.NotNil(t, cd)
 	assert.Equal(t, 0.01, cd.convergenceThreshold)
 	assert.Equal(t, 10, cd.stagnationThreshold)
@@ -359,25 +359,25 @@ func TestNewRealTimeConvergenceDetector(t *testing.T) {
 
 func TestRealTimeConvergenceDetectorUpdate(t *testing.T) {
 	cd := NewRealTimeConvergenceDetector()
-	
+
 	// Test initial state
 	assert.False(t, cd.isConverged)
 	assert.Equal(t, 0, cd.stagnationCounter)
-	
+
 	// Add some performance scores
 	scores := []float64{0.5, 0.6, 0.65, 0.7, 0.72, 0.73, 0.735, 0.736, 0.737, 0.738}
 	for _, score := range scores {
 		cd.Update(score)
 	}
-	
+
 	assert.GreaterOrEqual(t, len(cd.convergenceHistory), 10)
-	
+
 	// Add more stable scores to trigger convergence
 	stableScores := []float64{0.738, 0.738, 0.738, 0.738, 0.738, 0.738, 0.738, 0.738, 0.738, 0.738}
 	for _, score := range stableScores {
 		cd.Update(score)
 	}
-	
+
 	// Should eventually converge
 	status := cd.GetStatus()
 	assert.NotNil(t, status)
@@ -388,36 +388,36 @@ func TestRealTimeConvergenceDetectorUpdate(t *testing.T) {
 
 func TestRealTimeConstraintValidatorValidateParameters(t *testing.T) {
 	cv := NewRealTimeConstraintValidator()
-	
+
 	// Test valid parameters
 	validParams := NewDefaultRealTimeOptimizationParameters()
 	assert.True(t, cv.ValidateParameters(validParams))
-	
+
 	// Test invalid chunk size (too small)
 	invalidParams1 := NewDefaultRealTimeOptimizationParameters()
 	invalidParams1.ChunkSizeMB = -1.0
 	assert.False(t, cv.ValidateParameters(invalidParams1))
-	
+
 	// Test invalid chunk size (too large)
 	invalidParams2 := NewDefaultRealTimeOptimizationParameters()
 	invalidParams2.ChunkSizeMB = 100.0
 	assert.False(t, cv.ValidateParameters(invalidParams2))
-	
+
 	// Test invalid concurrency (too small)
 	invalidParams3 := NewDefaultRealTimeOptimizationParameters()
 	invalidParams3.ConcurrentChunks = 0
 	assert.False(t, cv.ValidateParameters(invalidParams3))
-	
+
 	// Test invalid concurrency (too large)
 	invalidParams4 := NewDefaultRealTimeOptimizationParameters()
 	invalidParams4.ConcurrentChunks = 50
 	assert.False(t, cv.ValidateParameters(invalidParams4))
-	
+
 	// Test invalid timeout (too small)
 	invalidParams5 := NewDefaultRealTimeOptimizationParameters()
 	invalidParams5.RequestTimeoutSec = 0
 	assert.False(t, cv.ValidateParameters(invalidParams5))
-	
+
 	// Test invalid timeout (too large)
 	invalidParams6 := NewDefaultRealTimeOptimizationParameters()
 	invalidParams6.RequestTimeoutSec = 500
@@ -426,9 +426,9 @@ func TestRealTimeConstraintValidatorValidateParameters(t *testing.T) {
 
 func TestRealTimePerformanceTrackerGetCurrentPerformance(t *testing.T) {
 	pt := NewRealTimePerformanceTracker()
-	
+
 	performance := pt.GetCurrentPerformance()
-	
+
 	assert.NotNil(t, performance)
 	assert.Greater(t, performance.ThroughputMBps, 0.0)
 	assert.Greater(t, performance.LatencyMs, 0.0)
@@ -441,44 +441,44 @@ func TestRealTimePerformanceTrackerGetCurrentPerformance(t *testing.T) {
 
 func TestRealTimePerformanceTrackerRecordPerformance(t *testing.T) {
 	pt := NewRealTimePerformanceTracker()
-	
+
 	// Initially empty
 	assert.Equal(t, 0, len(pt.metricsHistory))
-	
+
 	// Record performance
 	performance := &RealTimePerformanceSnapshot{
 		ThroughputMBps: 100.0,
-		LatencyMs:     25.0,
-		ErrorRate:     0.005,
-		ResourceUsage: &RealTimeResourceUsage{CPUUsage: 0.6, MemoryUsage: 1024*1024*512, NetworkUsage: 75.0, DiskUsage: 0.4},
-		QualityScore:  0.85,
-		CostPerGB:     0.08,
-		Timestamp:     time.Now(),
+		LatencyMs:      25.0,
+		ErrorRate:      0.005,
+		ResourceUsage:  &RealTimeResourceUsage{CPUUsage: 0.6, MemoryUsage: 1024 * 1024 * 512, NetworkUsage: 75.0, DiskUsage: 0.4},
+		QualityScore:   0.85,
+		CostPerGB:      0.08,
+		Timestamp:      time.Now(),
 	}
-	
+
 	pt.RecordPerformance(performance)
-	
+
 	assert.Equal(t, 1, len(pt.metricsHistory))
 	assert.Equal(t, performance, pt.metricsHistory[0])
 }
 
 func TestRealTimePerformanceTrackerHistoryLimit(t *testing.T) {
 	pt := NewRealTimePerformanceTracker()
-	
+
 	// Add many performance records
 	for i := 0; i < 1500; i++ {
 		performance := &RealTimePerformanceSnapshot{
 			ThroughputMBps: float64(i),
-			LatencyMs:     float64(i),
-			ErrorRate:     0.01,
-			ResourceUsage: &RealTimeResourceUsage{CPUUsage: 0.5, MemoryUsage: 1024*1024*256, NetworkUsage: 50.0, DiskUsage: 0.3},
-			QualityScore:  0.7,
-			CostPerGB:     0.1,
-			Timestamp:     time.Now(),
+			LatencyMs:      float64(i),
+			ErrorRate:      0.01,
+			ResourceUsage:  &RealTimeResourceUsage{CPUUsage: 0.5, MemoryUsage: 1024 * 1024 * 256, NetworkUsage: 50.0, DiskUsage: 0.3},
+			QualityScore:   0.7,
+			CostPerGB:      0.1,
+			Timestamp:      time.Now(),
 		}
 		pt.RecordPerformance(performance)
 	}
-	
+
 	// Verify history is limited to 1000
 	assert.LessOrEqual(t, len(pt.metricsHistory), 1000)
 }
@@ -487,68 +487,68 @@ func TestRealTimeThroughputModelPredict(t *testing.T) {
 	tm := &RealTimeThroughputModel{
 		coefficients: make(map[string]float64),
 	}
-	
+
 	params := NewDefaultRealTimeOptimizationParameters()
 	conditions := &RealTimeNetworkConditions{
-		BandwidthMBps: 100.0,
-		LatencyMs:    30.0,
-		NetworkQuality: 0.8,
+		BandwidthMBps:       100.0,
+		LatencyMs:           30.0,
+		NetworkQuality:      0.8,
 		ConnectionStability: 0.9,
 	}
-	
+
 	prediction := tm.Predict(params, conditions)
-	
+
 	assert.Greater(t, prediction, 0.0)
 	assert.Less(t, prediction, 1000.0) // Reasonable upper bound
 }
 
 func TestRealTimeLatencyModelPredict(t *testing.T) {
 	lm := &RealTimeLatencyModel{}
-	
+
 	params := NewDefaultRealTimeOptimizationParameters()
 	conditions := &RealTimeNetworkConditions{
-		BandwidthMBps: 100.0,
-		LatencyMs:    30.0,
-		NetworkQuality: 0.8,
+		BandwidthMBps:       100.0,
+		LatencyMs:           30.0,
+		NetworkQuality:      0.8,
 		ConnectionStability: 0.9,
 	}
-	
+
 	prediction := lm.Predict(params, conditions)
-	
+
 	assert.GreaterOrEqual(t, prediction, 0.0)
 	assert.LessOrEqual(t, prediction, 1.0)
 }
 
 func TestRealTimeReliabilityModelPredict(t *testing.T) {
 	rm := &RealTimeReliabilityModel{}
-	
+
 	params := NewDefaultRealTimeOptimizationParameters()
 	conditions := &RealTimeNetworkConditions{
-		BandwidthMBps: 100.0,
-		LatencyMs:    30.0,
-		NetworkQuality: 0.8,
+		BandwidthMBps:       100.0,
+		LatencyMs:           30.0,
+		NetworkQuality:      0.8,
 		ConnectionStability: 0.9,
 	}
-	
+
 	prediction := rm.Predict(params, conditions)
-	
+
 	assert.GreaterOrEqual(t, prediction, 0.0)
 	assert.LessOrEqual(t, prediction, 1.0)
 }
 
 func TestRealTimeCostModelPredict(t *testing.T) {
 	cm := &RealTimeCostModel{}
-	
+
 	params := NewDefaultRealTimeOptimizationParameters()
 	conditions := &RealTimeNetworkConditions{
-		BandwidthMBps: 100.0,
-		LatencyMs:    30.0,
-		NetworkQuality: 0.8,
+		BandwidthMBps:       100.0,
+		LatencyMs:           30.0,
+		NetworkQuality:      0.8,
 		ConnectionStability: 0.9,
 	}
-	
+
 	prediction := cm.Predict(params, conditions)
-	
+
 	assert.GreaterOrEqual(t, prediction, 0.0)
 	assert.LessOrEqual(t, prediction, 1.0)
 }
@@ -591,26 +591,26 @@ func TestRealTimeParameterOptimizerCopyParameters(t *testing.T) {
 	ctx := context.Background()
 	nm := NewRealTimeNetworkMonitor(ctx)
 	defer func() { _ = nm.Shutdown() }()
-	
+
 	po := NewRealTimeParameterOptimizer(ctx, nm)
 	defer func() { _ = po.Shutdown() }()
-	
+
 	original := NewDefaultRealTimeOptimizationParameters()
 	original.ChunkSizeMB = 32.0
 	original.PriorityWeights["test"] = 0.8
 	original.ResourceLimits["test"] = 0.9
-	
+
 	copy := po.copyParameters(original)
-	
+
 	assert.Equal(t, original.ChunkSizeMB, copy.ChunkSizeMB)
 	assert.Equal(t, original.PriorityWeights["test"], copy.PriorityWeights["test"])
 	assert.Equal(t, original.ResourceLimits["test"], copy.ResourceLimits["test"])
-	
+
 	// Verify it's a deep copy
 	copy.ChunkSizeMB = 64.0
 	copy.PriorityWeights["test"] = 0.5
 	copy.ResourceLimits["test"] = 0.6
-	
+
 	assert.NotEqual(t, original.ChunkSizeMB, copy.ChunkSizeMB)
 	assert.NotEqual(t, original.PriorityWeights["test"], copy.PriorityWeights["test"])
 	assert.NotEqual(t, original.ResourceLimits["test"], copy.ResourceLimits["test"])
@@ -620,22 +620,22 @@ func TestRealTimeParameterOptimizerClampToValidRanges(t *testing.T) {
 	ctx := context.Background()
 	nm := NewRealTimeNetworkMonitor(ctx)
 	defer func() { _ = nm.Shutdown() }()
-	
+
 	po := NewRealTimeParameterOptimizer(ctx, nm)
 	defer func() { _ = po.Shutdown() }()
-	
+
 	params := NewDefaultRealTimeOptimizationParameters()
-	
+
 	// Test clamping values outside ranges
-	params.ChunkSizeMB = -5.0  // Below min
-	params.ConcurrentChunks = 100  // Above max
-	params.RequestTimeoutSec = 500.0  // Above max
-	params.BufferSizeMB = -10.0  // Below min
-	params.CompressionLevel = 15  // Above max
-	params.RetryAttempts = -1  // Below min
-	
+	params.ChunkSizeMB = -5.0        // Below min
+	params.ConcurrentChunks = 100    // Above max
+	params.RequestTimeoutSec = 500.0 // Above max
+	params.BufferSizeMB = -10.0      // Below min
+	params.CompressionLevel = 15     // Above max
+	params.RetryAttempts = -1        // Below min
+
 	clamped := po.clampToValidRanges(params)
-	
+
 	assert.GreaterOrEqual(t, clamped.ChunkSizeMB, po.parameterSpace.chunkSizeRange.Min)
 	assert.LessOrEqual(t, clamped.ChunkSizeMB, po.parameterSpace.chunkSizeRange.Max)
 	assert.GreaterOrEqual(t, clamped.ConcurrentChunks, int(po.parameterSpace.concurrencyRange.Min))
@@ -654,32 +654,32 @@ func TestRealTimeParameterOptimizerSampleFromAcquisitionFunction(t *testing.T) {
 	ctx := context.Background()
 	nm := NewRealTimeNetworkMonitor(ctx)
 	defer func() { _ = nm.Shutdown() }()
-	
+
 	po := NewRealTimeParameterOptimizer(ctx, nm)
 	defer func() { _ = po.Shutdown() }()
-	
+
 	conditions := &RealTimeNetworkConditions{
-		BandwidthMBps: 100.0,
-		LatencyMs:    30.0,
-		NetworkQuality: 0.8,
+		BandwidthMBps:       100.0,
+		LatencyMs:           30.0,
+		NetworkQuality:      0.8,
 		ConnectionStability: 0.9,
 	}
-	
+
 	// Test chunk size sampling
 	chunkSize := po.sampleFromAcquisitionFunction("chunk_size", conditions)
 	assert.Greater(t, chunkSize, 0.0)
 	assert.Less(t, chunkSize, 100.0)
-	
+
 	// Test concurrency sampling
 	concurrency := po.sampleFromAcquisitionFunction("concurrency", conditions)
 	assert.Greater(t, concurrency, 0.0)
 	assert.Less(t, concurrency, 50.0)
-	
+
 	// Test timeout sampling
 	timeout := po.sampleFromAcquisitionFunction("timeout", conditions)
 	assert.Greater(t, timeout, 0.0)
 	assert.Less(t, timeout, 1000.0)
-	
+
 	// Test unknown parameter
 	unknown := po.sampleFromAcquisitionFunction("unknown", conditions)
 	assert.GreaterOrEqual(t, unknown, 0.0)
@@ -690,23 +690,23 @@ func TestRealTimeParameterOptimizerEdgeCases(t *testing.T) {
 	ctx := context.Background()
 	nm := NewRealTimeNetworkMonitor(ctx)
 	defer func() { _ = nm.Shutdown() }()
-	
+
 	po := NewRealTimeParameterOptimizer(ctx, nm)
 	defer func() { _ = po.Shutdown() }()
-	
+
 	// Test getting parameters immediately after creation
 	params := po.GetCurrentParameters()
 	assert.NotNil(t, params)
-	
+
 	// Test getting status immediately after creation
 	status := po.GetOptimizationStatus()
 	assert.NotNil(t, status)
-	
+
 	// Test getting empty history
 	history := po.GetParameterHistory()
 	assert.NotNil(t, history)
 	assert.Equal(t, 0, len(history))
-	
+
 	// Test optimization without network monitoring
 	result, err := po.OptimizeParameters(ctx)
 	if err != nil {
@@ -722,28 +722,28 @@ func TestRealTimeParameterOptimizerMultipleOptimizations(t *testing.T) {
 	ctx := context.Background()
 	nm := NewRealTimeNetworkMonitor(ctx)
 	defer func() { _ = nm.Shutdown() }()
-	
+
 	po := NewRealTimeParameterOptimizer(ctx, nm)
 	defer func() { _ = po.Shutdown() }()
-	
+
 	// Start network monitoring
 	err := nm.StartMonitoring()
 	require.NoError(t, err)
 	defer func() { _ = nm.StopMonitoring() }()
-	
+
 	// Give monitoring time to collect data
 	time.Sleep(time.Millisecond * 100)
-	
+
 	// Run multiple optimizations
 	for i := 0; i < 3; i++ {
 		result, err := po.OptimizeParameters(ctx)
 		require.NoError(t, err)
 		assert.NotNil(t, result)
-		
+
 		// Small delay between optimizations
 		time.Sleep(time.Millisecond * 10)
 	}
-	
+
 	// Verify history has records
 	history := po.GetParameterHistory()
 	assert.Greater(t, len(history), 0)
@@ -754,29 +754,29 @@ func TestRealTimeParameterOptimizerUtilityFunctions(t *testing.T) {
 	assert.Equal(t, 5.0, clampRealTimeFloat64(3.0, 5.0, 10.0))
 	assert.Equal(t, 10.0, clampRealTimeFloat64(15.0, 5.0, 10.0))
 	assert.Equal(t, 7.0, clampRealTimeFloat64(7.0, 5.0, 10.0))
-	
+
 	// Test clampRealTimeInt
 	assert.Equal(t, 5, clampRealTimeInt(3, 5, 10))
 	assert.Equal(t, 10, clampRealTimeInt(15, 5, 10))
 	assert.Equal(t, 7, clampRealTimeInt(7, 5, 10))
-	
+
 	// Test maxRealTimeInt
 	assert.Equal(t, 5, maxRealTimeInt(3, 5))
 	assert.Equal(t, 5, maxRealTimeInt(5, 3))
 	assert.Equal(t, 5, maxRealTimeInt(5, 5))
-	
+
 	// Test calculateRealTimeVariance
 	values := []float64{1.0, 2.0, 3.0, 4.0, 5.0}
 	variance := calculateRealTimeVariance(values)
 	assert.Greater(t, variance, 0.0)
-	
+
 	// Test calculateRealTimeTrend
 	improving := []float64{1.0, 2.0, 3.0, 4.0, 5.0}
 	assert.Equal(t, "improving", calculateRealTimeTrend(improving))
-	
+
 	degrading := []float64{5.0, 4.0, 3.0, 2.0, 1.0}
 	assert.Equal(t, "degrading", calculateRealTimeTrend(degrading))
-	
+
 	stable := []float64{3.0, 3.0, 3.0, 3.0, 3.0}
 	assert.Equal(t, "stable", calculateRealTimeTrend(stable))
 }

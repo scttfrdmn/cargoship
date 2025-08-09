@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/klauspost/compress/zstd"
 	"github.com/klauspost/compress/s2"
+	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
 )
 
@@ -59,13 +59,13 @@ type Compressor struct {
 
 // CompressionResult contains compression statistics
 type CompressionResult struct {
-	Algorithm       Algorithm `json:"algorithm"`
-	Level           Level     `json:"level"`
-	OriginalSize    int64     `json:"original_size"`
-	CompressedSize  int64     `json:"compressed_size"`
-	CompressionRatio float64  `json:"compression_ratio"`
-	CompressionTime  int64    `json:"compression_time_ms"`
-	Throughput      float64   `json:"throughput_mbps"`
+	Algorithm        Algorithm `json:"algorithm"`
+	Level            Level     `json:"level"`
+	OriginalSize     int64     `json:"original_size"`
+	CompressedSize   int64     `json:"compressed_size"`
+	CompressionRatio float64   `json:"compression_ratio"`
+	CompressionTime  int64     `json:"compression_time_ms"`
+	Throughput       float64   `json:"throughput_mbps"`
 }
 
 // NewCompressor creates a new compressor with the specified algorithm and level
@@ -102,7 +102,7 @@ func NewCompressor(algorithm Algorithm, level Level) (*Compressor, error) {
 // Compress compresses data using the configured algorithm
 func (c *Compressor) Compress(data io.Reader) (io.Reader, *CompressionResult, error) {
 	startTime := time.Now()
-	
+
 	var buf bytes.Buffer
 	var originalSize int64
 	var err error
@@ -133,15 +133,15 @@ func (c *Compressor) Compress(data io.Reader) (io.Reader, *CompressionResult, er
 
 	compressionTime := time.Since(startTime)
 	compressedSize := int64(buf.Len())
-	
+
 	result := &CompressionResult{
 		Algorithm:        c.algorithm,
-		Level:           c.level,
-		OriginalSize:    originalSize,
-		CompressedSize:  compressedSize,
+		Level:            c.level,
+		OriginalSize:     originalSize,
+		CompressedSize:   compressedSize,
 		CompressionRatio: float64(originalSize) / float64(compressedSize),
 		CompressionTime:  compressionTime.Milliseconds(),
-		Throughput:      float64(originalSize) / (1024 * 1024) / compressionTime.Seconds(),
+		Throughput:       float64(originalSize) / (1024 * 1024) / compressionTime.Seconds(),
 	}
 
 	return bytes.NewReader(buf.Bytes()), result, nil
@@ -198,7 +198,7 @@ func BenchmarkCompression(data io.Reader, dataSize int64) ([]CompressionResult, 
 
 	algorithms := []Algorithm{AlgorithmGzip, AlgorithmZlib, AlgorithmZstd, AlgorithmLZ4, AlgorithmS2}
 	levels := []Level{LevelFast, LevelDefault, LevelBest}
-	
+
 	var results []CompressionResult
 
 	for _, alg := range algorithms {

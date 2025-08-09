@@ -13,18 +13,18 @@ import (
 func TestLoadConfigFromEnv(t *testing.T) {
 	// Set up test environment variables
 	envVars := map[string]string{
-		"CARGOSHIP_AGENT_ID":          "test-agent-123",
-		"CARGOSHIP_AGENT_NAME":        "Test NAS Agent",
-		"CARGOSHIP_CONTROLLER_URL":    "wss://test-controller:8080",
-		"CARGOSHIP_AUTH_TOKEN":        "test-auth-token",
-		"CARGOSHIP_WATCH_PATHS":       "/data/test1,/data/test2",
-		"CARGOSHIP_DESTINATION":       "s3://test-bucket",
-		"CARGOSHIP_STORAGE_CLASS":     "glacier",
-		"CARGOSHIP_COMPRESSION":       "zstd",
-		"CARGOSHIP_PATTERNS":          "*.fastq.gz,*.bam",
-		"CARGOSHIP_EXCLUDE_PATTERNS":  "*.tmp,*.lock",
-		"CARGOSHIP_CHECK_INTERVAL":    "600",
-		"CARGOSHIP_MIN_AGE_DAYS":      "14",
+		"CARGOSHIP_AGENT_ID":         "test-agent-123",
+		"CARGOSHIP_AGENT_NAME":       "Test NAS Agent",
+		"CARGOSHIP_CONTROLLER_URL":   "wss://test-controller:8080",
+		"CARGOSHIP_AUTH_TOKEN":       "test-auth-token",
+		"CARGOSHIP_WATCH_PATHS":      "/data/test1,/data/test2",
+		"CARGOSHIP_DESTINATION":      "s3://test-bucket",
+		"CARGOSHIP_STORAGE_CLASS":    "glacier",
+		"CARGOSHIP_COMPRESSION":      "zstd",
+		"CARGOSHIP_PATTERNS":         "*.fastq.gz,*.bam",
+		"CARGOSHIP_EXCLUDE_PATTERNS": "*.tmp,*.lock",
+		"CARGOSHIP_CHECK_INTERVAL":   "600",
+		"CARGOSHIP_MIN_AGE_DAYS":     "14",
 	}
 
 	// Set environment variables

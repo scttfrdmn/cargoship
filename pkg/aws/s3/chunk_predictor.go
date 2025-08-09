@@ -21,164 +21,164 @@ import (
 // ChunkPredictor implements intelligent chunk boundary prediction with content awareness.
 type ChunkPredictor struct {
 	// Prediction strategies
-	strategy              ChunkStrategy
-	contentAnalyzer       *ContentAnalyzer
-	performancePredictor  *ChunkPerformancePredictor
-	networkPredictor      *NetworkConditionPredictor
-	
+	strategy             ChunkStrategy
+	contentAnalyzer      *ContentAnalyzer
+	performancePredictor *ChunkPerformancePredictor
+	networkPredictor     *NetworkConditionPredictor
+
 	// Configuration
-	minChunkSize          int64
-	maxChunkSize          int64
-	targetChunkSize       int64
-	adaptiveThreshold     float64
-	predictionAccuracy    float64
-	
+	minChunkSize       int64
+	maxChunkSize       int64
+	targetChunkSize    int64
+	adaptiveThreshold  float64
+	predictionAccuracy float64
+
 	// Performance tracking
-	predictionHistory     []ChunkPrediction
-	performanceMetrics    *ChunkPredictionMetrics
-	learningRate          float64
-	
+	predictionHistory  []ChunkPrediction
+	performanceMetrics *ChunkPredictionMetrics
+	learningRate       float64
+
 	// Content-based prediction
-	fileTypePredictor     *FileTypePredictor
-	compressionPredictor  *CompressionRatioPredictor
-	boundaryDetector      *ContentBoundaryDetector
-	
+	fileTypePredictor    *FileTypePredictor
+	compressionPredictor *CompressionRatioPredictor
+	boundaryDetector     *ContentBoundaryDetector
+
 	// Real-time adaptation
-	dynamicAdjustments    map[string]*DynamicChunkingState
-	feedbackLoop          *ChunkFeedbackLoop
-	
-	mu                    sync.RWMutex
-	ctx                   context.Context
+	dynamicAdjustments map[string]*DynamicChunkingState
+	feedbackLoop       *ChunkFeedbackLoop
+
+	mu  sync.RWMutex
+	ctx context.Context
 }
 
 // ChunkStrategy defines different chunking strategies.
 type ChunkStrategy string
 
 const (
-	ChunkStrategyFixed          ChunkStrategy = "fixed"
-	ChunkStrategyAdaptive       ChunkStrategy = "adaptive"
-	ChunkStrategyContentAware   ChunkStrategy = "content_aware"
-	ChunkStrategyPerformance    ChunkStrategy = "performance"
-	ChunkStrategyHybrid         ChunkStrategy = "hybrid"
+	ChunkStrategyFixed        ChunkStrategy = "fixed"
+	ChunkStrategyAdaptive     ChunkStrategy = "adaptive"
+	ChunkStrategyContentAware ChunkStrategy = "content_aware"
+	ChunkStrategyPerformance  ChunkStrategy = "performance"
+	ChunkStrategyHybrid       ChunkStrategy = "hybrid"
 )
 
 // ChunkPrediction represents a predicted chunk boundary with metadata.
 type ChunkPrediction struct {
-	StartOffset          int64
-	EndOffset            int64
-	Size                 int64
-	Confidence           float64
+	StartOffset               int64
+	EndOffset                 int64
+	Size                      int64
+	Confidence                float64
 	PredictedCompressionRatio float64
 	PredictedTransferTime     time.Duration
-	ContentType          ContentType
-	BoundaryReason       BoundaryReason
-	OptimalForNetwork    bool
-	ExpectedPerformance  *ChunkPerformanceExpectation
-	Timestamp           time.Time
+	ContentType               ContentType
+	BoundaryReason            BoundaryReason
+	OptimalForNetwork         bool
+	ExpectedPerformance       *ChunkPerformanceExpectation
+	Timestamp                 time.Time
 }
 
 // ContentType represents different types of content for chunk optimization.
 type ContentType string
 
 const (
-	ContentTypeText        ContentType = "text"
-	ContentTypeBinary      ContentType = "binary"
-	ContentTypeCompressed  ContentType = "compressed"
-	ContentTypeImage       ContentType = "image"
-	ContentTypeVideo       ContentType = "video"
-	ContentTypeAudio       ContentType = "audio"
-	ContentTypeArchive     ContentType = "archive"
-	ContentTypeDatabase    ContentType = "database"
-	ContentTypeUnknown     ContentType = "unknown"
+	ContentTypeText       ContentType = "text"
+	ContentTypeBinary     ContentType = "binary"
+	ContentTypeCompressed ContentType = "compressed"
+	ContentTypeImage      ContentType = "image"
+	ContentTypeVideo      ContentType = "video"
+	ContentTypeAudio      ContentType = "audio"
+	ContentTypeArchive    ContentType = "archive"
+	ContentTypeDatabase   ContentType = "database"
+	ContentTypeUnknown    ContentType = "unknown"
 )
 
 // BoundaryReason explains why a boundary was chosen.
 type BoundaryReason string
 
 const (
-	BoundaryFixed             BoundaryReason = "fixed_size"
-	BoundaryContentBreak      BoundaryReason = "content_break"
+	BoundaryFixed              BoundaryReason = "fixed_size"
+	BoundaryContentBreak       BoundaryReason = "content_break"
 	BoundaryCompressionOptimal BoundaryReason = "compression_optimal"
-	BoundaryNetworkOptimal    BoundaryReason = "network_optimal"
+	BoundaryNetworkOptimal     BoundaryReason = "network_optimal"
 	BoundaryPerformanceOptimal BoundaryReason = "performance_optimal"
-	BoundaryMemoryConstraint  BoundaryReason = "memory_constraint"
-	BoundaryAdaptive          BoundaryReason = "adaptive"
+	BoundaryMemoryConstraint   BoundaryReason = "memory_constraint"
+	BoundaryAdaptive           BoundaryReason = "adaptive"
 )
 
 // ChunkPerformanceExpectation contains performance predictions for a chunk.
 type ChunkPerformanceExpectation struct {
-	TransferTime         time.Duration
-	CompressionTime      time.Duration
-	CompressionRatio     float64
-	NetworkEfficiency    float64
-	MemoryUsage          int64
-	CPUUsage             float64
-	OptimalConcurrency   int
-	FailureProbability   float64
+	TransferTime       time.Duration
+	CompressionTime    time.Duration
+	CompressionRatio   float64
+	NetworkEfficiency  float64
+	MemoryUsage        int64
+	CPUUsage           float64
+	OptimalConcurrency int
+	FailureProbability float64
 }
 
 // ContentAnalyzer analyzes file content to determine optimal chunking strategies.
 type ContentAnalyzer struct {
 	// Content detection
-	mimeDetector         *MimeTypeDetector
-	entropyCalculator    *EntropyCalculator
-	patternDetector      *ContentPatternDetector
-	
+	mimeDetector      *MimeTypeDetector
+	entropyCalculator *EntropyCalculator
+	patternDetector   *ContentPatternDetector
+
 	// Analysis configuration
-	sampleSize           int64
-	analysisDepth        AnalysisDepth
-	contentHistograms    map[ContentType]*ContentHistogram
-	
+	sampleSize        int64
+	analysisDepth     AnalysisDepth
+	contentHistograms map[ContentType]*ContentHistogram
+
 	// Performance optimization
-	analysisCache        map[string]*ContentAnalysis
-	cacheExpiry          time.Duration
-	
-	mu                   sync.RWMutex
+	analysisCache map[string]*ContentAnalysis
+	cacheExpiry   time.Duration
+
+	mu sync.RWMutex
 }
 
 // AnalysisDepth controls how deep content analysis goes.
 type AnalysisDepth string
 
 const (
-	AnalysisShallow   AnalysisDepth = "shallow"
-	AnalysisMedium    AnalysisDepth = "medium"
-	AnalysisDeep      AnalysisDepth = "deep"
-	AnalysisComplete  AnalysisDepth = "complete"
+	AnalysisShallow  AnalysisDepth = "shallow"
+	AnalysisMedium   AnalysisDepth = "medium"
+	AnalysisDeep     AnalysisDepth = "deep"
+	AnalysisComplete AnalysisDepth = "complete"
 )
 
 // ContentAnalysis contains the results of content analysis.
 type ContentAnalysis struct {
-	ContentType          ContentType
-	Entropy              float64
-	Compressibility      float64
-	PatternDensity       float64
-	StructuralBreaks     []int64
-	OptimalChunkSizes    []int64
-	CompressionRatios    map[string]float64
-	AnalysisConfidence   float64
-	ProcessingTime       time.Duration
-	CacheKey            string
-	Timestamp           time.Time
+	ContentType        ContentType
+	Entropy            float64
+	Compressibility    float64
+	PatternDensity     float64
+	StructuralBreaks   []int64
+	OptimalChunkSizes  []int64
+	CompressionRatios  map[string]float64
+	AnalysisConfidence float64
+	ProcessingTime     time.Duration
+	CacheKey           string
+	Timestamp          time.Time
 }
 
 // ChunkPerformancePredictor predicts performance characteristics of chunks.
 type ChunkPerformancePredictor struct {
 	// Historical performance data
-	performanceHistory   map[ChunkCharacteristics]*PerformanceHistory
-	
+	performanceHistory map[ChunkCharacteristics]*PerformanceHistory
+
 	// Prediction models
-	transferTimeModel    *TransferTimeModel
-	compressionModel     *CompressionPerformanceModel
+	transferTimeModel      *TransferTimeModel
+	compressionModel       *CompressionPerformanceModel
 	networkEfficiencyModel *NetworkEfficiencyModel
-	
+
 	// Learning and adaptation
-	modelAccuracy        map[string]float64
-	learningEnabled      bool
-	adaptationRate       float64
-	
+	modelAccuracy   map[string]float64
+	learningEnabled bool
+	adaptationRate  float64
+
 	// Performance baselines
-	baselineMetrics      *BaselinePerformanceMetrics
-	
+	baselineMetrics *BaselinePerformanceMetrics
+
 	// mu                   sync.RWMutex // TODO: Add mutex usage for thread safety
 }
 
@@ -194,45 +194,45 @@ type ChunkCharacteristics struct {
 
 // NetworkConditionSummary summarizes current network conditions.
 type NetworkConditionSummary struct {
-	BandwidthMBps        float64
-	LatencyMs            float64
-	PacketLossRate       float64
-	Jitter               float64
-	Stability            float64
+	BandwidthMBps  float64
+	LatencyMs      float64
+	PacketLossRate float64
+	Jitter         float64
+	Stability      float64
 }
 
 // NetworkConditionPredictor predicts network conditions for optimal chunking.
 type NetworkConditionPredictor struct {
 	// Real-time monitoring
-	bandwidthMonitor     *BandwidthMonitor
-	latencyMonitor       *LatencyMonitor
-	stabilityAnalyzer    *NetworkStabilityAnalyzer
-	
+	bandwidthMonitor  *BandwidthMonitor
+	latencyMonitor    *LatencyMonitor
+	stabilityAnalyzer *NetworkStabilityAnalyzer
+
 	// Prediction models
-	bandwidthPredictor   *BandwidthPredictionModel
-	latencyPredictor     *LatencyPredictionModel
-	
+	bandwidthPredictor *BandwidthPredictionModel
+	latencyPredictor   *LatencyPredictionModel
+
 	// Historical data
-	conditionHistory     []NetworkConditionSnapshot
-	predictionHorizon    time.Duration
-	updateInterval       time.Duration
-	
+	conditionHistory  []NetworkConditionSnapshot
+	predictionHorizon time.Duration
+	updateInterval    time.Duration
+
 	// Adaptation
-	predictionAccuracy   float64
-	adaptiveWindow       time.Duration
-	
-	mu                   sync.RWMutex
+	predictionAccuracy float64
+	adaptiveWindow     time.Duration
+
+	mu sync.RWMutex
 }
 
 // NetworkConditionSnapshot captures network conditions at a point in time.
 type NetworkConditionSnapshot struct {
-	Timestamp           time.Time
-	BandwidthMBps       float64
-	LatencyMs           float64
-	PacketLoss          float64
-	Jitter              float64
-	Quality             NetworkQuality
-	Stability           float64
+	Timestamp     time.Time
+	BandwidthMBps float64
+	LatencyMs     float64
+	PacketLoss    float64
+	Jitter        float64
+	Quality       NetworkQuality
+	Stability     float64
 }
 
 // NetworkQuality represents the overall quality of network conditions.
@@ -248,13 +248,13 @@ const (
 
 // DynamicChunkingState tracks dynamic adjustments for specific uploads.
 type DynamicChunkingState struct {
-	UploadID             string
-	CurrentStrategy      ChunkStrategy
-	AdaptationHistory    []ChunkingAdaptation
-	PerformanceFeedback  []ChunkPerformanceFeedback
-	OptimalChunkSize     int64
-	LastAdjustment       time.Time
-	AdjustmentTriggers   []AdjustmentTrigger
+	UploadID            string
+	CurrentStrategy     ChunkStrategy
+	AdaptationHistory   []ChunkingAdaptation
+	PerformanceFeedback []ChunkPerformanceFeedback
+	OptimalChunkSize    int64
+	LastAdjustment      time.Time
+	AdjustmentTriggers  []AdjustmentTrigger
 }
 
 // ChunkingAdaptation represents a change in chunking strategy.
@@ -269,14 +269,14 @@ type ChunkingAdaptation struct {
 
 // ChunkPerformanceFeedback provides feedback on chunk performance.
 type ChunkPerformanceFeedback struct {
-	ChunkID             string
-	Size                int64
-	TransferTime        time.Duration
-	CompressionRatio    float64
-	Success             bool
-	ErrorDetails        string
-	NetworkConditions   NetworkConditionSummary
-	Timestamp          time.Time
+	ChunkID           string
+	Size              int64
+	TransferTime      time.Duration
+	CompressionRatio  float64
+	Success           bool
+	ErrorDetails      string
+	NetworkConditions NetworkConditionSummary
+	Timestamp         time.Time
 }
 
 // NewChunkPredictor creates a new chunk predictor with specified strategy.
@@ -286,25 +286,25 @@ func NewChunkPredictor(strategy ChunkStrategy, ctx context.Context) *ChunkPredic
 		contentAnalyzer:      NewContentAnalyzer(),
 		performancePredictor: NewChunkPerformancePredictor(),
 		networkPredictor:     NewNetworkConditionPredictor(),
-		
-		minChunkSize:         5 * 1024 * 1024,    // 5MB
-		maxChunkSize:         100 * 1024 * 1024,  // 100MB
-		targetChunkSize:      16 * 1024 * 1024,   // 16MB
-		adaptiveThreshold:    0.15,
-		predictionAccuracy:   0.8,
-		
-		predictionHistory:    make([]ChunkPrediction, 0, 1000),
-		performanceMetrics:   NewChunkPredictionMetrics(),
-		learningRate:         0.1,
-		
+
+		minChunkSize:       5 * 1024 * 1024,   // 5MB
+		maxChunkSize:       100 * 1024 * 1024, // 100MB
+		targetChunkSize:    16 * 1024 * 1024,  // 16MB
+		adaptiveThreshold:  0.15,
+		predictionAccuracy: 0.8,
+
+		predictionHistory:  make([]ChunkPrediction, 0, 1000),
+		performanceMetrics: NewChunkPredictionMetrics(),
+		learningRate:       0.1,
+
 		fileTypePredictor:    NewFileTypePredictor(),
 		compressionPredictor: NewCompressionRatioPredictor(),
 		boundaryDetector:     NewContentBoundaryDetector(),
-		
-		dynamicAdjustments:   make(map[string]*DynamicChunkingState),
-		feedbackLoop:         NewChunkFeedbackLoop(),
-		
-		ctx:                  ctx,
+
+		dynamicAdjustments: make(map[string]*DynamicChunkingState),
+		feedbackLoop:       NewChunkFeedbackLoop(),
+
+		ctx: ctx,
 	}
 }
 
@@ -312,16 +312,16 @@ func NewChunkPredictor(strategy ChunkStrategy, ctx context.Context) *ChunkPredic
 func (cp *ChunkPredictor) PredictChunkBoundaries(data io.Reader, size int64, contentHint string) ([]ChunkPrediction, error) {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
-	
+
 	// Analyze content to understand optimal chunking strategy
 	analysis, err := cp.contentAnalyzer.AnalyzeContent(data, size, contentHint)
 	if err != nil {
 		return nil, fmt.Errorf("content analysis failed: %w", err)
 	}
-	
+
 	// Get current network conditions
 	networkConditions := cp.networkPredictor.GetCurrentConditions()
-	
+
 	// Apply chunking strategy
 	switch cp.strategy {
 	case ChunkStrategyFixed:
@@ -343,42 +343,42 @@ func (cp *ChunkPredictor) PredictChunkBoundaries(data io.Reader, size int64, con
 func (cp *ChunkPredictor) predictFixedChunks(size int64, analysis *ContentAnalysis) ([]ChunkPrediction, error) {
 	var predictions []ChunkPrediction
 	chunkSize := cp.targetChunkSize
-	
+
 	for offset := int64(0); offset < size; offset += chunkSize {
 		endOffset := offset + chunkSize
 		if endOffset > size {
 			endOffset = size
 		}
-		
+
 		prediction := ChunkPrediction{
-			StartOffset:           offset,
-			EndOffset:            endOffset,
-			Size:                 endOffset - offset,
-			Confidence:           1.0,
+			StartOffset:               offset,
+			EndOffset:                 endOffset,
+			Size:                      endOffset - offset,
+			Confidence:                1.0,
 			PredictedCompressionRatio: analysis.CompressionRatios["gzip"],
-			ContentType:          analysis.ContentType,
-			BoundaryReason:       BoundaryFixed,
-			OptimalForNetwork:    true,
-			Timestamp:           time.Now(),
+			ContentType:               analysis.ContentType,
+			BoundaryReason:            BoundaryFixed,
+			OptimalForNetwork:         true,
+			Timestamp:                 time.Now(),
 		}
-		
+
 		// Predict performance
 		prediction.ExpectedPerformance = cp.predictChunkPerformance(&prediction, analysis)
 		prediction.PredictedTransferTime = prediction.ExpectedPerformance.TransferTime
-		
+
 		predictions = append(predictions, prediction)
 	}
-	
+
 	return predictions, nil
 }
 
 // predictAdaptiveChunks implements adaptive chunking based on content and network.
 func (cp *ChunkPredictor) predictAdaptiveChunks(size int64, analysis *ContentAnalysis, networkConditions *NetworkConditionSummary) ([]ChunkPrediction, error) {
 	var predictions []ChunkPrediction
-	
+
 	// Calculate optimal chunk size based on network conditions
 	optimalSize := cp.calculateOptimalChunkSize(analysis, networkConditions)
-	
+
 	// Adjust chunk size based on content characteristics
 	if analysis.Compressibility > 0.7 {
 		// Highly compressible content can use larger chunks
@@ -387,16 +387,16 @@ func (cp *ChunkPredictor) predictAdaptiveChunks(size int64, analysis *ContentAna
 		// Low compressibility content should use smaller chunks
 		optimalSize = int64(float64(optimalSize) * 0.7)
 	}
-	
+
 	// Ensure chunk size is within bounds
 	optimalSize = cp.constrainChunkSize(optimalSize)
-	
+
 	for offset := int64(0); offset < size; offset += optimalSize {
 		endOffset := offset + optimalSize
 		if endOffset > size {
 			endOffset = size
 		}
-		
+
 		// Look for better boundary near the target
 		if endOffset < size && len(analysis.StructuralBreaks) > 0 {
 			betterBoundary := cp.findNearestStructuralBreak(endOffset, analysis.StructuralBreaks, optimalSize/4)
@@ -404,24 +404,24 @@ func (cp *ChunkPredictor) predictAdaptiveChunks(size int64, analysis *ContentAna
 				endOffset = betterBoundary
 			}
 		}
-		
+
 		prediction := ChunkPrediction{
-			StartOffset:           offset,
-			EndOffset:            endOffset,
-			Size:                 endOffset - offset,
-			Confidence:           0.85,
+			StartOffset:               offset,
+			EndOffset:                 endOffset,
+			Size:                      endOffset - offset,
+			Confidence:                0.85,
 			PredictedCompressionRatio: analysis.CompressionRatios["gzip"],
-			ContentType:          analysis.ContentType,
-			BoundaryReason:       BoundaryAdaptive,
-			OptimalForNetwork:    cp.isOptimalForNetwork(endOffset-offset, networkConditions),
-			Timestamp:           time.Now(),
+			ContentType:               analysis.ContentType,
+			BoundaryReason:            BoundaryAdaptive,
+			OptimalForNetwork:         cp.isOptimalForNetwork(endOffset-offset, networkConditions),
+			Timestamp:                 time.Now(),
 		}
-		
+
 		prediction.ExpectedPerformance = cp.predictChunkPerformance(&prediction, analysis)
 		prediction.PredictedTransferTime = prediction.ExpectedPerformance.TransferTime
-		
+
 		predictions = append(predictions, prediction)
-		
+
 		// Update optimal size for next chunk based on performance prediction
 		if prediction.ExpectedPerformance.NetworkEfficiency < 0.7 {
 			optimalSize = int64(float64(optimalSize) * 0.9)
@@ -430,74 +430,74 @@ func (cp *ChunkPredictor) predictAdaptiveChunks(size int64, analysis *ContentAna
 		}
 		optimalSize = cp.constrainChunkSize(optimalSize)
 	}
-	
+
 	return predictions, nil
 }
 
 // predictContentAwareChunks implements content-aware chunking.
 func (cp *ChunkPredictor) predictContentAwareChunks(size int64, analysis *ContentAnalysis) ([]ChunkPrediction, error) {
 	var predictions []ChunkPrediction
-	
+
 	// Use structural breaks as primary boundaries
 	boundaries := cp.calculateContentBoundaries(size, analysis)
-	
+
 	for i := 0; i < len(boundaries)-1; i++ {
 		startOffset := boundaries[i]
 		endOffset := boundaries[i+1]
 		chunkSize := endOffset - startOffset
-		
+
 		prediction := ChunkPrediction{
-			StartOffset:           startOffset,
-			EndOffset:            endOffset,
-			Size:                 chunkSize,
-			Confidence:           0.9,
+			StartOffset:               startOffset,
+			EndOffset:                 endOffset,
+			Size:                      chunkSize,
+			Confidence:                0.9,
 			PredictedCompressionRatio: cp.predictCompressionForSegment(startOffset, endOffset, analysis),
-			ContentType:          analysis.ContentType,
-			BoundaryReason:       BoundaryContentBreak,
-			OptimalForNetwork:    true,
-			Timestamp:           time.Now(),
+			ContentType:               analysis.ContentType,
+			BoundaryReason:            BoundaryContentBreak,
+			OptimalForNetwork:         true,
+			Timestamp:                 time.Now(),
 		}
-		
+
 		prediction.ExpectedPerformance = cp.predictChunkPerformance(&prediction, analysis)
 		prediction.PredictedTransferTime = prediction.ExpectedPerformance.TransferTime
-		
+
 		predictions = append(predictions, prediction)
 	}
-	
+
 	return predictions, nil
 }
 
 // predictPerformanceOptimizedChunks optimizes for maximum performance.
 func (cp *ChunkPredictor) predictPerformanceOptimizedChunks(size int64, analysis *ContentAnalysis, networkConditions *NetworkConditionSummary) ([]ChunkPrediction, error) {
 	var predictions []ChunkPrediction
-	
+
 	// Calculate performance-optimal chunk size
 	optimalSize := cp.calculatePerformanceOptimalSize(analysis, networkConditions)
-	
+
 	for offset := int64(0); offset < size; offset += optimalSize {
 		endOffset := offset + optimalSize
 		if endOffset > size {
 			endOffset = size
 		}
-		
+
 		prediction := ChunkPrediction{
-			StartOffset:           offset,
-			EndOffset:            endOffset,
-			Size:                 endOffset - offset,
-			Confidence:           0.95,
+			StartOffset:               offset,
+			EndOffset:                 endOffset,
+			Size:                      endOffset - offset,
+			Confidence:                0.95,
 			PredictedCompressionRatio: analysis.CompressionRatios["gzip"],
-			ContentType:          analysis.ContentType,
-			BoundaryReason:       BoundaryPerformanceOptimal,
-			OptimalForNetwork:    true,
-			Timestamp:           time.Now(),
+			ContentType:               analysis.ContentType,
+			BoundaryReason:            BoundaryPerformanceOptimal,
+			OptimalForNetwork:         true,
+			Timestamp:                 time.Now(),
 		}
-		
+
 		prediction.ExpectedPerformance = cp.predictChunkPerformance(&prediction, analysis)
 		prediction.PredictedTransferTime = prediction.ExpectedPerformance.TransferTime
-		
+
 		predictions = append(predictions, prediction)
 	}
-	
+
 	return predictions, nil
 }
 
@@ -507,12 +507,12 @@ func (cp *ChunkPredictor) predictHybridChunks(size int64, analysis *ContentAnaly
 	fixedPredictions, _ := cp.predictFixedChunks(size, analysis)
 	adaptivePredictions, _ := cp.predictAdaptiveChunks(size, analysis, networkConditions)
 	contentPredictions, _ := cp.predictContentAwareChunks(size, analysis)
-	
+
 	// Score each prediction set
 	fixedScore := cp.scorePredictions(fixedPredictions, analysis, networkConditions)
 	adaptiveScore := cp.scorePredictions(adaptivePredictions, analysis, networkConditions)
 	contentScore := cp.scorePredictions(contentPredictions, analysis, networkConditions)
-	
+
 	// Choose the best strategy
 	switch {
 	case fixedScore >= adaptiveScore && fixedScore >= contentScore:
@@ -530,10 +530,10 @@ func (cp *ChunkPredictor) calculateOptimalChunkSize(analysis *ContentAnalysis, n
 	// Base calculation on network bandwidth and latency
 	bandwidthMBps := networkConditions.BandwidthMBps
 	latencyMs := networkConditions.LatencyMs
-	
+
 	// Calculate bandwidth-delay product
 	bdp := bandwidthMBps * latencyMs / 1000.0 * 1024 * 1024 // Convert to bytes
-	
+
 	// Adjust for content type
 	multiplier := 1.0
 	switch analysis.ContentType {
@@ -546,7 +546,7 @@ func (cp *ChunkPredictor) calculateOptimalChunkSize(analysis *ContentAnalysis, n
 	case ContentTypeVideo, ContentTypeAudio:
 		multiplier = 2.0 // Media files benefit from larger chunks
 	}
-	
+
 	optimalSize := int64(bdp * multiplier)
 	return cp.constrainChunkSize(optimalSize)
 }
@@ -578,14 +578,14 @@ func (cp *ChunkPredictor) isOptimalForNetwork(chunkSize int64, conditions *Netwo
 
 func (cp *ChunkPredictor) calculateContentBoundaries(size int64, analysis *ContentAnalysis) []int64 {
 	boundaries := []int64{0}
-	
+
 	// Add structural breaks as boundaries
 	for _, break_ := range analysis.StructuralBreaks {
 		if break_ > 0 && break_ < size {
 			boundaries = append(boundaries, break_)
 		}
 	}
-	
+
 	// Add optimal chunk sizes if no breaks exist
 	if len(boundaries) == 1 {
 		for _, optimalSize := range analysis.OptimalChunkSizes {
@@ -594,15 +594,15 @@ func (cp *ChunkPredictor) calculateContentBoundaries(size int64, analysis *Conte
 			}
 		}
 	}
-	
+
 	// Ensure end boundary
 	boundaries = append(boundaries, size)
-	
+
 	// Sort and deduplicate
 	sort.Slice(boundaries, func(i, j int) bool {
 		return boundaries[i] < boundaries[j]
 	})
-	
+
 	// Remove duplicates
 	unique := make([]int64, 0, len(boundaries))
 	for i, boundary := range boundaries {
@@ -610,29 +610,29 @@ func (cp *ChunkPredictor) calculateContentBoundaries(size int64, analysis *Conte
 			unique = append(unique, boundary)
 		}
 	}
-	
+
 	return unique
 }
 
 func (cp *ChunkPredictor) predictCompressionForSegment(start, end int64, analysis *ContentAnalysis) float64 {
 	// Use overall compression ratio as baseline
 	baseRatio := analysis.CompressionRatios["gzip"]
-	
+
 	// Adjust based on segment position (beginning/middle/end might compress differently)
 	segmentRatio := float64(end-start) / float64(end)
-	
+
 	// Simple adjustment - first and last segments might compress slightly worse
 	if segmentRatio < 0.1 || segmentRatio > 0.9 {
 		return baseRatio * 0.95
 	}
-	
+
 	return baseRatio
 }
 
 func (cp *ChunkPredictor) calculatePerformanceOptimalSize(analysis *ContentAnalysis, networkConditions *NetworkConditionSummary) int64 {
 	// Start with network-optimal size
 	networkOptimal := cp.calculateOptimalChunkSize(analysis, networkConditions)
-	
+
 	// Adjust for compression characteristics
 	if analysis.Compressibility > 0.8 {
 		// Highly compressible content benefits from larger chunks
@@ -641,7 +641,7 @@ func (cp *ChunkPredictor) calculatePerformanceOptimalSize(analysis *ContentAnaly
 		// Low compressibility content should use smaller chunks for faster failure recovery
 		return int64(float64(networkOptimal) * 0.8)
 	}
-	
+
 	return networkOptimal
 }
 
@@ -649,7 +649,7 @@ func (cp *ChunkPredictor) scorePredictions(predictions []ChunkPrediction, analys
 	if len(predictions) == 0 {
 		return 0
 	}
-	
+
 	totalScore := 0.0
 	for _, pred := range predictions {
 		// Score based on multiple factors
@@ -659,39 +659,39 @@ func (cp *ChunkPredictor) scorePredictions(predictions []ChunkPrediction, analys
 			networkScore = 0.4
 		}
 		confidenceScore := pred.Confidence * 0.3
-		
+
 		totalScore += compressionScore + networkScore + confidenceScore
 	}
-	
+
 	return totalScore / float64(len(predictions))
 }
 
 func (cp *ChunkPredictor) predictChunkPerformance(prediction *ChunkPrediction, analysis *ContentAnalysis) *ChunkPerformanceExpectation {
 	// Get current network conditions
 	networkConditions := cp.networkPredictor.GetCurrentConditions()
-	
+
 	// Calculate transfer time based on size and bandwidth
 	transferTime := time.Duration(float64(prediction.Size) / (networkConditions.BandwidthMBps * 1024 * 1024) * float64(time.Second))
-	
+
 	// Calculate compression time (rough estimate)
 	compressionTime := time.Duration(float64(prediction.Size) / (100 * 1024 * 1024) * float64(time.Second)) // 100MB/s compression rate
-	
+
 	// Calculate memory usage (chunk size + compression buffer)
 	memoryUsage := prediction.Size + int64(float64(prediction.Size)*0.3) // 30% overhead for compression
-	
+
 	// Calculate network efficiency
 	networkEfficiency := math.Min(1.0, networkConditions.BandwidthMBps/100.0) // Assume 100 Mbps is optimal
-	
+
 	// Calculate failure probability based on chunk size and network quality
 	failureProbability := math.Max(0.001, float64(prediction.Size)/(100*1024*1024)*networkConditions.PacketLossRate*10)
-	
+
 	return &ChunkPerformanceExpectation{
 		TransferTime:       transferTime,
 		CompressionTime:    compressionTime,
 		CompressionRatio:   prediction.PredictedCompressionRatio,
 		NetworkEfficiency:  networkEfficiency,
 		MemoryUsage:        memoryUsage,
-		CPUUsage:          0.2, // 20% CPU usage estimate
+		CPUUsage:           0.2,                                                  // 20% CPU usage estimate
 		OptimalConcurrency: int(math.Max(1, networkConditions.BandwidthMBps/10)), // 1 connection per 10 Mbps
 		FailureProbability: failureProbability,
 	}
@@ -714,29 +714,29 @@ func NewContentAnalyzer() *ContentAnalyzer {
 
 func NewChunkPerformancePredictor() *ChunkPerformancePredictor {
 	return &ChunkPerformancePredictor{
-		performanceHistory:    make(map[ChunkCharacteristics]*PerformanceHistory),
-		transferTimeModel:     NewTransferTimeModel(),
-		compressionModel:      NewCompressionPerformanceModel(),
+		performanceHistory:     make(map[ChunkCharacteristics]*PerformanceHistory),
+		transferTimeModel:      NewTransferTimeModel(),
+		compressionModel:       NewCompressionPerformanceModel(),
 		networkEfficiencyModel: NewNetworkEfficiencyModel(),
-		modelAccuracy:         make(map[string]float64),
-		learningEnabled:       true,
-		adaptationRate:        0.1,
-		baselineMetrics:       NewBaselinePerformanceMetrics(),
+		modelAccuracy:          make(map[string]float64),
+		learningEnabled:        true,
+		adaptationRate:         0.1,
+		baselineMetrics:        NewBaselinePerformanceMetrics(),
 	}
 }
 
 func NewNetworkConditionPredictor() *NetworkConditionPredictor {
 	return &NetworkConditionPredictor{
-		bandwidthMonitor:    NewBandwidthMonitor(),
-		latencyMonitor:      NewLatencyMonitor(),
-		stabilityAnalyzer:   NewNetworkStabilityAnalyzer(),
-		bandwidthPredictor:  NewBandwidthPredictionModel(),
-		latencyPredictor:    NewLatencyPredictionModel(),
-		conditionHistory:    make([]NetworkConditionSnapshot, 0, 1000),
-		predictionHorizon:   time.Minute * 5,
-		updateInterval:      time.Second * 10,
-		predictionAccuracy:  0.85,
-		adaptiveWindow:      time.Minute * 15,
+		bandwidthMonitor:   NewBandwidthMonitor(),
+		latencyMonitor:     NewLatencyMonitor(),
+		stabilityAnalyzer:  NewNetworkStabilityAnalyzer(),
+		bandwidthPredictor: NewBandwidthPredictionModel(),
+		latencyPredictor:   NewLatencyPredictionModel(),
+		conditionHistory:   make([]NetworkConditionSnapshot, 0, 1000),
+		predictionHorizon:  time.Minute * 5,
+		updateInterval:     time.Second * 10,
+		predictionAccuracy: 0.85,
+		adaptiveWindow:     time.Minute * 15,
 	}
 }
 
@@ -765,7 +765,7 @@ func (ca *ContentAnalyzer) AnalyzeContent(data io.Reader, size int64, contentHin
 	hasher := sha256.New()
 	_, _ = fmt.Fprintf(hasher, "%d-%s", size, contentHint)
 	cacheKey := fmt.Sprintf("%x", hasher.Sum(nil))
-	
+
 	// Check cache
 	ca.mu.RLock()
 	if cached, exists := ca.analysisCache[cacheKey]; exists && time.Since(cached.Timestamp) < ca.cacheExpiry {
@@ -773,72 +773,72 @@ func (ca *ContentAnalyzer) AnalyzeContent(data io.Reader, size int64, contentHin
 		return cached, nil
 	}
 	ca.mu.RUnlock()
-	
+
 	startTime := time.Now()
-	
+
 	// Read sample for analysis
 	sampleData := make([]byte, min(ca.sampleSize, size))
 	_, err := io.ReadFull(data, sampleData)
 	if err != nil && err != io.ErrUnexpectedEOF {
 		return nil, fmt.Errorf("failed to read sample: %w", err)
 	}
-	
+
 	// Detect content type
 	contentType := ca.detectContentType(sampleData, contentHint)
-	
+
 	// Calculate entropy
 	entropy := ca.entropyCalculator.Calculate(sampleData)
-	
+
 	// Estimate compressibility
 	compressibility := ca.estimateCompressibility(sampleData, contentType)
-	
+
 	// Detect patterns and structural breaks
 	patterns := ca.patternDetector.DetectPatterns(sampleData)
 	structuralBreaks := ca.extractStructuralBreaks(patterns, size)
-	
+
 	// Predict compression ratios for different algorithms
 	compressionRatios := ca.predictCompressionRatios(sampleData, contentType)
-	
+
 	// Calculate optimal chunk sizes
 	optimalSizes := ca.calculateOptimalChunkSizes(contentType, entropy, compressibility)
-	
+
 	analysis := &ContentAnalysis{
 		ContentType:        contentType,
-		Entropy:           entropy,
-		Compressibility:   compressibility,
-		PatternDensity:    ca.calculatePatternDensity(patterns),
-		StructuralBreaks:  structuralBreaks,
-		OptimalChunkSizes: optimalSizes,
-		CompressionRatios: compressionRatios,
+		Entropy:            entropy,
+		Compressibility:    compressibility,
+		PatternDensity:     ca.calculatePatternDensity(patterns),
+		StructuralBreaks:   structuralBreaks,
+		OptimalChunkSizes:  optimalSizes,
+		CompressionRatios:  compressionRatios,
 		AnalysisConfidence: ca.calculateConfidence(contentType, entropy),
-		ProcessingTime:    time.Since(startTime),
-		CacheKey:         cacheKey,
-		Timestamp:        time.Now(),
+		ProcessingTime:     time.Since(startTime),
+		CacheKey:           cacheKey,
+		Timestamp:          time.Now(),
 	}
-	
+
 	// Cache the result
 	ca.mu.Lock()
 	ca.analysisCache[cacheKey] = analysis
 	ca.mu.Unlock()
-	
+
 	return analysis, nil
 }
 
 func (ncp *NetworkConditionPredictor) GetCurrentConditions() *NetworkConditionSummary {
 	ncp.mu.RLock()
 	defer ncp.mu.RUnlock()
-	
+
 	// Get latest measurements
 	bandwidth := ncp.bandwidthMonitor.GetCurrentBandwidth()
 	latency := ncp.latencyMonitor.GetCurrentLatency()
 	stability := ncp.stabilityAnalyzer.GetCurrentStability()
-	
+
 	return &NetworkConditionSummary{
 		BandwidthMBps:  bandwidth,
-		LatencyMs:     latency,
+		LatencyMs:      latency,
 		PacketLossRate: ncp.calculatePacketLoss(),
-		Jitter:        ncp.calculateJitter(),
-		Stability:     stability,
+		Jitter:         ncp.calculateJitter(),
+		Stability:      stability,
 	}
 }
 
@@ -886,7 +886,7 @@ func (ca *ContentAnalyzer) estimateCompressibility(data []byte, contentType Cont
 		ContentTypeDatabase:   0.5,
 		ContentTypeUnknown:    0.4,
 	}
-	
+
 	return baseCompressibility[contentType]
 }
 
@@ -904,7 +904,7 @@ func (ca *ContentAnalyzer) extractStructuralBreaks(patterns []ContentPattern, si
 func (ca *ContentAnalyzer) predictCompressionRatios(data []byte, contentType ContentType) map[string]float64 {
 	// Simple compression ratio prediction
 	ratios := make(map[string]float64)
-	
+
 	switch contentType {
 	case ContentTypeText:
 		ratios["gzip"] = 0.3
@@ -923,16 +923,16 @@ func (ca *ContentAnalyzer) predictCompressionRatios(data []byte, contentType Con
 		ratios["brotli"] = 0.55
 		ratios["zstd"] = 0.58
 	}
-	
+
 	return ratios
 }
 
 func (ca *ContentAnalyzer) calculateOptimalChunkSizes(contentType ContentType, entropy float64, compressibility float64) []int64 {
 	// Calculate optimal chunk sizes based on content characteristics
 	baseSize := int64(16 * 1024 * 1024) // 16MB base
-	
+
 	var sizes []int64
-	
+
 	switch contentType {
 	case ContentTypeText:
 		// Text benefits from medium chunks for good compression
@@ -946,7 +946,7 @@ func (ca *ContentAnalyzer) calculateOptimalChunkSizes(contentType ContentType, e
 	default:
 		sizes = []int64{baseSize}
 	}
-	
+
 	return sizes
 }
 
@@ -961,14 +961,14 @@ func (ca *ContentAnalyzer) calculatePatternDensity(patterns []ContentPattern) fl
 func (ca *ContentAnalyzer) calculateConfidence(contentType ContentType, entropy float64) float64 {
 	// Calculate confidence based on content type detection certainty and entropy
 	baseConfidence := 0.8
-	
+
 	// Adjust based on entropy (higher entropy = more confidence in binary, lower = more confidence in text)
 	if contentType == ContentTypeText && entropy < 0.5 {
 		return baseConfidence + 0.1
 	} else if contentType == ContentTypeBinary && entropy > 0.8 {
 		return baseConfidence + 0.1
 	}
-	
+
 	return baseConfidence
 }
 
@@ -1021,30 +1021,34 @@ type ContentPattern struct {
 
 // Placeholder methods
 
-func NewMimeTypeDetector() *MimeTypeDetector                   { return &MimeTypeDetector{} }
-func NewEntropyCalculator() *EntropyCalculator                 { return &EntropyCalculator{} }
-func NewContentPatternDetector() *ContentPatternDetector       { return &ContentPatternDetector{} }
-func NewTransferTimeModel() *TransferTimeModel                 { return &TransferTimeModel{} }
-func NewCompressionPerformanceModel() *CompressionPerformanceModel { return &CompressionPerformanceModel{} }
-func NewNetworkEfficiencyModel() *NetworkEfficiencyModel       { return &NetworkEfficiencyModel{} }
-func NewBaselinePerformanceMetrics() *BaselinePerformanceMetrics { return &BaselinePerformanceMetrics{} }
-func NewBandwidthMonitor() *BandwidthMonitor                   { return &BandwidthMonitor{} }
-func NewLatencyMonitor() *LatencyMonitor                       { return &LatencyMonitor{} }
-func NewNetworkStabilityAnalyzer() *NetworkStabilityAnalyzer   { return &NetworkStabilityAnalyzer{} }
-func NewBandwidthPredictionModel() *BandwidthPredictionModel   { return &BandwidthPredictionModel{} }
-func NewLatencyPredictionModel() *LatencyPredictionModel       { return &LatencyPredictionModel{} }
+func NewMimeTypeDetector() *MimeTypeDetector             { return &MimeTypeDetector{} }
+func NewEntropyCalculator() *EntropyCalculator           { return &EntropyCalculator{} }
+func NewContentPatternDetector() *ContentPatternDetector { return &ContentPatternDetector{} }
+func NewTransferTimeModel() *TransferTimeModel           { return &TransferTimeModel{} }
+func NewCompressionPerformanceModel() *CompressionPerformanceModel {
+	return &CompressionPerformanceModel{}
+}
+func NewNetworkEfficiencyModel() *NetworkEfficiencyModel { return &NetworkEfficiencyModel{} }
+func NewBaselinePerformanceMetrics() *BaselinePerformanceMetrics {
+	return &BaselinePerformanceMetrics{}
+}
+func NewBandwidthMonitor() *BandwidthMonitor                 { return &BandwidthMonitor{} }
+func NewLatencyMonitor() *LatencyMonitor                     { return &LatencyMonitor{} }
+func NewNetworkStabilityAnalyzer() *NetworkStabilityAnalyzer { return &NetworkStabilityAnalyzer{} }
+func NewBandwidthPredictionModel() *BandwidthPredictionModel { return &BandwidthPredictionModel{} }
+func NewLatencyPredictionModel() *LatencyPredictionModel     { return &LatencyPredictionModel{} }
 
 func (ec *EntropyCalculator) Calculate(data []byte) float64 {
 	if len(data) == 0 {
 		return 0
 	}
-	
+
 	// Calculate Shannon entropy
 	freq := make(map[byte]int)
 	for _, b := range data {
 		freq[b]++
 	}
-	
+
 	entropy := 0.0
 	length := float64(len(data))
 	for _, count := range freq {
@@ -1053,18 +1057,18 @@ func (ec *EntropyCalculator) Calculate(data []byte) float64 {
 			entropy -= p * math.Log2(p)
 		}
 	}
-	
+
 	return entropy / 8.0 // Normalize to 0-1 range
 }
 
 func (cpd *ContentPatternDetector) DetectPatterns(data []byte) []ContentPattern {
 	// Simple pattern detection - look for repeated sequences
 	patterns := make([]ContentPattern, 0)
-	
+
 	if len(data) < 1024 {
 		return patterns
 	}
-	
+
 	// Detect null byte sequences (potential padding)
 	for i := 0; i <= len(data)-1024; i += 1024 {
 		nullCount := 0
@@ -1072,16 +1076,16 @@ func (cpd *ContentPatternDetector) DetectPatterns(data []byte) []ContentPattern 
 		if end > len(data) {
 			end = len(data)
 		}
-		
+
 		for j := i; j < end; j++ {
 			if data[j] == 0 {
 				nullCount++
 			}
 		}
-		
+
 		windowSize := end - i
 		threshold := windowSize / 2 // More than 50% nulls
-		
+
 		if nullCount > threshold {
 			patterns = append(patterns, ContentPattern{
 				Type:   "structural_break",
@@ -1089,10 +1093,10 @@ func (cpd *ContentPatternDetector) DetectPatterns(data []byte) []ContentPattern 
 			})
 		}
 	}
-	
+
 	return patterns
 }
 
-func (bm *BandwidthMonitor) GetCurrentBandwidth() float64     { return 100.0 } // 100 Mbps default
-func (lm *LatencyMonitor) GetCurrentLatency() float64         { return 50.0 }  // 50ms default
-func (nsa *NetworkStabilityAnalyzer) GetCurrentStability() float64 { return 0.95 } // 95% stability default
+func (bm *BandwidthMonitor) GetCurrentBandwidth() float64          { return 100.0 } // 100 Mbps default
+func (lm *LatencyMonitor) GetCurrentLatency() float64              { return 50.0 }  // 50ms default
+func (nsa *NetworkStabilityAnalyzer) GetCurrentStability() float64 { return 0.95 }  // 95% stability default

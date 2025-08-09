@@ -11,15 +11,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"github.com/stretchr/testify/require"
 	"github.com/scttfrdmn/cargoship/pkg/config"
 	"github.com/scttfrdmn/cargoship/pkg/inventory"
 	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters"
 	"github.com/scttfrdmn/cargoship/pkg/plugins/transporters/cloud"
 	"github.com/scttfrdmn/cargoship/pkg/rclone"
 	"github.com/scttfrdmn/cargoship/pkg/travelagent"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPorterCreateHashes(t *testing.T) {
@@ -359,17 +359,17 @@ func TestRun(t *testing.T) {
 // Test 0% coverage functions
 func TestSetTravelAgent(t *testing.T) {
 	p := New()
-	
+
 	// Verify initial state
 	require.False(t, p.hasTravelAgent)
 	require.Nil(t, p.TravelAgent)
-	
+
 	// Create a fake travel agent
 	ta := &fta{}
-	
+
 	// Test SetTravelAgent
 	p.SetTravelAgent(ta)
-	
+
 	require.True(t, p.hasTravelAgent)
 	require.Equal(t, ta, p.TravelAgent)
 }
@@ -378,20 +378,20 @@ func TestWithLogger(t *testing.T) {
 	// Test WithLogger option
 	logger := &slog.Logger{}
 	p := New(WithLogger(logger))
-	
+
 	require.Equal(t, logger, p.Logger)
 }
 
 func TestSetConcurrency(t *testing.T) {
 	p := New()
-	
+
 	// Test default concurrency (New() sets it to 10)
 	require.Equal(t, 10, p.concurrency)
-	
+
 	// Test SetConcurrency
 	p.SetConcurrency(5)
 	require.Equal(t, 5, p.concurrency)
-	
+
 	// Test with different value
 	p.SetConcurrency(15)
 	require.Equal(t, 15, p.concurrency)
@@ -399,16 +399,16 @@ func TestSetConcurrency(t *testing.T) {
 
 func TestSetRetries(t *testing.T) {
 	p := New()
-	
+
 	// Test default values (New() sets retryCount=1, retryInterval=5s)
 	require.Equal(t, 1, p.retryCount)
 	require.Equal(t, time.Second*5, p.retryInterval)
-	
+
 	// Test SetRetries
 	p.SetRetries(3, time.Second*10)
 	require.Equal(t, 3, p.retryCount)
 	require.Equal(t, time.Second*10, p.retryInterval)
-	
+
 	// Test with different values
 	p.SetRetries(10, time.Minute)
 	require.Equal(t, 10, p.retryCount)
@@ -420,17 +420,17 @@ func TestSendFinalUpdate(t *testing.T) {
 	// Test porter without travel agent
 	p := New()
 	require.False(t, p.hasTravelAgent)
-	
+
 	err := p.SendFinalUpdate(travelagent.StatusUpdate{
 		Status: travelagent.StatusComplete,
 	})
 	require.NoError(t, err) // Should return nil when no travel agent
-	
+
 	// Test porter with travel agent
 	ta := &fta{}
 	p.SetTravelAgent(ta)
 	p.InventoryFilePath = "testdata/inventories/example-inventory.yaml"
-	
+
 	err = p.SendFinalUpdate(travelagent.StatusUpdate{
 		Status: travelagent.StatusComplete,
 	})
@@ -446,15 +446,15 @@ func TestRunForm(t *testing.T) {
 		Destination: "/tmp",
 		MaxSize:     "1GB",
 	}
-	
+
 	// Since runForm uses interactive UI, we can't easily test it without mocking
 	// But we can at least verify the function signature is correct
 	require.NotNil(t, runForm)
-	
+
 	// Test that it's a function that takes WizardForm and returns error
 	testFunc := runForm
 	require.NotNil(t, testFunc)
-	
+
 	// We can't call it directly in tests due to interactive nature
 	// but we've verified the function exists and has correct signature
 	_ = wf // Use the variable to avoid unused error
@@ -464,16 +464,16 @@ func TestRunWizard(t *testing.T) {
 	// Test RunWizard method
 	// This is also interactive, so we'll test basic initialization
 	p := New()
-	
+
 	// RunWizard should initialize WizardForm
 	// We can't run it fully due to interactive form, but we can test
 	// that the method exists and has correct signature
 	require.NotNil(t, p.RunWizard)
-	
+
 	// Test that it's a method that returns error
 	testMethod := p.RunWizard
 	require.NotNil(t, testMethod)
-	
+
 	// We can't call it directly in tests due to interactive nature
 	// but we've verified the method exists and has correct signature
 }
@@ -481,30 +481,30 @@ func TestRunWizard(t *testing.T) {
 // Test 0% coverage utility functions
 func TestMustGetCmd(t *testing.T) {
 	cmd := &cobra.Command{}
-	
+
 	// Add various flags to test
 	cmd.Flags().Int("test-int", 42, "test int flag")
 	cmd.Flags().String("test-string", "hello", "test string flag")
 	cmd.Flags().Bool("test-bool", true, "test bool flag")
 	cmd.Flags().IntSlice("test-int-slice", []int{1, 2, 3}, "test int slice flag")
 	cmd.Flags().Duration("test-duration", time.Second*5, "test duration flag")
-	
+
 	// Test int flag
 	intVal := mustGetCmd[int](cmd, "test-int")
 	require.Equal(t, 42, intVal)
-	
+
 	// Test string flag
 	stringVal := mustGetCmd[string](cmd, "test-string")
 	require.Equal(t, "hello", stringVal)
-	
+
 	// Test bool flag
 	boolVal := mustGetCmd[bool](cmd, "test-bool")
 	require.True(t, boolVal)
-	
+
 	// Test int slice flag
 	intSliceVal := mustGetCmd[[]int](cmd, "test-int-slice")
 	require.Equal(t, []int{1, 2, 3}, intSliceVal)
-	
+
 	// Test duration flag
 	durationVal := mustGetCmd[time.Duration](cmd, "test-duration")
 	require.Equal(t, time.Second*5, durationVal)
@@ -512,7 +512,7 @@ func TestMustGetCmd(t *testing.T) {
 
 func TestMustGetCmdPanic(t *testing.T) {
 	cmd := &cobra.Command{}
-	
+
 	// Test panic with non-existent flag
 	require.Panics(t, func() {
 		mustGetCmd[int](cmd, "non-existent-flag")
@@ -524,7 +524,7 @@ func TestPanicIfErr(t *testing.T) {
 	require.NotPanics(t, func() {
 		panicIfErr(nil)
 	})
-	
+
 	// Test with actual error (should panic)
 	require.Panics(t, func() {
 		panicIfErr(errors.New("test error"))
@@ -540,7 +540,7 @@ func TestInProcessName(t *testing.T) {
 		{"test.txt", ".__creating-test.txt"},
 		{"/path/to/file.dat", "/path/to/.__creating-file.dat"},
 	}
-	
+
 	for _, tt := range tests {
 		result := inProcessName(tt.input)
 		require.Equal(t, tt.expected, result)
@@ -549,17 +549,17 @@ func TestInProcessName(t *testing.T) {
 
 func TestFileExists(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	// Test with non-existent file
 	nonExistentFile := filepath.Join(tmpDir, "non-existent.txt")
 	require.False(t, fileExists(nonExistentFile))
-	
+
 	// Test with existing file
 	existingFile := filepath.Join(tmpDir, "existing.txt")
 	err := os.WriteFile(existingFile, []byte("test"), 0644)
 	require.NoError(t, err)
 	require.True(t, fileExists(existingFile))
-	
+
 	// Test with directory (should return false)
 	require.False(t, fileExists(tmpDir))
 }
@@ -568,11 +568,11 @@ func TestInt64ToUint64(t *testing.T) {
 	// Test with positive number
 	result := int64ToUint64(42)
 	require.Equal(t, uint64(42), result)
-	
+
 	// Test with zero
 	result = int64ToUint64(0)
 	require.Equal(t, uint64(0), result)
-	
+
 	// Test with negative number (should panic)
 	require.Panics(t, func() {
 		int64ToUint64(-1)
@@ -583,11 +583,11 @@ func TestIntToUint64(t *testing.T) {
 	// Test with positive number
 	result := intToUint64(42)
 	require.Equal(t, uint64(42), result)
-	
+
 	// Test with zero
 	result = intToUint64(0)
 	require.Equal(t, uint64(0), result)
-	
+
 	// Test with negative number (should panic)
 	require.Panics(t, func() {
 		intToUint64(-1)

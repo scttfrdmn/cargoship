@@ -10,12 +10,12 @@ import (
 
 func TestTransporter_Configure(t *testing.T) {
 	transporter := &Transporter{}
-	
+
 	// Configure should always return nil (no-op implementation)
 	config := transporters.Config{
 		Destination: "echo 'test'",
 	}
-	
+
 	err := transporter.Configure(config)
 	if err != nil {
 		t.Errorf("Configure() should not return error, got: %v", err)
@@ -134,7 +134,7 @@ func TestTransporter_Send(t *testing.T) {
 				t.Errorf("Send method should not panic: %v", r)
 			}
 		}()
-		
+
 		// Create a temporary file to "send"
 		tmpFile := "/tmp/test-cargoship-send"
 		file, err := os.Create(tmpFile)
@@ -229,7 +229,7 @@ func TestTransporter_EnvironmentVariableHandling(t *testing.T) {
 func TestTransporter_ImplementsInterface(t *testing.T) {
 	// Verify that Transporter implements the transporters.Transporter interface
 	var _ transporters.Transporter = (*Transporter)(nil)
-	
+
 	// Also test that we can create and use the transporter as the interface
 	var tr transporters.Transporter = &Transporter{
 		Config: transporters.Config{
@@ -356,7 +356,7 @@ func TestTransporter_CheckScriptExecutionBehavior(t *testing.T) {
 			description: "Should succeed with true command",
 		},
 		{
-			name:        "False command", 
+			name:        "False command",
 			checkScript: "false",
 			expectError: true,
 			description: "Should fail with false command",
@@ -379,7 +379,7 @@ func TestTransporter_CheckScriptExecutionBehavior(t *testing.T) {
 			}
 
 			err := transporter.Check()
-			
+
 			if tt.expectError && err == nil {
 				t.Errorf("Check() expected error for %s", tt.description)
 			}

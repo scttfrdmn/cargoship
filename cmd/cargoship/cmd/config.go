@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/spf13/cobra"
 	"github.com/scttfrdmn/cargoship/pkg/config"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -102,23 +102,23 @@ func runConfig(cmd *cobra.Command, args []string) error {
 
 func generateConfig() error {
 	example := config.GenerateExampleConfig()
-	
+
 	fmt.Printf("# CargoShip Configuration Example\n")
 	fmt.Printf("# Save this to ~/.cargoship.yaml to use as your configuration\n\n")
 	fmt.Print(example)
-	
+
 	// Optionally save to file
 	fmt.Printf("\n# To save this configuration:\n")
 	fmt.Printf("# cargoship config --generate > ~/.cargoship.yaml\n")
-	
+
 	return nil
 }
 
 func validateConfig(manager *config.Manager) error {
 	fmt.Printf("✅ Configuration is valid!\n")
-	
+
 	cfg := manager.GetConfig()
-	
+
 	fmt.Printf("\nConfiguration summary:\n")
 	fmt.Printf("  AWS Region: %s\n", cfg.AWS.Region)
 	if cfg.AWS.Profile != "" {
@@ -135,13 +135,13 @@ func validateConfig(manager *config.Manager) error {
 		fmt.Printf("  Metrics Namespace: %s\n", cfg.Metrics.Namespace)
 	}
 	fmt.Printf("  Log Level: %s\n", cfg.Logging.Level)
-	
+
 	return nil
 }
 
 func showConfig(manager *config.Manager) error {
 	cfg := manager.GetConfig()
-	
+
 	switch configFormat {
 	case "json":
 		encoder := json.NewEncoder(os.Stdout)
@@ -174,12 +174,12 @@ func editConfig() error {
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
-	
+
 	configPath := configFile
 	if configPath == "" {
 		configPath = filepath.Join(home, ".cargoship.yaml")
 	}
-	
+
 	// Create config file if it doesn't exist
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		fmt.Printf("Creating new configuration file at %s\n", configPath)
@@ -188,7 +188,7 @@ func editConfig() error {
 			return fmt.Errorf("failed to create config file: %w", err)
 		}
 	}
-	
+
 	// Get editor from environment
 	editor := os.Getenv("EDITOR")
 	if editor == "" {
@@ -204,23 +204,23 @@ func editConfig() error {
 			}
 		}
 	}
-	
+
 	if editor == "" {
 		return fmt.Errorf("no editor found. Set EDITOR or VISUAL environment variable")
 	}
-	
+
 	fmt.Printf("Opening %s with %s...\n", configPath, editor)
-	
+
 	// Execute editor
 	cmd := exec.Command(editor, configPath)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	
+
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("editor failed: %w", err)
 	}
-	
+
 	// Validate the edited configuration
 	manager := config.NewManager()
 	if err := manager.LoadConfig(configPath); err != nil {
@@ -228,7 +228,7 @@ func editConfig() error {
 		fmt.Printf("Please fix the errors and try again.\n")
 		return nil
 	}
-	
+
 	fmt.Printf("✅ Configuration saved and validated successfully!\n")
 	return nil
 }

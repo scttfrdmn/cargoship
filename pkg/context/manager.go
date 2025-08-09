@@ -24,12 +24,12 @@ const (
 
 // ContextInfo holds context state information
 type ContextInfo struct {
-	Current        ExecutionContext `json:"current"`
-	LastUsed       time.Time        `json:"last_used"`
-	Version        string           `json:"version"`
-	AgentEndpoint  string           `json:"agent_endpoint,omitempty"`
-	ControllerURL  string           `json:"controller_url,omitempty"`
-	WorkingDir     string           `json:"working_dir,omitempty"`
+	Current       ExecutionContext `json:"current"`
+	LastUsed      time.Time        `json:"last_used"`
+	Version       string           `json:"version"`
+	AgentEndpoint string           `json:"agent_endpoint,omitempty"`
+	ControllerURL string           `json:"controller_url,omitempty"`
+	WorkingDir    string           `json:"working_dir,omitempty"`
 }
 
 // Manager handles context persistence and switching
@@ -46,9 +46,9 @@ func NewManager(logger *slog.Logger) *Manager {
 		// Fallback to current directory if home detection fails
 		home = "."
 	}
-	
+
 	contextFile := filepath.Join(home, ".cargoship-context")
-	
+
 	return &Manager{
 		contextFile: contextFile,
 		logger:      logger.With("component", "context-manager"),
@@ -61,39 +61,39 @@ func (m *Manager) Load() (*ContextInfo, error) {
 	if m.current != nil {
 		return m.current, nil
 	}
-	
+
 	// Check if context file exists
 	if _, err := os.Stat(m.contextFile); os.IsNotExist(err) {
 		// First run - create default context
 		m.logger.Info("First run detected, creating default context", "context", ContextLocal)
 		return m.createDefaultContext()
 	}
-	
+
 	// Read and parse context file
 	data, err := os.ReadFile(m.contextFile)
 	if err != nil {
 		m.logger.Warn("Failed to read context file, using default", "error", err)
 		return m.createDefaultContext()
 	}
-	
+
 	var ctx ContextInfo
 	if err := json.Unmarshal(data, &ctx); err != nil {
 		m.logger.Warn("Failed to parse context file, recreating", "error", err)
 		return m.createDefaultContext()
 	}
-	
+
 	// Validate context
 	if !isValidContext(ctx.Current) {
 		m.logger.Warn("Invalid context in file, resetting to local", "context", ctx.Current)
 		ctx.Current = ContextLocal
 	}
-	
+
 	// Update last used time
 	ctx.LastUsed = time.Now()
-	
+
 	m.current = &ctx
 	m.logger.Debug("Loaded context from file", "context", ctx.Current, "file", m.contextFile)
-	
+
 	return m.current, nil
 }
 
@@ -102,22 +102,22 @@ func (m *Manager) Save() error {
 	if m.current == nil {
 		return fmt.Errorf("no context to save")
 	}
-	
+
 	// Update metadata
 	m.current.LastUsed = time.Now()
 	m.current.Version = "0.3.0" // Could be imported from version
-	
+
 	// Marshal to JSON with pretty formatting
 	data, err := json.MarshalIndent(m.current, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal context: %w", err)
 	}
-	
+
 	// Write to file with appropriate permissions
 	if err := os.WriteFile(m.contextFile, data, 0644); err != nil {
 		return fmt.Errorf("failed to write context file: %w", err)
 	}
-	
+
 	m.logger.Debug("Saved context to file", "context", m.current.Current, "file", m.contextFile)
 	return nil
 }
@@ -127,31 +127,31 @@ func (m *Manager) SwitchTo(ctx ExecutionContext) error {
 	if !isValidContext(ctx) {
 		return fmt.Errorf("invalid context: %s", ctx)
 	}
-	
+
 	// Load current context if not loaded
 	if m.current == nil {
 		if _, err := m.Load(); err != nil {
 			return fmt.Errorf("failed to load current context: %w", err)
 		}
 	}
-	
+
 	previousContext := m.current.Current
 	m.current.Current = ctx
-	
+
 	// Update working directory if switching to local
 	if ctx == ContextLocal {
 		if wd, err := os.Getwd(); err == nil {
 			m.current.WorkingDir = wd
 		}
 	}
-	
+
 	// Save the updated context
 	if err := m.Save(); err != nil {
 		// Rollback on save failure
 		m.current.Current = previousContext
 		return fmt.Errorf("failed to save context switch: %w", err)
 	}
-	
+
 	m.logger.Info("Context switched", "from", previousContext, "to", ctx)
 	return nil
 }
@@ -173,7 +173,7 @@ func (m *Manager) SetEndpoint(endpoint string) error {
 			return err
 		}
 	}
-	
+
 	switch m.current.Current {
 	case ContextAgent:
 		m.current.AgentEndpoint = endpoint
@@ -182,7 +182,7 @@ func (m *Manager) SetEndpoint(endpoint string) error {
 	default:
 		return fmt.Errorf("endpoints not applicable for context: %s", m.current.Current)
 	}
-	
+
 	return m.Save()
 }
 
@@ -191,7 +191,7 @@ func (m *Manager) GetEndpoint() string {
 	if m.current == nil {
 		return ""
 	}
-	
+
 	switch m.current.Current {
 	case ContextAgent:
 		return m.current.AgentEndpoint
@@ -213,7 +213,7 @@ func (m *Manager) Reset() error {
 	if err := os.Remove(m.contextFile); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove context file: %w", err)
 	}
-	
+
 	m.current = nil
 	m.logger.Info("Context reset to default")
 	return nil
@@ -227,22 +227,22 @@ func (m *Manager) GetContextFile() string {
 // createDefaultContext creates the initial context for first-time users
 func (m *Manager) createDefaultContext() (*ContextInfo, error) {
 	wd, _ := os.Getwd() // Ignore error, will be empty string
-	
+
 	ctx := &ContextInfo{
 		Current:    ContextLocal,
 		LastUsed:   time.Now(),
 		Version:    "0.3.0",
 		WorkingDir: wd,
 	}
-	
+
 	m.current = ctx
-	
+
 	// Save the default context
 	if err := m.Save(); err != nil {
 		m.logger.Warn("Failed to save default context", "error", err)
 		// Continue anyway, context will work in memory
 	}
-	
+
 	return ctx, nil
 }
 

@@ -18,24 +18,24 @@ import (
 type ErrorType string
 
 const (
-	ErrorTypeNetwork     ErrorType = "network"
-	ErrorTypePermission  ErrorType = "permission"
-	ErrorTypeThrottling  ErrorType = "throttling"
-	ErrorTypeValidation  ErrorType = "validation"
-	ErrorTypeSystem      ErrorType = "system"
-	ErrorTypeUnknown     ErrorType = "unknown"
+	ErrorTypeNetwork    ErrorType = "network"
+	ErrorTypePermission ErrorType = "permission"
+	ErrorTypeThrottling ErrorType = "throttling"
+	ErrorTypeValidation ErrorType = "validation"
+	ErrorTypeSystem     ErrorType = "system"
+	ErrorTypeUnknown    ErrorType = "unknown"
 )
 
 // CargoShipError represents a structured error with context
 type CargoShipError struct {
-	Type        ErrorType `json:"type"`
-	Message     string    `json:"message"`
-	Operation   string    `json:"operation"`
-	Resource    string    `json:"resource,omitempty"`
-	Cause       error     `json:"cause,omitempty"`
-	Retryable   bool      `json:"retryable"`
-	Timestamp   time.Time `json:"timestamp"`
-	Context     map[string]interface{} `json:"context,omitempty"`
+	Type      ErrorType              `json:"type"`
+	Message   string                 `json:"message"`
+	Operation string                 `json:"operation"`
+	Resource  string                 `json:"resource,omitempty"`
+	Cause     error                  `json:"cause,omitempty"`
+	Retryable bool                   `json:"retryable"`
+	Timestamp time.Time              `json:"timestamp"`
+	Context   map[string]interface{} `json:"context,omitempty"`
 }
 
 // Error implements the error interface
@@ -96,7 +96,7 @@ func (h *ErrorHandler) WrapError(err error, operation, resource string) *CargoSh
 	}
 
 	errorType, retryable := h.categorizeError(err)
-	
+
 	return &CargoShipError{
 		Type:      errorType,
 		Message:   err.Error(),
@@ -112,27 +112,27 @@ func (h *ErrorHandler) WrapError(err error, operation, resource string) *CargoSh
 // categorizeError determines the error type and retry behavior
 func (h *ErrorHandler) categorizeError(err error) (ErrorType, bool) {
 	errStr := strings.ToLower(err.Error())
-	
+
 	// AWS-specific errors using smithy-go
 	var apiErr *smithy.GenericAPIError
 	if errors.As(err, &apiErr) {
 		return h.categorizeAWSError(*apiErr)
 	}
-	
+
 	// S3-specific errors
 	var notFound *types.NotFound
 	if errors.As(err, &notFound) {
 		return ErrorTypeValidation, false
 	}
-	
+
 	var noSuchBucket *types.NoSuchBucket
 	if errors.As(err, &noSuchBucket) {
 		return ErrorTypeValidation, false
 	}
-	
+
 	// Note: types.AccessDenied was removed in newer AWS SDK versions
 	// Handle access denied via string matching instead
-	
+
 	// Network errors
 	if strings.Contains(errStr, "connection") ||
 		strings.Contains(errStr, "timeout") ||
@@ -140,7 +140,7 @@ func (h *ErrorHandler) categorizeError(err error) (ErrorType, bool) {
 		strings.Contains(errStr, "dns") {
 		return ErrorTypeNetwork, true
 	}
-	
+
 	// Permission errors
 	if strings.Contains(errStr, "access denied") ||
 		strings.Contains(errStr, "forbidden") ||
@@ -148,7 +148,7 @@ func (h *ErrorHandler) categorizeError(err error) (ErrorType, bool) {
 		strings.Contains(errStr, "permission") {
 		return ErrorTypePermission, false
 	}
-	
+
 	// Throttling errors
 	if strings.Contains(errStr, "throttle") ||
 		strings.Contains(errStr, "rate limit") ||
@@ -156,21 +156,21 @@ func (h *ErrorHandler) categorizeError(err error) (ErrorType, bool) {
 		strings.Contains(errStr, "slow down") {
 		return ErrorTypeThrottling, true
 	}
-	
+
 	// Validation errors
 	if strings.Contains(errStr, "invalid") ||
 		strings.Contains(errStr, "bad request") ||
 		strings.Contains(errStr, "malformed") {
 		return ErrorTypeValidation, false
 	}
-	
+
 	return ErrorTypeUnknown, true
 }
 
 // categorizeAWSError categorizes AWS-specific errors
 func (h *ErrorHandler) categorizeAWSError(awsErr smithy.GenericAPIError) (ErrorType, bool) {
 	code := awsErr.Code
-	
+
 	switch code {
 	case "ThrottlingException", "Throttling", "ProvisionedThroughputExceededException", "SlowDown":
 		return ErrorTypeThrottling, true
@@ -192,25 +192,25 @@ func (h *ErrorHandler) RetryWithBackoff(ctx context.Context, operation string, f
 	backoff := retry.NewExponential(h.baseDelay)
 	backoff = retry.WithMaxRetries(uint64(h.maxRetries), backoff)
 	backoff = retry.WithCappedDuration(h.maxDelay, backoff)
-	
+
 	return retry.Do(ctx, backoff, func(ctx context.Context) error {
 		err := fn()
 		if err == nil {
 			return nil
 		}
-		
+
 		wrappedErr := h.WrapError(err, operation, "")
-		
+
 		h.logger.Error("operation failed",
 			"operation", operation,
 			"error_type", wrappedErr.Type,
 			"retryable", wrappedErr.Retryable,
 			"error", wrappedErr.Message)
-		
+
 		if !wrappedErr.IsRetryable() {
 			return wrappedErr
 		}
-		
+
 		return retry.RetryableError(wrappedErr)
 	})
 }
@@ -228,7 +228,7 @@ func (h *ErrorHandler) HandlePanic(operation string) func() {
 			default:
 				err = fmt.Errorf("panic: %v", v)
 			}
-			
+
 			wrappedErr := h.WrapError(err, operation, "")
 			h.logger.Error("panic recovered",
 				"operation", operation,
@@ -241,7 +241,7 @@ func (h *ErrorHandler) HandlePanic(operation string) func() {
 // LogError logs an error with appropriate level and context
 func (h *ErrorHandler) LogError(err error, operation, resource string, errorContext map[string]interface{}) {
 	wrappedErr := h.WrapError(err, operation, resource)
-	
+
 	// Add additional context
 	if wrappedErr.Context == nil {
 		wrappedErr.Context = make(map[string]interface{})
@@ -249,7 +249,7 @@ func (h *ErrorHandler) LogError(err error, operation, resource string, errorCont
 	for k, v := range errorContext {
 		wrappedErr.Context[k] = v
 	}
-	
+
 	// Log with appropriate level based on error type
 	level := slog.LevelError
 	switch wrappedErr.Type {
@@ -258,7 +258,7 @@ func (h *ErrorHandler) LogError(err error, operation, resource string, errorCont
 	case ErrorTypeValidation:
 		level = slog.LevelInfo
 	}
-	
+
 	h.logger.Log(context.Background(), level, "operation error",
 		"operation", wrappedErr.Operation,
 		"resource", wrappedErr.Resource,
@@ -273,7 +273,7 @@ func IsRetryableError(err error) bool {
 	if csErr, ok := err.(*CargoShipError); ok {
 		return csErr.IsRetryable()
 	}
-	
+
 	// Default categorization for non-wrapped errors
 	errStr := strings.ToLower(err.Error())
 	return strings.Contains(errStr, "connection") ||
@@ -301,11 +301,11 @@ type RecoveryOptions struct {
 // GetRecoveryOptions provides actionable suggestions for error recovery
 func (h *ErrorHandler) GetRecoveryOptions(err error) *RecoveryOptions {
 	wrappedErr := h.WrapError(err, "", "")
-	
+
 	options := &RecoveryOptions{
 		Context: make(map[string]string),
 	}
-	
+
 	switch wrappedErr.Type {
 	case ErrorTypePermission:
 		options.SuggestedActions = []string{
@@ -315,7 +315,7 @@ func (h *ErrorHandler) GetRecoveryOptions(err error) *RecoveryOptions {
 			"Check if MFA or additional authentication is required",
 		}
 		options.Documentation = "https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_examples_s3.html"
-		
+
 	case ErrorTypeNetwork:
 		options.SuggestedActions = []string{
 			"Check internet connectivity",
@@ -324,7 +324,7 @@ func (h *ErrorHandler) GetRecoveryOptions(err error) *RecoveryOptions {
 			"Check for firewall or proxy configuration issues",
 		}
 		options.Documentation = "https://docs.aws.amazon.com/general/latest/gr/s3.html"
-		
+
 	case ErrorTypeThrottling:
 		options.SuggestedActions = []string{
 			"Reduce upload concurrency",
@@ -333,7 +333,7 @@ func (h *ErrorHandler) GetRecoveryOptions(err error) *RecoveryOptions {
 			"Monitor AWS service health dashboard",
 		}
 		options.Documentation = "https://docs.aws.amazon.com/AmazonS3/latest/userguide/optimizing-performance.html"
-		
+
 	case ErrorTypeValidation:
 		options.SuggestedActions = []string{
 			"Check bucket name and region configuration",
@@ -342,7 +342,7 @@ func (h *ErrorHandler) GetRecoveryOptions(err error) *RecoveryOptions {
 			"Check lifecycle policy configuration syntax",
 		}
 		options.Documentation = "https://docs.aws.amazon.com/AmazonS3/latest/userguide/"
-		
+
 	case ErrorTypeSystem:
 		options.SuggestedActions = []string{
 			"Check AWS service health dashboard",
@@ -352,7 +352,7 @@ func (h *ErrorHandler) GetRecoveryOptions(err error) *RecoveryOptions {
 		}
 		options.ContactSupport = true
 		options.Documentation = "https://status.aws.amazon.com/"
-		
+
 	default:
 		options.SuggestedActions = []string{
 			"Check CargoShip logs for detailed error information",
@@ -363,19 +363,18 @@ func (h *ErrorHandler) GetRecoveryOptions(err error) *RecoveryOptions {
 		options.ContactSupport = true
 		options.Documentation = "https://github.com/scttfrdmn/cargoship/issues"
 	}
-	
+
 	return options
 }
 
-
 // ErrorMetrics tracks error statistics for monitoring
 type ErrorMetrics struct {
-	TotalErrors     int64                    `json:"total_errors"`
-	ErrorsByType    map[ErrorType]int64      `json:"errors_by_type"`
-	ErrorsByOp      map[string]int64         `json:"errors_by_operation"`
-	RetryAttempts   int64                    `json:"retry_attempts"`
-	LastError       time.Time                `json:"last_error"`
-	ErrorRate       float64                  `json:"error_rate"` // errors per operation
+	TotalErrors   int64               `json:"total_errors"`
+	ErrorsByType  map[ErrorType]int64 `json:"errors_by_type"`
+	ErrorsByOp    map[string]int64    `json:"errors_by_operation"`
+	RetryAttempts int64               `json:"retry_attempts"`
+	LastError     time.Time           `json:"last_error"`
+	ErrorRate     float64             `json:"error_rate"` // errors per operation
 }
 
 // NewErrorMetrics creates a new error metrics tracker

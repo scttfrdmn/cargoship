@@ -32,12 +32,12 @@ func (m *mockS3Client) HeadObject(ctx context.Context, params *s3.HeadObjectInpu
 		notFoundErr.Message = aws.String("The specified key does not exist.")
 		return nil, notFoundErr
 	}
-	
+
 	if m.shouldReturnOtherError {
 		// Return some other error
 		return nil, errors.New("access denied")
 	}
-	
+
 	// Return successful response
 	return &s3.HeadObjectOutput{}, nil
 }
@@ -54,7 +54,7 @@ func (t *TestableTransporter) Exists(ctx context.Context, key string) (bool, err
 		Bucket: aws.String(t.config.Bucket),
 		Key:    aws.String(key),
 	})
-	
+
 	if err != nil {
 		// Check if it's a "not found" error
 		var notFound *types.NotFound
@@ -63,7 +63,7 @@ func (t *TestableTransporter) Exists(ctx context.Context, key string) (bool, err
 		}
 		return false, err
 	}
-	
+
 	return true, nil
 }
 
@@ -94,7 +94,7 @@ func TestOptimizeStorageClass(t *testing.T) {
 	config := awsconfig.S3Config{
 		StorageClass: awsconfig.StorageClassStandard,
 	}
-	
+
 	transporter := &Transporter{config: config}
 
 	tests := []struct {
@@ -164,7 +164,7 @@ func TestOptimizeStorageClass(t *testing.T) {
 
 func TestBuildMetadata(t *testing.T) {
 	transporter := &Transporter{}
-	
+
 	archive := Archive{
 		OriginalSize:    1024 * 1024 * 1024, // 1GB
 		CompressionType: "gzip",
@@ -185,7 +185,7 @@ func TestBuildMetadata(t *testing.T) {
 	// Check CargoShip metadata is added
 	expectedKeys := []string{
 		"cargoship-original-size",
-		"cargoship-compression-type", 
+		"cargoship-compression-type",
 		"cargoship-created-by",
 		"cargoship-upload-time",
 		"cargoship-access-pattern",
@@ -234,7 +234,7 @@ func TestBuildMetadata(t *testing.T) {
 
 func TestBuildMetadataEmptyFields(t *testing.T) {
 	transporter := &Transporter{}
-	
+
 	archive := Archive{
 		OriginalSize:    100,
 		CompressionType: "none",
@@ -265,13 +265,13 @@ func TestBuildMetadataEmptyFields(t *testing.T) {
 func TestArchiveFields(t *testing.T) {
 	// Test Archive struct creation and field access
 	archive := Archive{
-		Key:              "test/archive.tar.gz",
-		Size:             1024,
-		StorageClass:     awsconfig.StorageClassStandard,
-		OriginalSize:     2048,
-		CompressionType:  "gzip",
-		AccessPattern:    "infrequent",
-		RetentionDays:    90,
+		Key:             "test/archive.tar.gz",
+		Size:            1024,
+		StorageClass:    awsconfig.StorageClassStandard,
+		OriginalSize:    2048,
+		CompressionType: "gzip",
+		AccessPattern:   "infrequent",
+		RetentionDays:   90,
 		Metadata: map[string]string{
 			"project": "test-project",
 		},
@@ -400,11 +400,11 @@ func TestParallelUploaderDefaults(t *testing.T) {
 
 func TestGeneratePrefixes(t *testing.T) {
 	tests := []struct {
-		name         string
-		pattern      string
+		name           string
+		pattern        string
 		customPrefixes []string
-		archiveCount int
-		wantCount    int
+		archiveCount   int
+		wantCount      int
 	}{
 		{"hash pattern", "hash", nil, 10, 4},
 		{"date pattern", "date", nil, 20, 4},
@@ -416,9 +416,9 @@ func TestGeneratePrefixes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := ParallelConfig{
-				MaxPrefixes:     4,
-				PrefixPattern:   tt.pattern,
-				CustomPrefixes:  tt.customPrefixes,
+				MaxPrefixes:    4,
+				PrefixPattern:  tt.pattern,
+				CustomPrefixes: tt.customPrefixes,
 			}
 
 			uploader := &ParallelUploader{config: config}
@@ -516,9 +516,9 @@ func TestGetOptimalPrefixCount(t *testing.T) {
 		archiveCount int
 		expected     int
 	}{
-		{"small dataset", 500 * 1024 * 1024, 10, 1}, // 500MB
-		{"medium dataset", 5 * 1024 * 1024 * 1024, 50, 2}, // 5GB  
-		{"large dataset", 50 * 1024 * 1024 * 1024, 100, 4}, // 50GB
+		{"small dataset", 500 * 1024 * 1024, 10, 1},               // 500MB
+		{"medium dataset", 5 * 1024 * 1024 * 1024, 50, 2},         // 5GB
+		{"large dataset", 50 * 1024 * 1024 * 1024, 100, 4},        // 50GB
 		{"very large dataset", 500 * 1024 * 1024 * 1024, 1000, 8}, // 500GB
 		{"massive dataset", 5000 * 1024 * 1024 * 1024, 10000, 16}, // 5TB
 	}
@@ -580,9 +580,9 @@ func TestSelectOptimalPattern(t *testing.T) {
 		archiveCount int
 		expected     string
 	}{
-		{"small archive count", 1024*1024*1024, 50, "sequential"},
-		{"large dataset", 200*1024*1024*1024, 500, "hash"},
-		{"medium dataset", 10*1024*1024*1024, 200, "date"},
+		{"small archive count", 1024 * 1024 * 1024, 50, "sequential"},
+		{"large dataset", 200 * 1024 * 1024 * 1024, 500, "hash"},
+		{"medium dataset", 10 * 1024 * 1024 * 1024, 200, "date"},
 	}
 
 	for _, tt := range tests {
@@ -625,7 +625,7 @@ func TestOptimizePrefixDistribution(t *testing.T) {
 	}
 
 	if optimization.RecommendedConcurrency <= 0 {
-		t.Error("Expected positive recommended concurrency") 
+		t.Error("Expected positive recommended concurrency")
 	}
 
 	if optimization.OptimalPattern == "" {
@@ -688,7 +688,7 @@ func TestParallelUploadResultCalculateMetrics(t *testing.T) {
 func BenchmarkOptimizeStorageClass(b *testing.B) {
 	config := awsconfig.S3Config{StorageClass: awsconfig.StorageClassStandard}
 	transporter := &Transporter{config: config}
-	
+
 	archive := Archive{
 		AccessPattern: "infrequent",
 		RetentionDays: 90,
@@ -702,7 +702,7 @@ func BenchmarkOptimizeStorageClass(b *testing.B) {
 
 func BenchmarkBuildMetadata(b *testing.B) {
 	transporter := &Transporter{}
-	
+
 	archive := Archive{
 		OriginalSize:    1024 * 1024,
 		CompressionType: "gzip",
@@ -741,11 +741,11 @@ func TestDistributeBySize(t *testing.T) {
 	// Calculate total size per batch
 	batch1Size := int64(0)
 	batch2Size := int64(0)
-	
+
 	for _, archive := range batches[0].Archives {
 		batch1Size += archive.Size
 	}
-	
+
 	for _, archive := range batches[1].Archives {
 		batch2Size += archive.Size
 	}
@@ -823,7 +823,7 @@ func TestDistributeArchivesLeastLoaded(t *testing.T) {
 	totalArchives := 0
 	for _, batch := range batches {
 		totalArchives += len(batch.Archives)
-		
+
 		// Check that priorities are set based on total size
 		totalSize := int64(0)
 		for _, archive := range batch.Archives {
@@ -848,24 +848,24 @@ func TestAdjustForContentType(t *testing.T) {
 	baseSize := int64(16 * 1024 * 1024) // 16MB
 
 	tests := []struct {
-		contentType string
-		expectLarger bool
+		contentType   string
+		expectLarger  bool
 		expectSmaller bool
 	}{
 		{"application/zip", true, false},           // Should increase
-		{"application/x-tar", true, false},        // Should increase
-		{"video/mp4", true, false},                // Should increase
-		{"video/mov", true, false},                // Should increase
-		{"image/jpeg", true, false},               // Should increase slightly
-		{"text/plain", false, true},               // Should decrease
-		{"application/json", false, true},         // Should decrease
+		{"application/x-tar", true, false},         // Should increase
+		{"video/mp4", true, false},                 // Should increase
+		{"video/mov", true, false},                 // Should increase
+		{"image/jpeg", true, false},                // Should increase slightly
+		{"text/plain", false, true},                // Should decrease
+		{"application/json", false, true},          // Should decrease
 		{"application/octet-stream", false, false}, // Should stay same
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.contentType, func(t *testing.T) {
 			adjusted := uploader.adjustForContentType(baseSize, tt.contentType)
-			
+
 			if tt.expectLarger && adjusted <= baseSize {
 				t.Errorf("Expected %s to increase chunk size, got %d vs base %d", tt.contentType, adjusted, baseSize)
 			}
@@ -884,19 +884,19 @@ func TestAdjustForHistoryWithSessions(t *testing.T) {
 		uploadHistory: &UploadHistory{
 			sessions: []UploadSession{
 				{
-					ContentType:   "application/zip",
-					Success:       true,
-					OptimalChunk:  32 * 1024 * 1024, // 32MB
+					ContentType:  "application/zip",
+					Success:      true,
+					OptimalChunk: 32 * 1024 * 1024, // 32MB
 				},
 				{
-					ContentType:   "application/zip",
-					Success:       true,
-					OptimalChunk:  24 * 1024 * 1024, // 24MB
+					ContentType:  "application/zip",
+					Success:      true,
+					OptimalChunk: 24 * 1024 * 1024, // 24MB
 				},
 				{
-					ContentType:   "text/plain",
-					Success:       true,
-					OptimalChunk:  8 * 1024 * 1024, // 8MB (different content type)
+					ContentType:  "text/plain",
+					Success:      true,
+					OptimalChunk: 8 * 1024 * 1024, // 8MB (different content type)
 				},
 			},
 		},
@@ -906,7 +906,7 @@ func TestAdjustForHistoryWithSessions(t *testing.T) {
 
 	// Test with matching content type
 	adjusted := uploader.adjustForHistory(baseSize, "application/zip")
-	
+
 	// Should blend with historical average: (32+24)/2 = 28MB
 	// 70% current (16MB) + 30% historical (28MB) = 0.7*16 + 0.3*28 = 11.2 + 8.4 = 19.6MB
 	expected := int64(0.7*float64(baseSize) + 0.3*28*1024*1024)
@@ -934,10 +934,10 @@ func TestClampChunkSizeBounds(t *testing.T) {
 		input    int64
 		expected int64
 	}{
-		{"below minimum", 1 * 1024 * 1024, 5 * 1024 * 1024},   // Should clamp to min
-		{"above maximum", 100 * 1024 * 1024, 50 * 1024 * 1024}, // Should clamp to max
-		{"within bounds", 20 * 1024 * 1024, 20 * 1024 * 1024},  // Should remain unchanged
-		{"exactly minimum", 5 * 1024 * 1024, 5 * 1024 * 1024},  // Should remain unchanged
+		{"below minimum", 1 * 1024 * 1024, 5 * 1024 * 1024},     // Should clamp to min
+		{"above maximum", 100 * 1024 * 1024, 50 * 1024 * 1024},  // Should clamp to max
+		{"within bounds", 20 * 1024 * 1024, 20 * 1024 * 1024},   // Should remain unchanged
+		{"exactly minimum", 5 * 1024 * 1024, 5 * 1024 * 1024},   // Should remain unchanged
 		{"exactly maximum", 50 * 1024 * 1024, 50 * 1024 * 1024}, // Should remain unchanged
 	}
 
@@ -953,9 +953,9 @@ func TestClampChunkSizeBounds(t *testing.T) {
 
 func TestCalculateOptimalConcurrencyEdgeCases(t *testing.T) {
 	uploader := &AdaptiveUploader{
-		config: AdaptiveConfig{MaxConcurrency: 10},
-		networkMonitor: &NetworkMonitor{bandwidth: 0}, // No network data
-		uploadHistory: &UploadHistory{sessions: []UploadSession{}}, // Initialize upload history
+		config:         AdaptiveConfig{MaxConcurrency: 10},
+		networkMonitor: &NetworkMonitor{bandwidth: 0},               // No network data
+		uploadHistory:  &UploadHistory{sessions: []UploadSession{}}, // Initialize upload history
 	}
 
 	// Test with small file that has fewer chunks than max concurrency
@@ -981,19 +981,19 @@ func TestGetOptimalConcurrencyFromHistoryWithData(t *testing.T) {
 		uploadHistory: &UploadHistory{
 			sessions: []UploadSession{
 				{
-					EndTime:              now.Add(-1 * time.Hour), // Recent
-					Success:              true,
-					OptimalConcurrency:   8,
+					EndTime:            now.Add(-1 * time.Hour), // Recent
+					Success:            true,
+					OptimalConcurrency: 8,
 				},
 				{
-					EndTime:              now.Add(-24 * time.Hour), // Older
-					Success:              true,
-					OptimalConcurrency:   4,
+					EndTime:            now.Add(-24 * time.Hour), // Older
+					Success:            true,
+					OptimalConcurrency: 4,
 				},
 				{
-					EndTime:              now.Add(-1 * time.Hour),
-					Success:              false, // Should be ignored
-					OptimalConcurrency:   16,
+					EndTime:            now.Add(-1 * time.Hour),
+					Success:            false, // Should be ignored
+					OptimalConcurrency: 16,
 				},
 			},
 		},
@@ -1036,8 +1036,8 @@ func TestGetNetworkConditionVariations(t *testing.T) {
 		{"fair connection", 3.0, "fair"},
 		{"good connection", 15.0, "good"},
 		{"excellent connection", 50.0, "excellent"},
-		{"boundary case - poor", 1.0, "fair"}, // Exactly 1.0 should be fair
-		{"boundary case - fair", 5.0, "good"}, // Exactly 5.0 should be good
+		{"boundary case - poor", 1.0, "fair"},       // Exactly 1.0 should be fair
+		{"boundary case - fair", 5.0, "good"},       // Exactly 5.0 should be good
 		{"boundary case - good", 25.0, "excellent"}, // Exactly 25.0 should be excellent
 	}
 
@@ -1215,9 +1215,9 @@ func TestTransporterUploadSignature(t *testing.T) {
 		Bucket:       "test-bucket",
 		StorageClass: awsconfig.StorageClassStandard,
 	}
-	
+
 	transporter := NewTransporter(nil, config)
-	
+
 	// Create a test archive
 	archive := Archive{
 		Key:             "test/archive.tar.gz",
@@ -1232,11 +1232,11 @@ func TestTransporterUploadSignature(t *testing.T) {
 			"project": "test",
 		},
 	}
-	
+
 	// Test that Upload method exists and can be called
 	// We expect this to panic or error with nil client, but that shows it exercises the code path
 	ctx := context.Background()
-	
+
 	// Use defer/recover to catch panic from nil client
 	defer func() {
 		if r := recover(); r != nil {
@@ -1244,9 +1244,9 @@ func TestTransporterUploadSignature(t *testing.T) {
 			t.Logf("Caught expected panic: %v", r)
 		}
 	}()
-	
+
 	_, err := transporter.Upload(ctx, archive)
-	
+
 	// If we get here without panic, expect an error
 	if err == nil {
 		t.Error("Expected error when uploading with nil client")
@@ -1258,10 +1258,10 @@ func TestTransporterExistsSignature(t *testing.T) {
 	config := awsconfig.S3Config{
 		Bucket: "test-bucket",
 	}
-	
+
 	transporter := NewTransporter(nil, config)
 	ctx := context.Background()
-	
+
 	// Use defer/recover to catch panic from nil client
 	defer func() {
 		if r := recover(); r != nil {
@@ -1269,9 +1269,9 @@ func TestTransporterExistsSignature(t *testing.T) {
 			t.Logf("Caught expected panic: %v", r)
 		}
 	}()
-	
+
 	_, err := transporter.Exists(ctx, "test-key")
-	
+
 	// If we get here without panic, expect an error
 	if err == nil {
 		t.Error("Expected error when checking existence with nil client")
@@ -1281,59 +1281,59 @@ func TestTransporterExistsSignature(t *testing.T) {
 func TestTransporterExistsNotFoundHandling(t *testing.T) {
 	// Test the NotFound error handling path in Exists function
 	// This test exercises the specific error handling logic in lines 175-178 of transporter.go
-	
+
 	config := awsconfig.S3Config{
 		Bucket: "test-bucket",
 	}
-	
+
 	// Create a mock client that simulates NotFound error
 	mockClient := &mockS3Client{
 		shouldReturnNotFound: true,
 	}
-	
+
 	transporter := &TestableTransporter{
 		client: mockClient,
 		config: config,
 	}
-	
+
 	ctx := context.Background()
 	exists, err := transporter.Exists(ctx, "nonexistent-key")
-	
+
 	// Should return false with no error for NotFound
 	if err != nil {
 		t.Errorf("Expected no error for NotFound case, got %v", err)
 	}
-	
+
 	if exists {
 		t.Error("Expected exists=false for NotFound case")
 	}
-	
+
 	// Test with other error types
 	mockClient.shouldReturnNotFound = false
 	mockClient.shouldReturnOtherError = true
-	
+
 	exists, err = transporter.Exists(ctx, "error-key")
-	
+
 	// Should return error for non-NotFound errors
 	if err == nil {
 		t.Error("Expected error for non-NotFound case")
 	}
-	
+
 	if exists {
 		t.Error("Expected exists=false for error case")
 	}
-	
+
 	// Test successful case
 	mockClient.shouldReturnOtherError = false
 	mockClient.shouldReturnNotFound = false
-	
+
 	exists, err = transporter.Exists(ctx, "existing-key")
-	
+
 	// Should return true with no error for successful case
 	if err != nil {
 		t.Errorf("Expected no error for successful case, got %v", err)
 	}
-	
+
 	if !exists {
 		t.Error("Expected exists=true for successful case")
 	}
@@ -1344,10 +1344,10 @@ func TestTransporterGetObjectInfoSignature(t *testing.T) {
 	config := awsconfig.S3Config{
 		Bucket: "test-bucket",
 	}
-	
+
 	transporter := NewTransporter(nil, config)
 	ctx := context.Background()
-	
+
 	// Use defer/recover to catch panic from nil client
 	defer func() {
 		if r := recover(); r != nil {
@@ -1355,9 +1355,9 @@ func TestTransporterGetObjectInfoSignature(t *testing.T) {
 			t.Logf("Caught expected panic: %v", r)
 		}
 	}()
-	
+
 	_, err := transporter.GetObjectInfo(ctx, "test-key")
-	
+
 	// If we get here without panic, expect an error
 	if err == nil {
 		t.Error("Expected error when getting object info with nil client")
@@ -1372,22 +1372,22 @@ func TestParallelUploaderUploadParallel(t *testing.T) {
 		MaxConcurrentUploads: 3,
 		PrefixPattern:        "hash",
 	}
-	
+
 	uploader := NewParallelUploader(nil, config)
 	ctx := context.Background()
-	
+
 	// Test with empty archives slice
 	emptyArchives := []Archive{}
 	result, err := uploader.UploadParallel(ctx, emptyArchives)
-	
+
 	if err != nil {
 		t.Errorf("Expected no error for empty archives, got %v", err)
 	}
-	
+
 	if result == nil {
 		t.Error("Expected result for empty archives")
 	}
-	
+
 	// Test with nil archives (should handle gracefully)
 	_, err = uploader.UploadParallel(ctx, nil)
 	if err != nil {
@@ -1400,18 +1400,18 @@ func TestParallelUploaderExecuteParallelUpload(t *testing.T) {
 	config := ParallelConfig{
 		MaxConcurrentUploads: 2,
 	}
-	
+
 	uploader := NewParallelUploader(nil, config)
 	ctx := context.Background()
-	
+
 	// Test with empty batches
 	emptyBatches := []PrefixBatch{}
 	result, err := uploader.executeParallelUpload(ctx, emptyBatches)
-	
+
 	if err != nil {
 		t.Errorf("Expected no error for empty batches, got %v", err)
 	}
-	
+
 	if result == nil {
 		t.Error("Expected result for empty batches")
 	}
@@ -1422,28 +1422,28 @@ func TestParallelUploaderUploadPrefixBatch(t *testing.T) {
 	config := ParallelConfig{
 		MaxConcurrentUploads: 2,
 	}
-	
+
 	uploader := NewParallelUploader(nil, config)
 	ctx := context.Background()
-	
+
 	// Create empty batch
 	batch := PrefixBatch{
 		Prefix:   "test/prefix/",
 		Archives: []Archive{}, // Empty archives
 		Priority: 1,
 	}
-	
+
 	result, err := uploader.uploadPrefixBatch(ctx, batch)
-	
+
 	if err != nil {
 		t.Errorf("Expected no error for empty batch, got %v", err)
 	}
-	
+
 	if result == nil {
 		t.Error("Expected result for empty batch")
 		return
 	}
-	
+
 	if result.Prefix != batch.Prefix {
 		t.Errorf("Expected prefix %s, got %s", batch.Prefix, result.Prefix)
 	}

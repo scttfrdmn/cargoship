@@ -9,22 +9,22 @@ import (
 
 // BandwidthOptimizer provides optimal bandwidth utilization with congestion avoidance.
 type BandwidthOptimizer struct {
-	config                  *AdaptationConfig
-	congestionController    *CongestionController
-	bandwidthEstimator      *BandwidthEstimator
-	flowController          *FlowController
-	utilizationHistory      *UtilizationHistory
-	currentUtilization      *BandwidthUtilization
-	optimizationCallbacks   []OptimizationCallback
-	mu                      sync.RWMutex
-	ctx                     context.Context
-	cancel                  context.CancelFunc
-	active                  bool
+	config                *AdaptationConfig
+	congestionController  *CongestionController
+	bandwidthEstimator    *BandwidthEstimator
+	flowController        *FlowController
+	utilizationHistory    *UtilizationHistory
+	currentUtilization    *BandwidthUtilization
+	optimizationCallbacks []OptimizationCallback
+	mu                    sync.RWMutex
+	ctx                   context.Context
+	cancel                context.CancelFunc
+	active                bool
 }
 
 // BandwidthUtilization represents current bandwidth utilization state.
 type BandwidthUtilization struct {
-	Timestamp             time.Time
+	Timestamp              time.Time
 	AvailableBandwidthMBps float64
 	UtilizedBandwidthMBps  float64
 	UtilizationRatio       float64
@@ -52,15 +52,15 @@ type OptimizationCallback func(*BandwidthUtilization, *OptimizationRecommendatio
 
 // OptimizationRecommendation provides recommendations for bandwidth optimization.
 type OptimizationRecommendation struct {
-	Timestamp               time.Time
-	RecommendedConcurrency  int
-	RecommendedChunkSizeMB  int
-	RecommendedCompression  string
-	RecommendedFlowControl  *FlowControlSettings
-	PredictedImprovement    float64
-	Confidence              float64
-	Reason                  string
-	Priority                OptimizationPriority
+	Timestamp              time.Time
+	RecommendedConcurrency int
+	RecommendedChunkSizeMB int
+	RecommendedCompression string
+	RecommendedFlowControl *FlowControlSettings
+	PredictedImprovement   float64
+	Confidence             float64
+	Reason                 string
+	Priority               OptimizationPriority
 }
 
 // OptimizationPriority indicates the priority of an optimization recommendation.
@@ -91,23 +91,23 @@ func NewBandwidthOptimizer(config *AdaptationConfig) *BandwidthOptimizer {
 func (bo *BandwidthOptimizer) Start(ctx context.Context) error {
 	bo.mu.Lock()
 	defer bo.mu.Unlock()
-	
+
 	if bo.active {
 		return nil
 	}
-	
+
 	bo.ctx, bo.cancel = context.WithCancel(ctx)
 	bo.active = true
-	
+
 	// Start optimization loop
 	go bo.optimizationLoop(bo.ctx)
-	
+
 	// Start congestion monitoring
 	go bo.congestionController.Start(bo.ctx)
-	
+
 	// Start bandwidth estimation
 	go bo.bandwidthEstimator.Start(bo.ctx)
-	
+
 	return nil
 }
 
@@ -115,14 +115,14 @@ func (bo *BandwidthOptimizer) Start(ctx context.Context) error {
 func (bo *BandwidthOptimizer) Stop() error {
 	bo.mu.Lock()
 	defer bo.mu.Unlock()
-	
+
 	if !bo.active {
 		return nil
 	}
-	
+
 	bo.active = false
 	bo.cancel()
-	
+
 	return nil
 }
 
@@ -130,7 +130,7 @@ func (bo *BandwidthOptimizer) Stop() error {
 func (bo *BandwidthOptimizer) optimizationLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 5) // Optimize every 5 seconds
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -145,19 +145,19 @@ func (bo *BandwidthOptimizer) optimizationLoop(ctx context.Context) {
 func (bo *BandwidthOptimizer) performOptimization() {
 	bo.mu.Lock()
 	defer bo.mu.Unlock()
-	
+
 	// Update current utilization metrics
 	bo.updateUtilizationMetrics()
-	
+
 	// Generate optimization recommendations
 	recommendation := bo.generateOptimizationRecommendation()
 	if recommendation == nil {
 		return // No optimization needed
 	}
-	
+
 	// Record utilization in history
 	bo.utilizationHistory.RecordUtilization(bo.currentUtilization)
-	
+
 	// Notify callbacks
 	bo.notifyOptimizationCallbacks(bo.currentUtilization, recommendation)
 }
@@ -167,31 +167,31 @@ func (bo *BandwidthOptimizer) updateUtilizationMetrics() {
 	// Get bandwidth estimation
 	availableBW := bo.bandwidthEstimator.GetEstimatedBandwidth()
 	utilizedBW := bo.bandwidthEstimator.GetUtilizedBandwidth()
-	
+
 	// Get congestion information
 	congestionLevel := bo.congestionController.GetCongestionLevel()
-	
+
 	// Update utilization state
 	bo.currentUtilization.Timestamp = time.Now()
 	bo.currentUtilization.AvailableBandwidthMBps = availableBW
 	bo.currentUtilization.UtilizedBandwidthMBps = utilizedBW
 	bo.currentUtilization.CongestionLevel = congestionLevel
-	
+
 	// Calculate utilization ratio
 	if availableBW > 0 {
 		bo.currentUtilization.UtilizationRatio = utilizedBW / availableBW
 	}
-	
+
 	// Calculate optimal parameters
 	bo.currentUtilization.OptimalConcurrency = bo.calculateOptimalConcurrency(availableBW, congestionLevel)
 	bo.currentUtilization.OptimalChunkSizeMB = bo.calculateOptimalChunkSize(availableBW, congestionLevel)
-	
+
 	// Calculate efficiency score
 	bo.currentUtilization.EfficiencyScore = bo.calculateEfficiencyScore()
-	
+
 	// Project throughput
 	bo.currentUtilization.ThroughputProjection = bo.projectThroughput()
-	
+
 	// Assess network health
 	bo.currentUtilization.NetworkHealth = bo.assessNetworkHealth()
 }
@@ -199,19 +199,19 @@ func (bo *BandwidthOptimizer) updateUtilizationMetrics() {
 // generateOptimizationRecommendation generates optimization recommendations.
 func (bo *BandwidthOptimizer) generateOptimizationRecommendation() *OptimizationRecommendation {
 	utilization := bo.currentUtilization
-	
+
 	// Check if optimization is needed
 	optimizationNeeded, reason, priority := bo.isOptimizationNeeded(utilization)
 	if !optimizationNeeded {
 		return nil
 	}
-	
+
 	recommendation := &OptimizationRecommendation{
 		Timestamp: time.Now(),
 		Reason:    reason,
 		Priority:  priority,
 	}
-	
+
 	// Generate specific recommendations based on current state
 	switch reason {
 	case "underutilization":
@@ -225,11 +225,11 @@ func (bo *BandwidthOptimizer) generateOptimizationRecommendation() *Optimization
 	default:
 		recommendation = bo.recommendGeneral(recommendation, utilization)
 	}
-	
+
 	// Calculate confidence and predicted improvement
 	recommendation.Confidence = bo.calculateRecommendationConfidence(recommendation, utilization)
 	recommendation.PredictedImprovement = bo.predictImprovement(recommendation, utilization)
-	
+
 	return recommendation
 }
 
@@ -239,32 +239,32 @@ func (bo *BandwidthOptimizer) isOptimizationNeeded(utilization *BandwidthUtiliza
 	if utilization.CongestionLevel > 0.8 {
 		return true, "congestion", PriorityCritical
 	}
-	
+
 	// Check for network health issues
 	if utilization.NetworkHealth >= NetworkHealthPoor {
 		return true, "network_degradation", PriorityHigh
 	}
-	
+
 	// Check for severe underutilization
 	if utilization.UtilizationRatio < 0.3 && utilization.AvailableBandwidthMBps > 20 {
 		return true, "underutilization", PriorityMedium
 	}
-	
+
 	// Check for poor efficiency
 	if utilization.EfficiencyScore < 0.5 {
 		return true, "poor_efficiency", PriorityMedium
 	}
-	
+
 	// Check for moderate congestion
 	if utilization.CongestionLevel > 0.5 {
 		return true, "congestion", PriorityMedium
 	}
-	
+
 	// Check for moderate underutilization
 	if utilization.UtilizationRatio < 0.6 && utilization.AvailableBandwidthMBps > 10 {
 		return true, "underutilization", PriorityLow
 	}
-	
+
 	return false, "", PriorityLow
 }
 
@@ -272,17 +272,17 @@ func (bo *BandwidthOptimizer) isOptimizationNeeded(utilization *BandwidthUtiliza
 func (bo *BandwidthOptimizer) recommendForUnderutilization(rec *OptimizationRecommendation, util *BandwidthUtilization) *OptimizationRecommendation {
 	// Increase concurrency to better utilize available bandwidth
 	rec.RecommendedConcurrency = min(util.OptimalConcurrency+2, bo.config.MaxConcurrency)
-	
+
 	// Increase chunk size for better efficiency
 	rec.RecommendedChunkSizeMB = min(util.OptimalChunkSizeMB+10, bo.config.MaxChunkSizeMB)
-	
+
 	// Use faster compression to reduce CPU bottleneck
 	if util.AvailableBandwidthMBps > 50 {
 		rec.RecommendedCompression = "zstd-fast"
 	} else {
 		rec.RecommendedCompression = "zstd"
 	}
-	
+
 	// Aggressive flow control for better utilization
 	rec.RecommendedFlowControl = &FlowControlSettings{
 		WindowSize:          128,
@@ -290,7 +290,7 @@ func (bo *BandwidthOptimizer) recommendForUnderutilization(rec *OptimizationReco
 		SlowStartThreshold:  64,
 		CongestionAlgorithm: "bbr",
 	}
-	
+
 	return rec
 }
 
@@ -298,13 +298,13 @@ func (bo *BandwidthOptimizer) recommendForUnderutilization(rec *OptimizationReco
 func (bo *BandwidthOptimizer) recommendForCongestion(rec *OptimizationRecommendation, util *BandwidthUtilization) *OptimizationRecommendation {
 	// Reduce concurrency to ease congestion
 	rec.RecommendedConcurrency = max(util.OptimalConcurrency-1, bo.config.MinConcurrency)
-	
+
 	// Use smaller chunks for better responsiveness
 	rec.RecommendedChunkSizeMB = max(util.OptimalChunkSizeMB-5, bo.config.MinChunkSizeMB)
-	
+
 	// Use higher compression to reduce network load
 	rec.RecommendedCompression = "zstd-high"
-	
+
 	// Conservative flow control
 	rec.RecommendedFlowControl = &FlowControlSettings{
 		WindowSize:          32,
@@ -312,7 +312,7 @@ func (bo *BandwidthOptimizer) recommendForCongestion(rec *OptimizationRecommenda
 		SlowStartThreshold:  16,
 		CongestionAlgorithm: "cubic",
 	}
-	
+
 	return rec
 }
 
@@ -321,10 +321,10 @@ func (bo *BandwidthOptimizer) recommendForPoorEfficiency(rec *OptimizationRecomm
 	// Optimize for better efficiency
 	rec.RecommendedConcurrency = util.OptimalConcurrency
 	rec.RecommendedChunkSizeMB = util.OptimalChunkSizeMB
-	
+
 	// Balanced compression
 	rec.RecommendedCompression = "zstd"
-	
+
 	// Optimized flow control
 	rec.RecommendedFlowControl = &FlowControlSettings{
 		WindowSize:          64,
@@ -332,7 +332,7 @@ func (bo *BandwidthOptimizer) recommendForPoorEfficiency(rec *OptimizationRecomm
 		SlowStartThreshold:  32,
 		CongestionAlgorithm: "bbr",
 	}
-	
+
 	return rec
 }
 
@@ -341,10 +341,10 @@ func (bo *BandwidthOptimizer) recommendForNetworkDegradation(rec *OptimizationRe
 	// Conservative approach for degraded networks
 	rec.RecommendedConcurrency = max(2, bo.config.MinConcurrency)
 	rec.RecommendedChunkSizeMB = max(10, bo.config.MinChunkSizeMB)
-	
+
 	// Higher compression to compensate for poor bandwidth
 	rec.RecommendedCompression = "zstd-high"
-	
+
 	// Conservative flow control with error recovery
 	rec.RecommendedFlowControl = &FlowControlSettings{
 		WindowSize:          16,
@@ -352,7 +352,7 @@ func (bo *BandwidthOptimizer) recommendForNetworkDegradation(rec *OptimizationRe
 		SlowStartThreshold:  8,
 		CongestionAlgorithm: "cubic",
 	}
-	
+
 	return rec
 }
 
@@ -362,7 +362,7 @@ func (bo *BandwidthOptimizer) recommendGeneral(rec *OptimizationRecommendation, 
 	rec.RecommendedChunkSizeMB = util.OptimalChunkSizeMB
 	rec.RecommendedCompression = "zstd"
 	rec.RecommendedFlowControl = DefaultFlowControlSettings()
-	
+
 	return rec
 }
 
@@ -372,11 +372,11 @@ func (bo *BandwidthOptimizer) recommendGeneral(rec *OptimizationRecommendation, 
 func (bo *BandwidthOptimizer) calculateOptimalConcurrency(bandwidth, congestion float64) int {
 	// Base concurrency on available bandwidth
 	baseConcurrency := int(bandwidth / 25.0) // 25 MB/s per stream
-	
+
 	// Adjust for congestion
 	congestionFactor := 1.0 - congestion*0.7
 	adjustedConcurrency := int(float64(baseConcurrency) * congestionFactor)
-	
+
 	// Apply bounds
 	if adjustedConcurrency < bo.config.MinConcurrency {
 		adjustedConcurrency = bo.config.MinConcurrency
@@ -384,7 +384,7 @@ func (bo *BandwidthOptimizer) calculateOptimalConcurrency(bandwidth, congestion 
 	if adjustedConcurrency > bo.config.MaxConcurrency {
 		adjustedConcurrency = bo.config.MaxConcurrency
 	}
-	
+
 	return adjustedConcurrency
 }
 
@@ -395,13 +395,13 @@ func (bo *BandwidthOptimizer) calculateOptimalChunkSize(bandwidth, congestion fl
 	if congestion > 0.3 {
 		estimatedLatency += congestion * 100.0 // Add congestion latency
 	}
-	
+
 	bandwidthDelayProduct := bandwidth * (estimatedLatency / 1000.0)
-	
+
 	// Adjust for congestion
 	congestionFactor := 1.0 - congestion*0.5
 	optimalSize := int(bandwidthDelayProduct * congestionFactor)
-	
+
 	// Apply bounds
 	if optimalSize < bo.config.MinChunkSizeMB {
 		optimalSize = bo.config.MinChunkSizeMB
@@ -409,66 +409,66 @@ func (bo *BandwidthOptimizer) calculateOptimalChunkSize(bandwidth, congestion fl
 	if optimalSize > bo.config.MaxChunkSizeMB {
 		optimalSize = bo.config.MaxChunkSizeMB
 	}
-	
+
 	return optimalSize
 }
 
 // calculateEfficiencyScore calculates bandwidth utilization efficiency.
 func (bo *BandwidthOptimizer) calculateEfficiencyScore() float64 {
 	util := bo.currentUtilization
-	
+
 	// Base efficiency on utilization ratio
 	baseEfficiency := util.UtilizationRatio
-	
+
 	// Penalize for congestion
 	congestionPenalty := util.CongestionLevel * 0.5
-	
+
 	// Bonus for balanced utilization (around 70-80%)
 	utilizationBonus := 0.0
 	if util.UtilizationRatio >= 0.7 && util.UtilizationRatio <= 0.8 {
 		utilizationBonus = 0.1
 	}
-	
+
 	efficiency := baseEfficiency - congestionPenalty + utilizationBonus
-	
+
 	return math.Max(0.0, math.Min(1.0, efficiency))
 }
 
 // projectThroughput projects future throughput based on current trends.
 func (bo *BandwidthOptimizer) projectThroughput() float64 {
 	util := bo.currentUtilization
-	
+
 	// Simple projection based on current utilization and efficiency
 	projectedThroughput := util.UtilizedBandwidthMBps * util.EfficiencyScore
-	
+
 	// Adjust for congestion trends
 	if util.CongestionLevel > 0.5 {
 		projectedThroughput *= 0.8 // Expect degradation
 	} else if util.CongestionLevel < 0.2 {
 		projectedThroughput *= 1.1 // Expect improvement
 	}
-	
+
 	return projectedThroughput
 }
 
 // assessNetworkHealth assesses overall network health.
 func (bo *BandwidthOptimizer) assessNetworkHealth() NetworkHealthStatus {
 	util := bo.currentUtilization
-	
+
 	// Score based on multiple factors
 	healthScore := 1.0
-	
+
 	// Congestion impact
 	healthScore -= util.CongestionLevel * 0.6
-	
+
 	// Efficiency impact
 	healthScore = healthScore * util.EfficiencyScore
-	
+
 	// Utilization impact (too low or too high is bad)
 	if util.UtilizationRatio < 0.3 || util.UtilizationRatio > 0.9 {
 		healthScore *= 0.8
 	}
-	
+
 	// Convert to health status
 	if healthScore >= 0.8 {
 		return NetworkHealthExcellent
@@ -479,14 +479,14 @@ func (bo *BandwidthOptimizer) assessNetworkHealth() NetworkHealthStatus {
 	} else if healthScore >= 0.2 {
 		return NetworkHealthPoor
 	}
-	
+
 	return NetworkHealthCritical
 }
 
 // calculateRecommendationConfidence calculates confidence in a recommendation.
 func (bo *BandwidthOptimizer) calculateRecommendationConfidence(rec *OptimizationRecommendation, util *BandwidthUtilization) float64 {
 	confidence := 0.5 // Base confidence
-	
+
 	// Higher confidence for clear problems
 	if util.CongestionLevel > 0.7 {
 		confidence += 0.3
@@ -494,23 +494,23 @@ func (bo *BandwidthOptimizer) calculateRecommendationConfidence(rec *Optimizatio
 	if util.UtilizationRatio < 0.4 {
 		confidence += 0.2
 	}
-	
+
 	// Lower confidence for marginal cases
 	if util.EfficiencyScore > 0.7 {
 		confidence -= 0.1
 	}
-	
+
 	// Historical data improves confidence
 	historyBonus := bo.utilizationHistory.GetConfidenceBonus()
 	confidence += historyBonus
-	
+
 	return math.Max(0.1, math.Min(0.95, confidence))
 }
 
 // predictImprovement predicts improvement from applying recommendations.
 func (bo *BandwidthOptimizer) predictImprovement(rec *OptimizationRecommendation, util *BandwidthUtilization) float64 {
 	improvement := 0.0
-	
+
 	// Predict improvement based on recommendation type
 	switch rec.Reason {
 	case "underutilization":
@@ -524,7 +524,7 @@ func (bo *BandwidthOptimizer) predictImprovement(rec *OptimizationRecommendation
 	default:
 		improvement = 0.1 // General optimization
 	}
-	
+
 	return math.Min(improvement, 0.5) // Cap at 50% improvement
 }
 
@@ -543,7 +543,7 @@ func (bo *BandwidthOptimizer) notifyOptimizationCallbacks(util *BandwidthUtiliza
 func (bo *BandwidthOptimizer) GetCurrentUtilization() *BandwidthUtilization {
 	bo.mu.RLock()
 	defer bo.mu.RUnlock()
-	
+
 	// Return a copy
 	utilCopy := *bo.currentUtilization
 	return &utilCopy
@@ -553,7 +553,7 @@ func (bo *BandwidthOptimizer) GetCurrentUtilization() *BandwidthUtilization {
 func (bo *BandwidthOptimizer) RegisterOptimizationCallback(callback OptimizationCallback) {
 	bo.mu.Lock()
 	defer bo.mu.Unlock()
-	
+
 	bo.optimizationCallbacks = append(bo.optimizationCallbacks, callback)
 }
 
@@ -565,7 +565,7 @@ func (bo *BandwidthOptimizer) ForceOptimization() {
 // NewDefaultBandwidthUtilization creates default bandwidth utilization state.
 func NewDefaultBandwidthUtilization() *BandwidthUtilization {
 	return &BandwidthUtilization{
-		Timestamp:             time.Now(),
+		Timestamp:              time.Now(),
 		AvailableBandwidthMBps: 50.0,
 		UtilizedBandwidthMBps:  25.0,
 		UtilizationRatio:       0.5,
@@ -601,7 +601,7 @@ func NewCongestionController(config *AdaptationConfig) *CongestionController {
 func (cc *CongestionController) Start(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 2)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -616,14 +616,14 @@ func (cc *CongestionController) Start(ctx context.Context) {
 func (cc *CongestionController) updateCongestionLevel() {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
-	
+
 	// Simplified congestion detection
 	// In practice, this would use network metrics, RTT, packet loss, etc.
-	
+
 	// Add some random variation for simulation
 	variation := (math.Sin(float64(time.Now().Unix())/10.0) + 1.0) / 20.0 // ±0.1 variation
 	cc.congestionLevel = math.Max(0.0, math.Min(1.0, cc.congestionLevel+variation))
-	
+
 	// Record in history
 	cc.congestionHistory = append(cc.congestionHistory, cc.congestionLevel)
 	if len(cc.congestionHistory) > 100 {
@@ -657,7 +657,7 @@ func NewBandwidthEstimator() *BandwidthEstimator {
 func (be *BandwidthEstimator) Start(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 3)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -672,14 +672,14 @@ func (be *BandwidthEstimator) Start(ctx context.Context) {
 func (be *BandwidthEstimator) updateBandwidthEstimates() {
 	be.mu.Lock()
 	defer be.mu.Unlock()
-	
+
 	// Simplified bandwidth estimation
 	// In practice, this would use active probing, passive measurements, etc.
-	
+
 	// Simulate bandwidth variation
 	baseVariation := math.Sin(float64(time.Now().Unix())/20.0) * 10.0
 	be.estimatedBandwidth = math.Max(10.0, 50.0+baseVariation)
-	
+
 	// Utilization varies with time
 	utilizationVariation := math.Cos(float64(time.Now().Unix())/15.0) * 10.0
 	be.utilizedBandwidth = math.Max(5.0, math.Min(be.estimatedBandwidth*0.8, 25.0+utilizationVariation))
@@ -732,9 +732,9 @@ func NewUtilizationHistory() *UtilizationHistory {
 func (uh *UtilizationHistory) RecordUtilization(util *BandwidthUtilization) {
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	
+
 	uh.utilizations = append(uh.utilizations, util)
-	
+
 	// Limit history size
 	if len(uh.utilizations) > uh.maxHistory {
 		uh.utilizations = uh.utilizations[1:]
@@ -745,12 +745,12 @@ func (uh *UtilizationHistory) RecordUtilization(util *BandwidthUtilization) {
 func (uh *UtilizationHistory) GetConfidenceBonus() float64 {
 	uh.mu.RLock()
 	defer uh.mu.RUnlock()
-	
+
 	historyCount := len(uh.utilizations)
 	if historyCount == 0 {
 		return 0.0
 	}
-	
+
 	// More history = higher confidence (up to 0.2 bonus)
 	return math.Min(0.2, float64(historyCount)/100.0*0.2)
 }

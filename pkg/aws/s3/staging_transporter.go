@@ -12,17 +12,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	awsconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
-	"github.com/scttfrdmn/cargoship/pkg/staging"
 	"github.com/scttfrdmn/cargoship/pkg/s3optimization"
+	"github.com/scttfrdmn/cargoship/pkg/staging"
 )
 
 // StagingTransporter extends the basic S3 transporter with predictive staging capabilities.
 type StagingTransporter struct {
 	*Transporter
-	stagingSystem     *staging.PredictiveStager
+	stagingSystem        *staging.PredictiveStager
 	optimizedTransporter *OptimizedTransporter // Enhanced with S3 optimization
-	config            *StagingConfig
-	logger            *slog.Logger
+	config               *StagingConfig
+	logger               *slog.Logger
 }
 
 // StagingConfig configures the staging-enhanced S3 transporter.
@@ -40,21 +40,21 @@ type StagingConfig struct {
 func NewStagingTransporter(ctx context.Context, client *s3.Client, s3Config awsconfig.S3Config, stagingConfig *StagingConfig, logger *slog.Logger) (*StagingTransporter, error) {
 	// Create base transporter
 	baseTransporter := NewTransporter(client, s3Config)
-	
+
 	if stagingConfig == nil {
 		stagingConfig = DefaultStagingConfig()
 	}
-	
+
 	if logger == nil {
 		logger = slog.Default()
 	}
-	
+
 	st := &StagingTransporter{
 		Transporter: baseTransporter,
 		config:      stagingConfig,
 		logger:      logger,
 	}
-	
+
 	// Initialize optimized transporter if enabled
 	if stagingConfig.EnableOptimization {
 		optimizedTransporter, err := NewOptimizedTransporter(ctx, client, s3Config, logger)
@@ -62,13 +62,13 @@ func NewStagingTransporter(ctx context.Context, client *s3.Client, s3Config awsc
 			return nil, fmt.Errorf("failed to create optimized transporter: %w", err)
 		}
 		st.optimizedTransporter = optimizedTransporter
-		
+
 		logger.Info("staging transporter with S3 optimization enabled",
 			"optimization_enabled", true,
 			"bbr_enabled", stagingConfig.OptimizationConfig != nil && stagingConfig.OptimizationConfig.EnableBBR,
 			"cubic_enabled", stagingConfig.OptimizationConfig != nil && stagingConfig.OptimizationConfig.EnableCUBIC)
 	}
-	
+
 	// Initialize staging system if enabled
 	if stagingConfig.EnableStaging {
 		stagingSystemConfig := &staging.StagingConfig{
@@ -85,21 +85,21 @@ func NewStagingTransporter(ctx context.Context, client *s3.Client, s3Config awsc
 			MemoryPressureThreshold: 0.8,
 			GCTriggerThreshold:      0.9,
 		}
-		
+
 		var err error
 		st.stagingSystem, err = st.initializeStagingSystem(ctx, stagingSystemConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize staging system: %w", err)
 		}
-		
-		logger.Info("staging-enhanced S3 transporter initialized", 
+
+		logger.Info("staging-enhanced S3 transporter initialized",
 			"staging_enabled", true,
 			"max_staging_memory_mb", stagingConfig.MaxStagingMemoryMB,
 			"stage_ahead_chunks", stagingConfig.StageAheadChunks)
 	} else {
 		logger.Info("staging-enhanced S3 transporter initialized", "staging_enabled", false)
 	}
-	
+
 	return st, nil
 }
 
@@ -124,59 +124,59 @@ func (st *StagingTransporter) UploadWithStaging(ctx context.Context, archive Arc
 		}
 		return st.Upload(ctx, archive)
 	}
-	
-	st.logger.Debug("starting staged upload", 
+
+	st.logger.Debug("starting staged upload",
 		"key", archive.Key,
 		"size", archive.Size,
 		"compression_type", archive.CompressionType)
-	
+
 	startTime := time.Now()
-	
+
 	// Create staged upload context
 	uploadCtx := &StagedUploadContext{
-		Archive:       archive,
-		StartTime:     startTime,
-		TotalSize:     archive.Size,
-		UploadedSize:  0,
-		ChunkCount:    0,
-		Errors:        make([]error, 0),
+		Archive:      archive,
+		StartTime:    startTime,
+		TotalSize:    archive.Size,
+		UploadedSize: 0,
+		ChunkCount:   0,
+		Errors:       make([]error, 0),
 		NetworkMetrics: &NetworkMetrics{
 			StartTime: startTime,
 		},
 	}
-	
+
 	// Perform staging-optimized upload
 	result, err := st.performStagedUpload(ctx, uploadCtx)
 	if err != nil {
-		st.logger.Error("staged upload failed", 
-			"key", archive.Key, 
+		st.logger.Error("staged upload failed",
+			"key", archive.Key,
 			"error", err,
 			"chunks_uploaded", uploadCtx.ChunkCount,
 			"uploaded_size", uploadCtx.UploadedSize)
 		return nil, err
 	}
-	
+
 	// Update staging system with performance data
 	st.updateStagingPerformance(uploadCtx, result)
-	
-	st.logger.Info("staged upload completed", 
+
+	st.logger.Info("staged upload completed",
 		"key", archive.Key,
 		"duration", result.Duration,
 		"throughput_mbps", result.Throughput,
 		"chunks", uploadCtx.ChunkCount,
 		"staging_efficiency", st.calculateStagingEfficiency(uploadCtx))
-	
+
 	return result, nil
 }
 
 // initializeStagingSystem initializes the predictive staging system.
 func (st *StagingTransporter) initializeStagingSystem(ctx context.Context, config *staging.StagingConfig) (*staging.PredictiveStager, error) {
 	stager := staging.NewPredictiveStager(ctx, config)
-	
+
 	if err := stager.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start staging system: %w", err)
 	}
-	
+
 	return stager, nil
 }
 
@@ -184,12 +184,12 @@ func (st *StagingTransporter) initializeStagingSystem(ctx context.Context, confi
 func (st *StagingTransporter) performStagedUpload(ctx context.Context, uploadCtx *StagedUploadContext) (*UploadResult, error) {
 	// Optimize storage class
 	storageClass := st.optimizeStorageClass(uploadCtx.Archive)
-	
+
 	// For small files, use regular upload
 	if uploadCtx.TotalSize < int64(st.config.MaxStagingMemoryMB/4*1024*1024) {
 		return st.uploadSmallFile(ctx, uploadCtx, storageClass)
 	}
-	
+
 	// For large files, use multipart upload with staging
 	return st.uploadLargeFileWithStaging(ctx, uploadCtx, storageClass)
 }
@@ -197,13 +197,13 @@ func (st *StagingTransporter) performStagedUpload(ctx context.Context, uploadCtx
 // uploadSmallFile uploads small files without staging overhead.
 func (st *StagingTransporter) uploadSmallFile(ctx context.Context, uploadCtx *StagedUploadContext, storageClass types.StorageClass) (*UploadResult, error) {
 	st.logger.Debug("uploading small file without staging", "size", uploadCtx.TotalSize)
-	
+
 	// Use optimized transporter if available for 4.6x performance improvement
 	if st.config.EnableOptimization && st.optimizedTransporter != nil {
 		st.logger.Debug("using optimized transporter for small file", "key", uploadCtx.Archive.Key)
 		return st.optimizedTransporter.Upload(ctx, &uploadCtx.Archive)
 	}
-	
+
 	// Fall back to regular upload for small files
 	return st.Upload(ctx, uploadCtx.Archive)
 }
@@ -211,7 +211,7 @@ func (st *StagingTransporter) uploadSmallFile(ctx context.Context, uploadCtx *St
 // uploadLargeFileWithStaging uploads large files using predictive staging.
 func (st *StagingTransporter) uploadLargeFileWithStaging(ctx context.Context, uploadCtx *StagedUploadContext, storageClass types.StorageClass) (*UploadResult, error) {
 	st.logger.Debug("uploading large file with staging", "size", uploadCtx.TotalSize)
-	
+
 	// Create multipart upload
 	createResp, err := st.client.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{
 		Bucket:       aws.String(st.Transporter.config.Bucket),
@@ -222,12 +222,12 @@ func (st *StagingTransporter) uploadLargeFileWithStaging(ctx context.Context, up
 	if err != nil {
 		return nil, fmt.Errorf("failed to create multipart upload: %w", err)
 	}
-	
+
 	uploadID := aws.ToString(createResp.UploadId)
 	uploadCtx.UploadID = uploadID
-	
+
 	st.logger.Debug("created multipart upload", "upload_id", uploadID)
-	
+
 	// Upload parts with staging
 	completedParts, err := st.uploadPartsWithStaging(ctx, uploadCtx)
 	if err != nil {
@@ -237,7 +237,7 @@ func (st *StagingTransporter) uploadLargeFileWithStaging(ctx context.Context, up
 		}
 		return nil, fmt.Errorf("failed to upload parts: %w", err)
 	}
-	
+
 	// Complete multipart upload
 	completeResp, err := st.client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
 		Bucket:   aws.String(st.Transporter.config.Bucket),
@@ -250,10 +250,10 @@ func (st *StagingTransporter) uploadLargeFileWithStaging(ctx context.Context, up
 	if err != nil {
 		return nil, fmt.Errorf("failed to complete multipart upload: %w", err)
 	}
-	
+
 	duration := time.Since(uploadCtx.StartTime)
 	throughput := float64(uploadCtx.TotalSize) / duration.Seconds() / (1024 * 1024) // MB/s
-	
+
 	return &UploadResult{
 		Location:     aws.ToString(completeResp.Location),
 		Key:          uploadCtx.Archive.Key,
@@ -270,7 +270,7 @@ func (st *StagingTransporter) uploadPartsWithStaging(ctx context.Context, upload
 	var completedParts []types.CompletedPart
 	partNumber := int32(1)
 	buffer := make([]byte, st.Transporter.config.MultipartChunkSize)
-	
+
 	for {
 		// Read next chunk
 		n, err := uploadCtx.Archive.Reader.Read(buffer)
@@ -280,9 +280,9 @@ func (st *StagingTransporter) uploadPartsWithStaging(ctx context.Context, upload
 		if err != nil {
 			return nil, fmt.Errorf("failed to read chunk: %w", err)
 		}
-		
+
 		chunkData := buffer[:n]
-		
+
 		// Stage and upload chunk
 		stagingReq := &staging.StagingRequest{
 			StreamID:         fmt.Sprintf("%s-part-%d", uploadCtx.Archive.Key, partNumber),
@@ -292,13 +292,13 @@ func (st *StagingTransporter) uploadPartsWithStaging(ctx context.Context, upload
 			NetworkCondition: st.getCurrentNetworkCondition(),
 			Priority:         int(partNumber), // Earlier parts have higher priority
 		}
-		
+
 		// Stage chunk predictively
 		if err := st.stagingSystem.StageChunks(stagingReq); err != nil {
 			st.logger.Warn("staging failed, uploading directly", "part", partNumber, "error", err)
 			// Fall back to direct upload
 		}
-		
+
 		// Upload chunk
 		uploadResp, err := st.client.UploadPart(ctx, &s3.UploadPartInput{
 			Bucket:     aws.String(st.Transporter.config.Bucket),
@@ -310,22 +310,22 @@ func (st *StagingTransporter) uploadPartsWithStaging(ctx context.Context, upload
 		if err != nil {
 			return nil, fmt.Errorf("failed to upload part %d: %w", partNumber, err)
 		}
-		
+
 		// Track completed part
 		completedParts = append(completedParts, types.CompletedPart{
 			ETag:       uploadResp.ETag,
 			PartNumber: aws.Int32(partNumber),
 		})
-		
+
 		// Update progress
 		uploadCtx.UploadedSize += int64(n)
 		uploadCtx.ChunkCount++
-		
+
 		// Update network metrics
 		st.updateNetworkMetrics(uploadCtx, int64(n))
-		
+
 		partNumber++
-		
+
 		// Check for cancellation
 		select {
 		case <-ctx.Done():
@@ -333,7 +333,7 @@ func (st *StagingTransporter) uploadPartsWithStaging(ctx context.Context, upload
 		default:
 		}
 	}
-	
+
 	return completedParts, nil
 }
 
@@ -342,7 +342,7 @@ func (st *StagingTransporter) updateStagingPerformance(uploadCtx *StagedUploadCo
 	if st.stagingSystem == nil {
 		return
 	}
-	
+
 	// Create performance record
 	record := &staging.ChunkPerformanceRecord{
 		ChunkID:          fmt.Sprintf("%s-upload", uploadCtx.Archive.Key),
@@ -355,7 +355,7 @@ func (st *StagingTransporter) updateStagingPerformance(uploadCtx *StagedUploadCo
 		ErrorType:        "",
 		Timestamp:        time.Now(),
 	}
-	
+
 	// Update performance history
 	st.stagingSystem.UpdatePerformance(record.ChunkID, record)
 }
@@ -365,7 +365,7 @@ func (st *StagingTransporter) calculateCompressionRatio(archive Archive) float64
 	if archive.OriginalSize == 0 {
 		return 1.0 // No compression
 	}
-	
+
 	return float64(archive.Size) / float64(archive.OriginalSize)
 }
 
@@ -401,7 +401,7 @@ func (st *StagingTransporter) classifyContentType(compressionType string) string
 func (st *StagingTransporter) updateNetworkMetrics(uploadCtx *StagedUploadContext, bytesTransferred int64) {
 	now := time.Now()
 	duration := now.Sub(uploadCtx.NetworkMetrics.LastUpdate)
-	
+
 	if duration > 0 {
 		throughput := float64(bytesTransferred) / duration.Seconds() / (1024 * 1024) // MB/s
 		uploadCtx.NetworkMetrics.CurrentThroughput = throughput
@@ -414,7 +414,7 @@ func (st *StagingTransporter) calculateStagingEfficiency(uploadCtx *StagedUpload
 	if uploadCtx.NetworkMetrics.CurrentThroughput == 0 {
 		return 0.0
 	}
-	
+
 	// Simple efficiency calculation based on achieved vs expected throughput
 	expectedThroughput := 50.0 // Baseline expectation
 	return uploadCtx.NetworkMetrics.CurrentThroughput / expectedThroughput
@@ -435,7 +435,7 @@ func (st *StagingTransporter) GetStagingMetrics() *staging.StagingMetrics {
 	if st.stagingSystem == nil {
 		return nil
 	}
-	
+
 	return st.stagingSystem.GetMetrics()
 }
 
@@ -479,7 +479,7 @@ func (cr *ChunkReader) Read(p []byte) (n int, err error) {
 	if cr.offset >= len(cr.data) {
 		return 0, io.EOF
 	}
-	
+
 	n = copy(p, cr.data[cr.offset:])
 	cr.offset += n
 	return n, nil
@@ -495,13 +495,13 @@ func (cr *ChunkReader) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekEnd:
 		cr.offset = len(cr.data) + int(offset)
 	}
-	
+
 	if cr.offset < 0 {
 		cr.offset = 0
 	}
 	if cr.offset > len(cr.data) {
 		cr.offset = len(cr.data)
 	}
-	
+
 	return int64(cr.offset), nil
 }

@@ -11,13 +11,13 @@ func TestNewAdaptiveUploader(t *testing.T) {
 		MaxChunkSize:   50 * 1024 * 1024,
 		MaxConcurrency: 5,
 	}
-	
+
 	uploader := NewAdaptiveUploader(nil, config)
-	
+
 	if uploader == nil {
 		t.Fatal("NewAdaptiveUploader returned nil")
 	}
-	
+
 	if uploader.config.MinChunkSize != config.MinChunkSize {
 		t.Errorf("Expected MinChunkSize %d, got %d", config.MinChunkSize, uploader.config.MinChunkSize)
 	}
@@ -26,7 +26,7 @@ func TestNewAdaptiveUploader(t *testing.T) {
 func TestCalculateOptimalChunkSize(t *testing.T) {
 	config := AdaptiveConfig{}
 	uploader := NewAdaptiveUploader(nil, config)
-	
+
 	tests := []struct {
 		name        string
 		fileSize    int64
@@ -56,13 +56,13 @@ func TestCalculateOptimalChunkSize(t *testing.T) {
 			wantMax:     50 * 1024 * 1024,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			chunkSize := uploader.CalculateOptimalChunkSize(tt.fileSize, tt.contentType)
-			
+
 			if chunkSize < tt.wantMin || chunkSize > tt.wantMax {
-				t.Errorf("CalculateOptimalChunkSize() = %d, want between %d and %d", 
+				t.Errorf("CalculateOptimalChunkSize() = %d, want between %d and %d",
 					chunkSize, tt.wantMin, tt.wantMax)
 			}
 		})
@@ -71,7 +71,7 @@ func TestCalculateOptimalChunkSize(t *testing.T) {
 
 func TestNetworkSample(t *testing.T) {
 	uploader := NewAdaptiveUploader(nil, AdaptiveConfig{})
-	
+
 	// Test recording network samples
 	samples := []NetworkSample{
 		{
@@ -93,17 +93,17 @@ func TestNetworkSample(t *testing.T) {
 			Success:   true,
 		},
 	}
-	
+
 	for _, sample := range samples {
 		uploader.RecordNetworkSample(sample)
 	}
-	
+
 	// Check that network conditions are being tracked
 	avgBandwidth := uploader.networkMonitor.GetAverageBandwidth()
 	if avgBandwidth < 5.0 || avgBandwidth > 15.0 {
 		t.Errorf("Average bandwidth %f should be between 5.0 and 15.0", avgBandwidth)
 	}
-	
+
 	condition := uploader.GetNetworkCondition()
 	if condition == "" {
 		t.Error("Network condition should not be empty")
@@ -112,7 +112,7 @@ func TestNetworkSample(t *testing.T) {
 
 func TestCalculateOptimalConcurrency(t *testing.T) {
 	uploader := NewAdaptiveUploader(nil, AdaptiveConfig{MaxConcurrency: 10})
-	
+
 	// Simulate good network conditions
 	sample := NetworkSample{
 		Timestamp: time.Now(),
@@ -121,7 +121,7 @@ func TestCalculateOptimalConcurrency(t *testing.T) {
 		Success:   true,
 	}
 	uploader.RecordNetworkSample(sample)
-	
+
 	tests := []struct {
 		name      string
 		fileSize  int64
@@ -144,13 +144,13 @@ func TestCalculateOptimalConcurrency(t *testing.T) {
 			wantMax:   10, // Should use max concurrency
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			concurrency := uploader.CalculateOptimalConcurrency(tt.fileSize, tt.chunkSize)
-			
+
 			if concurrency < tt.wantMin || concurrency > tt.wantMax {
-				t.Errorf("CalculateOptimalConcurrency() = %d, want between %d and %d", 
+				t.Errorf("CalculateOptimalConcurrency() = %d, want between %d and %d",
 					concurrency, tt.wantMin, tt.wantMax)
 			}
 		})
@@ -159,7 +159,7 @@ func TestCalculateOptimalConcurrency(t *testing.T) {
 
 func TestGetRecommendations(t *testing.T) {
 	uploader := NewAdaptiveUploader(nil, AdaptiveConfig{})
-	
+
 	// Add some network history
 	sample := NetworkSample{
 		Timestamp: time.Now(),
@@ -168,36 +168,36 @@ func TestGetRecommendations(t *testing.T) {
 		Success:   true,
 	}
 	uploader.RecordNetworkSample(sample)
-	
+
 	fileSize := int64(500 * 1024 * 1024) // 500MB
 	contentType := "application/zip"
-	
+
 	recommendations := uploader.GetRecommendations(fileSize, contentType)
-	
+
 	if recommendations == nil {
 		t.Fatal("GetRecommendations returned nil")
 	}
-	
+
 	if recommendations.OptimalChunkSize <= 0 {
 		t.Error("OptimalChunkSize should be greater than 0")
 	}
-	
+
 	if recommendations.OptimalConcurrency <= 0 {
 		t.Error("OptimalConcurrency should be greater than 0")
 	}
-	
+
 	if recommendations.NetworkCondition == "" {
 		t.Error("NetworkCondition should not be empty")
 	}
-	
+
 	if recommendations.EstimatedDuration <= 0 {
 		t.Error("EstimatedDuration should be greater than 0")
 	}
-	
+
 	if recommendations.Reasoning == "" {
 		t.Error("Reasoning should not be empty")
 	}
-	
+
 	// Confidence should be between 0 and 1
 	if recommendations.ConfidenceLevel < 0.0 || recommendations.ConfidenceLevel > 1.0 {
 		t.Errorf("ConfidenceLevel %f should be between 0.0 and 1.0", recommendations.ConfidenceLevel)
@@ -206,7 +206,7 @@ func TestGetRecommendations(t *testing.T) {
 
 func TestUploadSessionRecording(t *testing.T) {
 	uploader := NewAdaptiveUploader(nil, AdaptiveConfig{})
-	
+
 	session := UploadSession{
 		StartTime:   time.Now().Add(-5 * time.Minute),
 		EndTime:     time.Now(),
@@ -217,19 +217,19 @@ func TestUploadSessionRecording(t *testing.T) {
 		Success:     true,
 		ContentType: "application/octet-stream",
 	}
-	
+
 	uploader.RecordUploadSession(session)
-	
+
 	// Check that history was recorded
 	if len(uploader.uploadHistory.sessions) != 1 {
 		t.Errorf("Expected 1 session in history, got %d", len(uploader.uploadHistory.sessions))
 	}
-	
+
 	recordedSession := uploader.uploadHistory.sessions[0]
 	if recordedSession.OptimalChunk <= 0 {
 		t.Error("OptimalChunk should be calculated and greater than 0")
 	}
-	
+
 	if recordedSession.NetworkCondition == "" {
 		t.Error("NetworkCondition should be classified")
 	}
@@ -237,12 +237,12 @@ func TestUploadSessionRecording(t *testing.T) {
 
 func BenchmarkCalculateOptimalChunkSize(b *testing.B) {
 	uploader := NewAdaptiveUploader(nil, AdaptiveConfig{})
-	
+
 	fileSize := int64(1024 * 1024 * 1024) // 1GB
 	contentType := "application/octet-stream"
-	
+
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		_ = uploader.CalculateOptimalChunkSize(fileSize, contentType)
 	}
@@ -250,7 +250,7 @@ func BenchmarkCalculateOptimalChunkSize(b *testing.B) {
 
 func BenchmarkGetRecommendations(b *testing.B) {
 	uploader := NewAdaptiveUploader(nil, AdaptiveConfig{})
-	
+
 	// Add some network history for realistic benchmarking
 	sample := NetworkSample{
 		Timestamp: time.Now(),
@@ -259,12 +259,12 @@ func BenchmarkGetRecommendations(b *testing.B) {
 		Success:   true,
 	}
 	uploader.RecordNetworkSample(sample)
-	
+
 	fileSize := int64(1024 * 1024 * 1024) // 1GB
 	contentType := "application/octet-stream"
-	
+
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		_ = uploader.GetRecommendations(fileSize, contentType)
 	}

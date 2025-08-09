@@ -254,31 +254,31 @@ func (t *OptimizedTransporter) GetOptimizationStats() OptimizationStats {
 
 	return OptimizationStats{
 		PerformanceImprovement: metrics.OptimizationRatio,
-		BandwidthSavings:      metrics.BandwidthSavings,
-		LatencyReduction:      metrics.LatencyReduction,
-		BBRActivations:        metrics.BBRActivations,
-		CubicAdjustments:      metrics.CubicAdjustments,
-		TotalOptimizations:    metrics.BBRActivations + metrics.CubicAdjustments,
-		AverageThroughput:     metrics.ThroughputMbps,
-		OptimizationEnabled:   true,
+		BandwidthSavings:       metrics.BandwidthSavings,
+		LatencyReduction:       metrics.LatencyReduction,
+		BBRActivations:         metrics.BBRActivations,
+		CubicAdjustments:       metrics.CubicAdjustments,
+		TotalOptimizations:     metrics.BBRActivations + metrics.CubicAdjustments,
+		AverageThroughput:      metrics.ThroughputMbps,
+		OptimizationEnabled:    true,
 	}
 }
 
 // OptimizationStats contains optimization effectiveness statistics
 type OptimizationStats struct {
 	PerformanceImprovement float64 `json:"performance_improvement"` // Ratio vs baseline
-	BandwidthSavings      float64 `json:"bandwidth_savings"`       // Percentage saved
-	LatencyReduction      float64 `json:"latency_reduction"`       // Percentage reduced
-	BBRActivations        int64   `json:"bbr_activations"`         // Number of BBR activations
-	CubicAdjustments      int64   `json:"cubic_adjustments"`       // Number of CUBIC adjustments
-	TotalOptimizations    int64   `json:"total_optimizations"`     // Total optimization events
-	AverageThroughput     float64 `json:"average_throughput"`      // Average throughput (Mbps)
-	OptimizationEnabled   bool    `json:"optimization_enabled"`    // Whether optimization is active
+	BandwidthSavings       float64 `json:"bandwidth_savings"`       // Percentage saved
+	LatencyReduction       float64 `json:"latency_reduction"`       // Percentage reduced
+	BBRActivations         int64   `json:"bbr_activations"`         // Number of BBR activations
+	CubicAdjustments       int64   `json:"cubic_adjustments"`       // Number of CUBIC adjustments
+	TotalOptimizations     int64   `json:"total_optimizations"`     // Total optimization events
+	AverageThroughput      float64 `json:"average_throughput"`      // Average throughput (Mbps)
+	OptimizationEnabled    bool    `json:"optimization_enabled"`    // Whether optimization is active
 }
 
 // IsOptimizationEffective returns true if optimization is providing measurable benefits
 func (s OptimizationStats) IsOptimizationEffective() bool {
-	return s.OptimizationEnabled && 
-		   s.PerformanceImprovement > 1.1 && // At least 10% improvement
-		   s.TotalOptimizations > 0
+	return s.OptimizationEnabled &&
+		s.PerformanceImprovement > 1.1 && // At least 10% improvement
+		s.TotalOptimizations > 0
 }

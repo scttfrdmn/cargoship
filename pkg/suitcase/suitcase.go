@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/scttfrdmn/cargoship/pkg/config"
 	"github.com/scttfrdmn/cargoship/pkg/inventory"
 	"github.com/scttfrdmn/cargoship/pkg/suitcase/tar"
@@ -23,6 +22,7 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/suitcase/targz"
 	"github.com/scttfrdmn/cargoship/pkg/suitcase/targzgpg"
 	"github.com/scttfrdmn/cargoship/pkg/suitcase/tarzstd"
+	"github.com/spf13/cobra"
 )
 
 // Format is the format the inventory will use, such as yaml, json, etc

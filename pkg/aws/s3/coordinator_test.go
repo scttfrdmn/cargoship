@@ -14,9 +14,9 @@ import (
 func TestNewPipelineCoordinator(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultCoordinationConfig()
-	
+
 	coordinator := NewPipelineCoordinator(ctx, config)
-	
+
 	assert.NotNil(t, coordinator)
 	assert.Equal(t, config, coordinator.config)
 	assert.NotNil(t, coordinator.scheduler)
@@ -27,9 +27,9 @@ func TestNewPipelineCoordinator(t *testing.T) {
 
 func TestNewPipelineCoordinatorWithNilConfig(t *testing.T) {
 	ctx := context.Background()
-	
+
 	coordinator := NewPipelineCoordinator(ctx, nil)
-	
+
 	assert.NotNil(t, coordinator)
 	assert.NotNil(t, coordinator.config)
 	assert.Equal(t, DefaultCoordinationConfig().PipelineDepth, coordinator.config.PipelineDepth)
@@ -37,7 +37,7 @@ func TestNewPipelineCoordinatorWithNilConfig(t *testing.T) {
 
 func TestDefaultCoordinationConfig(t *testing.T) {
 	config := DefaultCoordinationConfig()
-	
+
 	assert.Equal(t, 16, config.PipelineDepth)
 	assert.Equal(t, 32, config.GlobalCongestionWindow)
 	assert.Equal(t, "adaptive", config.Strategy)
@@ -51,21 +51,21 @@ func TestPipelineCoordinatorStartStop(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultCoordinationConfig()
 	coordinator := NewPipelineCoordinator(ctx, config)
-	
+
 	// Test starting coordinator
 	err := coordinator.Start()
 	assert.NoError(t, err)
 	assert.True(t, coordinator.active)
-	
+
 	// Test starting already active coordinator
 	err = coordinator.Start()
 	assert.NoError(t, err) // Should be idempotent
-	
+
 	// Test stopping coordinator
 	err = coordinator.Stop()
 	assert.NoError(t, err)
 	assert.False(t, coordinator.active)
-	
+
 	// Test stopping already stopped coordinator
 	err = coordinator.Stop()
 	assert.NoError(t, err) // Should be idempotent
@@ -75,28 +75,28 @@ func TestPipelineCoordinatorRegisterPrefix(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultCoordinationConfig()
 	coordinator := NewPipelineCoordinator(ctx, config)
-	
+
 	// Test registering prefix when coordinator is not active
 	err := coordinator.RegisterPrefix("test-prefix", 100.0)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "coordinator_inactive")
-	
+
 	// Start coordinator and test registration
 	err = coordinator.Start()
 	require.NoError(t, err)
-	
+
 	err = coordinator.RegisterPrefix("test-prefix", 100.0)
 	assert.NoError(t, err)
-	
+
 	// Verify prefix channel was created
 	coordinator.mu.RLock()
 	channel, exists := coordinator.prefixChannels["test-prefix"]
 	coordinator.mu.RUnlock()
-	
+
 	assert.True(t, exists)
 	assert.NotNil(t, channel)
 	assert.Equal(t, config.PipelineDepth, cap(channel))
-	
+
 	_ = coordinator.Stop()
 }
 
@@ -104,25 +104,25 @@ func TestPipelineCoordinatorScheduleUpload(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultCoordinationConfig()
 	coordinator := NewPipelineCoordinator(ctx, config)
-	
+
 	upload := &ScheduledUpload{
 		ArchivePath:   "/test/archive.tar",
 		Priority:      3,
 		EstimatedSize: 1024 * 1024,
 	}
-	
+
 	// Test scheduling when coordinator is not active
 	err := coordinator.ScheduleUpload(upload)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "coordinator_inactive")
-	
+
 	// Start coordinator and register prefix
 	err = coordinator.Start()
 	require.NoError(t, err)
-	
+
 	err = coordinator.RegisterPrefix("test-prefix", 100.0)
 	require.NoError(t, err)
-	
+
 	// Test successful scheduling
 	err = coordinator.ScheduleUpload(upload)
 	assert.NoError(t, err)
@@ -130,7 +130,7 @@ func TestPipelineCoordinatorScheduleUpload(t *testing.T) {
 	assert.NotZero(t, upload.ScheduledAt)
 	assert.NotZero(t, upload.BandwidthAllocation)
 	assert.NotZero(t, upload.CongestionWindow)
-	
+
 	_ = coordinator.Stop()
 }
 
@@ -138,7 +138,7 @@ func TestPipelineCoordinatorGetMetrics(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultCoordinationConfig()
 	coordinator := NewPipelineCoordinator(ctx, config)
-	
+
 	metrics := coordinator.GetMetrics()
 	assert.NotNil(t, metrics)
 	assert.Equal(t, 1.0, metrics.LoadBalanceEfficiency)
@@ -149,13 +149,13 @@ func TestPipelineCoordinatorUpdatePrefixMetrics(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultCoordinationConfig()
 	coordinator := NewPipelineCoordinator(ctx, config)
-	
+
 	err := coordinator.Start()
 	require.NoError(t, err)
-	
+
 	err = coordinator.RegisterPrefix("test-prefix", 100.0)
 	require.NoError(t, err)
-	
+
 	metrics := &PrefixPerformanceMetrics{
 		PrefixID:       "test-prefix",
 		ActiveUploads:  5,
@@ -163,10 +163,10 @@ func TestPipelineCoordinatorUpdatePrefixMetrics(t *testing.T) {
 		LatencyMs:      100.0,
 		ErrorRate:      0.01,
 	}
-	
+
 	// This should not panic or error
 	coordinator.UpdatePrefixMetrics("test-prefix", metrics)
-	
+
 	_ = coordinator.Stop()
 }
 
@@ -174,10 +174,10 @@ func TestPipelineCoordinatorConcurrency(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultCoordinationConfig()
 	coordinator := NewPipelineCoordinator(ctx, config)
-	
+
 	err := coordinator.Start()
 	require.NoError(t, err)
-	
+
 	// Register multiple prefixes concurrently
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -190,12 +190,12 @@ func TestPipelineCoordinatorConcurrency(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	
+
 	// Verify all prefixes were registered
 	coordinator.mu.RLock()
 	assert.Equal(t, 10, len(coordinator.prefixChannels))
 	coordinator.mu.RUnlock()
-	
+
 	// Schedule uploads concurrently
 	for i := 0; i < 50; i++ {
 		wg.Add(1)
@@ -214,7 +214,7 @@ func TestPipelineCoordinatorConcurrency(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	
+
 	_ = coordinator.Stop()
 }
 
@@ -225,7 +225,7 @@ func TestCoordinationError(t *testing.T) {
 		Message: "test message",
 	}
 	assert.Equal(t, "test_error: test message", err.Error())
-	
+
 	// Test error with prefix ID
 	err = &CoordinationError{
 		Type:     "test_error",
@@ -238,7 +238,7 @@ func TestCoordinationError(t *testing.T) {
 func TestNewTransferScheduler(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	scheduler := NewTransferScheduler(config)
-	
+
 	assert.NotNil(t, scheduler)
 	assert.NotNil(t, scheduler.prefixMetrics)
 	assert.NotNil(t, scheduler.networkProfile)
@@ -250,7 +250,7 @@ func TestNewTransferScheduler(t *testing.T) {
 func TestNewGlobalCongestionController(t *testing.T) {
 	config := DefaultCoordinationConfig()
 	gcc := NewGlobalCongestionController(config)
-	
+
 	assert.NotNil(t, gcc)
 	assert.Equal(t, config.GlobalCongestionWindow, gcc.globalCongestionWindow)
 	assert.Equal(t, config.GlobalCongestionWindow/2, gcc.slowStartThreshold)
@@ -261,7 +261,7 @@ func TestNewGlobalCongestionController(t *testing.T) {
 
 func TestNewNetworkProfile(t *testing.T) {
 	profile := NewNetworkProfile()
-	
+
 	assert.NotNil(t, profile)
 	assert.Equal(t, 100.0, profile.EstimatedBandwidthMBps)
 	assert.Equal(t, time.Millisecond*50, profile.BaselineRTT)
@@ -275,7 +275,7 @@ func TestNewNetworkProfile(t *testing.T) {
 
 func TestNewGlobalTransferState(t *testing.T) {
 	state := NewGlobalTransferState()
-	
+
 	assert.NotNil(t, state)
 	assert.NotNil(t, state.ActivePrefixes)
 	assert.Equal(t, 0, state.TotalActiveUploads)
@@ -286,7 +286,7 @@ func TestNewGlobalTransferState(t *testing.T) {
 
 func TestNewPrefixLoadBalancer(t *testing.T) {
 	balancer := NewPrefixLoadBalancer(LoadBalanceAdaptive)
-	
+
 	assert.NotNil(t, balancer)
 	assert.Equal(t, LoadBalanceAdaptive, balancer.strategy)
 	assert.NotNil(t, balancer.prefixWeights)
@@ -297,7 +297,7 @@ func TestNewPrefixLoadBalancer(t *testing.T) {
 
 func TestNewAdaptiveParameters(t *testing.T) {
 	params := NewAdaptiveParameters()
-	
+
 	assert.NotNil(t, params)
 	assert.Equal(t, 0.1, params.LearningRate)
 	assert.Equal(t, 0.05, params.BandwidthProbingRate)
@@ -310,7 +310,7 @@ func TestNewAdaptiveParameters(t *testing.T) {
 
 func TestNewBandwidthFilter(t *testing.T) {
 	filter := NewBandwidthFilter(time.Second * 10)
-	
+
 	assert.NotNil(t, filter)
 	assert.NotNil(t, filter.samples)
 	assert.Equal(t, time.Second*10, filter.maxWindow)
@@ -319,7 +319,7 @@ func TestNewBandwidthFilter(t *testing.T) {
 
 func TestNewCoordinationMetrics(t *testing.T) {
 	metrics := NewCoordinationMetrics()
-	
+
 	assert.NotNil(t, metrics)
 	assert.Equal(t, 0.0, metrics.CoordinationOverheadPercent)
 	assert.Equal(t, 1.0, metrics.LoadBalanceEfficiency)
@@ -330,24 +330,24 @@ func TestNewCoordinationMetrics(t *testing.T) {
 func TestPipelineCoordinatorMetricsCollection(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
-	
+
 	config := DefaultCoordinationConfig()
 	config.UpdateInterval = time.Millisecond * 100 // Fast update for testing
 	coordinator := NewPipelineCoordinator(ctx, config)
-	
+
 	err := coordinator.Start()
 	require.NoError(t, err)
-	
+
 	// Register a prefix
 	err = coordinator.RegisterPrefix("test-prefix", 100.0)
 	require.NoError(t, err)
-	
+
 	// Wait for a few metrics collection cycles
 	time.Sleep(time.Millisecond * 300)
-	
+
 	metrics := coordinator.GetMetrics()
 	assert.NotNil(t, metrics)
 	assert.Equal(t, 1, metrics.ActivePrefixes) // Should reflect registered prefix
-	
+
 	_ = coordinator.Stop()
 }

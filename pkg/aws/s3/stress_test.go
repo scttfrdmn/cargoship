@@ -49,17 +49,17 @@ func TestCargoShipStressTest(t *testing.T) {
 	require.NoError(t, err)
 
 	s3Client := s3.NewFromConfig(cfg)
-	
+
 	// Ensure test bucket exists
 	err = ensureStressBucket(ctx, s3Client, stressTestBucket)
 	require.NoError(t, err)
 
 	// High-performance S3 config for stress testing
 	s3Config := awsconfig.S3Config{
-		Bucket:              stressTestBucket,
-		Concurrency:         50, // Max concurrency for stress testing
-		MultipartChunkSize:  256 * 1024 * 1024, // 256MB chunks
-		MultipartThreshold:  500 * 1024 * 1024, // 500MB threshold
+		Bucket:             stressTestBucket,
+		Concurrency:        50,                // Max concurrency for stress testing
+		MultipartChunkSize: 256 * 1024 * 1024, // 256MB chunks
+		MultipartThreshold: 500 * 1024 * 1024, // 500MB threshold
 	}
 
 	t.Run("MaxConcurrencyStressTest", func(t *testing.T) {
@@ -101,39 +101,39 @@ func testMaxConcurrencyStress(t *testing.T, ctx context.Context, s3Client *s3.Cl
 	for _, concurrency := range concurrencyLevels {
 		t.Run(fmt.Sprintf("Concurrency_%d", concurrency), func(t *testing.T) {
 			t.Logf("🚀 Testing %d concurrent uploads of 10MB each...", concurrency)
-			
+
 			var wg sync.WaitGroup
 			var successCount int64
 			var totalBytes int64
 			var totalDuration int64
-			
+
 			startTime := time.Now()
-			
+
 			// Launch concurrent uploads
 			for i := 0; i < concurrency; i++ {
 				wg.Add(1)
 				go func(uploadID int) {
 					defer wg.Done()
-					
+
 					testData := strings.Repeat(fmt.Sprintf("Stress test data %d for maximum concurrency validation. ", uploadID), fileSize/100)
 					testKey := fmt.Sprintf("%s/max-concurrency-%d-%d-%d.txt", stressTestPrefix, concurrency, time.Now().Unix(), uploadID)
-					
+
 					archive := &Archive{
-						Key:             testKey,
-						Reader:          strings.NewReader(testData),
-						Size:            int64(len(testData)),
-						StorageClass:    awsconfig.StorageClassStandard,
-						Metadata:        map[string]string{
-							"test": "max-concurrency",
+						Key:          testKey,
+						Reader:       strings.NewReader(testData),
+						Size:         int64(len(testData)),
+						StorageClass: awsconfig.StorageClassStandard,
+						Metadata: map[string]string{
+							"test":        "max-concurrency",
 							"concurrency": fmt.Sprintf("%d", concurrency),
-							"upload_id": fmt.Sprintf("%d", uploadID),
+							"upload_id":   fmt.Sprintf("%d", uploadID),
 						},
 					}
 
 					uploadStart := time.Now()
 					_, err := transporter.Upload(ctx, archive)
 					uploadDuration := time.Since(uploadStart)
-					
+
 					if err == nil {
 						atomic.AddInt64(&successCount, 1)
 						atomic.AddInt64(&totalBytes, archive.Size)
@@ -143,17 +143,17 @@ func testMaxConcurrencyStress(t *testing.T, ctx context.Context, s3Client *s3.Cl
 					}
 				}(i)
 			}
-			
+
 			wg.Wait()
 			overallDuration := time.Since(startTime)
-			
+
 			success := atomic.LoadInt64(&successCount)
 			bytes := atomic.LoadInt64(&totalBytes)
 			avgDurationNs := atomic.LoadInt64(&totalDuration) / success
-			
+
 			aggregateThroughputMBps := float64(bytes) / (1024 * 1024) / overallDuration.Seconds()
 			avgThroughputMBps := float64(fileSize) / (1024 * 1024) / (float64(avgDurationNs) / 1e9)
-			
+
 			t.Logf("📊 Concurrency %d Results:", concurrency)
 			t.Logf("  Successful uploads: %d/%d (%.1f%%)", success, concurrency, float64(success)/float64(concurrency)*100)
 			t.Logf("  Total data: %.2f MB", float64(bytes)/(1024*1024))
@@ -161,11 +161,11 @@ func testMaxConcurrencyStress(t *testing.T, ctx context.Context, s3Client *s3.Cl
 			t.Logf("  Aggregate throughput: %.2f MB/s (%.3f Gbps)", aggregateThroughputMBps, aggregateThroughputMBps*8/1000)
 			t.Logf("  Average per-upload throughput: %.2f MB/s", avgThroughputMBps)
 			t.Logf("  Network utilization: %.1f%% of 5 Gbps", (aggregateThroughputMBps*8/1000)/5.0*100)
-			
+
 			// Performance assertions
 			assert.Greater(t, float64(success)/float64(concurrency), 0.8, "At least 80% of uploads should succeed")
 			assert.Greater(t, aggregateThroughputMBps, 20.0, "Aggregate throughput should exceed 20 MB/s")
-			
+
 			if aggregateThroughputMBps > 100 {
 				t.Logf("🏆 Outstanding performance: >100 MB/s aggregate throughput!")
 			} else if aggregateThroughputMBps > 50 {
@@ -173,7 +173,7 @@ func testMaxConcurrencyStress(t *testing.T, ctx context.Context, s3Client *s3.Cl
 			}
 		})
 	}
-	
+
 	// Get final optimization stats
 	stats := transporter.GetOptimizationStats()
 	t.Logf("🔧 Final Optimization Statistics:")
@@ -187,13 +187,13 @@ func testLargeFileStress(t *testing.T, ctx context.Context, s3Client *s3.Client,
 	// Look for the largest files available in astrapi.local
 	publicPaths := []string{
 		"/Volumes/Public",
-		"/mnt/astrapi-public", 
+		"/mnt/astrapi-public",
 		"//astrapi.local/Public",
 		"/media/astrapi/Public",
 	}
 
 	var largeFiles []FileInfo
-	
+
 	for _, basePath := range publicPaths {
 		if _, err := os.Stat(basePath); os.IsNotExist(err) {
 			continue
@@ -215,7 +215,7 @@ func testLargeFileStress(t *testing.T, ctx context.Context, s3Client *s3.Client,
 			}
 			return nil
 		})
-		
+
 		if len(largeFiles) > 0 {
 			break
 		}
@@ -253,15 +253,15 @@ func testLargeFileStress(t *testing.T, ctx context.Context, s3Client *s3.Client,
 			testKey := fmt.Sprintf("%s/large-stress-%d-%s", stressTestPrefix, time.Now().Unix(), filepath.Base(fileInfo.Path))
 
 			archive := &Archive{
-				Key:             testKey,
-				Reader:          file,
-				Size:            fileInfo.Size,
-				StorageClass:    awsconfig.StorageClassStandard,
-				Metadata:        map[string]string{
-					"test": "large-file-stress",
-					"source": "astrapi.local",
+				Key:          testKey,
+				Reader:       file,
+				Size:         fileInfo.Size,
+				StorageClass: awsconfig.StorageClassStandard,
+				Metadata: map[string]string{
+					"test":          "large-file-stress",
+					"source":        "astrapi.local",
 					"original_path": fileInfo.Path,
-					"size_mb": fmt.Sprintf("%.2f", float64(fileInfo.Size)/(1024*1024)),
+					"size_mb":       fmt.Sprintf("%.2f", float64(fileInfo.Size)/(1024*1024)),
 				},
 			}
 
@@ -307,11 +307,11 @@ func testLargeFileStress(t *testing.T, ctx context.Context, s3Client *s3.Client,
 			buffer := make([]byte, 4*1024*1024) // 4MB buffer for large files
 			totalDownloaded := int64(0)
 			lastProgress := time.Now()
-			
+
 			for {
 				n, err := reader.Read(buffer)
 				totalDownloaded += int64(n)
-				
+
 				// Progress every 10 seconds for large files
 				if time.Since(lastProgress) > 10*time.Second {
 					progress := float64(totalDownloaded) / float64(fileInfo.Size) * 100
@@ -319,7 +319,7 @@ func testLargeFileStress(t *testing.T, ctx context.Context, s3Client *s3.Client,
 					t.Logf("  📥 Download progress: %.1f%% (%.2f MB/s)", progress, currentThroughput)
 					lastProgress = time.Now()
 				}
-				
+
 				if err == io.EOF {
 					break
 				}
@@ -350,7 +350,7 @@ func testSustainedThroughput(t *testing.T, ctx context.Context, s3Client *s3.Cli
 
 	// Test sustained throughput for 5 minutes
 	testDuration := 5 * time.Minute
-	fileSize := 20 * 1024 * 1024 // 20MB files
+	fileSize := 20 * 1024 * 1024       // 20MB files
 	uploadInterval := 10 * time.Second // Upload every 10 seconds
 
 	t.Logf("🔄 Testing sustained throughput for %s...", testDuration)
@@ -383,12 +383,12 @@ func testSustainedThroughput(t *testing.T, ctx context.Context, s3Client *s3.Cli
 					testKey := fmt.Sprintf("%s/sustained-%d-%d.txt", stressTestPrefix, time.Now().Unix(), id)
 
 					archive := &Archive{
-						Key:             testKey,
-						Reader:          strings.NewReader(testData),
-						Size:            int64(len(testData)),
-						StorageClass:    awsconfig.StorageClassStandard,
-						Metadata:        map[string]string{
-							"test": "sustained-throughput",
+						Key:          testKey,
+						Reader:       strings.NewReader(testData),
+						Size:         int64(len(testData)),
+						StorageClass: awsconfig.StorageClassStandard,
+						Metadata: map[string]string{
+							"test":      "sustained-throughput",
 							"upload_id": fmt.Sprintf("%d", id),
 						},
 					}
@@ -399,7 +399,7 @@ func testSustainedThroughput(t *testing.T, ctx context.Context, s3Client *s3.Cli
 
 					if err == nil {
 						throughputMBps := float64(archive.Size) / (1024 * 1024) / uploadDuration.Seconds()
-						
+
 						mu.Lock()
 						atomic.AddInt64(&uploadCount, 1)
 						atomic.AddInt64(&totalBytes, archive.Size)
@@ -424,7 +424,7 @@ func testSustainedThroughput(t *testing.T, ctx context.Context, s3Client *s3.Cli
 
 	mu.Lock()
 	avgThroughput := totalThroughput / float64(len(throughputSamples))
-	
+
 	// Calculate throughput variance
 	var variance float64
 	for _, sample := range throughputSamples {
@@ -462,7 +462,7 @@ func testBandwidthSaturation(t *testing.T, ctx context.Context, s3Client *s3.Cli
 	// Create multiple transporters to maximize bandwidth utilization
 	numTransporters := 4
 	transporters := make([]*OptimizedTransporter, numTransporters)
-	
+
 	for i := 0; i < numTransporters; i++ {
 		transporter, err := NewOptimizedTransporter(ctx, s3Client, s3Config, logger)
 		require.NoError(t, err)
@@ -492,14 +492,14 @@ func testBandwidthSaturation(t *testing.T, ctx context.Context, s3Client *s3.Cli
 				testKey := fmt.Sprintf("%s/bandwidth-sat-%d-%d-%d.txt", stressTestPrefix, time.Now().Unix(), tID, uploadID)
 
 				archive := &Archive{
-					Key:             testKey,
-					Reader:          strings.NewReader(testData),
-					Size:            int64(len(testData)),
-					StorageClass:    awsconfig.StorageClassStandard,
-					Metadata:        map[string]string{
-						"test": "bandwidth-saturation",
+					Key:          testKey,
+					Reader:       strings.NewReader(testData),
+					Size:         int64(len(testData)),
+					StorageClass: awsconfig.StorageClassStandard,
+					Metadata: map[string]string{
+						"test":           "bandwidth-saturation",
 						"transporter_id": fmt.Sprintf("%d", tID),
-						"upload_id": fmt.Sprintf("%d", uploadID),
+						"upload_id":      fmt.Sprintf("%d", uploadID),
 					},
 				}
 
@@ -510,7 +510,7 @@ func testBandwidthSaturation(t *testing.T, ctx context.Context, s3Client *s3.Cli
 				if err == nil {
 					atomic.AddInt64(&totalBytes, archive.Size)
 					atomic.AddInt64(&totalDuration, uploadDuration.Nanoseconds())
-					
+
 					throughput := float64(archive.Size) / (1024 * 1024) / uploadDuration.Seconds()
 					t.Logf("  T%d-U%d: %.2f MB/s", tID, uploadID, throughput)
 				} else {
@@ -553,12 +553,12 @@ func testMultiGBTransfer(t *testing.T, ctx context.Context, s3Client *s3.Client,
 	// Look for files larger than 1GB
 	publicPaths := []string{
 		"/Volumes/Public",
-		"/mnt/astrapi-public", 
+		"/mnt/astrapi-public",
 		"//astrapi.local/Public",
 	}
 
 	var hugeFiles []FileInfo
-	
+
 	for _, basePath := range publicPaths {
 		if _, err := os.Stat(basePath); os.IsNotExist(err) {
 			continue
@@ -580,7 +580,7 @@ func testMultiGBTransfer(t *testing.T, ctx context.Context, s3Client *s3.Client,
 			}
 			return nil
 		})
-		
+
 		if len(hugeFiles) > 0 {
 			break
 		}
@@ -597,7 +597,7 @@ func testMultiGBTransfer(t *testing.T, ctx context.Context, s3Client *s3.Client,
 
 	// Configure for maximum performance
 	maxPerfConfig := s3Config
-	maxPerfConfig.Concurrency = 100 // Maximum concurrency
+	maxPerfConfig.Concurrency = 100                      // Maximum concurrency
 	maxPerfConfig.MultipartChunkSize = 512 * 1024 * 1024 // 512MB chunks
 
 	transporter, err := NewOptimizedTransporter(ctx, s3Client, maxPerfConfig, logger)
@@ -611,20 +611,20 @@ func testMultiGBTransfer(t *testing.T, ctx context.Context, s3Client *s3.Client,
 	testKey := fmt.Sprintf("%s/multi-gb-%d-%s", stressTestPrefix, time.Now().Unix(), filepath.Base(fileInfo.Path))
 
 	archive := &Archive{
-		Key:             testKey,
-		Reader:          file,
-		Size:            fileInfo.Size,
-		StorageClass:    awsconfig.StorageClassStandard,
-		Metadata:        map[string]string{
-			"test": "multi-gb-transfer",
-			"source": "astrapi.local",
+		Key:          testKey,
+		Reader:       file,
+		Size:         fileInfo.Size,
+		StorageClass: awsconfig.StorageClassStandard,
+		Metadata: map[string]string{
+			"test":    "multi-gb-transfer",
+			"source":  "astrapi.local",
 			"size_gb": fmt.Sprintf("%.3f", float64(fileInfo.Size)/(1024*1024*1024)),
 		},
 	}
 
 	t.Logf("🚀 Starting multi-GB upload with maximum performance settings...")
 	t.Logf("⚙️  Concurrency: %d, Chunk size: %d MB", maxPerfConfig.Concurrency, maxPerfConfig.MultipartChunkSize/(1024*1024))
-	
+
 	startTime := time.Now()
 	result, err := transporter.Upload(ctx, archive)
 	duration := time.Since(startTime)

@@ -154,7 +154,7 @@ func TestTracker_AddError(t *testing.T) {
 
 func TestTracker_GetProgress(t *testing.T) {
 	tracker := NewTracker(1000, 10)
-	
+
 	// Initial progress
 	progress := tracker.GetProgress()
 	if progress.TotalBytes != 1000 {
@@ -207,10 +207,10 @@ func TestTracker_Complete(t *testing.T) {
 
 func TestTracker_ProgressCalculations(t *testing.T) {
 	tracker := NewTracker(1000, 10)
-	
+
 	// Allow some time to pass for meaningful calculations
 	time.Sleep(10 * time.Millisecond)
-	
+
 	tracker.AddBytes(500)
 	progress := tracker.GetProgress()
 
@@ -247,15 +247,15 @@ func TestTracker_ZeroBytes(t *testing.T) {
 
 func TestTracker_ErrorHandling(t *testing.T) {
 	tracker := NewTracker(1000, 10)
-	
+
 	err1 := errors.New("first error")
 	err2 := errors.New("second error")
-	
+
 	tracker.AddError(err1)
 	tracker.AddError(err2)
-	
+
 	progress := tracker.GetProgress()
-	
+
 	if progress.ErrorCount != 2 {
 		t.Errorf("Progress ErrorCount = %v, want 2", progress.ErrorCount)
 	}
@@ -266,7 +266,7 @@ func TestTracker_ErrorHandling(t *testing.T) {
 
 func TestConsoleProgressListener_OnProgress(t *testing.T) {
 	listener := NewConsoleProgressListener(true)
-	
+
 	update := ProgressUpdate{
 		TotalBytes:      1000,
 		UploadedBytes:   500,
@@ -287,7 +287,7 @@ func TestConsoleProgressListener_OnProgress(t *testing.T) {
 
 func TestConsoleProgressListener_OnComplete(t *testing.T) {
 	listener := NewConsoleProgressListener(true)
-	
+
 	update := ProgressUpdate{
 		TotalBytes:      1000,
 		UploadedBytes:   1000,
@@ -304,7 +304,7 @@ func TestConsoleProgressListener_OnComplete(t *testing.T) {
 
 func TestConsoleProgressListener_OnError(t *testing.T) {
 	listener := NewConsoleProgressListener(false)
-	
+
 	err := errors.New("test error")
 	update := ProgressUpdate{
 		PercentComplete: 25.0,
@@ -316,14 +316,14 @@ func TestConsoleProgressListener_OnError(t *testing.T) {
 
 func TestConsoleProgressListener_RateLimit(t *testing.T) {
 	listener := NewConsoleProgressListener(true)
-	
+
 	update := ProgressUpdate{
 		PercentComplete: 50.0,
 	}
 
 	// First call should work
 	listener.OnProgress(update)
-	
+
 	// Immediate second call should be rate limited (no output)
 	listener.OnProgress(update)
 }
@@ -414,7 +414,7 @@ func TestNewJSONProgressListener(t *testing.T) {
 
 func TestJSONProgressListener_NilOutputFunc(t *testing.T) {
 	listener := NewJSONProgressListener(nil)
-	
+
 	update := ProgressUpdate{PercentComplete: 50.0}
 	err := errors.New("test error")
 
@@ -485,7 +485,7 @@ func TestTracker_NotifyListenersRateLimit(t *testing.T) {
 
 	// Wait for rate limit to expire
 	time.Sleep(150 * time.Millisecond)
-	
+
 	// This update should go through
 	tracker.AddBytes(100)
 	if len(listener.progressUpdates) == 0 {
@@ -534,15 +534,15 @@ func TestTracker_FullWorkflow(t *testing.T) {
 
 func TestConsoleProgressListener_ProgressBar(t *testing.T) {
 	listener := NewConsoleProgressListener(false)
-	
+
 	// Test different progress percentages
 	tests := []float64{0, 25, 50, 75, 100}
-	
+
 	for _, percent := range tests {
 		update := ProgressUpdate{
 			PercentComplete: percent,
 		}
-		
+
 		// Should not panic with any percentage
 		listener.OnProgress(update)
 	}
@@ -578,9 +578,9 @@ func TestFormatDuration_EdgeCases(t *testing.T) {
 
 // mockProgressListener for testing
 type mockProgressListener struct {
-	progressUpdates  []ProgressUpdate
-	completeUpdates  []ProgressUpdate
-	errorUpdates     []errorUpdate
+	progressUpdates []ProgressUpdate
+	completeUpdates []ProgressUpdate
+	errorUpdates    []errorUpdate
 }
 
 type errorUpdate struct {

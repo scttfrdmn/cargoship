@@ -22,7 +22,7 @@ import (
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
-	
+
 	contextpkg "github.com/scttfrdmn/cargoship/pkg/context"
 )
 
@@ -229,7 +229,7 @@ func globalPersistentPreRun(cmd *cobra.Command, _ []string) {
 	// lo := cmd.OutOrStderr()
 	// fmt.Fprintf(os.Stderr, "OUT IS: %+v\n", &lo)
 	setupLogging(cmd.OutOrStderr())
-	
+
 	// Initialize context awareness
 	initializeContextAwareness(cmd)
 	/*
@@ -290,10 +290,10 @@ func toPTR[V any](v V) *V {
 // initializeContextAwareness sets up context-aware CLI behavior
 func initializeContextAwareness(cmd *cobra.Command) {
 	logger := slog.Default()
-	
+
 	// Create context manager
 	contextManager := contextpkg.NewManager(logger)
-	
+
 	// Handle --context flag if provided
 	if contextFlag, _ := cmd.Flags().GetString("context"); contextFlag != "" {
 		targetContext := contextpkg.ExecutionContext(contextFlag)
@@ -303,16 +303,16 @@ func initializeContextAwareness(cmd *cobra.Command) {
 			logger.Debug("Context switched via flag", "context", targetContext)
 		}
 	}
-	
+
 	// Apply context-aware command filtering
 	filter := contextpkg.NewCommandFilter(logger)
 	filter.ApplyContextFiltering(cmd.Root())
-	
+
 	// Show context info in verbose mode
 	if verbose, _ := cmd.Flags().GetBool("verbose"); verbose {
 		currentCtx := contextManager.Current()
-		logger.Info("Current execution context", 
-			"context", currentCtx, 
+		logger.Info("Current execution context",
+			"context", currentCtx,
 			"description", filter.GetContextDescription(currentCtx))
 	}
 }

@@ -25,10 +25,10 @@ type S3Optimizer struct {
 // Config holds S3 optimization configuration
 type Config struct {
 	// Network optimization settings
-	EnableBBR           bool          `yaml:"enable_bbr" json:"enable_bbr"`
-	EnableCUBIC         bool          `yaml:"enable_cubic" json:"enable_cubic"`
-	NetworkAdaptation   bool          `yaml:"network_adaptation" json:"network_adaptation"`
-	RTTSmoothingFactor  float64       `yaml:"rtt_smoothing_factor" json:"rtt_smoothing_factor"`
+	EnableBBR          bool    `yaml:"enable_bbr" json:"enable_bbr"`
+	EnableCUBIC        bool    `yaml:"enable_cubic" json:"enable_cubic"`
+	NetworkAdaptation  bool    `yaml:"network_adaptation" json:"network_adaptation"`
+	RTTSmoothingFactor float64 `yaml:"rtt_smoothing_factor" json:"rtt_smoothing_factor"`
 
 	// Connection management
 	MaxConnections      int           `yaml:"max_connections" json:"max_connections"`
@@ -37,15 +37,15 @@ type Config struct {
 	HealthCheckInterval time.Duration `yaml:"health_check_interval" json:"health_check_interval"`
 
 	// Performance settings
-	BufferSize          int64         `yaml:"buffer_size" json:"buffer_size"`
-	CompressionLevel    int           `yaml:"compression_level" json:"compression_level"`
-	PipelineDepth       int           `yaml:"pipeline_depth" json:"pipeline_depth"`
-	MetricsEnabled      bool          `yaml:"metrics_enabled" json:"metrics_enabled"`
+	BufferSize       int64 `yaml:"buffer_size" json:"buffer_size"`
+	CompressionLevel int   `yaml:"compression_level" json:"compression_level"`
+	PipelineDepth    int   `yaml:"pipeline_depth" json:"pipeline_depth"`
+	MetricsEnabled   bool  `yaml:"metrics_enabled" json:"metrics_enabled"`
 
 	// Adaptive optimization
-	PredictiveMode      bool          `yaml:"predictive_mode" json:"predictive_mode"`
-	AdaptationInterval  time.Duration `yaml:"adaptation_interval" json:"adaptation_interval"`
-	LearningRate        float64       `yaml:"learning_rate" json:"learning_rate"`
+	PredictiveMode     bool          `yaml:"predictive_mode" json:"predictive_mode"`
+	AdaptationInterval time.Duration `yaml:"adaptation_interval" json:"adaptation_interval"`
+	LearningRate       float64       `yaml:"learning_rate" json:"learning_rate"`
 }
 
 // DefaultConfig returns sensible defaults for S3 optimization
@@ -90,51 +90,51 @@ type OptimizedS3Client interface {
 
 // NetworkConditions represents current network state
 type NetworkConditions struct {
-	Bandwidth       float64       `json:"bandwidth"`        // Mbps
-	RTT             time.Duration `json:"rtt"`             // Round-trip time
-	PacketLoss      float64       `json:"packet_loss"`     // Loss percentage (0-100)
-	Congestion      float64       `json:"congestion"`      // Congestion level (0-100)
-	Jitter          time.Duration `json:"jitter"`          // Network jitter
-	LastUpdated     time.Time     `json:"last_updated"`    // When conditions were measured
+	Bandwidth   float64       `json:"bandwidth"`    // Mbps
+	RTT         time.Duration `json:"rtt"`          // Round-trip time
+	PacketLoss  float64       `json:"packet_loss"`  // Loss percentage (0-100)
+	Congestion  float64       `json:"congestion"`   // Congestion level (0-100)
+	Jitter      time.Duration `json:"jitter"`       // Network jitter
+	LastUpdated time.Time     `json:"last_updated"` // When conditions were measured
 }
 
 // PerformanceMetrics contains comprehensive performance statistics
 type PerformanceMetrics struct {
 	// Transfer statistics
-	TotalRequests       int64         `json:"total_requests"`
-	SuccessfulRequests  int64         `json:"successful_requests"`
-	FailedRequests      int64         `json:"failed_requests"`
-	AverageLatency      time.Duration `json:"average_latency"`
-	ThroughputMbps      float64       `json:"throughput_mbps"`
+	TotalRequests      int64         `json:"total_requests"`
+	SuccessfulRequests int64         `json:"successful_requests"`
+	FailedRequests     int64         `json:"failed_requests"`
+	AverageLatency     time.Duration `json:"average_latency"`
+	ThroughputMbps     float64       `json:"throughput_mbps"`
 
 	// Network optimization results
-	BBRActivations      int64         `json:"bbr_activations"`
-	CubicAdjustments    int64         `json:"cubic_adjustments"`
-	RTTMeasurements     int64         `json:"rtt_measurements"`
-	LossDetections      int64         `json:"loss_detections"`
+	BBRActivations   int64 `json:"bbr_activations"`
+	CubicAdjustments int64 `json:"cubic_adjustments"`
+	RTTMeasurements  int64 `json:"rtt_measurements"`
+	LossDetections   int64 `json:"loss_detections"`
 
 	// Connection statistics
-	ActiveConnections   int           `json:"active_connections"`
-	PoolUtilization     float64       `json:"pool_utilization"`
-	LoadBalanceEvents   int64         `json:"load_balance_events"`
+	ActiveConnections int     `json:"active_connections"`
+	PoolUtilization   float64 `json:"pool_utilization"`
+	LoadBalanceEvents int64   `json:"load_balance_events"`
 
 	// Performance improvements
-	OptimizationRatio   float64       `json:"optimization_ratio"`   // Performance vs baseline
-	BandwidthSavings    float64       `json:"bandwidth_savings"`    // Percentage saved
-	LatencyReduction    float64       `json:"latency_reduction"`    // Percentage reduced
+	OptimizationRatio float64 `json:"optimization_ratio"` // Performance vs baseline
+	BandwidthSavings  float64 `json:"bandwidth_savings"`  // Percentage saved
+	LatencyReduction  float64 `json:"latency_reduction"`  // Percentage reduced
 
-	CollectedAt         time.Time     `json:"collected_at"`
+	CollectedAt time.Time `json:"collected_at"`
 }
 
 // Metrics provides basic performance tracking
 type Metrics struct {
-	totalRequests     int64
+	totalRequests      int64
 	successfulRequests int64
-	failedRequests    int64
-	totalLatency      time.Duration
-	totalBytes        int64
-	startTime         time.Time
-	mu               sync.RWMutex
+	failedRequests     int64
+	totalLatency       time.Duration
+	totalBytes         int64
+	startTime          time.Time
+	mu                 sync.RWMutex
 }
 
 // NewS3Optimizer creates a new S3 optimizer with the specified configuration
@@ -175,7 +175,7 @@ func (o *S3Optimizer) GetObjectOptimized(ctx context.Context, input *s3.GetObjec
 	}
 
 	startTime := time.Now()
-	
+
 	// Apply network optimizations (BBR/CUBIC algorithms)
 	o.applyOptimizations("GET", safeStringValue(input.Key))
 
@@ -191,21 +191,21 @@ func (o *S3Optimizer) GetObjectOptimized(ctx context.Context, input *s3.GetObjec
 		return nil, err
 	}
 
-	o.logger.Debug("optimized GET completed", 
-		"key", safeStringValue(input.Key), 
+	o.logger.Debug("optimized GET completed",
+		"key", safeStringValue(input.Key),
 		"duration", duration)
 
 	return result, nil
 }
 
-// PutObjectOptimized performs optimized S3 PutObject operation  
+// PutObjectOptimized performs optimized S3 PutObject operation
 func (o *S3Optimizer) PutObjectOptimized(ctx context.Context, input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
 	if !o.initialized {
 		return nil, fmt.Errorf("optimizer not initialized")
 	}
 
 	startTime := time.Now()
-	
+
 	// Apply network optimizations (BBR/CUBIC algorithms)
 	o.applyOptimizations("PUT", safeStringValue(input.Key))
 
@@ -224,8 +224,8 @@ func (o *S3Optimizer) PutObjectOptimized(ctx context.Context, input *s3.PutObjec
 		return nil, err
 	}
 
-	o.logger.Debug("optimized PUT completed", 
-		"key", safeStringValue(input.Key), 
+	o.logger.Debug("optimized PUT completed",
+		"key", safeStringValue(input.Key),
 		"duration", duration)
 
 	return result, nil
@@ -266,7 +266,7 @@ func (o *S3Optimizer) GetObjectsBatch(ctx context.Context, requests []*s3.GetObj
 	}
 
 	results := make([]*s3.GetObjectOutput, len(requests))
-	
+
 	for i, request := range requests {
 		result, err := o.GetObjectOptimized(ctx, request)
 		if err != nil {
@@ -279,14 +279,14 @@ func (o *S3Optimizer) GetObjectsBatch(ctx context.Context, requests []*s3.GetObj
 	return results, nil
 }
 
-// PutObjectsBatch performs batch PUT operations (ObjectFS integration feature)  
+// PutObjectsBatch performs batch PUT operations (ObjectFS integration feature)
 func (o *S3Optimizer) PutObjectsBatch(ctx context.Context, requests []*s3.PutObjectInput) ([]*s3.PutObjectOutput, error) {
 	if !o.initialized {
 		return nil, fmt.Errorf("optimizer not initialized")
 	}
 
 	results := make([]*s3.PutObjectOutput, len(requests))
-	
+
 	for i, request := range requests {
 		result, err := o.PutObjectOptimized(ctx, request)
 		if err != nil {
@@ -350,7 +350,7 @@ func (o *S3Optimizer) Shutdown(ctx context.Context) error {
 func (o *S3Optimizer) applyOptimizations(operation, key string) {
 	// In full implementation, this would:
 	// 1. Apply BBR bandwidth probing from network/bbr.go
-	// 2. Adjust CUBIC congestion window from network/cubic.go  
+	// 2. Adjust CUBIC congestion window from network/cubic.go
 	// 3. Update RTT estimations from network/rtt.go
 	// 4. Detect and recover from packet loss from network/loss.go
 	// 5. Optimize connection pooling from connection/pool.go
@@ -411,7 +411,7 @@ func (m *Metrics) getPerformanceMetrics() *PerformanceMetrics {
 		FailedRequests:     m.failedRequests,
 		AverageLatency:     avgLatency,
 		ThroughputMbps:     throughputMbps,
-		OptimizationRatio:  4.6, // CargoShip's proven improvement ratio
+		OptimizationRatio:  4.6,  // CargoShip's proven improvement ratio
 		BandwidthSavings:   78.3, // (4.6-1)/4.6 * 100
 		LatencyReduction:   25.0,
 		CollectedAt:        time.Now(),

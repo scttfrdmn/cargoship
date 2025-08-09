@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/require"
 	porter "github.com/scttfrdmn/cargoship/pkg"
 	"github.com/scttfrdmn/cargoship/pkg/inventory"
 	"github.com/scttfrdmn/cargoship/pkg/rclone"
 	"github.com/scttfrdmn/cargoship/pkg/travelagent"
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewSuitcaseWithDir(t *testing.T) {
@@ -86,24 +86,24 @@ func TestNewSuitcaseCloudDest(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping cloud destination test in short mode (requires rclone operations)")
 	}
-	
+
 	// Skip this test in CI or when CARGOSHIP_ENABLE_CLOUD_TESTS is not set
 	// This test requires proper cloud configuration and can hang with rclone operations
 	if os.Getenv("CARGOSHIP_ENABLE_CLOUD_TESTS") != "true" {
 		t.Skip("Skipping cloud destination test (set CARGOSHIP_ENABLE_CLOUD_TESTS=true to enable)")
 	}
-	
+
 	testD := t.TempDir()
 	cmd := NewRootCmd(io.Discard)
 	cmd.SetArgs([]string{
 		"create", "suitcase", "../../../pkg/testdata/overflow-queue/",
 		"--max-suitcase-size", "2.1Mb", "--concurrency", "2", "--cloud-destination", testD,
 	})
-	
+
 	// Use a context with timeout to prevent hanging
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	
+
 	err := cmd.ExecuteContext(ctx)
 	require.NoError(t, err)
 }
@@ -306,18 +306,18 @@ func TestNowPtr(t *testing.T) {
 	// Test that nowPtr returns a valid time pointer
 	timePtr := nowPtr()
 	require.NotNil(t, timePtr)
-	
+
 	// Test that the time is recent (within last few seconds)
 	now := time.Now()
 	diff := now.Sub(*timePtr)
 	require.True(t, diff >= 0, "Returned time should not be in the future")
 	require.True(t, diff < 5*time.Second, "Returned time should be very recent")
-	
+
 	// Test that multiple calls return different times
 	timePtr1 := nowPtr()
 	time.Sleep(1 * time.Millisecond) // Small delay
 	timePtr2 := nowPtr()
-	
+
 	require.NotEqual(t, timePtr1, timePtr2, "Different calls should return different pointers")
 	require.True(t, timePtr2.After(*timePtr1), "Second call should return later time")
 }
@@ -327,7 +327,7 @@ func TestUploadMetaNilTravelAgent(t *testing.T) {
 	porter := &porter.Porter{
 		TravelAgent: nil,
 	}
-	
+
 	files := []string{"file1.txt", "file2.txt"}
 	err := uploadMeta(porter, files)
 	require.NoError(t, err)
@@ -335,28 +335,28 @@ func TestUploadMetaNilTravelAgent(t *testing.T) {
 
 // MockTravelAgent for testing uploadMeta
 type MockTravelAgent struct {
-	uploadCalls    []string
-	uploadResults  map[string]int64
-	uploadErrors   map[string]error
-	totalUploaded  int64
-	mu             sync.Mutex // Add mutex for thread safety
+	uploadCalls   []string
+	uploadResults map[string]int64
+	uploadErrors  map[string]error
+	totalUploaded int64
+	mu            sync.Mutex // Add mutex for thread safety
 }
 
 func (m *MockTravelAgent) Upload(filePath string, c chan rclone.TransferStatus) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.uploadCalls = append(m.uploadCalls, filePath)
-	
+
 	if err, exists := m.uploadErrors[filePath]; exists {
 		return 0, err
 	}
-	
+
 	if size, exists := m.uploadResults[filePath]; exists {
 		m.totalUploaded += size
 		return size, nil
 	}
-	
+
 	// Default: return file size based on filename for testing
 	defaultSize := int64(len(filePath) * 100) // Simple size calculation
 	m.totalUploaded += defaultSize
@@ -373,7 +373,7 @@ func (m *MockTravelAgent) StatusURL() string {
 }
 
 func (m *MockTravelAgent) Update(update travelagent.StatusUpdate) (*travelagent.StatusUpdateResponse, error) {
-	// Mock implementation 
+	// Mock implementation
 	return &travelagent.StatusUpdateResponse{}, nil
 }
 
@@ -387,21 +387,21 @@ func TestUploadMetaSuccess(t *testing.T) {
 		},
 		uploadErrors: make(map[string]error),
 	}
-	
+
 	porter := &porter.Porter{
 		TravelAgent: mockAgent,
 	}
-	
+
 	files := []string{"file1.txt", "file2.txt", "file3.txt"}
 	err := uploadMeta(porter, files)
 	require.NoError(t, err)
-	
+
 	// Verify all files were uploaded
 	require.Len(t, mockAgent.uploadCalls, 3)
 	require.Contains(t, mockAgent.uploadCalls, "file1.txt")
 	require.Contains(t, mockAgent.uploadCalls, "file2.txt")
 	require.Contains(t, mockAgent.uploadCalls, "file3.txt")
-	
+
 	// Verify total transferred was updated
 	expectedTotal := int64(1024 + 2048 + 512)
 	require.Equal(t, expectedTotal, porter.TotalTransferred)
@@ -418,18 +418,18 @@ func TestUploadMetaWithErrors(t *testing.T) {
 			"file2.txt": fmt.Errorf("upload failed for file2"),
 		},
 	}
-	
+
 	porter := &porter.Porter{
 		TravelAgent: mockAgent,
 	}
-	
+
 	files := []string{"file1.txt", "file2.txt", "file3.txt"}
 	err := uploadMeta(porter, files)
-	
+
 	// Should return error due to file2 failure
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "upload failed for file2")
-	
+
 	// Verify all files were attempted
 	require.Len(t, mockAgent.uploadCalls, 3)
 }
@@ -440,15 +440,15 @@ func TestUploadMetaEmptyFileList(t *testing.T) {
 		uploadResults: make(map[string]int64),
 		uploadErrors:  make(map[string]error),
 	}
-	
+
 	porter := &porter.Porter{
 		TravelAgent: mockAgent,
 	}
-	
+
 	files := []string{} // Empty list
 	err := uploadMeta(porter, files)
 	require.NoError(t, err)
-	
+
 	// No files should be uploaded
 	require.Len(t, mockAgent.uploadCalls, 0)
 	require.Equal(t, int64(0), porter.TotalTransferred)
@@ -460,7 +460,7 @@ func TestUploadMetaConcurrentUploads(t *testing.T) {
 		uploadResults: make(map[string]int64),
 		uploadErrors:  make(map[string]error),
 	}
-	
+
 	// Create many files for concurrent testing
 	files := make([]string, 20)
 	expectedTotal := int64(0)
@@ -471,23 +471,23 @@ func TestUploadMetaConcurrentUploads(t *testing.T) {
 		mockAgent.uploadResults[filename] = size
 		expectedTotal += size
 	}
-	
+
 	porter := &porter.Porter{
 		TravelAgent: mockAgent,
 	}
-	
+
 	err := uploadMeta(porter, files)
 	require.NoError(t, err)
-	
+
 	// Due to concurrent execution, we should expect all files to be uploaded
 	// The uploadMeta function uses a pool.Wait() which ensures all goroutines complete
 	require.Equal(t, 20, len(mockAgent.uploadCalls), "All files should be uploaded")
-	
+
 	// Verify all expected files were uploaded
 	for _, expectedFile := range files {
 		require.Contains(t, mockAgent.uploadCalls, expectedFile, "File %s should be uploaded", expectedFile)
 	}
-	
+
 	// Verify total transferred matches expected (since all uploads succeed)
 	require.Equal(t, expectedTotal, porter.TotalTransferred, "Total transferred should match expected")
 }

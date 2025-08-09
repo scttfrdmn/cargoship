@@ -8,11 +8,11 @@ import (
 	"testing"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
-	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/require"
 	"github.com/scttfrdmn/cargoship/pkg/config"
 	"github.com/scttfrdmn/cargoship/pkg/gpg"
 	"github.com/scttfrdmn/cargoship/pkg/inventory"
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
 
@@ -328,12 +328,12 @@ func TestFormatSet(t *testing.T) {
 		{"case sensitive", "TAR", NullFormat, true},
 		{"partial match", "tar.g", NullFormat, true},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var format Format
 			err := format.Set(tt.value)
-			
+
 			if tt.expectError {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "ProductionLevel should be one of")
@@ -359,7 +359,7 @@ func TestFormatMarshalJSON(t *testing.T) {
 		{"TarZstGpgFormat", TarZstGpgFormat, `"tar.zst.gpg"`},
 		{"NullFormat", NullFormat, `""`},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := tt.format.MarshalJSON()

@@ -173,7 +173,7 @@ func TestTransporter_ConfigValidation(t *testing.T) {
 	}
 
 	if transporter.Config.Destination != config.Destination {
-		t.Errorf("Transporter.Config.Destination = %v, want %v", 
+		t.Errorf("Transporter.Config.Destination = %v, want %v",
 			transporter.Config.Destination, config.Destination)
 	}
 
@@ -187,7 +187,7 @@ func TestTransporter_ConfigValidation(t *testing.T) {
 func TestTransporter_ImplementsInterface(t *testing.T) {
 	// Verify that Transporter implements the transporters.Transporter interface
 	var _ transporters.Transporter = (*Transporter)(nil)
-	
+
 	// Also test that we can create and use the transporter as the interface
 	transporter := &Transporter{
 		Config: transporters.Config{
@@ -211,7 +211,7 @@ func TestTransporter_ImplementsInterface(t *testing.T) {
 func TestTransporter_SendMethods_Signature(t *testing.T) {
 	// Test that the Send and SendWithChannel methods have correct signatures
 	// and can be called without panicking (though they may error due to rclone dependencies)
-	
+
 	transporter := &Transporter{
 		Config: transporters.Config{
 			Destination: "s3://test-bucket/path",

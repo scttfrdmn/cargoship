@@ -600,8 +600,8 @@ func TestErrorHandler_GetRecoveryOptions(t *testing.T) {
 	handler := NewErrorHandler(logger)
 
 	tests := []struct {
-		name        string
-		err         error
+		name          string
+		err           error
 		expectActions int
 		expectSupport bool
 	}{
@@ -646,7 +646,7 @@ func TestErrorHandler_GetRecoveryOptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			options := handler.GetRecoveryOptions(tt.err)
-			
+
 			if len(options.SuggestedActions) != tt.expectActions {
 				t.Errorf("GetRecoveryOptions() actions count = %v, want %v", len(options.SuggestedActions), tt.expectActions)
 			}
@@ -665,7 +665,7 @@ func TestErrorHandler_GetRecoveryOptions(t *testing.T) {
 
 func TestNewErrorMetrics(t *testing.T) {
 	metrics := NewErrorMetrics()
-	
+
 	if metrics.TotalErrors != 0 {
 		t.Errorf("NewErrorMetrics() TotalErrors = %v, want 0", metrics.TotalErrors)
 	}
@@ -682,14 +682,14 @@ func TestNewErrorMetrics(t *testing.T) {
 
 func TestErrorMetrics_RecordError(t *testing.T) {
 	metrics := NewErrorMetrics()
-	
+
 	err := &CargoShipError{
 		Type:      ErrorTypeNetwork,
 		Operation: "upload",
 	}
-	
+
 	metrics.RecordError(err)
-	
+
 	if metrics.TotalErrors != 1 {
 		t.Errorf("RecordError() TotalErrors = %v, want 1", metrics.TotalErrors)
 	}
@@ -702,14 +702,14 @@ func TestErrorMetrics_RecordError(t *testing.T) {
 	if metrics.LastError.IsZero() {
 		t.Errorf("RecordError() LastError is zero")
 	}
-	
+
 	// Record another error
 	err2 := &CargoShipError{
 		Type:      ErrorTypeNetwork,
 		Operation: "download",
 	}
 	metrics.RecordError(err2)
-	
+
 	if metrics.TotalErrors != 2 {
 		t.Errorf("RecordError() TotalErrors = %v, want 2", metrics.TotalErrors)
 	}
@@ -772,7 +772,7 @@ func TestCargoShipError_FieldValues(t *testing.T) {
 	context := map[string]interface{}{
 		"key": "value",
 	}
-	
+
 	err := &CargoShipError{
 		Type:      ErrorTypeNetwork,
 		Message:   "test message",
@@ -883,12 +883,12 @@ func TestRecoveryOptions_FieldValues(t *testing.T) {
 func TestErrorMetrics_FieldValues(t *testing.T) {
 	now := time.Now()
 	metrics := &ErrorMetrics{
-		TotalErrors:  10,
-		ErrorsByType: map[ErrorType]int64{ErrorTypeNetwork: 5, ErrorTypePermission: 3},
-		ErrorsByOp:   map[string]int64{"upload": 7, "download": 3},
+		TotalErrors:   10,
+		ErrorsByType:  map[ErrorType]int64{ErrorTypeNetwork: 5, ErrorTypePermission: 3},
+		ErrorsByOp:    map[string]int64{"upload": 7, "download": 3},
 		RetryAttempts: 15,
-		LastError:    now,
-		ErrorRate:    0.25,
+		LastError:     now,
+		ErrorRate:     0.25,
 	}
 
 	if metrics.TotalErrors != 10 {

@@ -39,11 +39,11 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestNetworkConditions(t *testing.T) {
 	conditions := &NetworkConditions{
-		Bandwidth:    100.0,
-		RTT:          50 * time.Millisecond,
-		PacketLoss:   0.5,
-		Congestion:   10.0,
-		LastUpdated:  time.Now(),
+		Bandwidth:   100.0,
+		RTT:         50 * time.Millisecond,
+		PacketLoss:  0.5,
+		Congestion:  10.0,
+		LastUpdated: time.Now(),
 	}
 
 	if conditions.Bandwidth != 100.0 {
@@ -59,10 +59,10 @@ func TestPerformanceMetrics(t *testing.T) {
 	metrics := &Metrics{
 		totalRequests:      10,
 		successfulRequests: 8,
-		failedRequests:    2,
-		totalLatency:      500 * time.Millisecond,
-		totalBytes:        1024,
-		startTime:         time.Now().Add(-1 * time.Minute),
+		failedRequests:     2,
+		totalLatency:       500 * time.Millisecond,
+		totalBytes:         1024,
+		startTime:          time.Now().Add(-1 * time.Minute),
 	}
 
 	perfMetrics := metrics.getPerformanceMetrics()
@@ -94,7 +94,7 @@ func TestPerformanceMetrics(t *testing.T) {
 func TestS3OptimizerInterface(t *testing.T) {
 	// Test that our S3Optimizer implements the OptimizedS3Client interface
 	ctx := context.Background()
-	
+
 	// Create a real S3 client (this won't actually make requests in the test)
 	s3Client := s3.NewFromConfig(aws.Config{
 		Region: "us-east-1",
@@ -130,14 +130,14 @@ func TestSafeStringValue(t *testing.T) {
 
 func TestOptimizationConfig(t *testing.T) {
 	config := &Config{
-		EnableBBR:           true,
-		EnableCUBIC:         true,
-		NetworkAdaptation:   true,
-		PredictiveMode:      true,
-		MaxConnections:      20,
-		ConnectionPoolSize:  16,
-		BufferSize:          128 * 1024 * 1024,
-		MetricsEnabled:      true,
+		EnableBBR:          true,
+		EnableCUBIC:        true,
+		NetworkAdaptation:  true,
+		PredictiveMode:     true,
+		MaxConnections:     20,
+		ConnectionPoolSize: 16,
+		BufferSize:         128 * 1024 * 1024,
+		MetricsEnabled:     true,
 	}
 
 	if !config.EnableBBR {
@@ -145,7 +145,7 @@ func TestOptimizationConfig(t *testing.T) {
 	}
 
 	if !config.EnableCUBIC {
-		t.Error("CUBIC should be enabled") 
+		t.Error("CUBIC should be enabled")
 	}
 
 	if !config.NetworkAdaptation {
@@ -168,7 +168,7 @@ func TestOptimizationConfig(t *testing.T) {
 // Integration test to verify the modularization structure
 func TestModularizationStructure(t *testing.T) {
 	t.Log("Testing CargoShip S3 optimization modularization for ObjectFS integration")
-	
+
 	// Verify key components are accessible
 	config := DefaultConfig()
 	if config == nil {
@@ -200,7 +200,7 @@ func TestModularizationStructure(t *testing.T) {
 func createTestS3Client() *s3.Client {
 	// Create a mock S3 client for testing (will not make real calls due to configuration)
 	cfg := aws.Config{
-		Region: "us-east-1",
+		Region:      "us-east-1",
 		Credentials: aws.AnonymousCredentials{},
 	}
 	return s3.NewFromConfig(cfg)
@@ -209,22 +209,22 @@ func createTestS3Client() *s3.Client {
 func TestS3OptimizerInitialization(t *testing.T) {
 	ctx := context.Background()
 	testClient := createTestS3Client()
-	
+
 	// Test successful initialization
 	t.Run("SuccessfulInit", func(t *testing.T) {
 		optimizer, err := NewS3Optimizer(ctx, testClient, nil, nil)
 		if err != nil {
 			t.Fatalf("Failed to create optimizer: %v", err)
 		}
-		
+
 		if !optimizer.initialized {
 			t.Error("Optimizer should be marked as initialized")
 		}
-		
+
 		if optimizer.config == nil {
 			t.Error("Config should be set")
 		}
-		
+
 		if optimizer.metrics == nil {
 			t.Error("Metrics should be initialized")
 		}
@@ -237,16 +237,16 @@ func TestS3OptimizerInitialization(t *testing.T) {
 			MaxConnections: 20,
 			BufferSize:     128 * 1024 * 1024,
 		}
-		
+
 		optimizer, err := NewS3Optimizer(ctx, testClient, customConfig, nil)
 		if err != nil {
 			t.Fatalf("Failed to create optimizer: %v", err)
 		}
-		
+
 		if optimizer.config.EnableBBR {
 			t.Error("Expected BBR to be disabled in custom config")
 		}
-		
+
 		if optimizer.config.MaxConnections != 20 {
 			t.Errorf("Expected MaxConnections 20, got %d", optimizer.config.MaxConnections)
 		}
@@ -256,7 +256,7 @@ func TestS3OptimizerInitialization(t *testing.T) {
 func TestS3OptimizerBatchOperations(t *testing.T) {
 	ctx := context.Background()
 	testClient := createTestS3Client()
-	
+
 	optimizer, err := NewS3Optimizer(ctx, testClient, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create optimizer: %v", err)
@@ -296,7 +296,7 @@ func TestS3OptimizerBatchOperations(t *testing.T) {
 func TestS3OptimizerConfigurationMethods(t *testing.T) {
 	ctx := context.Background()
 	testClient := createTestS3Client()
-	
+
 	optimizer, err := NewS3Optimizer(ctx, testClient, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create optimizer: %v", err)
@@ -419,7 +419,7 @@ func TestS3OptimizerErrorCases(t *testing.T) {
 func TestS3OptimizerMetricsRecording(t *testing.T) {
 	ctx := context.Background()
 	testClient := createTestS3Client()
-	
+
 	optimizer, err := NewS3Optimizer(ctx, testClient, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create optimizer: %v", err)

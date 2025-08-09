@@ -1,5 +1,9 @@
 # Development Documentation
 
+<div align="center">
+  <img src="../../assets/images/logo.png" alt="CargoShip Logo" width="100" height="100">
+</div>
+
 This directory contains documentation related to CargoShip's development process, testing, and project management.
 
 ## Contents

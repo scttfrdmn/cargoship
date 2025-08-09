@@ -207,7 +207,7 @@ aws:
 
 func TestManager_LoadConfig_ValidationErrors(t *testing.T) {
 	tests := []struct {
-		name         string
+		name          string
 		configContent string
 		expectedError string
 	}{
@@ -378,7 +378,7 @@ func TestManager_UpdateConfig_Invalid(t *testing.T) {
 
 func TestManager_GetDuration(t *testing.T) {
 	manager := NewManager()
-	
+
 	// Load config to populate viper with defaults
 	err := manager.LoadConfig("")
 	if err != nil {
@@ -410,7 +410,7 @@ func TestManager_GetDuration(t *testing.T) {
 
 func TestManager_GetBytes(t *testing.T) {
 	manager := NewManager()
-	
+
 	// Load config to populate viper with defaults
 	err := manager.LoadConfig("")
 	if err != nil {
@@ -529,23 +529,23 @@ func TestConfigStructFields(t *testing.T) {
 			RequestTimeout:  "10m",
 		},
 		Storage: StorageConfig{
-			DefaultBucket:      "test-bucket",
+			DefaultBucket:       "test-bucket",
 			DefaultStorageClass: "STANDARD",
-			KMSKeyID:           "test-kms-key",
-			SSEEncryption:      true,
-			ObjectTagging:      map[string]string{"key": "value"},
-			MetadataDirective:  "COPY",
+			KMSKeyID:            "test-kms-key",
+			SSEEncryption:       true,
+			ObjectTagging:       map[string]string{"key": "value"},
+			MetadataDirective:   "COPY",
 		},
 		Upload: UploadConfig{
 			MaxConcurrency:       10,
-			ChunkSize:           "32MB",
+			ChunkSize:            "32MB",
 			EnableAdaptiveSizing: false,
-			MaxPrefixes:         4,
-			PrefixPattern:       "time",
-			CompressionType:     "gzip",
-			CompressionLevel:    6,
-			ChecksumAlgorithm:   "MD5",
-			MemoryLimit:         "1GB",
+			MaxPrefixes:          4,
+			PrefixPattern:        "time",
+			CompressionType:      "gzip",
+			CompressionLevel:     6,
+			ChecksumAlgorithm:    "MD5",
+			MemoryLimit:          "1GB",
 		},
 		Metrics: MetricsConfig{
 			Enabled:       false,

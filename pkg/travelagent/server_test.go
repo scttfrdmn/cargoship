@@ -151,11 +151,11 @@ func TestWithListener(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer func() { _ = listener.Close() }()
-	
+
 	// Test WithListener option
 	server := NewServer(WithListener(listener))
 	require.NotNil(t, server)
-	
+
 	// Verify the listener was set correctly
 	require.Equal(t, listener, server.listener)
 	require.Equal(t, listener.Addr(), server.Addr())

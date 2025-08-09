@@ -23,10 +23,10 @@ type PricingClient interface {
 
 // Service provides real-time AWS pricing information
 type Service struct {
-	client       PricingClient
-	cache        map[string]*PriceData
-	cacheMutex   sync.RWMutex
-	cacheExpiry  time.Duration
+	client      PricingClient
+	cache       map[string]*PriceData
+	cacheMutex  sync.RWMutex
+	cacheExpiry time.Duration
 }
 
 // PriceData contains pricing information for AWS services
@@ -82,10 +82,10 @@ func (s *Service) GetPricing(ctx context.Context, region string) (*PriceData, er
 // fetchPricingData retrieves real-time pricing from AWS Pricing API
 func (s *Service) fetchPricingData(ctx context.Context, region string) (*PriceData, error) {
 	priceData := &PriceData{
-		StoragePrice:  make(map[config.StorageClass]float64),
-		RequestPrice:  make(map[config.StorageClass]float64),
-		Region:        region,
-		UpdatedAt:     time.Now(),
+		StoragePrice: make(map[config.StorageClass]float64),
+		RequestPrice: make(map[config.StorageClass]float64),
+		Region:       region,
+		UpdatedAt:    time.Now(),
 	}
 
 	// Fetch S3 storage pricing
@@ -297,7 +297,7 @@ func (s *Service) parseS3RequestProduct(product string, priceData *PriceData) er
 // extractStorageClass maps AWS storage class names to our types
 func (s *Service) extractStorageClass(attributes map[string]interface{}) string {
 	storageClass, _ := attributes["storageClass"].(string)
-	
+
 	switch storageClass {
 	case "General Purpose":
 		return string(config.StorageClassStandard)
@@ -319,12 +319,12 @@ func (s *Service) extractStorageClass(attributes map[string]interface{}) string 
 // extractStorageClassFromRequest maps request types to storage classes
 func (s *Service) extractStorageClassFromRequest(attributes map[string]interface{}) string {
 	requestType, _ := attributes["requestType"].(string)
-	
+
 	if strings.Contains(requestType, "PUT") {
 		storageClass, _ := attributes["storageClass"].(string)
 		return s.extractStorageClass(map[string]interface{}{"storageClass": storageClass})
 	}
-	
+
 	return string(config.StorageClassStandard) // Default for most requests
 }
 

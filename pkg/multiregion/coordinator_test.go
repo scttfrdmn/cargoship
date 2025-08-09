@@ -72,8 +72,8 @@ func TestDefaultCoordinator_Initialize(t *testing.T) {
 			errorMsg:    "primary region 'us-west-2' not found in regions list",
 		},
 		{
-			name: "valid configuration",
-			config: createValidMultiRegionConfig(),
+			name:        "valid configuration",
+			config:      createValidMultiRegionConfig(),
 			expectError: false,
 		},
 	}
@@ -82,9 +82,9 @@ func TestDefaultCoordinator_Initialize(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			coordinator := NewCoordinator()
 			ctx := context.Background()
-			
+
 			err := coordinator.Initialize(ctx, tt.config)
-			
+
 			if tt.expectError {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errorMsg)
@@ -105,12 +105,12 @@ func TestDefaultCoordinator_Initialize_DoubleInit(t *testing.T) {
 	coordinator := NewCoordinator()
 	ctx := context.Background()
 	config := createValidMultiRegionConfig()
-	
+
 	// First initialization should succeed
 	err := coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
 	assert.True(t, coordinator.initialized)
-	
+
 	// Second initialization should fail
 	err = coordinator.Initialize(ctx, config)
 	assert.Error(t, err)
@@ -120,30 +120,30 @@ func TestDefaultCoordinator_Initialize_DoubleInit(t *testing.T) {
 func TestDefaultCoordinator_Upload(t *testing.T) {
 	coordinator := NewCoordinator()
 	ctx := context.Background()
-	
+
 	// Test upload without initialization
 	request := &UploadRequest{
 		FilePath: "/test/file.txt",
 		Size:     1024,
 		Priority: 5,
 	}
-	
+
 	result, err := coordinator.Upload(ctx, request)
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "coordinator not initialized")
-	
+
 	// Initialize coordinator
 	config := createValidMultiRegionConfig()
 	err = coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
-	
+
 	// Test upload with nil request
 	result, err = coordinator.Upload(ctx, nil)
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "upload request cannot be nil")
-	
+
 	// Test valid upload
 	result, err = coordinator.Upload(ctx, request)
 	assert.NoError(t, err)
@@ -158,24 +158,24 @@ func TestDefaultCoordinator_Upload(t *testing.T) {
 func TestDefaultCoordinator_GetRegionStatus(t *testing.T) {
 	coordinator := NewCoordinator()
 	ctx := context.Background()
-	
+
 	// Test without initialization
 	status, err := coordinator.GetRegionStatus(ctx)
 	assert.Error(t, err)
 	assert.Nil(t, status)
 	assert.Contains(t, err.Error(), "coordinator not initialized")
-	
+
 	// Initialize coordinator
 	config := createValidMultiRegionConfig()
 	err = coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
-	
+
 	// Test with initialization
 	status, err = coordinator.GetRegionStatus(ctx)
 	assert.NoError(t, err)
 	assert.NotNil(t, status)
 	assert.Equal(t, len(config.Regions), len(status))
-	
+
 	for _, region := range config.Regions {
 		assert.Contains(t, status, region.Name)
 	}
@@ -184,24 +184,24 @@ func TestDefaultCoordinator_GetRegionStatus(t *testing.T) {
 func TestDefaultCoordinator_GetRegionMetrics(t *testing.T) {
 	coordinator := NewCoordinator()
 	ctx := context.Background()
-	
+
 	// Test without initialization
 	metrics, err := coordinator.GetRegionMetrics(ctx)
 	assert.Error(t, err)
 	assert.Nil(t, metrics)
 	assert.Contains(t, err.Error(), "coordinator not initialized")
-	
+
 	// Initialize coordinator
 	config := createValidMultiRegionConfig()
 	err = coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
-	
+
 	// Test with initialization
 	metrics, err = coordinator.GetRegionMetrics(ctx)
 	assert.NoError(t, err)
 	assert.NotNil(t, metrics)
 	assert.Equal(t, len(config.Regions), len(metrics))
-	
+
 	for _, region := range config.Regions {
 		assert.Contains(t, metrics, region.Name)
 	}
@@ -210,21 +210,21 @@ func TestDefaultCoordinator_GetRegionMetrics(t *testing.T) {
 func TestDefaultCoordinator_Shutdown(t *testing.T) {
 	coordinator := NewCoordinator()
 	ctx := context.Background()
-	
+
 	// Test shutdown without initialization
 	err := coordinator.Shutdown(ctx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "coordinator not initialized")
-	
+
 	// Initialize coordinator
 	config := createValidMultiRegionConfig()
 	err = coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
-	
+
 	// Test successful shutdown
 	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	
+
 	err = coordinator.Shutdown(shutdownCtx)
 	assert.NoError(t, err)
 	assert.False(t, coordinator.initialized)
@@ -232,7 +232,7 @@ func TestDefaultCoordinator_Shutdown(t *testing.T) {
 
 func TestDefaultCoordinator_ValidateConfig(t *testing.T) {
 	coordinator := NewCoordinator()
-	
+
 	tests := []struct {
 		name        string
 		config      *MultiRegionConfig
@@ -306,7 +306,7 @@ func TestDefaultCoordinator_ValidateConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := coordinator.validateConfig(tt.config)
-			
+
 			if tt.expectError {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errorMsg)
@@ -319,12 +319,12 @@ func TestDefaultCoordinator_ValidateConfig(t *testing.T) {
 
 func TestDefaultCoordinator_SimulateNetworkDelay(t *testing.T) {
 	coordinator := NewCoordinator()
-	
+
 	region := &Region{
 		Name:     "us-east-1",
 		Priority: 1,
 	}
-	
+
 	delay := coordinator.simulateNetworkDelay(region)
 	assert.Greater(t, delay, time.Duration(0))
 	assert.Less(t, delay, 100*time.Millisecond) // Should be reasonable
@@ -332,15 +332,15 @@ func TestDefaultCoordinator_SimulateNetworkDelay(t *testing.T) {
 
 func TestDefaultCoordinator_CalculateUploadDuration(t *testing.T) {
 	coordinator := NewCoordinator()
-	
+
 	request := &UploadRequest{
 		Size: 10 * 1024 * 1024, // 10MB
 	}
-	
+
 	region := &Region{
 		Name: "us-east-1",
 	}
-	
+
 	duration := coordinator.calculateUploadDuration(request, region)
 	assert.Greater(t, duration, time.Duration(0))
 	assert.Less(t, duration, 10*time.Second) // Should be reasonable for 10MB
@@ -348,23 +348,23 @@ func TestDefaultCoordinator_CalculateUploadDuration(t *testing.T) {
 
 func TestDefaultCoordinator_ShouldSimulateFailure(t *testing.T) {
 	coordinator := NewCoordinator()
-	
+
 	// Initialize regions map for the test
 	coordinator.regions = make(map[string]*Region)
-	
+
 	region := &Region{
 		Name: "us-east-1",
 		Metrics: RegionMetrics{
 			ErrorRate: 5.0, // Low error rate
 		},
 	}
-	
+
 	coordinator.regions[region.Name] = region
-	
+
 	// With low error rate, failure should be rare (but we can't guarantee it won't happen)
 	failure := coordinator.shouldSimulateFailure(region)
 	assert.IsType(t, bool(false), failure)
-	
+
 	// High error rate region
 	highErrorRegion := &Region{
 		Name: "us-west-2",
@@ -372,9 +372,9 @@ func TestDefaultCoordinator_ShouldSimulateFailure(t *testing.T) {
 			ErrorRate: 50.0, // High error rate
 		},
 	}
-	
+
 	coordinator.regions[highErrorRegion.Name] = highErrorRegion
-	
+
 	// Test multiple times to see if it can return true
 	failureOccurred := false
 	for i := 0; i < 100; i++ {
@@ -390,9 +390,9 @@ func TestDefaultCoordinator_ShouldSimulateFailure(t *testing.T) {
 func TestDefaultCoordinator_RecordRegionFailure(t *testing.T) {
 	coordinator := NewCoordinator()
 	coordinator.regions = make(map[string]*Region)
-	
+
 	region := &Region{
-		Name: "us-east-1",
+		Name:   "us-east-1",
 		Status: RegionStatusHealthy,
 		Metrics: RegionMetrics{
 			SuccessfulUploads: 10,
@@ -400,23 +400,23 @@ func TestDefaultCoordinator_RecordRegionFailure(t *testing.T) {
 			ErrorRate:         0,
 		},
 	}
-	
+
 	coordinator.regions[region.Name] = region
-	
+
 	// Record a failure
 	coordinator.recordRegionFailure(region.Name, assert.AnError)
-	
+
 	assert.Equal(t, int64(1), region.Metrics.FailedUploads)
 	// Error rate calculation: failedUploads / (successfulUploads + failedUploads) * 100
 	expectedErrorRate := float64(1) / float64(10+1) * 100 // 1/11 * 100 = 9.09...
 	assert.InDelta(t, expectedErrorRate, region.Metrics.ErrorRate, 0.01)
 	assert.Equal(t, RegionStatusHealthy, region.Status) // Should still be healthy
-	
+
 	// Record enough failures to mark as degraded
 	for i := 0; i < 5; i++ {
 		coordinator.recordRegionFailure(region.Name, assert.AnError)
 	}
-	
+
 	assert.Equal(t, RegionStatusDegraded, region.Status)
 	assert.Greater(t, region.Metrics.ErrorRate, 25.0)
 }
@@ -424,7 +424,7 @@ func TestDefaultCoordinator_RecordRegionFailure(t *testing.T) {
 func TestDefaultCoordinator_UpdateRegionMetrics(t *testing.T) {
 	coordinator := NewCoordinator()
 	coordinator.regions = make(map[string]*Region)
-	
+
 	region := &Region{
 		Name: "us-east-1",
 		Metrics: RegionMetrics{
@@ -432,17 +432,17 @@ func TestDefaultCoordinator_UpdateRegionMetrics(t *testing.T) {
 			FailedUploads:     0,
 		},
 	}
-	
+
 	coordinator.regions[region.Name] = region
-	
+
 	result := &UploadResult{
 		Success:          true,
 		Duration:         100 * time.Millisecond,
 		BytesTransferred: 1024,
 	}
-	
+
 	coordinator.updateRegionMetrics(region.Name, result)
-	
+
 	assert.Equal(t, int64(1), region.Metrics.SuccessfulUploads)
 	assert.Equal(t, float64(100), region.Metrics.AverageLatencyMs)
 	assert.Equal(t, float64(0), region.Metrics.ErrorRate)
@@ -452,27 +452,27 @@ func TestDefaultCoordinator_UpdateRegionMetrics(t *testing.T) {
 func TestDefaultCoordinator_GetAlternativeRegions(t *testing.T) {
 	coordinator := NewCoordinator()
 	coordinator.regions = make(map[string]*Region)
-	
+
 	regions := []*Region{
 		{Name: "us-east-1", Status: RegionStatusHealthy},
 		{Name: "us-west-2", Status: RegionStatusHealthy},
 		{Name: "eu-west-1", Status: RegionStatusUnhealthy},
 		{Name: "ap-south-1", Status: RegionStatusHealthy},
 	}
-	
+
 	for _, region := range regions {
 		coordinator.regions[region.Name] = region
 	}
-	
+
 	alternatives := coordinator.getAlternativeRegions("us-east-1")
-	
+
 	assert.Len(t, alternatives, 2) // us-west-2 and ap-south-1
-	
+
 	regionNames := make([]string, len(alternatives))
 	for i, region := range alternatives {
 		regionNames[i] = region.Name
 	}
-	
+
 	assert.Contains(t, regionNames, "us-west-2")
 	assert.Contains(t, regionNames, "ap-south-1")
 	assert.NotContains(t, regionNames, "us-east-1") // Excluded
@@ -546,14 +546,14 @@ func TestDefaultCoordinator_executeUploadWithFailover(t *testing.T) {
 	err := coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
 	defer func() { _ = coordinator.Shutdown(ctx) }() // Ensure cleanup
-	
+
 	request := &UploadRequest{
 		ID:             "test-upload-1",
 		FilePath:       "/tmp/test.txt",
 		DestinationKey: "test-key",
 		Size:           1024,
 	}
-	
+
 	// Test successful upload without failover
 	region := &Region{
 		Name:   "us-east-1",
@@ -563,7 +563,7 @@ func TestDefaultCoordinator_executeUploadWithFailover(t *testing.T) {
 			FailedUploads:     0,
 		},
 	}
-	
+
 	result, err := coordinator.executeUploadWithFailover(ctx, request, region)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
@@ -579,26 +579,26 @@ func TestDefaultCoordinator_executeUploadInRegion(t *testing.T) {
 	err := coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
 	defer func() { _ = coordinator.Shutdown(ctx) }() // Ensure cleanup
-	
+
 	request := &UploadRequest{
 		ID:             "test-upload-2",
 		FilePath:       "/tmp/test.txt",
 		DestinationKey: "test-key",
 		Size:           1024,
 	}
-	
+
 	t.Run("unhealthy region", func(t *testing.T) {
 		region := &Region{
 			Name:   "us-east-1",
 			Status: RegionStatusUnhealthy,
 		}
-		
+
 		result, err := coordinator.executeUploadInRegion(ctx, request, region)
 		assert.Error(t, err)
 		assert.Nil(t, result)
 		assert.Contains(t, err.Error(), "is unhealthy")
 	})
-	
+
 	t.Run("healthy region with simulated failure", func(t *testing.T) {
 		region := &Region{
 			Name:   "us-east-1",
@@ -607,7 +607,7 @@ func TestDefaultCoordinator_executeUploadInRegion(t *testing.T) {
 				ErrorRate: 90.0, // High error rate to trigger simulated failure
 			},
 		}
-		
+
 		_, err := coordinator.executeUploadInRegion(ctx, request, region)
 		// Result may be success or failure depending on simulation
 		if err != nil {
@@ -615,16 +615,16 @@ func TestDefaultCoordinator_executeUploadInRegion(t *testing.T) {
 		}
 		// Just verify the function executes without panic
 	})
-	
+
 	t.Run("cancelled context", func(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		cancel() // Cancel immediately
-		
+
 		region := &Region{
 			Name:   "us-east-1",
 			Status: RegionStatusHealthy,
 		}
-		
+
 		result, err := coordinator.executeUploadInRegion(cancelCtx, request, region)
 		assert.Error(t, err)
 		assert.Nil(t, result)
@@ -635,20 +635,20 @@ func TestDefaultCoordinator_executeUploadInRegion(t *testing.T) {
 // Test validateRegion function to improve coverage
 func TestDefaultCoordinator_validateRegion(t *testing.T) {
 	coordinator := NewCoordinator()
-	
+
 	t.Run("nil region", func(t *testing.T) {
 		err := coordinator.validateRegion(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "region cannot be nil")
 	})
-	
+
 	t.Run("empty region name", func(t *testing.T) {
 		region := &Region{Name: ""}
 		err := coordinator.validateRegion(region)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "region name cannot be empty")
 	})
-	
+
 	t.Run("invalid priority", func(t *testing.T) {
 		region := &Region{
 			Name:     "us-east-1",
@@ -658,7 +658,7 @@ func TestDefaultCoordinator_validateRegion(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "region priority must be at least 1")
 	})
-	
+
 	t.Run("invalid weight", func(t *testing.T) {
 		region := &Region{
 			Name:     "us-east-1",
@@ -669,7 +669,7 @@ func TestDefaultCoordinator_validateRegion(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "region weight must be between 0 and 100")
 	})
-	
+
 	t.Run("invalid max concurrent uploads", func(t *testing.T) {
 		region := &Region{
 			Name:     "us-east-1",
@@ -683,7 +683,7 @@ func TestDefaultCoordinator_validateRegion(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "max concurrent uploads must be at least 1")
 	})
-	
+
 	t.Run("invalid health check interval", func(t *testing.T) {
 		region := &Region{
 			Name:     "us-east-1",
@@ -701,7 +701,7 @@ func TestDefaultCoordinator_validateRegion(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "health check interval must be positive")
 	})
-	
+
 	t.Run("valid region", func(t *testing.T) {
 		region := &Region{
 			Name:     "us-east-1",
@@ -732,31 +732,31 @@ func TestDefaultCoordinator_attemptFailover(t *testing.T) {
 	err := coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
 	defer func() { _ = coordinator.Shutdown(ctx) }() // Ensure cleanup
-	
+
 	request := &UploadRequest{
 		ID:             "test-failover-1",
 		FilePath:       "/tmp/test.txt",
 		DestinationKey: "test-key",
 		Size:           1024,
 	}
-	
+
 	t.Run("no alternative regions", func(t *testing.T) {
 		// Set all regions as failed to test no alternatives
 		for _, region := range config.Regions {
 			coordinator.regions[region.Name].Status = RegionStatusUnhealthy
 		}
-		
+
 		result, err := coordinator.attemptFailover(ctx, request, "us-east-1", time.Now())
 		assert.Error(t, err)
 		assert.Nil(t, result)
 		assert.Contains(t, err.Error(), "no alternative regions available")
-		
+
 		// Reset for next test
 		for _, region := range config.Regions {
 			coordinator.regions[region.Name].Status = RegionStatusHealthy
 		}
 	})
-	
+
 	t.Run("successful failover", func(t *testing.T) {
 		startTime := time.Now()
 		result, err := coordinator.attemptFailover(ctx, request, "us-east-1", startTime)
@@ -764,7 +764,7 @@ func TestDefaultCoordinator_attemptFailover(t *testing.T) {
 		assert.NotNil(t, result)
 		assert.Equal(t, "us-west-2", result.Region) // Should failover to us-west-2
 	})
-	
+
 	t.Run("failover timeout", func(t *testing.T) {
 		// Set start time 6 minutes ago to trigger timeout
 		startTime := time.Now().Add(-6 * time.Minute)
@@ -779,40 +779,40 @@ func TestDefaultCoordinator_attemptFailover(t *testing.T) {
 func TestDefaultCoordinator_backgroundServices(t *testing.T) {
 	config := createValidMultiRegionConfig()
 	ctx := context.Background()
-	
+
 	t.Run("performHealthChecks", func(t *testing.T) {
 		coordinator := NewCoordinator()
 		err := coordinator.Initialize(ctx, config)
 		require.NoError(t, err)
 		defer func() { _ = coordinator.Shutdown(ctx) }() // Ensure cleanup
-		
+
 		// Test performHealthChecks function
 		coordinator.performHealthChecks()
-		
+
 		// Verify that regions are marked as healthy after health check
 		for _, region := range coordinator.regions {
 			assert.Equal(t, RegionStatusHealthy, region.Status)
 			assert.True(t, region.LastChecked.After(time.Now().Add(-1*time.Second)))
 		}
 	})
-	
+
 	t.Run("collectMetrics", func(t *testing.T) {
 		coordinator := NewCoordinator()
 		err := coordinator.Initialize(ctx, config)
 		require.NoError(t, err)
 		defer func() { _ = coordinator.Shutdown(ctx) }() // Ensure cleanup
-		
+
 		// Test collectMetrics function (placeholder implementation)
 		coordinator.collectMetrics()
 		// This is a placeholder function, so no specific assertions
 	})
-	
+
 	t.Run("detectAndHandleFailures", func(t *testing.T) {
 		coordinator := NewCoordinator()
 		err := coordinator.Initialize(ctx, config)
 		require.NoError(t, err)
 		defer func() { _ = coordinator.Shutdown(ctx) }() // Ensure cleanup
-		
+
 		// Test detectAndHandleFailures function (placeholder implementation)
 		coordinator.detectAndHandleFailures()
 		// This is a placeholder function, so no specific assertions
@@ -828,40 +828,40 @@ func TestDefaultCoordinator_executeUploadWithFailover_errorPaths(t *testing.T) {
 	err := coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
 	defer func() { _ = coordinator.Shutdown(ctx) }() // Ensure cleanup
-	
+
 	request := &UploadRequest{
 		ID:             "test-failover-error-1",
 		FilePath:       "/tmp/test.txt",
 		DestinationKey: "test-key",
 		Size:           1024,
 	}
-	
+
 	t.Run("upload failure with failover disabled", func(t *testing.T) {
 		// Temporarily disable auto failover
 		coordinator.config.Failover.AutoFailover = false
-		
+
 		// Force a failure by setting high error rate
 		region := &Region{
 			Name:   "us-east-1",
 			Status: RegionStatusUnhealthy, // This will cause immediate failure
 		}
-		
+
 		result, err := coordinator.executeUploadWithFailover(ctx, request, region)
 		assert.Error(t, err)
 		assert.Nil(t, result)
 		assert.Contains(t, err.Error(), "is unhealthy")
-		
+
 		// Re-enable auto failover
 		coordinator.config.Failover.AutoFailover = true
 	})
-	
+
 	t.Run("upload failure with failover enabled", func(t *testing.T) {
 		// Set the primary region to unhealthy to trigger failover
 		region := &Region{
 			Name:   "us-east-1",
 			Status: RegionStatusUnhealthy,
 		}
-		
+
 		result, err := coordinator.executeUploadWithFailover(ctx, request, region)
 		// This will likely succeed due to failover to healthy region
 		if err != nil {

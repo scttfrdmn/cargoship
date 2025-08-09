@@ -13,7 +13,7 @@ import (
 func TestTickMsg(t *testing.T) {
 	now := time.Now()
 	msg := tickMsg(now)
-	
+
 	assert.Equal(t, now, time.Time(msg))
 	assert.IsType(t, tickMsg(time.Time{}), msg)
 }
@@ -35,7 +35,7 @@ func TestDashboardTickCommand(t *testing.T) {
 		// Should return tickMsg
 		tickMessage, ok := msg.(tickMsg)
 		assert.True(t, ok, "Should return tickMsg type")
-		
+
 		// Time should be recent (within last second)
 		msgTime := time.Time(tickMessage)
 		assert.True(t, time.Since(msgTime) < time.Second)
@@ -44,16 +44,16 @@ func TestDashboardTickCommand(t *testing.T) {
 	t.Run("tick interval consistency", func(t *testing.T) {
 		cmd1 := dashboard.tickCmd()
 		msg1 := cmd1()
-		
+
 		// Small delay
 		time.Sleep(time.Millisecond * 10)
-		
+
 		cmd2 := dashboard.tickCmd()
 		msg2 := cmd2()
 
 		tick1 := time.Time(msg1.(tickMsg))
 		tick2 := time.Time(msg2.(tickMsg))
-		
+
 		assert.True(t, tick2.After(tick1) || tick2.Equal(tick1))
 	})
 }
@@ -87,7 +87,7 @@ func TestDashboardFetchDataCommand(t *testing.T) {
 		assert.NotNil(t, dataMsg.archivalJobs, "Archival jobs should be fetched")
 		assert.NotNil(t, dataMsg.inventoryItems, "Inventory items should be fetched")
 		assert.NotNil(t, dataMsg.configurations, "Configurations should be fetched")
-		
+
 		// Data should not be empty for mock data
 		assert.NotEmpty(t, dataMsg.agents, "Should have mock agents")
 		assert.NotEmpty(t, dataMsg.jobs, "Should have mock jobs")
@@ -149,12 +149,12 @@ func TestDataUpdateMessageHandling(t *testing.T) {
 
 	t.Run("handle tick message", func(t *testing.T) {
 		tickMessage := tickMsg(time.Now())
-		
+
 		updatedModel, cmd := dashboard.Update(tickMessage)
-		
+
 		assert.NotNil(t, updatedModel)
 		assert.NotNil(t, cmd)
-		
+
 		// Should return the same dashboard
 		updatedDashboard, ok := updatedModel.(*Dashboard)
 		assert.True(t, ok)
@@ -166,13 +166,13 @@ func TestDataUpdateMessageHandling(t *testing.T) {
 			Type:   "test",
 			agents: []AgentInfo{{ID: "test-agent"}},
 		}
-		
+
 		updatedModel, cmd := dashboard.Update(dataMsg)
-		
+
 		assert.NotNil(t, updatedModel)
 		// cmd might be nil for data updates
 		_ = cmd
-		
+
 		updatedDashboard, ok := updatedModel.(*Dashboard)
 		assert.True(t, ok)
 		assert.Equal(t, dashboard, updatedDashboard)
@@ -180,13 +180,13 @@ func TestDataUpdateMessageHandling(t *testing.T) {
 
 	t.Run("handle unknown message", func(t *testing.T) {
 		unknownMsg := "unknown message"
-		
+
 		updatedModel, cmd := dashboard.Update(unknownMsg)
-		
+
 		assert.NotNil(t, updatedModel)
 		// cmd might be nil for unknown messages
 		_ = cmd // Use the variable to avoid "declared and not used" error
-		
+
 		updatedDashboard, ok := updatedModel.(*Dashboard)
 		assert.True(t, ok)
 		assert.Equal(t, dashboard, updatedDashboard)
@@ -200,11 +200,11 @@ func TestCommandChaining(t *testing.T) {
 	t.Run("init command chain", func(t *testing.T) {
 		initCmd := dashboard.Init()
 		assert.NotNil(t, initCmd)
-		
+
 		// Execute init command
 		msg := initCmd()
 		assert.NotNil(t, msg)
-		
+
 		// Should be a batch command or specific message type
 		// The exact type depends on implementation but should not be nil
 	})
@@ -213,10 +213,10 @@ func TestCommandChaining(t *testing.T) {
 		// Simulate a tick message update
 		tickMessage := tickMsg(time.Now())
 		updatedModel, cmd := dashboard.Update(tickMessage)
-		
+
 		assert.NotNil(t, updatedModel)
 		assert.NotNil(t, cmd)
-		
+
 		// Execute the returned command
 		if cmd != nil {
 			nextMsg := cmd()

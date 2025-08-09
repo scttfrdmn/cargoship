@@ -34,22 +34,22 @@ func NewManager(s3Client S3Client, bucket string) *Manager {
 
 // PolicyTemplate defines a lifecycle policy template
 type PolicyTemplate struct {
-	ID          string                    `json:"id"`
-	Name        string                    `json:"name"`
-	Description string                    `json:"description"`
-	Rules       []LifecycleRule          `json:"rules"`
-	Savings     EstimatedSavings         `json:"estimated_savings"`
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Rules       []LifecycleRule  `json:"rules"`
+	Savings     EstimatedSavings `json:"estimated_savings"`
 }
 
 // LifecycleRule represents a single lifecycle rule
 type LifecycleRule struct {
-	ID                     string            `json:"id"`
-	Status                 string            `json:"status"` // "Enabled" or "Disabled"
-	Filter                 RuleFilter        `json:"filter"`
-	Transitions            []Transition      `json:"transitions"`
-	Expiration             *Expiration       `json:"expiration,omitempty"`
-	AbortIncompleteUploads *int              `json:"abort_incomplete_uploads,omitempty"`
-	NoncurrentTransitions  []Transition      `json:"noncurrent_transitions,omitempty"`
+	ID                     string       `json:"id"`
+	Status                 string       `json:"status"` // "Enabled" or "Disabled"
+	Filter                 RuleFilter   `json:"filter"`
+	Transitions            []Transition `json:"transitions"`
+	Expiration             *Expiration  `json:"expiration,omitempty"`
+	AbortIncompleteUploads *int         `json:"abort_incomplete_uploads,omitempty"`
+	NoncurrentTransitions  []Transition `json:"noncurrent_transitions,omitempty"`
 }
 
 // RuleFilter defines which objects the rule applies to
@@ -315,9 +315,9 @@ func (m *Manager) GenerateCustomPolicy(patterns map[string]AccessPattern) Policy
 
 // AccessPattern defines how data is expected to be accessed
 type AccessPattern struct {
-	Frequency      string `json:"frequency"`       // "frequent", "infrequent", "archive", "unknown"
-	RetentionDays  int    `json:"retention_days"`  // 0 = no expiration
-	SizeGB         float64 `json:"size_gb"`
+	Frequency     string  `json:"frequency"`      // "frequent", "infrequent", "archive", "unknown"
+	RetentionDays int     `json:"retention_days"` // 0 = no expiration
+	SizeGB        float64 `json:"size_gb"`
 }
 
 // convertToAWSRule converts our lifecycle rule to AWS S3 format
@@ -424,11 +424,11 @@ func (m *Manager) validateRule(rule LifecycleRule) error {
 
 	// Validate storage classes
 	validClasses := map[string]bool{
-		"STANDARD_IA":        true,
-		"ONEZONE_IA":         true,
+		"STANDARD_IA":         true,
+		"ONEZONE_IA":          true,
 		"INTELLIGENT_TIERING": true,
-		"GLACIER":            true,
-		"DEEP_ARCHIVE":       true,
+		"GLACIER":             true,
+		"DEEP_ARCHIVE":        true,
 	}
 
 	for _, transition := range rule.Transitions {
@@ -449,8 +449,8 @@ func (m *Manager) EstimateSavings(ctx context.Context, template PolicyTemplate, 
 	// - Regional pricing differences
 
 	estimate := &SavingsEstimate{
-		PolicyID:     template.ID,
-		PolicyName:   template.Name,
+		PolicyID:      template.ID,
+		PolicyName:    template.Name,
 		CurrentSizeGB: currentSizeGB,
 	}
 
@@ -466,7 +466,7 @@ func (m *Manager) EstimateSavings(ctx context.Context, template PolicyTemplate, 
 		if len(rule.Transitions) > 0 {
 			// Simplified: assume data follows the lifecycle transitions
 			finalStorageClass := rule.Transitions[len(rule.Transitions)-1].StorageClass
-			
+
 			var finalCostPerGB float64
 			switch finalStorageClass {
 			case "STANDARD_IA":

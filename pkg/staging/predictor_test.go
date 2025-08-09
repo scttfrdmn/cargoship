@@ -13,9 +13,9 @@ import (
 func TestNewPredictiveStager(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultStagingConfig()
-	
+
 	stager := NewPredictiveStager(ctx, config)
-	
+
 	assert.NotNil(t, stager)
 	assert.NotNil(t, stager.chunkPredictor)
 	assert.NotNil(t, stager.stagingBuffer)
@@ -29,9 +29,9 @@ func TestNewPredictiveStager(t *testing.T) {
 
 func TestNewPredictiveStagerWithNilConfig(t *testing.T) {
 	ctx := context.Background()
-	
+
 	stager := NewPredictiveStager(ctx, nil)
-	
+
 	assert.NotNil(t, stager)
 	assert.NotNil(t, stager.config)
 	// Should use default config when nil is passed
@@ -41,22 +41,22 @@ func TestNewPredictiveStagerWithNilConfig(t *testing.T) {
 func TestPredictiveStager_Start(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
 	defer cancel()
-	
+
 	config := DefaultStagingConfig()
 	stager := NewPredictiveStager(ctx, config)
-	
+
 	// Should not be active initially
 	assert.False(t, stager.active)
-	
+
 	// Start should not block and should set active to true
 	err := stager.Start()
 	assert.NoError(t, err)
 	assert.True(t, stager.active)
-	
+
 	// Starting again should not error
 	err = stager.Start()
 	assert.NoError(t, err)
-	
+
 	// Wait for context to be done to allow goroutines to finish
 	<-ctx.Done()
 }
@@ -65,17 +65,17 @@ func TestPredictiveStager_Stop(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultStagingConfig()
 	stager := NewPredictiveStager(ctx, config)
-	
+
 	// Start the stager
 	err := stager.Start()
 	assert.NoError(t, err)
 	assert.True(t, stager.active)
-	
+
 	// Stop the stager
 	err = stager.Stop()
 	assert.NoError(t, err)
 	assert.False(t, stager.active)
-	
+
 	// Stopping again should not error
 	err = stager.Stop()
 	assert.NoError(t, err)
@@ -85,7 +85,7 @@ func TestPredictiveStager_StageChunks(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultStagingConfig()
 	stager := NewPredictiveStager(ctx, config)
-	
+
 	testData := "test data for staging chunks"
 	req := &StagingRequest{
 		StreamID:     "test-stream",
@@ -95,22 +95,22 @@ func TestPredictiveStager_StageChunks(t *testing.T) {
 		Priority:     1,
 		Callback:     nil,
 	}
-	
+
 	// Should fail when not active
 	err := stager.StageChunks(req)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not active")
-	
+
 	// Start the stager
 	err = stager.Start()
 	assert.NoError(t, err)
-	
+
 	// Should succeed when active (but may fail due to implementation details)
 	// For now, just verify it doesn't panic and returns some response
 	_ = stager.StageChunks(req)
 	// Error is acceptable since the staging system is complex, main thing is no panic
 	// The important test is that it rejects requests when inactive
-	
+
 	// Stop the stager
 	err = stager.Stop()
 	assert.NoError(t, err)
@@ -120,7 +120,7 @@ func TestPredictiveStager_GetStagedChunk(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultStagingConfig()
 	stager := NewPredictiveStager(ctx, config)
-	
+
 	// Should delegate to staging buffer
 	chunk, err := stager.GetStagedChunk("test-stream")
 	// Will likely return error since no chunk was staged, but should not panic
@@ -132,7 +132,7 @@ func TestPredictiveStager_UpdatePerformance(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultStagingConfig()
 	stager := NewPredictiveStager(ctx, config)
-	
+
 	record := &ChunkPerformanceRecord{
 		ChunkID:        "test-chunk",
 		Size:           1024 * 1024,
@@ -146,7 +146,7 @@ func TestPredictiveStager_UpdatePerformance(t *testing.T) {
 		Success:   true,
 		Timestamp: time.Now(),
 	}
-	
+
 	// Should not panic
 	stager.UpdatePerformance("test-chunk", record)
 }
@@ -155,9 +155,9 @@ func TestPredictiveStager_GetMetrics(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultStagingConfig()
 	stager := NewPredictiveStager(ctx, config)
-	
+
 	metrics := stager.GetMetrics()
-	
+
 	assert.NotNil(t, metrics)
 	assert.GreaterOrEqual(t, metrics.ActiveChunks, 0)
 	assert.GreaterOrEqual(t, metrics.StagingQueueLength, 0)
@@ -171,14 +171,14 @@ func TestPredictiveStager_SelectOptimalBoundary(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultStagingConfig()
 	stager := NewPredictiveStager(ctx, config)
-	
+
 	// Test with empty boundaries
 	boundaries := []ChunkBoundary{}
 	predictions := []*PerformancePrediction{}
-	
+
 	optimal := stager.selectOptimalBoundary(boundaries, predictions)
 	assert.Equal(t, ChunkBoundary{}, optimal)
-	
+
 	// Test with single boundary
 	boundaries = []ChunkBoundary{
 		{
@@ -188,16 +188,16 @@ func TestPredictiveStager_SelectOptimalBoundary(t *testing.T) {
 	}
 	predictions = []*PerformancePrediction{
 		{
-			PredictedThroughput:    50.0,
-			SuccessProbability:     0.9,
-			NetworkSuitability:     0.8,
-			Confidence:             0.85,
+			PredictedThroughput: 50.0,
+			SuccessProbability:  0.9,
+			NetworkSuitability:  0.8,
+			Confidence:          0.85,
 		},
 	}
-	
+
 	optimal = stager.selectOptimalBoundary(boundaries, predictions)
 	assert.Equal(t, boundaries[0], optimal)
-	
+
 	// Test with multiple boundaries - should select best score
 	boundaries = []ChunkBoundary{
 		{
@@ -211,19 +211,19 @@ func TestPredictiveStager_SelectOptimalBoundary(t *testing.T) {
 	}
 	predictions = []*PerformancePrediction{
 		{
-			PredictedThroughput:    30.0,
-			SuccessProbability:     0.7,
-			NetworkSuitability:     0.6,
-			Confidence:             0.7,
+			PredictedThroughput: 30.0,
+			SuccessProbability:  0.7,
+			NetworkSuitability:  0.6,
+			Confidence:          0.7,
 		},
 		{
-			PredictedThroughput:    60.0,
-			SuccessProbability:     0.95,
-			NetworkSuitability:     0.9,
-			Confidence:             0.9,
+			PredictedThroughput: 60.0,
+			SuccessProbability:  0.95,
+			NetworkSuitability:  0.9,
+			Confidence:          0.9,
 		},
 	}
-	
+
 	optimal = stager.selectOptimalBoundary(boundaries, predictions)
 	assert.Equal(t, boundaries[1], optimal) // Should select the second (better) boundary
 }
@@ -232,24 +232,24 @@ func TestPredictiveStager_CalculateBoundaryScore(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultStagingConfig()
 	stager := NewPredictiveStager(ctx, config)
-	
+
 	boundary := ChunkBoundary{
 		Size:             1024 * 1024 * 10,
 		CompressionScore: 0.7,
 	}
-	
+
 	prediction := &PerformancePrediction{
-		PredictedThroughput:    75.0,
-		SuccessProbability:     0.85,
-		NetworkSuitability:     0.8,
-		Confidence:             0.9,
+		PredictedThroughput: 75.0,
+		SuccessProbability:  0.85,
+		NetworkSuitability:  0.8,
+		Confidence:          0.9,
 	}
-	
+
 	score := stager.calculateBoundaryScore(boundary, prediction)
-	
+
 	assert.Greater(t, score, 0.0)
 	assert.LessOrEqual(t, score, 1.0) // Score should be normalized and multiplied by confidence
-	
+
 	// Test with zero confidence - should result in zero score
 	prediction.Confidence = 0.0
 	score = stager.calculateBoundaryScore(boundary, prediction)
@@ -260,7 +260,7 @@ func TestPredictiveStager_PerformStagingOptimizations(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultStagingConfig()
 	stager := NewPredictiveStager(ctx, config)
-	
+
 	// Should not panic
 	stager.performStagingOptimizations()
 }
@@ -273,14 +273,14 @@ func TestStagingError_Error(t *testing.T) {
 			"key": "value",
 		},
 	}
-	
+
 	errorString := err.Error()
 	assert.Equal(t, "test_error: test message", errorString)
 }
 
 func TestStagingErrorTypes(t *testing.T) {
 	// Test various error types that can be created
-	
+
 	// Memory pressure error
 	memErr := &StagingError{
 		Type:    "memory_pressure",
@@ -291,7 +291,7 @@ func TestStagingErrorTypes(t *testing.T) {
 		},
 	}
 	assert.Contains(t, memErr.Error(), "memory_pressure")
-	
+
 	// Queue full error
 	queueErr := &StagingError{
 		Type:    "queue_full",
@@ -302,7 +302,7 @@ func TestStagingErrorTypes(t *testing.T) {
 		},
 	}
 	assert.Contains(t, queueErr.Error(), "queue_full")
-	
+
 	// Chunk not found error
 	notFoundErr := &StagingError{
 		Type:    "chunk_not_found",
@@ -317,7 +317,7 @@ func TestStagingRequest(t *testing.T) {
 	callback := func(chunk *StagedChunk, err error) {
 		// Test callback
 	}
-	
+
 	req := &StagingRequest{
 		StreamID:     "test-stream",
 		Reader:       strings.NewReader(testData),
@@ -331,7 +331,7 @@ func TestStagingRequest(t *testing.T) {
 		Priority: 1,
 		Callback: callback,
 	}
-	
+
 	assert.Equal(t, "test-stream", req.StreamID)
 	assert.Equal(t, int64(len(testData)), req.ExpectedSize)
 	assert.Equal(t, "text/plain", req.ContentType)
@@ -339,7 +339,7 @@ func TestStagingRequest(t *testing.T) {
 	assert.NotNil(t, req.Reader)
 	assert.NotNil(t, req.NetworkCondition)
 	assert.NotNil(t, req.Callback)
-	
+
 	// Test reading from the reader
 	data, err := io.ReadAll(req.Reader)
 	assert.NoError(t, err)
@@ -361,7 +361,7 @@ func TestStagedChunk(t *testing.T) {
 		ContentType:         "application/octet-stream",
 		Entropy:             4.5,
 	}
-	
+
 	assert.Equal(t, "test-chunk-123", chunk.ID)
 	assert.Equal(t, []byte("test chunk data"), chunk.Data)
 	assert.Equal(t, 100, chunk.CompressedSize)
@@ -385,7 +385,7 @@ func TestChunkBoundary(t *testing.T) {
 		PredictedRatio:    0.6,
 		OptimalForNetwork: true,
 	}
-	
+
 	assert.Equal(t, int64(0), boundary.StartOffset)
 	assert.Equal(t, int64(1024*1024), boundary.EndOffset)
 	assert.Equal(t, int64(1024*1024), boundary.Size)
@@ -410,7 +410,7 @@ func TestStagingMetrics(t *testing.T) {
 		},
 		LastUpdate: now,
 	}
-	
+
 	assert.Equal(t, 5, metrics.ActiveChunks)
 	assert.Equal(t, 3, metrics.StagingQueueLength)
 	assert.Equal(t, 0.75, metrics.BufferUtilization)
