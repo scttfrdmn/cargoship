@@ -155,11 +155,22 @@ cargoship config set monitoring.enable-advanced-metrics true
 
 ## 📖 Documentation
 
+### Getting Started
 - **[Installation Guide](docs/install.md)** - Get CargoShip running in your environment
-- **[Advanced Flow Control](docs/TASK_4_ADVANCED_FLOW_CONTROL.md)** - v0.4.0 network optimization
 - **[User Guide](docs/USER_GUIDE.md)** - Complete feature walkthrough
-- **[Launch Agent Setup](docs/launch-agent.md)** - Enterprise deployment patterns
-- **[AWS Integration](docs/AWS_INTEGRATION_REPORT.md)** - Complete AWS setup guide
+- **[Quick Start Wizard](docs/wizard.md)** - Interactive setup guide
+- **[Complete Documentation](https://cargoship.app)** - Full documentation site
+
+### Key Features
+- **[Advanced Flow Control](docs/TASK_4_ADVANCED_FLOW_CONTROL.md)** - v0.4.0 network optimization algorithms
+- **[AWS Integration Guide](docs/AWS_INTEGRATION_REPORT.md)** - Complete AWS setup and configuration
+- **[Cost Management](docs/cost-management.md)** - Intelligent cost optimization features
+- **[Architecture Overview](docs/ARCHITECTURE.md)** - System design and components
+
+### Deployment & Operations
+- **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)** - Production deployment strategies
+- **[Launch Agent Setup](docs/launch-agent.md)** - Enterprise agent deployment
+- **[Ghost Ship Deployment](docs/deployment/GHOST_SHIP_DEPLOYMENT_GUIDE.md)** - Distributed agent setup
 
 ## 🤝 Contributing
 

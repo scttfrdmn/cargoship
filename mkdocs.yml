@@ -78,27 +78,79 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Installation: install.md
   - Getting Started:
-    - Wizard: wizard.md
+    - Installation: install.md
+    - Quick Start Wizard: wizard.md
+    - User Guide: USER_GUIDE.md
+    - Basic Configuration: advanced/defaults_overrides.md
+  - Core Features:
+    - Architecture: ARCHITECTURE.md
     - Components:
-      - CLI Metadata: components/cli_metadata.md
+      - Overview: components/
+      - CLI Interface: components/cli_metadata.md
       - CLI Output: components/cli_output.md
-      - Inventory: components/inventory.md
+      - Suitcase Archives: components/suitcase.md
+      - Inventory System: components/inventory.md
       - Inventory Metadata: components/inventory_metadata.md
-      - Suitcase: components/suitcase.md
-      - Hashes: components/hashes.md
-  - Advanced:
-    - Autocomplete: advanced/autocomplete.md
-    - Benchmarks: advanced/benchmarks.md
-    - Configuration: advanced/defaults_overrides.md
+      - Hash Algorithms: components/hashes.md
+    - Cost Management: cost-management.md
+    - Advanced Flow Control: TASK_4_ADVANCED_FLOW_CONTROL.md
+  - AWS Integration:
+    - AWS Setup Guide: AWS_INTEGRATION_REPORT.md
+    - Cost Management Implementation: AWS_COST_MANAGEMENT_IMPLEMENTATION.md
+    - Multi-Region Support: PHASE2_MULTI_REGION.md
+    - Cross-Region Coordination: CROSS_PREFIX_COORDINATION.md
+  - Advanced Features:
     - GPG Encryption: advanced/gpg_encryption.md
+    - Travel Agent (Web UI): advanced/travelagent.md
+    - Benchmarking: advanced/benchmarks.md
     - Inventory Schema: advanced/inventory_schema.md
-    - Travel Agent: advanced/travelagent.md
-  - Plugins:
-    - Transport:
-      - Cloud: plugins/transport/cloud.md
-      - Shell: plugins/transport/shell.md
+    - Command Completion: advanced/autocomplete.md
+  - Deployment:
+    - Deployment Guide: DEPLOYMENT_GUIDE.md
+    - Launch Agent Setup: launch-agent.md
+    - Launch Agent Documentation: deployment/README_LAUNCH.md
+    - Ghost Ship Deployment: deployment/GHOST_SHIP_DEPLOYMENT_GUIDE.md
+    - Ghost Ship Debug Guide: deployment/GHOST_SHIP_DEBUG_RESOLUTION.md
+    - QNAP Deployment: QNAP_DEPLOYMENT.md
+  - Plugins & Extensions:
+    - Plugin Architecture: plugins/
+    - Transport Plugins:
+      - Cloud Transporter: plugins/transport/cloud.md
+      - Shell Transporter: plugins/transport/shell.md
+    - ObjectFS Integration: OBJECTFS_INTEGRATION_PROPOSAL.md
+  - Development:
+    - Contributing: CONTRIBUTING.md
+    - Development Workflow: DEVELOPMENT_WORKFLOW.md
+    - Development Rules: development/DEVELOPMENT_RULES.md
+    - Testing:
+      - Test Coverage Reports: testing/
+      - TUI Coverage Progress: testing/tui-coverage-progress.md
+      - Integration Tests: development/INTEGRATION_TEST_RESULTS.md
+      - Test Analysis: development/TEST_ANALYSIS_REPORT.md
+      - AWS Testing Plan: development/REAL_AWS_TESTING_PLAN.md
+    - Architecture Documentation:
+      - Project Plan: architecture/CARGOSHIP_PROJECT_PLAN.md
+      - Transporter Enhancements: architecture/CARGOSHIP_TRANSPORTER_ENHANCEMENTS.md
+      - Transfer Architecture: architecture/TRANSFER_ARCHITECTURE.md
+      - S3 Optimization Integration: architecture/S3_OPTIMIZATION_INTEGRATION_COMPLETE.md
+      - S3 Modularization: architecture/S3_OPTIMIZATION_MODULARIZATION_COMPLETE.md
+      - Multi-Region Enhancement: architecture/MULTIREGION_S3_OPTIMIZATION_ENHANCEMENT.md
+    - Project Management:
+      - Project Status: development/PROJECT_STATUS.md
+      - Modularization Plan: development/MODULARIZATION_PLAN.md
+      - Remaining Issues: development/REMAINING_TEST_ISSUES.md
+      - Version Tracking: development/VERSION_TRACKING.md
+      - Release Process: development/RELEASE_PROCESS.md
+      - Docker Environment: development/DOCKER_ENVIRONMENT_STATUS.md
+  - Reference:
+    - Implementation Summary: IMPLEMENTATION_SUMMARY.md
+    - Progress Summary: PROGRESS_SUMMARY.md
+    - Binary Releases: BINARY_RELEASE_SUMMARY.md
+    - Attribution: ATTRIBUTION.md
+    - Security Policy: ../SECURITY.md
+    - Changelog: ../CHANGELOG.md
+    - Roadmap: ../ROADMAP.md
 
 extra:
   social:

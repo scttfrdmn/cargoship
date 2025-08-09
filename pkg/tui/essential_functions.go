@@ -163,16 +163,20 @@ func (d *Dashboard) fetchMockAgents() []AgentInfo {
 			ID:         "nas-lab-001",
 			Name:       "Lab NAS Agent",
 			Status:     "working",
+			Endpoint:   "http://nas-lab-001:8080",
 			Jobs:       2,
 			Throughput: "45.2 MB/s",
+			LastSeen:   time.Now(),
 			Progress:   83.5,
 		},
 		{
 			ID:         "storage-rack-02",
 			Name:       "Backup Storage",
 			Status:     "ready",
+			Endpoint:   "http://storage-rack-02:8080",
 			Jobs:       0,
 			Throughput: "0 MB/s",
+			LastSeen:   time.Now(),
 			Progress:   0,
 		},
 	}
@@ -181,14 +185,15 @@ func (d *Dashboard) fetchMockAgents() []AgentInfo {
 func (d *Dashboard) fetchMockJobs() []JobInfo {
 	return []JobInfo{
 		{
-			ID:       "job-001",
-			AgentID:  "nas-lab-001",
-			Type:     "archive",
-			Path:     "/data/genomics/samples",
-			Status:   "running",
-			Progress: 67.8,
-			Size:     "2.3 GB",
-			Rate:     "34 MB/s",
+			ID:        "job-001",
+			AgentID:   "nas-lab-001",
+			Type:      "archive",
+			Path:      "/data/genomics/samples",
+			Status:    "running",
+			Progress:  67.8,
+			StartTime: time.Now(),
+			Size:      "2.3 GB",
+			Rate:      "34 MB/s",
 		},
 	}
 }
