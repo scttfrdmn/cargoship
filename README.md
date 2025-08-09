@@ -6,12 +6,12 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/scttfrdmn/cargoship.svg)](https://pkg.go.dev/github.com/scttfrdmn/cargoship)
 [![Go Report Card](https://goreportcard.com/badge/github.com/scttfrdmn/cargoship)](https://goreportcard.com/report/github.com/scttfrdmn/cargoship)
-[![Test Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)](https://github.com/scttfrdmn/cargoship)
-[![Security Scan](https://github.com/scttfrdmn/cargoship/actions/workflows/security.yml/badge.svg)](https://github.com/scttfrdmn/cargoship/actions/workflows/security.yml)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/scttfrdmn/cargoship/badge)](https://securityscorecards.dev/viewer/?uri=github.com/scttfrdmn/cargoship)
-[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fscttfrdmn%2Fcargoship.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fcargoship?ref=badge_shield)
-[![Vulnerabilities](https://img.shields.io/snyk/vulnerabilities/github/scttfrdmn/cargoship.svg)](https://snyk.io/test/github/scttfrdmn/cargoship)
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![codecov](https://codecov.io/gh/scttfrdmn/cargoship/branch/main/graph/badge.svg)](https://codecov.io/gh/scttfrdmn/cargoship)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/scttfrdmn/cargoship)](https://github.com/scttfrdmn/cargoship/blob/main/go.mod)
+[![Build Status](https://github.com/scttfrdmn/cargoship/actions/workflows/test.yml/badge.svg)](https://github.com/scttfrdmn/cargoship/actions)
+[![GitHub Release](https://img.shields.io/github/v/release/scttfrdmn/cargoship?include_prereleases)](https://github.com/scttfrdmn/cargoship/releases)
+[![Docker Pulls](https://img.shields.io/docker/pulls/scttfrdmn/cargoship)](https://hub.docker.com/r/scttfrdmn/cargoship)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 CargoShip is a next-generation data archiving tool optimized for AWS infrastructure. Built on the foundation of Duke University's [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl), CargoShip adds native AWS integration, intelligent cost optimization, and enterprise-grade observability with advanced network optimization algorithms.
 
