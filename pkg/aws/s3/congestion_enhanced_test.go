@@ -8,41 +8,57 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	
+	"github.com/scttfrdmn/cargoship/internal/testutil"
 )
 
 func TestEnhancedCongestionControlWithCommunication(t *testing.T) {
-	ctx := context.Background()
-	config := DefaultCoordinationConfig()
+	testutil.SkipIfShort(t, "congestion control involves background goroutines")
+	
+	testutil.WithLeakCheck(t, testutil.DefaultLeakCheckOptions(), func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel() // Ensure context is cancelled for cleanup
+		
+		config := DefaultCoordinationConfig()
 
-	// Create global congestion controller
-	gcc := NewGlobalCongestionController(config)
+		// Create global congestion controller
+		gcc := NewGlobalCongestionController(config)
 
-	// Create communication system
-	commConfig := DefaultCommunicationConfig()
-	communicator := NewCrossPrefixCommunicator(ctx, commConfig)
+		// Create communication system
+		commConfig := DefaultCommunicationConfig()
+		communicator := NewCrossPrefixCommunicator(ctx, commConfig)
 
-	err := communicator.Start()
-	require.NoError(t, err)
-	defer func() { _ = communicator.Stop() }()
-
-	// Integrate congestion controller with communicator
-	gcc.SetCommunicator(communicator)
-
-	// Register test prefixes
-	prefixes := []string{"prefix-1", "prefix-2", "prefix-3"}
-	for _, prefixID := range prefixes {
-		err := communicator.RegisterPrefix(prefixID)
+		err := communicator.Start()
 		require.NoError(t, err)
+		defer func() { 
+			if err := communicator.Stop(); err != nil {
+				t.Logf("Warning: communicator stop error: %v", err)
+			}
+		}()
 
-		err = gcc.CoordinatedRegisterPrefix(prefixID, 100.0)
-		require.NoError(t, err)
-	}
+		// Integrate congestion controller with communicator  
+		gcc.SetCommunicator(communicator)
 
-	// Verify BBR mode initialization
-	metrics := gcc.GetEnhancedMetrics()
-	assert.Equal(t, BBRModeStartup, metrics.BBRMode)
-	assert.True(t, metrics.CrossPrefixActive)
-	assert.Equal(t, 3, len(gcc.prefixAllocation))
+		// Register test prefixes
+		prefixes := []string{"prefix-1", "prefix-2", "prefix-3"}
+		for _, prefixID := range prefixes {
+			err := communicator.RegisterPrefix(prefixID)
+			require.NoError(t, err)
+
+			err = gcc.CoordinatedRegisterPrefix(prefixID, 100.0)
+			require.NoError(t, err)
+		}
+
+		// Verify BBR mode initialization
+		metrics := gcc.GetEnhancedMetrics()
+		assert.Equal(t, BBRModeStartup, metrics.BBRMode)
+		assert.True(t, metrics.CrossPrefixActive)
+		assert.Equal(t, 3, len(gcc.prefixAllocation))
+		
+		// Explicit cleanup before defer calls
+		cancel()
+		time.Sleep(50 * time.Millisecond) // Allow goroutines to cleanup
+	})
 }
 
 func TestBBRCongestionControlAlgorithms(t *testing.T) {

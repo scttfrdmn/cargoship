@@ -1,7 +1,7 @@
 # CargoShip Makefile
 # Provides common development tasks including comprehensive security scanning
 
-.PHONY: help build test lint security audit install-tools clean docker
+.PHONY: help build test test-unit test-integration test-performance test-e2e test-all test-leak-check test-quality lint security audit install-tools clean docker
 
 # Default target
 help: ## Show this help message
@@ -53,6 +53,39 @@ codecov-upload: codecov-test ## Upload coverage to Codecov (requires CODECOV_TOK
 test-benchmark: ## Run benchmark tests
 	@echo "⚡ Running benchmarks..."
 	go test -bench=. -benchmem ./...
+
+# Test categorization targets (new testing architecture)
+test-unit: ## Run fast unit tests only (no external dependencies)
+	@echo "🧪 Running unit tests..."
+	go test -short -race -timeout=60s -cover ./...
+	@echo "✅ Unit tests passed"
+
+test-integration: ## Run integration tests (requires LocalStack/Docker)
+	@echo "🔗 Running integration tests..."
+	go test -tags=integration -race -timeout=300s ./...
+	@echo "✅ Integration tests passed"
+
+test-performance: ## Run performance and stress tests
+	@echo "⚡ Running performance tests..."
+	go test -tags=performance -timeout=600s ./...
+	@echo "✅ Performance tests passed"
+
+test-e2e: ## Run end-to-end tests (full system validation)
+	@echo "🎯 Running end-to-end tests..."
+	go test -tags=e2e -timeout=900s ./...
+	@echo "✅ End-to-end tests passed"
+
+test-all: test-unit test-integration test-performance test-e2e ## Run all test categories
+	@echo "🎉 All tests passed!"
+
+test-leak-check: ## Run unit tests with goroutine leak detection
+	@echo "🔍 Running tests with goroutine leak detection..."
+	go test -short -race -timeout=60s ./pkg/... -v | grep -E "(LEAK|goroutine|FAIL)" || echo "✅ No leaks detected"
+
+test-quality: ## Run test quality checks and standards enforcement
+	@echo "🔍 Running test quality checks..."
+	./scripts/test-quality-check.sh
+	@echo "✅ Test quality checks passed"
 
 # Code quality targets
 lint: ## Run linting

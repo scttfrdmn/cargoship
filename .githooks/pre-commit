@@ -261,6 +261,59 @@ check_development_rules() {
     log_success "Development rules validation completed"
 }
 
+# Check test quality (non-blocking for now)
+check_test_quality() {
+    log_info "Checking test quality standards..."
+    
+    # Only check test quality for staged Go test files
+    local staged_test_files=($(git diff --cached --name-only --diff-filter=ACM | grep '_test\.go$' || true))
+    
+    if [ ${#staged_test_files[@]} -eq 0 ]; then
+        log_info "No test files staged for commit"
+        return 0
+    fi
+    
+    # Run test quality checks on staged files only
+    local quality_issues=()
+    for test_file in "${staged_test_files[@]}"; do
+        if [ -f "$test_file" ]; then
+            # Basic quality checks for staged test files
+            
+            # Check for missing build tags on performance tests
+            if [[ "$test_file" =~ (stress|extreme|performance|benchmark)_test\.go ]]; then
+                if ! head -5 "$test_file" | grep -q "//go:build performance"; then
+                    quality_issues+=("$test_file: Performance test missing '//go:build performance' tag")
+                fi
+            fi
+            
+            # Check for LocalStack tests without integration tags
+            if grep -q "LocalStack\|localstack\|4566" "$test_file" 2>/dev/null; then
+                if ! head -5 "$test_file" | grep -q "//go:build integration"; then
+                    quality_issues+=("$test_file: Integration test missing '//go:build integration' tag")
+                fi
+            fi
+            
+            # Check for goroutines without proper cleanup
+            if grep -q "go func" "$test_file" 2>/dev/null; then
+                if ! grep -q "defer.*cancel\|defer.*Stop\|testutil\.WithLeakCheck" "$test_file"; then
+                    quality_issues+=("$test_file: Contains goroutines but missing cleanup patterns")
+                fi
+            fi
+        fi
+    done
+    
+    if [ ${#quality_issues[@]} -gt 0 ]; then
+        log_warning "Test quality issues found (non-blocking):"
+        for issue in "${quality_issues[@]}"; do
+            log_warning "  $issue"
+        done
+        log_warning "Consider running 'make test-quality' to see detailed recommendations"
+        log_warning "These will become blocking in future versions"
+    else
+        log_success "Test quality checks passed"
+    fi
+}
+
 # Check Go module consistency
 check_go_modules() {
     log_info "Checking Go module consistency..."
@@ -305,6 +358,10 @@ main() {
     echo
     
     check_development_rules
+    echo
+    
+    # Optional test quality check (non-blocking for now)
+    check_test_quality
     echo
     
     echo "=================================="

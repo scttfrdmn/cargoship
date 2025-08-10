@@ -1,5 +1,5 @@
-//go:build integration
-// +build integration
+//go:build performance
+// +build performance
 
 package s3
 
