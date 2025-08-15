@@ -487,40 +487,40 @@ func displaySearchResultsTable(result *indexing.SearchResult, cmd *cobra.Command
 	
 	for _, file := range result.Files {
 		// Display basic file info
-		fmt.Fprintf(cmd.OutOrStdout(), "📄 %s\n", file.Name)
-		fmt.Fprintf(cmd.OutOrStdout(), "   Path: %s\n", file.Destination)
-		fmt.Fprintf(cmd.OutOrStdout(), "   Size: %s\n", file.GetHumanSize())
-		fmt.Fprintf(cmd.OutOrStdout(), "   Suitcase: %s\n", file.SuitcaseName)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "📄 %s\n", file.Name)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Path: %s\n", file.Destination)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Size: %s\n", file.GetHumanSize())
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Suitcase: %s\n", file.SuitcaseName)
 		
 		if showMetadata {
-			fmt.Fprintf(cmd.OutOrStdout(), "   Type: %s\n", file.ContentType)
-			fmt.Fprintf(cmd.OutOrStdout(), "   Storage: %s\n", file.StorageClass)
-			fmt.Fprintf(cmd.OutOrStdout(), "   Modified: %s\n", file.ModifiedAt.Format("2006-01-02 15:04:05"))
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Type: %s\n", file.ContentType)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Storage: %s\n", file.StorageClass)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Modified: %s\n", file.ModifiedAt.Format("2006-01-02 15:04:05"))
 			
 			if len(file.Tags) > 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "   Tags: ")
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Tags: ")
 				first := true
 				for k, v := range file.Tags {
 					if !first {
-						fmt.Fprintf(cmd.OutOrStdout(), ", ")
+						_, _ = fmt.Fprintf(cmd.OutOrStdout(), ", ")
 					}
-					fmt.Fprintf(cmd.OutOrStdout(), "%s=%s", k, v)
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s=%s", k, v)
 					first = false
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "\n")
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n")
 			}
 			
 			if file.IsCompressed() {
-				fmt.Fprintf(cmd.OutOrStdout(), "   Compression: %s (ratio: %.2f)\n", 
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Compression: %s (ratio: %.2f)\n", 
 					file.CompressionInfo.Algorithm, file.GetCompressionRatio())
 			}
 			
 			if len(file.ArchiveTOC) > 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "   Archive contents: %d files\n", len(file.ArchiveTOC))
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Archive contents: %d files\n", len(file.ArchiveTOC))
 			}
 		}
 		
-		fmt.Fprintf(cmd.OutOrStdout(), "\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n")
 	}
 	
 	return nil
@@ -530,52 +530,52 @@ func displaySearchResultsTable(result *indexing.SearchResult, cmd *cobra.Command
 func displayBrowseResultsTable(result *indexing.BrowseResult, cmd *cobra.Command) error {
 	showMetadata, _ := cmd.Flags().GetBool("show-metadata")
 	
-	fmt.Fprintf(cmd.OutOrStdout(), "\n📂 Browse: %s\n", result.Path)
-	fmt.Fprintf(cmd.OutOrStdout(), "═══════════════════════════════════════════════════════════════\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "Found %d files in %v\n", result.TotalFiles, result.BrowseTime)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n📂 Browse: %s\n", result.Path)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "═══════════════════════════════════════════════════════════════\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Found %d files in %v\n", result.TotalFiles, result.BrowseTime)
 	
 	if result.HasMore {
-		fmt.Fprintf(cmd.OutOrStdout(), "⚠️  More results available - use pagination flags to see all\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "⚠️  More results available - use pagination flags to see all\n")
 	}
 	
 	// Display directories first
 	if len(result.Directories) > 0 {
-		fmt.Fprintf(cmd.OutOrStdout(), "\n📁 Directories:\n")
-		fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n📁 Directories:\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
 		
 		for _, dir := range result.Directories {
-			fmt.Fprintf(cmd.OutOrStdout(), "📁 %s/\n", dir.Name)
-			fmt.Fprintf(cmd.OutOrStdout(), "   Files: %d (%s)\n", dir.FileCount, humanizeBytes(dir.TotalSize))
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "📁 %s/\n", dir.Name)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Files: %d (%s)\n", dir.FileCount, humanizeBytes(dir.TotalSize))
 			if dir.IsArchive {
-				fmt.Fprintf(cmd.OutOrStdout(), "   Type: Archive\n")
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Type: Archive\n")
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "\n")
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n")
 		}
 	}
 	
 	// Display files
 	if len(result.Files) > 0 {
-		fmt.Fprintf(cmd.OutOrStdout(), "\n📄 Files:\n")
-		fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n📄 Files:\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
 		
 		for _, file := range result.Files {
 			// Display basic file info
-			fmt.Fprintf(cmd.OutOrStdout(), "📄 %s\n", file.Name)
-			fmt.Fprintf(cmd.OutOrStdout(), "   Size: %s\n", file.GetHumanSize())
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "📄 %s\n", file.Name)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Size: %s\n", file.GetHumanSize())
 			
 			if showMetadata {
-				fmt.Fprintf(cmd.OutOrStdout(), "   Type: %s\n", file.ContentType)
-				fmt.Fprintf(cmd.OutOrStdout(), "   Storage: %s\n", file.StorageClass)
-				fmt.Fprintf(cmd.OutOrStdout(), "   Suitcase: %s\n", file.SuitcaseName)
-				fmt.Fprintf(cmd.OutOrStdout(), "   Modified: %s\n", file.ModifiedAt.Format("2006-01-02 15:04:05"))
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Type: %s\n", file.ContentType)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Storage: %s\n", file.StorageClass)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Suitcase: %s\n", file.SuitcaseName)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Modified: %s\n", file.ModifiedAt.Format("2006-01-02 15:04:05"))
 				
 				if file.IsCompressed() {
-					fmt.Fprintf(cmd.OutOrStdout(), "   Compression: %s (%.1f%%)\n", 
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Compression: %s (%.1f%%)\n", 
 						file.CompressionInfo.Algorithm, (1.0-file.GetCompressionRatio())*100)
 				}
 			}
 			
-			fmt.Fprintf(cmd.OutOrStdout(), "\n")
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n")
 		}
 	}
 	

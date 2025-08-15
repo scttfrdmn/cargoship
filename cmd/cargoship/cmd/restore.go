@@ -634,18 +634,18 @@ func displayArchiveContents(contents *ArchiveContents, cmd *cobra.Command) error
 func displayRestorePreviewTable(preview *RestorePreview, cmd *cobra.Command) error {
 	showMetadata, _ := cmd.Flags().GetBool("show-metadata")
 	
-	fmt.Fprintf(cmd.OutOrStdout(), "\n🔍 Restoration Preview\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "═══════════════════════════════════════════════════════════════\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "Source: %s\n", preview.Location)
-	fmt.Fprintf(cmd.OutOrStdout(), "Destination: %s\n", preview.Destination)
-	fmt.Fprintf(cmd.OutOrStdout(), "Files to restore: %d\n", preview.TotalFiles)
-	fmt.Fprintf(cmd.OutOrStdout(), "Total size: %s\n", humanizeBytes(preview.TotalSize))
-	fmt.Fprintf(cmd.OutOrStdout(), "Required space: %s\n", humanizeBytes(preview.RequiredSpace))
-	fmt.Fprintf(cmd.OutOrStdout(), "Estimated time: %v\n", preview.EstimatedTime.Round(time.Second))
-	fmt.Fprintf(cmd.OutOrStdout(), "Preview generated: %s\n", preview.PreviewTime.Format("2006-01-02 15:04:05"))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n🔍 Restoration Preview\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "═══════════════════════════════════════════════════════════════\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Source: %s\n", preview.Location)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Destination: %s\n", preview.Destination)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Files to restore: %d\n", preview.TotalFiles)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Total size: %s\n", humanizeBytes(preview.TotalSize))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Required space: %s\n", humanizeBytes(preview.RequiredSpace))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Estimated time: %v\n", preview.EstimatedTime.Round(time.Second))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Preview generated: %s\n", preview.PreviewTime.Format("2006-01-02 15:04:05"))
 	
-	fmt.Fprintf(cmd.OutOrStdout(), "\n📄 Files to restore:\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n📄 Files to restore:\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
 	
 	// Show first 20 files, then summarize the rest
 	filesToShow := preview.Files
@@ -656,26 +656,26 @@ func displayRestorePreviewTable(preview *RestorePreview, cmd *cobra.Command) err
 	}
 	
 	for _, file := range filesToShow {
-		fmt.Fprintf(cmd.OutOrStdout(), "📄 %s\n", file.Name)
-		fmt.Fprintf(cmd.OutOrStdout(), "   Path: %s\n", file.Destination)
-		fmt.Fprintf(cmd.OutOrStdout(), "   Size: %s\n", file.GetHumanSize())
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "📄 %s\n", file.Name)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Path: %s\n", file.Destination)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Size: %s\n", file.GetHumanSize())
 		
 		if showMetadata {
-			fmt.Fprintf(cmd.OutOrStdout(), "   Type: %s\n", file.ContentType)
-			fmt.Fprintf(cmd.OutOrStdout(), "   Storage: %s\n", file.StorageClass)
-			fmt.Fprintf(cmd.OutOrStdout(), "   Suitcase: %s\n", file.SuitcaseName)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Type: %s\n", file.ContentType)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Storage: %s\n", file.StorageClass)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Suitcase: %s\n", file.SuitcaseName)
 		}
 		
-		fmt.Fprintf(cmd.OutOrStdout(), "\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n")
 	}
 	
 	if showSummary {
 		remaining := len(preview.Files) - len(filesToShow)
-		fmt.Fprintf(cmd.OutOrStdout(), "... and %d more files\n", remaining)
-		fmt.Fprintf(cmd.OutOrStdout(), "(use --format json to see all files)\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "... and %d more files\n", remaining)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "(use --format json to see all files)\n")
 	}
 	
-	fmt.Fprintf(cmd.OutOrStdout(), "\n💡 Use 'cargoship restore %s %s' to perform actual restoration\n", 
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n💡 Use 'cargoship restore %s %s' to perform actual restoration\n", 
 		preview.Location, preview.Destination)
 	
 	return nil
@@ -684,30 +684,30 @@ func displayRestorePreviewTable(preview *RestorePreview, cmd *cobra.Command) err
 func displayRestoreCostEstimateTable(estimate *RestoreCostEstimate, cmd *cobra.Command) error {
 	showBreakdown, _ := cmd.Flags().GetBool("show-cost-breakdown")
 	
-	fmt.Fprintf(cmd.OutOrStdout(), "\n💰 Restoration Cost Estimate\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "═══════════════════════════════════════════════════════════════\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "Source: %s\n", estimate.Location)
-	fmt.Fprintf(cmd.OutOrStdout(), "Region: %s\n", estimate.Region)
-	fmt.Fprintf(cmd.OutOrStdout(), "Files: %d\n", estimate.TotalFiles)
-	fmt.Fprintf(cmd.OutOrStdout(), "Total size: %s\n", humanizeBytes(estimate.TotalSize))
-	fmt.Fprintf(cmd.OutOrStdout(), "Estimation time: %s\n", estimate.EstimationTime.Format("2006-01-02 15:04:05"))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n💰 Restoration Cost Estimate\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "═══════════════════════════════════════════════════════════════\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Source: %s\n", estimate.Location)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Region: %s\n", estimate.Region)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Files: %d\n", estimate.TotalFiles)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Total size: %s\n", humanizeBytes(estimate.TotalSize))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Estimation time: %s\n", estimate.EstimationTime.Format("2006-01-02 15:04:05"))
 	
-	fmt.Fprintf(cmd.OutOrStdout(), "\n💵 Cost Breakdown:\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "Storage costs: $%.4f\n", estimate.StorageCost)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n💵 Cost Breakdown:\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Storage costs: $%.4f\n", estimate.StorageCost)
 	
 	if estimate.IncludeTransfer {
-		fmt.Fprintf(cmd.OutOrStdout(), "Transfer costs: $%.4f\n", estimate.TransferCost)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Transfer costs: $%.4f\n", estimate.TransferCost)
 	} else {
-		fmt.Fprintf(cmd.OutOrStdout(), "Transfer costs: Not included\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Transfer costs: Not included\n")
 	}
 	
-	fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "Total estimated cost: $%.4f\n", estimate.TotalCost)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Total estimated cost: $%.4f\n", estimate.TotalCost)
 	
 	if showBreakdown {
-		fmt.Fprintf(cmd.OutOrStdout(), "\n📊 Detailed Cost Analysis:\n")
-		fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n📊 Detailed Cost Analysis:\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
 		
 		// Group files by storage class for detailed breakdown
 		storageClasses := make(map[string][]*indexing.EnhancedFile)
@@ -722,13 +722,13 @@ func displayRestoreCostEstimateTable(estimate *RestoreCostEstimate, cmd *cobra.C
 		for class, files := range storageClasses {
 			totalSize := calculateTotalSize(files)
 			classCost := calculateStorageCosts(files, class, estimate.Region)
-			fmt.Fprintf(cmd.OutOrStdout(), "%s: %d files, %s, $%.4f\n", 
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s: %d files, %s, $%.4f\n", 
 				class, len(files), humanizeBytes(totalSize), classCost)
 		}
 	}
 	
-	fmt.Fprintf(cmd.OutOrStdout(), "\n⚠️  Estimates are approximate and based on current AWS pricing\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "💡 Use 'cargoship restore --preview' to see what will be restored\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n⚠️  Estimates are approximate and based on current AWS pricing\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "💡 Use 'cargoship restore --preview' to see what will be restored\n")
 	
 	return nil
 }
@@ -736,16 +736,16 @@ func displayRestoreCostEstimateTable(estimate *RestoreCostEstimate, cmd *cobra.C
 func displayArchiveContentsTable(contents *ArchiveContents, cmd *cobra.Command) error {
 	showMetadata, _ := cmd.Flags().GetBool("show-metadata")
 	
-	fmt.Fprintf(cmd.OutOrStdout(), "\n📋 Archive Contents\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "═══════════════════════════════════════════════════════════════\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "Location: %s\n", contents.Location)
-	fmt.Fprintf(cmd.OutOrStdout(), "Index version: %s\n", contents.IndexVersion)
-	fmt.Fprintf(cmd.OutOrStdout(), "Created: %s\n", contents.CreatedAt.Format("2006-01-02 15:04:05"))
-	fmt.Fprintf(cmd.OutOrStdout(), "Total files: %d\n", contents.TotalFiles)
-	fmt.Fprintf(cmd.OutOrStdout(), "Total size: %s\n", humanizeBytes(contents.TotalSize))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n📋 Archive Contents\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "═══════════════════════════════════════════════════════════════\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Location: %s\n", contents.Location)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Index version: %s\n", contents.IndexVersion)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Created: %s\n", contents.CreatedAt.Format("2006-01-02 15:04:05"))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Total files: %d\n", contents.TotalFiles)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Total size: %s\n", humanizeBytes(contents.TotalSize))
 	
-	fmt.Fprintf(cmd.OutOrStdout(), "\n📄 Files:\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n📄 Files:\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
 	
 	// Show first 50 files for contents listing
 	filesToShow := contents.Files
@@ -756,22 +756,22 @@ func displayArchiveContentsTable(contents *ArchiveContents, cmd *cobra.Command) 
 	}
 	
 	for _, file := range filesToShow {
-		fmt.Fprintf(cmd.OutOrStdout(), "📄 %s", file.Name)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "📄 %s", file.Name)
 		
 		if showMetadata {
-			fmt.Fprintf(cmd.OutOrStdout(), " (%s, %s)", file.GetHumanSize(), file.ContentType)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), " (%s, %s)", file.GetHumanSize(), file.ContentType)
 		}
 		
-		fmt.Fprintf(cmd.OutOrStdout(), "\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n")
 	}
 	
 	if showSummary {
 		remaining := len(contents.Files) - len(filesToShow)
-		fmt.Fprintf(cmd.OutOrStdout(), "\n... and %d more files\n", remaining)
-		fmt.Fprintf(cmd.OutOrStdout(), "(use --format json or yaml to see all files)\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n... and %d more files\n", remaining)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "(use --format json or yaml to see all files)\n")
 	}
 	
-	fmt.Fprintf(cmd.OutOrStdout(), "\n💡 Use 'cargoship restore --preview' to preview restoration\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n💡 Use 'cargoship restore --preview' to preview restoration\n")
 	
 	return nil
 }
