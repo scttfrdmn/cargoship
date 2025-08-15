@@ -86,6 +86,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 		NewFindCmd(),
 		NewBrowseCmd(),
 		NewRestoreCmd(),
+		NewExtractCmd(),
 		NewTreeCmd(),
 		NewEstimateCmd(),
 		NewLifecycleCmd(),
