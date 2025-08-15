@@ -54,6 +54,7 @@ require (
 	github.com/vjorlikowski/yaml v0.1.0
 	github.com/xlab/treeprint v1.2.0
 	go.etcd.io/bbolt v1.4.2
+	go.uber.org/goleak v1.3.0
 	golang.org/x/tools v0.34.0
 	gopkg.in/yaml.v3 v3.0.1
 	moul.io/http2curl v1.0.0
@@ -272,7 +273,6 @@ require (
 	go.opentelemetry.io/otel v1.37.0 // indirect
 	go.opentelemetry.io/otel/metric v1.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
-	go.uber.org/goleak v1.3.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
