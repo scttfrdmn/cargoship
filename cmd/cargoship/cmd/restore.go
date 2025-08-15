@@ -115,9 +115,9 @@ func runRestoreCommand(cmd *cobra.Command, args []string) error {
 	
 	// Initialize restoration engine
 	restoreEngine := &RestoreEngine{
-		indexer:      indexing.NewIndexer(indexCacheDir, logger),
-		searchEngine: indexing.NewSearchEngine(indexing.NewIndexer(indexCacheDir, logger), logger),
-		logger:       logger,
+		indexer:      indexing.NewIndexer(indexCacheDir, slog.Default()),
+		searchEngine: indexing.NewSearchEngine(indexing.NewIndexer(indexCacheDir, slog.Default()), slog.Default()),
+		logger:       slog.Default(),
 	}
 	
 	// Handle index management flags
@@ -266,12 +266,12 @@ func ensureRestoreIndexExists(ctx context.Context, indexer *indexing.Indexer, lo
 	// Check if index already exists
 	if !forceRebuild {
 		if _, err := indexer.LoadIndex(ctx, location); err == nil {
-			logger.Debug("using existing index for restoration", "location", location)
+			slog.Debug("using existing index for restoration", "location", location)
 			return nil
 		}
 	}
 	
-	logger.Info("creating restoration index", "location", location, "force_rebuild", forceRebuild)
+	slog.Info("creating restoration index", "location", location, "force_rebuild", forceRebuild)
 	
 	// Get inventory directories
 	inventoryDirs, err := cmd.Flags().GetStringArray("inventory-directory")
@@ -308,7 +308,7 @@ func ensureRestoreIndexExists(ctx context.Context, indexer *indexing.Indexer, lo
 	
 	// Load the first inventory file (in a real implementation, we might merge multiple)
 	inventoryFile := inventoryFiles[0]
-	logger.Info("loading inventory for restoration", "file", inventoryFile)
+	slog.Info("loading inventory for restoration", "file", inventoryFile)
 	
 	inv, err := inventory.NewInventoryWithFilename(inventoryFile)
 	if err != nil {
@@ -324,17 +324,17 @@ func ensureRestoreIndexExists(ctx context.Context, indexer *indexing.Indexer, lo
 	// Save index for future use
 	err = indexer.SaveIndex(ctx, archiveIndex)
 	if err != nil {
-		logger.Warn("failed to save restoration index", "error", err)
+		slog.Warn("failed to save restoration index", "error", err)
 		// Continue anyway, we can use the cached version
 	}
 	
-	logger.Info("restoration index created successfully", "location", location, "files", archiveIndex.FileCount)
+	slog.Info("restoration index created successfully", "location", location, "files", archiveIndex.FileCount)
 	return nil
 }
 
 // runRestorePreview shows what would be restored without actually doing it
 func runRestorePreview(ctx context.Context, engine *RestoreEngine, location string, destination string, options *RestoreOptions, cmd *cobra.Command) error {
-	logger.Info("generating restoration preview", "location", location, "destination", destination)
+	slog.Info("generating restoration preview", "location", location, "destination", destination)
 	
 	// Get files to restore using search engine
 	var files []*indexing.EnhancedFile
@@ -357,7 +357,7 @@ func runRestorePreview(ctx context.Context, engine *RestoreEngine, location stri
 	// Apply max-files limit
 	if options.MaxFiles > 0 && len(files) > options.MaxFiles {
 		files = files[:options.MaxFiles]
-		logger.Info("limiting preview to max files", "max_files", options.MaxFiles, "total_available", len(files))
+		slog.Info("limiting preview to max files", "max_files", options.MaxFiles, "total_available", len(files))
 	}
 	
 	// Create preview result
@@ -378,7 +378,7 @@ func runRestorePreview(ctx context.Context, engine *RestoreEngine, location stri
 
 // runRestoreCostEstimation estimates the costs for restoration
 func runRestoreCostEstimation(ctx context.Context, engine *RestoreEngine, location string, options *RestoreOptions, cmd *cobra.Command) error {
-	logger.Info("estimating restoration costs", "location", location)
+	slog.Info("estimating restoration costs", "location", location)
 	
 	// Get files for cost estimation
 	var files []*indexing.EnhancedFile
@@ -428,7 +428,7 @@ func runRestoreCostEstimation(ctx context.Context, engine *RestoreEngine, locati
 
 // runRestoreContentsListing lists the contents of an archive
 func runRestoreContentsListing(ctx context.Context, engine *RestoreEngine, location string, options *RestoreOptions, cmd *cobra.Command) error {
-	logger.Info("listing archive contents", "location", location)
+	slog.Info("listing archive contents", "location", location)
 	
 	// Load archive index
 	index, err := engine.indexer.LoadIndex(ctx, location)

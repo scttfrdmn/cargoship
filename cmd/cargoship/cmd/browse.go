@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,9 +121,9 @@ func runBrowseCommand(cmd *cobra.Command, args []string) error {
 		indexCacheDir = filepath.Join(os.TempDir(), "cargoship-index-cache")
 	}
 	
-	// Initialize indexer and search engine
-	indexer := indexing.NewIndexer(indexCacheDir, logger)
-	searchEngine := indexing.NewSearchEngine(indexer, logger)
+	// Initialize indexer and search engine  
+	indexer := indexing.NewIndexer(indexCacheDir, slog.Default())
+	searchEngine := indexing.NewSearchEngine(indexer, slog.Default())
 	
 	// Handle index management flags
 	rebuildIndex, _ := cmd.Flags().GetBool("rebuild-index")
@@ -297,12 +298,12 @@ func ensureIndexExists(ctx context.Context, indexer *indexing.Indexer, location 
 	// Check if index already exists
 	if !forceRebuild {
 		if _, err := indexer.LoadIndex(ctx, location); err == nil {
-			logger.Debug("using existing index", "location", location)
+			slog.Debug("using existing index", "location", location)
 			return nil
 		}
 	}
 	
-	logger.Info("creating index for location", "location", location, "force_rebuild", forceRebuild)
+	slog.Info("creating index for location", "location", location, "force_rebuild", forceRebuild)
 	
 	// Get inventory directories
 	inventoryDirs, err := cmd.Flags().GetStringArray("inventory-directory")
@@ -339,7 +340,7 @@ func ensureIndexExists(ctx context.Context, indexer *indexing.Indexer, location 
 	
 	// Load the first inventory file (in a real implementation, we might merge multiple)
 	inventoryFile := inventoryFiles[0]
-	logger.Info("loading inventory from file", "file", inventoryFile)
+	slog.Info("loading inventory from file", "file", inventoryFile)
 	
 	inv, err := inventory.NewInventoryWithFilename(inventoryFile)
 	if err != nil {
@@ -355,11 +356,11 @@ func ensureIndexExists(ctx context.Context, indexer *indexing.Indexer, location 
 	// Save index for future use
 	err = indexer.SaveIndex(ctx, archiveIndex)
 	if err != nil {
-		logger.Warn("failed to save index", "error", err)
+		slog.Warn("failed to save index", "error", err)
 		// Continue anyway, we can use the cached version
 	}
 	
-	logger.Info("index created successfully", "location", location, "files", archiveIndex.FileCount)
+	slog.Info("index created successfully", "location", location, "files", archiveIndex.FileCount)
 	return nil
 }
 
@@ -383,7 +384,7 @@ func hasSearchFilters(cmd *cobra.Command) bool {
 
 // runSearchOperation performs a search across the archive index
 func runSearchOperation(ctx context.Context, searchEngine *indexing.SearchEngine, location string, options *indexing.BrowseOptions, cmd *cobra.Command) error {
-	logger.Info("performing search operation", "location", location)
+	slog.Info("performing search operation", "location", location)
 	
 	// Get search filter from options
 	filter := indexing.SearchFilter{}
@@ -414,7 +415,7 @@ func runSearchOperation(ctx context.Context, searchEngine *indexing.SearchEngine
 
 // runBrowseOperation performs directory-style browsing
 func runBrowseOperation(ctx context.Context, searchEngine *indexing.SearchEngine, location string, browsePath string, options *indexing.BrowseOptions, cmd *cobra.Command) error {
-	logger.Info("performing browse operation", "location", location, "path", browsePath)
+	slog.Info("performing browse operation", "location", location, "path", browsePath)
 	
 	// Perform browse
 	result, err := searchEngine.Browse(ctx, location, browsePath, *options)
@@ -472,17 +473,17 @@ func displayBrowseResults(result *indexing.BrowseResult, cmd *cobra.Command) err
 func displaySearchResultsTable(result *indexing.SearchResult, cmd *cobra.Command) error {
 	showMetadata, _ := cmd.Flags().GetBool("show-metadata")
 	
-	fmt.Fprintf(cmd.OutOrStdout(), "\n🔍 Search Results\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "═══════════════════════════════════════════════════════════════\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "Found %d matches in %v (using %s)\n", 
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n🔍 Search Results\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "═══════════════════════════════════════════════════════════════\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Found %d matches in %v (using %s)\n", 
 		result.TotalMatches, result.SearchTime, result.IndexUsed)
 	
 	if result.Truncated {
-		fmt.Fprintf(cmd.OutOrStdout(), "⚠️  Results truncated - showing first %d matches\n", len(result.Files))
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "⚠️  Results truncated - showing first %d matches\n", len(result.Files))
 	}
 	
-	fmt.Fprintf(cmd.OutOrStdout(), "\n📁 Files:\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n📁 Files:\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "───────────────────────────────────────────────────────────────\n")
 	
 	for _, file := range result.Files {
 		// Display basic file info
@@ -599,7 +600,7 @@ func displaySizeSummary(files []*indexing.EnhancedFile) error {
 	for _, category := range categories {
 		if count := sizeCounts[category]; count > 0 {
 			fmt.Printf("%-10s: %6d files (%s)\n", 
-				strings.Title(category), count, humanizeBytes(sizeTotals[category]))
+				Title(category), count, humanizeBytes(sizeTotals[category]))
 		}
 	}
 	
@@ -623,7 +624,7 @@ func parseSize(sizeStr string) (int64, error) {
 	}
 	
 	// Convert to bytes
-	multiplier := int64(1)
+	var multiplier int64
 	switch unit {
 	case "B", "BYTES":
 		multiplier = 1

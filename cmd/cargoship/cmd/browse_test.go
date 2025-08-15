@@ -5,13 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/scttfrdmn/cargoship/internal/testutil"
-	"github.com/scttfrdmn/cargoship/pkg/inventory"
 )
 
 func TestNewBrowseCmd(t *testing.T) {
@@ -47,15 +45,15 @@ func TestParseBrowseOptions(t *testing.T) {
 	cmd := NewBrowseCmd()
 	
 	// Set some test flags
-	cmd.Flags().Set("recursive", "true")
-	cmd.Flags().Set("show-metadata", "true")
-	cmd.Flags().Set("show-hidden", "true")
-	cmd.Flags().Set("sort-by", "size")
-	cmd.Flags().Set("sort-order", "desc")
-	cmd.Flags().Set("max-depth", "5")
-	cmd.Flags().Set("page-size", "50")
-	cmd.Flags().Set("page", "2")
-	cmd.Flags().Set("pattern", "*.txt")
+	_ = cmd.Flags().Set("recursive", "true")
+	_ = cmd.Flags().Set("show-metadata", "true")
+	_ = cmd.Flags().Set("show-hidden", "true")
+	_ = cmd.Flags().Set("sort-by", "size")
+	_ = cmd.Flags().Set("sort-order", "desc")
+	_ = cmd.Flags().Set("max-depth", "5")
+	_ = cmd.Flags().Set("page-size", "50")
+	_ = cmd.Flags().Set("page", "2")
+	_ = cmd.Flags().Set("pattern", "*.txt")
 	
 	options, err := parseBrowseOptions(cmd)
 	require.NoError(t, err)
@@ -137,13 +135,13 @@ func TestParseSearchFilter(t *testing.T) {
 			
 			// Set string flags
 			for flag, value := range tt.flags {
-				cmd.Flags().Set(flag, value)
+				_ = cmd.Flags().Set(flag, value)
 			}
 			
 			// Set slice flags
 			for flag, values := range tt.sliceFlags {
 				for _, value := range values {
-					cmd.Flags().Set(flag, value)
+					_ = cmd.Flags().Set(flag, value)
 				}
 			}
 			
@@ -180,7 +178,7 @@ func TestParseSearchFilterInvalidDates(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	cmd := NewBrowseCmd()
-	cmd.Flags().Set("after", "invalid-date")
+	_ = cmd.Flags().Set("after", "invalid-date")
 	
 	_, err := parseSearchFilter(cmd)
 	assert.Error(t, err)
@@ -191,7 +189,7 @@ func TestParseSearchFilterInvalidSizes(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	cmd := NewBrowseCmd()
-	cmd.Flags().Set("min-size", "invalid-size")
+	_ = cmd.Flags().Set("min-size", "invalid-size")
 	
 	_, err := parseSearchFilter(cmd)
 	assert.Error(t, err)
@@ -248,7 +246,7 @@ func TestHasSearchFilters(t *testing.T) {
 			cmd := NewBrowseCmd()
 			
 			for flag, value := range tt.flags {
-				cmd.Flags().Set(flag, value)
+				_ = cmd.Flags().Set(flag, value)
 			}
 			
 			result := hasSearchFilters(cmd)
@@ -514,9 +512,9 @@ options:
 	cmd := NewBrowseCmd()
 	
 	// Set up command with test parameters
-	cmd.Flags().Set("inventory-directory", tempDir)
-	cmd.Flags().Set("index-cache-dir", filepath.Join(tempDir, "cache"))
-	cmd.Flags().Set("count-only", "true")
+	_ = cmd.Flags().Set("inventory-directory", tempDir)
+	_ = cmd.Flags().Set("index-cache-dir", filepath.Join(tempDir, "cache"))
+	_ = cmd.Flags().Set("count-only", "true")
 	
 	// Capture output
 	var buf bytes.Buffer
@@ -531,61 +529,4 @@ options:
 		t.Logf("Browse command failed (expected in test environment): %v", err)
 		// This is okay for a unit test - the integration would work in the real environment
 	}
-}
-
-// Helper function to create a test inventory
-func createTestInventory() *inventory.Inventory {
-	now := time.Now()
-	
-	files := []*inventory.File{
-		{
-			Path:        "/test/data/file1.txt",
-			Destination: "data/file1.txt", 
-			Name:        "file1.txt",
-			Size:        1024,
-		},
-		{
-			Path:        "/test/data/reads.fastq.gz",
-			Destination: "data/reads.fastq.gz",
-			Name:        "reads.fastq.gz", 
-			Size:        1024 * 1024 * 100, // 100MB
-			ArchiveTOC:  []string{"sequence1.fq", "sequence2.fq"},
-		},
-		{
-			Path:        "/test/results/analysis.json",
-			Destination: "results/analysis.json",
-			Name:        "analysis.json",
-			Size:        4096,
-		},
-	}
-
-	options := &inventory.Options{
-		User:            "testuser",
-		Prefix:          "test",
-		MaxSuitcaseSize: 1024 * 1024 * 1024, // 1GB
-		SuitcaseFormat:  "tar.zst",
-	}
-
-	inv := &inventory.Inventory{
-		Files:        files,
-		Options:      options,
-		TotalIndexes: 1,
-		IndexSummaries: map[int]*inventory.IndexSummary{
-			1: {
-				Count:     uint(len(files)),
-				Size:      1024 + 1024*1024*100 + 4096,
-				HumanSize: "100MB",
-			},
-		},
-		InternalMetadata: map[string]string{
-			"created_at": now.Format(time.RFC3339),
-			"test_data":  "true",
-		},
-		ExternalMetadata: map[string]string{
-			"project": "test_project",
-			"version": "1.0",
-		},
-	}
-
-	return inv
 }

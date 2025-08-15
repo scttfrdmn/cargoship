@@ -48,14 +48,14 @@ func TestParseRestoreOptions(t *testing.T) {
 	cmd := NewRestoreCmd()
 	
 	// Set some test flags
-	cmd.Flags().Set("preserve-structure", "true")
-	cmd.Flags().Set("show-metadata", "true")
-	cmd.Flags().Set("show-checksums", "false")
-	cmd.Flags().Set("max-files", "100")
-	cmd.Flags().Set("storage-class", "GLACIER")
-	cmd.Flags().Set("region", "us-west-2")
-	cmd.Flags().Set("include-transfer-costs", "false")
-	cmd.Flags().Set("pattern", "*.fastq")
+	_ = cmd.Flags().Set("preserve-structure", "true")
+	_ = cmd.Flags().Set("show-metadata", "true")
+	_ = cmd.Flags().Set("show-checksums", "false")
+	_ = cmd.Flags().Set("max-files", "100")
+	_ = cmd.Flags().Set("storage-class", "GLACIER")
+	_ = cmd.Flags().Set("region", "us-west-2")
+	_ = cmd.Flags().Set("include-transfer-costs", "false")
+	_ = cmd.Flags().Set("pattern", "*.fastq")
 	
 	options, err := parseRestoreOptions(cmd)
 	require.NoError(t, err)
@@ -143,13 +143,13 @@ func TestParseRestoreFilter(t *testing.T) {
 			
 			// Set string flags
 			for flag, value := range tt.flags {
-				cmd.Flags().Set(flag, value)
+				_ = cmd.Flags().Set(flag, value)
 			}
 			
 			// Set slice flags
 			for flag, values := range tt.sliceFlags {
 				for _, value := range values {
-					cmd.Flags().Set(flag, value)
+					_ = cmd.Flags().Set(flag, value)
 				}
 			}
 			
@@ -194,7 +194,7 @@ func TestParseRestoreFilterInvalidDates(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	cmd := NewRestoreCmd()
-	cmd.Flags().Set("after", "invalid-date")
+	_ = cmd.Flags().Set("after", "invalid-date")
 	
 	_, err := parseRestoreFilter(cmd)
 	assert.Error(t, err)
@@ -205,7 +205,7 @@ func TestParseRestoreFilterInvalidSizes(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	cmd := NewRestoreCmd()
-	cmd.Flags().Set("min-size", "invalid-size")
+	_ = cmd.Flags().Set("min-size", "invalid-size")
 	
 	_, err := parseRestoreFilter(cmd)
 	assert.Error(t, err)
@@ -518,10 +518,10 @@ options:
 	cmd := NewRestoreCmd()
 	
 	// Set up command with test parameters
-	cmd.Flags().Set("inventory-directory", tempDir)
-	cmd.Flags().Set("index-cache-dir", filepath.Join(tempDir, "cache"))
-	cmd.Flags().Set("preview", "true")
-	cmd.Flags().Set("format", "table")
+	_ = cmd.Flags().Set("inventory-directory", tempDir)
+	_ = cmd.Flags().Set("index-cache-dir", filepath.Join(tempDir, "cache"))
+	_ = cmd.Flags().Set("preview", "true")
+	_ = cmd.Flags().Set("format", "table")
 	
 	// Verify flags are set correctly
 	inventoryDir, _ := cmd.Flags().GetStringArray("inventory-directory")
@@ -532,62 +532,6 @@ options:
 	
 	format, _ := cmd.Flags().GetString("format")
 	assert.Equal(t, "table", format)
-}
-
-// Helper function to create test inventory for restore operations
-func createRestoreTestInventory() *inventory.Inventory {
-	now := time.Now()
-	
-	files := []*inventory.File{
-		{
-			Path:        "/test/data/sequence.fastq.gz",
-			Destination: "data/sequence.fastq.gz", 
-			Name:        "sequence.fastq.gz",
-			Size:        50 * 1024 * 1024, // 50MB
-		},
-		{
-			Path:        "/test/results/analysis.json",
-			Destination: "results/analysis.json",
-			Name:        "analysis.json", 
-			Size:        8192, // 8KB
-		},
-		{
-			Path:        "/test/docs/README.md",
-			Destination: "docs/README.md", 
-			Name:        "README.md",
-			Size:        4096, // 4KB
-		},
-	}
-
-	options := &inventory.Options{
-		User:            "testuser",
-		Prefix:          "test-restore",
-		MaxSuitcaseSize: 1024 * 1024 * 1024, // 1GB
-		SuitcaseFormat:  "tar.zst",
-	}
-
-	inv := &inventory.Inventory{
-		Files:        files,
-		Options:      options,
-		TotalIndexes: 1,
-		IndexSummaries: map[int]*inventory.IndexSummary{
-			1: {
-				Count:     uint(len(files)),
-				Size:      50*1024*1024 + 8192 + 4096,
-				HumanSize: "50MB",
-			},
-		},
-		InternalMetadata: map[string]string{
-			"created_at": now.Format(time.RFC3339),
-			"test_data":  "true",
-		},
-		ExternalMetadata: map[string]string{
-			"project": "restore_test_project",
-			"version": "1.0",
-		},
-	}
-
-	return inv
 }
 
 // Test helper functions used in restore.go
