@@ -14,8 +14,9 @@ import (
 func TestNewPipelineCoordinator(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultCoordinationConfig()
+	congestionController := NewGlobalCongestionController(config)
 
-	coordinator := NewPipelineCoordinator(ctx, config)
+	coordinator := NewPipelineCoordinator(ctx, config, congestionController)
 
 	assert.NotNil(t, coordinator)
 	assert.Equal(t, config, coordinator.config)
@@ -27,8 +28,9 @@ func TestNewPipelineCoordinator(t *testing.T) {
 
 func TestNewPipelineCoordinatorWithNilConfig(t *testing.T) {
 	ctx := context.Background()
+	congestionController := NewGlobalCongestionController(DefaultCoordinationConfig())
 
-	coordinator := NewPipelineCoordinator(ctx, nil)
+	coordinator := NewPipelineCoordinator(ctx, nil, congestionController)
 
 	assert.NotNil(t, coordinator)
 	assert.NotNil(t, coordinator.config)
@@ -50,7 +52,8 @@ func TestDefaultCoordinationConfig(t *testing.T) {
 func TestPipelineCoordinatorStartStop(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultCoordinationConfig()
-	coordinator := NewPipelineCoordinator(ctx, config)
+	congestionController := NewGlobalCongestionController(config)
+	coordinator := NewPipelineCoordinator(ctx, config, congestionController)
 
 	// Test starting coordinator
 	err := coordinator.Start()
@@ -74,7 +77,8 @@ func TestPipelineCoordinatorStartStop(t *testing.T) {
 func TestPipelineCoordinatorRegisterPrefix(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultCoordinationConfig()
-	coordinator := NewPipelineCoordinator(ctx, config)
+	congestionController := NewGlobalCongestionController(config)
+	coordinator := NewPipelineCoordinator(ctx, config, congestionController)
 
 	// Test registering prefix when coordinator is not active
 	err := coordinator.RegisterPrefix("test-prefix", 100.0)
@@ -103,7 +107,8 @@ func TestPipelineCoordinatorRegisterPrefix(t *testing.T) {
 func TestPipelineCoordinatorScheduleUpload(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultCoordinationConfig()
-	coordinator := NewPipelineCoordinator(ctx, config)
+	congestionController := NewGlobalCongestionController(config)
+	coordinator := NewPipelineCoordinator(ctx, config, congestionController)
 
 	upload := &ScheduledUpload{
 		ArchivePath:   "/test/archive.tar",
@@ -137,7 +142,8 @@ func TestPipelineCoordinatorScheduleUpload(t *testing.T) {
 func TestPipelineCoordinatorGetMetrics(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultCoordinationConfig()
-	coordinator := NewPipelineCoordinator(ctx, config)
+	congestionController := NewGlobalCongestionController(config)
+	coordinator := NewPipelineCoordinator(ctx, config, congestionController)
 
 	metrics := coordinator.GetMetrics()
 	assert.NotNil(t, metrics)
@@ -148,7 +154,8 @@ func TestPipelineCoordinatorGetMetrics(t *testing.T) {
 func TestPipelineCoordinatorUpdatePrefixMetrics(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultCoordinationConfig()
-	coordinator := NewPipelineCoordinator(ctx, config)
+	congestionController := NewGlobalCongestionController(config)
+	coordinator := NewPipelineCoordinator(ctx, config, congestionController)
 
 	err := coordinator.Start()
 	require.NoError(t, err)
@@ -173,7 +180,8 @@ func TestPipelineCoordinatorUpdatePrefixMetrics(t *testing.T) {
 func TestPipelineCoordinatorConcurrency(t *testing.T) {
 	ctx := context.Background()
 	config := DefaultCoordinationConfig()
-	coordinator := NewPipelineCoordinator(ctx, config)
+	congestionController := NewGlobalCongestionController(config)
+	coordinator := NewPipelineCoordinator(ctx, config, congestionController)
 
 	err := coordinator.Start()
 	require.NoError(t, err)
@@ -333,7 +341,8 @@ func TestPipelineCoordinatorMetricsCollection(t *testing.T) {
 
 	config := DefaultCoordinationConfig()
 	config.UpdateInterval = time.Millisecond * 100 // Fast update for testing
-	coordinator := NewPipelineCoordinator(ctx, config)
+	congestionController := NewGlobalCongestionController(config)
+	coordinator := NewPipelineCoordinator(ctx, config, congestionController)
 
 	err := coordinator.Start()
 	require.NoError(t, err)

@@ -16,7 +16,7 @@ import (
 // It implements sophisticated flow control algorithms similar to GridFTP/Globus systems.
 type PipelineCoordinator struct {
 	scheduler         *TransferScheduler
-	congestionControl *GlobalCongestionController
+	congestionControl CongestionController // Interface instead of concrete type
 	prefixChannels    map[string]chan *ScheduledUpload
 	metrics           *CoordinationMetrics
 	config            *CoordinationConfig
@@ -331,7 +331,7 @@ type PerformanceBaseline struct {
 }
 
 // NewPipelineCoordinator creates a new cross-prefix pipeline coordinator.
-func NewPipelineCoordinator(ctx context.Context, config *CoordinationConfig) *PipelineCoordinator {
+func NewPipelineCoordinator(ctx context.Context, config *CoordinationConfig, congestionController CongestionController) *PipelineCoordinator {
 	if config == nil {
 		config = DefaultCoordinationConfig()
 	}
@@ -340,7 +340,7 @@ func NewPipelineCoordinator(ctx context.Context, config *CoordinationConfig) *Pi
 
 	pc := &PipelineCoordinator{
 		scheduler:         NewTransferScheduler(config),
-		congestionControl: NewGlobalCongestionController(config),
+		congestionControl: congestionController, // Accept injected dependency
 		prefixChannels:    make(map[string]chan *ScheduledUpload),
 		metrics:           NewCoordinationMetrics(),
 		config:            config,

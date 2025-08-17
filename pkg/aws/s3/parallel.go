@@ -114,7 +114,9 @@ func NewParallelUploader(transporter *Transporter, config ParallelConfig) *Paral
 			coordinationConfig = DefaultCoordinationConfig()
 		}
 
-		uploader.coordinator = NewPipelineCoordinator(context.Background(), coordinationConfig)
+		// Create congestion controller for the coordinator
+		congestionController := NewGlobalCongestionController(coordinationConfig)
+		uploader.coordinator = NewPipelineCoordinator(context.Background(), coordinationConfig, congestionController)
 
 		// Start the coordinator
 		if err := uploader.coordinator.Start(); err != nil {

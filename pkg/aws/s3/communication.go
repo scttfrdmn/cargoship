@@ -830,3 +830,6 @@ func (pq *PriorityQueue) Size() int {
 
 	return len(pq.items)
 }
+
+// Compile-time check that CrossPrefixCommunicator implements CommunicationService interface
+var _ CommunicationService = (*CrossPrefixCommunicator)(nil)

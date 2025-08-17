@@ -189,3 +189,11 @@ func (t *Transporter) GetObjectInfo(ctx context.Context, key string) (*s3.HeadOb
 		Key:    aws.String(key),
 	})
 }
+
+// GetConfig returns the current transport configuration
+func (t *Transporter) GetConfig() awsconfig.S3Config {
+	return t.config
+}
+
+// Compile-time check that Transporter implements BasicTransporter interface
+var _ BasicTransporter = (*Transporter)(nil)
