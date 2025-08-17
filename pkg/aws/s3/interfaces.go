@@ -26,6 +26,8 @@ type BasicTransporter interface {
 // Congestion Control Interface
 
 // CongestionController manages congestion control across S3 prefixes
+// This is the main interface that components should depend on for basic congestion control
+// For more specialized needs, see congestion_interfaces.go for segregated interfaces
 type CongestionController interface {
 	// Start begins congestion control with the given context
 	Start(ctx context.Context)

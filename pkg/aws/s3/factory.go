@@ -67,6 +67,35 @@ func (f *ComponentFactory) CreatePipelineCoordinator(ctx context.Context, conges
 	return NewPipelineCoordinator(ctx, config, congestionController)
 }
 
+// Interface Segregation Examples:
+
+// CreateBasicCongestionController creates a congestion controller with basic functionality
+// This is suitable for simple use cases that only need core congestion control
+func (f *ComponentFactory) CreateBasicCongestionController(ctx context.Context) BasicCongestionController {
+	config := DefaultCoordinationConfig()
+	controller := NewGlobalCongestionController(config)
+	controller.Start(ctx)
+	return controller
+}
+
+// CreateAdvancedCongestionController creates a congestion controller with advanced functionality
+// This is suitable for sophisticated use cases requiring algorithm management and adaptation
+func (f *ComponentFactory) CreateAdvancedCongestionController(ctx context.Context) AdvancedCongestionController {
+	config := DefaultCoordinationConfig()
+	controller := NewGlobalCongestionController(config)
+	controller.Start(ctx)
+	return controller
+}
+
+// CreateMetricsOnlyCongestionController creates a congestion controller for metrics collection
+// This is suitable for monitoring and observability use cases
+func (f *ComponentFactory) CreateMetricsOnlyCongestionController(ctx context.Context) CongestionMetricsProvider {
+	config := DefaultCoordinationConfig()
+	controller := NewGlobalCongestionController(config)
+	controller.Start(ctx)
+	return controller
+}
+
 // Dependencies provides access to shared dependencies
 type Dependencies struct {
 	CongestionController CongestionController

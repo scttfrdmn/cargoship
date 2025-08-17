@@ -1343,5 +1343,8 @@ func (gcc *GlobalCongestionController) getMaxDeliveryRate() float64 {
 	return 0
 }
 
-// Compile-time check that GlobalCongestionController implements CongestionController interface
+// Compile-time interface compliance checks
 var _ CongestionController = (*GlobalCongestionController)(nil)
+var _ BasicCongestionController = (*GlobalCongestionController)(nil)
+var _ AdvancedCongestionController = (*GlobalCongestionController)(nil)
+var _ FullCongestionController = (*GlobalCongestionController)(nil)
