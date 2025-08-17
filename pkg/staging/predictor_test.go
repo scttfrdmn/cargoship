@@ -42,7 +42,7 @@ func TestPredictiveStager_Start(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping predictive stager test in short mode")
 	}
-	
+
 	// Use longer timeout - 100ms is too short for goroutine startup/cleanup
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()

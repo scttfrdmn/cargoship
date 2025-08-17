@@ -74,7 +74,7 @@ func TestCreateIndex(t *testing.T) {
 		assert.Equal(t, inv.Files[i].Path, enhancedFile.Path)
 		assert.Equal(t, inv.Files[i].Name, enhancedFile.Name)
 		assert.Equal(t, inv.Files[i].Size, enhancedFile.Size)
-		
+
 		// Check enhanced metadata
 		assert.NotEmpty(t, enhancedFile.StorageClass)
 		assert.NotNil(t, enhancedFile.Tags)
@@ -160,7 +160,7 @@ func TestLoadNonExistentIndex(t *testing.T) {
 	indexer := NewIndexer(tempDir, logger)
 
 	ctx := context.Background()
-	
+
 	_, err = indexer.LoadIndex(ctx, "nonexistent://location")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "index not found")
@@ -198,7 +198,7 @@ func TestListIndexes(t *testing.T) {
 	for _, location := range testLocations {
 		archiveIndex, err := indexer.CreateIndex(ctx, inv, location)
 		require.NoError(t, err)
-		
+
 		err = indexer.SaveIndex(ctx, archiveIndex)
 		require.NoError(t, err)
 	}
@@ -279,7 +279,7 @@ func TestClearCache(t *testing.T) {
 
 	// Verify cache is empty
 	assert.Equal(t, 0, len(indexer.indexes))
-	
+
 	stats := indexer.GetCacheStats()
 	assert.Equal(t, 0, stats["cached_indexes"])
 }
@@ -306,7 +306,7 @@ func TestConvertFromInventoryFile(t *testing.T) {
 	assert.Equal(t, invFile.ArchiveTOC, enhanced.ArchiveTOC)
 	assert.Equal(t, invFile.SuitcaseIndex, enhanced.SuitcaseIndex)
 	assert.Equal(t, invFile.SuitcaseName, enhanced.SuitcaseName)
-	
+
 	// Check enhanced fields
 	assert.Equal(t, "STANDARD", enhanced.StorageClass)
 	assert.NotNil(t, enhanced.Tags)
@@ -331,7 +331,7 @@ func TestEnhancedFileHelpers(t *testing.T) {
 
 	// Test tag operations
 	assert.False(t, enhanced.HasTag("test", "value"))
-	
+
 	enhanced.AddTag("test", "value")
 	assert.True(t, enhanced.HasTag("test", "value"))
 	assert.False(t, enhanced.HasTag("test", "other"))
@@ -400,18 +400,18 @@ func TestHelperFunctions(t *testing.T) {
 // Helper function to create test inventory
 func createTestInventory() *inventory.Inventory {
 	now := time.Now()
-	
+
 	files := []*inventory.File{
 		{
 			Path:        "/test/data/file1.txt",
-			Destination: "data/file1.txt", 
+			Destination: "data/file1.txt",
 			Name:        "file1.txt",
 			Size:        1024,
 		},
 		{
 			Path:        "/test/data/reads.fastq.gz",
 			Destination: "data/reads.fastq.gz",
-			Name:        "reads.fastq.gz", 
+			Name:        "reads.fastq.gz",
 			Size:        1024 * 1024 * 100, // 100MB
 			ArchiveTOC:  []string{"sequence1.fq", "sequence2.fq"},
 		},
@@ -423,7 +423,7 @@ func createTestInventory() *inventory.Inventory {
 		},
 		{
 			Path:        "/test/docs/README.md",
-			Destination: "docs/README.md", 
+			Destination: "docs/README.md",
 			Name:        "README.md",
 			Size:        2048,
 		},
@@ -500,7 +500,7 @@ func BenchmarkSearchIndex(b *testing.B) {
 		logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 		indexer := NewIndexer(tempDir, logger)
 		searchEngine := NewSearchEngine(indexer, logger)
-		
+
 		// Create test index
 		inv := createTestInventory()
 		ctx := context.Background()

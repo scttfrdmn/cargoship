@@ -22,12 +22,12 @@ func TestNewExtractCmd(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	cmd := NewExtractCmd()
-	
+
 	assert.Equal(t, "extract [SOURCE] [TARGET]", cmd.Use)
 	assert.Equal(t, "Extract specific files from archived data", cmd.Short)
 	assert.NotEmpty(t, cmd.Long)
 	assert.NotEmpty(t, cmd.Example)
-	
+
 	// Check that all expected flags are present
 	expectedFlags := []string{
 		"pattern", "extensions", "min-size", "max-size", "after", "before",
@@ -37,7 +37,7 @@ func TestNewExtractCmd(t *testing.T) {
 		"concurrent-downloads", "chunk-size", "temp-dir",
 		"inventory-directory", "index-cache-dir", "rebuild-index", "no-cache",
 	}
-	
+
 	for _, flagName := range expectedFlags {
 		flag := cmd.Flags().Lookup(flagName)
 		assert.NotNil(t, flag, "Flag %s should exist", flagName)
@@ -48,7 +48,7 @@ func TestParseExtractOptions(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	cmd := NewExtractCmd()
-	
+
 	// Set some test flags
 	_ = cmd.Flags().Set("preserve-structure", "true")
 	_ = cmd.Flags().Set("flatten", "false")
@@ -60,10 +60,10 @@ func TestParseExtractOptions(t *testing.T) {
 	_ = cmd.Flags().Set("concurrent-downloads", "8")
 	_ = cmd.Flags().Set("chunk-size", "16")
 	_ = cmd.Flags().Set("pattern", "*.bam")
-	
+
 	options, err := parseExtractOptions(cmd, "/specific/file/path.txt")
 	require.NoError(t, err)
-	
+
 	assert.True(t, options.PreserveStructure)
 	assert.False(t, options.Flatten)
 	assert.True(t, options.Overwrite)
@@ -74,7 +74,7 @@ func TestParseExtractOptions(t *testing.T) {
 	assert.Equal(t, 8, options.ConcurrentDownloads)
 	assert.Equal(t, 16, options.ChunkSizeMB)
 	assert.Equal(t, "/specific/file/path.txt", options.SpecificPath)
-	
+
 	assert.NotNil(t, options.Filter)
 	assert.Equal(t, "*.bam", options.Filter.NamePattern)
 }
@@ -83,14 +83,14 @@ func TestParseExtractOptionsConflictingFlags(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	cmd := NewExtractCmd()
-	
+
 	// Set conflicting flags (both flatten and preserve-structure)
 	_ = cmd.Flags().Set("preserve-structure", "true")
 	_ = cmd.Flags().Set("flatten", "true")
-	
+
 	options, err := parseExtractOptions(cmd, "")
 	require.NoError(t, err)
-	
+
 	// Flatten should take precedence
 	assert.True(t, options.Flatten)
 	assert.False(t, options.PreserveStructure)
@@ -100,10 +100,10 @@ func TestParseExtractionFilter(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	tests := []struct {
-		name      string
-		flags     map[string]string
+		name       string
+		flags      map[string]string
 		sliceFlags map[string][]string
-		wantNil   bool
+		wantNil    bool
 	}{
 		{
 			name:    "no filters",
@@ -171,48 +171,48 @@ func TestParseExtractionFilter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := NewExtractCmd()
-			
+
 			// Set string flags
 			for flag, value := range tt.flags {
 				_ = cmd.Flags().Set(flag, value)
 			}
-			
+
 			// Set slice flags
 			for flag, values := range tt.sliceFlags {
 				for _, value := range values {
 					_ = cmd.Flags().Set(flag, value)
 				}
 			}
-			
+
 			filter, err := parseExtractionFilter(cmd)
 			require.NoError(t, err)
-			
+
 			if tt.wantNil {
 				assert.Nil(t, filter)
 			} else {
 				assert.NotNil(t, filter)
-				
+
 				// Verify specific filter values if set
 				if pattern := tt.flags["pattern"]; pattern != "" {
 					assert.Equal(t, pattern, filter.NamePattern)
 				}
-				
+
 				if pathPattern := tt.flags["path-pattern"]; pathPattern != "" {
 					assert.Equal(t, pathPattern, filter.PathPattern)
 				}
-				
+
 				if minSize := tt.flags["min-size"]; minSize != "" {
 					assert.True(t, filter.MinSize > 0)
 				}
-				
+
 				if maxSize := tt.flags["max-size"]; maxSize != "" {
 					assert.True(t, filter.MaxSize > 0)
 				}
-				
+
 				if extensions := tt.sliceFlags["extensions"]; len(extensions) > 0 {
 					assert.Equal(t, extensions, filter.Extensions)
 				}
-				
+
 				if maxFiles := tt.flags["max-files"]; maxFiles != "" {
 					assert.True(t, filter.MaxResults > 0)
 				}
@@ -226,7 +226,7 @@ func TestParseExtractionFilterInvalidDates(t *testing.T) {
 
 	cmd := NewExtractCmd()
 	_ = cmd.Flags().Set("after", "invalid-date")
-	
+
 	_, err := parseExtractionFilter(cmd)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid after date format")
@@ -237,7 +237,7 @@ func TestParseExtractionFilterInvalidSizes(t *testing.T) {
 
 	cmd := NewExtractCmd()
 	_ = cmd.Flags().Set("min-size", "invalid-size")
-	
+
 	_, err := parseExtractionFilter(cmd)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid min-size")
@@ -283,7 +283,7 @@ func TestSourceParsing(t *testing.T) {
 			// Parse source for specific file path
 			var archiveLocation string
 			var specificPath string
-			
+
 			source := tt.source
 			if strings.Contains(source, ":") && !strings.HasPrefix(source, "s3://") {
 				// Handle local archive with specific path
@@ -301,7 +301,7 @@ func TestSourceParsing(t *testing.T) {
 			} else {
 				archiveLocation = source
 			}
-			
+
 			assert.Equal(t, tt.expectedArchive, archiveLocation)
 			assert.Equal(t, tt.expectedSpecific, specificPath)
 		})
@@ -321,7 +321,7 @@ func TestEstimateExtractionTime(t *testing.T) {
 	}
 
 	duration := estimateExtractionTime(files)
-	
+
 	// Should take about 10 seconds for 200MB at 20MB/s
 	assert.True(t, duration >= 9*time.Second && duration <= 11*time.Second)
 }
@@ -343,7 +343,7 @@ func TestExtractEngine(t *testing.T) {
 		searchEngine: indexing.NewSearchEngine(indexing.NewIndexer(tempDir, testLogger), testLogger),
 		logger:       testLogger,
 	}
-	
+
 	assert.NotNil(t, engine.indexer)
 	assert.NotNil(t, engine.searchEngine)
 	assert.NotNil(t, engine.logger)
@@ -355,30 +355,30 @@ func TestExtractStructures(t *testing.T) {
 	// Test ExtractOptions
 	options := &ExtractOptions{
 		PreserveStructure:   true,
-		Flatten:            false,
-		Overwrite:          true,
-		VerifyChecksums:    true,
-		MaxFiles:           100,
-		ShowProgress:       true,
-		Verbose:           false,
+		Flatten:             false,
+		Overwrite:           true,
+		VerifyChecksums:     true,
+		MaxFiles:            100,
+		ShowProgress:        true,
+		Verbose:             false,
 		ConcurrentDownloads: 8,
-		ChunkSizeMB:        16,
-		SpecificPath:      "/data/results.json",
+		ChunkSizeMB:         16,
+		SpecificPath:        "/data/results.json",
 	}
-	
+
 	assert.True(t, options.PreserveStructure)
 	assert.False(t, options.Flatten)
 	assert.True(t, options.Overwrite)
 	assert.Equal(t, 100, options.MaxFiles)
 	assert.Equal(t, "/data/results.json", options.SpecificPath)
-	
+
 	// Test ExtractionPreview
 	files := []*indexing.EnhancedFile{
 		{
 			File: inventory.File{Name: "test.fastq", Size: 2048},
 		},
 	}
-	
+
 	preview := &ExtractionPreview{
 		ArchiveLocation:   "s3://test-bucket/archive.tar.gz",
 		Destination:       "/local/path",
@@ -391,13 +391,13 @@ func TestExtractStructures(t *testing.T) {
 		PreserveStructure: true,
 		Flatten:           false,
 	}
-	
+
 	assert.Equal(t, "s3://test-bucket/archive.tar.gz", preview.ArchiveLocation)
 	assert.Equal(t, "/local/path", preview.Destination)
 	assert.Equal(t, 1, preview.TotalFiles)
 	assert.Equal(t, int64(2048), preview.TotalSize)
 	assert.True(t, preview.PreserveStructure)
-	
+
 	// Test ExtractionResult
 	result := &ExtractionResult{
 		ArchiveLocation: "s3://test-bucket/data.tar.gz",
@@ -412,7 +412,7 @@ func TestExtractStructures(t *testing.T) {
 		SkippedFiles:    0,
 		FailedFiles:     0,
 	}
-	
+
 	assert.Equal(t, "s3://test-bucket/data.tar.gz", result.ArchiveLocation)
 	assert.Equal(t, "/output/directory", result.Destination)
 	assert.Equal(t, 1, result.TotalFiles)
@@ -425,24 +425,24 @@ func TestExtractCommandIntegration(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	cmd := NewExtractCmd()
-	
+
 	// Test help output
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
-	
+
 	cmd.SetArgs([]string{"--help"})
 	err := cmd.Execute()
 	require.NoError(t, err)
-	
+
 	helpOutput := buf.String()
 	assert.Contains(t, helpOutput, "Extract individual files")
 	assert.Contains(t, helpOutput, "--pattern")
 	assert.Contains(t, helpOutput, "--dry-run")
 	assert.Contains(t, helpOutput, "--preserve-structure")
-	
+
 	// Test invalid arguments
-	buf.Reset() 
+	buf.Reset()
 	cmd = NewExtractCmd() // Create new command to avoid state from previous test
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
@@ -466,7 +466,7 @@ func TestExtractCommandWithDryRun(t *testing.T) {
 
 	// Create a test inventory file
 	inventoryFile := filepath.Join(tempDir, "test-inventory.yaml")
-	
+
 	// Write inventory to YAML file (simplified - in real use we'd use proper YAML marshaling)
 	yamlContent := `
 files:
@@ -495,30 +495,30 @@ options:
   max_suitcase_size: 1073741824
   suitcase_format: tar.zst
 `
-	
+
 	err = os.WriteFile(inventoryFile, []byte(yamlContent), 0644)
 	require.NoError(t, err)
 
 	// Test extract dry-run command structure (don't actually execute due to dependencies)
 	cmd := NewExtractCmd()
-	
+
 	// Set up command with test parameters
 	_ = cmd.Flags().Set("inventory-directory", tempDir)
 	_ = cmd.Flags().Set("index-cache-dir", filepath.Join(tempDir, "cache"))
 	_ = cmd.Flags().Set("dry-run", "true")
 	_ = cmd.Flags().Set("pattern", "*.fastq.gz")
 	_ = cmd.Flags().Set("format", "table")
-	
+
 	// Verify flags are set correctly
 	inventoryDir, _ := cmd.Flags().GetStringArray("inventory-directory")
 	assert.Contains(t, inventoryDir, tempDir)
-	
+
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	assert.True(t, dryRun)
-	
+
 	pattern, _ := cmd.Flags().GetString("pattern")
 	assert.Equal(t, "*.fastq.gz", pattern)
-	
+
 	format, _ := cmd.Flags().GetString("format")
 	assert.Equal(t, "table", format)
 }
@@ -628,10 +628,10 @@ func TestExtractDisplayFunctions(t *testing.T) {
 	// Test JSON display
 	buf.Reset()
 	_ = cmd.Flags().Set("format", "json")
-	
+
 	err = displayExtractionPreview(preview, cmd)
 	require.NoError(t, err)
-	
+
 	jsonOutput := buf.String()
 	assert.Contains(t, jsonOutput, "archivelocation")
 	assert.Contains(t, jsonOutput, "test://archive")

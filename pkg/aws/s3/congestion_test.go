@@ -14,7 +14,7 @@ func TestGlobalCongestionControllerStart(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping congestion controller test in short mode")
 	}
-	
+
 	config := DefaultCoordinationConfig()
 	gcc := NewGlobalCongestionController(config)
 
@@ -26,10 +26,10 @@ func TestGlobalCongestionControllerStart(t *testing.T) {
 
 	// Give it a moment to start background loops
 	time.Sleep(time.Millisecond * 100)
-	
+
 	// Cancel context to stop goroutines before test ends
 	cancel()
-	
+
 	// Give goroutines time to stop
 	time.Sleep(time.Millisecond * 10)
 

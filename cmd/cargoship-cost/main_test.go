@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/scttfrdmn/cargoship/internal/testutil"
 	cargoconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
-	"github.com/scttfrdmn/cargoship/internal/testutil"
 )
 
 // Helper function to create temporary files (compatibility with older Go versions)
@@ -27,13 +27,13 @@ func createTempFile(dir, pattern, content string) (string, error) {
 			_ = closeErr // Ignore close error
 		}
 	}()
-	
+
 	if content != "" {
 		if _, err := tmpFile.WriteString(content); err != nil {
 			return "", err
 		}
 	}
-	
+
 	return tmpFile.Name(), nil
 }
 
@@ -276,14 +276,14 @@ func TestOutputEstimateTable(t *testing.T) {
 	os.Stdout = w
 
 	estimate := &cost.CostEstimate{
-		Currency:           "USD",
-		StorageCost:        10.50,
-		RequestCost:        0.25,
-		DataTransferCost:   1.00,
-		TotalCost:          11.75,
+		Currency:         "USD",
+		StorageCost:      10.50,
+		RequestCost:      0.25,
+		DataTransferCost: 1.00,
+		TotalCost:        11.75,
 		Discounts: cost.DiscountBreakdown{
-			OriginalCost:    11.75,
-			TotalDiscount:   1.75,
+			OriginalCost:  11.75,
+			TotalDiscount: 1.75,
 		},
 	}
 
@@ -405,16 +405,16 @@ func TestOutputReportTable(t *testing.T) {
 			"us-west-2": 600.00,
 		},
 		Trends: cost.CostTrends{
-			DailyAverage:       50.00,
-			WeeklyAverage:      350.00,
-			MonthlyProjection:  1600.00,
-			CostPerGB:          0.023,
+			DailyAverage:      50.00,
+			WeeklyAverage:     350.00,
+			MonthlyProjection: 1600.00,
+			CostPerGB:         0.023,
 		},
 		Recommendations: []cost.CostRecommendation{
 			{
-				Priority:         "HIGH",
-				Description:      "Consider using Intelligent Tiering",
-				PotentialSaving:  120.00,
+				Priority:        "HIGH",
+				Description:     "Consider using Intelligent Tiering",
+				PotentialSaving: 120.00,
 			},
 		},
 	}
@@ -502,13 +502,13 @@ func TestCommandLineArguments(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name: "estimate without size",
-			args: []string{"cargoship-cost", "-command", "estimate"},
+			name:        "estimate without size",
+			args:        []string{"cargoship-cost", "-command", "estimate"},
 			expectError: true,
 		},
 		{
-			name: "unknown command",
-			args: []string{"cargoship-cost", "-command", "unknown"},
+			name:        "unknown command",
+			args:        []string{"cargoship-cost", "-command", "unknown"},
 			expectError: true,
 		},
 	}
@@ -520,7 +520,7 @@ func TestCommandLineArguments(t *testing.T) {
 				// Test handleEstimate without size
 				size = new(string) // Reset size flag
 				*size = ""
-				
+
 				err := handleEstimate(context.Background(), nil, nil)
 				if tt.expectError {
 					assert.Error(t, err)
@@ -555,8 +555,8 @@ func TestParseSizeEdgeCases(t *testing.T) {
 			expected: 1073741, // int64(0.001 * 1024 * 1024 * 1024)
 		},
 		{
-			name:    "negative",
-			input:   "-1GB",
+			name:     "negative",
+			input:    "-1GB",
 			expected: -1 * 1024 * 1024 * 1024,
 		},
 	}

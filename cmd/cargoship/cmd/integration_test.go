@@ -30,7 +30,7 @@ func TestV042DataDiscoveryWorkflow(t *testing.T) {
 
 	// Create a comprehensive test inventory file for genomics data scenario
 	inventoryFile := filepath.Join(tempDir, "genomics-project-inventory.yaml")
-	
+
 	yamlContent := `
 files:
   - path: /project/raw-data/sample1.fastq.gz
@@ -82,7 +82,7 @@ options:
   max_suitcase_size: 2147483648
   suitcase_format: tar.zst
 `
-	
+
 	err = os.WriteFile(inventoryFile, []byte(yamlContent), 0644)
 	require.NoError(t, err)
 
@@ -419,21 +419,21 @@ func TestV042BackwardsCompatibility(t *testing.T) {
 
 	t.Run("Existing_Find_Command_Still_Works", func(t *testing.T) {
 		findCmd := NewFindCmd()
-		
+
 		// Should still have the same basic structure
 		assert.Equal(t, "find PATTERN", findCmd.Use)
 		assert.Contains(t, findCmd.Short, "Find where a file")
-		
+
 		// Should have inventory-directory flag
 		assert.NotNil(t, findCmd.Flags().Lookup("inventory-directory"))
-		
+
 		// Test help works
 		var buf bytes.Buffer
 		findCmd.SetOut(&buf)
 		findCmd.SetArgs([]string{"--help"})
 		err := findCmd.Execute()
 		require.NoError(t, err)
-		
+
 		helpOutput := buf.String()
 		assert.Contains(t, helpOutput, "Find where a file")
 	})
@@ -451,7 +451,7 @@ func TestV042BackwardsCompatibility(t *testing.T) {
 
 		assert.NotNil(t, findCmd, "find command should still exist")
 		assert.NotNil(t, browseCmd, "browse command should exist")
-		assert.NotNil(t, restoreCmd, "restore command should exist")  
+		assert.NotNil(t, restoreCmd, "restore command should exist")
 		assert.NotNil(t, extractCmd, "extract command should exist")
 
 		// Commands should be different

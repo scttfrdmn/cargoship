@@ -8,17 +8,17 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	
+
 	"github.com/scttfrdmn/cargoship/internal/testutil"
 )
 
 func TestEnhancedCongestionControlWithCommunication(t *testing.T) {
 	testutil.SkipIfShort(t, "congestion control involves background goroutines")
-	
+
 	testutil.WithLeakCheck(t, testutil.DefaultLeakCheckOptions(), func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel() // Ensure context is cancelled for cleanup
-		
+
 		config := DefaultCoordinationConfig()
 
 		// Create global congestion controller
@@ -30,13 +30,13 @@ func TestEnhancedCongestionControlWithCommunication(t *testing.T) {
 
 		err := communicator.Start()
 		require.NoError(t, err)
-		defer func() { 
+		defer func() {
 			if err := communicator.Stop(); err != nil {
 				t.Logf("Warning: communicator stop error: %v", err)
 			}
 		}()
 
-		// Integrate congestion controller with communicator  
+		// Integrate congestion controller with communicator
 		gcc.SetCommunicator(communicator)
 
 		// Register test prefixes
@@ -54,7 +54,7 @@ func TestEnhancedCongestionControlWithCommunication(t *testing.T) {
 		assert.Equal(t, BBRModeStartup, metrics.BBRMode)
 		assert.True(t, metrics.CrossPrefixActive)
 		assert.Equal(t, 3, len(gcc.prefixAllocation))
-		
+
 		// Explicit cleanup before defer calls
 		cancel()
 		time.Sleep(50 * time.Millisecond) // Allow goroutines to cleanup

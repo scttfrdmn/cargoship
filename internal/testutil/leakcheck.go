@@ -65,7 +65,7 @@ func WithLeakCheck(t *testing.T, opts LeakCheckOptions, testFunc func(t *testing
 		t.Logf("Goroutines after test: %d", afterCount)
 
 		if afterCount > beforeCount {
-			t.Logf("Warning: %d more goroutines after test (%d vs %d)", 
+			t.Logf("Warning: %d more goroutines after test (%d vs %d)",
 				afterCount-beforeCount, afterCount, beforeCount)
 		}
 	}
@@ -121,12 +121,12 @@ func RequireNoGoroutineLeak(t *testing.T) {
 // BenchmarkNoGoroutineLeak checks for goroutine leaks in benchmarks
 func BenchmarkNoGoroutineLeak(b *testing.B, benchFunc func(b *testing.B)) {
 	b.Helper()
-	
+
 	defer goleak.VerifyNone(&testingTB{b},
 		goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"),
 		goleak.IgnoreTopFunction("github.com/aws/aws-sdk-go-v2/internal/shareddefaults.init"),
 	)
-	
+
 	benchFunc(b)
 }
 

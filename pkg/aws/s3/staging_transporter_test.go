@@ -27,13 +27,13 @@ type MockStagingS3Client struct {
 // Helper function to create LocalStack S3 client for staging tests
 func createStagingLocalStackS3Client(t *testing.T) *s3.Client {
 	t.Helper()
-	
+
 	// Skip LocalStack tests if explicitly requested (e.g., in pre-commit hooks)
 	if os.Getenv("SKIP_LOCALSTACK") != "" || os.Getenv("SKIP_INTEGRATION") != "" {
 		t.Skip("Skipping LocalStack tests (SKIP_LOCALSTACK or SKIP_INTEGRATION set)")
 		return nil
 	}
-	
+
 	// Skip in short mode (go test -short)
 	if testing.Short() {
 		t.Skip("Skipping LocalStack integration tests in short mode")

@@ -16,12 +16,12 @@ func TestNewBrowseCmd(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	cmd := NewBrowseCmd()
-	
+
 	assert.Equal(t, "browse", cmd.Use)
 	assert.Equal(t, "Browse archived data with advanced filtering and search", cmd.Short)
 	assert.NotEmpty(t, cmd.Long)
 	assert.NotEmpty(t, cmd.Example)
-	
+
 	// Check that all expected flags are present
 	expectedFlags := []string{
 		"recursive", "show-metadata", "show-hidden", "show-suitcase-contents",
@@ -29,10 +29,10 @@ func TestNewBrowseCmd(t *testing.T) {
 		"pattern", "extensions", "min-size", "max-size", "after", "before",
 		"content-type", "tags", "storage-class", "suitcase-pattern", "path-pattern",
 		"has-archive-toc", "compression-type", "min-compression-ratio", "max-results",
-		"format", "count-only", "size-summary", "inventory-directory", 
+		"format", "count-only", "size-summary", "inventory-directory",
 		"index-cache-dir", "rebuild-index", "no-cache",
 	}
-	
+
 	for _, flagName := range expectedFlags {
 		flag := cmd.Flags().Lookup(flagName)
 		assert.NotNil(t, flag, "Flag %s should exist", flagName)
@@ -43,7 +43,7 @@ func TestParseBrowseOptions(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	cmd := NewBrowseCmd()
-	
+
 	// Set some test flags
 	_ = cmd.Flags().Set("recursive", "true")
 	_ = cmd.Flags().Set("show-metadata", "true")
@@ -54,10 +54,10 @@ func TestParseBrowseOptions(t *testing.T) {
 	_ = cmd.Flags().Set("page-size", "50")
 	_ = cmd.Flags().Set("page", "2")
 	_ = cmd.Flags().Set("pattern", "*.txt")
-	
+
 	options, err := parseBrowseOptions(cmd)
 	require.NoError(t, err)
-	
+
 	assert.True(t, options.Recursive)
 	assert.True(t, options.ShowMetadata)
 	assert.True(t, options.ShowHidden)
@@ -66,7 +66,7 @@ func TestParseBrowseOptions(t *testing.T) {
 	assert.Equal(t, 5, options.MaxDepth)
 	assert.Equal(t, 50, options.PageSize)
 	assert.Equal(t, 50, options.PageOffset) // (page-1) * pageSize = (2-1) * 50
-	
+
 	assert.NotNil(t, options.Filter)
 	assert.Equal(t, "*.txt", options.Filter.NamePattern)
 }
@@ -75,10 +75,10 @@ func TestParseSearchFilter(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	tests := []struct {
-		name     string
-		flags    map[string]string
+		name       string
+		flags      map[string]string
 		sliceFlags map[string][]string
-		wantNil  bool
+		wantNil    bool
 	}{
 		{
 			name:    "no filters",
@@ -118,8 +118,8 @@ func TestParseSearchFilter(t *testing.T) {
 		{
 			name: "multiple filters",
 			flags: map[string]string{
-				"pattern":     "analysis*",
-				"min-size":    "100KB",
+				"pattern":      "analysis*",
+				"min-size":     "100KB",
 				"content-type": "text/*",
 			},
 			sliceFlags: map[string][]string{
@@ -132,40 +132,40 @@ func TestParseSearchFilter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := NewBrowseCmd()
-			
+
 			// Set string flags
 			for flag, value := range tt.flags {
 				_ = cmd.Flags().Set(flag, value)
 			}
-			
+
 			// Set slice flags
 			for flag, values := range tt.sliceFlags {
 				for _, value := range values {
 					_ = cmd.Flags().Set(flag, value)
 				}
 			}
-			
+
 			filter, err := parseSearchFilter(cmd)
 			require.NoError(t, err)
-			
+
 			if tt.wantNil {
 				assert.Nil(t, filter)
 			} else {
 				assert.NotNil(t, filter)
-				
+
 				// Verify specific filter values if set
 				if pattern := tt.flags["pattern"]; pattern != "" {
 					assert.Equal(t, pattern, filter.NamePattern)
 				}
-				
+
 				if minSize := tt.flags["min-size"]; minSize != "" {
 					assert.True(t, filter.MinSize > 0)
 				}
-				
+
 				if maxSize := tt.flags["max-size"]; maxSize != "" {
 					assert.True(t, filter.MaxSize > 0)
 				}
-				
+
 				if extensions := tt.sliceFlags["extensions"]; len(extensions) > 0 {
 					assert.Equal(t, extensions, filter.Extensions)
 				}
@@ -179,7 +179,7 @@ func TestParseSearchFilterInvalidDates(t *testing.T) {
 
 	cmd := NewBrowseCmd()
 	_ = cmd.Flags().Set("after", "invalid-date")
-	
+
 	_, err := parseSearchFilter(cmd)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid after date format")
@@ -190,7 +190,7 @@ func TestParseSearchFilterInvalidSizes(t *testing.T) {
 
 	cmd := NewBrowseCmd()
 	_ = cmd.Flags().Set("min-size", "invalid-size")
-	
+
 	_, err := parseSearchFilter(cmd)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid min-size")
@@ -244,11 +244,11 @@ func TestHasSearchFilters(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := NewBrowseCmd()
-			
+
 			for flag, value := range tt.flags {
 				_ = cmd.Flags().Set(flag, value)
 			}
-			
+
 			result := hasSearchFilters(cmd)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -472,7 +472,7 @@ func TestBrowseCommandIntegration(t *testing.T) {
 
 	// Create a test inventory file
 	inventoryFile := filepath.Join(tempDir, "test-inventory.yaml")
-	
+
 	// Write inventory to YAML file (simplified - in real use we'd use proper YAML marshaling)
 	yamlContent := `
 files:
@@ -504,26 +504,26 @@ options:
   max_suitcase_size: 1073741824
   suitcase_format: tar.zst
 `
-	
+
 	err = os.WriteFile(inventoryFile, []byte(yamlContent), 0644)
 	require.NoError(t, err)
 
 	// Test browse command with count-only flag
 	cmd := NewBrowseCmd()
-	
+
 	// Set up command with test parameters
 	_ = cmd.Flags().Set("inventory-directory", tempDir)
 	_ = cmd.Flags().Set("index-cache-dir", filepath.Join(tempDir, "cache"))
 	_ = cmd.Flags().Set("count-only", "true")
-	
+
 	// Capture output
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
-	
+
 	// Run the command
 	err = cmd.RunE(cmd, []string{"test://location"})
-	
+
 	// The command might fail due to missing logger or other dependencies, but we can check the basic structure
 	if err != nil {
 		t.Logf("Browse command failed (expected in test environment): %v", err)

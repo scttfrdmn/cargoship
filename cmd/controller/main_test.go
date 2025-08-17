@@ -25,13 +25,13 @@ func createTempFile(dir, pattern, content string) (string, error) {
 			_ = closeErr // Ignore close error
 		}
 	}()
-	
+
 	if content != "" {
 		if _, err := tmpFile.WriteString(content); err != nil {
 			return "", err
 		}
 	}
-	
+
 	return tmpFile.Name(), nil
 }
 
@@ -67,7 +67,7 @@ ping_interval: 30s
 	assert.Equal(t, 8080, config.Port)
 	assert.False(t, config.TLSEnabled)
 	assert.False(t, config.AuthEnabled)
-	
+
 	// Also test that it creates a proper CentralControllerConfig
 	assert.IsType(t, &launch.CentralControllerConfig{}, config)
 }
@@ -182,7 +182,7 @@ func TestVersionOutput(t *testing.T) {
 
 	// This test verifies the version string format
 	expectedVersion := "CargoShip Central Controller v0.3.0"
-	
+
 	// We can't easily test the main function directly without refactoring
 	// but we can test that the version string is correctly formatted
 	assert.Contains(t, expectedVersion, "CargoShip Central Controller")
@@ -194,9 +194,9 @@ func TestLogLevelParsing(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	tests := []struct {
-		name        string
-		logLevel    string
-		expected    slog.Level
+		name     string
+		logLevel string
+		expected slog.Level
 	}{
 		{
 			name:     "debug level",
@@ -263,14 +263,14 @@ func TestLoggerInitialization(t *testing.T) {
 
 	// Capture stdout for logger output
 	var buf bytes.Buffer
-	
+
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
 
 	// Test that logger can log messages
 	logger.Info("test message", "key", "value")
-	
+
 	output := buf.String()
 	assert.Contains(t, output, "test message")
 	assert.Contains(t, output, "key")
@@ -343,10 +343,10 @@ auth_tokens:
 			tmpFile, err := createTempFile("", "edge-case-*.yaml", tt.config)
 			require.NoError(t, err)
 			defer func() {
-		if removeErr := os.Remove(tmpFile); removeErr != nil {
-			_ = removeErr // Ignore remove error in tests
-		}
-	}()
+				if removeErr := os.Remove(tmpFile); removeErr != nil {
+					_ = removeErr // Ignore remove error in tests
+				}
+			}()
 
 			config, err := loadControllerConfig(tmpFile)
 			if tt.shouldFail {
@@ -381,10 +381,10 @@ ping_interval: 30s
 		tmpFile, err := createTempFile("", "benchmark-config-*.yaml", configContent)
 		require.NoError(b, err)
 		defer func() {
-		if removeErr := os.Remove(tmpFile); removeErr != nil {
-			_ = removeErr // Ignore remove error in tests
-		}
-	}()
+			if removeErr := os.Remove(tmpFile); removeErr != nil {
+				_ = removeErr // Ignore remove error in tests
+			}
+		}()
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {

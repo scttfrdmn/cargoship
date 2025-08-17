@@ -157,6 +157,29 @@ run_tests() {
     log_success "All tests passed with sufficient coverage"
 }
 
+# Run comprehensive quality report
+run_quality_report() {
+    log_info "Running comprehensive quality report..."
+    
+    # Check if quality report script exists
+    if [ -f "scripts/quality-report.sh" ]; then
+        # Set quality threshold for pre-commit validation
+        # We maintain high standards: B+ grade (75%) minimum for commits
+        export QUALITY_THRESHOLD=75
+        
+        # Run quality report with threshold check
+        if ! ./scripts/quality-report.sh; then
+            log_error "Quality report failed to meet minimum thresholds (${QUALITY_THRESHOLD}%)"
+            log_error "Run './scripts/quality-report.sh' to see detailed quality report"
+            log_error "Current project quality must maintain B+ grade or higher"
+            exit 1
+        fi
+        log_success "Quality report passed all thresholds (${QUALITY_THRESHOLD}%+)"
+    else
+        log_warning "Quality report script not found at scripts/quality-report.sh"
+    fi
+}
+
 # Check for documentation requirements
 check_documentation() {
     log_info "Checking documentation requirements..."
@@ -352,6 +375,9 @@ main() {
     echo
     
     run_tests
+    echo
+    
+    run_quality_report
     echo
     
     check_documentation

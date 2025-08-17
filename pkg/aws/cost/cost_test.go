@@ -372,14 +372,14 @@ func TestRecordCost(t *testing.T) {
 	reporter := NewCostReporter(cfg, nil, nil, nil)
 
 	record := CostRecord{
-		Operation:    "upload",
-		Service:      "s3",
-		Region:       "us-east-1",
-		SizeBytes:    1024 * 1024 * 1024, // 1GB
-		Cost:         0.023,
-		Currency:     "USD",
-		FileName:     "test.txt",
-		JobID:        "job123",
+		Operation: "upload",
+		Service:   "s3",
+		Region:    "us-east-1",
+		SizeBytes: 1024 * 1024 * 1024, // 1GB
+		Cost:      0.023,
+		Currency:  "USD",
+		FileName:  "test.txt",
+		JobID:     "job123",
 	}
 
 	reporter.RecordCost(record)
@@ -548,12 +548,12 @@ func TestExportJSON(t *testing.T) {
 	reporter := NewCostReporter(cfg, nil, nil, nil)
 
 	summary := &CostSummary{
-		Period:      "test",
-		TotalCost:   123.45,
-		Currency:    "USD",
-		ByService:   map[string]float64{"s3": 123.45},
-		ByRegion:    map[string]float64{"us-east-1": 123.45},
-		DailyCosts:  map[string]float64{"2024-01-01": 123.45},
+		Period:     "test",
+		TotalCost:  123.45,
+		Currency:   "USD",
+		ByService:  map[string]float64{"s3": 123.45},
+		ByRegion:   map[string]float64{"us-east-1": 123.45},
+		DailyCosts: map[string]float64{"2024-01-01": 123.45},
 	}
 
 	// Create temporary file
@@ -661,9 +661,9 @@ func TestPurgeCosts(t *testing.T) {
 
 	// Add costs from different time periods
 	records := []CostRecord{
-		{Timestamp: now.Add(-10 * time.Hour), Cost: 1.0},   // Recent
-		{Timestamp: now.Add(-2 * 24 * time.Hour), Cost: 2.0}, // 2 days ago
-		{Timestamp: now.Add(-10 * 24 * time.Hour), Cost: 3.0}, // 10 days ago
+		{Timestamp: now.Add(-10 * time.Hour), Cost: 1.0},       // Recent
+		{Timestamp: now.Add(-2 * 24 * time.Hour), Cost: 2.0},   // 2 days ago
+		{Timestamp: now.Add(-10 * 24 * time.Hour), Cost: 3.0},  // 10 days ago
 		{Timestamp: now.Add(-400 * 24 * time.Hour), Cost: 4.0}, // Over a year ago
 	}
 

@@ -24,13 +24,13 @@ func TestNetworkAdaptationEngine_StartStop(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping network adaptation test in short mode")
 	}
-	
+
 	config := DefaultAdaptationConfig()
-	
+
 	// Use cancellable context for proper cleanup
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // Ensure cleanup happens
-	
+
 	engine := NewNetworkAdaptationEngine(ctx, config)
 
 	// Start in a goroutine since it blocks
@@ -45,7 +45,7 @@ func TestNetworkAdaptationEngine_StartStop(t *testing.T) {
 
 	// Stop the engine by cancelling context
 	cancel()
-	
+
 	// Wait for goroutine to finish or timeout
 	select {
 	case <-done:
@@ -59,11 +59,11 @@ func TestNetworkAdaptationEngine_DoubleStart(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping network adaptation test in short mode")
 	}
-	
+
 	config := DefaultAdaptationConfig()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // Ensure cleanup
-	
+
 	engine := NewNetworkAdaptationEngine(ctx, config)
 
 	// Start first instance
@@ -85,10 +85,10 @@ func TestNetworkAdaptationEngine_DoubleStart(t *testing.T) {
 
 	// Give it a moment
 	time.Sleep(50 * time.Millisecond)
-	
+
 	// Cancel to stop both
 	cancel()
-	
+
 	// Wait for both to finish
 	select {
 	case <-done1:
@@ -96,7 +96,7 @@ func TestNetworkAdaptationEngine_DoubleStart(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Error("First NetworkAdaptationEngine goroutine did not stop")
 	}
-	
+
 	select {
 	case <-done2:
 		// Second goroutine stopped
