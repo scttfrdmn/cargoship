@@ -15,37 +15,47 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command
-func mustGetCmd[T []int | int | string | bool | time.Duration](cmd *cobra.Command, s string) T {
+// getCmd uses generics to get a given flag with the appropriate Type from a cobra.Command
+func getCmd[T []int | int | string | bool | time.Duration](cmd *cobra.Command, s string) (T, error) {
 	switch any(new(T)).(type) {
 	case *int:
 		item, err := cmd.Flags().GetInt(s)
-		panicIfErr(err)
-		return any(item).(T)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		return any(item).(T), nil
 	case *string:
 		item, err := cmd.Flags().GetString(s)
-		panicIfErr(err)
-		return any(item).(T)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		return any(item).(T), nil
 	case *bool:
 		item, err := cmd.Flags().GetBool(s)
-		panicIfErr(err)
-		return any(item).(T)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		return any(item).(T), nil
 	case *[]int:
 		item, err := cmd.Flags().GetIntSlice(s)
-		panicIfErr(err)
-		return any(item).(T)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		return any(item).(T), nil
 	case *time.Duration:
 		item, err := cmd.Flags().GetDuration(s)
-		panicIfErr(err)
-		return any(item).(T)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		return any(item).(T), nil
 	default:
-		panic(fmt.Sprintf("unexpected use of mustGetCmd: %v", reflect.TypeOf(s)))
-	}
-}
-
-func panicIfErr(err error) {
-	if err != nil {
-		panic(err)
+		var zero T
+		return zero, fmt.Errorf("unexpected use of getCmd: %v", reflect.TypeOf(s))
 	}
 }
 

@@ -355,10 +355,9 @@ func TestWizardPostRunEValidation(t *testing.T) {
 	ctx := context.Background()
 	cmd.SetContext(ctx)
 
-	// Call wizardPostRunE without porter in context - should panic
-	assert.Panics(t, func() {
-		_ = wizardPostRunE(cmd, []string{})
-	}, "wizardPostRunE should panic when porter is not in context")
+	// Call wizardPostRunE without porter in context - should return error
+	err := wizardPostRunE(cmd, []string{})
+	assert.Error(t, err, "wizardPostRunE should return error when porter is not in context")
 }
 
 func TestWizardPostRunEWithPorter(t *testing.T) {
@@ -387,7 +386,7 @@ func TestWizardPostRunEWithPorter(t *testing.T) {
 	porterInstance := porter.New(opts...)
 	cmd.SetContext(context.WithValue(cmd.Context(), porter.PorterKey, porterInstance))
 
-	// Test that mustPorterWithCmd works - we expect wizardPostRunE to panic/error
+	// Test that porterWithCmd works - we expect wizardPostRunE to return error
 	// but not due to porter retrieval (which we want to test)
 	defer func() {
 		if r := recover(); r != nil {

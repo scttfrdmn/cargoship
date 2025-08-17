@@ -1,0 +1,99 @@
+# Pre-commit configuration for CargoShip project
+# Run `pre-commit install` to enable these hooks
+repos:
+  # Go formatting
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-fmt
+        name: Format Go code
+        description: Run gofmt on Go source files
+      - id: go-vet-mod
+        name: Go vet
+        description: Run go vet on Go source files
+      - id: go-imports
+        name: Go imports
+        description: Run goimports on Go source files
+      - id: go-cyclo
+        name: Go cyclomatic complexity
+        description: Check cyclomatic complexity
+        args: [-over=15]
+      - id: go-mod-tidy
+        name: Go mod tidy
+        description: Run go mod tidy
+      - id: go-unit-tests
+        name: Go unit tests
+        description: Run Go unit tests
+        args: [-timeout=30s, -short]
+
+  # golangci-lint for comprehensive linting
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v1.59.1
+    hooks:
+      - id: golangci-lint
+        name: golangci-lint
+        description: Run golangci-lint
+        entry: golangci-lint run
+        language: golang
+        types: [go]
+        args: [--timeout=10m, --max-issues-per-linter=10]
+
+  # Security scanning
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        name: Detect secrets
+        description: Detect secrets in the codebase
+        args: ['--baseline', '.secrets.baseline']
+        exclude: |
+          (?x)^(
+            .*\.sum$|
+            .*\.mod$|
+            .*\.key$|
+            .*\.pem$|
+            .*/testdata/.*|
+            .*_test\.go$
+          )$
+
+  # General code quality
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        name: Remove trailing whitespace
+        exclude: '.*\.(md|yaml|yml)$'
+      - id: end-of-file-fixer
+        name: Fix end of files
+        exclude: '.*\.(md|yaml|yml|sum|mod)$'
+      - id: check-yaml
+        name: Check YAML syntax
+      - id: check-json
+        name: Check JSON syntax
+      - id: check-merge-conflict
+        name: Check for merge conflict markers
+      - id: check-case-conflict
+        name: Check for case conflicts
+      - id: fix-byte-order-marker
+        name: Fix UTF-8 byte order marker
+
+  # Dockerfile linting (if applicable)
+  - repo: https://github.com/AleksaC/hadolint-py
+    rev: v2.12.0.3
+    hooks:
+      - id: hadolint
+        name: Lint Dockerfiles
+        files: Dockerfile.*
+
+  # Markdown formatting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.41.0
+    hooks:
+      - id: markdownlint
+        name: Lint Markdown files
+        args: [--disable, MD013, --disable, MD041]
+
+# Global configuration
+default_stages: [commit]
+fail_fast: false
+minimum_pre_commit_version: "2.9.0"

@@ -24,7 +24,10 @@ func NewWizardCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			gout.SetWriter(cmd.OutOrStdout())
 
-			p := mustPorterWithCmd(cmd)
+			p, err := porterWithCmd(cmd)
+			if err != nil {
+				return err
+			}
 			if err := p.RunWizard(); err != nil {
 				return err
 			}
@@ -75,7 +78,10 @@ func wizardPreRunE(cmd *cobra.Command, args []string) error {
 }
 
 func wizardPostRunE(cmd *cobra.Command, args []string) error {
-	ptr := mustPorterWithCmd(cmd)
+	ptr, err := porterWithCmd(cmd)
+	if err != nil {
+		return err
+	}
 	metaF, err := ptr.CLIMeta.Complete(ptr.Destination)
 	if err != nil {
 		return err

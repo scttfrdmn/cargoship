@@ -210,7 +210,10 @@ func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
 	if o == "" {
 		return errors.New("no output directory specified")
 	}
-	ptr := mustPorterWithCmd(cmd)
+	ptr, err := porterWithCmd(cmd)
+	if err != nil {
+		return err
+	}
 
 	logger = slog.New(
 		slogmulti.Fanout(
@@ -248,7 +251,9 @@ func globalPersistentPreRun(cmd *cobra.Command, _ []string) {
 	if memLimit != "" {
 		memLimitB, merr := humanize.ParseBytes(memLimit)
 		checkErr(merr, fmt.Sprintf("could not convert %v to bytes", memLimit))
-		debug.SetMemoryLimit(uint64ToInt64(memLimitB))
+		memLimitInt64, err := uint64ToInt64(memLimitB)
+		checkErr(err, "memory limit value exceeds int64 range")
+		debug.SetMemoryLimit(memLimitInt64)
 		slog.Info("overriding memory handling with limit", "mem-limit", memLimit, "mem-limit-bytes", memLimitB)
 	}
 	// log.Fatal().Msgf("Profile is set to %+v", profile)

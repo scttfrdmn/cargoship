@@ -775,7 +775,11 @@ func (p *Porter) Run() error {
 	}
 
 	if p.Cmd != nil {
-		if mustGetCmd[bool](p.Cmd, "hash-outer") {
+		hashOuter, err := getCmd[bool](p.Cmd, "hash-outer")
+		if err != nil {
+			return err
+		}
+		if hashOuter {
 			p.Hashes, err = p.CreateHashes(createdFiles)
 			if err != nil {
 				return err

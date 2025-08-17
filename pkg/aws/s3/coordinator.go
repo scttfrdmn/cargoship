@@ -147,6 +147,10 @@ type GlobalCongestionController struct {
 	deliveryRateEstimator  *DeliveryRateEstimator
 	congestionEventHistory []CongestionEvent
 
+	// Context for goroutine lifecycle management
+	ctx         context.Context
+	coordinator *CrossPrefixCongestionCoordinator
+
 	mu sync.RWMutex
 }
 

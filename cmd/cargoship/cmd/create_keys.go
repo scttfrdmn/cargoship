@@ -13,10 +13,17 @@ func NewCreateKeysCmd() *cobra.Command {
 		Use:   "keys",
 		Short: "Create a new private and public key pair",
 		Run: func(cmd *cobra.Command, _ []string) {
+			name, err := getCmd[string](cmd, "name")
+			checkErr(err, "could not get name flag")
+			email, err := getCmd[string](cmd, "email")
+			checkErr(err, "could not get email flag")
+			bits, err := getCmd[int](cmd, "bits")
+			checkErr(err, "could not get bits flag")
+
 			keyOpts := &gpg.KeyOpts{
-				Name:  mustGetCmd[string](cmd, "name"),
-				Email: mustGetCmd[string](cmd, "email"),
-				Bits:  mustGetCmd[int](cmd, "bits"),
+				Name:  name,
+				Email: email,
+				Bits:  bits,
 			}
 
 			outDir, err := getDestinationWithCobra(cmd)

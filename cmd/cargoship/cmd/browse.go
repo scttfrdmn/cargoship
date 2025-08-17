@@ -49,7 +49,18 @@ cargoship browse s3://bucket/ --pattern "analysis*" --after 2024-01-01`,
 		RunE: runBrowseCommand,
 	}
 
-	// Browse behavior options
+	addBrowseFlags(cmd)
+	return cmd
+}
+
+func addBrowseFlags(cmd *cobra.Command) {
+	addBrowseBehaviorFlags(cmd)
+	addSearchFilterFlags(cmd)
+	addOutputFlags(cmd)
+	addIndexManagementFlags(cmd)
+}
+
+func addBrowseBehaviorFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("recursive", false, "Browse directories recursively")
 	cmd.Flags().Bool("show-metadata", false, "Display detailed file metadata")
 	cmd.Flags().Bool("show-hidden", false, "Include hidden files (starting with .)")
@@ -59,8 +70,9 @@ cargoship browse s3://bucket/ --pattern "analysis*" --after 2024-01-01`,
 	cmd.Flags().Int("max-depth", 0, "Maximum directory depth (0 = unlimited)")
 	cmd.Flags().Int("page-size", 0, "Results per page (0 = no pagination)")
 	cmd.Flags().Int("page", 1, "Page number for pagination")
+}
 
-	// Search and filtering options
+func addSearchFilterFlags(cmd *cobra.Command) {
 	cmd.Flags().String("pattern", "", "Glob pattern to match file names")
 	cmd.Flags().StringSlice("extensions", []string{}, "File extensions to include (e.g. .txt,.json)")
 	cmd.Flags().String("min-size", "", "Minimum file size (e.g. 1MB, 500KB)")
@@ -76,19 +88,19 @@ cargoship browse s3://bucket/ --pattern "analysis*" --after 2024-01-01`,
 	cmd.Flags().String("compression-type", "", "Filter by compression algorithm")
 	cmd.Flags().Float64("min-compression-ratio", 0, "Minimum compression ratio")
 	cmd.Flags().Int("max-results", 1000, "Maximum number of results to return")
+}
 
-	// Output options
+func addOutputFlags(cmd *cobra.Command) {
 	cmd.Flags().String("format", "table", "Output format: table, json, yaml")
 	cmd.Flags().Bool("count-only", false, "Only show count of matching files")
 	cmd.Flags().Bool("size-summary", false, "Show size summary by category")
+}
 
-	// Index management options
+func addIndexManagementFlags(cmd *cobra.Command) {
 	cmd.Flags().StringArray("inventory-directory", []string{"."}, "Directories containing inventory files")
 	cmd.Flags().String("index-cache-dir", "", "Directory for index cache (default: temp dir)")
 	cmd.Flags().Bool("rebuild-index", false, "Force rebuild of archive indexes")
 	cmd.Flags().Bool("no-cache", false, "Disable index caching")
-
-	return cmd
 }
 
 // runBrowseCommand executes the browse command with enhanced indexing capabilities
@@ -188,109 +200,133 @@ func parseSearchFilter(cmd *cobra.Command) (*indexing.SearchFilter, error) {
 	filter := &indexing.SearchFilter{}
 	hasFilters := false
 
-	// Name and path patterns
-	if pattern, _ := cmd.Flags().GetString("pattern"); pattern != "" {
-		filter.NamePattern = pattern
-		hasFilters = true
+	if err := parsePatternFilters(cmd, filter, &hasFilters); err != nil {
+		return nil, err
 	}
 
-	if pathPattern, _ := cmd.Flags().GetString("path-pattern"); pathPattern != "" {
-		filter.PathPattern = pathPattern
-		hasFilters = true
+	if err := parseSizeFilters(cmd, filter, &hasFilters); err != nil {
+		return nil, err
 	}
 
-	// Extensions
-	if extensions, _ := cmd.Flags().GetStringSlice("extensions"); len(extensions) > 0 {
-		filter.Extensions = extensions
-		hasFilters = true
+	if err := parseDateFilters(cmd, filter, &hasFilters); err != nil {
+		return nil, err
 	}
 
-	// Size filters
-	if minSizeStr, _ := cmd.Flags().GetString("min-size"); minSizeStr != "" {
-		minSize, err := parseSize(minSizeStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid min-size: %w", err)
-		}
-		filter.MinSize = minSize
-		hasFilters = true
-	}
-
-	if maxSizeStr, _ := cmd.Flags().GetString("max-size"); maxSizeStr != "" {
-		maxSize, err := parseSize(maxSizeStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid max-size: %w", err)
-		}
-		filter.MaxSize = maxSize
-		hasFilters = true
-	}
-
-	// Date filters
-	if afterStr, _ := cmd.Flags().GetString("after"); afterStr != "" {
-		after, err := time.Parse("2006-01-02", afterStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid after date format, use YYYY-MM-DD: %w", err)
-		}
-		filter.ModifiedAfter = &after
-		hasFilters = true
-	}
-
-	if beforeStr, _ := cmd.Flags().GetString("before"); beforeStr != "" {
-		before, err := time.Parse("2006-01-02", beforeStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid before date format, use YYYY-MM-DD: %w", err)
-		}
-		filter.ModifiedBefore = &before
-		hasFilters = true
-	}
-
-	// Content and metadata filters
-	if contentType, _ := cmd.Flags().GetString("content-type"); contentType != "" {
-		filter.ContentType = contentType
-		hasFilters = true
-	}
-
-	if tags, _ := cmd.Flags().GetStringToString("tags"); len(tags) > 0 {
-		filter.Tags = tags
-		hasFilters = true
-	}
-
-	if storageClass, _ := cmd.Flags().GetString("storage-class"); storageClass != "" {
-		filter.StorageClass = storageClass
-		hasFilters = true
-	}
-
-	if suitcasePattern, _ := cmd.Flags().GetString("suitcase-pattern"); suitcasePattern != "" {
-		filter.SuitcasePattern = suitcasePattern
-		hasFilters = true
-	}
-
-	// Archive and compression filters
-	if hasArchiveTOC, _ := cmd.Flags().GetBool("has-archive-toc"); hasArchiveTOC {
-		filter.HasArchiveTOC = true
-		hasFilters = true
-	}
-
-	if compressionType, _ := cmd.Flags().GetString("compression-type"); compressionType != "" {
-		filter.CompressionType = compressionType
-		hasFilters = true
-	}
-
-	if minCompressionRatio, _ := cmd.Flags().GetFloat64("min-compression-ratio"); minCompressionRatio > 0 {
-		filter.MinCompressionRatio = minCompressionRatio
-		hasFilters = true
-	}
-
-	// Result limits
-	if maxResults, _ := cmd.Flags().GetInt("max-results"); maxResults > 0 {
-		filter.MaxResults = maxResults
-		hasFilters = true
-	}
+	parseMetadataFilters(cmd, filter, &hasFilters)
+	parseCompressionFilters(cmd, filter, &hasFilters)
 
 	if !hasFilters {
 		return nil, nil
 	}
 
 	return filter, nil
+}
+
+func parsePatternFilters(cmd *cobra.Command, filter *indexing.SearchFilter, hasFilters *bool) error {
+	if pattern, _ := cmd.Flags().GetString("pattern"); pattern != "" {
+		filter.NamePattern = pattern
+		*hasFilters = true
+	}
+
+	if pathPattern, _ := cmd.Flags().GetString("path-pattern"); pathPattern != "" {
+		filter.PathPattern = pathPattern
+		*hasFilters = true
+	}
+
+	if extensions, _ := cmd.Flags().GetStringSlice("extensions"); len(extensions) > 0 {
+		filter.Extensions = extensions
+		*hasFilters = true
+	}
+
+	return nil
+}
+
+func parseSizeFilters(cmd *cobra.Command, filter *indexing.SearchFilter, hasFilters *bool) error {
+	if minSizeStr, _ := cmd.Flags().GetString("min-size"); minSizeStr != "" {
+		minSize, err := parseSize(minSizeStr)
+		if err != nil {
+			return fmt.Errorf("invalid min-size: %w", err)
+		}
+		filter.MinSize = minSize
+		*hasFilters = true
+	}
+
+	if maxSizeStr, _ := cmd.Flags().GetString("max-size"); maxSizeStr != "" {
+		maxSize, err := parseSize(maxSizeStr)
+		if err != nil {
+			return fmt.Errorf("invalid max-size: %w", err)
+		}
+		filter.MaxSize = maxSize
+		*hasFilters = true
+	}
+
+	return nil
+}
+
+func parseDateFilters(cmd *cobra.Command, filter *indexing.SearchFilter, hasFilters *bool) error {
+	if afterStr, _ := cmd.Flags().GetString("after"); afterStr != "" {
+		after, err := time.Parse("2006-01-02", afterStr)
+		if err != nil {
+			return fmt.Errorf("invalid after date format, use YYYY-MM-DD: %w", err)
+		}
+		filter.ModifiedAfter = &after
+		*hasFilters = true
+	}
+
+	if beforeStr, _ := cmd.Flags().GetString("before"); beforeStr != "" {
+		before, err := time.Parse("2006-01-02", beforeStr)
+		if err != nil {
+			return fmt.Errorf("invalid before date format, use YYYY-MM-DD: %w", err)
+		}
+		filter.ModifiedBefore = &before
+		*hasFilters = true
+	}
+
+	return nil
+}
+
+func parseMetadataFilters(cmd *cobra.Command, filter *indexing.SearchFilter, hasFilters *bool) {
+	if contentType, _ := cmd.Flags().GetString("content-type"); contentType != "" {
+		filter.ContentType = contentType
+		*hasFilters = true
+	}
+
+	if tags, _ := cmd.Flags().GetStringToString("tags"); len(tags) > 0 {
+		filter.Tags = tags
+		*hasFilters = true
+	}
+
+	if storageClass, _ := cmd.Flags().GetString("storage-class"); storageClass != "" {
+		filter.StorageClass = storageClass
+		*hasFilters = true
+	}
+
+	if suitcasePattern, _ := cmd.Flags().GetString("suitcase-pattern"); suitcasePattern != "" {
+		filter.SuitcasePattern = suitcasePattern
+		*hasFilters = true
+	}
+
+	if maxResults, _ := cmd.Flags().GetInt("max-results"); maxResults > 0 {
+		filter.MaxResults = maxResults
+		*hasFilters = true
+	}
+}
+
+func parseCompressionFilters(cmd *cobra.Command, filter *indexing.SearchFilter, hasFilters *bool) {
+	if hasArchiveTOC, _ := cmd.Flags().GetBool("has-archive-toc"); hasArchiveTOC {
+		filter.HasArchiveTOC = true
+		*hasFilters = true
+	}
+
+	if compressionType, _ := cmd.Flags().GetString("compression-type"); compressionType != "" {
+		filter.CompressionType = compressionType
+		*hasFilters = true
+	}
+
+	if minCompressionRatio, _ := cmd.Flags().GetFloat64("min-compression-ratio"); minCompressionRatio > 0 {
+		filter.MinCompressionRatio = minCompressionRatio
+		*hasFilters = true
+	}
 }
 
 // ensureIndexExists makes sure an index exists for the given location

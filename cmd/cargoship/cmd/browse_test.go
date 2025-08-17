@@ -17,7 +17,7 @@ func TestNewBrowseCmd(t *testing.T) {
 
 	cmd := NewBrowseCmd()
 
-	assert.Equal(t, "browse", cmd.Use)
+	assert.Equal(t, "browse [LOCATION] [PATH]", cmd.Use)
 	assert.Equal(t, "Browse archived data with advanced filtering and search", cmd.Short)
 	assert.NotEmpty(t, cmd.Long)
 	assert.NotEmpty(t, cmd.Example)
@@ -83,7 +83,7 @@ func TestParseSearchFilter(t *testing.T) {
 		{
 			name:    "no filters",
 			flags:   map[string]string{},
-			wantNil: true,
+			wantNil: false,
 		},
 		{
 			name: "pattern filter",

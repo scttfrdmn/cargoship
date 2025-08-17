@@ -1,0 +1,50 @@
+{
+  "timestamp": "2025-08-17T11:48:04-07:00",
+  "project": "cargoship",
+  "version": "v0.4.1-37-gd47cb7a",
+  "commit": "d47cb7a67a7212981962a3710e79ea804c284ae5",
+  "metrics": {
+    "gofmt": {
+      "score": 20,
+      "max_score": 20,
+      "percentage": 100.00,
+      "details": "       0 unformatted files"
+    },
+    "go_vet": {
+      "score": 20,
+      "max_score": 20,
+      "percentage": 100.00,
+      "details": "0 issues found"
+    },
+    "linting": {
+      "score": 25,
+      "max_score": 25,
+      "percentage": 100.00,
+      "details": "0 issues found"
+    },
+    "test_coverage": {
+      "score": 0,
+      "max_score": 20,
+      "percentage": 0,
+      "details": "0% coverage"
+    },
+    "license": {
+      "score": 5,
+      "max_score": 5,
+      "percentage": 100.00,
+      "details": "present"
+    },
+    "go_modules": {
+      "score": 10,
+      "max_score": 10,
+      "percentage": 100.00,
+      "details": "valid"
+    },
+    "summary": {
+      "total_score": 80,
+      "max_score": 100,
+      "percentage": 80.0,
+      "grade": "A"
+    }
+  }
+}

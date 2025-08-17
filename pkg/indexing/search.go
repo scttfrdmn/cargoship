@@ -337,43 +337,57 @@ func (se *SearchEngine) searchInIndex(index *ArchiveIndex, filter SearchFilter) 
 
 // fileMatchesFilter checks if a file matches the given search filter
 func (se *SearchEngine) fileMatchesFilter(file *EnhancedFile, filter SearchFilter) bool {
-	// Name pattern matching
-	if filter.NamePattern != "" {
-		if matched, err := filepath.Match(filter.NamePattern, file.Name); err != nil || !matched {
-			if !filter.CaseSensitive {
-				if matched, err := filepath.Match(strings.ToLower(filter.NamePattern), strings.ToLower(file.Name)); err != nil || !matched {
-					return false
-				}
-			} else {
-				return false
-			}
+	return se.matchesNamePattern(file, filter) &&
+		se.matchesExtensionFilter(file, filter) &&
+		se.matchesSizeFilter(file, filter) &&
+		se.matchesDateFilter(file, filter) &&
+		se.matchesMetadataFilter(file, filter) &&
+		se.matchesCompressionFilter(file, filter)
+}
+
+func (se *SearchEngine) matchesNamePattern(file *EnhancedFile, filter SearchFilter) bool {
+	if filter.NamePattern == "" {
+		return true
+	}
+
+	if matched, err := filepath.Match(filter.NamePattern, file.Name); err == nil && matched {
+		return true
+	}
+
+	if !filter.CaseSensitive {
+		matched, err := filepath.Match(strings.ToLower(filter.NamePattern), strings.ToLower(file.Name))
+		return err == nil && matched
+	}
+
+	return false
+}
+
+func (se *SearchEngine) matchesExtensionFilter(file *EnhancedFile, filter SearchFilter) bool {
+	if len(filter.Extensions) == 0 {
+		return true
+	}
+
+	ext := strings.ToLower(filepath.Ext(file.Name))
+	for _, filterExt := range filter.Extensions {
+		if strings.ToLower(filterExt) == ext {
+			return true
 		}
 	}
 
-	// Extension filtering
-	if len(filter.Extensions) > 0 {
-		ext := strings.ToLower(filepath.Ext(file.Name))
-		found := false
-		for _, filterExt := range filter.Extensions {
-			if strings.ToLower(filterExt) == ext {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
+	return false
+}
 
-	// Size filtering
+func (se *SearchEngine) matchesSizeFilter(file *EnhancedFile, filter SearchFilter) bool {
 	if filter.MinSize > 0 && file.Size < filter.MinSize {
 		return false
 	}
 	if filter.MaxSize > 0 && file.Size > filter.MaxSize {
 		return false
 	}
+	return true
+}
 
-	// Date filtering
+func (se *SearchEngine) matchesDateFilter(file *EnhancedFile, filter SearchFilter) bool {
 	if filter.ModifiedAfter != nil && file.ModifiedAt.Before(*filter.ModifiedAfter) {
 		return false
 	}
@@ -386,7 +400,10 @@ func (se *SearchEngine) fileMatchesFilter(file *EnhancedFile, filter SearchFilte
 	if filter.ArchivedBefore != nil && (file.ArchivedAt == nil || file.ArchivedAt.After(*filter.ArchivedBefore)) {
 		return false
 	}
+	return true
+}
 
+func (se *SearchEngine) matchesMetadataFilter(file *EnhancedFile, filter SearchFilter) bool {
 	// Content type filtering
 	if filter.ContentType != "" {
 		if matched, err := filepath.Match(filter.ContentType, file.ContentType); err != nil || !matched {
@@ -427,14 +444,16 @@ func (se *SearchEngine) fileMatchesFilter(file *EnhancedFile, filter SearchFilte
 		return false
 	}
 
-	// Compression filtering
+	return true
+}
+
+func (se *SearchEngine) matchesCompressionFilter(file *EnhancedFile, filter SearchFilter) bool {
 	if filter.CompressionType != "" && file.CompressionInfo.Algorithm != filter.CompressionType {
 		return false
 	}
 	if filter.MinCompressionRatio > 0 && file.CompressionInfo.CompressionRatio < filter.MinCompressionRatio {
 		return false
 	}
-
 	return true
 }
 

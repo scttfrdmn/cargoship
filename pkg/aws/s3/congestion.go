@@ -16,9 +16,19 @@ import (
 
 // Start begins the global congestion controller operation.
 func (gcc *GlobalCongestionController) Start(ctx context.Context) {
+	gcc.mu.Lock()
+	gcc.ctx = ctx
+	coordinator := gcc.coordinator // Get coordinator if it exists
+	gcc.mu.Unlock()
+	
 	go gcc.congestionControlLoop(ctx)
 	go gcc.bandwidthProbingLoop(ctx)
 	go gcc.adaptiveRecoveryLoop(ctx)
+	
+	// Start cross-prefix coordination if coordinator is available
+	if coordinator != nil {
+		go gcc.runCrossPrefixCoordination(ctx, coordinator)
+	}
 }
 
 // RegisterPrefix registers a new S3 prefix with the congestion controller.
@@ -804,8 +814,7 @@ func NewCrossPrefixCongestionCoordinator(gcc *GlobalCongestionController, commun
 // SetCommunicator integrates the congestion controller with cross-prefix communication.
 func (gcc *GlobalCongestionController) SetCommunicator(communicator *CrossPrefixCommunicator) {
 	gcc.mu.Lock()
-	defer gcc.mu.Unlock()
-
+	
 	// Set the communicator
 	gcc.communicator = communicator
 
@@ -828,9 +837,10 @@ func (gcc *GlobalCongestionController) SetCommunicator(communicator *CrossPrefix
 	gcc.deliveryRateEstimator = NewDeliveryRateEstimator()
 	gcc.congestionEventHistory = make([]CongestionEvent, 0)
 
-	// Start cross-prefix coordination
-	coordinator := NewCrossPrefixCongestionCoordinator(gcc, communicator)
-	go gcc.runCrossPrefixCoordination(coordinator)
+	// Store the coordinator for later use when Start() is called
+	gcc.coordinator = NewCrossPrefixCongestionCoordinator(gcc, communicator)
+	
+	gcc.mu.Unlock()
 }
 
 // Enhanced congestion control with cross-prefix coordination
@@ -1023,12 +1033,14 @@ func (gcc *GlobalCongestionController) updatePacingAndCongestionWindow(allocatio
 // Cross-prefix coordination algorithms
 
 // runCrossPrefixCoordination runs the cross-prefix coordination loop.
-func (gcc *GlobalCongestionController) runCrossPrefixCoordination(coordinator *CrossPrefixCongestionCoordinator) {
+func (gcc *GlobalCongestionController) runCrossPrefixCoordination(ctx context.Context, coordinator *CrossPrefixCongestionCoordinator) {
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-ticker.C:
 			gcc.performCrossPrefixOptimization(coordinator)
 		case msg := <-coordinator.coordMessages:

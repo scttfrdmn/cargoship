@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/scttfrdmn/cargoship/pkg/testutils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -14,6 +15,11 @@ func TestGlobalCongestionControllerStart(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping congestion controller test in short mode")
 	}
+
+	detector := testutils.NewLeakDetector(t).
+		WithIgnored("congestion", "coordination", "optimization").
+		Start()
+	defer detector.Check()
 
 	config := DefaultCoordinationConfig()
 	gcc := NewGlobalCongestionController(config)

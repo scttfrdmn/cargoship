@@ -490,46 +490,40 @@ func TestMustGetCmd(t *testing.T) {
 	cmd.Flags().Duration("test-duration", time.Second*5, "test duration flag")
 
 	// Test int flag
-	intVal := mustGetCmd[int](cmd, "test-int")
+	intVal, err := getCmd[int](cmd, "test-int")
+	require.NoError(t, err)
 	require.Equal(t, 42, intVal)
 
 	// Test string flag
-	stringVal := mustGetCmd[string](cmd, "test-string")
+	stringVal, err := getCmd[string](cmd, "test-string")
+	require.NoError(t, err)
 	require.Equal(t, "hello", stringVal)
 
 	// Test bool flag
-	boolVal := mustGetCmd[bool](cmd, "test-bool")
+	boolVal, err := getCmd[bool](cmd, "test-bool")
+	require.NoError(t, err)
 	require.True(t, boolVal)
 
 	// Test int slice flag
-	intSliceVal := mustGetCmd[[]int](cmd, "test-int-slice")
+	intSliceVal, err := getCmd[[]int](cmd, "test-int-slice")
+	require.NoError(t, err)
 	require.Equal(t, []int{1, 2, 3}, intSliceVal)
 
 	// Test duration flag
-	durationVal := mustGetCmd[time.Duration](cmd, "test-duration")
+	durationVal, err := getCmd[time.Duration](cmd, "test-duration")
+	require.NoError(t, err)
 	require.Equal(t, time.Second*5, durationVal)
 }
 
-func TestMustGetCmdPanic(t *testing.T) {
+func TestGetCmdError(t *testing.T) {
 	cmd := &cobra.Command{}
 
-	// Test panic with non-existent flag
-	require.Panics(t, func() {
-		mustGetCmd[int](cmd, "non-existent-flag")
-	})
+	// Test error with non-existent flag
+	_, err := getCmd[int](cmd, "non-existent-flag")
+	require.Error(t, err)
 }
 
-func TestPanicIfErr(t *testing.T) {
-	// Test with nil error (should not panic)
-	require.NotPanics(t, func() {
-		panicIfErr(nil)
-	})
-
-	// Test with actual error (should panic)
-	require.Panics(t, func() {
-		panicIfErr(errors.New("test error"))
-	})
-}
+// TestPanicIfErr removed - function no longer exists as we use proper error handling
 
 func TestInProcessName(t *testing.T) {
 	tests := []struct {

@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"math"
 	"os"
-	"os/user"
 	"path"
 	"path/filepath"
 	"reflect"
@@ -33,7 +32,6 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/karrick/godirwalk"
-	"golang.org/x/tools/godoc/util"
 )
 
 // DefaultSuitcaseFormat is just the default format we're going to use for a
@@ -44,135 +42,6 @@ const DefaultSuitcaseFormat string = "tar.zst"
 var errHalt = errors.New("halt")
 
 // HashAlgorithm is the hashing algorithm used for calculating file signatures
-type HashAlgorithm int
-
-const (
-	// NullHash represents no hashing
-	NullHash HashAlgorithm = iota
-	// MD5Hash uses and md5 checksum
-	MD5Hash
-	// SHA1Hash is the sha-1 version of a signature
-	SHA1Hash
-	// SHA256Hash is the more secure sha-256 version of a signature
-	SHA256Hash
-	// SHA512Hash is most secure, but super slow, probably not useful here
-	SHA512Hash
-)
-
-var hashMap = map[string]HashAlgorithm{
-	"md5":    MD5Hash,
-	"sha1":   SHA1Hash,
-	"sha256": SHA256Hash,
-	"sha512": SHA512Hash,
-	"":       NullHash,
-}
-
-var hashHelp = map[string]string{
-	"md5":    "Fast but older hashing method, but usually fine for signatures",
-	"sha1":   "Less intensive on CPUs than sha256, and more secure than md5",
-	"sha256": "CPU intensive but very secure signature hashing",
-	"sha512": "CPU intensive but very VERY secure signature hashing",
-}
-
-// HashCompletion returns shell completion
-func HashCompletion(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	help := []string{}
-	for _, format := range nonEmptyKeys(hashMap) {
-		if strings.Contains(format, toComplete) {
-			help = append(help, fmt.Sprintf("%v\t%v", format, hashHelp[format]))
-		}
-	}
-	return help, cobra.ShellCompDirectiveNoFileComp
-}
-
-// String satisfies the pflags interface
-func (h HashAlgorithm) String() string {
-	m := reverseMap(hashMap)
-	if v, ok := m[h]; ok {
-		return v
-	}
-	panic("invalid hash algorithm")
-}
-
-// Type satisfies part of the pflags.Value interface
-func (h HashAlgorithm) Type() string {
-	return "HashAlgorithm"
-}
-
-// Set helps fulfill the pflag.Value interface
-func (h *HashAlgorithm) Set(v string) error {
-	if v, ok := hashMap[v]; ok {
-		*h = v
-		return nil
-	}
-	return fmt.Errorf("HashAlgorithm should be one of: %v", nonEmptyKeys(hashMap))
-}
-
-// MarshalJSON ensures that json conversions use the string value here, not the int value
-func (h *HashAlgorithm) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%v\"", h.String())), nil
-}
-
-// Format is the format the inventory will use, such as yaml, json, etc
-type Format int
-
-const (
-	// NullFormat is the unset value for this type
-	NullFormat = iota
-	// YAMLFormat is for yaml
-	YAMLFormat
-	// JSONFormat is for yaml
-	JSONFormat
-)
-
-var formatMap = map[string]Format{
-	"yaml": YAMLFormat,
-	"json": JSONFormat,
-	"":     NullFormat,
-}
-
-var formatHelp = map[string]string{
-	"yaml": "YAML is the preferred format. It allows for easy human readable inventories that can also be easily parsed by machines",
-	"json": "JSON inventory is not very readable, but could allow for faster machine parsing under certain conditions",
-}
-
-// FormatCompletion returns shell completion
-func FormatCompletion(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	help := []string{}
-	for _, format := range nonEmptyKeys(formatMap) {
-		if strings.Contains(format, toComplete) {
-			help = append(help, fmt.Sprintf("%v\t%v", format, formatHelp[format]))
-		}
-	}
-	return help, cobra.ShellCompDirectiveNoFileComp
-}
-
-func (f Format) String() string {
-	m := reverseMap(formatMap)
-	if v, ok := m[f]; ok {
-		return v
-	}
-	panic("invalid format")
-}
-
-// Type satisfies part of the pflags.Value interface
-func (f Format) Type() string {
-	return "Format"
-}
-
-// Set helps fulfill the pflag.Value interface
-func (f *Format) Set(v string) error {
-	if v, ok := formatMap[v]; ok {
-		*f = v
-		return nil
-	}
-	return fmt.Errorf("ProductionLevel should be one of: %v", nonEmptyKeys(formatMap))
-}
-
-// MarshalJSON ensures that json conversions use the string value here, not the int value
-func (f *Format) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%v\"", f.String())), nil
-}
 
 // Inventoryer is an interface to define what an Inventory Operator does
 type Inventoryer interface {
@@ -303,147 +172,6 @@ type IndexSummary struct {
 }
 
 // Options are the options used to create a DirectoryInventory
-type Options struct {
-	User                  string                   `yaml:"user" json:"user"`
-	Prefix                string                   `yaml:"prefix" json:"prefix"`
-	Directories           []string                 `yaml:"top_level_directories" json:"top_level_directories"`
-	SizeConsideredLarge   int64                    `yaml:"size_considered_large" json:"size_considered_large"`
-	MaxSuitcaseSize       int64                    `yaml:"max_suitcase_size" json:"max_suitcase_size"`
-	InternalMetadataGlob  string                   `yaml:"internal_metadata_glob,omitempty" json:"internal_metadata_glob,omitempty"`
-	IgnoreGlobs           []string                 `yaml:"ignore_globs,omitempty" json:"ignore_globs,omitempty"`
-	ExternalMetadataFiles []string                 `yaml:"external_metadata_files,omitempty" json:"external_metadata_files,omitempty"`
-	EncryptInner          bool                     `yaml:"encrypt_inner" json:"encrypt_inner"`
-	HashInner             bool                     `yaml:"hash_inner" json:"hash_inner"`
-	LimitFileCount        int                      `yaml:"limit_file_count" json:"limit_file_count"`
-	SuitcaseFormat        string                   `yaml:"suitcase_format" json:"suitcase_format"`
-	InventoryFormat       string                   `yaml:"inventory_format" json:"inventory_format"`
-	FollowSymlinks        bool                     `yaml:"follow_symlinks" json:"follow_symlinks"`
-	HashAlgorithm         HashAlgorithm            `yaml:"hash_algorithm" json:"hash_algorithm"`
-	IncludeArchiveTOC     bool                     `yaml:"include_archive_toc" json:"include_archive_toc"`
-	IncludeArchiveTOCDeep bool                     `yaml:"include_archive_toc_deep" json:"include_archive_toc_deep"`
-	TransportPlugin       transporters.Transporter `yaml:"transport_plugin" json:"transport_plugin"`
-}
-
-// AbsoluteDirectories converts the Directories entries to absolute paths
-func (o *Options) AbsoluteDirectories() error {
-	ad, err := convertDirsToAboluteDirs(o.Directories)
-	if err != nil {
-		return err
-	}
-	o.Directories = ad
-	return nil
-}
-
-// WithArchiveTOC enables table of contents in the archive file inventory. This only checks files with a known archive extension.
-func WithArchiveTOC() func(*Options) {
-	return func(o *Options) {
-		o.IncludeArchiveTOC = true
-	}
-}
-
-// WithArchiveTOCDeep enables table of contents in the archive file inventory. This checks every file, regardless of extension.
-func WithArchiveTOCDeep() func(*Options) {
-	return func(o *Options) {
-		o.IncludeArchiveTOCDeep = true
-	}
-}
-
-// WithIgnoreGlobs sets the IgnoreGlobs strings
-func WithIgnoreGlobs(g []string) func(*Options) {
-	return func(o *Options) {
-		o.IgnoreGlobs = g
-	}
-}
-
-// WithFollowSymlinks sets the FollowSymlinks option to true
-func WithFollowSymlinks() func(*Options) {
-	return func(o *Options) {
-		o.FollowSymlinks = true
-	}
-}
-
-// WithDirectories sets the top level directories to be suitcased up
-func WithDirectories(d []string) func(*Options) {
-	return func(o *Options) {
-		o.Directories = d
-	}
-}
-
-// WithInventoryFormat sets the format for the suitcases that will be generated
-func WithInventoryFormat(f string) func(*Options) {
-	return func(o *Options) {
-		o.InventoryFormat = f
-	}
-}
-
-// WithSuitcaseFormat sets the format for the suitcases that will be generated
-func WithSuitcaseFormat(f string) func(*Options) {
-	format := strings.TrimPrefix(f, ".")
-	return func(o *Options) {
-		if f != "" {
-			o.SuitcaseFormat = format
-		}
-	}
-}
-
-// WithLimitFileCount sets the number of files to process before stopping. 0 means process them all
-func WithLimitFileCount(c int) func(*Options) {
-	return func(o *Options) {
-		o.LimitFileCount = c
-	}
-}
-
-// WithMaxSuitcaseSize sets the maximum size for any of the generated suitcases
-func WithMaxSuitcaseSize(s int64) func(*Options) {
-	return func(o *Options) {
-		o.MaxSuitcaseSize = s
-	}
-}
-
-// WithUser sets the user for an inventory option
-func WithUser(u string) func(*Options) {
-	return func(o *Options) {
-		if u != "" {
-			o.User = u
-		}
-	}
-}
-
-// WithPrefix sets the prefix for an inventory
-func WithPrefix(p string) func(*Options) {
-	return func(o *Options) {
-		o.Prefix = p
-	}
-}
-
-// WithHashAlgorithms sets the hashing algorithms to use for signatures
-func WithHashAlgorithms(a HashAlgorithm) func(*Options) {
-	return func(o *Options) {
-		o.HashAlgorithm = a
-	}
-}
-
-// NewOptions uses functional options to generatea DirectoryInventoryOptions object
-func NewOptions(options ...func(*Options)) *Options {
-	currentUser, err := user.Current()
-	if err != nil {
-		panic(err)
-	}
-	dio := &Options{
-		SuitcaseFormat:  DefaultSuitcaseFormat,
-		InventoryFormat: "yaml",
-		User:            currentUser.Username,
-		HashAlgorithm:   MD5Hash,
-	}
-	for _, opt := range options {
-		opt(dio)
-	}
-	err = dio.AbsoluteDirectories()
-	if err != nil {
-		panic(err)
-	}
-	return dio
-}
 
 // File is a file item inside an inventory
 type File struct {
@@ -602,36 +330,6 @@ func NewDirectoryInventory(opts *Options) (*Inventory, error) {
 	}
 	if ierr := ret.IndexWithSize(opts.MaxSuitcaseSize); ierr != nil {
 		return nil, ierr
-	}
-	return ret, nil
-}
-
-// GetMetadataWithGlob Given a file path with a glob, return metadata. The metadata is a map of filename to data
-func GetMetadataWithGlob(fpg string) (map[string]string, error) {
-	matches, err := filepath.Glob(fpg)
-	if err != nil {
-		return nil, err
-	}
-	return GetMetadataWithFiles(matches)
-}
-
-// GetMetadataWithFiles returns the metadata for a set of files
-func GetMetadataWithFiles(files []string) (map[string]string, error) {
-	ret := map[string]string{}
-	var err error
-	for _, f := range files {
-		f, err = filepath.Abs(f)
-		if err != nil {
-			return nil, err
-		}
-		data, err := os.ReadFile(f) // nolint:gosec
-		if err != nil {
-			return nil, err
-		}
-		if !util.IsText(data) {
-			return nil, fmt.Errorf("%s is not a text file", f)
-		}
-		ret[f] = string(data)
 	}
 	return ret, nil
 }
@@ -960,10 +658,19 @@ func setMaxSuitcaseSize[T viper.Viper | cobra.Command](v T, o *Options) {
 	case *viper.Viper:
 		vi := mustGetViper(v)
 		if vi.IsSet(k) {
-			o.MaxSuitcaseSize = mustBytesFromHuman(vi.GetString(k))
+			size, err := bytesFromHuman(vi.GetString(k))
+			if err != nil {
+				panic(fmt.Errorf("invalid max-suitcase-size from viper: %w", err))
+			}
+			o.MaxSuitcaseSize = size
 		}
 	case *cobra.Command:
-		o.MaxSuitcaseSize = mustBytesFromHuman(mustGetCmd[string](mustGetCommand(v), k))
+		cmdStr := mustGetCmd[string](mustGetCommand(v), k)
+		size, err := bytesFromHuman(cmdStr)
+		if err != nil {
+			panic(fmt.Errorf("invalid max-suitcase-size from command: %w", err))
+		}
+		o.MaxSuitcaseSize = size
 	default:
 		panic(fmt.Sprintf("unexpected use of set %v", k))
 	}
@@ -987,19 +694,19 @@ func setUser[T viper.Viper | cobra.Command](v T, o *Options) {
 	}
 }
 
-func mustBytesFromHuman(h string) int64 {
+func bytesFromHuman(h string) (int64, error) {
 	b, err := humanize.ParseBytes(h)
 	if err != nil {
-		panic(err)
+		return 0, err
 	}
 	return uint64ToInt64(b)
 }
 
-func uint64ToInt64(u uint64) int64 {
+func uint64ToInt64(u uint64) (int64, error) {
 	if u > math.MaxInt64 {
-		panic("value out of range for int64")
+		return 0, errors.New("value out of range for int64")
 	}
-	return int64(u)
+	return int64(u), nil
 }
 
 // WithCobra applies options using a cobra Command and args
@@ -1082,20 +789,6 @@ func errCallback(_ string, err error) godirwalk.ErrorAction {
 		return godirwalk.Halt
 	}
 	return godirwalk.SkipNode
-}
-
-func getInternalMeta(opts *Options) (map[string]string, error) {
-	internalMeta := map[string]string{}
-	for _, dir := range opts.Directories {
-		data, err := GetMetadataWithGlob(fmt.Sprintf("%v/%v", dir, opts.InternalMetadataGlob))
-		if err != nil {
-			return nil, err
-		}
-		for k, v := range data {
-			internalMeta[k] = v
-		}
-	}
-	return internalMeta, nil
 }
 
 /*
@@ -1213,38 +906,8 @@ func haltIfLimit(opts *Options, addedCount int) error {
 }
 
 // nonEmptyKeys returns the non-empty keys of a map in an array
-func nonEmptyKeys[V any](m map[string]V) []string {
-	var ret []string
-	for k := range m {
-		if k != "" {
-			ret = append(ret, k)
-		}
-	}
-	sort.Strings(ret)
-	return ret
-}
-
-// reverseMap takes a map[k]v and returns a map[v]k
-func reverseMap[K string, V string | Format | HashAlgorithm](m map[K]V) map[V]K {
-	ret := make(map[V]K, len(m))
-	for k, v := range m {
-		ret[v] = k
-	}
-	return ret
-}
 
 // convertDirsToAboluteDirs turns directories in to absolute path directories
-func convertDirsToAboluteDirs(orig []string) ([]string, error) {
-	ret := []string{}
-	for _, item := range orig {
-		abs, err := filepath.Abs(item)
-		if err != nil {
-			return nil, err
-		}
-		ret = append(ret, fmt.Sprintf("%s/", abs))
-	}
-	return ret, nil
-}
 
 // isDirectory returns a bool if a file is a directory
 func isDirectory(path string) bool {

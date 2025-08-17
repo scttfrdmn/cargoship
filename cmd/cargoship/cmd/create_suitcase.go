@@ -58,7 +58,9 @@ $ suitcasectl create suitcase ~/example --max-suitcase-size=500MiB
 		PersistentPostRunE: createPostRunE,
 	}
 	err := bindInventoryCmd(cmd)
-	panicIfErr(err)
+	if err != nil {
+		panic(fmt.Errorf("failed to bind inventory command flags: %w", err))
+	}
 	travelagent.BindCobra(cmd)
 
 	return cmd
@@ -190,7 +192,10 @@ func appendHashes(mfiles []string, items ...string) []string {
 }
 
 func createPostRunE(cmd *cobra.Command, args []string) error {
-	ptr := mustPorterWithCmd(cmd)
+	ptr, err := porterWithCmd(cmd)
+	if err != nil {
+		return err
+	}
 	// gout.MustPrint(ptr)
 	metaF := ptr.CLIMeta.MustComplete(ptr.Destination)
 	logger.Debug("created meta file", "file", metaF)
@@ -198,7 +203,15 @@ func createPostRunE(cmd *cobra.Command, args []string) error {
 	// Hash the outer items if asked
 	var hashes []config.HashSet
 	var hashFn, hashFnBin string
-	if mustGetCmd[bool](cmd, "hash-outer") && !mustGetCmd[bool](cmd, "only-inventory") {
+	hashOuter, err := getCmd[bool](cmd, "hash-outer")
+	if err != nil {
+		return err
+	}
+	onlyInventory, err := getCmd[bool](cmd, "only-inventory")
+	if err != nil {
+		return err
+	}
+	if hashOuter && !onlyInventory {
 		var err error
 		if hashes, hashFn, hashFnBin, err = setOuterHashes(ptr, metaF); err != nil {
 			return err
@@ -364,11 +377,20 @@ func createSuitcases(ptr *porter.Porter) error {
 	}
 
 	if ptr.Cmd != nil {
-		ptr.SetConcurrency(mustGetCmd[int](ptr.Cmd, "concurrency"))
-		ptr.SetRetries(
-			mustGetCmd[int](ptr.Cmd, "retry-count"),
-			mustGetCmd[time.Duration](ptr.Cmd, "retry-interval"),
-		)
+		concurrency, err := getCmd[int](ptr.Cmd, "concurrency")
+		if err != nil {
+			return err
+		}
+		ptr.SetConcurrency(concurrency)
+		retryCount, err := getCmd[int](ptr.Cmd, "retry-count")
+		if err != nil {
+			return err
+		}
+		retryInterval, err := getCmd[time.Duration](ptr.Cmd, "retry-interval")
+		if err != nil {
+			return err
+		}
+		ptr.SetRetries(retryCount, retryInterval)
 	}
 	return ptr.Run()
 }

@@ -1,0 +1,27 @@
+{
+  "timestamp": "2025-08-17T11:47:27-07:00",
+  "project": "cargoship",
+  "version": "v0.4.1-37-gd47cb7a",
+  "commit": "d47cb7a67a7212981962a3710e79ea804c284ae5",
+  "metrics": {
+    "gofmt": {
+      "score": 18,
+      "max_score": 20,
+      "percentage": 90.00,
+      "details": "       2 unformatted files"
+    },
+    "go_vet": {
+      "score": 20,
+      "max_score": 20,
+      "percentage": 100.00,
+      "details": "0 issues found"
+    },
+    "linting": {
+      "score": 20
+0,
+      "max_score": 25,
+      "percentage": 20
+0,
+      "details": "5
+0 issues found"
+    },

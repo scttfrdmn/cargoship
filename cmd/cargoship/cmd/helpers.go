@@ -53,7 +53,10 @@ func dclose(c io.Closer) {
 // This needs some work. Why do we need it's own context entry instead of just
 // using the SuitcaseOpts, which already has it
 func getDestinationWithCobra(cmd *cobra.Command) (string, error) {
-	d := mustGetCmd[string](cmd, "destination")
+	d, err := getCmd[string](cmd, "destination")
+	if err != nil {
+		return "", err
+	}
 	if d == "" {
 		var err error
 		if d, err = os.MkdirTemp("", "suitcasectl"); err != nil {
@@ -80,37 +83,47 @@ func getDestinationWithCobra(cmd *cobra.Command) (string, error) {
 	return d, nil
 }
 
-// mustGetCmd uses generics to get a given flag with the appropriate Type from a cobra.Command
-func mustGetCmd[T []int | int | string | bool | time.Duration](cmd *cobra.Command, s string) T {
+// getCmd uses generics to get a given flag with the appropriate Type from a cobra.Command
+func getCmd[T []int | int | string | bool | time.Duration](cmd *cobra.Command, s string) (T, error) {
 	switch any(new(T)).(type) {
 	case *int:
 		item, err := cmd.Flags().GetInt(s)
-		panicIfErr(err)
-		return any(item).(T)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		return any(item).(T), nil
 	case *string:
 		item, err := cmd.Flags().GetString(s)
-		panicIfErr(err)
-		return any(item).(T)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		return any(item).(T), nil
 	case *bool:
 		item, err := cmd.Flags().GetBool(s)
-		panicIfErr(err)
-		return any(item).(T)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		return any(item).(T), nil
 	case *[]int:
 		item, err := cmd.Flags().GetIntSlice(s)
-		panicIfErr(err)
-		return any(item).(T)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		return any(item).(T), nil
 	case *time.Duration:
 		item, err := cmd.Flags().GetDuration(s)
-		panicIfErr(err)
-		return any(item).(T)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		return any(item).(T), nil
 	default:
-		panic(fmt.Sprintf("unexpected use of mustGetCmd: %v", reflect.TypeOf(s)))
-	}
-}
-
-func panicIfErr(err error) {
-	if err != nil {
-		panic(err)
+		var zero T
+		return zero, fmt.Errorf("unexpected use of getCmd: %v", reflect.TypeOf(s))
 	}
 }
 
@@ -143,14 +156,6 @@ func hasDuplicates(strArr []string) bool {
 	return false
 }
 
-func mustPorterWithCmd(cmd *cobra.Command) *porter.Porter {
-	p, err := porterWithCmd(cmd)
-	if err != nil {
-		panic(err)
-	}
-	return p
-}
-
 func porterWithCmd(cmd *cobra.Command) (*porter.Porter, error) {
 	p, ok := cmd.Context().Value(porter.PorterKey).(*porter.Porter)
 	if !ok {
@@ -165,10 +170,18 @@ func porterTravelAgentWithCmd(cmd *cobra.Command, args []string) (*porter.Porter
 	if err != nil {
 		return nil, false, err
 	}
+	retryCount, err := getCmd[int](cmd, "retry-count")
+	if err != nil {
+		return nil, false, err
+	}
+	retryInterval, err := getCmd[time.Duration](cmd, "retry-interval")
+	if err != nil {
+		return nil, false, err
+	}
 	taOpts := []travelagent.Option{
 		travelagent.WithCmd(cmd),
-		travelagent.WithUploadRetries(mustGetCmd[int](cmd, "retry-count")),
-		travelagent.WithUploadRetryTime(mustGetCmd[time.Duration](cmd, "retry-interval")),
+		travelagent.WithUploadRetries(retryCount),
+		travelagent.WithUploadRetryTime(retryInterval),
 	}
 	if Verbose {
 		taOpts = append(taOpts, travelagent.WithPrintCurl())
@@ -234,16 +247,20 @@ func validateCmdArgs(inventoryFile string, onlyInventory bool, cmd cobra.Command
 		return errors.New("duplicate path found in arguments")
 	}
 
-	if strings.Contains(mustGetCmd[string](&cmd, "prefix"), "/") {
+	prefix, err := getCmd[string](&cmd, "prefix")
+	if err != nil {
+		return err
+	}
+	if strings.Contains(prefix, "/") {
 		return errors.New("prefix cannot contain a /")
 	}
 
 	return nil
 }
 
-func uint64ToInt64(u uint64) int64 {
+func uint64ToInt64(u uint64) (int64, error) {
 	if u > math.MaxInt64 {
-		panic("value out of range for int64")
+		return 0, errors.New("value out of range for int64")
 	}
-	return int64(u)
+	return int64(u), nil
 }

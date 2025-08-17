@@ -112,11 +112,11 @@ func TestUint64ToInt64(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.panics {
-				assert.Panics(t, func() {
-					uint64ToInt64(tc.input)
-				}, "Should panic for value out of int64 range")
+				_, err := uint64ToInt64(tc.input)
+				assert.Error(t, err, "Should return error for value out of int64 range")
 			} else {
-				result := uint64ToInt64(tc.input)
+				result, err := uint64ToInt64(tc.input)
+				assert.NoError(t, err)
 				assert.Equal(t, tc.expected, result)
 			}
 		})
@@ -128,13 +128,13 @@ func TestUint64ToInt64EdgeCases(t *testing.T) {
 
 	// Just under the limit
 	justUnderMax := uint64(math.MaxInt64)
-	result := uint64ToInt64(justUnderMax)
+	result, err := uint64ToInt64(justUnderMax)
+	assert.NoError(t, err)
 	assert.Equal(t, int64(math.MaxInt64), result)
 
-	// Just over the limit should panic
-	assert.Panics(t, func() {
-		uint64ToInt64(uint64(math.MaxInt64) + 1)
-	})
+	// Just over the limit should return error
+	_, err = uint64ToInt64(uint64(math.MaxInt64) + 1)
+	assert.Error(t, err, "Should return error for value just over max int64")
 
 	// Test with actual memory limit values (common use case)
 	memoryLimits := []uint64{
@@ -145,7 +145,8 @@ func TestUint64ToInt64EdgeCases(t *testing.T) {
 	}
 
 	for _, limit := range memoryLimits {
-		result := uint64ToInt64(limit)
+		result, err := uint64ToInt64(limit)
+		assert.NoError(t, err)
 		assert.Equal(t, int64(limit), result)
 		assert.GreaterOrEqual(t, result, int64(0))
 	}
