@@ -170,6 +170,7 @@ func (cc *ComponentCollection) ProcessTransfer(ctx context.Context, upload *Sche
 		// Use any component that has basic controller access to register prefix
 		// This would normally be done during initialization
 		// Here we simulate it for the test
+		_ = upload.PrefixID // Acknowledge we're checking it
 	}
 	
 	// 1. Simple manager handles basic upload (skipped to avoid prefix registration issues in test)

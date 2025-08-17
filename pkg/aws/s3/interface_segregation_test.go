@@ -125,7 +125,7 @@ func TestComponentFactoryInterfaceSegregation(t *testing.T) {
 		assert.NotNil(t, basicController)
 		
 		// Verify it implements the basic interface
-		var _ BasicCongestionController = basicController
+		_ = BasicCongestionController(basicController)
 		
 		// Test basic functionality
 		basicController.RegisterPrefix("basic-test", 50.0)
@@ -138,7 +138,7 @@ func TestComponentFactoryInterfaceSegregation(t *testing.T) {
 		assert.NotNil(t, advancedController)
 		
 		// Verify it implements the advanced interface
-		var _ AdvancedCongestionController = advancedController
+		_ = AdvancedCongestionController(advancedController)
 		
 		// Test advanced functionality
 		advancedController.RegisterPrefix("advanced-test", 100.0)
@@ -151,7 +151,7 @@ func TestComponentFactoryInterfaceSegregation(t *testing.T) {
 		assert.NotNil(t, metricsController)
 		
 		// Verify it implements the metrics interface
-		var _ CongestionMetricsProvider = metricsController
+		_ = CongestionMetricsProvider(metricsController)
 		
 		// Test metrics functionality
 		metrics := metricsController.GetMetrics()

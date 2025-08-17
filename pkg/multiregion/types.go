@@ -150,6 +150,24 @@ type RegionMetrics struct {
 
 	// LastUpdated timestamp when metrics were last updated
 	LastUpdated time.Time `json:"last_updated" yaml:"last_updated"`
+
+	// Health check related metrics
+	// CPUUtilization current CPU utilization percentage (0-100)
+	CPUUtilization float64 `json:"cpu_utilization" yaml:"cpu_utilization"`
+	// MemoryUtilization current memory utilization percentage (0-100)
+	MemoryUtilization float64 `json:"memory_utilization" yaml:"memory_utilization"`
+	// ActiveUploads current number of active uploads
+	ActiveUploads int64 `json:"active_uploads" yaml:"active_uploads"`
+	// LastHealthCheck timestamp of the last health check
+	LastHealthCheck time.Time `json:"last_health_check" yaml:"last_health_check"`
+	// HealthCheckSuccess indicates if the last health check was successful
+	HealthCheckSuccess bool `json:"health_check_success" yaml:"health_check_success"`
+	// HealthCheckLatency latency of the last health check in milliseconds
+	HealthCheckLatency int64 `json:"health_check_latency" yaml:"health_check_latency"`
+	// ConsecutiveHealthyChecks number of consecutive successful health checks
+	ConsecutiveHealthyChecks int64 `json:"consecutive_healthy_checks" yaml:"consecutive_healthy_checks"`
+	// ConsecutiveFailedChecks number of consecutive failed health checks
+	ConsecutiveFailedChecks int64 `json:"consecutive_failed_checks" yaml:"consecutive_failed_checks"`
 }
 
 // MultiRegionConfig contains configuration for multi-region coordination
