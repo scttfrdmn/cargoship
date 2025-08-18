@@ -394,6 +394,9 @@ type FailoverManager interface {
 
 	// GetFailoverStatus gets the current failover status
 	GetFailoverStatus(ctx context.Context) (map[string]string, error)
+
+	// IsRegionInFailover checks if a region is currently in failover
+	IsRegionInFailover(regionName string) bool
 }
 
 // Coordinator defines the interface for multi-region coordination

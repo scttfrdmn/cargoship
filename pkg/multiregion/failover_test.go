@@ -541,17 +541,19 @@ func TestDefaultFailoverManager_executeManualFailover(t *testing.T) {
 	logger := log.New(nil)
 	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
 
+	ctx := context.Background()
 	operation := &FailoverOperation{
 		ID:         "test-manual-op",
 		FromRegion: "us-east-1",
 		ToRegion:   "us-west-2",
 		StartTime:  time.Now(),
 		Status:     FailoverStatusInitiated,
+		Context:    ctx,
 	}
 
 	err := manager.executeManualFailover(operation)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "manual failover requires administrator intervention")
+	assert.Contains(t, err.Error(), "manual failover timed out")
 }
 
 // Test IsRegionInFailover edge cases to improve coverage
