@@ -915,6 +915,10 @@ func (c *DefaultCoordinator) updateRegionHealthStatus(region *Region, healthStat
 		}
 	}
 
+	// Check if we need to trigger failover (before releasing lock)
+	shouldTriggerFailover := region.Status == RegionStatusUnhealthy && previousStatus != RegionStatusUnhealthy
+	failureReasons := healthStatus.FailureReasons
+
 	// Log status changes
 	if previousStatus != region.Status {
 		c.logger.Info("Region health status changed", 
@@ -924,11 +928,6 @@ func (c *DefaultCoordinator) updateRegionHealthStatus(region *Region, healthStat
 			"success_rate", healthStatus.SuccessRate,
 			"avg_response_time", healthStatus.AvgResponseTime,
 			"failure_reasons", healthStatus.FailureReasons)
-		
-		// Trigger failover if region becomes unhealthy
-		if region.Status == RegionStatusUnhealthy && previousStatus != RegionStatusUnhealthy {
-			c.triggerRegionFailover(region, healthStatus.FailureReasons)
-		}
 	} else {
 		c.logger.Debug("Region health check completed", 
 			"region", region.Name,
@@ -936,6 +935,17 @@ func (c *DefaultCoordinator) updateRegionHealthStatus(region *Region, healthStat
 			"success_rate", healthStatus.SuccessRate,
 			"avg_response_time", healthStatus.AvgResponseTime)
 	}
+	
+	// Release lock before triggering failover to avoid deadlock
+	c.mu.Unlock()
+	
+	// Trigger failover if region becomes unhealthy (after releasing lock)
+	if shouldTriggerFailover {
+		c.triggerRegionFailover(region, failureReasons)
+	}
+	
+	// Re-acquire lock for defer unlock (this is safe as we're about to return)
+	c.mu.Lock()
 }
 
 // triggerRegionFailover initiates failover procedures when a region becomes unhealthy

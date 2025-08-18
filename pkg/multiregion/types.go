@@ -397,6 +397,12 @@ type FailoverManager interface {
 
 	// IsRegionInFailover checks if a region is currently in failover
 	IsRegionInFailover(regionName string) bool
+
+	// RecordFailure records a failure for a region
+	RecordFailure(regionName string)
+
+	// RecordSuccess records a success for a region
+	RecordSuccess(regionName string)
 }
 
 // Coordinator defines the interface for multi-region coordination
