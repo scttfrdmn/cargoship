@@ -78,6 +78,8 @@ func (d *Dashboard) updateData(msg dataUpdateMsg) {
 		d.updateCostTables()
 	case DashboardConfig:
 		d.updateConfigTables()
+	case DashboardMultiRegion:
+		d.updateMultiRegionTables()
 	}
 }
 

@@ -17,13 +17,14 @@ import (
 type DashboardType int
 
 const (
-	DashboardOverview  DashboardType = iota // Main overview dashboard
-	DashboardArchival                       // Data archival operations
-	DashboardInventory                      // Inventory management
-	DashboardCosts                          // Cost analysis and optimization
-	DashboardAgents                         // Agent management
-	DashboardConfig                         // Configuration management
-	DashboardLogs                           // Logs and monitoring
+	DashboardOverview    DashboardType = iota // Main overview dashboard
+	DashboardArchival                         // Data archival operations
+	DashboardInventory                        // Inventory management
+	DashboardCosts                            // Cost analysis and optimization
+	DashboardAgents                           // Agent management
+	DashboardConfig                           // Configuration management
+	DashboardLogs                             // Logs and monitoring
+	DashboardMultiRegion                      // Multi-region monitoring and management
 )
 
 // Dashboard represents a TUI dashboard
@@ -60,6 +61,12 @@ type Dashboard struct {
 	configTable  table.Model
 	profilesList table.Model
 
+	// UI components - Multi-region
+	regionOverviewTable table.Model
+	regionHealthTable   table.Model
+	regionMetricsTable  table.Model
+	failoverStatusTable table.Model
+
 	// Data
 	agents         []AgentInfo
 	jobs           []JobInfo
@@ -68,6 +75,13 @@ type Dashboard struct {
 	inventoryItems []InventoryItem
 	// costData        CostAnalysis // TODO: Implement cost analysis integration
 	configurations []ConfigItem
+	
+	// Multi-region data
+	regionStatus         map[string]RegionStatusInfo
+	globalMetrics        GlobalMetricsInfo
+	failoverOperations   []FailoverOperation
+	lastRegionUpdate     time.Time
+	regionUpdateInterval time.Duration
 
 	// State
 	focused        int
@@ -191,6 +205,76 @@ type ConfigItem struct {
 	Source      string
 }
 
+// RegionStatusInfo represents real-time region status information
+type RegionStatusInfo struct {
+	Name              string
+	Status            string // healthy, degraded, unhealthy, offline
+	Priority          int
+	Weight            int
+	LastChecked       time.Time
+	Health            RegionHealthInfo
+	Metrics           RegionMetricsInfo
+	FailoverTarget    string
+	InFailover        bool
+}
+
+// RegionHealthInfo represents health check information for a region  
+type RegionHealthInfo struct {
+	OverallHealthy        bool
+	SuccessRate          float64
+	ConsecutiveSuccesses int64
+	ConsecutiveFailures  int64
+	LastHealthCheck      time.Time
+	HealthCheckLatency   time.Duration
+	FailureReasons       []string
+}
+
+// RegionMetricsInfo represents operational metrics for a region
+type RegionMetricsInfo struct {
+	AverageLatency     time.Duration
+	Throughput         string
+	ErrorRate          float64
+	ActiveUploads      int64
+	SuccessfulUploads  int64
+	FailedUploads      int64
+	CPUUtilization     float64
+	MemoryUtilization  float64
+	StorageUtilization float64
+	BandwidthUsage     string
+	LastUpdated        time.Time
+}
+
+// GlobalMetricsInfo represents system-wide multi-region metrics
+type GlobalMetricsInfo struct {
+	TotalRegions         int
+	HealthyRegions       int
+	RegionAvailability   float64
+	GlobalThroughput     string
+	AverageLatency       time.Duration
+	TotalUploads         int64
+	GlobalErrorRate      float64
+	SystemHealthScore    float64
+	TotalCost            string
+	EstimatedMonthlyCost string
+	LastUpdated          time.Time
+}
+
+// FailoverOperation represents an active or recent failover operation
+type FailoverOperation struct {
+	ID            string
+	FromRegion    string
+	ToRegion      string
+	Strategy      string // immediate, graceful, manual
+	Status        string // initiated, in_progress, completed, failed
+	StartTime     time.Time
+	CompletedTime time.Time
+	Duration      time.Duration
+	Reason        string
+	TriggerType   string // automatic, manual
+	Success       bool
+	ErrorMessage  string
+}
+
 // NewDashboard creates a new TUI dashboard
 func NewDashboard(dashboardType DashboardType, logger *slog.Logger) *Dashboard {
 	contextManager := contextpkg.NewManager(logger)
@@ -198,7 +282,7 @@ func NewDashboard(dashboardType DashboardType, logger *slog.Logger) *Dashboard {
 	// Initialize navigation tabs
 	navigationTabs := []string{
 		"🏠 Overview", "📦 Archive", "📋 Inventory",
-		"💰 Costs", "🤖 Agents", "⚙️ Config", "📝 Logs",
+		"💰 Costs", "🤖 Agents", "⚙️ Config", "📝 Logs", "🌐 Multi-Region",
 	}
 
 	// Initialize styling
@@ -250,12 +334,19 @@ func NewDashboard(dashboardType DashboardType, logger *slog.Logger) *Dashboard {
 		budgetChart:    createBudgetTable(),
 		configTable:    createConfigTable(),
 		profilesList:   createProfilesTable(),
-		updateInterval: time.Second * 2,
-		baseStyle:      baseStyle,
-		focusedStyle:   focusedStyle,
-		titleStyle:     titleStyle,
-		tabStyle:       tabStyle,
-		activeTabStyle: activeTabStyle,
+		regionOverviewTable: createRegionOverviewTable(),
+		regionHealthTable:   createRegionHealthTable(),
+		regionMetricsTable:  createRegionMetricsTable(),
+		failoverStatusTable: createFailoverStatusTable(),
+		regionStatus:         make(map[string]RegionStatusInfo),
+		globalMetrics:        GlobalMetricsInfo{}, // Will be populated by fetchMockGlobalMetrics
+		updateInterval:       time.Second * 2,
+		regionUpdateInterval: time.Second * 5,
+		baseStyle:            baseStyle,
+		focusedStyle:         focusedStyle,
+		titleStyle:           titleStyle,
+		tabStyle:             tabStyle,
+		activeTabStyle:       activeTabStyle,
 	}
 }
 
@@ -371,6 +462,8 @@ func (d *Dashboard) View() string {
 		content = d.renderConfigDashboard()
 	case DashboardLogs:
 		content = d.renderLogsDashboard()
+	case DashboardMultiRegion:
+		content = d.renderMultiRegionDashboard()
 	default:
 		content = d.renderOverviewDashboard()
 	}

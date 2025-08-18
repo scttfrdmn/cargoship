@@ -104,7 +104,7 @@ func TestDashboardViewConsistency(t *testing.T) {
 
 	dashboardTypes := []DashboardType{
 		DashboardOverview, DashboardArchival, DashboardInventory,
-		DashboardCosts, DashboardAgents, DashboardConfig, DashboardLogs,
+		DashboardCosts, DashboardAgents, DashboardConfig, DashboardLogs, DashboardMultiRegion,
 	}
 
 	for _, dashType := range dashboardTypes {
@@ -260,7 +260,7 @@ func TestRenderErrorHandling(t *testing.T) {
 	t.Run("render different dashboard types", func(t *testing.T) {
 		dashboardTypes := []DashboardType{
 			DashboardOverview, DashboardArchival, DashboardInventory,
-			DashboardCosts, DashboardAgents, DashboardConfig, DashboardLogs,
+			DashboardCosts, DashboardAgents, DashboardConfig, DashboardLogs, DashboardMultiRegion,
 		}
 
 		for _, dashType := range dashboardTypes {
@@ -271,5 +271,19 @@ func TestRenderErrorHandling(t *testing.T) {
 				assert.NotEmpty(t, view, "Dashboard type %v should render", dashType)
 			}, "Dashboard type %v should not panic", dashType)
 		}
+	})
+
+	t.Run("renderMultiRegionDashboard", func(t *testing.T) {
+		dashboard := NewDashboard(DashboardMultiRegion, logger)
+
+		view := dashboard.renderMultiRegionDashboard()
+
+		assert.NotEmpty(t, view, "Multi-region dashboard view should not be empty")
+		assert.Contains(t, view, "Multi-Region", "Should contain Multi-Region text")
+		assert.Contains(t, view, "Global System Status", "Should contain global status section")
+		assert.Contains(t, view, "Region Overview", "Should contain region overview section")
+		assert.Contains(t, view, "Health Monitoring", "Should contain health monitoring section")
+		assert.Contains(t, view, "Performance Metrics", "Should contain performance metrics section")
+		assert.Contains(t, view, "Failover Operations", "Should contain failover operations section")
 	})
 }

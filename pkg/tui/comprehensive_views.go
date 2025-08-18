@@ -399,6 +399,134 @@ func createProfilesTable() table.Model {
 	return t
 }
 
+// renderMultiRegionDashboard renders the multi-region monitoring dashboard
+func (d *Dashboard) renderMultiRegionDashboard() string {
+	title := d.titleStyle.Render("🌐 Multi-Region Monitoring & Management")
+
+	// Global metrics overview
+	globalOverview := d.renderGlobalMetricsOverview()
+
+	// Region overview table
+	regionOverview := d.renderRegionOverviewSection()
+
+	// Health monitoring section
+	healthSection := d.renderRegionHealthSection()
+
+	// Performance metrics section
+	metricsSection := d.renderRegionMetricsSection()
+
+	// Failover status section
+	failoverSection := d.renderFailoverStatusSection()
+
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		title,
+		globalOverview,
+		regionOverview,
+		healthSection,
+		metricsSection,
+		failoverSection,
+	)
+
+	return content
+}
+
+// renderGlobalMetricsOverview renders the global multi-region metrics overview
+func (d *Dashboard) renderGlobalMetricsOverview() string {
+	sectionTitle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("86")).
+		Bold(true).
+		Render("Global System Status")
+
+	// Mock data for now - in production this would come from the multi-region coordinator
+	metrics := []string{
+		fmt.Sprintf("Total Regions: %d", d.globalMetrics.TotalRegions),
+		fmt.Sprintf("Healthy Regions: %d", d.globalMetrics.HealthyRegions), 
+		fmt.Sprintf("Availability: %.1f%%", d.globalMetrics.RegionAvailability),
+		fmt.Sprintf("Global Throughput: %s", d.globalMetrics.GlobalThroughput),
+		fmt.Sprintf("Avg Latency: %v", d.globalMetrics.AverageLatency),
+		fmt.Sprintf("Health Score: %.1f/100", d.globalMetrics.SystemHealthScore),
+	}
+
+	metricsText := strings.Join(metrics, " | ")
+	
+	return lipgloss.JoinVertical(lipgloss.Left,
+		sectionTitle,
+		d.baseStyle.Render(metricsText),
+	)
+}
+
+// renderRegionOverviewSection renders the region overview table section
+func (d *Dashboard) renderRegionOverviewSection() string {
+	sectionTitle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("86")).
+		Bold(true).
+		Render("Region Overview")
+
+	// Update table with current data
+	d.updateRegionOverviewTable()
+
+	tableView := d.regionOverviewTable.View()
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		sectionTitle,
+		d.baseStyle.Render(tableView),
+	)
+}
+
+// renderRegionHealthSection renders the region health monitoring section
+func (d *Dashboard) renderRegionHealthSection() string {
+	sectionTitle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("86")).
+		Bold(true).
+		Render("Health Monitoring")
+
+	// Update table with current data
+	d.updateRegionHealthTable()
+
+	tableView := d.regionHealthTable.View()
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		sectionTitle,
+		d.baseStyle.Render(tableView),
+	)
+}
+
+// renderRegionMetricsSection renders the region performance metrics section
+func (d *Dashboard) renderRegionMetricsSection() string {
+	sectionTitle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("86")).
+		Bold(true).
+		Render("Performance Metrics")
+
+	// Update table with current data
+	d.updateRegionMetricsTable()
+
+	tableView := d.regionMetricsTable.View()
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		sectionTitle,
+		d.baseStyle.Render(tableView),
+	)
+}
+
+// renderFailoverStatusSection renders the failover operations section
+func (d *Dashboard) renderFailoverStatusSection() string {
+	sectionTitle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("86")).
+		Bold(true).
+		Render("Failover Operations")
+
+	// Update table with current data
+	d.updateFailoverStatusTable()
+
+	tableView := d.failoverStatusTable.View()
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		sectionTitle,
+		d.baseStyle.Render(tableView),
+	)
+}
+
 // handleEnterCmd handles enter key press
 func (d *Dashboard) handleEnterCmd() tea.Cmd {
 	switch d.currentView {
@@ -417,7 +545,97 @@ func (d *Dashboard) handleEnterCmd() tea.Cmd {
 		return tea.Cmd(func() tea.Msg {
 			return dataUpdateMsg{Type: "cost_action"}
 		})
+	case DashboardMultiRegion:
+		// Handle multi-region operations
+		return tea.Cmd(func() tea.Msg {
+			return dataUpdateMsg{Type: "multiregion_action"}
+		})
 	default:
 		return nil
 	}
+}
+
+// Multi-region table creation functions
+
+// createRegionOverviewTable creates the region overview table
+func createRegionOverviewTable() table.Model {
+	columns := []table.Column{
+		{Title: "Region", Width: 15},
+		{Title: "Status", Width: 12},
+		{Title: "Priority", Width: 8},
+		{Title: "Weight", Width: 8},
+		{Title: "Health Score", Width: 12},
+		{Title: "Throughput", Width: 12},
+		{Title: "Error Rate", Width: 10},
+		{Title: "Last Check", Width: 12},
+	}
+
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithHeight(8),
+	)
+
+	return t
+}
+
+// createRegionHealthTable creates the region health monitoring table
+func createRegionHealthTable() table.Model {
+	columns := []table.Column{
+		{Title: "Region", Width: 15},
+		{Title: "Health Status", Width: 14},
+		{Title: "Success Rate", Width: 12},
+		{Title: "Consecutive OK", Width: 14},
+		{Title: "Consecutive Fail", Width: 16},
+		{Title: "Latency", Width: 10},
+		{Title: "Issues", Width: 25},
+	}
+
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithHeight(6),
+	)
+
+	return t
+}
+
+// createRegionMetricsTable creates the region metrics table
+func createRegionMetricsTable() table.Model {
+	columns := []table.Column{
+		{Title: "Region", Width: 15},
+		{Title: "Avg Latency", Width: 12},
+		{Title: "Throughput", Width: 12},
+		{Title: "Active Uploads", Width: 14},
+		{Title: "CPU %", Width: 8},
+		{Title: "Memory %", Width: 10},
+		{Title: "Storage %", Width: 10},
+		{Title: "Bandwidth", Width: 12},
+	}
+
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithHeight(6),
+	)
+
+	return t
+}
+
+// createFailoverStatusTable creates the failover operations table
+func createFailoverStatusTable() table.Model {
+	columns := []table.Column{
+		{Title: "Operation ID", Width: 16},
+		{Title: "From", Width: 12},
+		{Title: "To", Width: 12},
+		{Title: "Strategy", Width: 10},
+		{Title: "Status", Width: 12},
+		{Title: "Duration", Width: 10},
+		{Title: "Trigger", Width: 10},
+		{Title: "Reason", Width: 20},
+	}
+
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithHeight(6),
+	)
+
+	return t
 }

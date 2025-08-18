@@ -273,3 +273,280 @@ func (d *Dashboard) fetchMockConfigurations() []ConfigItem {
 		},
 	}
 }
+
+// updateMultiRegionTables updates all multi-region related tables
+func (d *Dashboard) updateMultiRegionTables() {
+	d.updateRegionOverviewTable()
+	d.updateRegionHealthTable()
+	d.updateRegionMetricsTable()
+	d.updateFailoverStatusTable()
+}
+
+// updateRegionOverviewTable updates the region overview table
+func (d *Dashboard) updateRegionOverviewTable() {
+	var rows []table.Row
+	
+	// Use mock data for now - in production this would come from the multi-region coordinator
+	mockData := d.fetchMockRegionStatus()
+	
+	for _, region := range mockData {
+		healthScore := fmt.Sprintf("%.1f%%", region.Health.SuccessRate*100)
+		errorRate := fmt.Sprintf("%.2f%%", region.Metrics.ErrorRate)
+		lastCheck := region.LastChecked.Format("15:04:05")
+		
+		rows = append(rows, table.Row{
+			region.Name,
+			region.Status,
+			fmt.Sprintf("%d", region.Priority),
+			fmt.Sprintf("%d", region.Weight),
+			healthScore,
+			region.Metrics.Throughput,
+			errorRate,
+			lastCheck,
+		})
+	}
+	
+	d.regionOverviewTable.SetRows(rows)
+}
+
+// updateRegionHealthTable updates the region health monitoring table
+func (d *Dashboard) updateRegionHealthTable() {
+	var rows []table.Row
+	
+	mockData := d.fetchMockRegionStatus()
+	
+	for _, region := range mockData {
+		healthStatus := "Healthy"
+		if !region.Health.OverallHealthy {
+			healthStatus = "Issues"
+		}
+		
+		successRate := fmt.Sprintf("%.1f%%", region.Health.SuccessRate*100)
+		latency := region.Health.HealthCheckLatency.String()
+		issues := ""
+		if len(region.Health.FailureReasons) > 0 {
+			issues = region.Health.FailureReasons[0] // Show first issue
+		}
+		
+		rows = append(rows, table.Row{
+			region.Name,
+			healthStatus,
+			successRate,
+			fmt.Sprintf("%d", region.Health.ConsecutiveSuccesses),
+			fmt.Sprintf("%d", region.Health.ConsecutiveFailures),
+			latency,
+			issues,
+		})
+	}
+	
+	d.regionHealthTable.SetRows(rows)
+}
+
+// updateRegionMetricsTable updates the region metrics table
+func (d *Dashboard) updateRegionMetricsTable() {
+	var rows []table.Row
+	
+	mockData := d.fetchMockRegionStatus()
+	
+	for _, region := range mockData {
+		avgLatency := region.Metrics.AverageLatency.String()
+		cpuUsage := fmt.Sprintf("%.1f%%", region.Metrics.CPUUtilization)
+		memUsage := fmt.Sprintf("%.1f%%", region.Metrics.MemoryUtilization)
+		storageUsage := fmt.Sprintf("%.1f%%", region.Metrics.StorageUtilization)
+		
+		rows = append(rows, table.Row{
+			region.Name,
+			avgLatency,
+			region.Metrics.Throughput,
+			fmt.Sprintf("%d", region.Metrics.ActiveUploads),
+			cpuUsage,
+			memUsage,
+			storageUsage,
+			region.Metrics.BandwidthUsage,
+		})
+	}
+	
+	d.regionMetricsTable.SetRows(rows)
+}
+
+// updateFailoverStatusTable updates the failover operations table
+func (d *Dashboard) updateFailoverStatusTable() {
+	var rows []table.Row
+	
+	mockData := d.fetchMockFailoverOperations()
+	
+	for _, failover := range mockData {
+		duration := ""
+		if !failover.CompletedTime.IsZero() {
+			duration = failover.Duration.String()
+		} else if failover.Status == "in_progress" {
+			duration = time.Since(failover.StartTime).String()
+		}
+		
+		// Truncate long operation IDs and reasons for display
+		opID := failover.ID
+		if len(opID) > 14 {
+			opID = opID[:14] + ".."
+		}
+		
+		reason := failover.Reason
+		if len(reason) > 18 {
+			reason = reason[:18] + ".."
+		}
+		
+		rows = append(rows, table.Row{
+			opID,
+			failover.FromRegion,
+			failover.ToRegion,
+			failover.Strategy,
+			failover.Status,
+			duration,
+			failover.TriggerType,
+			reason,
+		})
+	}
+	
+	d.failoverStatusTable.SetRows(rows)
+}
+
+// fetchMockRegionStatus returns mock region status data
+func (d *Dashboard) fetchMockRegionStatus() []RegionStatusInfo {
+	return []RegionStatusInfo{
+		{
+			Name:     "us-east-1",
+			Status:   "healthy",
+			Priority: 1,
+			Weight:   80,
+			LastChecked: time.Now().Add(-30 * time.Second),
+			Health: RegionHealthInfo{
+				OverallHealthy:       true,
+				SuccessRate:          0.98,
+				ConsecutiveSuccesses: 45,
+				ConsecutiveFailures:  0,
+				LastHealthCheck:      time.Now().Add(-30 * time.Second),
+				HealthCheckLatency:   25 * time.Millisecond,
+				FailureReasons:       []string{},
+			},
+			Metrics: RegionMetricsInfo{
+				AverageLatency:     80 * time.Millisecond,
+				Throughput:         "125.3 MB/s",
+				ErrorRate:          2.1,
+				ActiveUploads:      23,
+				SuccessfulUploads:  1847,
+				FailedUploads:      39,
+				CPUUtilization:     34.5,
+				MemoryUtilization:  67.2,
+				StorageUtilization: 45.8,
+				BandwidthUsage:     "89.2 MB/s",
+				LastUpdated:        time.Now().Add(-15 * time.Second),
+			},
+		},
+		{
+			Name:     "us-west-2",
+			Status:   "healthy",
+			Priority: 2,
+			Weight:   70,
+			LastChecked: time.Now().Add(-45 * time.Second),
+			Health: RegionHealthInfo{
+				OverallHealthy:       true,
+				SuccessRate:          0.96,
+				ConsecutiveSuccesses: 38,
+				ConsecutiveFailures:  0,
+				LastHealthCheck:      time.Now().Add(-45 * time.Second),
+				HealthCheckLatency:   32 * time.Millisecond,
+				FailureReasons:       []string{},
+			},
+			Metrics: RegionMetricsInfo{
+				AverageLatency:     95 * time.Millisecond,
+				Throughput:         "98.7 MB/s",
+				ErrorRate:          3.4,
+				ActiveUploads:      18,
+				SuccessfulUploads:  1523,
+				FailedUploads:      54,
+				CPUUtilization:     28.1,
+				MemoryUtilization:  59.8,
+				StorageUtilization: 52.3,
+				BandwidthUsage:     "73.4 MB/s",
+				LastUpdated:        time.Now().Add(-20 * time.Second),
+			},
+		},
+		{
+			Name:     "eu-west-1",
+			Status:   "degraded",
+			Priority: 3,
+			Weight:   50,
+			LastChecked: time.Now().Add(-60 * time.Second),
+			Health: RegionHealthInfo{
+				OverallHealthy:       false,
+				SuccessRate:          0.85,
+				ConsecutiveSuccesses: 5,
+				ConsecutiveFailures:  3,
+				LastHealthCheck:      time.Now().Add(-60 * time.Second),
+				HealthCheckLatency:   150 * time.Millisecond,
+				FailureReasons:       []string{"high_latency", "intermittent_connectivity"},
+			},
+			Metrics: RegionMetricsInfo{
+				AverageLatency:     180 * time.Millisecond,
+				Throughput:         "45.2 MB/s",
+				ErrorRate:          8.7,
+				ActiveUploads:      8,
+				SuccessfulUploads:  892,
+				FailedUploads:      87,
+				CPUUtilization:     52.3,
+				MemoryUtilization:  78.9,
+				StorageUtilization: 61.4,
+				BandwidthUsage:     "31.8 MB/s",
+				LastUpdated:        time.Now().Add(-35 * time.Second),
+			},
+		},
+	}
+}
+
+// fetchMockFailoverOperations returns mock failover operations data
+func (d *Dashboard) fetchMockFailoverOperations() []FailoverOperation {
+	return []FailoverOperation{
+		{
+			ID:            "failover-20240101-001",
+			FromRegion:    "eu-west-1",
+			ToRegion:      "us-east-1",
+			Strategy:      "graceful",
+			Status:        "completed",
+			StartTime:     time.Now().Add(-5 * time.Minute),
+			CompletedTime: time.Now().Add(-3 * time.Minute),
+			Duration:      2 * time.Minute,
+			Reason:        "High error rate detected",
+			TriggerType:   "automatic",
+			Success:       true,
+		},
+		{
+			ID:            "failover-20240101-002",
+			FromRegion:    "us-west-2",
+			ToRegion:      "us-east-1", 
+			Strategy:      "immediate",
+			Status:        "in_progress",
+			StartTime:     time.Now().Add(-30 * time.Second),
+			Duration:      30 * time.Second,
+			Reason:        "Connection timeout",
+			TriggerType:   "automatic",
+			Success:       false,
+		},
+	}
+}
+
+// fetchMockGlobalMetrics returns mock global multi-region metrics
+func (d *Dashboard) fetchMockGlobalMetrics() GlobalMetricsInfo {
+	now := time.Now()
+	return GlobalMetricsInfo{
+		TotalRegions:         3,
+		HealthyRegions:       2,
+		RegionAvailability:   66.7, // 2 out of 3 regions healthy
+		GlobalThroughput:     "269.2 MB/s", // Combined throughput
+		AverageLatency:       118 * time.Millisecond,
+		TotalUploads:         4262,
+		GlobalErrorRate:      4.7,
+		SystemHealthScore:    85.3,
+		TotalCost:            "$1,247.50/month",
+		EstimatedMonthlyCost: "$1,500.00",
+		LastUpdated:          now,
+	}
+}
