@@ -4,7 +4,9 @@ package multiregion
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,6 +41,24 @@ type DefaultLoadBalancer struct {
 
 	// randomMutex protects random generator
 	randomMutex sync.Mutex
+
+	// latencyTracker tracks latency metrics for each region
+	latencyTracker map[string]*LatencyTracker
+
+	// latencyMutex protects latency tracker
+	latencyMutex sync.RWMutex
+
+	// geographicMap maps client locations to nearest regions
+	geographicMap map[string]string
+
+	// geoMutex protects geographic map
+	geoMutex sync.RWMutex
+
+	// performanceHistory tracks performance metrics for adaptive routing
+	performanceHistory map[string]*PerformanceHistory
+
+	// performanceMutex protects performance history
+	performanceMutex sync.RWMutex
 }
 
 // SessionAffinity represents session affinity information
@@ -56,14 +76,83 @@ type SessionAffinity struct {
 	RequestCount int64
 }
 
+// LatencyTracker tracks latency metrics for a region
+type LatencyTracker struct {
+	// CurrentLatency current measured latency
+	CurrentLatency time.Duration
+
+	// AverageLatency rolling average latency
+	AverageLatency time.Duration
+
+	// MinLatency minimum observed latency
+	MinLatency time.Duration
+
+	// MaxLatency maximum observed latency
+	MaxLatency time.Duration
+
+	// SampleCount number of latency samples collected
+	SampleCount int64
+
+	// LastUpdated when latency was last updated
+	LastUpdated time.Time
+}
+
+// PerformanceHistory tracks comprehensive performance metrics for adaptive routing
+type PerformanceHistory struct {
+	// SuccessRate recent success rate (0.0 - 1.0)
+	SuccessRate float64
+
+	// AverageResponseTime average response time for requests
+	AverageResponseTime time.Duration
+
+	// ThroughputMBps throughput in megabytes per second
+	ThroughputMBps float64
+
+	// ErrorRate recent error rate (0.0 - 1.0)
+	ErrorRate float64
+
+	// ResourceUtilization combined CPU/memory utilization (0.0 - 1.0)
+	ResourceUtilization float64
+
+	// Score calculated performance score (0.0 - 100.0)
+	Score float64
+
+	// LastUpdated when performance metrics were last updated
+	LastUpdated time.Time
+
+	// SampleWindow time window for performance samples
+	SampleWindow time.Duration
+}
+
 // NewLoadBalancer creates a new load balancer
 func NewLoadBalancer(config *MultiRegionConfig, logger *log.Logger) LoadBalancer {
-	return &DefaultLoadBalancer{
+	lb := &DefaultLoadBalancer{
 		config:             config,
 		logger:             logger,
 		sessionAffinityMap: make(map[string]SessionAffinity),
 		random:             rand.New(rand.NewSource(time.Now().UnixNano())),
+		latencyTracker:     make(map[string]*LatencyTracker),
+		geographicMap:      make(map[string]string),
+		performanceHistory: make(map[string]*PerformanceHistory),
 	}
+
+	// Initialize latency trackers and performance history for each region
+	for i := range config.Regions {
+		region := &config.Regions[i]
+		lb.latencyTracker[region.Name] = &LatencyTracker{
+			MinLatency:  time.Duration(999999999), // Large initial value
+			SampleCount: 0,
+		}
+		lb.performanceHistory[region.Name] = &PerformanceHistory{
+			SampleWindow: 5 * time.Minute,
+			Score:        50.0, // Start with neutral score
+		}
+	}
+
+	// Initialize geographic mapping with common locations
+	lb.initializeGeographicMapping()
+
+	return lb
 }
 
 // Route routes an upload request to the most appropriate region
@@ -164,6 +253,14 @@ func (lb *DefaultLoadBalancer) routeByStrategy(ctx context.Context, request *Upl
 		return lb.routeByLatency(regions), nil
 	case LoadBalancingGeographic:
 		return lb.routeByGeography(request, regions), nil
+	case LoadBalancingAdaptive:
+		return lb.routeAdaptive(ctx, request, regions), nil
+	case LoadBalancingLeastConnections:
+		return lb.routeLeastConnections(regions), nil
+	case LoadBalancingResourceAware:
+		return lb.routeResourceAware(regions), nil
+	case LoadBalancingThroughputOptimized:
+		return lb.routeThroughputOptimized(regions), nil
 	default:
 		return lb.routeByPriority(regions), nil
 	}
@@ -225,9 +322,50 @@ func (lb *DefaultLoadBalancer) routeByLatency(regions []*Region) *Region {
 		return nil
 	}
 
-	// TODO: Implement latency-based routing using actual latency metrics
-	// For now, fall back to priority-based routing
-	return lb.routeByPriority(regions)
+	lb.latencyMutex.RLock()
+	defer lb.latencyMutex.RUnlock()
+
+	// Find region with lowest average latency
+	var bestRegion *Region
+	bestLatency := time.Duration(999999999) // Large initial value
+
+	for _, region := range regions {
+		tracker, exists := lb.latencyTracker[region.Name]
+		if !exists {
+			// No latency data, use health check latency as fallback
+			if region.Metrics.HealthCheckLatency > 0 {
+				healthCheckLatency := time.Duration(region.Metrics.HealthCheckLatency) * time.Millisecond
+				if healthCheckLatency < bestLatency {
+					bestLatency = healthCheckLatency
+					bestRegion = region
+				}
+			}
+			continue
+		}
+
+		// Use average latency if available, otherwise use current latency
+		latency := tracker.AverageLatency
+		if latency == 0 {
+			latency = tracker.CurrentLatency
+		}
+
+		// Skip regions with no latency data
+		if latency == 0 {
+			continue
+		}
+
+		if latency < bestLatency {
+			bestLatency = latency
+			bestRegion = region
+		}
+	}
+
+	// If no region found with latency data, fall back to priority routing
+	if bestRegion == nil {
+		return lb.routeByPriority(regions)
+	}
+
+	return bestRegion
 }
 
 // routeByGeography implements geographic load balancing
@@ -236,14 +374,39 @@ func (lb *DefaultLoadBalancer) routeByGeography(request *UploadRequest, regions 
 		return nil
 	}
 
-	// TODO: Implement geographic routing based on client location
-	// This would involve:
-	// 1. Determining client geographic location
-	// 2. Calculating distance to each region
-	// 3. Selecting closest region
+	// Extract client location hint from request metadata
+	clientLocation := lb.extractClientLocation(request)
+	if clientLocation == "" {
+		// No location info available, fall back to latency-based routing
+		return lb.routeByLatency(regions)
+	}
 
-	// For now, fall back to priority-based routing
-	return lb.routeByPriority(regions)
+	lb.geoMutex.RLock()
+	preferredRegion, exists := lb.geographicMap[clientLocation]
+	lb.geoMutex.RUnlock()
+
+	if exists {
+		// Check if preferred region is available
+		for _, region := range regions {
+			if region.Name == preferredRegion {
+				lb.logger.Debug("Using geographic routing",
+					"client_location", clientLocation,
+					"preferred_region", preferredRegion,
+					"request_id", request.ID)
+				return region
+			}
+		}
+	}
+
+	// Preferred region not available or no mapping found
+	// Use region-based proximity scoring
+	bestRegion := lb.findClosestRegionByName(clientLocation, regions)
+	if bestRegion != nil {
+		return bestRegion
+	}
+
+	// Fall back to latency-based routing
+	return lb.routeByLatency(regions)
 }
 
 // routeByPriority implements priority-based load balancing
@@ -338,6 +501,412 @@ func (lb *DefaultLoadBalancer) generateSessionKey(request *UploadRequest) string
 
 	// For now, use request ID as session key
 	return request.ID
+}
+
+// routeAdaptive implements adaptive load balancing based on real-time performance
+func (lb *DefaultLoadBalancer) routeAdaptive(ctx context.Context, request *UploadRequest, regions []*Region) *Region {
+	if len(regions) == 0 {
+		return nil
+	}
+
+	lb.performanceMutex.RLock()
+	defer lb.performanceMutex.RUnlock()
+
+	// Update performance scores before routing
+	lb.updatePerformanceScores(regions)
+
+	// Find region with highest performance score
+	var bestRegion *Region
+	bestScore := float64(-1)
+
+	for _, region := range regions {
+		history, exists := lb.performanceHistory[region.Name]
+		if !exists {
+			continue
+		}
+
+		// Apply request priority weighting
+		score := history.Score
+		if request.Priority > 5 {
+			// Boost score for high priority requests
+			score *= 1.2
+		}
+
+		if score > bestScore {
+			bestScore = score
+			bestRegion = region
+		}
+	}
+
+	if bestRegion == nil {
+		return lb.routeByPriority(regions)
+	}
+
+	lb.logger.Debug("Using adaptive routing",
+		"request_id", request.ID,
+		"selected_region", bestRegion.Name,
+		"score", bestScore)
+
+	return bestRegion
+}
+
+// routeLeastConnections routes to region with fewest active connections
+func (lb *DefaultLoadBalancer) routeLeastConnections(regions []*Region) *Region {
+	if len(regions) == 0 {
+		return nil
+	}
+
+	// Find region with lowest active uploads count
+	var bestRegion *Region
+	lowestConnections := int64(999999)
+
+	for _, region := range regions {
+		activeConnections := region.Metrics.ActiveUploads
+		if activeConnections < lowestConnections {
+			lowestConnections = activeConnections
+			bestRegion = region
+		}
+	}
+
+	return bestRegion
+}
+
+// routeResourceAware routes based on comprehensive resource utilization
+func (lb *DefaultLoadBalancer) routeResourceAware(regions []*Region) *Region {
+	if len(regions) == 0 {
+		return nil
+	}
+
+	// Calculate resource score for each region (lower is better)
+	var bestRegion *Region
+	bestScore := float64(999999)
+
+	for _, region := range regions {
+		// Combine CPU, memory, and capacity utilization
+		cpuWeight := 0.4
+		memoryWeight := 0.3
+		capacityWeight := 0.3
+
+		resourceScore := (region.Metrics.CPUUtilization * cpuWeight) +
+			(region.Metrics.MemoryUtilization * memoryWeight) +
+			(region.Capacity.CurrentUtilization * capacityWeight)
+
+		// Boost score for regions with better health
+		switch region.Status {
+		case RegionStatusHealthy:
+			resourceScore *= 0.8 // 20% boost for healthy regions
+		case RegionStatusDegraded:
+			resourceScore *= 1.2 // 20% penalty for degraded regions
+		}
+
+		if resourceScore < bestScore {
+			bestScore = resourceScore
+			bestRegion = region
+		}
+	}
+
+	return bestRegion
+}
+
+// routeThroughputOptimized routes to maximize overall system throughput
+func (lb *DefaultLoadBalancer) routeThroughputOptimized(regions []*Region) *Region {
+	if len(regions) == 0 {
+		return nil
+	}
+
+	// Calculate throughput potential for each region
+	var bestRegion *Region
+	bestThroughput := float64(0)
+
+	for _, region := range regions {
+		// Estimate potential throughput based on current metrics
+		currentUtilization := region.Capacity.CurrentUtilization
+		availableCapacity := 100.0 - currentUtilization
+
+		// Factor in region health and error rate
+		var healthMultiplier float64
+		switch region.Status {
+		case RegionStatusHealthy:
+			healthMultiplier = 1.2
+		case RegionStatusDegraded:
+			healthMultiplier = 0.8
+		default:
+			healthMultiplier = 0.5
+		}
+
+		// Factor in error rate (lower error rate = higher throughput potential)
+		errorMultiplier := 1.0 - (region.Metrics.ErrorRate / 100.0)
+
+		throughputPotential := availableCapacity * healthMultiplier * errorMultiplier * float64(region.Weight)
+
+		if throughputPotential > bestThroughput {
+			bestThroughput = throughputPotential
+			bestRegion = region
+		}
+	}
+
+	return bestRegion
+}
+
+// Helper methods for advanced load balancing
+
+// extractClientLocation extracts client location from request metadata
+func (lb *DefaultLoadBalancer) extractClientLocation(request *UploadRequest) string {
+	if request.Metadata == nil {
+		return ""
+	}
+
+	// Check for various location metadata fields
+	if location := request.Metadata["client_location"]; location != "" {
+		return location
+	}
+	if country := request.Metadata["client_country"]; country != "" {
+		return country
+	}
+	if region := request.Metadata["client_region"]; region != "" {
+		return region
+	}
+	if ip := request.Metadata["client_ip"]; ip != "" {
+		// Could implement IP geolocation here
+		return lb.geolocateIP(ip)
+	}
+
+	return ""
+}
+
+// geolocateIP performs IP-based geolocation (simplified implementation)
+func (lb *DefaultLoadBalancer) geolocateIP(ip string) string {
+	// This is a simplified implementation
+	// In production, you would use a proper IP geolocation service
+	if strings.HasPrefix(ip, "10.") || strings.HasPrefix(ip, "192.168.") || strings.HasPrefix(ip, "172.") {
+		return "local"
+	}
+	// Default to unknown location
+	return ""
+}
+
+// initializeGeographicMapping sets up the geographic to region mapping
+func (lb *DefaultLoadBalancer) initializeGeographicMapping() {
+	lb.geoMutex.Lock()
+	defer lb.geoMutex.Unlock()
+
+	// North America
+	lb.geographicMap["US"] = "us-east-1"
+	lb.geographicMap["USA"] = "us-east-1"
+	lb.geographicMap["United States"] = "us-east-1"
+	lb.geographicMap["Canada"] = "us-east-1"
+	lb.geographicMap["CA"] = "us-east-1"
+	lb.geographicMap["Mexico"] = "us-east-1"
+	lb.geographicMap["MX"] = "us-east-1"
+
+	// Europe
+	lb.geographicMap["UK"] = "eu-west-1"
+	lb.geographicMap["GB"] = "eu-west-1"
+	lb.geographicMap["United Kingdom"] = "eu-west-1"
+	lb.geographicMap["Germany"] = "eu-west-1"
+	lb.geographicMap["DE"] = "eu-west-1"
+	lb.geographicMap["France"] = "eu-west-1"
+	lb.geographicMap["FR"] = "eu-west-1"
+	lb.geographicMap["Italy"] = "eu-west-1"
+	lb.geographicMap["IT"] = "eu-west-1"
+	lb.geographicMap["Spain"] = "eu-west-1"
+	lb.geographicMap["ES"] = "eu-west-1"
+
+	// Asia Pacific
+	lb.geographicMap["Japan"] = "ap-northeast-1"
+	lb.geographicMap["JP"] = "ap-northeast-1"
+	lb.geographicMap["Singapore"] = "ap-southeast-1"
+	lb.geographicMap["SG"] = "ap-southeast-1"
+	lb.geographicMap["Australia"] = "ap-southeast-2"
+	lb.geographicMap["AU"] = "ap-southeast-2"
+	lb.geographicMap["China"] = "ap-northeast-1"
+	lb.geographicMap["CN"] = "ap-northeast-1"
+	lb.geographicMap["South Korea"] = "ap-northeast-1"
+	lb.geographicMap["KR"] = "ap-northeast-1"
+}
+
+// findClosestRegionByName finds closest region based on naming patterns
+func (lb *DefaultLoadBalancer) findClosestRegionByName(location string, regions []*Region) *Region {
+	// Simple heuristic based on region name patterns
+	location = strings.ToLower(location)
+
+	// Score regions based on geographic proximity hints in their names
+	scores := make(map[*Region]int)
+
+	for _, region := range regions {
+		regionName := strings.ToLower(region.Name)
+		score := 0
+
+		// North America scoring
+		if strings.Contains(location, "us") || strings.Contains(location, "america") || strings.Contains(location, "canada") {
+			if strings.Contains(regionName, "us-") {
+				score += 10
+			}
+		}
+
+		// Europe scoring
+		if strings.Contains(location, "eu") || strings.Contains(location, "europe") || strings.Contains(location, "uk") {
+			if strings.Contains(regionName, "eu-") {
+				score += 10
+			}
+		}
+
+		// Asia Pacific scoring
+		if strings.Contains(location, "ap") || strings.Contains(location, "asia") || strings.Contains(location, "pacific") {
+			if strings.Contains(regionName, "ap-") {
+				score += 10
+			}
+		}
+
+		scores[region] = score
+	}
+
+	// Find region with highest score
+	var bestRegion *Region
+	bestScore := -1
+	for region, score := range scores {
+		if score > bestScore {
+			bestScore = score
+			bestRegion = region
+		}
+	}
+
+	// Only return a region if we found a meaningful match (score > 0)
+	if bestScore > 0 {
+		return bestRegion
+	}
+
+	return nil
+}
+
+// updatePerformanceScores calculates performance scores for adaptive routing
+func (lb *DefaultLoadBalancer) updatePerformanceScores(regions []*Region) {
+	for _, region := range regions {
+		history, exists := lb.performanceHistory[region.Name]
+		if !exists {
+			continue
+		}
+
+		// Calculate composite performance score (0-100)
+		score := float64(0)
+
+		// Factor 1: Health status (0-30 points)
+		switch region.Status {
+		case RegionStatusHealthy:
+			score += 30
+		case RegionStatusDegraded:
+			score += 15
+		case RegionStatusUnhealthy:
+			score += 5
+		default:
+			score += 0
+		}
+
+		// Factor 2: Resource utilization (0-25 points, lower utilization = higher score)
+		avgUtilization := (region.Metrics.CPUUtilization + region.Metrics.MemoryUtilization + region.Capacity.CurrentUtilization) / 3.0
+		utilizationScore := 25.0 * (1.0 - (avgUtilization / 100.0))
+		score += math.Max(0, utilizationScore)
+
+		// Factor 3: Error rate (0-20 points, lower error rate = higher score)
+		errorScore := 20.0 * (1.0 - (region.Metrics.ErrorRate / 100.0))
+		score += math.Max(0, errorScore)
+
+		// Factor 4: Latency (0-15 points)
+		lb.latencyMutex.RLock()
+		tracker, hasLatency := lb.latencyTracker[region.Name]
+		lb.latencyMutex.RUnlock()
+
+		if hasLatency && tracker.AverageLatency > 0 {
+			// Lower latency = higher score (assume max acceptable latency of 1000ms)
+			latencyMs := float64(tracker.AverageLatency.Milliseconds())
+			latencyScore := 15.0 * math.Max(0, (1000.0-latencyMs)/1000.0)
+			score += latencyScore
+		} else if region.Metrics.HealthCheckLatency > 0 {
+			// Use health check latency as fallback
+			latencyScore := 15.0 * math.Max(0, (1000.0-float64(region.Metrics.HealthCheckLatency))/1000.0)
+			score += latencyScore
+		}
+
+		// Factor 5: Connection load (0-10 points, fewer connections = higher score)
+		if region.Capacity.MaxConcurrentUploads > 0 {
+			loadRatio := float64(region.Metrics.ActiveUploads) / float64(region.Capacity.MaxConcurrentUploads)
+			loadScore := 10.0 * (1.0 - loadRatio)
+			score += math.Max(0, loadScore)
+		}
+
+		// Update performance history
+		history.Score = math.Min(100.0, math.Max(0.0, score))
+		history.LastUpdated = time.Now()
+		lb.performanceHistory[region.Name] = history
+	}
+}
+
+// UpdateLatencyMetrics updates latency tracking for a region
+func (lb *DefaultLoadBalancer) UpdateLatencyMetrics(regionName string, latency time.Duration) {
+	lb.latencyMutex.Lock()
+	defer lb.latencyMutex.Unlock()
+
+	tracker, exists := lb.latencyTracker[regionName]
+	if !exists {
+		tracker = &LatencyTracker{
+			MinLatency: latency,
+			MaxLatency: latency,
+		}
+		lb.latencyTracker[regionName] = tracker
+	}
+
+	// Update current latency
+	tracker.CurrentLatency = latency
+	tracker.SampleCount++
+	tracker.LastUpdated = time.Now()
+
+	// Update min/max
+	if latency < tracker.MinLatency {
+		tracker.MinLatency = latency
+	}
+	if latency > tracker.MaxLatency {
+		tracker.MaxLatency = latency
+	}
+
+	// Update rolling average (simple exponential moving average)
+	if tracker.AverageLatency == 0 {
+		tracker.AverageLatency = latency
+	} else {
+		// Use alpha = 0.1 for exponential moving average
+		alpha := 0.1
+		tracker.AverageLatency = time.Duration(float64(tracker.AverageLatency)*(1-alpha) + float64(latency)*alpha)
+	}
+}
+
+// GetLatencyStats returns latency statistics for all regions
+func (lb *DefaultLoadBalancer) GetLatencyStats() map[string]LatencyTracker {
+	lb.latencyMutex.RLock()
+	defer lb.latencyMutex.RUnlock()
+
+	stats := make(map[string]LatencyTracker)
+	for region, tracker := range lb.latencyTracker {
+		stats[region] = *tracker
+	}
+	return stats
+}
+
+// GetPerformanceStats returns performance statistics for all regions
+func (lb *DefaultLoadBalancer) GetPerformanceStats() map[string]PerformanceHistory {
+	lb.performanceMutex.RLock()
+	defer lb.performanceMutex.RUnlock()
+
+	stats := make(map[string]PerformanceHistory)
+	for region, history := range lb.performanceHistory {
+		stats[region] = *history
+	}
+	return stats
+}
+
+// AddGeographicMapping adds a new geographic location to region mapping
+func (lb *DefaultLoadBalancer) AddGeographicMapping(location, region string) {
+	lb.geoMutex.Lock()
+	defer lb.geoMutex.Unlock()
+	lb.geographicMap[location] = region
 }
 
 // cleanupExpiredSessions removes expired session affinity entries

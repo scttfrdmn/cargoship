@@ -40,6 +40,18 @@ const (
 
 	// LoadBalancingGeographic routes based on geographic proximity
 	LoadBalancingGeographic LoadBalancingStrategy = "geographic"
+
+	// LoadBalancingAdaptive dynamically adjusts based on real-time performance
+	LoadBalancingAdaptive LoadBalancingStrategy = "adaptive"
+
+	// LoadBalancingLeastConnections routes to region with fewest active connections
+	LoadBalancingLeastConnections LoadBalancingStrategy = "least_connections"
+
+	// LoadBalancingResourceAware routes based on comprehensive resource utilization
+	LoadBalancingResourceAware LoadBalancingStrategy = "resource_aware"
+
+	// LoadBalancingThroughputOptimized routes to maximize overall throughput
+	LoadBalancingThroughputOptimized LoadBalancingStrategy = "throughput_optimized"
 )
 
 // FailoverStrategy defines how failover is handled
