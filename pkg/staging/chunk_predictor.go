@@ -100,52 +100,6 @@ func NewContentAnalyzer(config *StagingConfig) *ContentAnalyzer {
 	}
 }
 
-// ContentProfile represents the analyzed characteristics of content.
-type ContentProfile struct {
-	ContentType      string
-	Entropy          float64
-	Patterns         []ContentPattern
-	CompressionHints []CompressionHint
-	FileAlignment    []FileAlignment
-	EstimatedRatio   float64
-	AnalysisQuality  float64
-}
-
-// ContentPattern represents detected patterns in content.
-type ContentPattern struct {
-	Type            PatternType
-	Offset          int64
-	Length          int64
-	Frequency       float64
-	Compressibility float64
-}
-
-// PatternType represents different types of content patterns.
-type PatternType int
-
-const (
-	PatternRepetitive PatternType = iota
-	PatternRandom
-	PatternStructured
-	PatternBinary
-	PatternText
-)
-
-// CompressionHint provides hints for optimal compression.
-type CompressionHint struct {
-	Algorithm      string
-	WindowSize     int
-	Dictionary     []byte
-	EstimatedRatio float64
-}
-
-// FileAlignment represents file boundary information.
-type FileAlignment struct {
-	Offset   int64
-	FileName string
-	FileSize int64
-	FileType string
-}
 
 // AnalyzeContent analyzes content characteristics for boundary prediction.
 func (ca *ContentAnalyzer) AnalyzeContent(reader io.Reader, contentType string) (*ContentProfile, error) {

@@ -226,7 +226,7 @@ func (cs *CompressionStats) UpdateWithResult(uncompressedSize, compressedSize in
 
 // CompressionHistory tracks historical compression performance.
 type CompressionHistory struct {
-	results    map[string][]*CompressionResult
+	results    map[string][]*HistoricalCompressionResult
 	maxResults int
 	mu         sync.RWMutex
 }
@@ -234,7 +234,7 @@ type CompressionHistory struct {
 // NewCompressionHistory creates a new compression history tracker.
 func NewCompressionHistory() *CompressionHistory {
 	return &CompressionHistory{
-		results:    make(map[string][]*CompressionResult),
+		results:    make(map[string][]*HistoricalCompressionResult),
 		maxResults: 1000,
 	}
 }
@@ -244,7 +244,7 @@ func (ch *CompressionHistory) AddResult(contentType string, size int64, ratio fl
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
 
-	result := &CompressionResult{
+	result := &HistoricalCompressionResult{
 		ContentType: contentType,
 		Size:        size,
 		Ratio:       ratio,
@@ -252,7 +252,7 @@ func (ch *CompressionHistory) AddResult(contentType string, size int64, ratio fl
 	}
 
 	if ch.results[contentType] == nil {
-		ch.results[contentType] = make([]*CompressionResult, 0)
+		ch.results[contentType] = make([]*HistoricalCompressionResult, 0)
 	}
 
 	ch.results[contentType] = append(ch.results[contentType], result)
@@ -275,7 +275,7 @@ func (ch *CompressionHistory) GetAverageRatio(contentType string, size int64) fl
 
 	// Find results for similar sized content
 	tolerance := size / 5 // 20% tolerance
-	similarResults := make([]*CompressionResult, 0)
+	similarResults := make([]*HistoricalCompressionResult, 0)
 
 	for _, result := range results {
 		if abs64(result.Size-size) <= tolerance {
@@ -315,13 +315,13 @@ func (ch *CompressionHistory) GetAverageRatio(contentType string, size int64) fl
 }
 
 // GetResultsForContentType returns all results for a content type.
-func (ch *CompressionHistory) GetResultsForContentType(contentType string) []*CompressionResult {
+func (ch *CompressionHistory) GetResultsForContentType(contentType string) []*HistoricalCompressionResult {
 	ch.mu.RLock()
 	defer ch.mu.RUnlock()
 
 	if results, exists := ch.results[contentType]; exists {
 		// Return a copy to prevent race conditions
-		resultsCopy := make([]*CompressionResult, len(results))
+		resultsCopy := make([]*HistoricalCompressionResult, len(results))
 		copy(resultsCopy, results)
 		return resultsCopy
 	}
@@ -329,8 +329,8 @@ func (ch *CompressionHistory) GetResultsForContentType(contentType string) []*Co
 	return nil
 }
 
-// CompressionResult represents a historical compression result.
-type CompressionResult struct {
+// HistoricalCompressionResult represents a historical compression result.
+type HistoricalCompressionResult struct {
 	ContentType string
 	Size        int64
 	Ratio       float64

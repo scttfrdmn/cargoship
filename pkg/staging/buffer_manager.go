@@ -11,14 +11,16 @@ import (
 // NewStagingBufferManager creates a new staging buffer manager.
 func NewStagingBufferManager(config *StagingConfig) *StagingBufferManager {
 	dedupeConfig := DefaultDeduplicationConfig()
+	compressionConfig := DefaultAdaptiveCompressionConfig()
 	return &StagingBufferManager{
-		bufferPool:     NewBufferPool(config),
-		activeBuffers:  make(map[string]*StagedChunk),
-		stagingQueue:   make(chan *StagingRequest, config.StagingQueueDepth),
-		memoryMonitor:  NewMemoryMonitor(config),
-		deduplicator:   NewChunkDeduplicator(dedupeConfig),
-		duplicateRefs:  make(map[string][]string),
-		config:         config,
+		bufferPool:          NewBufferPool(config),
+		activeBuffers:       make(map[string]*StagedChunk),
+		stagingQueue:        make(chan *StagingRequest, config.StagingQueueDepth),
+		memoryMonitor:       NewMemoryMonitor(config),
+		deduplicator:        NewChunkDeduplicator(dedupeConfig),
+		compressionSelector: NewAdaptiveCompressionSelector(compressionConfig),
+		duplicateRefs:       make(map[string][]string),
+		config:              config,
 	}
 }
 
@@ -282,6 +284,9 @@ func (sbm *StagingBufferManager) processStagingRequest(req *StagingRequest, work
 	// Analyze content for additional metadata if we have data
 	if chunk.Data != nil {
 		sbm.analyzeChunkContent(chunk)
+		
+		// Select optimal compression algorithm
+		sbm.selectOptimalCompression(chunk, req)
 	}
 
 	// Store in active buffers
@@ -336,6 +341,108 @@ func (sbm *StagingBufferManager) estimateCompressionRatio(entropy float64, conte
 	}
 
 	return baseRatio
+}
+
+// selectOptimalCompression selects the optimal compression algorithm for a chunk.
+func (sbm *StagingBufferManager) selectOptimalCompression(chunk *StagedChunk, req *StagingRequest) {
+	// Create content profile
+	contentProfile := &ContentProfile{
+		ContentType:     chunk.ContentType,
+		Size:            int64(len(chunk.Data)),
+		Entropy:         chunk.Entropy,
+		Compressibility: 1.0 - chunk.CompressionRatio,
+		Patterns:        []ContentPattern{}, // Could be enhanced with pattern detection
+		Metadata:        map[string]interface{}{
+			"duplicate": chunk.IsDuplicate,
+			"similarity_score": chunk.SimilarityScore,
+		},
+	}
+
+	// Use network condition from request or create default
+	networkCondition := req.NetworkCondition
+	if networkCondition == nil {
+		networkCondition = &NetworkCondition{
+			BandwidthMBps: 10.0,  // Default bandwidth
+			LatencyMs:     50.0,  // Default latency
+			Reliability:   0.95,  // Default reliability
+		}
+	}
+
+	// Create compression context
+	context := &CompressionContext{
+		FileName:          req.StreamID,
+		FileExtension:     sbm.getFileExtension(req.StreamID),
+		FileSize:          int64(len(chunk.Data)),
+		SystemLoad:        sbm.getSystemLoad(),
+		AvailableMemoryMB: sbm.getAvailableMemoryMB(),
+		Priority:          req.Priority,
+	}
+
+	// Get compression decision
+	decision, err := sbm.compressionSelector.SelectCompressionAlgorithm(contentProfile, networkCondition, context)
+	if err != nil {
+		// Fall back to default algorithm
+		chunk.SelectedAlgorithm = "zstd"
+		return
+	}
+
+	// Store compression decision
+	chunk.SelectedAlgorithm = decision.SelectedAlgorithm
+	chunk.CompressionSettings = decision.RecommendedSettings
+	chunk.CompressionDecision = decision
+
+	// Update compression ratio estimate based on selected algorithm
+	if decision.PredictedPerformance != nil {
+		chunk.CompressionRatio = decision.PredictedPerformance.EstimatedCompressionRatio
+		chunk.CompressedSize = int(float64(len(chunk.Data)) * chunk.CompressionRatio)
+	}
+}
+
+// getFileExtension extracts file extension from filename.
+func (sbm *StagingBufferManager) getFileExtension(filename string) string {
+	for i := len(filename) - 1; i >= 0; i-- {
+		if filename[i] == '.' {
+			return filename[i:]
+		}
+	}
+	return ""
+}
+
+// getSystemLoad returns current system load (simplified implementation).
+func (sbm *StagingBufferManager) getSystemLoad() float64 {
+	// Simple approximation based on active buffers
+	sbm.mu.RLock()
+	activeCount := len(sbm.activeBuffers)
+	sbm.mu.RUnlock()
+	
+	maxActive := sbm.config.MaxConcurrentStaging * 10
+	if maxActive == 0 {
+		maxActive = 100
+	}
+	
+	load := float64(activeCount) / float64(maxActive)
+	if load > 1.0 {
+		load = 1.0
+	}
+	
+	return load
+}
+
+// getAvailableMemoryMB returns available memory in MB (simplified implementation).
+func (sbm *StagingBufferManager) getAvailableMemoryMB() int64 {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	
+	// Estimate available memory based on system stats
+	allocatedMB := int64(m.Sys / 1024 / 1024)
+	totalEstimate := allocatedMB * 4 // Rough estimate
+	availableMB := totalEstimate - allocatedMB
+	
+	if availableMB < 256 {
+		availableMB = 256 // Minimum
+	}
+	
+	return availableMB
 }
 
 // cleanupLoop runs periodic cleanup operations.
@@ -539,4 +646,34 @@ func (sbm *StagingBufferManager) GetDuplicateReferenceCount(hash string) int {
 // ClearDeduplicationCache clears the deduplication cache.
 func (sbm *StagingBufferManager) ClearDeduplicationCache() {
 	sbm.deduplicator.ClearCache()
+}
+
+// GetCompressionSelector returns the adaptive compression selector.
+func (sbm *StagingBufferManager) GetCompressionSelector() *AdaptiveCompressionSelector {
+	return sbm.compressionSelector
+}
+
+// LearnFromCompressionResult learns from actual compression results.
+func (sbm *StagingBufferManager) LearnFromCompressionResult(result *CompressionResult) {
+	sbm.compressionSelector.LearnFromCompressionResult(result)
+}
+
+// GetAlgorithmPerformance returns performance statistics for a compression algorithm.
+func (sbm *StagingBufferManager) GetAlgorithmPerformance(algorithm string) *AlgorithmPerformance {
+	return sbm.compressionSelector.GetAlgorithmPerformance(algorithm)
+}
+
+// GetCompressionProfile returns the compression profile for a content type.
+func (sbm *StagingBufferManager) GetCompressionProfile(contentType string) *CompressionProfile {
+	return sbm.compressionSelector.GetCompressionProfile(contentType)
+}
+
+// UpdateCompressionRule updates or adds a compression rule for a file extension.
+func (sbm *StagingBufferManager) UpdateCompressionRule(extension string, rule *CompressionRule) {
+	sbm.compressionSelector.UpdateCompressionRule(extension, rule)
+}
+
+// ClearCompressionHistory clears compression performance history.
+func (sbm *StagingBufferManager) ClearCompressionHistory() {
+	sbm.compressionSelector.ClearPerformanceHistory()
 }

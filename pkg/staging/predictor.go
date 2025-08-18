@@ -103,14 +103,15 @@ type CompressionRatioPredictor struct {
 
 // StagingBufferManager manages memory buffers for chunk staging.
 type StagingBufferManager struct {
-	bufferPool    *BufferPool
-	activeBuffers map[string]*StagedChunk
-	stagingQueue  chan *StagingRequest
-	memoryMonitor *MemoryMonitor
-	deduplicator  *ChunkDeduplicator
-	duplicateRefs map[string][]string  // Hash -> list of chunk IDs that reference this hash
-	config        *StagingConfig
-	mu            sync.RWMutex
+	bufferPool          *BufferPool
+	activeBuffers       map[string]*StagedChunk
+	stagingQueue        chan *StagingRequest
+	memoryMonitor       *MemoryMonitor
+	deduplicator        *ChunkDeduplicator
+	compressionSelector *AdaptiveCompressionSelector
+	duplicateRefs       map[string][]string  // Hash -> list of chunk IDs that reference this hash
+	config              *StagingConfig
+	mu                  sync.RWMutex
 }
 
 // StagedChunk represents a chunk that has been pre-processed and staged.
@@ -133,6 +134,11 @@ type StagedChunk struct {
 	DeltaParent         string
 	BytesSaved          int64
 	DeduplicationAction DeduplicationAction
+
+	// Adaptive compression fields
+	SelectedAlgorithm   string
+	CompressionSettings *CompressionSettings
+	CompressionDecision *CompressionDecision
 }
 
 // ChunkBoundary defines the boundaries and characteristics of a chunk.
@@ -168,28 +174,6 @@ type NetworkConditionMonitor struct {
 	mu               sync.RWMutex
 }
 
-// NetworkCondition represents current network performance characteristics.
-type NetworkCondition struct {
-	Timestamp       time.Time
-	BandwidthMBps   float64
-	LatencyMs       float64
-	PacketLoss      float64
-	Jitter          float64
-	CongestionLevel float64
-	Reliability     float64
-	PredictedTrend  NetworkTrend
-}
-
-// NetworkTrend indicates predicted network performance direction.
-type NetworkTrend int
-
-const (
-	TrendUnknown NetworkTrend = iota
-	TrendImproving
-	TrendDegrading
-	TrendStable
-	TrendVolatile
-)
 
 // PerformancePredictor predicts upload performance based on chunk characteristics and network conditions.
 type PerformancePredictor struct {
