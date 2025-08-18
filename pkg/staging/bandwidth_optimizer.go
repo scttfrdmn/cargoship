@@ -271,10 +271,10 @@ func (bo *BandwidthOptimizer) isOptimizationNeeded(utilization *BandwidthUtiliza
 // recommendForUnderutilization generates recommendations for bandwidth underutilization.
 func (bo *BandwidthOptimizer) recommendForUnderutilization(rec *OptimizationRecommendation, util *BandwidthUtilization) *OptimizationRecommendation {
 	// Increase concurrency to better utilize available bandwidth
-	rec.RecommendedConcurrency = min(util.OptimalConcurrency+2, bo.config.MaxConcurrency)
+	rec.RecommendedConcurrency = minInt(util.OptimalConcurrency+2, bo.config.MaxConcurrency)
 
 	// Increase chunk size for better efficiency
-	rec.RecommendedChunkSizeMB = min(util.OptimalChunkSizeMB+10, bo.config.MaxChunkSizeMB)
+	rec.RecommendedChunkSizeMB = minInt(util.OptimalChunkSizeMB+10, bo.config.MaxChunkSizeMB)
 
 	// Use faster compression to reduce CPU bottleneck
 	if util.AvailableBandwidthMBps > 50 {
@@ -297,10 +297,10 @@ func (bo *BandwidthOptimizer) recommendForUnderutilization(rec *OptimizationReco
 // recommendForCongestion generates recommendations for congestion management.
 func (bo *BandwidthOptimizer) recommendForCongestion(rec *OptimizationRecommendation, util *BandwidthUtilization) *OptimizationRecommendation {
 	// Reduce concurrency to ease congestion
-	rec.RecommendedConcurrency = max(util.OptimalConcurrency-1, bo.config.MinConcurrency)
+	rec.RecommendedConcurrency = maxInt(util.OptimalConcurrency-1, bo.config.MinConcurrency)
 
 	// Use smaller chunks for better responsiveness
-	rec.RecommendedChunkSizeMB = max(util.OptimalChunkSizeMB-5, bo.config.MinChunkSizeMB)
+	rec.RecommendedChunkSizeMB = maxInt(util.OptimalChunkSizeMB-5, bo.config.MinChunkSizeMB)
 
 	// Use higher compression to reduce network load
 	rec.RecommendedCompression = "zstd-high"
@@ -339,8 +339,8 @@ func (bo *BandwidthOptimizer) recommendForPoorEfficiency(rec *OptimizationRecomm
 // recommendForNetworkDegradation generates recommendations for network issues.
 func (bo *BandwidthOptimizer) recommendForNetworkDegradation(rec *OptimizationRecommendation, util *BandwidthUtilization) *OptimizationRecommendation {
 	// Conservative approach for degraded networks
-	rec.RecommendedConcurrency = max(2, bo.config.MinConcurrency)
-	rec.RecommendedChunkSizeMB = max(10, bo.config.MinChunkSizeMB)
+	rec.RecommendedConcurrency = maxInt(2, bo.config.MinConcurrency)
+	rec.RecommendedChunkSizeMB = maxInt(10, bo.config.MinChunkSizeMB)
 
 	// Higher compression to compensate for poor bandwidth
 	rec.RecommendedCompression = "zstd-high"
@@ -754,3 +754,4 @@ func (uh *UtilizationHistory) GetConfidenceBonus() float64 {
 	// More history = higher confidence (up to 0.2 bonus)
 	return math.Min(0.2, float64(historyCount)/100.0*0.2)
 }
+

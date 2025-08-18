@@ -262,7 +262,7 @@ func (atc *AdaptiveTransferController) validateParameters(params *TransferParame
 	// Adjust concurrency based on session progress
 	transferProgress := float64(session.TransferredBytes) / float64(session.TotalBytes)
 	if transferProgress > 0.9 { // Near completion, reduce concurrency for stability
-		validated.Concurrency = max(1, validated.Concurrency/2)
+		validated.Concurrency = maxInt(1, validated.Concurrency/2)
 	}
 
 	return &validated
@@ -454,14 +454,14 @@ func (atc *AdaptiveTransferController) adaptForPoorPerformance(params *TransferP
 func (atc *AdaptiveTransferController) adaptForDecliningPerformance(params *TransferParameters, session *TransferSession, condition *NetworkCondition) *TransferParameters {
 	// Reduce concurrency to avoid overwhelming the network
 	if params.Concurrency > 1 {
-		params.Concurrency = max(1, params.Concurrency-1)
+		params.Concurrency = maxInt(1, params.Concurrency-1)
 	}
 
 	// Use smaller chunks for better adaptability
-	params.ChunkSizeMB = max(atc.config.MinChunkSizeMB, params.ChunkSizeMB-5)
+	params.ChunkSizeMB = maxInt(atc.config.MinChunkSizeMB, params.ChunkSizeMB-5)
 
 	// Adjust retry policy to be more aggressive
-	params.RetryPolicy.MaxRetries = min(params.RetryPolicy.MaxRetries+1, 5)
+	params.RetryPolicy.MaxRetries = minInt(params.RetryPolicy.MaxRetries+1, 5)
 	params.RetryPolicy.InitialDelay = time.Millisecond * 500
 
 	return params
@@ -470,10 +470,10 @@ func (atc *AdaptiveTransferController) adaptForDecliningPerformance(params *Tran
 // adaptForHighErrors adapts parameters when error rate is high.
 func (atc *AdaptiveTransferController) adaptForHighErrors(params *TransferParameters, session *TransferSession, condition *NetworkCondition) *TransferParameters {
 	// Reduce concurrency to minimize connection issues
-	params.Concurrency = max(1, params.Concurrency/2)
+	params.Concurrency = maxInt(1, params.Concurrency/2)
 
 	// Use smaller chunks to reduce the impact of failed transfers
-	params.ChunkSizeMB = max(atc.config.MinChunkSizeMB, params.ChunkSizeMB/2)
+	params.ChunkSizeMB = maxInt(atc.config.MinChunkSizeMB, params.ChunkSizeMB/2)
 
 	// Increase timeouts
 	params.TimeoutSettings.ConnectionTimeout *= 2
@@ -768,18 +768,3 @@ func (tpt *TransferPerformanceTracker) RecordPerformance(sessionID string, snaps
 	}
 }
 
-// Utility functions
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

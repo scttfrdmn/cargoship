@@ -677,10 +677,3 @@ func (ctc *ContentTypeClassifier) ClassifyContent(data []byte) string {
 	return "binary"
 }
 
-// Utility function
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
