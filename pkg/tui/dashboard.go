@@ -79,8 +79,6 @@ type Dashboard struct {
 	// Multi-region data
 	regionStatus         map[string]RegionStatusInfo
 	globalMetrics        GlobalMetricsInfo
-	failoverOperations   []FailoverOperation
-	lastRegionUpdate     time.Time
 	regionUpdateInterval time.Duration
 
 	// State

@@ -80,6 +80,8 @@ func (d *Dashboard) updateData(msg dataUpdateMsg) {
 		d.updateConfigTables()
 	case DashboardMultiRegion:
 		d.updateMultiRegionTables()
+		// Update global metrics
+		d.globalMetrics = d.fetchMockGlobalMetrics()
 	}
 }
 
