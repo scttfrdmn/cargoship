@@ -107,6 +107,8 @@ type StagingBufferManager struct {
 	activeBuffers map[string]*StagedChunk
 	stagingQueue  chan *StagingRequest
 	memoryMonitor *MemoryMonitor
+	deduplicator  *ChunkDeduplicator
+	duplicateRefs map[string][]string  // Hash -> list of chunk IDs that reference this hash
 	config        *StagingConfig
 	mu            sync.RWMutex
 }
@@ -123,6 +125,14 @@ type StagedChunk struct {
 	StagedAt            time.Time
 	ContentType         string
 	Entropy             float64
+	// Deduplication fields
+	Hash                string
+	IsDuplicate         bool
+	DuplicateHash       string
+	SimilarityScore     float64
+	DeltaParent         string
+	BytesSaved          int64
+	DeduplicationAction DeduplicationAction
 }
 
 // ChunkBoundary defines the boundaries and characteristics of a chunk.

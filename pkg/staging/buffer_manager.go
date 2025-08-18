@@ -10,12 +10,15 @@ import (
 
 // NewStagingBufferManager creates a new staging buffer manager.
 func NewStagingBufferManager(config *StagingConfig) *StagingBufferManager {
+	dedupeConfig := DefaultDeduplicationConfig()
 	return &StagingBufferManager{
-		bufferPool:    NewBufferPool(config),
-		activeBuffers: make(map[string]*StagedChunk),
-		stagingQueue:  make(chan *StagingRequest, config.StagingQueueDepth),
-		memoryMonitor: NewMemoryMonitor(config),
-		config:        config,
+		bufferPool:     NewBufferPool(config),
+		activeBuffers:  make(map[string]*StagedChunk),
+		stagingQueue:   make(chan *StagingRequest, config.StagingQueueDepth),
+		memoryMonitor:  NewMemoryMonitor(config),
+		deduplicator:   NewChunkDeduplicator(dedupeConfig),
+		duplicateRefs:  make(map[string][]string),
+		config:         config,
 	}
 }
 
@@ -99,8 +102,15 @@ func (sbm *StagingBufferManager) ReleaseStagedChunk(streamID string) {
 	defer sbm.mu.Unlock()
 
 	if chunk, exists := sbm.activeBuffers[streamID]; exists {
-		// Return buffer to pool
-		sbm.bufferPool.ReturnBuffer(chunk.Data)
+		// Return buffer to pool if chunk has data
+		if chunk.Data != nil {
+			sbm.bufferPool.ReturnBuffer(chunk.Data)
+		}
+
+		// Clean up duplicate references
+		if chunk.Hash != "" {
+			sbm.removeDuplicateReference(chunk.Hash, chunk.ID)
+		}
 
 		// Remove from active buffers
 		delete(sbm.activeBuffers, streamID)
@@ -143,8 +153,15 @@ func (sbm *StagingBufferManager) CleanupExpired() {
 
 	for streamID, chunk := range sbm.activeBuffers {
 		if now.Sub(chunk.StagedAt) > expiration {
-			// Return buffer to pool
-			sbm.bufferPool.ReturnBuffer(chunk.Data)
+			// Return buffer to pool if chunk has data
+			if chunk.Data != nil {
+				sbm.bufferPool.ReturnBuffer(chunk.Data)
+			}
+
+			// Clean up duplicate references
+			if chunk.Hash != "" {
+				sbm.removeDuplicateReference(chunk.Hash, chunk.ID)
+			}
 
 			// Remove from active buffers
 			delete(sbm.activeBuffers, streamID)
@@ -209,18 +226,63 @@ func (sbm *StagingBufferManager) processStagingRequest(req *StagingRequest, work
 	// Trim buffer to actual size
 	actualData := buffer[:bytesRead]
 
+	// Perform deduplication analysis
+	dedupeResult := sbm.deduplicator.AnalyzeChunk(actualData, req.ContentType)
+
 	// Create staged chunk
 	chunk := &StagedChunk{
-		ID:               fmt.Sprintf("%s-%d-%d", req.StreamID, workerID, time.Now().UnixNano()),
-		Data:             actualData,
-		CompressedSize:   bytesRead,
-		UncompressedSize: bytesRead, // Will be updated by compression analysis
-		StagedAt:         time.Now(),
-		ContentType:      req.ContentType,
+		ID:                  fmt.Sprintf("%s-%d-%d", req.StreamID, workerID, time.Now().UnixNano()),
+		CompressedSize:      bytesRead,
+		UncompressedSize:    bytesRead, // Will be updated by compression analysis
+		StagedAt:            time.Now(),
+		ContentType:         req.ContentType,
+		IsDuplicate:         dedupeResult.IsDuplicate,
+		DuplicateHash:       dedupeResult.ExistingHash,
+		SimilarityScore:     dedupeResult.SimilarityScore,
+		DeltaParent:         dedupeResult.DeltaParent,
+		BytesSaved:          dedupeResult.BytesSaved,
+		DeduplicationAction: dedupeResult.RecommendedAction,
 	}
 
-	// Analyze content for additional metadata
-	sbm.analyzeChunkContent(chunk)
+	// Handle deduplication result
+	switch dedupeResult.RecommendedAction {
+	case ActionStore:
+		// Store full chunk data
+		chunk.Data = actualData
+		chunk.Hash = sbm.deduplicator.computeStrongHash(actualData)
+		
+	case ActionDuplicate:
+		// Don't store data, just reference existing chunk
+		sbm.bufferPool.ReturnBuffer(buffer) // Return unused buffer
+		chunk.Data = nil
+		chunk.Hash = dedupeResult.ExistingHash
+		
+		// Track reference
+		sbm.mu.Lock()
+		sbm.duplicateRefs[dedupeResult.ExistingHash] = append(sbm.duplicateRefs[dedupeResult.ExistingHash], chunk.ID)
+		sbm.mu.Unlock()
+		
+	case ActionDeltaCompress:
+		// Store delta-compressed data (simplified implementation)
+		chunk.Data = actualData
+		chunk.Hash = sbm.deduplicator.computeStrongHash(actualData)
+		chunk.CompressedSize = int(dedupeResult.DeltaSize)
+		
+	case ActionSimilarityReplace:
+		// Store reference to similar chunk
+		chunk.Data = nil
+		chunk.Hash = dedupeResult.ExistingHash
+		
+		// Track reference
+		sbm.mu.Lock()
+		sbm.duplicateRefs[dedupeResult.ExistingHash] = append(sbm.duplicateRefs[dedupeResult.ExistingHash], chunk.ID)
+		sbm.mu.Unlock()
+	}
+
+	// Analyze content for additional metadata if we have data
+	if chunk.Data != nil {
+		sbm.analyzeChunkContent(chunk)
+	}
 
 	// Store in active buffers
 	sbm.mu.Lock()
@@ -438,4 +500,43 @@ func (mm *MemoryMonitor) IsUnderPressure() bool {
 	mm.mu.RLock()
 	defer mm.mu.RUnlock()
 	return mm.pressureDetected
+}
+
+// GetDeduplicationStats returns current deduplication statistics.
+func (sbm *StagingBufferManager) GetDeduplicationStats() *DeduplicationStats {
+	return sbm.deduplicator.GetStats()
+}
+
+// removeDuplicateReference removes a chunk ID from duplicate references.
+func (sbm *StagingBufferManager) removeDuplicateReference(hash, chunkID string) {
+	if refs, exists := sbm.duplicateRefs[hash]; exists {
+		// Remove the specific chunk ID
+		for i, ref := range refs {
+			if ref == chunkID {
+				sbm.duplicateRefs[hash] = append(refs[:i], refs[i+1:]...)
+				break
+			}
+		}
+		
+		// Clean up empty reference lists
+		if len(sbm.duplicateRefs[hash]) == 0 {
+			delete(sbm.duplicateRefs, hash)
+		}
+	}
+}
+
+// GetDuplicateReferenceCount returns the number of chunks referencing a hash.
+func (sbm *StagingBufferManager) GetDuplicateReferenceCount(hash string) int {
+	sbm.mu.RLock()
+	defer sbm.mu.RUnlock()
+	
+	if refs, exists := sbm.duplicateRefs[hash]; exists {
+		return len(refs)
+	}
+	return 0
+}
+
+// ClearDeduplicationCache clears the deduplication cache.
+func (sbm *StagingBufferManager) ClearDeduplicationCache() {
+	sbm.deduplicator.ClearCache()
 }
