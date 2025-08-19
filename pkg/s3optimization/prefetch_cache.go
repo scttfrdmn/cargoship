@@ -212,7 +212,7 @@ func (pc *PrefetchCache) AdaptSize(multiplier float64) {
 	
 	// If cache is now too large, evict objects
 	if pc.totalSize > pc.maxSize {
-		pc.makeSpace(pc.totalSize - pc.maxSize)
+		_ = pc.makeSpace(pc.totalSize - pc.maxSize)
 	}
 }
 
@@ -538,11 +538,7 @@ func isRecentObject(key string) bool {
 	monthStr := string(rune('0' + currentMonth/10))
 	monthStr += string(rune('0' + currentMonth%10))
 	
-	if containsString(key, monthStr) {
-		return true
-	}
-	
-	return false
+	return containsString(key, monthStr)
 }
 
 func containsString(s, substr string) bool {

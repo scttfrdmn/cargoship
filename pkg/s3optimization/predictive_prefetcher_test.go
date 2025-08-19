@@ -263,17 +263,17 @@ func TestPrefetchCache_Operations(t *testing.T) {
 
 	// Test remove
 	cache.Remove("test-key")
-	obj, found = cache.Get("test-key")
+	_, found = cache.Get("test-key")
 	assert.False(t, found)
 
 	// Test clear
-	cache.Put("key1", []byte("data1"), nil)
-	cache.Put("key2", []byte("data2"), nil)
+	_ = cache.Put("key1", []byte("data1"), nil)
+	_ = cache.Put("key2", []byte("data2"), nil)
 	cache.Clear()
 	
-	obj, found = cache.Get("key1")
+	_, found = cache.Get("key1")
 	assert.False(t, found)
-	obj, found = cache.Get("key2")
+	_, found = cache.Get("key2")
 	assert.False(t, found)
 }
 

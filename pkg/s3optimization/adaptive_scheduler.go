@@ -117,23 +117,19 @@ func (as *AdaptiveScheduler) GetNextJob() *PrefetchJob {
 	// Check if any jobs are ready for execution
 	now := time.Now()
 	
-	for {
-		job := as.jobQueue.Peek()
-		if job == nil {
-			return nil // No jobs available
-		}
-		
-		// Check if job is ready to execute
-		if as.isJobReadyForExecution(job, now) {
-			as.jobQueue.Pop()
-			job.StartTime = now
-			return job
-		}
-		
-		// If the highest priority job isn't ready, no jobs are ready
-		break
+	job := as.jobQueue.Peek()
+	if job == nil {
+		return nil // No jobs available
 	}
 	
+	// Check if job is ready to execute
+	if as.isJobReadyForExecution(job, now) {
+		as.jobQueue.Pop()
+		job.StartTime = now
+		return job
+	}
+	
+	// If the highest priority job isn't ready, no jobs are ready
 	return nil
 }
 

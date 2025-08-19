@@ -224,7 +224,7 @@ func (pw *PrefetchWorker) processJob(ctx context.Context, job *PrefetchJob) {
 		
 		// Retry logic
 		if job.Retries < job.MaxRetries {
-			pw.prefetcher.adaptiveScheduler.RetryJob(job, errorMsg)
+			_ = pw.prefetcher.adaptiveScheduler.RetryJob(job, errorMsg)
 			return
 		}
 	}
@@ -258,7 +258,7 @@ func (pw *PrefetchWorker) executePrefetch(ctx context.Context, job *PrefetchJob,
 	if err != nil {
 		return false, 0, fmt.Errorf("failed to fetch object: %w", err)
 	}
-	defer result.Body.Close()
+	defer func() { _ = result.Body.Close() }()
 	
 	// Read object data
 	data := make([]byte, job.EstimatedSize)

@@ -582,7 +582,21 @@ func (pm *PrefetchMetrics) GetSnapshot() *PrefetchMetrics {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 	
-	// Create a copy
-	snapshot := *pm
-	return &snapshot
+	// Create a copy without the mutex
+	return &PrefetchMetrics{
+		TotalPrefetches:      pm.TotalPrefetches,
+		SuccessfulPrefetches: pm.SuccessfulPrefetches,
+		FailedPrefetches:     pm.FailedPrefetches,
+		CacheHits:           pm.CacheHits,
+		CacheMisses:         pm.CacheMisses,
+		TotalBytesPrefeched: pm.TotalBytesPrefeched,
+		AvgPrefetchTime:     pm.AvgPrefetchTime,
+		PrefetchAccuracy:    pm.PrefetchAccuracy,
+		CacheHitRate:       pm.CacheHitRate,
+		NetworkSavings:     pm.NetworkSavings,
+		LastNetworkUpdate:   pm.LastNetworkUpdate,
+		AverageBandwidth:   pm.AverageBandwidth,
+		AverageLatency:     pm.AverageLatency,
+		startTime:          pm.startTime,
+	}
 }
