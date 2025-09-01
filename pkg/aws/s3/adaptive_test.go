@@ -16,6 +16,7 @@ func TestNewAdaptiveUploader(t *testing.T) {
 
 	if uploader == nil {
 		t.Fatal("NewAdaptiveUploader returned nil")
+		return
 	}
 
 	if uploader.config.MinChunkSize != config.MinChunkSize {
@@ -176,6 +177,7 @@ func TestGetRecommendations(t *testing.T) {
 
 	if recommendations == nil {
 		t.Fatal("GetRecommendations returned nil")
+		return
 	}
 
 	if recommendations.OptimalChunkSize <= 0 {

@@ -17,6 +17,7 @@ func TestNewBandwidthDelayProductCalculator(t *testing.T) {
 
 	if calculator == nil {
 		t.Fatal("Expected non-nil BDP calculator")
+		return
 	}
 
 	if calculator.currentBandwidth != config.DefaultBandwidth {
@@ -283,6 +284,7 @@ func TestBDPMetricsTracking(t *testing.T) {
 	metrics := calculator.GetMetrics()
 	if metrics == nil {
 		t.Fatal("Expected non-nil metrics")
+		return
 	}
 
 	if metrics.TotalCalculations <= 0 {
@@ -473,6 +475,7 @@ func TestBDPConfigDefaults(t *testing.T) {
 
 	if config == nil {
 		t.Fatal("Expected non-nil default config")
+		return
 	}
 
 	if config.DefaultBandwidth <= 0 {
@@ -521,6 +524,7 @@ func TestBDPTuningParameters(t *testing.T) {
 
 	if params == nil {
 		t.Fatal("Expected non-nil default tuning parameters")
+		return
 	}
 
 	// Check sensitivity parameters

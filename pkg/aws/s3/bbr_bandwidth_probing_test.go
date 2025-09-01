@@ -17,6 +17,7 @@ func TestNewBBRBandwidthProber(t *testing.T) {
 
 	if prober == nil {
 		t.Fatal("Expected non-nil BBR bandwidth prober")
+		return
 	}
 
 	if prober.state != BBRStateStartup {
@@ -495,6 +496,7 @@ func TestBBRMetricsTracking(t *testing.T) {
 	metrics := prober.GetMetrics()
 	if metrics == nil {
 		t.Fatal("Expected non-nil metrics")
+		return
 	}
 
 	if metrics.TotalProbes < 0 {
@@ -525,6 +527,7 @@ func TestBBRConfigDefaults(t *testing.T) {
 
 	if config == nil {
 		t.Fatal("Expected non-nil default config")
+		return
 	}
 
 	if config.HighGain <= 1.0 {

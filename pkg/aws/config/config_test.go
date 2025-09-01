@@ -10,6 +10,7 @@ func TestDefaultAWSConfig(t *testing.T) {
 
 	if config == nil {
 		t.Fatalf("DefaultAWSConfig() returned nil")
+		return
 	}
 
 	if config.Region != "us-east-1" {

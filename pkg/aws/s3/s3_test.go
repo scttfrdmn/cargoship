@@ -79,6 +79,7 @@ func TestTransporterConstructor(t *testing.T) {
 
 	if transporter == nil {
 		t.Fatal("NewTransporter returned nil")
+		return
 	}
 
 	if transporter.config.Bucket != config.Bucket {
@@ -353,6 +354,7 @@ func TestParallelUploaderConstructor(t *testing.T) {
 
 	if uploader == nil {
 		t.Fatal("NewParallelUploader returned nil")
+		return
 	}
 
 	if uploader.config.MaxPrefixes != 6 {
@@ -610,6 +612,7 @@ func TestOptimizePrefixDistribution(t *testing.T) {
 
 	if optimization == nil {
 		t.Fatal("Expected optimization result, got nil")
+		return
 	}
 
 	if optimization.TotalSize != 450*1024*1024 {

@@ -12,6 +12,7 @@ func TestNewBandwidthOptimizer(t *testing.T) {
 
 	if optimizer == nil {
 		t.Fatal("Expected non-nil BandwidthOptimizer")
+		return
 	}
 
 	if optimizer.config != config {
@@ -97,6 +98,7 @@ func TestBandwidthOptimizer_GetCurrentUtilization(t *testing.T) {
 	utilization := optimizer.GetCurrentUtilization()
 	if utilization == nil {
 		t.Fatal("Expected non-nil utilization")
+		return
 	}
 
 	// Utilization should have reasonable values
@@ -116,6 +118,7 @@ func TestBandwidthOptimizer_UtilizationBasics(t *testing.T) {
 	utilization := optimizer.GetCurrentUtilization()
 	if utilization == nil {
 		t.Fatal("Expected non-nil utilization")
+		return
 	}
 
 	// Initial utilization should have reasonable defaults
@@ -205,6 +208,7 @@ func TestNewCongestionController(t *testing.T) {
 
 	if controller == nil {
 		t.Fatal("Expected non-nil CongestionController")
+		return
 	}
 
 	if controller.config != config {
@@ -402,6 +406,7 @@ func TestNewFlowController(t *testing.T) {
 
 	if controller == nil {
 		t.Fatal("Expected non-nil FlowController")
+		return
 	}
 
 	if controller.config != config {
@@ -418,6 +423,7 @@ func TestUtilizationHistory_Basic(t *testing.T) {
 
 	if history == nil {
 		t.Fatal("Expected non-nil UtilizationHistory")
+		return
 	}
 
 	if history.maxHistory <= 0 {

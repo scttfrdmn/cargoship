@@ -14,6 +14,7 @@ func TestDefaultConfig(t *testing.T) {
 	config := DefaultConfig()
 	if config == nil {
 		t.Fatal("Default config is nil")
+		return
 	}
 
 	if !config.EnableBBR {
@@ -68,6 +69,7 @@ func TestPerformanceMetrics(t *testing.T) {
 	perfMetrics := metrics.getPerformanceMetrics()
 	if perfMetrics == nil {
 		t.Fatal("Performance metrics is nil")
+		return
 	}
 
 	if perfMetrics.TotalRequests != 10 {

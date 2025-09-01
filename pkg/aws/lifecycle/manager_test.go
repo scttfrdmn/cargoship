@@ -76,6 +76,7 @@ func TestNewManager(t *testing.T) {
 
 	if manager == nil {
 		t.Fatalf("NewManager() returned nil")
+		return
 	}
 
 	if manager.bucket != bucket {
@@ -214,6 +215,7 @@ func TestManager_GetCurrentPolicy(t *testing.T) {
 
 	if config == nil {
 		t.Fatalf("GetCurrentPolicy() returned nil config")
+		return
 	}
 
 	if len(config.Rules) != 1 {
@@ -494,6 +496,7 @@ func TestManager_EstimateSavings(t *testing.T) {
 
 	if estimate == nil {
 		t.Fatalf("EstimateSavings() returned nil estimate")
+		return
 	}
 
 	if estimate.PolicyID != template.ID {
@@ -607,6 +610,7 @@ func TestManager_ImportPolicy(t *testing.T) {
 
 	if template == nil {
 		t.Fatalf("ImportPolicy() returned nil template")
+		return
 	}
 
 	if template.ID != "imported-policy" {

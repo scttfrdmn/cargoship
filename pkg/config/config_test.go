@@ -14,6 +14,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	if config == nil {
 		t.Fatalf("DefaultConfig() returned nil")
+		return
 	}
 
 	// Test AWS defaults
@@ -94,6 +95,7 @@ func TestNewManager(t *testing.T) {
 
 	if manager == nil {
 		t.Fatalf("NewManager() returned nil")
+		return
 	}
 	if manager.config == nil {
 		t.Errorf("NewManager() config is nil")

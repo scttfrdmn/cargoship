@@ -16,6 +16,7 @@ func TestNewChunkBoundaryPredictor(t *testing.T) {
 
 	if predictor == nil {
 		t.Fatal("Expected non-nil ChunkBoundaryPredictor")
+		return
 	}
 
 	if predictor.config != config {
@@ -130,6 +131,7 @@ func TestNewContentAnalyzer(t *testing.T) {
 
 	if analyzer == nil {
 		t.Fatal("Expected non-nil ContentAnalyzer")
+		return
 	}
 
 	if analyzer.entropyCalculator == nil {
@@ -171,6 +173,7 @@ func TestContentAnalyzer_AnalyzeContent(t *testing.T) {
 
 	if profile == nil {
 		t.Fatal("Expected non-nil content profile")
+		return
 	}
 
 	if profile.ContentType != "text/plain" {
@@ -207,6 +210,7 @@ func TestContentAnalyzer_AnalyzeContentEmpty(t *testing.T) {
 
 	if profile == nil {
 		t.Fatal("Expected non-nil content profile for empty content")
+		return
 	}
 
 	// Should handle empty content gracefully
@@ -460,6 +464,7 @@ func TestNewContentPatternDetector(t *testing.T) {
 
 	if detector == nil {
 		t.Fatal("Expected non-nil ContentPatternDetector")
+		return
 	}
 
 	if detector.patternCache == nil {
@@ -594,6 +599,7 @@ func TestNewContentTypeClassifier(t *testing.T) {
 
 	if classifier == nil {
 		t.Fatal("Expected non-nil ContentTypeClassifier")
+		return
 	}
 
 	if classifier.signatures == nil {

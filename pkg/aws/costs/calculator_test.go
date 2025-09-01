@@ -17,6 +17,7 @@ func TestNewCalculator(t *testing.T) {
 	calc := NewCalculator("us-east-1")
 	if calc == nil {
 		t.Fatal("NewCalculator returned nil")
+		return
 	}
 
 	if calc.region != "us-east-1" {
@@ -29,6 +30,7 @@ func TestNewCalculatorWithPricing(t *testing.T) {
 	calc := NewCalculatorWithPricing("us-west-2", nil)
 	if calc == nil {
 		t.Fatal("NewCalculatorWithPricing returned nil")
+		return
 	}
 
 	if calc.region != "us-west-2" {

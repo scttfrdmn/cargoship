@@ -18,6 +18,7 @@ func TestNewCubicCongestionController(t *testing.T) {
 
 	if controller == nil {
 		t.Fatal("Expected non-nil CUBIC congestion controller")
+		return
 	}
 
 	if controller.state != CubicStateSlowStart {
@@ -561,6 +562,7 @@ func TestCubicMetricsTracking(t *testing.T) {
 	metrics := controller.GetMetrics()
 	if metrics == nil {
 		t.Fatal("Expected non-nil metrics")
+		return
 	}
 
 	if metrics.StateTransitions == nil {
@@ -600,6 +602,7 @@ func TestCubicConfigDefaults(t *testing.T) {
 
 	if config == nil {
 		t.Fatal("Expected non-nil default config")
+		return
 	}
 
 	if config.C != 0.4 {

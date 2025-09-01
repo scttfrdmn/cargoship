@@ -17,6 +17,7 @@ func TestNewLossDetectionRecoverySystem(t *testing.T) {
 
 	if system == nil {
 		t.Fatal("Expected non-nil loss detection recovery system")
+		return
 	}
 
 	if system.currentState != LossDetectionStateNormal {
@@ -363,6 +364,7 @@ func TestMetricsTracking(t *testing.T) {
 	metrics := system.GetMetrics()
 	if metrics == nil {
 		t.Fatal("Expected non-nil metrics")
+		return
 	}
 
 	if metrics.TotalLossEvents != 0 {
@@ -559,6 +561,7 @@ func TestConfigDefaults(t *testing.T) {
 
 	if config == nil {
 		t.Fatal("Expected non-nil default config")
+		return
 	}
 
 	if config.DuplicateACKThreshold != 3 {

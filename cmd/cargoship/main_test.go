@@ -16,6 +16,7 @@ func TestNewRootCmd(t *testing.T) {
 
 	if rootCmd == nil {
 		t.Fatal("NewRootCmd should not return nil")
+		return
 	}
 
 	// Test that the command has basic properties set

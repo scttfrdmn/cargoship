@@ -12,6 +12,7 @@ func TestNewAdaptiveTransferController(t *testing.T) {
 
 	if controller == nil {
 		t.Fatal("Expected non-nil AdaptiveTransferController")
+		return
 	}
 
 	if controller.config != config {
@@ -377,6 +378,7 @@ func TestDefaultTransferParameters(t *testing.T) {
 
 	if params == nil {
 		t.Fatal("Expected non-nil transfer parameters")
+		return
 	}
 
 	if params.ChunkSizeMB != 32 {
@@ -413,6 +415,7 @@ func TestDefaultRetryPolicy(t *testing.T) {
 
 	if policy == nil {
 		t.Fatal("Expected non-nil retry policy")
+		return
 	}
 
 	if policy.MaxRetries != 3 {
@@ -441,6 +444,7 @@ func TestDefaultTimeoutSettings(t *testing.T) {
 
 	if settings == nil {
 		t.Fatal("Expected non-nil timeout settings")
+		return
 	}
 
 	if settings.ConnectionTimeout != time.Second*30 {
@@ -465,6 +469,7 @@ func TestDefaultFlowControlSettings(t *testing.T) {
 
 	if settings == nil {
 		t.Fatal("Expected non-nil flow control settings")
+		return
 	}
 
 	if settings.WindowSize != 64 {

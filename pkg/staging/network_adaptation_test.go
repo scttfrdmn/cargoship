@@ -13,6 +13,7 @@ func TestNewNetworkAdaptationEngine(t *testing.T) {
 
 	if engine == nil {
 		t.Fatal("Expected non-nil NetworkAdaptationEngine")
+		return
 	}
 
 	if engine.config != config {
@@ -162,6 +163,7 @@ func TestDefaultAdaptationConfig(t *testing.T) {
 
 	if config == nil {
 		t.Fatal("Expected non-nil config")
+		return
 	}
 
 	if config.AdaptationInterval <= 0 {

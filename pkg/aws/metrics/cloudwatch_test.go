@@ -87,6 +87,7 @@ func TestNewCloudWatchPublisher(t *testing.T) {
 
 			if publisher == nil {
 				t.Fatalf("NewCloudWatchPublisher() returned nil")
+				return
 			}
 
 			if publisher.namespace != tt.expectedNS {

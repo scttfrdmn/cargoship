@@ -17,6 +17,7 @@ func TestNewPredictiveAdaptationEngine(t *testing.T) {
 
 	if engine == nil {
 		t.Fatal("Expected non-nil predictive adaptation engine")
+		return
 	}
 
 	if engine.predictionHorizon != time.Minute*5 {
@@ -84,6 +85,7 @@ func TestPredictNetworkConditions(t *testing.T) {
 
 	if prediction == nil {
 		t.Fatal("Expected non-nil prediction")
+		return
 	}
 
 	if prediction.PredictionHorizon != time.Minute*5 {
@@ -140,6 +142,7 @@ func TestEvaluateAdaptationNeed(t *testing.T) {
 
 	if decision == nil {
 		t.Fatal("Expected adaptation decision for significant changes")
+		return
 	}
 
 	if decision.ExpectedImprovement <= 0 {
@@ -510,6 +513,7 @@ func TestPredictionModelEnsemble(t *testing.T) {
 
 	if prediction == nil {
 		t.Fatal("Expected non-nil prediction")
+		return
 	}
 
 	if prediction.PredictionMethod != PredictionEnsemble {
@@ -562,6 +566,7 @@ func TestPredictionAccuracyTracker(t *testing.T) {
 	metrics := tracker.GetMetrics()
 	if metrics == nil {
 		t.Fatal("Expected non-nil metrics")
+		return
 	}
 
 	if metrics.PredictionCount != 1 {
