@@ -216,7 +216,12 @@ func (apa *AccessPatternAnalyzer) PredictNextAccess(key string) []string {
 	}
 	
 	// Remove duplicates and sort by confidence
-	return apa.deduplicateAndSort(predictions)
+	result := apa.deduplicateAndSort(predictions)
+	// Ensure we never return nil - return empty slice if no predictions
+	if result == nil {
+		return []string{}
+	}
+	return result
 }
 
 // updateAccessStatistics updates statistics for an access history.

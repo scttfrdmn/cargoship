@@ -284,10 +284,10 @@ func (sbm *StagingBufferManager) processStagingRequest(req *StagingRequest, work
 	// Analyze content for additional metadata if we have data
 	if chunk.Data != nil {
 		sbm.analyzeChunkContent(chunk)
-		
-		// Select optimal compression algorithm
-		sbm.selectOptimalCompression(chunk, req)
 	}
+	
+	// Always select compression algorithm (even for duplicates for compatibility)
+	sbm.selectOptimalCompression(chunk, req)
 
 	// Store in active buffers
 	sbm.mu.Lock()

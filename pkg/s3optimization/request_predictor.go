@@ -68,19 +68,31 @@ func (rp *RequestPredictor) PredictNextRequests(currentKey string, maxPrediction
 	
 	var allPredictions []*RequestPrediction
 	
-	// Get predictions from different predictors
+	// Get predictions from different predictors with nil checks
 	temporalPreds := rp.temporalPredictor.Predict(currentKey, rp.patterns)
-	sequentialPreds := rp.sequentialPredictor.Predict(currentKey, rp.patterns)
-	cyclicPreds := rp.cyclicPredictor.Predict(currentKey, rp.patterns)
-	burstPreds := rp.burstPredictor.Predict(currentKey, rp.patterns)
-	mlPreds := rp.machineLearningEngine.Predict(currentKey, rp.patterns)
+	if temporalPreds != nil {
+		allPredictions = append(allPredictions, temporalPreds...)
+	}
 	
-	// Combine all predictions
-	allPredictions = append(allPredictions, temporalPreds...)
-	allPredictions = append(allPredictions, sequentialPreds...)
-	allPredictions = append(allPredictions, cyclicPreds...)
-	allPredictions = append(allPredictions, burstPreds...)
-	allPredictions = append(allPredictions, mlPreds...)
+	sequentialPreds := rp.sequentialPredictor.Predict(currentKey, rp.patterns)
+	if sequentialPreds != nil {
+		allPredictions = append(allPredictions, sequentialPreds...)
+	}
+	
+	cyclicPreds := rp.cyclicPredictor.Predict(currentKey, rp.patterns)
+	if cyclicPreds != nil {
+		allPredictions = append(allPredictions, cyclicPreds...)
+	}
+	
+	burstPreds := rp.burstPredictor.Predict(currentKey, rp.patterns)
+	if burstPreds != nil {
+		allPredictions = append(allPredictions, burstPreds...)
+	}
+	
+	mlPreds := rp.machineLearningEngine.Predict(currentKey, rp.patterns)
+	if mlPreds != nil {
+		allPredictions = append(allPredictions, mlPreds...)
+	}
 	
 	// Deduplicate and enhance predictions
 	deduplicatedPreds := rp.deduplicatePredictions(allPredictions)
@@ -109,6 +121,10 @@ func (rp *RequestPredictor) PredictNextRequests(currentKey string, maxPrediction
 		}
 	}
 	
+	// Ensure we never return nil - return empty slice if no predictions
+	if filteredPreds == nil {
+		return []*RequestPrediction{}
+	}
 	return filteredPreds
 }
 

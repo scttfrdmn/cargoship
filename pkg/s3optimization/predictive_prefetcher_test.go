@@ -189,9 +189,10 @@ func TestAccessPatternAnalyzer_PatternDetection(t *testing.T) {
 	frequency := analyzer.GetAccessFrequency("file1.txt")
 	assert.True(t, frequency > 0)
 
-	// Test next access prediction
+	// Test next access prediction - should return empty slice if no patterns, not nil
 	predictions := analyzer.PredictNextAccess("file1.txt")
 	assert.NotNil(t, predictions)
+	assert.IsType(t, []string{}, predictions)
 	// Note: predictions might be empty if no patterns detected yet
 }
 
@@ -228,6 +229,12 @@ func TestRequestPredictor_Predictions(t *testing.T) {
 		predictor.RecordPredictionResult(predictions[0], time.Now(), true)
 		accuracy := predictor.GetPredictionAccuracy()
 		assert.NotNil(t, accuracy)
+		assert.GreaterOrEqual(t, len(accuracy), 0)
+	} else {
+		// Even with no predictions, accuracy should return a map (may have initialized models)
+		accuracy := predictor.GetPredictionAccuracy()
+		assert.NotNil(t, accuracy)
+		assert.GreaterOrEqual(t, len(accuracy), 0)
 	}
 }
 
