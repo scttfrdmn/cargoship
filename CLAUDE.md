@@ -97,16 +97,21 @@ CargoShip is a high-performance S3 file upload optimization tool designed for la
 **Focus: Stability & Code Quality**
 
 #### Critical Fixes
-- 🔄 **Resolve Type Conflicts in Staging Package**
+- 🔄 **Resolve Type Conflicts in Staging Package** *(Priority: High)*
   - Consolidate overlapping types across multiple staging files
   - Enable full advanced staging implementation
   - Fix compilation issues preventing advanced components usage
 
 #### Test & Quality Improvements  
-- 🔄 **Improve Test Reliability**
-  - Resolve goroutine leak issues in multiregion tests
-  - Add missing test coverage for edge cases
-  - Stabilize existing test flakiness
+- 🔄 **Fix Goroutine Leaks in Multiregion Tests** *(Priority: High)*
+  - Resolve resource leak issues in multiregion package tests
+  - Implement proper cleanup in test teardown
+  - Stabilize CI/CD pipeline reliability
+
+- 🔄 **Stabilize Failing Staging Deduplication Tests** *(Priority: High)*
+  - Fix similarity detection test failures
+  - Resolve content type awareness test issues
+  - Address entropy calculation and stats tracking failures
 
 #### Security & Maintenance
 - ✅ **Address Security Issues** *(Ongoing)*
@@ -119,13 +124,13 @@ CargoShip is a high-performance S3 file upload optimization tool designed for la
 **Focus: Integration Layer Preparation**
 
 #### ObjectFS Integration Framework
-- 🔄 **Create ObjectFS Compatibility Layer**
+- 🔄 **Create ObjectFS Compatibility Layer** *(Priority: Medium)*
   - Design interface adapters for S3 optimization features
   - Implement ObjectFS-compatible API wrappers
   - Add configuration management for ObjectFS integration
 
 #### Enhanced Monitoring
-- 🔄 **Extend Performance Monitoring**
+- 🔄 **Extend Performance Monitoring** *(Priority: Medium)*
   - Add ObjectFS-specific metrics collection
   - Implement integration health checks
   - Create ObjectFS performance dashboards
@@ -135,13 +140,13 @@ CargoShip is a high-performance S3 file upload optimization tool designed for la
 **Focus: Tooling & Debugging**
 
 #### CLI Enhancements
-- 🔄 **Improve Command-Line Interface**
-  - Add interactive configuration wizard
+- 🔄 **Create Interactive Configuration Wizard** *(Priority: Medium)*
+  - Add step-by-step setup guide for new users
   - Implement better error messages and help text
   - Add debug mode and verbose logging options
 
 #### Developer Tools
-- 🔄 **Add Debugging & Profiling Tools**
+- 🔄 **Add Debugging & Profiling Tools** *(Priority: Medium)*
   - Implement performance profiling commands
   - Add configuration validation tools
   - Create troubleshooting guides and diagnostics
@@ -151,41 +156,43 @@ CargoShip is a high-performance S3 file upload optimization tool designed for la
 **Focus: Production-Ready Features**
 
 #### Comprehensive Benchmarking
-- 🔄 **Implement Performance Testing Suite**
+- 🔄 **Implement Performance Testing Suite with Regression Detection** *(Priority: High)*
   - Create automated benchmark tests for all optimization features
-  - Add performance regression detection
-  - Implement comparative analysis tools
+  - Add performance regression detection and alerting
+  - Implement comparative analysis tools for release validation
 
 #### Advanced Observability  
-- 🔄 **Extended Monitoring & Alerting**
-  - Add distributed tracing support
-  - Implement custom metrics and dashboards
+- 🔄 **Add Distributed Tracing Support for Observability** *(Priority: High)*
+  - Implement end-to-end request tracing across all components
+  - Add custom metrics and dashboards for operational insights
   - Create alerting rules for production environments
 
 #### Production Hardening
-- 🔄 **Reliability & Scalability Improvements**
-  - Add circuit breaker patterns for external dependencies
-  - Implement graceful degradation strategies
+- 🔄 **Implement Circuit Breaker Patterns for External Dependencies** *(Priority: High)*
+  - Add circuit breakers for AWS S3, CloudWatch, and external services
+  - Implement graceful degradation strategies for service failures
   - Add resource usage optimization and memory management
 
 ### v0.5.1-v0.5.3 (Patch Releases) - Feature Refinement
 **Timeline: 1-2 weeks each**  
 **Focus: Polish & Optimization**
 
-#### v0.5.1: ObjectFS Integration Complete
+#### v0.5.1: Enterprise Budget Management
+- 🔄 **Add Volume-Based Budget Controls with Grant Period Management** *(Priority: Medium)*
+  - Implement cost AND volume limits with configurable thresholds
+  - Add grant period management (1-3 year budgets with rollover)
+  - Create real-time burn rate monitoring with optimization suggestions
+
+#### v0.5.2: Automated Benchmark Testing
+- 🔄 **Create Automated Benchmark Tests for Optimization Features** *(Priority: Medium)*
+  - Implement comprehensive performance validation suite
+  - Add automated regression testing for all optimization algorithms
+  - Create performance comparison reports for releases
+
+#### v0.5.3: ObjectFS Integration Complete
 - Full ObjectFS feature parity with native S3 operations
 - Integration testing and validation
 - Performance optimization for ObjectFS workflows
-
-#### v0.5.2: Advanced Caching Strategies  
-- Distributed cache support implementation
-- Cache warming and preloading strategies
-- Multi-tier caching with intelligent eviction policies
-
-#### v0.5.3: ML-Powered Recommendations
-- Machine learning models for optimization recommendations
-- Automated parameter tuning based on workload analysis
-- Predictive capacity planning and resource optimization
 
 ### Long-Term Vision (v0.6.0+)
 
@@ -217,6 +224,32 @@ CargoShip is a high-performance S3 file upload optimization tool designed for la
 - Type conflicts in staging package identified for resolution
 - ObjectFS integration framework preparation needed
 - Test reliability improvements for multiregion components
+
+## 🎯 Strategic Development Priorities (Updated for Follow-On Releases)
+
+### **Immediate Focus (v0.4.3) - Technical Debt Resolution**
+**Success Criteria:** Zero type conflicts, all tests passing, clean CI/CD pipeline
+- **Type conflicts** are blocking advanced staging features (Priority: High)
+- **Test stability** issues are affecting CI/CD reliability (Priority: High) 
+- **Resource leaks** need addressing for production deployment (Priority: High)
+
+### **Foundation Building (v0.4.4-v0.4.5) - Integration & Developer Experience**
+**Success Criteria:** ObjectFS integration working, configuration wizard functional, circuit breakers implemented
+- **ObjectFS compatibility** will expand the user base (Priority: Medium)
+- **Configuration wizard** will improve developer onboarding (Priority: Medium)
+- **Circuit breakers** will enhance production reliability (Priority: Medium)
+
+### **Performance & Scale (v0.5.0) - Production-Ready Features**
+**Success Criteria:** Performance regression detection, distributed tracing operational, comprehensive test coverage (90%+)
+- **Automated testing** will prevent performance regressions (Priority: High)
+- **Distributed tracing** will provide deep system insights (Priority: High)
+- **Circuit breaker patterns** for production resilience (Priority: High)
+
+### **Enterprise Readiness (v0.5.1+) - Advanced Features**
+**Success Criteria:** Budget controls operational, automated benchmarks running, enterprise features complete
+- **Budget controls** for cost management (Priority: Medium)
+- **Automated benchmarks** for performance validation (Priority: Medium)
+- **Advanced monitoring** for operations teams (Priority: Medium)
 
 ## Technical Architecture
 
