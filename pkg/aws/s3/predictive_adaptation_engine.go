@@ -611,7 +611,7 @@ type PredictiveNetworkConditionPredictor struct {
 	defaultMethod  PredictionMethod
 	historicalData []RealTimeNetworkConditions
 	maxHistorySize int
-	mu             sync.RWMutex
+	mu             sync.RWMutex //nolint:unused // Reserved for future thread-safe data access methods
 }
 
 type PredictionModel interface {
@@ -634,7 +634,7 @@ type BandwidthPredictor struct {
 	seasonalityModel *SeasonalityModel
 	noiseFilter      *NoiseFilter
 	confidence       float64
-	mu               sync.RWMutex
+	mu               sync.RWMutex //nolint:unused // Reserved for future thread-safe operations
 }
 
 func NewBandwidthPredictor() *BandwidthPredictor {
@@ -651,7 +651,7 @@ type LatencyPredictor struct {
 	queueingModel      *QueueingModel
 	congestionDetector *CongestionDetector
 	confidence         float64
-	mu                 sync.RWMutex
+	mu                 sync.RWMutex //nolint:unused // Reserved for future thread-safe operations
 }
 
 func NewLatencyPredictor() *LatencyPredictor {
@@ -668,7 +668,7 @@ type NetworkStabilityPredictor struct {
 	eventCorrelator  *EventCorrelator
 	failurePredictor *FailurePredictor
 	confidence       float64
-	mu               sync.RWMutex
+	mu               sync.RWMutex //nolint:unused // Reserved for future thread-safe operations
 }
 
 func NewNetworkStabilityPredictor() *NetworkStabilityPredictor {
@@ -685,7 +685,7 @@ type NetworkQualityPredictor struct {
 	userExperienceModel *UserExperienceModel
 	contextAwareness    *ContextAwareness
 	confidence          float64
-	mu                  sync.RWMutex
+	mu                  sync.RWMutex //nolint:unused // Reserved for future thread-safe operations
 }
 
 func NewNetworkQualityPredictor() *NetworkQualityPredictor {
@@ -702,7 +702,7 @@ type NetworkFeatureExtractor struct {
 	featureHistory []map[string]float64
 	normalizer     *FeatureNormalizer
 	selector       *FeatureSelector
-	mu             sync.RWMutex
+	mu             sync.RWMutex //nolint:unused // Reserved for future thread-safe operations
 }
 
 func NewNetworkFeatureExtractor() *NetworkFeatureExtractor {
@@ -734,7 +734,7 @@ type PredictionModelEnsemble struct {
 	weights            []float64
 	votingStrategy     VotingStrategy
 	performanceTracker *ModelPerformanceTracker
-	mu                 sync.RWMutex
+	mu                 sync.RWMutex  //nolint:unused // Reserved for future thread-safe operations
 }
 
 type VotingStrategy string
@@ -784,7 +784,7 @@ type NetworkAnomalyDetector struct {
 	threshold        float64
 	detectionMethods []AnomalyDetectionMethod
 	alertSystem      *AnomalyAlertSystem
-	mu               sync.RWMutex
+	mu               sync.RWMutex  //nolint:unused // Reserved for future thread-safe operations
 }
 
 type AnomalyDetectionMethod string
@@ -812,7 +812,7 @@ type NetworkTrendAnalyzer struct {
 	trends          map[string]PredictiveTrendDirection
 	trendStrength   map[string]float64
 	trendConfidence map[string]float64
-	mu              sync.RWMutex
+	mu              sync.RWMutex  //nolint:unused // Reserved for future thread-safe operations
 }
 
 type PredictiveTrendDirection string
@@ -852,7 +852,7 @@ type AdaptiveLearningEngine struct {
 	experienceBuffer   []LearningExperience
 	modelWeights       map[string]float64
 	performanceHistory []float64
-	mu                 sync.RWMutex
+	mu                 sync.RWMutex  //nolint:unused // Reserved for future thread-safe operations
 }
 
 type LearningExperience struct {
@@ -875,7 +875,7 @@ func NewAdaptiveLearningEngine() *AdaptiveLearningEngine {
 type PredictionAccuracyTracker struct {
 	predictions     []PredictionRecord
 	accuracyMetrics *PredictionAccuracyMetrics
-	mu              sync.RWMutex
+	mu              sync.RWMutex  //nolint:unused // Reserved for future thread-safe operations
 }
 
 type PredictionRecord struct {
@@ -939,7 +939,7 @@ type PredictiveAdaptationMetrics struct {
 	AverageRisk           float64
 	AdaptationHistory     []AdaptationSummary
 	LastUpdate            time.Time
-	mu                    sync.RWMutex
+	mu                    sync.RWMutex  //nolint:unused // Reserved for future thread-safe operations
 }
 
 type AdaptationSummary struct {

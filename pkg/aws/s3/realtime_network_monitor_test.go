@@ -139,9 +139,9 @@ func TestRealTimeNetworkMonitorWithRealMonitoring(t *testing.T) {
 
 	// Check worker statistics
 	nm.mu.RLock()
-	for _, worker := range nm.monitoringWorkers {
-		assert.GreaterOrEqual(t, worker.ExecutionCount, int64(0))
-		assert.NotZero(t, worker.LastExecution)
+	for i := range nm.monitoringWorkers {
+		assert.GreaterOrEqual(t, nm.monitoringWorkers[i].ExecutionCount, int64(0))
+		assert.NotZero(t, nm.monitoringWorkers[i].LastExecution)
 	}
 	nm.mu.RUnlock()
 
@@ -377,14 +377,14 @@ func TestRealTimeNetworkMonitoringWorkers(t *testing.T) {
 	assert.Len(t, nm.monitoringWorkers, 5)
 
 	workerTypes := make(map[RealTimeWorkerType]bool)
-	for _, worker := range nm.monitoringWorkers {
-		assert.NotEmpty(t, worker.ID)
-		assert.NotEmpty(t, worker.Type)
-		assert.False(t, worker.IsActive)
-		assert.Equal(t, int64(0), worker.ExecutionCount)
-		assert.Equal(t, int64(0), worker.ErrorCount)
+	for i := range nm.monitoringWorkers {
+		assert.NotEmpty(t, nm.monitoringWorkers[i].ID)
+		assert.NotEmpty(t, nm.monitoringWorkers[i].Type)
+		assert.False(t, nm.monitoringWorkers[i].IsActive)
+		assert.Equal(t, int64(0), nm.monitoringWorkers[i].ExecutionCount)
+		assert.Equal(t, int64(0), nm.monitoringWorkers[i].ErrorCount)
 
-		workerTypes[worker.Type] = true
+		workerTypes[nm.monitoringWorkers[i].Type] = true
 	}
 
 	// Verify all expected worker types are present
@@ -411,10 +411,10 @@ func TestRealTimeNetworkMonitorExecuteWorkerTasks(t *testing.T) {
 	nm := NewRealTimeNetworkMonitor(ctx)
 	defer func() { _ = nm.Shutdown() }()
 
-	for i, worker := range nm.monitoringWorkers {
+	for i := range nm.monitoringWorkers {
 		err := nm.executeWorkerTask(&nm.monitoringWorkers[i])
 		assert.NoError(t, err)
-		assert.False(t, worker.IsActive) // Should be false after execution
+		assert.False(t, nm.monitoringWorkers[i].IsActive) // Should be false after execution
 	}
 }
 
