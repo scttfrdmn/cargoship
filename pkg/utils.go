@@ -59,12 +59,12 @@ func getCmd[T []int | int | string | bool | time.Duration](cmd *cobra.Command, s
 	}
 }
 
-func mustExpandDir(s string) string {
+func expandDir(s string) (string, error) {
 	expanded, err := homedir.Expand(s)
 	if err != nil {
-		panic(err)
+		return "", fmt.Errorf("failed to expand directory %s: %w", s, err)
 	}
-	return expanded
+	return expanded, nil
 }
 
 func validateIsDir(s string) error {
@@ -111,14 +111,18 @@ func hashInner(targetFn string, ha inventory.HashAlgorithm, hashes []config.Hash
 
 func int64ToUint64(i int64) uint64 {
 	if i < 0 {
-		panic("value is negative and cannot be converted to uint64")
+		// Return 0 for negative values instead of panicking
+		// This is defensive - callers should validate before calling
+		return 0
 	}
 	return uint64(i)
 }
 
 func intToUint64(i int) uint64 {
 	if i < 0 {
-		panic("value is negative and cannot be converted to uint64")
+		// Return 0 for negative values instead of panicking
+		// This is defensive - callers should validate before calling
+		return 0
 	}
 	return uint64(i)
 }

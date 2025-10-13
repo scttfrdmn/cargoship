@@ -162,9 +162,13 @@ func setOuterHashes(ptr *porter.Porter, metaF string) ([]config.HashSet, string,
 	defer dclose(metaFh)
 
 	logger.Info("creating hash for file", "file", metaF)
+	hash, err := porter.CalculateHash(metaFh, hashAlgo.String())
+	if err != nil {
+		return nil, "", "", fmt.Errorf("failed to calculate hash for %s: %w", metaF, err)
+	}
 	hashes = append(hashes, config.HashSet{
 		Filename: strings.TrimPrefix(metaF, ptr.Destination+"/"),
-		Hash:     porter.MustCalculateHash(metaFh, hashAlgo.String()),
+		Hash:     hash,
 	})
 
 	hashFn, err := writeHashFile(ptr, suitcase.WriteHashFile, "")

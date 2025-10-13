@@ -22,7 +22,8 @@ func BenchmarkGetSha256(b *testing.B) {
 			tfh, err := os.Open(tf)
 			require.NoError(b, err)
 			defer dclose(tfh)
-			got := porter.MustCalculateHash(tfh, ha)
+			got, err := porter.CalculateHash(tfh, ha)
+			require.NoError(b, err)
 			require.NotEmpty(b, got)
 		})
 	}

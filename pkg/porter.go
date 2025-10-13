@@ -206,9 +206,15 @@ func (p Porter) CreateHashes(s []string) ([]config.HashSet, error) {
 		}
 		defer dclose(fh)
 		p.Logger.Info("created file", "file", f)
+
+		hash, err := CalculateHash(fh, p.HashAlgorithm.String())
+		if err != nil {
+			return nil, fmt.Errorf("failed to calculate hash for %s: %w", f, err)
+		}
+
 		hs = append(hs, config.HashSet{
 			Filename: strings.TrimPrefix(f, p.Destination+"/"),
-			Hash:     MustCalculateHash(fh, p.HashAlgorithm.String()),
+			Hash:     hash,
 		})
 	}
 	return hs, nil
@@ -275,11 +281,12 @@ func dclose(c io.Closer) {
 	}
 }
 
-// MustCalculateHash returns a certain type of hash string and panics on error
-func MustCalculateHash(rd io.Reader, ht string) string {
+// CalculateHashOrEmpty returns a hash string or empty string on error
+// Deprecated: Use CalculateHash directly and handle errors properly
+func CalculateHashOrEmpty(rd io.Reader, ht string) string {
 	got, err := CalculateHash(rd, ht)
 	if err != nil {
-		panic(err)
+		return ""
 	}
 	return got
 }
@@ -329,7 +336,11 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 			p.Destination = p.WizardForm.Destination
 		}
 		if p.Destination == "" {
-			p.Destination = mustTempDir()
+			tmpDir, err := os.MkdirTemp("", "cargoship")
+			if err != nil {
+				return nil, fmt.Errorf("failed to create temporary directory: %w", err)
+			}
+			p.Destination = tmpDir
 		}
 		// inventoryD, outF, err = WriteInventoryAndFileWithViper(v, cmd, args, outDir, version)
 		inventoryD, outF, err = p.WriteInventory()
@@ -359,14 +370,6 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 	// p.Cmd.SetContext(context.WithValue(p.Cmd.Context(), inventory.InventoryKey, inventoryD))
 	inventoryD.SummaryLog()
 	return inventoryD, nil
-}
-
-func mustTempDir() string {
-	o, err := os.MkdirTemp("", "suitcasectl")
-	if err != nil {
-		panic(err)
-	}
-	return o
 }
 
 // calculateMD5Sum calculates the MD5 checksum of a file given its path.
@@ -415,10 +418,10 @@ func (p *Porter) WriteInventory() (*inventory.Inventory, *os.File, error) {
 	return i, f, nil
 }
 
-// inventoryGeneration generates appropriate inventory-er pieces
+// inventoryerGeneration generates appropriate inventory-er pieces
 func (p *Porter) inventoryerGeneration() (*inventory.Inventory, *os.File, inventory.Inventoryer, error) {
 	if p.UserOverrides == nil {
-		panic("must pass UserOverrides")
+		return nil, nil, nil, errors.New("UserOverrides must be set before generating inventory")
 	}
 	i, f, err := p.inventoryGeneration()
 	if err != nil {
@@ -541,16 +544,16 @@ func copySrcDst(src, dst string) error {
 	return err
 }
 
-func envOrTmpDir(e string) string {
+func envOrTmpDir(e string) (string, error) {
 	got := os.Getenv(e)
 	if got == "" {
 		tdir, err := os.MkdirTemp("", "cargoship")
 		if err != nil {
-			panic(err)
+			return "", fmt.Errorf("failed to create temporary directory: %w", err)
 		}
-		return tdir
+		return tdir, nil
 	}
-	return got
+	return got, nil
 }
 
 func envOrString(e, d string) string {
@@ -600,9 +603,14 @@ func runForm(wf *inventory.WizardForm) error {
 
 // RunWizard uses an interactive form to select some base pieces and package up date in to suitcases
 func (p *Porter) RunWizard() error {
+	destination, err := envOrTmpDir("SUITCASECTL_DESTINATION")
+	if err != nil {
+		return fmt.Errorf("failed to set destination: %w", err)
+	}
+
 	p.WizardForm = &inventory.WizardForm{
 		Source:           os.Getenv("SUITCASECTL_SOURCE"),
-		Destination:      envOrTmpDir("SUITCASECTL_DESTINATION"),
+		Destination:      destination,
 		MaxSize:          envOrString("SUITCASECTL_MAXSIZE", "200Gb"),
 		TravelAgentToken: os.Getenv("SUITCASECTL_TRAVELAGENT"),
 	}
@@ -611,7 +619,11 @@ func (p *Porter) RunWizard() error {
 	}
 
 	// Expand the homedir
-	p.WizardForm.Source = mustExpandDir(p.WizardForm.Source)
+	expandedSource, err := expandDir(p.WizardForm.Source)
+	if err != nil {
+		return fmt.Errorf("failed to expand source directory: %w", err)
+	}
+	p.WizardForm.Source = expandedSource
 
 	var terr error
 	var ta *travelagent.TravelAgent
@@ -826,7 +838,7 @@ func (p *Porter) WriteSuitcaseFile(index int, stateC chan FillState) (string, er
 	}
 	defer func() {
 		if terr := target.Close(); terr != nil {
-			panic(terr)
+			log.Error("failed to close target file", "file", tmpTargetFn, "error", terr)
 		}
 	}()
 

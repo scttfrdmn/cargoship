@@ -281,8 +281,10 @@ func TestCreateForm(t *testing.T) {
 	require.Contains(t, f.View(), "/foo/destination")
 }
 
-func TestMustExpandDir(t *testing.T) {
-	require.Equal(t, "/foo", mustExpandDir("/foo"))
+func TestExpandDir(t *testing.T) {
+	result, err := expandDir("/foo")
+	require.NoError(t, err)
+	require.Equal(t, "/foo", result)
 }
 
 func TestValidateIsDir(t *testing.T) {
@@ -305,8 +307,13 @@ func TestEnvOrString(t *testing.T) {
 func TestEnvOrTempDir(t *testing.T) {
 	os.Clearenv()
 	t.Setenv("SOME_TMP", "/tmp/foo")
-	require.Equal(t, "/tmp/foo", envOrTmpDir("SOME_TMP"))
-	require.Contains(t, envOrTmpDir("NEVER_EXISTS"), "cargoship")
+	result, err := envOrTmpDir("SOME_TMP")
+	require.NoError(t, err)
+	require.Equal(t, "/tmp/foo", result)
+
+	result, err = envOrTmpDir("NEVER_EXISTS")
+	require.NoError(t, err)
+	require.Contains(t, result, "cargoship")
 }
 
 func TestMergeWizard(t *testing.T) {
@@ -567,10 +574,9 @@ func TestInt64ToUint64(t *testing.T) {
 	result = int64ToUint64(0)
 	require.Equal(t, uint64(0), result)
 
-	// Test with negative number (should panic)
-	require.Panics(t, func() {
-		int64ToUint64(-1)
-	})
+	// Test with negative number (now returns 0 instead of panicking)
+	result = int64ToUint64(-1)
+	require.Equal(t, uint64(0), result)
 }
 
 func TestIntToUint64(t *testing.T) {
@@ -582,10 +588,9 @@ func TestIntToUint64(t *testing.T) {
 	result = intToUint64(0)
 	require.Equal(t, uint64(0), result)
 
-	// Test with negative number (should panic)
-	require.Panics(t, func() {
-		intToUint64(-1)
-	})
+	// Test with negative number (now returns 0 instead of panicking)
+	result = intToUint64(-1)
+	require.Equal(t, uint64(0), result)
 }
 
 /*
