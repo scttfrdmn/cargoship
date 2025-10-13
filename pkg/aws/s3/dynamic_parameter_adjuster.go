@@ -1089,71 +1089,52 @@ func getParameterValue(params *ActiveUploadParameters, name string) interface{} 
 }
 
 func setParameterValue(params *ActiveUploadParameters, name string, value interface{}) error {
-	switch name {
-	case "ChunkSizeMB":
-		if v, ok := value.(float64); ok {
-			params.ChunkSizeMB = v
-		} else {
-			return fmt.Errorf("invalid type for ChunkSizeMB")
-		}
-	case "ConcurrentConnections":
-		if v, ok := value.(int); ok {
-			params.ConcurrentConnections = v
-		} else {
-			return fmt.Errorf("invalid type for ConcurrentConnections")
-		}
-	case "RequestTimeoutSec":
-		if v, ok := value.(float64); ok {
-			params.RequestTimeoutSec = v
-		} else {
-			return fmt.Errorf("invalid type for RequestTimeoutSec")
-		}
-	case "RetryAttempts":
-		if v, ok := value.(int); ok {
-			params.RetryAttempts = v
-		} else {
-			return fmt.Errorf("invalid type for RetryAttempts")
-		}
-	case "RetryBackoffMs":
-		if v, ok := value.(float64); ok {
-			params.RetryBackoffMs = v
-		} else {
-			return fmt.Errorf("invalid type for RetryBackoffMs")
-		}
-	case "ConnectionPoolSize":
-		if v, ok := value.(int); ok {
-			params.ConnectionPoolSize = v
-		} else {
-			return fmt.Errorf("invalid type for ConnectionPoolSize")
-		}
-	case "BufferSizeMB":
-		if v, ok := value.(float64); ok {
-			params.BufferSizeMB = v
-		} else {
-			return fmt.Errorf("invalid type for BufferSizeMB")
-		}
-	case "CompressionLevel":
-		if v, ok := value.(int); ok {
-			params.CompressionLevel = v
-		} else {
-			return fmt.Errorf("invalid type for CompressionLevel")
-		}
-	case "ResourceAllocation":
-		if v, ok := value.(float64); ok {
-			params.ResourceAllocation = v
-		} else {
-			return fmt.Errorf("invalid type for ResourceAllocation")
-		}
-	case "BandwidthLimit":
-		if v, ok := value.(float64); ok {
-			params.BandwidthLimit = v
-		} else {
-			return fmt.Errorf("invalid type for BandwidthLimit")
-		}
-	default:
+	setter, exists := parameterSetters[name]
+	if !exists {
 		return fmt.Errorf("unknown parameter: %s", name)
 	}
-	return nil
+	return setter(params, value)
+}
+
+// parameterSetter is a function that sets a specific parameter value
+type parameterSetter func(*ActiveUploadParameters, interface{}) error
+
+// parameterSetters maps parameter names to their setter functions
+var parameterSetters = map[string]parameterSetter{
+	"ChunkSizeMB":           setFloat64Parameter(func(p *ActiveUploadParameters, v float64) { p.ChunkSizeMB = v }),
+	"ConcurrentConnections": setIntParameter(func(p *ActiveUploadParameters, v int) { p.ConcurrentConnections = v }),
+	"RequestTimeoutSec":     setFloat64Parameter(func(p *ActiveUploadParameters, v float64) { p.RequestTimeoutSec = v }),
+	"RetryAttempts":         setIntParameter(func(p *ActiveUploadParameters, v int) { p.RetryAttempts = v }),
+	"RetryBackoffMs":        setFloat64Parameter(func(p *ActiveUploadParameters, v float64) { p.RetryBackoffMs = v }),
+	"ConnectionPoolSize":    setIntParameter(func(p *ActiveUploadParameters, v int) { p.ConnectionPoolSize = v }),
+	"BufferSizeMB":          setFloat64Parameter(func(p *ActiveUploadParameters, v float64) { p.BufferSizeMB = v }),
+	"CompressionLevel":      setIntParameter(func(p *ActiveUploadParameters, v int) { p.CompressionLevel = v }),
+	"ResourceAllocation":    setFloat64Parameter(func(p *ActiveUploadParameters, v float64) { p.ResourceAllocation = v }),
+	"BandwidthLimit":        setFloat64Parameter(func(p *ActiveUploadParameters, v float64) { p.BandwidthLimit = v }),
+}
+
+// setFloat64Parameter creates a setter for float64 parameters
+func setFloat64Parameter(setter func(*ActiveUploadParameters, float64)) parameterSetter {
+	return func(p *ActiveUploadParameters, value interface{}) error {
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("invalid type: expected float64")
+		}
+		setter(p, v)
+		return nil
+	}
+}
+
+// setIntParameter creates a setter for int parameters
+func setIntParameter(setter func(*ActiveUploadParameters, int)) parameterSetter {
+	return func(p *ActiveUploadParameters, value interface{}) error {
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("invalid type: expected int")
+		}
+		setter(p, v)
+		return nil
+	}
 }
 
 func interpolateValue(current, target interface{}, progress float64) interface{} {
