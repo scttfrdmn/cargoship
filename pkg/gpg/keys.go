@@ -41,7 +41,9 @@ func (k KeyType) String() string {
 	if v, ok := m[k]; ok {
 		return v
 	}
-	panic("invalid KeyType")
+	// Return empty string for invalid key type instead of panicking
+	// Callers should validate key type values before using
+	return ""
 }
 
 // Type satisfies part of the pflags.Value interface

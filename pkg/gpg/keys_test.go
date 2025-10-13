@@ -167,14 +167,11 @@ func TestKeyType_MarshalJSON_NullKey(t *testing.T) {
 
 // Additional tests to push coverage over 80%
 
-func TestKeyType_String_Panic(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("Expected panic for invalid KeyType")
-		}
-	}()
+func TestKeyType_String_InvalidValue(t *testing.T) {
+	// Test that invalid KeyType values return empty string instead of panicking
 	var invalidKeyType KeyType = 999
-	_ = invalidKeyType.String()
+	result := invalidKeyType.String()
+	require.Equal(t, "", result, "Invalid KeyType should return empty string")
 }
 
 func TestNewKeyPair_X25519(t *testing.T) {

@@ -107,9 +107,8 @@ func ReadEntity(name string) (*openpgp.Entity, error) {
 		return nil, err
 	}
 	defer func() {
-		cerr := f.Close()
-		if cerr != nil {
-			panic(cerr)
+		if cerr := f.Close(); cerr != nil {
+			slog.Error("failed to close file", "file", name, "error", cerr)
 		}
 	}()
 	block, err := armor.Decode(f)
@@ -131,9 +130,8 @@ func CollectGPGPubKeys(fp string) (*openpgp.EntityList, error) {
 			return nil, err
 		}
 		defer func() {
-			rerr := os.RemoveAll(tmpdir)
-			if rerr != nil {
-				panic(rerr)
+			if rerr := os.RemoveAll(tmpdir); rerr != nil {
+				slog.Warn("failed to remove temporary directory", "dir", tmpdir, "error", rerr)
 			}
 		}()
 		_, err = git.PlainClone(tmpdir, false, &git.CloneOptions{
