@@ -27,6 +27,7 @@ archives:
     files:
       - README.md
       - LICENSE
+      - NOTICE
       - THIRD_PARTY_LICENSES/*
       - completions/*
       - manpages/*
