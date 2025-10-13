@@ -611,8 +611,7 @@ type PredictiveNetworkConditionPredictor struct {
 	defaultMethod  PredictionMethod
 	historicalData []RealTimeNetworkConditions
 	maxHistorySize int
-	// TODO: Add mutex for thread safety when implementing data access methods
-	// mu                sync.RWMutex
+	mu             sync.RWMutex
 }
 
 type PredictionModel interface {
@@ -635,8 +634,7 @@ type BandwidthPredictor struct {
 	seasonalityModel *SeasonalityModel
 	noiseFilter      *NoiseFilter
 	confidence       float64
-	// TODO: Add mutex for thread safety
-	// mu                sync.RWMutex
+	mu               sync.RWMutex
 }
 
 func NewBandwidthPredictor() *BandwidthPredictor {
@@ -653,8 +651,7 @@ type LatencyPredictor struct {
 	queueingModel      *QueueingModel
 	congestionDetector *CongestionDetector
 	confidence         float64
-	// TODO: Add mutex for thread safety
-	// mu                sync.RWMutex
+	mu                 sync.RWMutex
 }
 
 func NewLatencyPredictor() *LatencyPredictor {
@@ -671,8 +668,7 @@ type NetworkStabilityPredictor struct {
 	eventCorrelator  *EventCorrelator
 	failurePredictor *FailurePredictor
 	confidence       float64
-	// TODO: Add mutex for thread safety
-	// mu                sync.RWMutex
+	mu               sync.RWMutex
 }
 
 func NewNetworkStabilityPredictor() *NetworkStabilityPredictor {
@@ -689,8 +685,7 @@ type NetworkQualityPredictor struct {
 	userExperienceModel *UserExperienceModel
 	contextAwareness    *ContextAwareness
 	confidence          float64
-	// TODO: Add mutex for thread safety
-	// mu                sync.RWMutex
+	mu                  sync.RWMutex
 }
 
 func NewNetworkQualityPredictor() *NetworkQualityPredictor {
@@ -707,8 +702,7 @@ type NetworkFeatureExtractor struct {
 	featureHistory []map[string]float64
 	normalizer     *FeatureNormalizer
 	selector       *FeatureSelector
-	// TODO: Add mutex for thread safety
-	// mu                sync.RWMutex
+	mu             sync.RWMutex
 }
 
 func NewNetworkFeatureExtractor() *NetworkFeatureExtractor {
@@ -740,8 +734,7 @@ type PredictionModelEnsemble struct {
 	weights            []float64
 	votingStrategy     VotingStrategy
 	performanceTracker *ModelPerformanceTracker
-	// TODO: Add mutex for thread safety
-	// mu                sync.RWMutex
+	mu                 sync.RWMutex
 }
 
 type VotingStrategy string
@@ -791,8 +784,7 @@ type NetworkAnomalyDetector struct {
 	threshold        float64
 	detectionMethods []AnomalyDetectionMethod
 	alertSystem      *AnomalyAlertSystem
-	// TODO: Add mutex for thread safety
-	// mu                sync.RWMutex
+	mu               sync.RWMutex
 }
 
 type AnomalyDetectionMethod string
@@ -820,8 +812,7 @@ type NetworkTrendAnalyzer struct {
 	trends          map[string]PredictiveTrendDirection
 	trendStrength   map[string]float64
 	trendConfidence map[string]float64
-	// TODO: Add mutex for thread safety
-	// mu                sync.RWMutex
+	mu              sync.RWMutex
 }
 
 type PredictiveTrendDirection string
@@ -861,8 +852,7 @@ type AdaptiveLearningEngine struct {
 	experienceBuffer   []LearningExperience
 	modelWeights       map[string]float64
 	performanceHistory []float64
-	// TODO: Add mutex for thread safety
-	// mu                sync.RWMutex
+	mu                 sync.RWMutex
 }
 
 type LearningExperience struct {
@@ -885,8 +875,7 @@ func NewAdaptiveLearningEngine() *AdaptiveLearningEngine {
 type PredictionAccuracyTracker struct {
 	predictions     []PredictionRecord
 	accuracyMetrics *PredictionAccuracyMetrics
-	// TODO: Add mutex for thread safety
-	// mu                sync.RWMutex
+	mu              sync.RWMutex
 }
 
 type PredictionRecord struct {
@@ -950,8 +939,7 @@ type PredictiveAdaptationMetrics struct {
 	AverageRisk           float64
 	AdaptationHistory     []AdaptationSummary
 	LastUpdate            time.Time
-	// TODO: Add mutex for thread safety
-	// mu                    sync.RWMutex
+	mu                    sync.RWMutex
 }
 
 type AdaptationSummary struct {
