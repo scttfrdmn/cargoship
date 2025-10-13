@@ -111,60 +111,97 @@ func (h *ErrorHandler) WrapError(err error, operation, resource string) *CargoSh
 
 // categorizeError determines the error type and retry behavior
 func (h *ErrorHandler) categorizeError(err error) (ErrorType, bool) {
-	errStr := strings.ToLower(err.Error())
-
-	// AWS-specific errors using smithy-go
-	var apiErr *smithy.GenericAPIError
-	if errors.As(err, &apiErr) {
-		return h.categorizeAWSError(*apiErr)
+	// Check AWS-specific typed errors first
+	if errorType, retryable, ok := h.checkAWSTypedErrors(err); ok {
+		return errorType, retryable
 	}
 
-	// S3-specific errors
+	// Check S3-specific typed errors
+	if errorType, retryable, ok := h.checkS3TypedErrors(err); ok {
+		return errorType, retryable
+	}
+
+	// Check string-based error patterns
+	return h.categorizeByStringPattern(err)
+}
+
+// checkAWSTypedErrors checks for AWS SDK specific error types
+func (h *ErrorHandler) checkAWSTypedErrors(err error) (ErrorType, bool, bool) {
+	var apiErr *smithy.GenericAPIError
+	if errors.As(err, &apiErr) {
+		errorType, retryable := h.categorizeAWSError(*apiErr)
+		return errorType, retryable, true
+	}
+	return "", false, false
+}
+
+// checkS3TypedErrors checks for S3 specific error types
+func (h *ErrorHandler) checkS3TypedErrors(err error) (ErrorType, bool, bool) {
 	var notFound *types.NotFound
 	if errors.As(err, &notFound) {
-		return ErrorTypeValidation, false
+		return ErrorTypeValidation, false, true
 	}
 
 	var noSuchBucket *types.NoSuchBucket
 	if errors.As(err, &noSuchBucket) {
-		return ErrorTypeValidation, false
+		return ErrorTypeValidation, false, true
 	}
 
-	// Note: types.AccessDenied was removed in newer AWS SDK versions
-	// Handle access denied via string matching instead
+	return "", false, false
+}
 
-	// Network errors
-	if strings.Contains(errStr, "connection") ||
-		strings.Contains(errStr, "timeout") ||
-		strings.Contains(errStr, "network") ||
-		strings.Contains(errStr, "dns") {
-		return ErrorTypeNetwork, true
-	}
+// errorPattern defines a pattern for categorizing errors
+type errorPattern struct {
+	errorType ErrorType
+	retryable bool
+	keywords  []string
+}
 
-	// Permission errors
-	if strings.Contains(errStr, "access denied") ||
-		strings.Contains(errStr, "forbidden") ||
-		strings.Contains(errStr, "unauthorized") ||
-		strings.Contains(errStr, "permission") {
-		return ErrorTypePermission, false
-	}
+// errorPatterns defines the error categorization rules
+var errorPatterns = []errorPattern{
+	{
+		errorType: ErrorTypeNetwork,
+		retryable: true,
+		keywords:  []string{"connection", "timeout", "network", "dns"},
+	},
+	{
+		errorType: ErrorTypePermission,
+		retryable: false,
+		keywords:  []string{"access denied", "forbidden", "unauthorized", "permission"},
+	},
+	{
+		errorType: ErrorTypeThrottling,
+		retryable: true,
+		keywords:  []string{"throttle", "rate limit", "too many requests", "slow down"},
+	},
+	{
+		errorType: ErrorTypeValidation,
+		retryable: false,
+		keywords:  []string{"invalid", "bad request", "malformed"},
+	},
+}
 
-	// Throttling errors
-	if strings.Contains(errStr, "throttle") ||
-		strings.Contains(errStr, "rate limit") ||
-		strings.Contains(errStr, "too many requests") ||
-		strings.Contains(errStr, "slow down") {
-		return ErrorTypeThrottling, true
-	}
+// categorizeByStringPattern categorizes errors by string pattern matching
+func (h *ErrorHandler) categorizeByStringPattern(err error) (ErrorType, bool) {
+	errStr := strings.ToLower(err.Error())
 
-	// Validation errors
-	if strings.Contains(errStr, "invalid") ||
-		strings.Contains(errStr, "bad request") ||
-		strings.Contains(errStr, "malformed") {
-		return ErrorTypeValidation, false
+	for _, pattern := range errorPatterns {
+		if h.matchesAnyKeyword(errStr, pattern.keywords) {
+			return pattern.errorType, pattern.retryable
+		}
 	}
 
 	return ErrorTypeUnknown, true
+}
+
+// matchesAnyKeyword checks if the error string contains any of the keywords
+func (h *ErrorHandler) matchesAnyKeyword(errStr string, keywords []string) bool {
+	for _, keyword := range keywords {
+		if strings.Contains(errStr, keyword) {
+			return true
+		}
+	}
+	return false
 }
 
 // categorizeAWSError categorizes AWS-specific errors
