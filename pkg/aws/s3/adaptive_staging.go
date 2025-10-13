@@ -175,7 +175,7 @@ type StagingPriorityManager struct {
 	resourceWeights  map[ChunkPriority]float64
 	allocationLimits map[ChunkPriority]int64
 
-	// mu                  sync.RWMutex // TODO: Add mutex usage for thread safety
+	mu sync.RWMutex
 }
 
 // ResourceAllocationStrategy represents resource allocation approaches
