@@ -676,27 +676,35 @@ func (p *Porter) mergeWizard() error {
 	return nil
 }
 
-func (p *Porter) startFillStateC(state chan FillState) {
+func (p *Porter) startFillStateC(state chan FillState, done chan struct{}) {
 	// sampled := log.Sample(&zerolog.BasicSampler{N: se})
 	i := uint64(0)
 	for {
-		st := <-state
-		if i%intToUint64(p.sampleEvery) == 0 {
-			// if i%uint64(p.sampleEvery) == 0 {
-			slog.Debug("progress", "index", st.Index, "current", st.Current, "total", st.Total)
+		select {
+		case st := <-state:
+			if i%intToUint64(p.sampleEvery) == 0 {
+				// if i%uint64(p.sampleEvery) == 0 {
+				slog.Debug("progress", "index", st.Index, "current", st.Current, "total", st.Total)
+			}
+			i++
+		case <-done:
+			return
 		}
-		i++
 	}
 }
 
-func (p *Porter) startTransferStatusC(statusC chan rclone.TransferStatus) {
+func (p *Porter) startTransferStatusC(statusC chan rclone.TransferStatus, done chan struct{}) {
 	for {
-		status := <-statusC
-		slog.Debug("status update", "status", status)
-		if p.TravelAgent != nil {
-			if err := p.SendUpdate(*travelagent.NewStatusUpdate(status)); err != nil {
-				slog.Warn("could not update travel agent", "error", err)
+		select {
+		case status := <-statusC:
+			slog.Debug("status update", "status", status)
+			if p.TravelAgent != nil {
+				if err := p.SendUpdate(*travelagent.NewStatusUpdate(status)); err != nil {
+					slog.Warn("could not update travel agent", "error", err)
+				}
 			}
+		case <-done:
+			return
 		}
 	}
 }
@@ -728,9 +736,19 @@ func (p *Porter) retryWriteSuitcase(i int, state chan FillState) (string, error)
 func (p *Porter) processSuitcases() ([]string, error) {
 	pl := newPool(p.concurrency)
 
+	// Create done channels for cleanup
+	stateDone := make(chan struct{})
+	statusDone := make(chan struct{})
+
 	// Launch some reading of these channels
-	go p.startFillStateC(p.stateC)
-	go p.startTransferStatusC(p.statusC)
+	go p.startFillStateC(p.stateC, stateDone)
+	go p.startTransferStatusC(p.statusC, statusDone)
+
+	// Ensure goroutines are cleaned up on return
+	defer func() {
+		close(stateDone)
+		close(statusDone)
+	}()
 
 	ret := make([]string, p.Inventory.TotalIndexes)
 	for i := 1; i <= p.Inventory.TotalIndexes; i++ {

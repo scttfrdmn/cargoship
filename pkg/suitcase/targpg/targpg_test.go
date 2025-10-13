@@ -45,18 +45,12 @@ func TestTarGPGFileCorrupt(t *testing.T) {
 	f, err = os.Open(f.Name())
 	require.NoError(t, err)
 
-	// var paths []string
+	// Verify tar reader cannot read encrypted content
 	r := tar.NewReader(f)
-	for {
-		_, err := r.Next()
-		if err == io.EOF {
-			break
-		}
+	_, err = r.Next()
+	if err != io.EOF {
 		require.EqualError(t, err, "archive/tar: invalid tar header")
-
-		break // nolint need to do something better here
 	}
-	// require.Equal(t, []string{"name.txt"}, paths)
 }
 
 func TestTarGPGFileWithTar(t *testing.T) {
@@ -93,14 +87,9 @@ func TestTarGPGFileWithTar(t *testing.T) {
 
 	// Make sure a normal tar reader can't actually open this
 	r := tar.NewReader(f)
-	for {
-		_, err := r.Next()
-		if err == io.EOF {
-			break
-		}
+	_, err = r.Next()
+	if err != io.EOF {
 		require.EqualError(t, err, "archive/tar: invalid tar header")
-
-		break // nolint need to do something better here
 	}
 }
 

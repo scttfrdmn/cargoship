@@ -109,9 +109,17 @@ func TestStagingBufferManager_SimilarityDetection(t *testing.T) {
 	manager.Start(ctx)
 	time.Sleep(time.Millisecond * 50)
 	
-	// Create similar test data
-	baseData := []byte("The quick brown fox jumps over the lazy dog in the sunny meadow")
-	similarData := []byte("The quick brown fox jumps over the lazy cat in the sunny meadow")
+	// Create similar test data (large enough to trigger deduplication)
+	basePattern := []byte("The quick brown fox jumps over the lazy dog in the sunny meadow")
+	baseData := make([]byte, 2048)
+	similarPattern := []byte("The quick brown fox jumps over the lazy cat in the sunny meadow")
+	similarData := make([]byte, 2048)
+
+	// Fill with repeating patterns
+	for i := 0; i < len(baseData); i++ {
+		baseData[i] = basePattern[i%len(basePattern)]
+		similarData[i] = similarPattern[i%len(similarPattern)]
+	}
 	
 	reader1 := bytes.NewReader(baseData)
 	reader2 := bytes.NewReader(similarData)
@@ -407,8 +415,11 @@ func TestStagingBufferManager_ContentTypeAwareness(t *testing.T) {
 	manager.Start(ctx)
 	time.Sleep(time.Millisecond * 50)
 	
-	// Create identical data with different content types
-	testData := []byte("identical content with different types")
+	// Create identical data with different content types (large enough for deduplication)
+	testData := make([]byte, 2048)
+	for i := range testData {
+		testData[i] = byte((i % 26) + 'a')
+	}
 	reader1 := bytes.NewReader(testData)
 	reader2 := bytes.NewReader(testData)
 	

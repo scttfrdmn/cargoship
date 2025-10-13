@@ -3,6 +3,7 @@ package staging
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"math"
 	"sync"
 	"time"
 )
@@ -477,24 +478,12 @@ func (cd *ChunkDeduplicator) calculateEntropy(data []byte) float64 {
 	return entropy
 }
 
-// logBase2 calculates log base 2.
+// logBase2 calculates log base 2 using the standard library math.Log.
 func logBase2(x float64) float64 {
-	return logE(x) / logE(2)
-}
-
-// logE calculates natural logarithm (approximation).
-func logE(x float64) float64 {
 	if x <= 0 {
 		return 0
 	}
-	// Simple approximation for demonstration
-	// In practice, use math.Log
-	result := 0.0
-	for x > 1 {
-		result++
-		x /= 2.718281828
-	}
-	return result
+	return math.Log2(x)
 }
 
 // recordDuplicate records statistics for a duplicate chunk.

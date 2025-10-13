@@ -247,21 +247,35 @@ func TestGenerateShingles(t *testing.T) {
 
 func TestEstimateDeltaSize(t *testing.T) {
 	deduplicator := NewChunkDeduplicator(nil)
-	
-	baseData := []byte("The quick brown fox jumps")
-	
+
+	// Create larger test data (above threshold)
+	basePattern := []byte("The quick brown fox jumps")
+	baseData := make([]byte, 2048)
+	for i := range baseData {
+		baseData[i] = basePattern[i%len(basePattern)]
+	}
+
 	// Test identical data
-	identicalData := []byte("The quick brown fox jumps")
+	identicalData := make([]byte, 2048)
+	copy(identicalData, baseData)
 	deltaSize := deduplicator.estimateDeltaSize(identicalData, baseData)
 	assert.True(t, deltaSize < int64(len(identicalData)))
-	
+
 	// Test completely different data
-	differentData := []byte("Completely different content here")
+	differentPattern := []byte("Completely different content here")
+	differentData := make([]byte, 2048)
+	for i := range differentData {
+		differentData[i] = differentPattern[i%len(differentPattern)]
+	}
 	deltaSize = deduplicator.estimateDeltaSize(differentData, baseData)
 	assert.True(t, deltaSize > 0)
-	
-	// Test slightly modified data
-	modifiedData := []byte("The quick brown fox jumps high")
+
+	// Test slightly modified data (90% same, 10% different)
+	modifiedData := make([]byte, 2048)
+	copy(modifiedData, baseData)
+	for i := 0; i < len(modifiedData); i += 10 {
+		modifiedData[i] = 'X' // Change every 10th byte
+	}
 	deltaSize = deduplicator.estimateDeltaSize(modifiedData, baseData)
 	assert.True(t, deltaSize > 0)
 	assert.True(t, deltaSize < int64(len(modifiedData)))
@@ -269,18 +283,21 @@ func TestEstimateDeltaSize(t *testing.T) {
 
 func TestCalculateEntropy(t *testing.T) {
 	deduplicator := NewChunkDeduplicator(nil)
-	
-	// Test uniform data (low entropy)
-	uniformData := bytes.Repeat([]byte("a"), 100)
+
+	// Test uniform data (low entropy) - make it larger
+	uniformData := bytes.Repeat([]byte("a"), 2048)
 	entropy := deduplicator.calculateEntropy(uniformData)
 	assert.Equal(t, 0.0, entropy) // Single byte should have zero entropy
-	
-	// Test random data (high entropy)
-	randomData := make([]byte, 1000)
+
+	// Test random data (high entropy) - make it larger
+	randomData := make([]byte, 2048)
 	_, _ = rand.Read(randomData)
 	entropy = deduplicator.calculateEntropy(randomData)
-	assert.True(t, entropy > 0) // Random data should have some entropy
-	
+	// Random data should have high entropy (close to 8 bits for truly random byte data)
+	t.Logf("Random data entropy: %f", entropy)
+	assert.True(t, entropy > 0) // Random data should have positive entropy
+	assert.True(t, entropy <= 8.0) // Maximum entropy for byte data is 8 bits
+
 	// Test empty data
 	entropy = deduplicator.calculateEntropy([]byte{})
 	assert.Equal(t, 0.0, entropy)
@@ -288,22 +305,25 @@ func TestCalculateEntropy(t *testing.T) {
 
 func TestGetStats(t *testing.T) {
 	deduplicator := NewChunkDeduplicator(nil)
-	
+
 	// Initial stats should be zero
 	stats := deduplicator.GetStats()
 	assert.Equal(t, int64(0), stats.TotalChunksProcessed)
 	assert.Equal(t, int64(0), stats.DuplicateChunksFound)
 	assert.Equal(t, 0.0, stats.DeduplicationRatio)
-	
-	// Process some chunks to update stats
-	testData := []byte("test chunk data for statistics")
-	
+
+	// Process some chunks to update stats (must be larger than 1KB threshold)
+	testData := make([]byte, 2048) // 2KB data above threshold
+	for i := range testData {
+		testData[i] = byte((i % 26) + 'a')
+	}
+
 	// First chunk (unique)
 	deduplicator.AnalyzeChunk(testData, "text/plain")
 	stats = deduplicator.GetStats()
 	assert.Equal(t, int64(1), stats.TotalChunksProcessed)
 	assert.Equal(t, int64(0), stats.DuplicateChunksFound)
-	
+
 	// Second chunk (duplicate)
 	deduplicator.AnalyzeChunk(testData, "text/plain")
 	stats = deduplicator.GetStats()
@@ -314,17 +334,20 @@ func TestGetStats(t *testing.T) {
 
 func TestClearCache(t *testing.T) {
 	deduplicator := NewChunkDeduplicator(nil)
-	
-	// Add some data
-	testData := []byte("test data for cache clearing")
+
+	// Add some data (must be larger than 1KB threshold)
+	testData := make([]byte, 2048) // 2KB data above threshold
+	for i := range testData {
+		testData[i] = byte((i % 26) + 'a')
+	}
 	deduplicator.AnalyzeChunk(testData, "text/plain")
-	
+
 	// Verify data exists
 	assert.True(t, len(deduplicator.chunkHashes) > 0)
-	
+
 	// Clear cache
 	deduplicator.ClearCache()
-	
+
 	// Verify cache is empty
 	assert.Equal(t, 0, len(deduplicator.chunkHashes))
 	assert.Equal(t, 0, len(deduplicator.sizeIndex))
@@ -361,17 +384,21 @@ func TestContentTypeAwareness(t *testing.T) {
 	config.EnableContentAwareness = true
 	config.SimilarityThreshold = 0.5
 	deduplicator := NewChunkDeduplicator(config)
-	
-	// Create similar content with different types
-	testData := []byte("similar content for type awareness testing")
-	
+
+	// Create similar content with different types (large enough for deduplication)
+	pattern := []byte("similar content for type awareness testing")
+	testData := make([]byte, 2048)
+	for i := range testData {
+		testData[i] = pattern[i%len(pattern)]
+	}
+
 	// Store as text
 	result1 := deduplicator.AnalyzeChunk(testData, "text/plain")
 	assert.Equal(t, ActionStore, result1.RecommendedAction)
-	
+
 	// Analyze same data as different content type
 	result2 := deduplicator.AnalyzeChunk(testData, "application/json")
-	
+
 	// Should still detect as duplicate (exact match overrides content type)
 	assert.True(t, result2.IsDuplicate)
 	assert.Equal(t, ActionDuplicate, result2.RecommendedAction)
