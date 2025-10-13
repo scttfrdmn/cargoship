@@ -208,35 +208,38 @@ func (nm *RealTimeNetworkMonitor) initializeMonitoringWorkers() {
 }
 
 func (nm *RealTimeNetworkMonitor) executeWorkerTask(worker *RealTimeMonitoringWorker) error {
+	worker.mu.Lock()
 	worker.IsActive = true
-	defer func() { worker.IsActive = false }()
-
 	worker.ExecutionCount++
 	worker.LastExecution = time.Now()
+	workerType := worker.Type
+	worker.mu.Unlock()
 
-	switch worker.Type {
+	defer func() {
+		worker.mu.Lock()
+		worker.IsActive = false
+		worker.mu.Unlock()
+	}()
+
+	var err error
+	switch workerType {
 	case RealTimeWorkerBandwidthMonitor:
-		_, err := nm.bandwidthTracker.MeasureBandwidth()
-		if err != nil {
-			worker.ErrorCount++
-			worker.LastError = err
-		}
+		_, err = nm.bandwidthTracker.MeasureBandwidth()
 	case RealTimeWorkerLatencyMonitor:
-		_, err := nm.latencyTracker.MeasureLatency()
-		if err != nil {
-			worker.ErrorCount++
-			worker.LastError = err
-		}
+		_, err = nm.latencyTracker.MeasureLatency()
 	case RealTimeWorkerStabilityMonitor:
 		_ = nm.stabilityAnalyzer.AnalyzeStability()
 	case RealTimeWorkerQualityAssessor:
 		_ = nm.qualityAssessor.AssessQuality(nm.currentConditions)
 	case RealTimeWorkerPathDetector:
-		_, err := nm.pathDetector.DetectPaths()
-		if err != nil {
-			worker.ErrorCount++
-			worker.LastError = err
-		}
+		_, err = nm.pathDetector.DetectPaths()
+	}
+
+	if err != nil {
+		worker.mu.Lock()
+		worker.ErrorCount++
+		worker.LastError = err
+		worker.mu.Unlock()
 	}
 
 	return nil
@@ -309,6 +312,7 @@ type RealTimeMonitoringWorker struct {
 	ErrorCount     int64
 	LastExecution  time.Time
 	LastError      error
+	mu             sync.Mutex
 }
 
 type RealTimeNetworkTrends struct {
@@ -829,8 +833,7 @@ func (mpd *RealTimeMultiPathDetector) GetPathCount() int {
 type RealTimeNetworkHistoryBuffer struct {
 	history []RealTimeNetworkConditions
 	maxSize int
-	// TODO: Add synchronization for concurrent access
-	// mu      sync.RWMutex
+	mu      sync.RWMutex
 }
 
 func NewRealTimeNetworkHistoryBuffer() *RealTimeNetworkHistoryBuffer {
@@ -841,9 +844,8 @@ func NewRealTimeNetworkHistoryBuffer() *RealTimeNetworkHistoryBuffer {
 }
 
 func (nhb *RealTimeNetworkHistoryBuffer) AddConditions(conditions *RealTimeNetworkConditions) {
-	// TODO: Add proper synchronization
-	// nhb.mu.Lock()
-	// defer nhb.mu.Unlock()
+	nhb.mu.Lock()
+	defer nhb.mu.Unlock()
 
 	nhb.history = append(nhb.history, *conditions)
 	if len(nhb.history) > nhb.maxSize {
@@ -852,9 +854,8 @@ func (nhb *RealTimeNetworkHistoryBuffer) AddConditions(conditions *RealTimeNetwo
 }
 
 func (nhb *RealTimeNetworkHistoryBuffer) GetHistory() []RealTimeNetworkConditions {
-	// TODO: Add proper synchronization
-	// nhb.mu.RLock()
-	// defer nhb.mu.RUnlock()
+	nhb.mu.RLock()
+	defer nhb.mu.RUnlock()
 
 	result := make([]RealTimeNetworkConditions, len(nhb.history))
 	copy(result, nhb.history)
@@ -863,8 +864,7 @@ func (nhb *RealTimeNetworkHistoryBuffer) GetHistory() []RealTimeNetworkCondition
 
 type RealTimeNetworkTrendAnalyzer struct {
 	trends *RealTimeNetworkTrends
-	// TODO: Add synchronization for concurrent access
-	// mu     sync.RWMutex
+	mu     sync.RWMutex
 }
 
 func NewRealTimeNetworkTrendAnalyzer() *RealTimeNetworkTrendAnalyzer {
@@ -882,18 +882,16 @@ func NewRealTimeNetworkTrendAnalyzer() *RealTimeNetworkTrendAnalyzer {
 }
 
 func (nta *RealTimeNetworkTrendAnalyzer) UpdateTrends(conditions *RealTimeNetworkConditions) {
-	// TODO: Add proper synchronization
-	// nta.mu.Lock()
-	// defer nta.mu.Unlock()
+	nta.mu.Lock()
+	defer nta.mu.Unlock()
 
 	nta.trends.LastUpdate = time.Now()
 	// Trend analysis would be implemented here
 }
 
 func (nta *RealTimeNetworkTrendAnalyzer) GetCurrentTrends() *RealTimeNetworkTrends {
-	// TODO: Add proper synchronization
-	// nta.mu.RLock()
-	// defer nta.mu.RUnlock()
+	nta.mu.RLock()
+	defer nta.mu.RUnlock()
 
 	trends := *nta.trends
 	return &trends
@@ -901,8 +899,7 @@ func (nta *RealTimeNetworkTrendAnalyzer) GetCurrentTrends() *RealTimeNetworkTren
 
 type RealTimeNetworkAlertSystem struct {
 	alerts []RealTimeNetworkAlert
-	// TODO: Add synchronization for concurrent access
-	// mu     sync.RWMutex
+	mu     sync.RWMutex
 }
 
 type RealTimeNetworkAlert struct {
@@ -917,10 +914,28 @@ func NewRealTimeNetworkAlertSystem() *RealTimeNetworkAlertSystem {
 	}
 }
 
+func (nas *RealTimeNetworkAlertSystem) AddAlert(alert RealTimeNetworkAlert) {
+	nas.mu.Lock()
+	defer nas.mu.Unlock()
+
+	nas.alerts = append(nas.alerts, alert)
+	if len(nas.alerts) > 100 {
+		nas.alerts = nas.alerts[1:]
+	}
+}
+
+func (nas *RealTimeNetworkAlertSystem) GetAlerts() []RealTimeNetworkAlert {
+	nas.mu.RLock()
+	defer nas.mu.RUnlock()
+
+	result := make([]RealTimeNetworkAlert, len(nas.alerts))
+	copy(result, nas.alerts)
+	return result
+}
+
 type RealTimeNetworkPathManager struct {
 	pathInfo *RealTimePathInformation
-	// TODO: Add synchronization for concurrent access
-	// mu       sync.RWMutex
+	mu       sync.RWMutex
 }
 
 func NewRealTimeNetworkPathManager() *RealTimeNetworkPathManager {
@@ -935,9 +950,8 @@ func NewRealTimeNetworkPathManager() *RealTimeNetworkPathManager {
 }
 
 func (npm *RealTimeNetworkPathManager) GetPathInformation() *RealTimePathInformation {
-	// TODO: Add proper synchronization
-	// npm.mu.RLock()
-	// defer npm.mu.RUnlock()
+	npm.mu.RLock()
+	defer npm.mu.RUnlock()
 
 	info := *npm.pathInfo
 	return &info
