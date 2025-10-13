@@ -5,36 +5,29 @@ before:
     - go mod tidy
     - ./scripts/completions.sh
     - ./scripts/manpages.sh
-gitlab_urls:
-  api: https://gitlab.oit.duke.edu/api/v4/
-  download: https://gitlab.oit.duke.edu
-  use_package_registry: true
-  use_job_token: true
 env:
-  - VAULT_ADDR={{ .Env.VAULT_ADDR }}
-  - TRANSIT_SECRET_ENGINE_PATH=ssi-systems/transit
-  - VAULT_TOKEN={{ .Env.VAULT_TOKEN }}
+  - GO111MODULE=on
 builds:
   - env:
       - CGO_ENABLED=0
-    main: ./cmd/suitcasectl
+    main: ./cmd/cargoship
     mod_timestamp: '{{ .CommitTimestamp }}'
     flags:
       - -trimpath
     ldflags: |
       -s -w
-      -X {{ .ModulePath }}/cmd/suitcasectl/cmd.date={{ .CommitTimestamp }}
-      -X {{ .ModulePath }}/cmd/suitcasectl/cmd.version={{ .Tag }}
-      -X {{ .ModulePath }}/cmd/suitcasectl/cmd.commit={{ .ShortCommit }}
+      -X main.version={{ .Version }}
+      -X main.commit={{ .ShortCommit }}
+      -X main.date={{ .CommitTimestamp }}
     targets:
       - go_first_class
-    binary: 'suitcasectl'
+    binary: 'cargoship'
 archives:
-  - format: tar.gz
-    name_template: '{{ .ProjectName }}-{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+  - name_template: '{{ .ProjectName }}-{{ .Version }}_{{ .Os }}_{{ .Arch }}'
     files:
       - README.md
       - LICENSE
+      - THIRD_PARTY_LICENSES/*
       - completions/*
       - manpages/*
 checksum:
@@ -42,127 +35,114 @@ checksum:
   algorithm: sha256
 brews:
   - repository:
-      owner: devil-ops
-      name: homebrew-devil-ops
+      owner: scttfrdmn
+      name: homebrew-cargoship
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    description: "Data Suitcase Suitcase Controller"
-    name: "suitcasectl"
-    homepage: https://gitlab.oit.duke.edu/devil-ops
+    description: "High-performance S3 file upload optimization tool"
+    homepage: https://github.com/scttfrdmn/cargoship
+    license: "MIT"
     install: |
-      bin.install "suitcasectl"
-      bash_completion.install "completions/suitcasectl.bash" => "suitcasectl"
-      zsh_completion.install "completions/suitcasectl.zsh" => "_suitcasectl"
-      fish_completion.install "completions/suitcasectl.fish"
-      man1.install "manpages/suitcasectl.1.gz"
+      bin.install "cargoship"
+      bash_completion.install "completions/cargoship.bash" => "cargoship"
+      zsh_completion.install "completions/cargoship.zsh" => "_cargoship"
+      fish_completion.install "completions/cargoship.fish"
+      man1.install "manpages/cargoship.1.gz"
 nfpms:
   - id: rpms
     license: MIT
-    description: Package up research files for distribution
-    vendor: Duke University
+    description: High-performance S3 file upload optimization tool for large-scale data transfers
+    vendor: Scott Friedman
     section: admin
     priority: optional
-    maintainer: Drew Stinnett <drew.stinnett@duke.edu>
-    homepage: https://gitlab.oit.duke.edu/devil-ops/suitcasectl
-    replaces:
-      - data-suitcase
+    maintainer: Scott Friedman <scott@example.com>
+    homepage: https://github.com/scttfrdmn/cargoship
     rpm:
       signature:
         key_file: "{{ .Env.GPG_KEY_PATH }}"
     formats:
       - rpm
     contents:
-      - src: ./manpages/suitcasectl.1.gz
-        dst: /usr/share/man/man1/suitcasectl.1.gz
+      - src: ./manpages/cargoship.1.gz
+        dst: /usr/share/man/man1/cargoship.1.gz
         file_info:
           mode: 0644
-      - src: ./completions/suitcasectl.bash
-        dst: /usr/share/bash-completion/completions/suitcasectl
+      - src: ./completions/cargoship.bash
+        dst: /usr/share/bash-completion/completions/cargoship
         file_info:
           mode: 0644
-      - src: ./completions/suitcasectl.fish
-        dst: /usr/share/fish/vendor_completions.d/suitcasectl.fish
+      - src: ./completions/cargoship.fish
+        dst: /usr/share/fish/vendor_completions.d/cargoship.fish
         file_info:
           mode: 0644
-      - src: ./completions/suitcasectl.zsh
-        dst:  /usr/share/zsh/vendor-completions/_suitcasectl
+      - src: ./completions/cargoship.zsh
+        dst:  /usr/share/zsh/vendor-completions/_cargoship
         file_info:
           mode: 0644
   - id: debs
     license: MIT
-    description: Package up research files for distribution
-    vendor: Duke University
+    description: High-performance S3 file upload optimization tool for large-scale data transfers
+    vendor: Scott Friedman
     section: admin
     priority: optional
-    homepage: https://gitlab.oit.duke.edu/devil-ops/suitcasectl
-    maintainer: Drew Stinnett <drew.stinnett@duke.edu>
-    replaces:
-      - data-suitcase
+    homepage: https://github.com/scttfrdmn/cargoship
+    maintainer: Scott Friedman <scott@example.com>
     formats:
       - deb
     contents:
-      - src: ./manpages/suitcasectl.1.gz
-        dst: /usr/share/man/man1/suitcasectl.1.gz
+      - src: ./manpages/cargoship.1.gz
+        dst: /usr/share/man/man1/cargoship.1.gz
         file_info:
           mode: 0644
-      - src: ./completions/suitcasectl.bash
-        dst: /usr/share/bash-completion/completions/suitcasectl
+      - src: ./completions/cargoship.bash
+        dst: /usr/share/bash-completion/completions/cargoship
         file_info:
           mode: 0644
-      - src: ./completions/suitcasectl.fish
-        dst: /usr/share/fish/vendor_completions.d/suitcasectl.fish
+      - src: ./completions/cargoship.fish
+        dst: /usr/share/fish/vendor_completions.d/cargoship.fish
         file_info:
           mode: 0644
-      - src: ./completions/suitcasectl.zsh
-        dst:  /usr/share/zsh/vendor-completions/_suitcasectl
+      - src: ./completions/cargoship.zsh
+        dst:  /usr/share/zsh/vendor-completions/_cargoship
         file_info:
           mode: 0644
   - id: apks
     bindir: /usr/bin
     license: MIT
-    description: Package up research files for distribution
-    vendor: Duke University
+    description: High-performance S3 file upload optimization tool for large-scale data transfers
+    vendor: Scott Friedman
     section: admin
     priority: optional
-    homepage: https://gitlab.oit.duke.edu/devil-ops/suitcasectl
-    maintainer: Drew Stinnett <drew.stinnett@duke.edu>
+    homepage: https://github.com/scttfrdmn/cargoship
+    maintainer: Scott Friedman <scott@example.com>
     formats:
       - apk
       - archlinux
     contents:
-      - src: ./manpages/suitcasectl.1.gz
-        dst: /usr/share/man/man1/suitcasectl.1.gz
+      - src: ./manpages/cargoship.1.gz
+        dst: /usr/share/man/man1/cargoship.1.gz
         file_info:
           mode: 0644
-      - src: ./completions/suitcasectl.bash
-        dst: /usr/share/bash-completion/completions/suitcasectl
+      - src: ./completions/cargoship.bash
+        dst: /usr/share/bash-completion/completions/cargoship
         file_info:
           mode: 0644
-      - src: ./completions/suitcasectl.fish
-        dst: /usr/share/fish/vendor_completions.d/suitcasectl.fish
+      - src: ./completions/cargoship.fish
+        dst: /usr/share/fish/vendor_completions.d/cargoship.fish
         file_info:
           mode: 0644
-      - src: ./completions/suitcasectl.zsh
-        dst:  /usr/share/zsh/vendor-completions/_suitcasectl
+      - src: ./completions/cargoship.zsh
+        dst:  /usr/share/zsh/vendor-completions/_cargoship
         file_info:
           mode: 0644
-uploads:
-  - name: productionrpm
-    target: https://oneget.oit.duke.edu/rpm/devil-ops-rpms/
-    method: PUT
-    mode: archive
-    username: api
-    ids:
-      - rpms
-  - name: productiondeb
-    target: https://oneget.oit.duke.edu/debian-packages/upload/devil-ops-debs/main/
-    method: PUT
-    mode: archive
-    username: api
-    ids:
-      - debs
-signs:
-- cmd: cosign
-  args: ["sign-blob", "--tlog-upload=false", "--key=hashivault://package-signing", "--output-signature=${signature}", "${artifact}"]
-  artifacts: all
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - 'typo'
 sboms:
   - artifacts: archive
+    documents:
+      - "{{ .ProjectName }}_{{ .Version }}_sbom.spdx.json"
