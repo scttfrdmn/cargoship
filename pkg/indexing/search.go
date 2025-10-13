@@ -112,106 +112,18 @@ func (se *SearchEngine) Browse(ctx context.Context, location string, path string
 	}
 
 	// Normalize path
-	if path == "" || path == "/" {
-		path = ""
-	} else {
-		path = strings.Trim(path, "/") + "/"
-	}
+	path = se.normalizeBrowsePath(path)
 
-	var files []*EnhancedFile
-	directories := make(map[string]*DirectoryInfo)
+	// Process files and directories
+	files, directories := se.processIndexFiles(index, path, options)
 
-	for _, file := range index.Files {
-		// Normalize file destination path
-		filePath := strings.TrimPrefix(file.Destination, "/")
-
-		// Check if file is in current path or subdirectory
-		if path == "" || strings.HasPrefix(filePath, path) {
-			// Get relative path from current browse path
-			relativePath := strings.TrimPrefix(filePath, path)
-
-			// If this is a direct file in current directory
-			if !strings.Contains(relativePath, "/") {
-				// Apply filter if provided
-				if options.Filter != nil && !se.fileMatchesFilter(file, *options.Filter) {
-					continue
-				}
-
-				// Skip hidden files unless requested
-				if !options.ShowHidden && strings.HasPrefix(filepath.Base(relativePath), ".") {
-					continue
-				}
-
-				files = append(files, file)
-			} else if options.Recursive {
-				// For recursive browsing, include all matching files
-				if options.Filter == nil || se.fileMatchesFilter(file, *options.Filter) {
-					if options.ShowHidden || !strings.HasPrefix(filepath.Base(relativePath), ".") {
-						files = append(files, file)
-					}
-				}
-			} else {
-				// Extract immediate subdirectory name
-				parts := strings.Split(relativePath, "/")
-				if len(parts) > 0 && parts[0] != "" {
-					dirName := parts[0]
-					dirPath := path + dirName
-
-					if _, exists := directories[dirName]; !exists {
-						directories[dirName] = &DirectoryInfo{
-							Name:         dirName,
-							Path:         dirPath,
-							FileCount:    0,
-							TotalSize:    0,
-							LastModified: file.ModifiedAt,
-							IsArchive:    se.isArchiveFile(file.Name),
-						}
-					}
-
-					dir := directories[dirName]
-					dir.FileCount++
-					dir.TotalSize += file.Size
-					if file.ModifiedAt.After(dir.LastModified) {
-						dir.LastModified = file.ModifiedAt
-					}
-				}
-			}
-		}
-	}
-
-	// Sort files
+	// Sort and prepare results
 	se.sortFilesByOptions(files, options)
+	dirList := se.sortedDirectoryList(directories, options)
 
-	// Convert directories map to slice and sort
-	dirList := make([]DirectoryInfo, 0, len(directories))
-	for _, dir := range directories {
-		dirList = append(dirList, *dir)
-	}
-	se.sortDirectoriesByOptions(dirList, options)
-
-	// Calculate totals
-	totalSize := int64(0)
-	for _, file := range files {
-		totalSize += file.Size
-	}
-
-	// Apply pagination
-	hasMore := false
-	if options.PageSize > 0 {
-		start := options.PageOffset
-		end := start + options.PageSize
-
-		if start < len(files) {
-			if end > len(files) {
-				end = len(files)
-			} else {
-				hasMore = true
-			}
-			files = files[start:end]
-		} else {
-			files = []*EnhancedFile{}
-		}
-	}
+	// Calculate totals and apply pagination
+	totalSize := se.calculateTotalSize(files)
+	files, hasMore := se.applyPagination(files, options)
 
 	browseTime := time.Since(startTime)
 
@@ -233,6 +145,138 @@ func (se *SearchEngine) Browse(ctx context.Context, location string, path string
 		"browse_time", browseTime)
 
 	return result, nil
+}
+
+// normalizeBrowsePath normalizes a browse path
+func (se *SearchEngine) normalizeBrowsePath(path string) string {
+	if path == "" || path == "/" {
+		return ""
+	}
+	return strings.Trim(path, "/") + "/"
+}
+
+// processIndexFiles processes all files in the index for browsing
+func (se *SearchEngine) processIndexFiles(index *ArchiveIndex, path string, options BrowseOptions) ([]*EnhancedFile, map[string]*DirectoryInfo) {
+	var files []*EnhancedFile
+	directories := make(map[string]*DirectoryInfo)
+
+	for _, file := range index.Files {
+		filePath := strings.TrimPrefix(file.Destination, "/")
+
+		if !se.isInBrowsePath(filePath, path) {
+			continue
+		}
+
+		relativePath := strings.TrimPrefix(filePath, path)
+
+		if se.isDirectFileInPath(relativePath) {
+			if se.shouldIncludeFile(file, relativePath, options) {
+				files = append(files, file)
+			}
+		} else if options.Recursive {
+			if se.shouldIncludeRecursiveFile(file, relativePath, options) {
+				files = append(files, file)
+			}
+		} else {
+			se.updateDirectoryInfo(directories, relativePath, file, path)
+		}
+	}
+
+	return files, directories
+}
+
+// isInBrowsePath checks if a file path is within the current browse path
+func (se *SearchEngine) isInBrowsePath(filePath, browsePath string) bool {
+	return browsePath == "" || strings.HasPrefix(filePath, browsePath)
+}
+
+// isDirectFileInPath checks if a relative path represents a direct file (not in subdirectory)
+func (se *SearchEngine) isDirectFileInPath(relativePath string) bool {
+	return !strings.Contains(relativePath, "/")
+}
+
+// shouldIncludeFile determines if a direct file should be included in results
+func (se *SearchEngine) shouldIncludeFile(file *EnhancedFile, relativePath string, options BrowseOptions) bool {
+	if options.Filter != nil && !se.fileMatchesFilter(file, *options.Filter) {
+		return false
+	}
+	return options.ShowHidden || !strings.HasPrefix(filepath.Base(relativePath), ".")
+}
+
+// shouldIncludeRecursiveFile determines if a file should be included in recursive browsing
+func (se *SearchEngine) shouldIncludeRecursiveFile(file *EnhancedFile, relativePath string, options BrowseOptions) bool {
+	if options.Filter != nil && !se.fileMatchesFilter(file, *options.Filter) {
+		return false
+	}
+	return options.ShowHidden || !strings.HasPrefix(filepath.Base(relativePath), ".")
+}
+
+// updateDirectoryInfo updates or creates directory information
+func (se *SearchEngine) updateDirectoryInfo(directories map[string]*DirectoryInfo, relativePath string, file *EnhancedFile, browsePath string) {
+	parts := strings.Split(relativePath, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		return
+	}
+
+	dirName := parts[0]
+	dirPath := browsePath + dirName
+
+	if _, exists := directories[dirName]; !exists {
+		directories[dirName] = &DirectoryInfo{
+			Name:         dirName,
+			Path:         dirPath,
+			FileCount:    0,
+			TotalSize:    0,
+			LastModified: file.ModifiedAt,
+			IsArchive:    se.isArchiveFile(file.Name),
+		}
+	}
+
+	dir := directories[dirName]
+	dir.FileCount++
+	dir.TotalSize += file.Size
+	if file.ModifiedAt.After(dir.LastModified) {
+		dir.LastModified = file.ModifiedAt
+	}
+}
+
+// sortedDirectoryList converts directory map to sorted slice
+func (se *SearchEngine) sortedDirectoryList(directories map[string]*DirectoryInfo, options BrowseOptions) []DirectoryInfo {
+	dirList := make([]DirectoryInfo, 0, len(directories))
+	for _, dir := range directories {
+		dirList = append(dirList, *dir)
+	}
+	se.sortDirectoriesByOptions(dirList, options)
+	return dirList
+}
+
+// calculateTotalSize calculates the total size of all files
+func (se *SearchEngine) calculateTotalSize(files []*EnhancedFile) int64 {
+	totalSize := int64(0)
+	for _, file := range files {
+		totalSize += file.Size
+	}
+	return totalSize
+}
+
+// applyPagination applies pagination to the file list
+func (se *SearchEngine) applyPagination(files []*EnhancedFile, options BrowseOptions) ([]*EnhancedFile, bool) {
+	if options.PageSize <= 0 {
+		return files, false
+	}
+
+	start := options.PageOffset
+	end := start + options.PageSize
+
+	if start >= len(files) {
+		return []*EnhancedFile{}, false
+	}
+
+	if end >= len(files) {
+		return files[start:], false
+	}
+
+	return files[start:end], true
 }
 
 // FindInArchive searches for files within archive contents (ArchiveTOC)
