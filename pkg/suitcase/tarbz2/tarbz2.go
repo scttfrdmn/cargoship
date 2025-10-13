@@ -7,6 +7,7 @@ point to zst files being much more efficient
 package tarbz2
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/dsnet/compress/bzip2"
@@ -25,16 +26,16 @@ type Suitcase struct {
 }
 
 // New tar archive.
-func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
+func New(target io.Writer, opts *config.SuitCaseOpts) (*Suitcase, error) {
 	gw, err := bzip2.NewWriter(target, nil)
 	if err != nil {
-		panic("UGH NO BZIP2 WRITER!!")
+		return nil, fmt.Errorf("failed to create bzip2 writer: %w", err)
 	}
-	return Suitcase{
+	return &Suitcase{
 		gw:   gw,
 		tw:   tar.New(gw, opts),
 		opts: opts,
-	}
+	}, nil
 }
 
 // Close all closeables.

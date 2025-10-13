@@ -148,11 +148,12 @@ func WithHashAlgorithms(a HashAlgorithm) func(*Options) {
 	}
 }
 
-// NewOptions uses functional options to generatea DirectoryInventoryOptions object
-func NewOptions(options ...func(*Options)) *Options {
+// NewOptions uses functional options to generate a DirectoryInventoryOptions object
+// Returns error if unable to get current user or convert directories to absolute paths
+func NewOptions(options ...func(*Options)) (*Options, error) {
 	currentUser, err := user.Current()
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to get current user: %w", err)
 	}
 	dio := &Options{
 		SuitcaseFormat:  DefaultSuitcaseFormat,
@@ -163,9 +164,8 @@ func NewOptions(options ...func(*Options)) *Options {
 	for _, opt := range options {
 		opt(dio)
 	}
-	err = dio.AbsoluteDirectories()
-	if err != nil {
-		panic(err)
+	if err := dio.AbsoluteDirectories(); err != nil {
+		return nil, fmt.Errorf("failed to convert directories to absolute paths: %w", err)
 	}
-	return dio
+	return dio, nil
 }

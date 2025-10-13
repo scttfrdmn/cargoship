@@ -446,9 +446,11 @@ func (p *Porter) inventoryGeneration() (*inventory.Inventory, *os.File, error) {
 	if p.WizardForm != nil {
 		iopts = append(iopts, inventory.WithWizardForm(*p.WizardForm))
 	}
-	i, err := inventory.NewDirectoryInventory(
-		inventory.NewOptions(iopts...),
-	)
+	opts, err := inventory.NewOptions(iopts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create inventory options: %w", err)
+	}
+	i, err := inventory.NewDirectoryInventory(opts)
 	if err != nil {
 		return nil, nil, err
 	}

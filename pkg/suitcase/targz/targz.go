@@ -4,6 +4,7 @@ Package targz creates tar.gz files
 package targz
 
 import (
+	"fmt"
 	"io"
 
 	gzip "github.com/klauspost/pgzip"
@@ -21,17 +22,17 @@ type Suitcase struct {
 	hashes []config.HashSet
 }
 
-// New tar archive.
-func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
+// New tar archive. Returns error if gzip writer creation fails.
+func New(target io.Writer, opts *config.SuitCaseOpts) (*Suitcase, error) {
 	gw, err := gzip.NewWriterLevel(target, gzip.BestCompression)
 	if err != nil {
-		panic("UGH NO GZIP WRITER!!")
+		return nil, fmt.Errorf("failed to create gzip writer: %w", err)
 	}
-	return Suitcase{
+	return &Suitcase{
 		gw:   gw,
 		tw:   tar.New(gw, opts),
 		opts: opts,
-	}
+	}, nil
 }
 
 // Close all closeables.

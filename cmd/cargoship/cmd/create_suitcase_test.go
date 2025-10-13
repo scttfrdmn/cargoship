@@ -190,10 +190,12 @@ func TestNewSuitcaseWithViperFlag(t *testing.T) {
 
 func TestNewSuitcaseWithInventory(t *testing.T) {
 	toutDir := t.TempDir()
-	i, err := inventory.NewDirectoryInventory(inventory.NewOptions(
+	opts, err := inventory.NewOptions(
 		inventory.WithDirectories([]string{"../../../pkg/testdata/fake-dir"}),
 		inventory.WithSuitcaseFormat("tar"),
-	))
+	)
+	require.NoError(t, err)
+	i, err := inventory.NewDirectoryInventory(opts)
 	require.NoError(t, err)
 	outF, err := os.Create(path.Join(toutDir, "inventory.yaml"))
 	require.NoError(t, err)

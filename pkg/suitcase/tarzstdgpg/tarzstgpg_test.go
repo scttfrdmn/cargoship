@@ -2,7 +2,6 @@ package tarzstgpg
 
 import (
 	"archive/tar"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -24,9 +23,10 @@ func TestTarGPGFileCorrupt(t *testing.T) {
 
 	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
 	require.NoError(t, err)
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		EncryptTo: &openpgp.EntityList{pubKey},
 	})
+	require.NoError(t, err)
 	defer archive.Close() // nolint: errcheck
 
 	/*
@@ -65,9 +65,11 @@ func TestTarGPGFileWithTar(t *testing.T) {
 	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
 	require.NoError(t, err)
 
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		EncryptTo: &openpgp.EntityList{pubKey},
 	})
+
+	require.NoError(t, err)
 	defer archive.Close() // nolint: errcheck
 
 	_, err = archive.Add(inventory.File{
@@ -105,10 +107,12 @@ func TestTarGZGPGFile(t *testing.T) {
 	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
 	require.NoError(t, err)
 
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		Format:    "tar.gz.gpg",
 		EncryptTo: &openpgp.EntityList{pubKey},
 	})
+
+	require.NoError(t, err)
 	defer archive.Close() // nolint: errcheck
 
 	_, err = archive.Add(inventory.File{
@@ -172,7 +176,9 @@ func TestConfig(t *testing.T) {
 		EncryptTo: &openpgp.EntityList{pubKey},
 	}
 
-	archive := New(f, opts)
+	archive, err := New(f, opts)
+
+	require.NoError(t, err)
 	defer archive.Close() // nolint: errcheck
 
 	// Test Config method
@@ -191,10 +197,12 @@ func TestGetHashes(t *testing.T) {
 	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
 	require.NoError(t, err)
 
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		Format:    "tar.zst.gpg",
 		EncryptTo: &openpgp.EntityList{pubKey},
 	})
+
+	require.NoError(t, err)
 	defer archive.Close() // nolint: errcheck
 
 	// Test GetHashes method (should return empty slice initially)
@@ -212,10 +220,12 @@ func TestAddEncrypt(t *testing.T) {
 	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
 	require.NoError(t, err)
 
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		Format:    "tar.zst.gpg",
 		EncryptTo: &openpgp.EntityList{pubKey},
 	})
+
+	require.NoError(t, err)
 	defer archive.Close() // nolint: errcheck
 
 	// Test AddEncrypt method (should return error for already encrypted archives)
@@ -227,25 +237,19 @@ func TestAddEncrypt(t *testing.T) {
 	require.EqualError(t, err, "file encryption not supported on already encrypted archives")
 }
 
-// Test panic condition when EncryptTo is nil (covers missing New function coverage)
+// Test error condition when EncryptTo is nil (covers missing New function coverage)
 func TestNewWithNilEncryptTo(t *testing.T) {
-	defer func() {
-		if r := recover(); r != nil {
-			require.Contains(t, fmt.Sprint(r), "NEED ENCRYPT TO")
-		} else {
-			t.Error("Expected panic when EncryptTo is nil")
-		}
-	}()
-
 	tmp := t.TempDir()
 	f, err := os.Create(filepath.Join(tmp, "test.tar"))
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
 
-	// This should panic
-	_ = New(f, &config.SuitCaseOpts{
-		EncryptTo: nil, // This will trigger panic
+	// This should return an error
+	_, err = New(f, &config.SuitCaseOpts{
+		EncryptTo: nil, // This will trigger an error
 	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "EncryptTo is required")
 }
 
 // Test error paths in Close function by closing underlying resources
@@ -257,9 +261,11 @@ func TestCloseWithErrors(t *testing.T) {
 	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
 	require.NoError(t, err)
 
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		EncryptTo: &openpgp.EntityList{pubKey},
 	})
+
+	require.NoError(t, err)
 
 	// Add a file first to make the archive valid
 	_, err = archive.Add(inventory.File{

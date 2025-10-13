@@ -6,6 +6,7 @@ https://facebook.github.io/zstd/
 package tarzstd
 
 import (
+	"fmt"
 	"io"
 
 	// gzip "github.com/klauspost/pgzip"
@@ -25,16 +26,16 @@ type Suitcase struct {
 }
 
 // New tar archive.
-func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
+func New(target io.Writer, opts *config.SuitCaseOpts) (*Suitcase, error) {
 	gw, err := zstd.NewWriter(target)
 	if err != nil {
-		panic("UGH NO ZSTD WRITER!!")
+		return nil, fmt.Errorf("failed to create zstd writer: %w", err)
 	}
-	return Suitcase{
+	return &Suitcase{
 		gw:   gw,
 		tw:   tar.New(gw, opts),
 		opts: opts,
-	}
+	}, nil
 }
 
 // Close all closeables.

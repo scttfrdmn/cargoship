@@ -29,9 +29,8 @@ func (r *VAMLer) Write(w io.Writer, i *Inventory) error {
 	slog.Debug("About to encode inventory in to yaml file")
 	writer := bufio.NewWriterSize(w, 10240)
 	defer func() {
-		err := writer.Flush()
-		if err != nil {
-			panic(err)
+		if err := writer.Flush(); err != nil {
+			slog.Error("failed to flush writer", "error", err)
 		}
 	}()
 

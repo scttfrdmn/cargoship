@@ -5,6 +5,7 @@ package tarzstgpg
 
 import (
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -24,24 +25,27 @@ type Suitcase struct {
 }
 
 // New tar archive.
-func New(target io.Writer, opts *config.SuitCaseOpts) Suitcase {
+func New(target io.Writer, opts *config.SuitCaseOpts) (*Suitcase, error) {
 	if opts.EncryptTo == nil {
-		panic("NEED ENCRYPT TO")
+		return nil, fmt.Errorf("EncryptTo is required for encrypted formats")
 	}
-	cw, _ := openpgp.Encrypt(target, *opts.EncryptTo, nil, &openpgp.FileHints{
+	cw, err := openpgp.Encrypt(target, *opts.EncryptTo, nil, &openpgp.FileHints{
 		IsBinary: true,
 	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pgp encryption writer: %w", err)
+	}
 	gw, err := zstd.NewWriter(cw)
 	if err != nil {
-		panic("ERROR CREATING ZSTD GPG Writer")
+		return nil, fmt.Errorf("failed to create zstd writer: %w", err)
 	}
 	tw := tar.New(gw, opts)
-	return Suitcase{
+	return &Suitcase{
 		cw:   &cw,
 		tw:   tw,
 		gw:   gw,
 		opts: opts,
-	}
+	}, nil
 }
 
 // Config returns configuration options

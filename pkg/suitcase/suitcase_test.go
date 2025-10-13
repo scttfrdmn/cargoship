@@ -22,7 +22,9 @@ func TestSuitcaseWithInaccessibleFiles(t *testing.T) {
 	f2 := path.Join(dir, "bad.txt")
 	require.NoError(t, os.WriteFile(f1, []byte("good"), 0o644))
 	require.NoError(t, os.WriteFile(f2, []byte("bad"), 0o644))
-	i, err := inventory.NewDirectoryInventory(inventory.NewOptions(inventory.WithDirectories([]string{dir})))
+	opts, err := inventory.NewOptions(inventory.WithDirectories([]string{dir}))
+	require.NoError(t, err)
+	i, err := inventory.NewDirectoryInventory(opts)
 	require.NoError(t, err)
 	require.NotNil(t, i)
 	require.NoError(t, i.ValidateAccess())
@@ -126,9 +128,11 @@ func TestFillWithInventoryIndex(t *testing.T) {
 */
 
 func TestFillWithInventoryIndexMissingDir(t *testing.T) {
-	_, err := inventory.NewDirectoryInventory(inventory.NewOptions(
+	opts, err := inventory.NewOptions(
 		inventory.WithDirectories([]string{"../testdata/never-exist"}),
-	))
+	)
+	require.NoError(t, err)
+	_, err = inventory.NewDirectoryInventory(opts)
 	require.EqualError(t, err, "not a directory")
 }
 
@@ -370,9 +374,8 @@ func TestFormatMarshalJSON(t *testing.T) {
 }
 
 func TestFormatStringPanic(t *testing.T) {
-	// Test with invalid format value
-	require.Panics(t, func() {
-		var invalidFormat Format = 999
-		_ = invalidFormat.String()
-	})
+	// Test with invalid format value - should return empty string instead of panicking
+	var invalidFormat Format = 999
+	result := invalidFormat.String()
+	require.Equal(t, "", result, "Invalid format should return empty string")
 }

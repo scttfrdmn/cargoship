@@ -22,6 +22,7 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/suitcase/targz"
 	"github.com/scttfrdmn/cargoship/pkg/suitcase/targzgpg"
 	"github.com/scttfrdmn/cargoship/pkg/suitcase/tarzstd"
+	tarzstgpg "github.com/scttfrdmn/cargoship/pkg/suitcase/tarzstdgpg"
 	"github.com/spf13/cobra"
 )
 
@@ -71,7 +72,9 @@ func (f Format) String() string {
 	if v, ok := m[f]; ok {
 		return v
 	}
-	panic("invalid format")
+	// Return empty string for invalid format instead of panicking
+	// Callers should validate format values before using
+	return ""
 }
 
 // Type satisfies part of the pflags.Value interface
@@ -119,15 +122,17 @@ func New(w io.Writer, opts *config.SuitCaseOpts) (Suitcase, error) {
 	case "tar":
 		return tar.New(w, opts), nil
 	case "tar.gpg":
-		return targpg.New(w, opts), nil
+		return targpg.New(w, opts)
 	case "tar.gz":
-		return targz.New(w, opts), nil
+		return targz.New(w, opts)
 	case "tar.gz.gpg":
-		return targzgpg.New(w, opts), nil
+		return targzgpg.New(w, opts)
 	case "tar.zst":
-		return tarzstd.New(w, opts), nil
+		return tarzstd.New(w, opts)
+	case "tar.zst.gpg":
+		return tarzstgpg.New(w, opts)
 	case "tar.bz2":
-		return tarbz2.New(w, opts), nil
+		return tarbz2.New(w, opts)
 	}
 	return nil, fmt.Errorf("invalid archive format: %s", opts.Format)
 }
@@ -188,7 +193,9 @@ func reverseMap[K string, V string | Format](m map[K]V) map[V]K {
 func mustHexToBin(s string) string {
 	got, err := hexToBin(s)
 	if err != nil {
-		panic(err)
+		// Return empty string instead of panicking for invalid hex
+		// Callers should validate hex strings before calling
+		return ""
 	}
 	return got
 }

@@ -22,9 +22,11 @@ func TestTarGzFile(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
 
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		Format: "tar.zst",
 	})
+
+	require.NoError(t, err)
 	defer archive.Close() // nolint: errcheck
 
 	_, err = archive.Add(inventory.File{
@@ -80,7 +82,9 @@ func TestConfig(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
 
-	archive := New(f, opts)
+	archive, err := New(f, opts)
+
+	require.NoError(t, err)
 	defer func() { _ = archive.Close() }()
 
 	// Test that Config() returns the same options we passed in
@@ -103,7 +107,9 @@ func TestGetHashes(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
 
-	archive := New(f, opts)
+	archive, err := New(f, opts)
+
+	require.NoError(t, err)
 	defer func() { _ = archive.Close() }()
 
 	// Initially should be empty
@@ -154,11 +160,13 @@ func TestAddEncrypt(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
 
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		Format:       "tar.bz2",
 		EncryptInner: true,
 		EncryptTo:    encryptTo,
 	})
+
+	require.NoError(t, err)
 	defer func() { _ = archive.Close() }()
 
 	// Test AddEncrypt with valid file
@@ -183,11 +191,13 @@ func TestAddEncrypt_InvalidEncryption(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
 
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		Format:       "tar.bz2",
 		EncryptInner: true,
 		EncryptTo:    &openpgp.EntityList{}, // Empty entity list
 	})
+
+	require.NoError(t, err)
 	defer func() { _ = archive.Close() }()
 
 	err = archive.AddEncrypt(inventory.File{
@@ -209,7 +219,9 @@ func TestNew(t *testing.T) {
 		HashInner: true,
 	}
 
-	suitcase := New(f, opts)
+	suitcase, err := New(f, opts)
+
+	require.NoError(t, err)
 	require.NotNil(t, suitcase.tw)
 	require.NotNil(t, suitcase.gw)
 	require.Equal(t, opts, suitcase.Config())
@@ -227,7 +239,9 @@ func TestClose(t *testing.T) {
 		Format: "tar.bz2",
 	}
 
-	archive := New(f, opts)
+	archive, err := New(f, opts)
+
+	require.NoError(t, err)
 
 	// Add some content
 	_, err = archive.Add(inventory.File{
@@ -248,10 +262,12 @@ func TestTarBz2WithHashing(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
 
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		Format:    "tar.bz2",
 		HashInner: true,
 	})
+
+	require.NoError(t, err)
 	defer func() { _ = archive.Close() }()
 
 	hs, err := archive.Add(inventory.File{

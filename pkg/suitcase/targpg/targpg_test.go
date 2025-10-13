@@ -22,9 +22,10 @@ func TestTarGPGFileCorrupt(t *testing.T) {
 
 	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
 	require.NoError(t, err)
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		EncryptTo: &openpgp.EntityList{pubKey},
 	})
+	require.NoError(t, err)
 	defer archive.Close() // nolint: errcheck
 
 	_, err = archive.Add(inventory.File{
@@ -62,9 +63,11 @@ func TestTarGPGFileWithTar(t *testing.T) {
 	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
 	require.NoError(t, err)
 
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		EncryptTo: &openpgp.EntityList{pubKey},
 	})
+
+	require.NoError(t, err)
 	defer archive.Close() // nolint: errcheck
 
 	_, err = archive.Add(inventory.File{
@@ -102,10 +105,12 @@ func TestTarGPGFile(t *testing.T) {
 	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
 	require.NoError(t, err)
 
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		Format:    "tar.gpg",
 		EncryptTo: &openpgp.EntityList{pubKey},
 	})
+
+	require.NoError(t, err)
 	defer archive.Close() // nolint: errcheck
 
 	_, err = archive.Add(inventory.File{
@@ -167,7 +172,9 @@ func TestConfig(t *testing.T) {
 		EncryptTo: &openpgp.EntityList{pubKey},
 	}
 
-	archive := New(f, opts)
+	archive, err := New(f, opts)
+
+	require.NoError(t, err)
 	defer archive.Close() // nolint: errcheck
 
 	// Test Config method
@@ -186,10 +193,12 @@ func TestGetHashes(t *testing.T) {
 	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
 	require.NoError(t, err)
 
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		Format:    "tar.gpg",
 		EncryptTo: &openpgp.EntityList{pubKey},
 	})
+
+	require.NoError(t, err)
 	defer archive.Close() // nolint: errcheck
 
 	// Test GetHashes method (should return empty slice initially)
@@ -207,10 +216,12 @@ func TestAddEncrypt(t *testing.T) {
 	pubKey, err := gpg.ReadEntity("../../testdata/fakey-public.key")
 	require.NoError(t, err)
 
-	archive := New(f, &config.SuitCaseOpts{
+	archive, err := New(f, &config.SuitCaseOpts{
 		Format:    "tar.gpg",
 		EncryptTo: &openpgp.EntityList{pubKey},
 	})
+
+	require.NoError(t, err)
 	defer archive.Close() // nolint: errcheck
 
 	// Test AddEncrypt method (should return error for already encrypted archives)

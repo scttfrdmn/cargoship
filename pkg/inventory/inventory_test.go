@@ -17,7 +17,7 @@ import (
 
 func TestNewOptions(t *testing.T) {
 	// Check some overrides
-	o := NewOptions(
+	o, err := NewOptions(
 		WithUser("foo"),
 		WithPrefix("pre"),
 		WithMaxSuitcaseSize(500),
@@ -25,6 +25,7 @@ func TestNewOptions(t *testing.T) {
 		WithInventoryFormat("yaml"),
 		WithSuitcaseFormat("tar.gz"),
 	)
+	require.NoError(t, err)
 	require.Equal(t, "foo", o.User)
 	require.Equal(t, "pre", o.Prefix)
 	require.Equal(t, 10, o.LimitFileCount)
@@ -33,13 +34,16 @@ func TestNewOptions(t *testing.T) {
 	require.Equal(t, "tar.gz", o.SuitcaseFormat)
 
 	// Check some defaults
-	d := NewOptions()
+	d, err := NewOptions()
+	require.NoError(t, err)
 	require.Equal(t, "tar.zst", d.SuitcaseFormat)
 	require.Equal(t, "yaml", d.InventoryFormat)
 }
 
 func TestNewDirectoryInventory(t *testing.T) {
-	got, err := NewDirectoryInventory(NewOptions(WithDirectories([]string{"../testdata/fake-dir"})))
+	opts, err := NewOptions(WithDirectories([]string{"../testdata/fake-dir"}))
+	require.NoError(t, err)
+	got, err := NewDirectoryInventory(opts)
 
 	require.NoError(t, err)
 	require.IsType(t, &Inventory{}, got)
@@ -68,10 +72,12 @@ func BenchmarkNewDirectoryInventory(b *testing.B) {
 		if _, err := os.Stat(location); err == nil {
 			for _, format := range []string{"yaml", "json"} {
 				b.Run(fmt.Sprintf("suitcase_new_inventory_%v_%v", format, desc), func(b *testing.B) {
-					got, err := NewDirectoryInventory(NewOptions(
+					opts, err := NewOptions(
 						WithDirectories([]string{location}),
 						WithInventoryFormat(format),
-					))
+					)
+					require.NoError(b, err)
+					got, err := NewDirectoryInventory(opts)
 					require.NoError(b, err)
 					require.NotNil(b, got)
 				})
@@ -95,12 +101,14 @@ func TestIndexInventory(t *testing.T) {
 }
 
 func TestExpandInventoryWithNames(t *testing.T) {
+	opts, err := NewOptions(
+		WithPrefix("foo"),
+		WithUser("bar"),
+		WithSuitcaseFormat("tar"),
+	)
+	require.NoError(t, err)
 	i := &Inventory{
-		Options: NewOptions(
-			WithPrefix("foo"),
-			WithUser("bar"),
-			WithSuitcaseFormat("tar"),
-		),
+		Options: opts,
 		Files: []*File{
 			{
 				Path: "small-file-1",
@@ -116,7 +124,7 @@ func TestExpandInventoryWithNames(t *testing.T) {
 			},
 		},
 	}
-	err := i.IndexWithSize(3)
+	err = i.IndexWithSize(3)
 	require.NoError(t, err)
 	require.Equal(t, 2, i.TotalIndexes)
 
@@ -149,9 +157,11 @@ func TestIndexInventoryTooBig(t *testing.T) {
 }
 
 func TestNewDirectoryInventoryMissingTopDirs(t *testing.T) {
-	_, err := NewDirectoryInventory(NewOptions(
+	opts, err := NewOptions(
 		WithDirectories([]string{}),
-	))
+	)
+	require.NoError(t, err)
+	_, err = NewDirectoryInventory(opts)
 	require.Error(t, err)
 }
 
@@ -230,10 +240,12 @@ func TestNewInventoryerWithBadFilename(t *testing.T) {
 }
 
 func TestNewSuitcaseWithIgnoreGlobs(t *testing.T) {
-	i, err := NewDirectoryInventory(NewOptions(
+	opts, err := NewOptions(
 		WithDirectories([]string{"../testdata/fake-dir"}),
 		WithIgnoreGlobs([]string{"*.out"}),
-	))
+	)
+	require.NoError(t, err)
+	i, err := NewDirectoryInventory(opts)
 	require.NoError(t, err)
 	for _, f := range i.Files {
 		require.NotContains(t, f.Name, ".out")
@@ -241,10 +253,12 @@ func TestNewSuitcaseWithIgnoreGlobs(t *testing.T) {
 }
 
 func TestNewSuitcaseWithFollowSymlinks(t *testing.T) {
-	i, err := NewDirectoryInventory(NewOptions(
+	opts, err := NewOptions(
 		WithDirectories([]string{"../testdata/fake-dir"}),
 		WithFollowSymlinks(),
-	))
+	)
+	require.NoError(t, err)
+	i, err := NewDirectoryInventory(opts)
 	require.NoError(t, err)
 	paths := []string{}
 	for _, f := range i.Files {
@@ -257,9 +271,11 @@ func TestNewSuitcaseWithFollowSymlinks(t *testing.T) {
 }
 
 func TestNewSuitcaseWithNoFollowSymlinks(t *testing.T) {
-	i, err := NewDirectoryInventory(NewOptions(
+	opts, err := NewOptions(
 		WithDirectories([]string{"../testdata/fake-dir"}),
-	))
+	)
+	require.NoError(t, err)
+	i, err := NewDirectoryInventory(opts)
 	require.NoError(t, err)
 	paths := []string{}
 	for _, f := range i.Files {
@@ -269,10 +285,12 @@ func TestNewSuitcaseWithNoFollowSymlinks(t *testing.T) {
 }
 
 func TestWalkDirLimit(t *testing.T) {
-	i := Inventory{}
-	err := walkDir("../testdata/limit-dir", NewOptions(
+	opts, err := NewOptions(
 		WithLimitFileCount(10),
-	), &i)
+	)
+	require.NoError(t, err)
+	i := Inventory{}
+	err = walkDir("../testdata/limit-dir", opts, &i)
 	require.Equal(t, 10, len(i.Files))
 	require.EqualError(t, err, "halt")
 }
@@ -289,10 +307,12 @@ func TestWonkyTOC(t *testing.T) {
 }
 
 func TestWalkDirExpandArchives(t *testing.T) {
-	i := Inventory{}
-	err := walkDir("../testdata/archives", NewOptions(
+	opts, err := NewOptions(
 		WithArchiveTOC(),
-	), &i)
+	)
+	require.NoError(t, err)
+	i := Inventory{}
+	err = walkDir("../testdata/archives", opts, &i)
 	require.NoError(t, err)
 	require.Contains(
 		t,
@@ -314,10 +334,12 @@ func TestWalkDirExpandArchives(t *testing.T) {
 }
 
 func TestWalkDirExpandArchivesDeep(t *testing.T) {
-	i := Inventory{}
-	err := walkDir("../testdata/archives", NewOptions(
+	opts, err := NewOptions(
 		WithArchiveTOCDeep(),
-	), &i)
+	)
+	require.NoError(t, err)
+	i := Inventory{}
+	err = walkDir("../testdata/archives", opts, &i)
 	require.NoError(t, err)
 	require.Contains(
 		t,
@@ -359,10 +381,11 @@ func TestWithViper(t *testing.T) {
 	v.Set("suitcase-format", "tar.gz")
 	v.Set("max-suitcase-size", "2.5Gi")
 
-	got := NewOptions(
+	got, err := NewOptions(
 		WithDirectories([]string{"../testdata/limit-dir"}),
 		WithViper(v),
 	)
+	require.NoError(t, err)
 	require.Equal(t, "bar", got.InternalMetadataGlob)
 	require.Equal(t, []string{"data.txt"}, got.ExternalMetadataFiles)
 	require.Equal(t, []string{"*.swp"}, got.IgnoreGlobs)
@@ -380,12 +403,14 @@ func TestGenericSetUser(t *testing.T) {
 	cmd.SetArgs([]string{"--user", "cobra-user"})
 	err := cmd.Execute()
 	require.NoError(t, err)
-	o := NewOptions()
+	o, err := NewOptions()
+	require.NoError(t, err)
 	setUser(*cmd, o)
 	require.Equal(t, "cobra-user", o.User)
 
 	// Test with viper
-	o = NewOptions()
+	o, err = NewOptions()
+	require.NoError(t, err)
 	v := viper.New()
 	v.Set("user", "viper-user")
 	setUser(*v, o)
@@ -549,7 +574,9 @@ func TestInaccessableFilesInInventory(t *testing.T) {
 	dir := t.TempDir()
 	tfile := path.Join(dir, "bad-mode.txt")
 	require.NoError(t, os.WriteFile(tfile, []byte("hello"), 0o00))
-	got, err := NewDirectoryInventory(NewOptions(WithDirectories([]string{dir})))
+	opts, err := NewOptions(WithDirectories([]string{dir}))
+	require.NoError(t, err)
+	got, err := NewDirectoryInventory(opts)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.EqualError(t, got.ValidateAccess(), fmt.Sprintf("the following files are not readable: %v", tfile))
@@ -729,11 +756,13 @@ func TestFormatMarshalJSON(t *testing.T) {
 
 // Test Inventory JSON methods
 func TestInventoryJSONString(t *testing.T) {
+	opts, err := NewOptions()
+	require.NoError(t, err)
 	inventory := &Inventory{
 		Files: []*File{
 			{Path: "test.txt", Size: 100},
 		},
-		Options: NewOptions(),
+		Options: opts,
 	}
 
 	jsonStr, err := inventory.JSONString()
@@ -744,11 +773,13 @@ func TestInventoryJSONString(t *testing.T) {
 }
 
 func TestInventoryMustJSONString(t *testing.T) {
+	opts, err := NewOptions()
+	require.NoError(t, err)
 	inventory := &Inventory{
 		Files: []*File{
 			{Path: "test.txt", Size: 100},
 		},
-		Options: NewOptions(),
+		Options: opts,
 	}
 
 	// Should not panic with valid inventory
@@ -826,13 +857,15 @@ func TestDcloseWithAlreadyClosedFile(t *testing.T) {
 
 // Test SummaryLog function
 func TestInventorySummaryLog(t *testing.T) {
+	opts, err := NewOptions()
+	require.NoError(t, err)
 	inventory := &Inventory{
 		Files: []*File{
 			{Path: "file1.txt", Size: 100},
 			{Path: "file2.txt", Size: 200},
 			{Path: "file3.txt", Size: 300},
 		},
-		Options:      NewOptions(),
+		Options:      opts,
 		TotalIndexes: 2,
 	}
 
@@ -843,9 +876,11 @@ func TestInventorySummaryLog(t *testing.T) {
 }
 
 func TestInventorySummaryLogEmpty(t *testing.T) {
+	opts, err := NewOptions()
+	require.NoError(t, err)
 	inventory := &Inventory{
 		Files:   []*File{},
-		Options: NewOptions(),
+		Options: opts,
 	}
 
 	// Should not panic with empty inventory
@@ -869,7 +904,8 @@ func TestWithHashAlgorithms(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			options := NewOptions(WithHashAlgorithms(tt.hash))
+			options, err := NewOptions(WithHashAlgorithms(tt.hash))
+			require.NoError(t, err)
 			require.Equal(t, tt.hash, options.HashAlgorithm)
 		})
 	}
@@ -882,7 +918,8 @@ func TestWithWizardForm(t *testing.T) {
 		MaxSize:          "1GB",
 	}
 
-	options := NewOptions(WithWizardForm(form))
+	options, err := NewOptions(WithWizardForm(form))
+	require.NoError(t, err)
 	require.Equal(t, []string{"/tmp/"}, options.Directories)
 }
 
@@ -891,7 +928,8 @@ func TestWithWizardFormRelative(t *testing.T) {
 		Source: ".",
 	}
 
-	options := NewOptions(WithWizardForm(form))
+	options, err := NewOptions(WithWizardForm(form))
+	require.NoError(t, err)
 	// Should convert relative path to absolute
 	require.Len(t, options.Directories, 1)
 	require.NotEqual(t, ".", options.Directories[0])
@@ -923,7 +961,8 @@ func TestWithCobra(t *testing.T) {
 
 	// Test WithCobra with arguments
 	args := []string{"/tmp"}
-	options := NewOptions(WithCobra(cmd, args))
+	options, err := NewOptions(WithCobra(cmd, args))
+	require.NoError(t, err)
 
 	// Verify basic options are set correctly
 	require.Equal(t, "test-user", options.User)
@@ -953,7 +992,8 @@ func TestWithCobraNoArgs(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test WithCobra without args (empty slice)
-	options := NewOptions(WithCobra(cmd, []string{}))
+	options, err := NewOptions(WithCobra(cmd, []string{}))
+	require.NoError(t, err)
 
 	require.Equal(t, "test-user", options.User)
 	require.Equal(t, "test-prefix", options.Prefix)

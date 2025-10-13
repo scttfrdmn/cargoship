@@ -136,7 +136,9 @@ func (di Inventory) Analyze() Analysis {
 
 func int64ToUint64(i int64) uint64 {
 	if i < 0 {
-		panic("value is negative and cannot be converted to uint64")
+		// Return 0 for negative values instead of panicking
+		// Callers should validate values before calling
+		return 0
 	}
 	return uint64(i)
 }

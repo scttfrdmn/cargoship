@@ -54,12 +54,15 @@ func HashCompletion(_ *cobra.Command, _ []string, toComplete string) ([]string, 
 }
 
 // String satisfies the pflags interface
+// Returns empty string for invalid hash algorithm values
 func (h HashAlgorithm) String() string {
 	m := reverseMap(hashMap)
 	if v, ok := m[h]; ok {
 		return v
 	}
-	panic("invalid hash algorithm")
+	// Return empty string for invalid values instead of panicking
+	// Callers should validate hash algorithm values before using
+	return ""
 }
 
 // Type satisfies part of the pflags.Value interface
@@ -116,12 +119,15 @@ func FormatCompletion(_ *cobra.Command, _ []string, toComplete string) ([]string
 }
 
 // String returns the string representation of Format
+// Returns empty string for invalid format values
 func (f Format) String() string {
 	m := reverseMap(formatMap)
 	if v, ok := m[f]; ok {
 		return v
 	}
-	panic("invalid format")
+	// Return empty string for invalid values instead of panicking
+	// Callers should validate format values before using
+	return ""
 }
 
 // Type satisfies part of the pflags.Value interface

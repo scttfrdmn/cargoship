@@ -210,10 +210,12 @@ func TestShipItems(t *testing.T) {
 	require.NoError(t, copySrcDst(tfile, path.Join(ctd, path.Base(tfile))))
 	require.NoError(t, copySrcDst(tfile, path.Join(td, path.Base(tfile))))
 	ftaI := &fta{}
+	opts, err := inventory.NewOptions()
+	require.NoError(t, err)
 	p := New(
 		WithDestination(td),
 		WithInventory(&inventory.Inventory{
-			Options: inventory.NewOptions(),
+			Options: opts,
 		}),
 		WithTravelAgent(ftaI),
 	)

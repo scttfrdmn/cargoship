@@ -23,7 +23,11 @@ totalfilesize: 10187619
 totalfilesizehr: 10 MB`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			gout.SetWriter(cmd.OutOrStdout())
-			i, err := inventory.NewDirectoryInventory(inventory.NewOptions(inventory.WithDirectories(args)))
+			opts, err := inventory.NewOptions(inventory.WithDirectories(args))
+			if err != nil {
+				return err
+			}
+			i, err := inventory.NewDirectoryInventory(opts)
 			if err != nil {
 				return err
 			}
