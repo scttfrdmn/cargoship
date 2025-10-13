@@ -950,25 +950,27 @@ func (c *DefaultCoordinator) updateRegionHealthStatus(region *Region, healthStat
 
 // triggerRegionFailover initiates failover procedures when a region becomes unhealthy
 func (c *DefaultCoordinator) triggerRegionFailover(region *Region, reasons []string) {
-	c.logger.Warn("Triggering region failover", 
-		"region", region.Name, 
+	c.logger.Warn("Triggering region failover",
+		"region", region.Name,
 		"reasons", reasons)
-	
+
 	// Use the failover manager to handle the failover process
 	if c.failoverManager != nil {
 		// Find the next best region for failover
 		targetRegion := c.selectFailoverTarget(region.Name)
 		if targetRegion != "" {
+			c.wg.Add(1)
 			go func() {
+				defer c.wg.Done()
 				err := c.failoverManager.ExecuteFailover(c.ctx, region.Name, targetRegion)
 				if err != nil {
-					c.logger.Error("Failed to execute region failover", 
-						"from_region", region.Name, 
+					c.logger.Error("Failed to execute region failover",
+						"from_region", region.Name,
 						"to_region", targetRegion,
 						"error", err)
 				} else {
-					c.logger.Info("Region failover completed successfully", 
-						"from_region", region.Name, 
+					c.logger.Info("Region failover completed successfully",
+						"from_region", region.Name,
 						"to_region", targetRegion)
 				}
 			}()
@@ -1563,33 +1565,34 @@ func (c *DefaultCoordinator) triggerAutomaticFailover(fromRegion, toRegion strin
 		"from_region", fromRegion,
 		"to_region", toRegion,
 		"strategy", c.config.Failover.Strategy)
-	
+
 	if c.failoverManager == nil {
 		c.logger.Error("Failover manager not available")
 		return
 	}
-	
+
 	// Create a context for the failover operation
 	ctx, cancel := context.WithTimeout(c.ctx, c.config.Failover.FailoverTimeout)
-	defer cancel()
-	
+
 	// Execute failover based on strategy
+	c.wg.Add(1)
 	go func() {
+		defer c.wg.Done()
 		defer cancel()
-		
+
 		if err := c.failoverManager.ExecuteFailover(ctx, fromRegion, toRegion); err != nil {
 			c.logger.Error("Automatic failover failed",
 				"from_region", fromRegion,
 				"to_region", toRegion,
 				"error", err)
-			
+
 			// Record the failure for monitoring
 			c.recordFailoverFailure(fromRegion, toRegion, err)
 		} else {
 			c.logger.Info("Automatic failover completed successfully",
 				"from_region", fromRegion,
 				"to_region", toRegion)
-			
+
 			// Record successful failover
 			c.recordFailoverSuccess(fromRegion, toRegion)
 		}
