@@ -344,7 +344,7 @@ type MockTravelAgent struct {
 	mu            sync.Mutex // Add mutex for thread safety
 }
 
-func (m *MockTravelAgent) Upload(filePath string, c chan rclone.TransferStatus) (int64, error) {
+func (m *MockTravelAgent) Upload(filePath string, c chan<- rclone.TransferStatus) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
