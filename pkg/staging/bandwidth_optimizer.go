@@ -75,6 +75,11 @@ const (
 
 // NewBandwidthOptimizer creates a new bandwidth optimizer.
 func NewBandwidthOptimizer(config *AdaptationConfig) *BandwidthOptimizer {
+	// Use default config if nil
+	if config == nil {
+		config = DefaultAdaptationConfig()
+	}
+
 	return &BandwidthOptimizer{
 		config:                config,
 		congestionController:  NewCongestionController(config),
