@@ -254,7 +254,7 @@ type CompressionAnalysis struct {
 }
 
 // NewStreamingCompressor creates a new streaming compressor.
-func NewStreamingCompressor(algorithm CompressionAlgorithm, level CompressionLevel, ctx context.Context) *StreamingCompressor {
+func NewStreamingCompressor(ctx context.Context, algorithm CompressionAlgorithm, level CompressionLevel) *StreamingCompressor {
 	sc := &StreamingCompressor{
 		algorithm:           algorithm,
 		level:               level,

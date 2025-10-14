@@ -256,7 +256,7 @@ type MemoryPressureEvent struct {
 }
 
 // NewMemoryAwareBuffer creates a new memory-aware buffer manager.
-func NewMemoryAwareBuffer(maxMemoryMB int64, ctx context.Context) *MemoryAwareBuffer {
+func NewMemoryAwareBuffer(ctx context.Context, maxMemoryMB int64) *MemoryAwareBuffer {
 	bufferCtx, cancel := context.WithCancel(ctx)
 
 	mab := &MemoryAwareBuffer{

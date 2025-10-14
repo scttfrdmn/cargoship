@@ -13,7 +13,7 @@ import (
 
 func TestNewStreamingCompressor(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	assert.NotNil(t, sc)
 	assert.Equal(t, CompressionGzip, sc.algorithm)
@@ -31,7 +31,7 @@ func TestNewStreamingCompressor(t *testing.T) {
 
 func TestStreamingCompressorCompressStream(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	// Create test data
 	testData := strings.Repeat("Hello, World! This is test data. ", 1000)
@@ -57,7 +57,7 @@ func TestStreamingCompressorCompressStream(t *testing.T) {
 
 func TestStreamingCompressorCompressChunk(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionBrotli, CompressionFast, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionBrotli, CompressionFast)
 
 	// Create test chunk
 	testChunk := make([]byte, 1024*1024) // 1MB
@@ -78,7 +78,7 @@ func TestStreamingCompressorCompressChunk(t *testing.T) {
 
 func TestStreamingCompressorAdaptiveSelection(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionAuto, CompressionAutoLevel, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionAuto, CompressionAutoLevel)
 
 	assert.True(t, sc.adaptiveSelection)
 
@@ -109,7 +109,7 @@ func TestStreamingCompressorDifferentAlgorithms(t *testing.T) {
 
 	for _, alg := range algorithms {
 		t.Run(string(alg), func(t *testing.T) {
-			sc := NewStreamingCompressor(alg, CompressionBalanced, ctx)
+			sc := NewStreamingCompressor(ctx, alg, CompressionBalanced)
 			input := strings.NewReader(testData)
 			output := &bytes.Buffer{}
 
@@ -143,7 +143,7 @@ func TestStreamingCompressorCompressionLevels(t *testing.T) {
 
 	for _, level := range levels {
 		t.Run(string(level), func(t *testing.T) {
-			sc := NewStreamingCompressor(CompressionGzip, level, ctx)
+			sc := NewStreamingCompressor(ctx, CompressionGzip, level)
 			input := strings.NewReader(testData)
 			output := &bytes.Buffer{}
 
@@ -158,7 +158,7 @@ func TestStreamingCompressorCompressionLevels(t *testing.T) {
 
 func TestStreamingCompressorCreateCompressionJob(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	testData := "Test data for job creation"
 	input := strings.NewReader(testData)
@@ -182,7 +182,7 @@ func TestStreamingCompressorCreateCompressionJob(t *testing.T) {
 
 func TestStreamingCompressorProcessJobAsync(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	testData := strings.Repeat("Async job test data. ", 100)
 	input := strings.NewReader(testData)
@@ -213,7 +213,7 @@ func TestStreamingCompressorProcessJobAsync(t *testing.T) {
 
 func TestStreamingCompressorSelectOptimalAlgorithm(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	// Add some performance data
 	sc.algorithmPerformance[CompressionGzip].AverageRatio = 0.6
@@ -244,7 +244,7 @@ func TestStreamingCompressorSelectOptimalAlgorithm(t *testing.T) {
 
 func TestStreamingCompressorGetCompressionMetrics(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	// Perform some compressions to generate metrics
 	for i := 0; i < 3; i++ {
@@ -274,7 +274,7 @@ func TestStreamingCompressorGetCompressionMetrics(t *testing.T) {
 
 func TestStreamingCompressorAdaptCompressionStrategy(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 	sc.compressionStrategy = StrategyAdaptive
 
 	// Add performance history to trigger adaptation
@@ -306,7 +306,7 @@ func TestStreamingCompressorAdaptCompressionStrategy(t *testing.T) {
 
 func TestStreamingCompressorCalculateAlgorithmScore(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	performance := &AlgorithmPerformance{
 		Algorithm:         CompressionGzip,
@@ -335,7 +335,7 @@ func TestStreamingCompressorCalculateAlgorithmScore(t *testing.T) {
 
 func TestStreamingCompressorEstimateCPUUsage(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	// Test different algorithms
 	gzipUsage := sc.estimateCPUUsage(CompressionGzip, CompressionBalanced)
@@ -358,7 +358,7 @@ func TestStreamingCompressorEstimateCPUUsage(t *testing.T) {
 
 func TestStreamingCompressorEstimateMemoryUsage(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	inputSize := int64(10 * 1024 * 1024) // 10MB
 
@@ -379,7 +379,7 @@ func TestStreamingCompressorEstimateMemoryUsage(t *testing.T) {
 
 func TestStreamingCompressorAssessCompressionQuality(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	// Test excellent quality
 	excellent := sc.assessCompressionQuality(0.2, 100.0)
@@ -400,7 +400,7 @@ func TestStreamingCompressorAssessCompressionQuality(t *testing.T) {
 
 func TestStreamingCompressorUpdatePerformanceMetrics(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	result := &CompressionResult{
 		Algorithm:        CompressionGzip,
@@ -438,7 +438,7 @@ func TestStreamingCompressorUpdatePerformanceMetrics(t *testing.T) {
 
 func TestStreamingCompressorRecordPerformanceSnapshot(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	result := &CompressionResult{
 		Algorithm:       CompressionBrotli,
@@ -524,7 +524,7 @@ func TestCompressionContentAnalyzerDifferentContentTypes(t *testing.T) {
 
 func TestStreamingCompressorConcurrentOperations(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	// Test concurrent compression operations
 	numOperations := 5
@@ -564,7 +564,7 @@ func TestStreamingCompressorConcurrentOperations(t *testing.T) {
 
 func TestStreamingCompressorJobCancellation(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	testData := strings.Repeat("Cancellation test data. ", 1000)
 	input := strings.NewReader(testData)
@@ -586,7 +586,7 @@ func TestStreamingCompressorJobCancellation(t *testing.T) {
 
 func TestStreamingCompressorEdgeCases(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	// Test empty data
 	emptyInput := strings.NewReader("")
@@ -609,7 +609,7 @@ func TestStreamingCompressorEdgeCases(t *testing.T) {
 
 func TestStreamingCompressorPerformanceTracking(t *testing.T) {
 	ctx := context.Background()
-	sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+	sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 
 	// Perform multiple operations to build performance history
 	for i := 0; i < 5; i++ {
@@ -645,7 +645,7 @@ func TestStreamingCompressorCompressionStrategies(t *testing.T) {
 
 	for _, strategy := range strategies {
 		t.Run(string(strategy), func(t *testing.T) {
-			sc := NewStreamingCompressor(CompressionGzip, CompressionBalanced, ctx)
+			sc := NewStreamingCompressor(ctx, CompressionGzip, CompressionBalanced)
 			sc.compressionStrategy = strategy
 
 			testData := strings.Repeat("Strategy test data. ", 100)

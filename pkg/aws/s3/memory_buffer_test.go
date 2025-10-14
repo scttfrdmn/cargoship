@@ -14,7 +14,7 @@ import (
 
 func TestNewMemoryAwareBuffer(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx) // 100MB
+	mab := NewMemoryAwareBuffer(ctx, 100) // 100MB
 	defer mab.cancel()
 
 	assert.NotNil(t, mab)
@@ -36,7 +36,7 @@ func TestNewMemoryAwareBuffer(t *testing.T) {
 
 func TestMemoryAwareBufferAllocateBuffer(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	// Test basic allocation
@@ -74,7 +74,7 @@ func TestMemoryAwareBufferAllocateBufferSizeStrategy(t *testing.T) {
 
 	for _, strategy := range strategies {
 		t.Run(string(strategy), func(t *testing.T) {
-			mab := NewMemoryAwareBuffer(100, ctx)
+			mab := NewMemoryAwareBuffer(ctx, 100)
 			mab.bufferSizeStrategy = strategy
 			defer mab.cancel()
 
@@ -88,7 +88,7 @@ func TestMemoryAwareBufferAllocateBufferSizeStrategy(t *testing.T) {
 
 func TestMemoryAwareBufferReleaseBuffer(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	// Allocate buffer
@@ -117,7 +117,7 @@ func TestMemoryAwareBufferReleaseBuffer(t *testing.T) {
 
 func TestMemoryAwareBufferGetBuffer(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	// Allocate buffer
@@ -137,7 +137,7 @@ func TestMemoryAwareBufferGetBuffer(t *testing.T) {
 
 func TestMemoryAwareBufferResizeBuffer(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	// Allocate buffer
@@ -162,7 +162,7 @@ func TestMemoryAwareBufferResizeBuffer(t *testing.T) {
 
 func TestMemoryAwareBufferGetMemoryUsage(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	// Get initial usage
@@ -185,7 +185,7 @@ func TestMemoryAwareBufferGetMemoryUsage(t *testing.T) {
 
 func TestMemoryAwareBufferGetBufferMetrics(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	// Perform some allocations
@@ -205,7 +205,7 @@ func TestMemoryAwareBufferGetBufferMetrics(t *testing.T) {
 
 func TestMemoryAwareBufferAdaptToMemoryPressure(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	// Allocate some buffers
@@ -241,7 +241,7 @@ func TestMemoryAwareBufferAdaptToMemoryPressure(t *testing.T) {
 
 func TestMemoryAwareBufferCheckMemoryAvailability(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(10, ctx) // Small 10MB limit
+	mab := NewMemoryAwareBuffer(ctx, 10) // Small 10MB limit
 	defer mab.cancel()
 
 	// Test normal allocation
@@ -269,7 +269,7 @@ func TestMemoryAwareBufferCheckMemoryAvailability(t *testing.T) {
 
 func TestMemoryAwareBufferCalculateOptimalBufferSize(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	requestedSize := int64(1024 * 1024) // 1MB
@@ -303,7 +303,7 @@ func TestMemoryAwareBufferCalculateOptimalBufferSize(t *testing.T) {
 
 func TestMemoryAwareBufferBufferPriorities(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	priorities := []BufferPriority{
@@ -385,7 +385,7 @@ func TestMemoryMonitor(t *testing.T) {
 
 func TestMemoryAwareBufferConcurrentAccess(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	// Test concurrent allocations
@@ -427,7 +427,7 @@ func TestMemoryAwareBufferConcurrentAccess(t *testing.T) {
 
 func TestMemoryAwareBufferMemoryPressureAdaptation(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(10, ctx) // Very small limit to trigger pressure
+	mab := NewMemoryAwareBuffer(ctx, 10) // Very small limit to trigger pressure
 	defer mab.cancel()
 
 	// Allocate buffers to create pressure
@@ -463,7 +463,7 @@ func TestMemoryAwareBufferMemoryPressureAdaptation(t *testing.T) {
 
 func TestMemoryAwareBufferBufferStates(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	// Test buffer lifecycle
@@ -491,7 +491,7 @@ func TestMemoryAwareBufferBufferStates(t *testing.T) {
 
 func TestMemoryAwareBufferAdaptiveResize(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	// Allocate buffer
@@ -523,7 +523,7 @@ func TestMemoryAwareBufferAdaptiveResize(t *testing.T) {
 
 func TestMemoryAwareBufferCleanupOperations(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	// Allocate buffers with different priorities and access times
@@ -563,7 +563,7 @@ func TestMemoryAwareBufferCleanupOperations(t *testing.T) {
 
 func TestMemoryAwareBufferEdgeCases(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	// Test zero size allocation
@@ -586,7 +586,7 @@ func TestMemoryAwareBufferEdgeCases(t *testing.T) {
 
 func TestMemoryAwareBufferPerformanceMetrics(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 	defer mab.cancel()
 
 	// Perform multiple allocations and releases to generate metrics
@@ -619,7 +619,7 @@ func TestMemoryAwareBufferBackgroundOperations(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
-	mab := NewMemoryAwareBuffer(100, ctx)
+	mab := NewMemoryAwareBuffer(ctx, 100)
 
 	// Allocate some buffers
 	for i := 0; i < 3; i++ {
@@ -642,7 +642,7 @@ func TestMemoryAwareBufferBackgroundOperations(t *testing.T) {
 
 func TestMemoryAwareBufferMemoryLeakPrevention(t *testing.T) {
 	ctx := context.Background()
-	mab := NewMemoryAwareBuffer(50, ctx) // Small limit
+	mab := NewMemoryAwareBuffer(ctx, 50) // Small limit
 	defer mab.cancel()
 
 	// Allocate and release many buffers to test for leaks
