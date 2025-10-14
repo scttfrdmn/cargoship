@@ -25,13 +25,43 @@ const (
 	testRegion         = "us-east-1"
 )
 
+var (
+	useRealAWS      bool
+	realAWSProfile  string
+	realAWSRegion   string
+	realAWSBucket   string
+)
+
 func TestMain(m *testing.M) {
-	// Check if LocalStack is available
-	if !isLocalStackAvailable() {
-		fmt.Println("Skipping integration tests - LocalStack not available")
-		fmt.Println("To run integration tests:")
-		fmt.Println("  docker run --rm -d -p 4566:4566 localstack/localstack")
-		os.Exit(0)
+	// Check if real AWS integration is requested
+	if os.Getenv("CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS") == "true" {
+		useRealAWS = true
+		realAWSProfile = os.Getenv("AWS_PROFILE")
+		if realAWSProfile == "" {
+			realAWSProfile = "default"
+		}
+		realAWSRegion = os.Getenv("AWS_REGION")
+		if realAWSRegion == "" {
+			realAWSRegion = "us-west-2"
+		}
+		realAWSBucket = os.Getenv("CARGOSHIP_TEST_BUCKET")
+		if realAWSBucket == "" {
+			realAWSBucket = "cargoship-integration-test-" + fmt.Sprintf("%d", time.Now().Unix())
+		}
+
+		fmt.Printf("Running integration tests against REAL AWS\n")
+		fmt.Printf("  Profile: %s\n", realAWSProfile)
+		fmt.Printf("  Region:  %s\n", realAWSRegion)
+		fmt.Printf("  Bucket:  %s\n", realAWSBucket)
+	} else {
+		// Check if LocalStack is available
+		if !isLocalStackAvailable() {
+			fmt.Println("Skipping integration tests - LocalStack not available")
+			fmt.Println("To run integration tests:")
+			fmt.Println("  docker run --rm -d -p 4566:4566 localstack/localstack")
+			fmt.Println("  OR set CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS=true for real AWS testing")
+			os.Exit(0)
+		}
 	}
 
 	// Setup test environment
@@ -62,13 +92,29 @@ func setupTestEnvironment() error {
 	client := getTestS3Client()
 	ctx := context.Background()
 
-	// Create test bucket
-	_, err := client.CreateBucket(ctx, &s3.CreateBucketInput{
-		Bucket: aws.String(testBucket),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create test bucket: %w", err)
+	bucket := testBucket
+	if useRealAWS {
+		bucket = realAWSBucket
 	}
+
+	// Create test bucket
+	createInput := &s3.CreateBucketInput{
+		Bucket: aws.String(bucket),
+	}
+
+	// For real AWS, we need to handle region-specific bucket creation
+	if useRealAWS && realAWSRegion != "us-east-1" {
+		createInput.CreateBucketConfiguration = &types.CreateBucketConfiguration{
+			LocationConstraint: types.BucketLocationConstraint(realAWSRegion),
+		}
+	}
+
+	_, err := client.CreateBucket(ctx, createInput)
+	if err != nil {
+		return fmt.Errorf("failed to create test bucket %s: %w", bucket, err)
+	}
+
+	fmt.Printf("Created test bucket: %s\n", bucket)
 
 	// Wait for bucket to be ready
 	time.Sleep(1 * time.Second)
@@ -80,11 +126,19 @@ func cleanupTestEnvironment() {
 	client := getTestS3Client()
 	ctx := context.Background()
 
+	bucket := testBucket
+	if useRealAWS {
+		bucket = realAWSBucket
+	}
+
+	fmt.Printf("Cleaning up test bucket: %s\n", bucket)
+
 	// List and delete all objects in bucket
 	listOutput, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
-		Bucket: aws.String(testBucket),
+		Bucket: aws.String(bucket),
 	})
 	if err == nil && len(listOutput.Contents) > 0 {
+		fmt.Printf("Deleting %d objects from bucket\n", len(listOutput.Contents))
 		var objects []types.ObjectIdentifier
 		for _, obj := range listOutput.Contents {
 			objects = append(objects, types.ObjectIdentifier{
@@ -92,21 +146,39 @@ func cleanupTestEnvironment() {
 			})
 		}
 
-		client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
-			Bucket: aws.String(testBucket),
+		_, err = client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: aws.String(bucket),
 			Delete: &types.Delete{
 				Objects: objects,
 			},
 		})
+		if err != nil {
+			fmt.Printf("Error deleting objects: %v\n", err)
+		}
 	}
 
 	// Delete bucket
-	client.DeleteBucket(ctx, &s3.DeleteBucketInput{
-		Bucket: aws.String(testBucket),
+	_, err = client.DeleteBucket(ctx, &s3.DeleteBucketInput{
+		Bucket: aws.String(bucket),
 	})
+	if err != nil {
+		fmt.Printf("Error deleting bucket: %v\n", err)
+	} else {
+		fmt.Printf("Successfully deleted bucket: %s\n", bucket)
+	}
 }
 
 func getTestS3Client() *s3.Client {
+	if useRealAWS {
+		// Use real AWS credentials
+		cfg, err := awsconfig.LoadAWSConfig(context.Background(), realAWSProfile, realAWSRegion)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to load AWS config: %v", err))
+		}
+		return s3.NewFromConfig(cfg)
+	}
+
+	// Use LocalStack
 	cfg := aws.Config{
 		Region:      testRegion,
 		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
@@ -129,8 +201,13 @@ func getTestS3Client() *s3.Client {
 
 func getTestTransporter() *Transporter {
 	client := getTestS3Client()
+	bucket := testBucket
+	if useRealAWS {
+		bucket = realAWSBucket
+	}
+
 	config := awsconfig.S3Config{
-		Bucket:             testBucket,
+		Bucket:             bucket,
 		StorageClass:       awsconfig.StorageClassStandard,
 		MultipartChunkSize: 5 * 1024 * 1024, // 5MB
 		Concurrency:        2,
