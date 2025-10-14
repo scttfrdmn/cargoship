@@ -87,15 +87,6 @@ func New(options ...Option) *Porter {
 	for _, opt := range options {
 		opt(p)
 	}
-	// There is probably a better way to do this...why do we want both??
-	/*
-		if p.Destination == "" && p.SuitcaseOpts.Destination != "" {
-			p.Destination = p.SuitcaseOpts.Destination
-		}
-		if p.SuitcaseOpts.Destination == "" && p.Destination != "" {
-			p.SuitcaseOpts.Destination = p.Destination
-		}
-	*/
 	return p
 }
 
@@ -163,12 +154,6 @@ func WithLogger(l *slog.Logger) func(*Porter) {
 func WithDestination(s string) func(*Porter) {
 	return func(p *Porter) {
 		p.Destination = s
-		// Eventually I'd like to get rid of this double Destination declaration...it only buys confusion
-		/*
-			if p.SuitcaseOpts.Destination == "" {
-				p.SuitcaseOpts.Destination = s
-			}
-		*/
 	}
 }
 
@@ -228,7 +213,6 @@ func (p Porter) SendFinalUpdate(update travelagent.StatusUpdate) error {
 	if err := p.TravelAgent.PostMetaData(p.InventoryFilePath); err != nil {
 		return err
 	}
-	// panic("die")
 	return p.SendUpdate(update)
 }
 
@@ -267,12 +251,6 @@ func (p Porter) SendUpdate(u travelagent.StatusUpdate) error {
 
 	return nil
 }
-
-/*
-func prefixLog(s string) string {
-	return "☁️ " + s
-}
-*/
 
 func dclose(c io.Closer) {
 	err := c.Close()
@@ -342,7 +320,6 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 			}
 			p.Destination = tmpDir
 		}
-		// inventoryD, outF, err = WriteInventoryAndFileWithViper(v, cmd, args, outDir, version)
 		inventoryD, outF, err = p.WriteInventory()
 		if err != nil {
 			return nil, err
@@ -367,7 +344,6 @@ func (p *Porter) CreateOrReadInventory(inventoryFile string) (*inventory.Invento
 	p.InventoryHash = h
 	// Store the inventory in context, so we can access it in the other run stages
 	p.Inventory = inventoryD
-	// p.Cmd.SetContext(context.WithValue(p.Cmd.Context(), inventory.InventoryKey, inventoryD))
 	inventoryD.SummaryLog()
 	return inventoryD, nil
 }
@@ -497,8 +473,6 @@ func (p *Porter) RetryTransport(f string, statusC chan rclone.TransferStatus, re
 
 // ShipItems sends items through a transporter and optionally reports them to the Travel Agent
 func (p *Porter) ShipItems(items []string, uniqDir string) {
-	// Running in to a loop issue while this is concurrent
-	// var wg conc.WaitGroup
 	c := make(chan rclone.TransferStatus)
 	go func() {
 		for {
@@ -663,7 +637,6 @@ func (p *Porter) mergeWizard() error {
 		return errors.New("must have a WizardForm set before merge can happen")
 	}
 	p.SuitcaseOpts = &config.SuitCaseOpts{
-		// Destination:  p.Destination,
 		EncryptInner: p.Inventory.Options.EncryptInner,
 		HashInner:    p.Inventory.Options.HashInner,
 		Format:       p.Inventory.Options.SuitcaseFormat,
@@ -691,13 +664,11 @@ func (p *Porter) mergeWizard() error {
 }
 
 func (p *Porter) startFillStateC(state chan FillState, done chan struct{}) {
-	// sampled := log.Sample(&zerolog.BasicSampler{N: se})
 	i := uint64(0)
 	for {
 		select {
 		case st := <-state:
 			if i%intToUint64(p.sampleEvery) == 0 {
-				// if i%uint64(p.sampleEvery) == 0 {
 				slog.Debug("progress", "index", st.Index, "current", st.Current, "total", st.Total)
 			}
 			i++
@@ -729,7 +700,6 @@ func (p *Porter) retryWriteSuitcase(i int, state chan FillState) (string, error)
 	var created bool
 	attempt := 1
 	log := slog.With("index", i)
-	// log := log.With().Int("index", i).Logger()
 	for (!created && attempt == 1) || (attempt <= p.retryCount) {
 		log.Debug("about to write out suitcase file")
 		createdF, err = p.WriteSuitcaseFile(i, state)
@@ -857,7 +827,6 @@ func (p *Porter) WriteSuitcaseFile(index int, stateC chan FillState) (string, er
 	}
 
 	if stateC != nil {
-		// This is hanging... maybe?
 		stateC <- newCompleteFillState(index)
 	}
 
