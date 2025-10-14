@@ -663,7 +663,7 @@ func (p *Porter) mergeWizard() error {
 	return nil
 }
 
-func (p *Porter) startFillStateC(state chan FillState, done chan struct{}) {
+func (p *Porter) startFillStateC(state <-chan FillState, done <-chan struct{}) {
 	i := uint64(0)
 	for {
 		select {
@@ -678,7 +678,7 @@ func (p *Porter) startFillStateC(state chan FillState, done chan struct{}) {
 	}
 }
 
-func (p *Porter) startTransferStatusC(statusC chan rclone.TransferStatus, done chan struct{}) {
+func (p *Porter) startTransferStatusC(statusC <-chan rclone.TransferStatus, done <-chan struct{}) {
 	for {
 		select {
 		case status := <-statusC:
@@ -694,7 +694,7 @@ func (p *Porter) startTransferStatusC(statusC chan rclone.TransferStatus, done c
 	}
 }
 
-func (p *Porter) retryWriteSuitcase(i int, state chan FillState) (string, error) {
+func (p *Porter) retryWriteSuitcase(i int, state chan<- FillState) (string, error) {
 	var err error
 	var createdF string
 	var created bool
@@ -793,7 +793,7 @@ func (p *Porter) Run() error {
 }
 
 // WriteSuitcaseFile will write out the suitcase
-func (p *Porter) WriteSuitcaseFile(index int, stateC chan FillState) (string, error) {
+func (p *Porter) WriteSuitcaseFile(index int, stateC chan<- FillState) (string, error) {
 	if p.Inventory == nil {
 		return "", errors.New("inventory must not be nil in WriteSuitcaseFile")
 	}
@@ -844,7 +844,7 @@ func (p *Porter) WriteSuitcaseFile(index int, stateC chan FillState) (string, er
 }
 
 // Fill fills up a suitcase using the given inventory
-func (p *Porter) Fill(s suitcase.Suitcase, index int, stateC chan FillState) ([]config.HashSet, error) {
+func (p *Porter) Fill(s suitcase.Suitcase, index int, stateC chan<- FillState) ([]config.HashSet, error) {
 	if p.Inventory == nil {
 		return nil, errors.New("inventory is nil")
 	}
