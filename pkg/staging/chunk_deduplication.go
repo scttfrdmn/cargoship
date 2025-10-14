@@ -150,32 +150,65 @@ func NewRollingHasher(windowSize int) *RollingHasher {
 // AnalyzeChunk performs comprehensive deduplication analysis on a chunk.
 func (cd *ChunkDeduplicator) AnalyzeChunk(data []byte, contentType string) *DeduplicationResult {
 	start := time.Now()
-	defer func() {
-		cd.duplicateStats.mu.Lock()
-		cd.duplicateStats.TotalChunksProcessed++
-		cd.duplicateStats.AverageHashTime = time.Since(start)
-		cd.duplicateStats.mu.Unlock()
-	}()
+	defer cd.recordProcessingStats(start)
 
 	// Skip deduplication for very small chunks
-	if int64(len(data)) < cd.config.ChunkSizeThreshold {
+	if cd.isChunkTooSmall(data) {
 		return &DeduplicationResult{
 			RecommendedAction: ActionStore,
 		}
 	}
 
 	// Compute hashes
+	strongHash, weakHash := cd.computeChunkHashes(data)
+
+	// Check for exact duplicate first
+	if result := cd.checkExactDuplicate(strongHash, data); result != nil {
+		return result
+	}
+
+	// Find similar chunk candidates
+	candidates := cd.findSimilarityCandidates(weakHash, data)
+
+	// Analyze similarity with candidates
+	bestCandidate, bestSimilarity := cd.analyzeSimilarity(data, candidates, contentType)
+
+	// Determine and execute action
+	result := cd.determineDeduplicationAction(data, strongHash, weakHash, contentType, bestCandidate, bestSimilarity)
+
+	return result
+}
+
+// recordProcessingStats records chunk processing statistics
+func (cd *ChunkDeduplicator) recordProcessingStats(startTime time.Time) {
+	cd.duplicateStats.mu.Lock()
+	cd.duplicateStats.TotalChunksProcessed++
+	cd.duplicateStats.AverageHashTime = time.Since(startTime)
+	cd.duplicateStats.mu.Unlock()
+}
+
+// isChunkTooSmall checks if chunk is below the deduplication threshold
+func (cd *ChunkDeduplicator) isChunkTooSmall(data []byte) bool {
+	return int64(len(data)) < cd.config.ChunkSizeThreshold
+}
+
+// computeChunkHashes computes both strong and weak hashes for a chunk
+func (cd *ChunkDeduplicator) computeChunkHashes(data []byte) (string, uint64) {
 	strongHash := cd.computeStrongHash(data)
 	var weakHash uint64
 	if cd.config.EnableWeakHashing {
 		weakHash = cd.computeWeakHash(data)
 	}
+	return strongHash, weakHash
+}
 
+// checkExactDuplicate checks if chunk is an exact duplicate
+func (cd *ChunkDeduplicator) checkExactDuplicate(strongHash string, data []byte) *DeduplicationResult {
 	cd.mu.RLock()
-	
-	// Check for exact duplicate
-	if existing, found := cd.chunkHashes[strongHash]; found {
-		cd.mu.RUnlock()
+	existing, found := cd.chunkHashes[strongHash]
+	cd.mu.RUnlock()
+
+	if found {
 		cd.recordDuplicate(existing)
 		return &DeduplicationResult{
 			IsDuplicate:       true,
@@ -184,71 +217,102 @@ func (cd *ChunkDeduplicator) AnalyzeChunk(data []byte, contentType string) *Dedu
 			RecommendedAction: ActionDuplicate,
 		}
 	}
+	return nil
+}
 
-	// Check for weak hash collisions (potential similar chunks)
+// findSimilarityCandidates finds potential similar chunks
+func (cd *ChunkDeduplicator) findSimilarityCandidates(weakHash uint64, data []byte) []*ChunkHashInfo {
+	cd.mu.RLock()
+	defer cd.mu.RUnlock()
+
 	var candidates []*ChunkHashInfo
+
+	// Add weak hash candidates
 	if cd.config.EnableWeakHashing {
 		candidates = cd.weakHashMap[weakHash]
 	}
 
-	// Add size-based candidates for better similarity detection
+	// Add size-based candidates
 	if cd.config.EnableSimilarityDetection {
-		sizeRange := int64(len(data))
-		lowerBound := sizeRange - (sizeRange / 10) // ±10% size variance
-		upperBound := sizeRange + (sizeRange / 10)
-		
-		for size := lowerBound; size <= upperBound; size++ {
-			if chunks, exists := cd.sizeIndex[size]; exists {
-				candidates = append(candidates, chunks...)
-			}
+		candidates = append(candidates, cd.findSizeSimilarChunks(data)...)
+	}
+
+	return candidates
+}
+
+// findSizeSimilarChunks finds chunks with similar sizes (±10%)
+func (cd *ChunkDeduplicator) findSizeSimilarChunks(data []byte) []*ChunkHashInfo {
+	sizeRange := int64(len(data))
+	lowerBound := sizeRange - (sizeRange / 10)
+	upperBound := sizeRange + (sizeRange / 10)
+
+	var candidates []*ChunkHashInfo
+	for size := lowerBound; size <= upperBound; size++ {
+		if chunks, exists := cd.sizeIndex[size]; exists {
+			candidates = append(candidates, chunks...)
 		}
 	}
+	return candidates
+}
 
-	cd.mu.RUnlock()
-
-	// Analyze similarity with candidates
-	var bestCandidate *ChunkHashInfo
-	var bestSimilarity float64
-	
-	if cd.config.EnableSimilarityDetection && len(candidates) > 0 {
-		bestCandidate, bestSimilarity = cd.findMostSimilar(data, candidates, contentType)
+// analyzeSimilarity analyzes similarity with candidate chunks
+func (cd *ChunkDeduplicator) analyzeSimilarity(data []byte, candidates []*ChunkHashInfo, contentType string) (*ChunkHashInfo, float64) {
+	if !cd.config.EnableSimilarityDetection || len(candidates) == 0 {
+		return nil, 0.0
 	}
+	return cd.findMostSimilar(data, candidates, contentType)
+}
 
-	// Determine action based on analysis
+// determineDeduplicationAction determines the appropriate deduplication action
+func (cd *ChunkDeduplicator) determineDeduplicationAction(data []byte, strongHash string, weakHash uint64, contentType string, bestCandidate *ChunkHashInfo, bestSimilarity float64) *DeduplicationResult {
 	result := &DeduplicationResult{
-		IsDuplicate: false,
+		IsDuplicate:     false,
 		SimilarityScore: bestSimilarity,
 	}
 
 	if bestSimilarity >= cd.config.SimilarityThreshold {
-		result.IsSemanticDuplicate = true
-		result.ExistingHash = bestCandidate.StrongHash
-		
-		if cd.config.EnableDeltaCompression && bestCandidate.DeltaChildren != nil &&
-			len(bestCandidate.DeltaChildren) < cd.config.MaxDeltaChainLength {
-			// Use delta compression
-			deltaSize := cd.estimateDeltaSize(data, bestCandidate.ChunkData)
-			result.DeltaParent = bestCandidate.StrongHash
-			result.DeltaSize = deltaSize
-			result.BytesSaved = int64(len(data)) - deltaSize
-			result.RecommendedAction = ActionDeltaCompress
-		} else {
-			// Use similarity replacement
-			result.BytesSaved = int64(float64(len(data)) * bestSimilarity)
-			result.RecommendedAction = ActionSimilarityReplace
-		}
-		
-		cd.recordSimilarityHit(bestCandidate)
+		cd.applySimilarityBasedAction(result, data, bestCandidate, bestSimilarity)
 	} else {
 		result.RecommendedAction = ActionStore
 	}
 
-	// Store new chunk if it's unique enough
-	if result.RecommendedAction == ActionStore || result.RecommendedAction == ActionDeltaCompress {
+	// Store new chunk if needed
+	if cd.shouldStoreChunk(result) {
 		cd.storeChunkHash(data, strongHash, weakHash, contentType, result.DeltaParent)
 	}
 
 	return result
+}
+
+// applySimilarityBasedAction applies similarity-based deduplication action
+func (cd *ChunkDeduplicator) applySimilarityBasedAction(result *DeduplicationResult, data []byte, bestCandidate *ChunkHashInfo, bestSimilarity float64) {
+	result.IsSemanticDuplicate = true
+	result.ExistingHash = bestCandidate.StrongHash
+
+	if cd.shouldUseDeltaCompression(bestCandidate) {
+		deltaSize := cd.estimateDeltaSize(data, bestCandidate.ChunkData)
+		result.DeltaParent = bestCandidate.StrongHash
+		result.DeltaSize = deltaSize
+		result.BytesSaved = int64(len(data)) - deltaSize
+		result.RecommendedAction = ActionDeltaCompress
+	} else {
+		result.BytesSaved = int64(float64(len(data)) * bestSimilarity)
+		result.RecommendedAction = ActionSimilarityReplace
+	}
+
+	cd.recordSimilarityHit(bestCandidate)
+}
+
+// shouldUseDeltaCompression determines if delta compression should be used
+func (cd *ChunkDeduplicator) shouldUseDeltaCompression(candidate *ChunkHashInfo) bool {
+	return cd.config.EnableDeltaCompression &&
+		candidate.DeltaChildren != nil &&
+		len(candidate.DeltaChildren) < cd.config.MaxDeltaChainLength
+}
+
+// shouldStoreChunk determines if chunk should be stored
+func (cd *ChunkDeduplicator) shouldStoreChunk(result *DeduplicationResult) bool {
+	return result.RecommendedAction == ActionStore || result.RecommendedAction == ActionDeltaCompress
 }
 
 // computeStrongHash computes a cryptographically strong hash of the data.
