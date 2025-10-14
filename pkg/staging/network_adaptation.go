@@ -260,53 +260,96 @@ func (nae *NetworkAdaptationEngine) shouldAdapt(networkCondition *NetworkConditi
 
 	prev := nae.currentAdaptation.NetworkCondition
 
-	// Check bandwidth change
-	bandwidthChange := math.Abs(networkCondition.BandwidthMBps-prev.BandwidthMBps) / prev.BandwidthMBps
+	// Check for significant network condition changes
+	if shouldAdapt, reason := nae.checkBandwidthChange(networkCondition, prev); shouldAdapt {
+		return true, reason
+	}
+
+	if shouldAdapt, reason := nae.checkLatencyChange(networkCondition, prev); shouldAdapt {
+		return true, reason
+	}
+
+	if shouldAdapt, reason := nae.checkPacketLossChange(networkCondition, prev); shouldAdapt {
+		return true, reason
+	}
+
+	if shouldAdapt, reason := nae.checkCongestionChange(networkCondition, prev); shouldAdapt {
+		return true, reason
+	}
+
+	// Check if performance is below targets
+	if shouldAdapt, reason := nae.checkPerformanceTargets(networkCondition); shouldAdapt {
+		return true, reason
+	}
+
+	return false, ""
+}
+
+// checkBandwidthChange checks if bandwidth has changed significantly
+func (nae *NetworkAdaptationEngine) checkBandwidthChange(current, prev *NetworkCondition) (bool, string) {
+	bandwidthChange := math.Abs(current.BandwidthMBps-prev.BandwidthMBps) / prev.BandwidthMBps
 	if bandwidthChange > nae.config.BandwidthChangeThreshold {
-		if networkCondition.BandwidthMBps > prev.BandwidthMBps {
+		if current.BandwidthMBps > prev.BandwidthMBps {
 			return true, "bandwidth_increase"
 		}
 		return true, "bandwidth_decrease"
 	}
+	return false, ""
+}
 
-	// Check latency change
-	latencyChange := math.Abs(networkCondition.LatencyMs-prev.LatencyMs) / prev.LatencyMs
+// checkLatencyChange checks if latency has changed significantly
+func (nae *NetworkAdaptationEngine) checkLatencyChange(current, prev *NetworkCondition) (bool, string) {
+	latencyChange := math.Abs(current.LatencyMs-prev.LatencyMs) / prev.LatencyMs
 	if latencyChange > nae.config.LatencyChangeThreshold {
-		if networkCondition.LatencyMs > prev.LatencyMs {
+		if current.LatencyMs > prev.LatencyMs {
 			return true, "latency_increase"
 		}
 		return true, "latency_decrease"
 	}
+	return false, ""
+}
 
-	// Check packet loss change
-	lossChange := math.Abs(networkCondition.PacketLoss - prev.PacketLoss)
+// checkPacketLossChange checks if packet loss has changed significantly
+func (nae *NetworkAdaptationEngine) checkPacketLossChange(current, prev *NetworkCondition) (bool, string) {
+	lossChange := math.Abs(current.PacketLoss - prev.PacketLoss)
 	if lossChange > nae.config.LossChangeThreshold {
-		if networkCondition.PacketLoss > prev.PacketLoss {
+		if current.PacketLoss > prev.PacketLoss {
 			return true, "packet_loss_increase"
 		}
 		return true, "packet_loss_decrease"
 	}
+	return false, ""
+}
 
-	// Check congestion level change
-	if networkCondition.CongestionLevel > 0.5 && prev.CongestionLevel <= 0.5 {
+// checkCongestionChange checks if congestion level has changed significantly
+func (nae *NetworkAdaptationEngine) checkCongestionChange(current, prev *NetworkCondition) (bool, string) {
+	if current.CongestionLevel > 0.5 && prev.CongestionLevel <= 0.5 {
 		return true, "congestion_detected"
 	}
-	if networkCondition.CongestionLevel <= 0.3 && prev.CongestionLevel > 0.3 {
+	if current.CongestionLevel <= 0.3 && prev.CongestionLevel > 0.3 {
 		return true, "congestion_cleared"
 	}
+	return false, ""
+}
 
-	// Check if performance is below targets
-	if nae.currentAdaptation.PerformanceMetrics != nil {
-		metrics := nae.currentAdaptation.PerformanceMetrics
-		if metrics.CurrentThroughputMBps < nae.config.TargetThroughputMBps*0.8 {
-			return true, "throughput_below_target"
-		}
-		if networkCondition.LatencyMs > nae.config.TargetLatencyMs*1.5 {
-			return true, "latency_above_target"
-		}
-		if networkCondition.PacketLoss > nae.config.MaxTolerableLoss {
-			return true, "loss_above_threshold"
-		}
+// checkPerformanceTargets checks if performance is below configured targets
+func (nae *NetworkAdaptationEngine) checkPerformanceTargets(current *NetworkCondition) (bool, string) {
+	if nae.currentAdaptation.PerformanceMetrics == nil {
+		return false, ""
+	}
+
+	metrics := nae.currentAdaptation.PerformanceMetrics
+
+	if metrics.CurrentThroughputMBps < nae.config.TargetThroughputMBps*0.8 {
+		return true, "throughput_below_target"
+	}
+
+	if current.LatencyMs > nae.config.TargetLatencyMs*1.5 {
+		return true, "latency_above_target"
+	}
+
+	if current.PacketLoss > nae.config.MaxTolerableLoss {
+		return true, "loss_above_threshold"
 	}
 
 	return false, ""
