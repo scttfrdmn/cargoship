@@ -409,7 +409,7 @@ func (s *Shell) getAvailableCommands(ctx context.ExecutionContext) map[string]bo
 }
 
 // handleSignals handles OS signals gracefully
-func (s *Shell) handleSignals(sigChan chan os.Signal) {
+func (s *Shell) handleSignals(sigChan <-chan os.Signal) {
 	sig := <-sigChan
 	s.logger.Info("Received signal, shutting down", "signal", sig)
 	fmt.Println("\n\nReceived interrupt signal. Exiting...")

@@ -37,7 +37,7 @@ func (t Transporter) Send(s, u string) error {
 }
 
 // SendWithChannel the data on up with an optional channel
-func (t Transporter) SendWithChannel(s, u string, c chan rclone.TransferStatus) error {
+func (t Transporter) SendWithChannel(s, u string, c chan<- rclone.TransferStatus) error {
 	dest := t.Config.Destination
 	if u != "" {
 		dest = strings.TrimSuffix(dest, "/") + "/" + strings.TrimPrefix(u, "/")

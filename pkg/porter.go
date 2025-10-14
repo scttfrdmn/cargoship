@@ -445,7 +445,7 @@ func (p *Porter) inventoryGeneration() (*inventory.Inventory, *os.File, error) {
 }
 
 // RetryTransport does some retries when doing a transport push
-func (p *Porter) RetryTransport(f string, statusC chan rclone.TransferStatus, retryCount int, retryInterval time.Duration) error {
+func (p *Porter) RetryTransport(f string, statusC chan<- rclone.TransferStatus, retryCount int, retryInterval time.Duration) error {
 	if p.Inventory == nil {
 		return errors.New("must have set Inventory")
 	}

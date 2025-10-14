@@ -344,7 +344,7 @@ func syncResWithOut(o string) syncResponse {
 }
 
 // Copy copies a single file to the destination
-func Copy(source, destination string, c chan TransferStatus) error {
+func Copy(source, destination string, c chan<- TransferStatus) error {
 	log := slog.With("source", source, "destination", destination)
 	librclone.Initialize()
 
@@ -443,7 +443,7 @@ func Clone(source, destination string) error {
 	return nil
 }
 
-func waitForFinished(statusReq statusRequest, c chan TransferStatus) (*jobStatus, error) {
+func waitForFinished(statusReq statusRequest, c chan<- TransferStatus) (*jobStatus, error) {
 	var statusResp *jobStatus
 	var statusTries int
 	var stats *jobStats

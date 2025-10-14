@@ -52,7 +52,7 @@ type TravelAgenter interface {
 	StatusURL() string
 	PostMetaData(string) error
 	Update(StatusUpdate) (*StatusUpdateResponse, error)
-	Upload(string, chan rclone.TransferStatus) (int64, error)
+	Upload(string, chan<- rclone.TransferStatus) (int64, error)
 }
 
 // StatusUpdate is a little structure that gives our TravelAgent more info on
@@ -116,7 +116,7 @@ func (t TravelAgent) credentialURL() string {
 }
 
 // Upload sends a file off to the cloud, given the file to upload
-func (t TravelAgent) Upload(fn string, c chan rclone.TransferStatus) (int64, error) {
+func (t TravelAgent) Upload(fn string, c chan<- rclone.TransferStatus) (int64, error) {
 	attempt := 0
 
 	if err := retry.Do(context.Background(), t.backoff, func(_ context.Context) error {

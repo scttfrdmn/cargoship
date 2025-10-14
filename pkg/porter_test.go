@@ -139,7 +139,7 @@ func (f fakeTa) Transferred() int64 {
 	return 0
 }
 
-func (f fakeTa) Upload(_ string, _ chan rclone.TransferStatus) (int64, error) {
+func (f fakeTa) Upload(_ string, _ chan<- rclone.TransferStatus) (int64, error) {
 	return 0, errors.New("not yet implemented")
 }
 
@@ -167,7 +167,7 @@ func (ft *fakeTrans) Send(_, _ string) error {
 	return errors.New("some fake error")
 }
 
-func (ft *fakeTrans) SendWithChannel(_, _ string, _ chan rclone.TransferStatus) error {
+func (ft *fakeTrans) SendWithChannel(_, _ string, _ chan<- rclone.TransferStatus) error {
 	if ft.attempt == 3 {
 		return nil
 	}
@@ -187,7 +187,7 @@ func (f fta) PostMetaData(_ string) error {
 	return nil
 }
 
-func (f fta) Upload(_ string, _ chan rclone.TransferStatus) (int64, error) {
+func (f fta) Upload(_ string, _ chan<- rclone.TransferStatus) (int64, error) {
 	return 0, errors.New("not yet implemented")
 }
 

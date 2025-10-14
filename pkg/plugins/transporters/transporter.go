@@ -17,7 +17,7 @@ type Transporter interface {
 	// Configure(c Config) error
 	Check() error
 	Send(s, u string) error
-	SendWithChannel(s, u string, c chan rclone.TransferStatus) error
+	SendWithChannel(s, u string, c chan<- rclone.TransferStatus) error
 }
 
 // Config is everything a transporter needs to be configured
