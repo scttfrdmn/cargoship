@@ -92,6 +92,8 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 		NewLifecycleCmd(),
 		NewMetricsCmd(),
 		NewConfigCmd(),
+		NewSetupCmd(),
+		NewProfileCmd(),
 		NewBenchmarkCmd(),
 		NewControllerCmd(),
 		NewContextCmd(),

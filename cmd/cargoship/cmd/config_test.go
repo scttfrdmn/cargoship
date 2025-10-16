@@ -199,7 +199,7 @@ func TestValidateConfig(t *testing.T) {
 	os.Stdout = w
 
 	manager := config.NewManager()
-	err := validateConfig(manager)
+	err := validateConfig(manager, false)
 
 	// Restore stdout
 	_ = w.Close()
@@ -213,12 +213,12 @@ func TestValidateConfig(t *testing.T) {
 	output := buf.String()
 
 	assert.Contains(t, output, "✅ Configuration is valid!")
-	assert.Contains(t, output, "Configuration summary:")
-	assert.Contains(t, output, "AWS Region:")
-	assert.Contains(t, output, "Storage Class:")
-	assert.Contains(t, output, "Upload Concurrency:")
-	assert.Contains(t, output, "Metrics Enabled:")
-	assert.Contains(t, output, "Log Level:")
+	assert.Contains(t, output, "Configuration Validation")
+	assert.Contains(t, output, "AWS Configuration:")
+	assert.Contains(t, output, "Storage Configuration:")
+	assert.Contains(t, output, "Upload Configuration:")
+	assert.Contains(t, output, "Metrics Configuration:")
+	assert.Contains(t, output, "Logging Configuration:")
 }
 
 // Tests use real config.Manager for integration testing

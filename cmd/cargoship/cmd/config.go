@@ -1,23 +1,31 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/dustin/go-humanize"
 	"github.com/scttfrdmn/cargoship/pkg/config"
 	"github.com/spf13/cobra"
 )
 
 var (
-	configFile     string
-	configGenerate bool
-	configEdit     bool
-	configValidate bool
-	configShow     bool
-	configFormat   string
+	configFile           string
+	configGenerate       bool
+	configEdit           bool
+	configValidate       bool
+	configValidateDetailed bool
+	configShow           bool
+	configFormat         string
 )
 
 // NewConfigCmd creates the config management command
@@ -60,6 +68,7 @@ Examples:
 	cmd.Flags().BoolVar(&configGenerate, "generate", false, "Generate example configuration file")
 	cmd.Flags().BoolVar(&configEdit, "edit", false, "Edit configuration file with default editor")
 	cmd.Flags().BoolVar(&configValidate, "validate", false, "Validate configuration file")
+	cmd.Flags().BoolVar(&configValidateDetailed, "validate-detailed", false, "Validate configuration with AWS connectivity and bucket access checks")
 	cmd.Flags().BoolVar(&configShow, "show", false, "Show current configuration")
 	cmd.Flags().StringVar(&configFormat, "format", "yaml", "Output format (yaml, json)")
 
@@ -81,9 +90,9 @@ func runConfig(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Handle validate flag
-	if configValidate {
-		return validateConfig(manager)
+	// Handle validate flags
+	if configValidate || configValidateDetailed {
+		return validateConfig(manager, configValidateDetailed)
 	}
 
 	// Handle show flag
@@ -114,27 +123,258 @@ func generateConfig() error {
 	return nil
 }
 
-func validateConfig(manager *config.Manager) error {
-	fmt.Printf("✅ Configuration is valid!\n")
+func validateConfig(manager *config.Manager, detailed bool) error {
+	slog.Debug("Starting configuration validation", "detailed", detailed)
 
 	cfg := manager.GetConfig()
 
-	fmt.Printf("\nConfiguration summary:\n")
-	fmt.Printf("  AWS Region: %s\n", cfg.AWS.Region)
+	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
+	fmt.Println("║             Configuration Validation                         ║")
+	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
+	fmt.Println()
+
+	// Track validation errors and warnings
+	var errors []string
+	var warnings []string
+
+	// Validate AWS Configuration
+	fmt.Println("AWS Configuration:")
+	if cfg.AWS.Region == "" {
+		errors = append(errors, "AWS region is not set")
+		fmt.Println("  ❌ Region: Not set")
+	} else {
+		fmt.Printf("  ✅ Region: %s\n", cfg.AWS.Region)
+	}
+
 	if cfg.AWS.Profile != "" {
-		fmt.Printf("  AWS Profile: %s\n", cfg.AWS.Profile)
+		fmt.Printf("  ℹ️  Profile: %s\n", cfg.AWS.Profile)
 	}
+
+	// Detailed validation: check AWS credentials
+	if detailed {
+		fmt.Print("  Testing AWS credentials... ")
+		if err := verifyAWSConfig(cfg.AWS.Region, cfg.AWS.Profile); err != nil {
+			errors = append(errors, fmt.Sprintf("AWS credentials validation failed: %v", err))
+			fmt.Println("❌")
+		} else {
+			fmt.Println("✅")
+		}
+	}
+	fmt.Println()
+
+	// Validate Storage Configuration
+	fmt.Println("Storage Configuration:")
 	if cfg.Storage.DefaultBucket != "" {
-		fmt.Printf("  Default Bucket: %s\n", cfg.Storage.DefaultBucket)
+		fmt.Printf("  ✅ Default Bucket: %s\n", cfg.Storage.DefaultBucket)
+
+		// Detailed validation: check bucket access
+		if detailed {
+			fmt.Print("  Testing bucket access... ")
+			if err := verifyS3BucketAccess(cfg.AWS.Region, cfg.AWS.Profile, cfg.Storage.DefaultBucket); err != nil {
+				errors = append(errors, fmt.Sprintf("S3 bucket access validation failed: %v", err))
+				fmt.Println("❌")
+			} else {
+				fmt.Println("✅")
+			}
+		}
+	} else {
+		warnings = append(warnings, "No default bucket configured")
+		fmt.Println("  ⚠️  Default Bucket: Not configured")
 	}
-	fmt.Printf("  Storage Class: %s\n", cfg.Storage.DefaultStorageClass)
-	fmt.Printf("  Upload Concurrency: %d\n", cfg.Upload.MaxConcurrency)
-	fmt.Printf("  Chunk Size: %s\n", cfg.Upload.ChunkSize)
-	fmt.Printf("  Metrics Enabled: %t\n", cfg.Metrics.Enabled)
+
+	validStorageClasses := []string{"STANDARD", "REDUCED_REDUNDANCY", "STANDARD_IA", "ONEZONE_IA",
+		"INTELLIGENT_TIERING", "GLACIER", "DEEP_ARCHIVE", "GLACIER_IR"}
+	storageClassValid := false
+	for _, sc := range validStorageClasses {
+		if cfg.Storage.DefaultStorageClass == sc {
+			storageClassValid = true
+			break
+		}
+	}
+	if !storageClassValid && cfg.Storage.DefaultStorageClass != "" {
+		errors = append(errors, fmt.Sprintf("Invalid storage class: %s", cfg.Storage.DefaultStorageClass))
+		fmt.Printf("  ❌ Storage Class: %s (invalid)\n", cfg.Storage.DefaultStorageClass)
+	} else if cfg.Storage.DefaultStorageClass != "" {
+		fmt.Printf("  ✅ Storage Class: %s\n", cfg.Storage.DefaultStorageClass)
+	}
+
+	fmt.Printf("  ✅ SSE Encryption: %t\n", cfg.Storage.SSEEncryption)
+	fmt.Println()
+
+	// Validate Upload Configuration
+	fmt.Println("Upload Configuration:")
+	if cfg.Upload.MaxConcurrency <= 0 {
+		errors = append(errors, "Max concurrency must be positive")
+		fmt.Printf("  ❌ Max Concurrency: %d (invalid)\n", cfg.Upload.MaxConcurrency)
+	} else if cfg.Upload.MaxConcurrency > 100 {
+		warnings = append(warnings, fmt.Sprintf("Max concurrency is very high (%d), may cause resource issues", cfg.Upload.MaxConcurrency))
+		fmt.Printf("  ⚠️  Max Concurrency: %d (high)\n", cfg.Upload.MaxConcurrency)
+	} else {
+		fmt.Printf("  ✅ Max Concurrency: %d\n", cfg.Upload.MaxConcurrency)
+	}
+
+	// Validate chunk size
+	chunkSize := cfg.Upload.ChunkSize
+	if chunkSize != "" {
+		bytes, err := humanize.ParseBytes(chunkSize)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("Invalid chunk size: %s", chunkSize))
+			fmt.Printf("  ❌ Chunk Size: %s (invalid)\n", chunkSize)
+		} else if bytes < 5*1024*1024 {
+			warnings = append(warnings, "Chunk size below S3 minimum (5MB) for multipart uploads")
+			fmt.Printf("  ⚠️  Chunk Size: %s (below 5MB minimum)\n", chunkSize)
+		} else {
+			fmt.Printf("  ✅ Chunk Size: %s\n", chunkSize)
+		}
+	} else {
+		fmt.Println("  ⚠️  Chunk Size: Not set (will use default)")
+	}
+
+	if cfg.Upload.CompressionType != "" {
+		validCompressions := []string{"gzip", "zstd", "none", "lz4", "brotli"}
+		compressionValid := false
+		for _, comp := range validCompressions {
+			if cfg.Upload.CompressionType == comp {
+				compressionValid = true
+				break
+			}
+		}
+		if !compressionValid {
+			errors = append(errors, fmt.Sprintf("Invalid compression type: %s", cfg.Upload.CompressionType))
+			fmt.Printf("  ❌ Compression: %s (invalid)\n", cfg.Upload.CompressionType)
+		} else {
+			fmt.Printf("  ✅ Compression: %s\n", cfg.Upload.CompressionType)
+		}
+	}
+
+	fmt.Printf("  ✅ Adaptive Sizing: %t\n", cfg.Upload.EnableAdaptiveSizing)
+	fmt.Println()
+
+	// Validate Metrics Configuration
+	fmt.Println("Metrics Configuration:")
+	fmt.Printf("  ✅ Enabled: %t\n", cfg.Metrics.Enabled)
 	if cfg.Metrics.Enabled {
-		fmt.Printf("  Metrics Namespace: %s\n", cfg.Metrics.Namespace)
+		if cfg.Metrics.Namespace == "" {
+			warnings = append(warnings, "Metrics enabled but namespace not set")
+			fmt.Println("  ⚠️  Namespace: Not set")
+		} else {
+			fmt.Printf("  ✅ Namespace: %s\n", cfg.Metrics.Namespace)
+		}
 	}
-	fmt.Printf("  Log Level: %s\n", cfg.Logging.Level)
+	fmt.Println()
+
+	// Validate Logging Configuration
+	fmt.Println("Logging Configuration:")
+	validLogLevels := []string{"debug", "info", "warn", "error"}
+	logLevelValid := false
+	for _, level := range validLogLevels {
+		if cfg.Logging.Level == level {
+			logLevelValid = true
+			break
+		}
+	}
+	if !logLevelValid && cfg.Logging.Level != "" {
+		errors = append(errors, fmt.Sprintf("Invalid log level: %s", cfg.Logging.Level))
+		fmt.Printf("  ❌ Level: %s (invalid)\n", cfg.Logging.Level)
+	} else if cfg.Logging.Level != "" {
+		fmt.Printf("  ✅ Level: %s\n", cfg.Logging.Level)
+	} else {
+		fmt.Println("  ℹ️  Level: Not set (will use default)")
+	}
+	fmt.Println()
+
+	// Summary
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("Validation Summary:")
+	fmt.Printf("  Errors: %d\n", len(errors))
+	fmt.Printf("  Warnings: %d\n", len(warnings))
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+
+	// Print errors
+	if len(errors) > 0 {
+		fmt.Println("❌ Errors:")
+		for _, err := range errors {
+			fmt.Printf("   • %s\n", err)
+		}
+		fmt.Println()
+		return fmt.Errorf("configuration validation failed with %d error(s)", len(errors))
+	}
+
+	// Print warnings
+	if len(warnings) > 0 {
+		fmt.Println("⚠️  Warnings:")
+		for _, warn := range warnings {
+			fmt.Printf("   • %s\n", warn)
+		}
+		fmt.Println()
+	}
+
+	fmt.Println("✅ Configuration is valid!")
+	if Verbose {
+		slog.Info("Configuration validation completed successfully",
+			"errors", len(errors),
+			"warnings", len(warnings),
+			"detailed", detailed)
+	}
+
+	return nil
+}
+
+func verifyAWSConfig(region, profile string) error {
+	ctx := context.Background()
+
+	slog.Debug("Verifying AWS configuration", "region", region, "profile", profile)
+
+	var opts []func(*awsconfig.LoadOptions) error
+	if region != "" {
+		opts = append(opts, awsconfig.WithRegion(region))
+	}
+	if profile != "" {
+		opts = append(opts, awsconfig.WithSharedConfigProfile(profile))
+	}
+
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
+	if err != nil {
+		return fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	// Verify credentials by calling STS
+	stsClient := sts.NewFromConfig(cfg)
+	_, err = stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return fmt.Errorf("failed to verify credentials: %w", err)
+	}
+
+	return nil
+}
+
+func verifyS3BucketAccess(region, profile, bucket string) error {
+	ctx := context.Background()
+
+	slog.Debug("Verifying S3 bucket access", "bucket", bucket, "region", region)
+
+	var opts []func(*awsconfig.LoadOptions) error
+	if region != "" {
+		opts = append(opts, awsconfig.WithRegion(region))
+	}
+	if profile != "" {
+		opts = append(opts, awsconfig.WithSharedConfigProfile(profile))
+	}
+
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
+	if err != nil {
+		return fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	// Try to head the bucket
+	s3Client := s3.NewFromConfig(cfg)
+	_, err = s3Client.HeadBucket(ctx, &s3.HeadBucketInput{
+		Bucket: aws.String(bucket),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to access bucket: %w", err)
+	}
 
 	return nil
 }
