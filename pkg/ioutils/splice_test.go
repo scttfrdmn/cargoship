@@ -1,3 +1,4 @@
+//nolint:errcheck // Test file - errors in cleanup operations are acceptable
 package ioutils
 
 import (
@@ -15,15 +16,15 @@ func TestSpliceSupported(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp source file: %v", err)
 	}
-	defer os.Remove(srcFile.Name())
-	defer srcFile.Close()
+	defer func() { _ = os.Remove(srcFile.Name()) }()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.CreateTemp("", "splice_test_dst_*")
 	if err != nil {
 		t.Fatalf("Failed to create temp destination file: %v", err)
 	}
-	defer os.Remove(dstFile.Name())
-	defer dstFile.Close()
+	defer func() { _ = os.Remove(dstFile.Name()) }()
+	defer func() { _ = dstFile.Close() }()
 
 	// Write test data
 	testData := bytes.Repeat([]byte("test data for splice operation\n"), 100)
@@ -89,15 +90,15 @@ func TestCopyOptimizedWithSplice_Files(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp source file: %v", err)
 	}
-	defer os.Remove(srcFile.Name())
-	defer srcFile.Close()
+	defer func() { _ = os.Remove(srcFile.Name()) }()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.CreateTemp("", "splice_test_dst_*")
 	if err != nil {
 		t.Fatalf("Failed to create temp destination file: %v", err)
 	}
-	defer os.Remove(dstFile.Name())
-	defer dstFile.Close()
+	defer func() { _ = os.Remove(dstFile.Name()) }()
+	defer func() { _ = dstFile.Close() }()
 
 	// Write test data
 	testData := bytes.Repeat([]byte("test data for file splice operation\n"), 100)
@@ -163,15 +164,15 @@ func TestCopyOptimizedWithSplice_LargeFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp source file: %v", err)
 	}
-	defer os.Remove(srcFile.Name())
-	defer srcFile.Close()
+	defer func() { _ = os.Remove(srcFile.Name()) }()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.CreateTemp("", "splice_test_large_dst_*")
 	if err != nil {
 		t.Fatalf("Failed to create temp destination file: %v", err)
 	}
-	defer os.Remove(dstFile.Name())
-	defer dstFile.Close()
+	defer func() { _ = os.Remove(dstFile.Name()) }()
+	defer func() { _ = dstFile.Close() }()
 
 	// Write 32MB of test data (larger than spliceChunkSize)
 	chunkSize := 1024 * 1024 // 1MB chunks
@@ -218,15 +219,15 @@ func TestCopyOptimizedWithSplice_EmptyFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp source file: %v", err)
 	}
-	defer os.Remove(srcFile.Name())
-	defer srcFile.Close()
+	defer func() { _ = os.Remove(srcFile.Name()) }()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.CreateTemp("", "splice_test_empty_dst_*")
 	if err != nil {
 		t.Fatalf("Failed to create temp destination file: %v", err)
 	}
-	defer os.Remove(dstFile.Name())
-	defer dstFile.Close()
+	defer func() { _ = os.Remove(dstFile.Name()) }()
+	defer func() { _ = dstFile.Close() }()
 
 	// Don't write any data - test with empty file
 
@@ -252,17 +253,17 @@ func BenchmarkCopyOptimizedWithSplice_SmallFile(b *testing.B) {
 		b.StopTimer()
 		srcFile, _ := os.CreateTemp("", "bench_src_*")
 		dstFile, _ := os.CreateTemp("", "bench_dst_*")
-		srcFile.Write(testData)
-		srcFile.Seek(0, io.SeekStart)
+		_, _ = srcFile.Write(testData)
+		_, _ = srcFile.Seek(0, io.SeekStart)
 		b.StartTimer()
 
-		CopyOptimizedWithSplice(dstFile, srcFile)
+		_, _ = CopyOptimizedWithSplice(dstFile, srcFile)
 
 		b.StopTimer()
-		srcFile.Close()
-		dstFile.Close()
-		os.Remove(srcFile.Name())
-		os.Remove(dstFile.Name())
+		_ = srcFile.Close()
+		_ = dstFile.Close()
+		_ = os.Remove(srcFile.Name())
+		_ = os.Remove(dstFile.Name())
 	}
 }
 
@@ -277,17 +278,17 @@ func BenchmarkCopyOptimized_SmallFile(b *testing.B) {
 		b.StopTimer()
 		srcFile, _ := os.CreateTemp("", "bench_src_*")
 		dstFile, _ := os.CreateTemp("", "bench_dst_*")
-		srcFile.Write(testData)
-		srcFile.Seek(0, io.SeekStart)
+		_, _ = srcFile.Write(testData)
+		_, _ = srcFile.Seek(0, io.SeekStart)
 		b.StartTimer()
 
-		CopyOptimized(dstFile, srcFile)
+		_, _ = CopyOptimized(dstFile, srcFile)
 
 		b.StopTimer()
-		srcFile.Close()
-		dstFile.Close()
-		os.Remove(srcFile.Name())
-		os.Remove(dstFile.Name())
+		_ = srcFile.Close()
+		_ = dstFile.Close()
+		_ = os.Remove(srcFile.Name())
+		_ = os.Remove(dstFile.Name())
 	}
 }
 
@@ -306,16 +307,16 @@ func BenchmarkCopyOptimizedWithSplice_LargeFile(b *testing.B) {
 		b.StopTimer()
 		srcFile, _ := os.CreateTemp("", "bench_large_src_*")
 		dstFile, _ := os.CreateTemp("", "bench_large_dst_*")
-		srcFile.Write(testData)
-		srcFile.Seek(0, io.SeekStart)
+		_, _ = srcFile.Write(testData)
+		_, _ = srcFile.Seek(0, io.SeekStart)
 		b.StartTimer()
 
-		CopyOptimizedWithSplice(dstFile, srcFile)
+		_, _ = CopyOptimizedWithSplice(dstFile, srcFile)
 
 		b.StopTimer()
-		srcFile.Close()
-		dstFile.Close()
-		os.Remove(srcFile.Name())
-		os.Remove(dstFile.Name())
+		_ = srcFile.Close()
+		_ = dstFile.Close()
+		_ = os.Remove(srcFile.Name())
+		_ = os.Remove(dstFile.Name())
 	}
 }
