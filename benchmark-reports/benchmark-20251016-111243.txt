@@ -1,0 +1,33 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/scttfrdmn/cargoship/pkg/benchmarks/scenarios
+cpu: Apple M4 Pro
+BenchmarkSmallFileUpload/1MB-12   	       2	 504608958 ns/op	   1.87 MB/s	         0.02000 gc_pause_ms/op	       534.0 ms/op	       534.0 p50_ms	       534.0 p95_ms	       534.0 p99_ms	    1816 B/op	26472316 allocs/op
+BenchmarkSmallFileUpload/1MB-12   	       2	 531963104 ns/op	   1.98 MB/s	         0.03619 gc_pause_ms/op	       504.0 ms/op	       504.0 p50_ms	       504.0 p95_ms	       504.0 p99_ms	    1816 B/op	26478792 allocs/op
+BenchmarkSmallFileUpload/1MB-12   	       3	 833018833 ns/op	   0.74 MB/s	         0.05426 gc_pause_ms/op	      1349 ms/op	       532.0 p50_ms	      1349 p95_ms	      1349 p99_ms	    1658 B/op	17691413 allocs/op
+BenchmarkSmallFileUpload/5MB-12   	       1	1948192167 ns/op	   2.64 MB/s	         0 gc_pause_ms/op	      1893 ms/op	      1893 p50_ms	      1893 p95_ms	      1893 p99_ms	    2262 B/op	26572600 allocs/op
+BenchmarkSmallFileUpload/5MB-12   	       1	2197015584 ns/op	   2.33 MB/s	         0.1042 gc_pause_ms/op	      2147 ms/op	      2147 p50_ms	      2147 p95_ms	      2147 p99_ms	    2291 B/op	26604576 allocs/op
+BenchmarkSmallFileUpload/5MB-12   	       1	2463896625 ns/op	   2.07 MB/s	         0.1079 gc_pause_ms/op	      2415 ms/op	      2415 p50_ms	      2415 p95_ms	      2415 p99_ms	    2283 B/op	26603536 allocs/op
+BenchmarkSmallFileUpload/10MB-12  	       1	4629046333 ns/op	   2.19 MB/s	         0.04379 gc_pause_ms/op	      4572 ms/op	      4572 p50_ms	      4572 p95_ms	      4572 p99_ms	    4417 B/op	53039064 allocs/op
+BenchmarkSmallFileUpload/10MB-12  	       1	4501713958 ns/op	   2.25 MB/s	         0.07558 gc_pause_ms/op	      4452 ms/op	      4452 p50_ms	      4452 p95_ms	      4452 p99_ms	    4428 B/op	53079096 allocs/op
+BenchmarkSmallFileUpload/10MB-12  	       1	4074421542 ns/op	   2.49 MB/s	         0.2041 gc_pause_ms/op	      4011 ms/op	      4011 p50_ms	      4011 p95_ms	      4011 p99_ms	    4423 B/op	53034856 allocs/op
+BenchmarkMediumFileUpload/10MB_Concurrent2-12         	       1	4193686958 ns/op	   2.43 MB/s	         0.09571 gc_pause_ms/op	      4121 ms/op	      4121 p50_ms	      4121 p95_ms	      4121 p99_ms	    2292 B/op	26606392 allocs/op
+BenchmarkMediumFileUpload/10MB_Concurrent2-12         	       1	3629845750 ns/op	   2.79 MB/s	         0.1607 gc_pause_ms/op	      3579 ms/op	      3579 p50_ms	      3579 p95_ms	      3579 p99_ms	    2292 B/op	26605272 allocs/op
+BenchmarkMediumFileUpload/10MB_Concurrent2-12         	       1	4075753791 ns/op	   2.48 MB/s	         0.09108 gc_pause_ms/op	      4027 ms/op	      4027 p50_ms	      4027 p95_ms	      4027 p99_ms	    2286 B/op	26604016 allocs/op
+BenchmarkMediumFileUpload/50MB_Concurrent2-12         	       1	5969745875 ns/op	   8.46 MB/s	         0.2208 gc_pause_ms/op	      5911 ms/op	      5911 p50_ms	      5911 p95_ms	      5911 p99_ms	    7494 B/op	132206264 allocs/op
+BenchmarkMediumFileUpload/50MB_Concurrent2-12         	       1	8409873958 ns/op	   5.98 MB/s	         0.1205 gc_pause_ms/op	      8356 ms/op	      8356 p50_ms	      8356 p95_ms	      8356 p99_ms	    7453 B/op	132078496 allocs/op
+BenchmarkMediumFileUpload/50MB_Concurrent2-12         	       1	8387219417 ns/op	   6.00 MB/s	         0.9187 gc_pause_ms/op	      8336 ms/op	      8336 p50_ms	      8336 p95_ms	      8336 p99_ms	    7443 B/op	132061400 allocs/op
+BenchmarkMediumFileUpload/100MB_Concurrent4-12        	       1	8576562417 ns/op	  11.73 MB/s	         0.3911 gc_pause_ms/op	      8522 ms/op	      8522 p50_ms	      8522 p95_ms	      8522 p99_ms	   12827 B/op	264217728 allocs/op
+BenchmarkMediumFileUpload/100MB_Concurrent4-12        	       1	8225645834 ns/op	  12.25 MB/s	         0.2888 gc_pause_ms/op	      8164 ms/op	      8164 p50_ms	      8164 p95_ms	      8164 p99_ms	   12782 B/op	264136760 allocs/op
+BenchmarkMediumFileUpload/100MB_Concurrent4-12        	       1	9443228584 ns/op	  10.66 MB/s	         0.09446 gc_pause_ms/op	      9378 ms/op	      9378 p50_ms	      9378 p95_ms	      9378 p99_ms	   12780 B/op	263996096 allocs/op
+BenchmarkLargeFileUpload/100MB_Concurrent4-12         	       1	8524277416 ns/op	  11.81 MB/s	         0.1026 gc_pause_ms/op	      8470 ms/op	      8470 p50_ms	      8470 p95_ms	      8470 p99_ms	   12822 B/op	264172616 allocs/op
+BenchmarkLargeFileUpload/100MB_Concurrent4-12         	       1	8954002583 ns/op	  11.25 MB/s	         0.1336 gc_pause_ms/op	      8887 ms/op	      8887 p50_ms	      8887 p95_ms	      8887 p99_ms	   12795 B/op	264084736 allocs/op
+BenchmarkLargeFileUpload/100MB_Concurrent4-12         	       1	8872883875 ns/op	  11.35 MB/s	         0.08204 gc_pause_ms/op	      8808 ms/op	      8808 p50_ms	      8808 p95_ms	      8808 p99_ms	   12811 B/op	264121040 allocs/op
+BenchmarkLargeFileUpload/500MB_Concurrent8-12         	       1	30814516542 ns/op	  16.26 MB/s	         0 gc_pause_ms/op	     30745 ms/op	     30745 p50_ms	     30745 p95_ms	     30745 p99_ms	   16191 B/op	264873880 allocs/op
+BenchmarkLargeFileUpload/500MB_Concurrent8-12         	       1	34862948084 ns/op	  14.37 MB/s	         0 gc_pause_ms/op	     34806 ms/op	     34806 p50_ms	     34806 p95_ms	     34806 p99_ms	   16165 B/op	264819384 allocs/op
+BenchmarkLargeFileUpload/500MB_Concurrent8-12         	       1	32978108417 ns/op	  15.18 MB/s	         0 gc_pause_ms/op	     32928 ms/op	     32928 p50_ms	     32928 p95_ms	     32928 p99_ms	   16194 B/op	264965592 allocs/op
+BenchmarkLargeFileUpload/1GB_Concurrent8-12           	       1	61863152625 ns/op	  16.57 MB/s	         0 gc_pause_ms/op	     61807 ms/op	     61807 p50_ms	     61807 p95_ms	     61807 p99_ms	   24205 B/op	501783176 allocs/op
+BenchmarkLargeFileUpload/1GB_Concurrent8-12           	       1	59190216667 ns/op	  17.32 MB/s	         0 gc_pause_ms/op	     59137 ms/op	     59137 p50_ms	     59137 p95_ms	     59137 p99_ms	   24214 B/op	528057160 allocs/op
+BenchmarkLargeFileUpload/1GB_Concurrent8-12           	       1	60537202209 ns/op	  16.93 MB/s	         0 gc_pause_ms/op	     60484 ms/op	     60484 p50_ms	     60484 p95_ms	     60484 p99_ms	   24212 B/op	528027608 allocs/op
+BenchmarkXLFileUpload/2GB_Concurrent10-12             	       1	109403241000 ns/op	  18.73 MB/s	         0 gc_pause_ms/op	    109345 ms/op	    109345 p50_ms	    109345 p95_ms	    109345 p99_ms	   25766 B/op	554795472 allocs/op
+BenchmarkXLFileUpload/2GB_Concurrent10-12             	

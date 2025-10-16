@@ -1,0 +1,4 @@
+# github.com/scttfrdmn/cargoship/pkg/benchmarks/scenarios [github.com/scttfrdmn/cargoship/pkg/benchmarks/scenarios.test]
+pkg/benchmarks/scenarios/upload_bench_test.go:208:23: memAfter.PauseTotal undefined (type runtime.MemStats has no field or method PauseTotal)
+pkg/benchmarks/scenarios/upload_bench_test.go:208:46: memBefore.PauseTotal undefined (type runtime.MemStats has no field or method PauseTotal)
+FAIL	github.com/scttfrdmn/cargoship/pkg/benchmarks/scenarios [build failed]
