@@ -86,6 +86,7 @@ func TestHealthCheckImplementation(t *testing.T) {
 	ctx := context.Background()
 	err := coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
+	defer func() { _ = coordinator.Shutdown(ctx) }()
 
 	defaultCoordinator := coordinator
 
@@ -288,10 +289,10 @@ func TestHealthCheckTypes(t *testing.T) {
 	}
 
 	coordinator := NewCoordinator()
-	err := coordinator.Initialize(context.Background(), config)
-	require.NoError(t, err)
-	
 	ctx := context.Background()
+	err := coordinator.Initialize(ctx, config)
+	require.NoError(t, err)
+	defer func() { _ = coordinator.Shutdown(ctx) }()
 	region := &config.Regions[0]
 
 	t.Run("TestCheckAWSConnectivity", func(t *testing.T) {
