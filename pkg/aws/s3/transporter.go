@@ -89,7 +89,8 @@ func (t *Transporter) Upload(ctx context.Context, archive Archive) (*UploadResul
 	// Perform upload
 	result, err := t.uploader.Upload(ctx, input)
 	if err != nil {
-		return nil, fmt.Errorf("failed to upload archive: %w", err)
+		return nil, fmt.Errorf("failed to upload archive to s3://%s/%s (size: %d bytes, storage class: %s): %w",
+			t.config.Bucket, archive.Key, archive.Size, storageClass, err)
 	}
 
 	duration := time.Since(startTime)
@@ -176,7 +177,7 @@ func (t *Transporter) Exists(ctx context.Context, key string) (bool, error) {
 		if errors.As(err, &notFound) {
 			return false, nil
 		}
-		return false, err
+		return false, fmt.Errorf("failed to check if object exists at s3://%s/%s: %w", t.config.Bucket, key, err)
 	}
 
 	return true, nil
@@ -184,10 +185,14 @@ func (t *Transporter) Exists(ctx context.Context, key string) (bool, error) {
 
 // GetObjectInfo retrieves metadata about an object
 func (t *Transporter) GetObjectInfo(ctx context.Context, key string) (*s3.HeadObjectOutput, error) {
-	return t.client.HeadObject(ctx, &s3.HeadObjectInput{
+	output, err := t.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(t.config.Bucket),
 		Key:    aws.String(key),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object info for s3://%s/%s: %w", t.config.Bucket, key, err)
+	}
+	return output, nil
 }
 
 // GetConfig returns the current transport configuration

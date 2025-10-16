@@ -328,7 +328,10 @@ func LoadAWSConfig(ctx context.Context, profile, region string) (aws.Config, err
 
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
-		return cfg, err
+		if profile != "" {
+			return cfg, fmt.Errorf("failed to load AWS config with profile '%s' and region '%s': %w", profile, region, err)
+		}
+		return cfg, fmt.Errorf("failed to load AWS config for region '%s': %w", region, err)
 	}
 
 	// Configure for LocalStack compatibility if detected
