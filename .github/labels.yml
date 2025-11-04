@@ -1,0 +1,199 @@
+# GitHub Labels Configuration for CargoShip
+# Apply with: gh label create --repo scttfrdmn/cargoship --file .github/labels.yml
+# Or use GitHub's label sync action
+
+# === Type Labels ===
+- name: "type: bug"
+  description: "Something isn't working correctly"
+  color: "d73a4a"
+
+- name: "type: feature"
+  description: "New feature or capability"
+  color: "0e8a16"
+
+- name: "type: enhancement"
+  description: "Improvement to existing feature"
+  color: "a2eeef"
+
+- name: "type: documentation"
+  description: "Documentation improvements or additions"
+  color: "0075ca"
+
+- name: "type: refactor"
+  description: "Code refactoring without functionality changes"
+  color: "fbca04"
+
+- name: "type: test"
+  description: "Test improvements or additions"
+  color: "d4c5f9"
+
+- name: "type: chore"
+  description: "Maintenance tasks, dependencies, tooling"
+  color: "fef2c0"
+
+- name: "type: security"
+  description: "Security vulnerability or improvement"
+  color: "b60205"
+
+# === Priority Labels ===
+- name: "priority: critical"
+  description: "Blocking issue, must be fixed immediately"
+  color: "b60205"
+
+- name: "priority: high"
+  description: "Important issue, should be addressed soon"
+  color: "d93f0b"
+
+- name: "priority: medium"
+  description: "Normal priority issue"
+  color: "fbca04"
+
+- name: "priority: low"
+  description: "Nice to have, not urgent"
+  color: "0e8a16"
+
+# === Status Labels ===
+- name: "status: needs-triage"
+  description: "New issue that needs initial review"
+  color: "ededed"
+
+- name: "status: needs-info"
+  description: "Waiting for more information from reporter"
+  color: "d4c5f9"
+
+- name: "status: in-progress"
+  description: "Currently being worked on"
+  color: "1d76db"
+
+- name: "status: blocked"
+  description: "Blocked by external dependency or other issue"
+  color: "d93f0b"
+
+- name: "status: ready"
+  description: "Ready to be worked on"
+  color: "0e8a16"
+
+- name: "status: wontfix"
+  description: "Will not be addressed"
+  color: "ffffff"
+
+# === Area Labels ===
+- name: "area: multiregion"
+  description: "Multi-region coordination and failover"
+  color: "c5def5"
+
+- name: "area: staging"
+  description: "Staging optimization and buffer management"
+  color: "c5def5"
+
+- name: "area: budget"
+  description: "Budget tracking and cost management"
+  color: "c5def5"
+
+- name: "area: cli"
+  description: "Command-line interface"
+  color: "c5def5"
+
+- name: "area: s3"
+  description: "S3 upload and optimization"
+  color: "c5def5"
+
+- name: "area: compression"
+  description: "Compression algorithms and optimization"
+  color: "c5def5"
+
+- name: "area: testing"
+  description: "Test infrastructure and reliability"
+  color: "c5def5"
+
+- name: "area: performance"
+  description: "Performance optimization and benchmarking"
+  color: "c5def5"
+
+- name: "area: docs"
+  description: "Documentation and guides"
+  color: "c5def5"
+
+- name: "area: ci"
+  description: "CI/CD pipeline and automation"
+  color: "c5def5"
+
+# === Effort Labels ===
+- name: "effort: small"
+  description: "Small task, < 4 hours"
+  color: "c2e0c6"
+
+- name: "effort: medium"
+  description: "Medium task, 1-2 days"
+  color: "fef2c0"
+
+- name: "effort: large"
+  description: "Large task, > 2 days"
+  color: "e99695"
+
+# === Special Labels ===
+- name: "good first issue"
+  description: "Good for newcomers to the project"
+  color: "7057ff"
+
+- name: "help wanted"
+  description: "Community contributions welcome"
+  color: "008672"
+
+- name: "duplicate"
+  description: "Duplicate of another issue"
+  color: "cfd3d7"
+
+- name: "invalid"
+  description: "Not a valid issue"
+  color: "e4e669"
+
+- name: "question"
+  description: "Question or discussion"
+  color: "d876e3"
+
+- name: "breaking change"
+  description: "Introduces breaking API changes"
+  color: "b60205"
+
+- name: "needs-decision"
+  description: "Requires architectural or design decision"
+  color: "fbca04"
+
+# === Persona Labels (for persona-specific issues) ===
+- name: "persona: academic-researcher"
+  description: "Related to academic researcher use case"
+  color: "bfdadc"
+
+- name: "persona: lab-manager"
+  description: "Related to lab manager use case"
+  color: "bfdadc"
+
+- name: "persona: graduate-student"
+  description: "Related to graduate student use case"
+  color: "bfdadc"
+
+- name: "persona: pi"
+  description: "Related to PI/principal investigator use case"
+  color: "bfdadc"
+
+- name: "persona: research-admin"
+  description: "Related to research computing administrator use case"
+  color: "bfdadc"
+
+# === Release Labels ===
+- name: "v0.6.0"
+  description: "Planned for v0.6.0 release"
+  color: "0052cc"
+
+- name: "v0.7.0"
+  description: "Planned for v0.7.0 release"
+  color: "0052cc"
+
+- name: "v0.8.0"
+  description: "Planned for v0.8.0 release"
+  color: "0052cc"
+
+- name: "v1.0.0"
+  description: "Planned for v1.0.0 release"
+  color: "0052cc"

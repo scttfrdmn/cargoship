@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 GitHub Discussions
+    url: https://github.com/scttfrdmn/cargoship/discussions
+    about: Ask questions, share ideas, and discuss with the community
+  - name: 📚 Documentation
+    url: https://github.com/scttfrdmn/cargoship/tree/main/docs
+    about: Browse comprehensive documentation and guides
+  - name: 🔍 Troubleshooting Guide
+    url: https://github.com/scttfrdmn/cargoship/blob/main/docs/TROUBLESHOOTING.md
+    about: Find solutions to common problems

@@ -1,0 +1,105 @@
+name: Documentation Improvement
+description: Suggest improvements to documentation
+title: "[Docs]: "
+labels: ["type: documentation", "area: docs", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve our documentation!
+
+  - type: dropdown
+    id: doc-type
+    attributes:
+      label: Documentation Type
+      description: What type of documentation needs improvement?
+      options:
+        - README
+        - Getting Started Guide
+        - Configuration Guide
+        - Command Reference
+        - API Documentation
+        - Troubleshooting Guide
+        - Performance Tuning Guide
+        - Code Comments
+        - Examples
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's Missing or Unclear?
+      description: Describe what's confusing, missing, or could be improved
+      placeholder: |
+        The documentation for [feature/command] is unclear because...
+        I couldn't find information about...
+        The example shows X but doesn't explain Y...
+    validations:
+      required: true
+
+  - type: textarea
+    id: location
+    attributes:
+      label: Documentation Location
+      description: Where is this documentation located? (file path, URL, section)
+      placeholder: |
+        - File: docs/getting-started.md
+        - Section: "Multi-Region Setup"
+        - URL: https://github.com/scttfrdmn/cargoship/...
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Improvement
+      description: How would you improve this documentation?
+      placeholder: |
+        Add a section explaining...
+        Include an example showing...
+        Clarify that...
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Example Content
+      description: If you have specific content suggestions, provide them here
+      placeholder: |
+        ```markdown
+        ## New Section Title
+
+        Explanation of...
+
+        Example:
+        ```bash
+        $ cargoship command --option
+        ```
+        ```
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Target Audience
+      description: Who would benefit most from this documentation?
+      options:
+        - New Users
+        - Advanced Users
+        - Contributors
+        - All Users
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: willing
+    attributes:
+      label: Contribution
+      options:
+        - label: I'm willing to submit a pull request with these documentation changes
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I have searched existing issues to ensure this isn't a duplicate
+          required: true

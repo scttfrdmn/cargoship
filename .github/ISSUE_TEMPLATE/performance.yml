@@ -1,0 +1,136 @@
+name: Performance Issue
+description: Report slow performance or resource usage problems
+title: "[Performance]: "
+labels: ["type: bug", "area: performance", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a performance issue! This helps us optimize CargoShip.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Performance Issue Description
+      description: Describe the performance problem you're experiencing
+      placeholder: |
+        Uploads are slower than expected...
+        Memory usage grows over time...
+        CPU usage is consistently high...
+    validations:
+      required: true
+
+  - type: textarea
+    id: workload
+    attributes:
+      label: Workload Details
+      description: Describe your workload (file sizes, counts, upload patterns)
+      placeholder: |
+        - File count: 10,000 files
+        - Total size: 500 GB
+        - File size range: 10 MB - 5 GB
+        - Upload pattern: Batch upload every night
+    validations:
+      required: true
+
+  - type: textarea
+    id: metrics
+    attributes:
+      label: Performance Metrics
+      description: What metrics are you observing? (throughput, latency, resource usage)
+      placeholder: |
+        - Upload speed: 10 MB/s (expected 100+ MB/s)
+        - Memory usage: 8 GB (grows continuously)
+        - CPU usage: 400% (4 cores maxed)
+        - Time to complete: 5 hours (expected < 1 hour)
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Performance
+      description: What performance did you expect?
+      placeholder: |
+        Based on my network bandwidth (1 Gbps), I expected...
+        Other tools achieve...
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: Your CargoShip configuration (especially performance-related settings)
+      render: yaml
+      placeholder: |
+        upload:
+          max_concurrent_uploads: 10
+          chunk_size_mb: 64
+          part_size_mb: 16
+        staging:
+          enabled: true
+          max_staging_memory_mb: 512
+        compression:
+          algorithm: zstd
+          level: 3
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: CargoShip Version
+      description: "Output of: cargoship --version"
+      placeholder: "v0.4.6"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: System specifications and environment details
+      placeholder: |
+        - OS: Ubuntu 22.04
+        - CPU: Intel Xeon (32 cores)
+        - RAM: 128 GB
+        - Network: 10 Gbps
+        - AWS Region: us-east-1
+        - S3 bucket region: us-east-1
+    validations:
+      required: true
+
+  - type: textarea
+    id: profiling
+    attributes:
+      label: Profiling Data
+      description: |
+        If you've run profiling, include the output
+        (cargoship profile collect --duration 60s)
+      render: shell
+      placeholder: |
+        $ cargoship profile collect --duration 60s
+        [Paste output here]
+
+  - type: textarea
+    id: comparison
+    attributes:
+      label: Comparison with Alternatives
+      description: Have you compared with other tools? (aws s3 cp, rclone, etc.)
+      placeholder: |
+        - aws s3 cp: 150 MB/s
+        - rclone: 120 MB/s
+        - cargoship: 10 MB/s
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I have searched existing issues to ensure this isn't a duplicate
+          required: true
+        - label: I have included performance metrics above
+          required: true
+        - label: I have included my configuration
+          required: true
