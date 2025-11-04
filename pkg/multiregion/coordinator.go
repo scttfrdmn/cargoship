@@ -893,6 +893,13 @@ func (c *DefaultCoordinator) validateCriticalChecks(checks []HealthCheckResult) 
 
 // updateRegionHealthStatus updates the region's health status based on check results
 func (c *DefaultCoordinator) updateRegionHealthStatus(region *Region, healthStatus *OverallHealthStatus, results *OverallHealthStatus) {
+	// Check if shutting down before acquiring lock to avoid deadlock
+	select {
+	case <-c.ctx.Done():
+		return // Don't update if shutting down
+	default:
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -951,7 +958,14 @@ func (c *DefaultCoordinator) updateRegionHealthStatus(region *Region, healthStat
 	if shouldTriggerFailover {
 		c.triggerRegionFailover(region, failureReasons)
 	}
-	
+
+	// Check if shutting down before re-acquiring lock
+	select {
+	case <-c.ctx.Done():
+		return // Don't re-acquire if shutting down
+	default:
+	}
+
 	// Re-acquire lock for defer unlock (this is safe as we're about to return)
 	c.mu.Lock()
 }
