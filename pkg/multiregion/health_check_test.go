@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,6 +21,9 @@ func TestHealthCheckImplementation(t *testing.T) {
 				DisplayName: "US East 1",
 				Status:      RegionStatusHealthy,
 				Priority:    1,
+			AWSConfig: aws.Config{
+				Region: "us-east-1",
+			},
 				Weight:      100,
 				HealthCheck: HealthCheckConfig{
 					Enabled:          true,
@@ -48,6 +52,9 @@ func TestHealthCheckImplementation(t *testing.T) {
 			},
 			{
 				Name:        "us-west-2",
+			AWSConfig: aws.Config{
+				Region: "us-west-2",
+			},
 				DisplayName: "US West 2",
 				Status:      RegionStatusHealthy,
 				Priority:    2,
@@ -270,6 +277,7 @@ func TestHealthCheckTypes(t *testing.T) {
 				Weight: 100,
 				HealthCheck: HealthCheckConfig{
 					Enabled: true,
+					Interval: time.Second * 30,
 					Timeout: time.Second * 2,
 					FailureThreshold: 3,
 					SuccessThreshold: 2,

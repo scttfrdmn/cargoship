@@ -96,6 +96,8 @@ func TestDefaultCoordinator_Initialize(t *testing.T) {
 				assert.NotNil(t, coordinator.ctx)
 				assert.NotNil(t, coordinator.cancel)
 				assert.Equal(t, len(tt.config.Regions), len(coordinator.regions))
+				// Cleanup coordinator to prevent goroutine leaks
+				defer func() { _ = coordinator.Shutdown(ctx) }()
 			}
 		})
 	}
@@ -110,6 +112,8 @@ func TestDefaultCoordinator_Initialize_DoubleInit(t *testing.T) {
 	err := coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
 	assert.True(t, coordinator.initialized)
+	// Cleanup coordinator to prevent goroutine leaks
+	defer func() { _ = coordinator.Shutdown(ctx) }()
 
 	// Second initialization should fail
 	err = coordinator.Initialize(ctx, config)
@@ -137,6 +141,8 @@ func TestDefaultCoordinator_Upload(t *testing.T) {
 	config := createValidMultiRegionConfig()
 	err = coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
+	// Cleanup coordinator to prevent goroutine leaks
+	defer func() { _ = coordinator.Shutdown(ctx) }()
 
 	// Test upload with nil request
 	result, err = coordinator.Upload(ctx, nil)
@@ -169,6 +175,8 @@ func TestDefaultCoordinator_GetRegionStatus(t *testing.T) {
 	config := createValidMultiRegionConfig()
 	err = coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
+	// Cleanup coordinator to prevent goroutine leaks
+	defer func() { _ = coordinator.Shutdown(ctx) }()
 
 	// Test with initialization
 	status, err = coordinator.GetRegionStatus(ctx)
@@ -195,6 +203,8 @@ func TestDefaultCoordinator_GetRegionMetrics(t *testing.T) {
 	config := createValidMultiRegionConfig()
 	err = coordinator.Initialize(ctx, config)
 	require.NoError(t, err)
+	// Cleanup coordinator to prevent goroutine leaks
+	defer func() { _ = coordinator.Shutdown(ctx) }()
 
 	// Test with initialization
 	metrics, err = coordinator.GetRegionMetrics(ctx)

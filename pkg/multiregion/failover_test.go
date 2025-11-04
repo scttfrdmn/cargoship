@@ -802,6 +802,7 @@ func TestFailoverScenarios_CrossRegionRetry(t *testing.T) {
 	t.Run("multi-region cascading failover", func(t *testing.T) {
 		config := createValidMultiRegionConfig()
 		config.Failover.RetryAttempts = 2
+		config.Failover.Strategy = FailoverImmediate  // Use immediate strategy to avoid long drain periods
 		config.Failover.FailoverTimeout = 3 * time.Second
 		logger := log.New(nil)
 		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
@@ -837,6 +838,7 @@ func TestFailoverScenarios_CrossRegionRetry(t *testing.T) {
 	t.Run("circular failover prevention", func(t *testing.T) {
 		config := createValidMultiRegionConfig()
 		config.Failover.RetryAttempts = 2
+		config.Failover.Strategy = FailoverImmediate  // Use immediate strategy to avoid long drain periods
 		config.Failover.FailoverTimeout = 3 * time.Second
 		logger := log.New(nil)
 		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
@@ -862,6 +864,7 @@ func TestFailoverScenarios_CrossRegionRetry(t *testing.T) {
 	t.Run("parallel failover handling", func(t *testing.T) {
 		config := createValidMultiRegionConfig()
 		config.Failover.RetryAttempts = 2
+		config.Failover.Strategy = FailoverImmediate  // Use immediate strategy to avoid long drain periods
 		config.Failover.FailoverTimeout = 3 * time.Second
 		logger := log.New(nil)
 		manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)

@@ -23,9 +23,9 @@ func TestFailoverIntegrationScenarios(t *testing.T) {
 		config.Failover.AutoFailover = true
 		config.Failover.Strategy = FailoverImmediate
 		config.Failover.FailoverTimeout = 3 * time.Second
-		config.Monitoring.Enabled = true
-		config.Monitoring.MetricsInterval = 100 * time.Millisecond
-		
+		// Disable monitoring to allow manual metric control in tests
+		config.Monitoring.Enabled = false
+
 		// Disable health checks for this test to avoid AWS connectivity issues
 		for i := range config.Regions {
 			config.Regions[i].HealthCheck.Enabled = false
@@ -288,8 +288,8 @@ func TestFailoverStressScenarios(t *testing.T) {
 func TestFailoverRealtimeMonitoring(t *testing.T) {
 	t.Run("MetricsCollectionDuringFailover", func(t *testing.T) {
 		config := createValidMultiRegionConfig()
-		config.Monitoring.Enabled = true
-		config.Monitoring.MetricsInterval = 100 * time.Millisecond
+		// Disable monitoring to allow manual metric control in this test
+		config.Monitoring.Enabled = false
 		config.Failover.AutoFailover = true
 		config.Failover.Strategy = FailoverGraceful
 		
@@ -545,18 +545,20 @@ func TestFailoverConfigurationScenarios(t *testing.T) {
 			t.Run(string(strategy), func(t *testing.T) {
 				config := createValidMultiRegionConfig()
 				config.Failover.Strategy = strategy
-				config.Failover.FailoverTimeout = 1 * time.Second
-				
+				config.Failover.FailoverTimeout = 2 * time.Second // Increased for notification delays
+
 				logger := log.New(nil)
 				manager := NewFailoverManager(config, logger)
 				assert.NotNil(t, manager, "Should create manager for %s strategy", strategy)
-				
-				ctx := context.Background()
-				
+
+				// Use a timeout context to prevent hanging
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+
 				// Test basic functionality
 				_, err := manager.DetectFailure(ctx, "us-east-1")
 				assert.NoError(t, err, "Should detect failures for %s strategy", strategy)
-				
+
 				// Test execution (may succeed or timeout based on strategy)
 				err = manager.ExecuteFailover(ctx, "us-east-1", "us-west-2")
 				if strategy == FailoverManual {

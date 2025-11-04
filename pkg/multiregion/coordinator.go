@@ -190,10 +190,10 @@ func (c *DefaultCoordinator) GetRegionMetrics(ctx context.Context) (map[string]R
 
 // Shutdown gracefully shuts down the coordinator
 func (c *DefaultCoordinator) Shutdown(ctx context.Context) error {
+	// Check if initialized and cancel context with lock held
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if !c.initialized {
+		c.mu.Unlock()
 		return fmt.Errorf("coordinator not initialized")
 	}
 
@@ -203,6 +203,10 @@ func (c *DefaultCoordinator) Shutdown(ctx context.Context) error {
 	if c.cancel != nil {
 		c.cancel()
 	}
+
+	// CRITICAL: Release lock BEFORE waiting for goroutines to finish
+	// Background goroutines need to acquire the lock to complete their work
+	c.mu.Unlock()
 
 	// Wait for background services to shutdown
 	done := make(chan struct{})
@@ -219,7 +223,11 @@ func (c *DefaultCoordinator) Shutdown(ctx context.Context) error {
 		return ctx.Err()
 	}
 
+	// Reacquire lock to update initialized state
+	c.mu.Lock()
 	c.initialized = false
+	c.mu.Unlock()
+
 	return nil
 }
 
