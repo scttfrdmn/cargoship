@@ -435,10 +435,10 @@ func TestWizardRunEValidation(t *testing.T) {
 	ctx := context.Background()
 	cmd.SetContext(ctx)
 
-	// Call RunE without porter in context - should panic
-	assert.Panics(t, func() {
-		_ = cmd.RunE(cmd, []string{})
-	}, "RunE should panic when porter is not in context")
+	// Call RunE without porter in context - should return error
+	err := cmd.RunE(cmd, []string{})
+	assert.Error(t, err, "RunE should return error when porter is not in context")
+	assert.Contains(t, err.Error(), "Porter")
 }
 
 func TestWizardCompleteWorkflow(t *testing.T) {

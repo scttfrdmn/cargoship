@@ -176,8 +176,8 @@ options:
 		err := extractCmd.RunE(extractCmd, []string{"s3://genomics-archive/data.tar.gz:/results/summary.json", "./extracted/"})
 		if err != nil {
 			t.Logf("Extract command failed as expected in test environment: %v", err)
-			// Should be trying to prepare extraction index
-			assert.Contains(t, err.Error(), "index")
+			// Should report that the specific file was not found
+			assert.Contains(t, err.Error(), "specific file not found")
 		}
 
 		// Test pattern-based extraction
@@ -435,7 +435,9 @@ func TestV042BackwardsCompatibility(t *testing.T) {
 		require.NoError(t, err)
 
 		helpOutput := buf.String()
-		assert.Contains(t, helpOutput, "Find where a file")
+		// Check that help output includes the Long description and flag
+		assert.Contains(t, helpOutput, "inventory-directory")
+		assert.Contains(t, helpOutput, "search your current directory")
 	})
 
 	t.Run("New_Commands_Dont_Conflict", func(t *testing.T) {

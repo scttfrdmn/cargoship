@@ -115,6 +115,11 @@ func RequireNoGoroutineLeak(t *testing.T) {
 		// Ignore common AWS SDK goroutines that may not cleanup immediately
 		goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"),
 		goleak.IgnoreTopFunction("github.com/aws/aws-sdk-go-v2/internal/shareddefaults.init"),
+		// Ignore rclone goroutines that persist for the process lifetime
+		goleak.IgnoreTopFunction("github.com/rclone/rclone/fs/accounting.(*tokenBucket).startSignalHandler.func1"),
+		goleak.IgnoreTopFunction("github.com/rclone/rclone/fs/accounting.(*StatsInfo).averageLoop"),
+		// Ignore CloudWatch metrics publisher goroutine
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/aws/metrics.(*CloudWatchPublisher).startFlushTimer.func1"),
 	)
 }
 

@@ -49,6 +49,6 @@ directories:
 		},
 	}
 
-	cmd.PersistentFlags().StringArray("inventory-directory", []string{"."}, "Directory containing inventories to search. Can be specified multiple times for multiple directories.")
+	cmd.Flags().StringArray("inventory-directory", []string{"."}, "Directory containing inventories to search. Can be specified multiple times for multiple directories.")
 	return cmd
 }

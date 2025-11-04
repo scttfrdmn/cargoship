@@ -325,9 +325,48 @@ CargoShip is a high-performance S3 file upload optimization tool designed for la
   - `docs/TROUBLESHOOTING.md` (634 lines) - Complete troubleshooting guide
   - `docs/DEVELOPER_TOOLS.md` (617 lines) - Developer tools guide
 
-### v0.5.0 (Minor Release) - Performance & Observability
+### v0.5.0 (Minor Release) - Test Quality & Performance
 **Timeline: 3-4 weeks**
-**Focus: Go-Native Performance Optimization & Production Hardening**
+**Focus: Technical Debt Resolution + Go-Native Performance Optimization**
+
+#### Phase 1: Technical Debt Resolution (Week 1) - 🔄 IN PROGRESS
+**Success Criteria:** 100% test pass rate, zero goroutine leaks, all assertions fixed
+
+- 🔄 **Fix Integration Test Failures** *(Priority: P1-High)* - 2 tests
+  - `TestV042DataDiscoveryWorkflow/Phase3_Selective_Extraction` - Error assertion mismatch
+  - `TestV042BackwardsCompatibility/Existing_Find_Command_Still_Works` - Help text validation failure
+  - Location: `cmd/cargoship/cmd/integration_test.go`
+  - Issue: Test assertions don't match current error messages and help text
+  - Fix: Update test assertions to match actual output OR restore backward compatibility
+
+- 🔄 **Resolve Goroutine Leaks in Restore Tests** *(Priority: P1-High)* - 14 tests
+  - All tests in `cmd/cargoship/cmd/restore_test.go` fail with rclone goroutine leaks
+  - Root Cause: `github.com/rclone/rclone/fs/accounting.(*tokenBucket).startSignalHandler` goroutine never cleaned up
+  - Impact: 14 tests affected, indicates resource management issue
+  - Fix: Add `goleak.IgnoreTopFunction()` for rclone signal handler
+  - Alternative: Properly shutdown rclone components in test cleanup
+
+- 🔄 **Verify AWS S3 Integration Tests** *(Priority: P1-High)*
+  - Background processes running: 6 AWS integration test shells
+  - Tests: TestCargoShipTransporterIntegration, TestTransporterUploadIntegration, TestMultiRegionCoordinatorIntegration
+  - Action: Wait for completion and address any failures
+  - Estimated: Tests may take 10-30 minutes to complete
+
+- 🔄 **Comprehensive Test Suite Verification** *(Priority: P1-High)*
+  - Run full test suite with `-race` flag to detect race conditions
+  - Verify no goroutine leaks across all packages
+  - Ensure test coverage maintained or improved (current: 60%+ for cmd package)
+  - Document: `docs/TEST_FAILURES_AUDIT.md` (created 2025-10-16)
+
+**Phase 1 Deliverables:**
+- ✅ Test failure audit document created (`docs/TEST_FAILURES_AUDIT.md`)
+- [ ] Zero test failures in `go test ./... -short`
+- [ ] Zero goroutine leaks detected by goleak
+- [ ] All integration tests passing with real AWS
+- [ ] Race detector clean (`go test ./... -race -short`)
+- [ ] Updated CLAUDE.md with resolution details
+
+#### Phase 2: Go-Native Performance Optimization (Weeks 2-3)
 
 #### Go-Native Performance Optimizations *(Based on AWS CRT Evaluation)*
 - 🔄 **Comprehensive Performance Benchmark Suite** *(Priority: High)*
