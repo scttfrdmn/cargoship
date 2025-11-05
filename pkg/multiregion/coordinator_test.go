@@ -535,7 +535,7 @@ func createValidMultiRegionConfig() *MultiRegionConfig {
 			StickySessions: false,
 		},
 		Failover: FailoverConfig{
-			AutoFailover:      true,
+			AutoFailover:      false, // Disabled by default to prevent goroutine leaks in tests that don't call Shutdown()
 			Strategy:          FailoverGraceful,
 			DetectionInterval: 10 * time.Millisecond, // Reduced for fast tests
 			FailoverTimeout:   30 * time.Second,
