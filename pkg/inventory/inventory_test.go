@@ -605,11 +605,11 @@ func TestHashAlgorithmString(t *testing.T) {
 }
 
 func TestHashAlgorithmStringPanic(t *testing.T) {
-	// Test with invalid hash algorithm value
-	require.Panics(t, func() {
-		var invalidHash HashAlgorithm = 999
-		_ = invalidHash.String()
-	})
+	// Test that invalid hash algorithm values are handled gracefully
+	// (returns empty string instead of panicking - improved stability)
+	var invalidHash HashAlgorithm = 999
+	result := invalidHash.String()
+	require.Empty(t, result, "Invalid hash algorithm should return empty string")
 }
 
 func TestHashAlgorithmType(t *testing.T) {
@@ -692,11 +692,11 @@ func TestFormatString(t *testing.T) {
 }
 
 func TestFormatStringPanic(t *testing.T) {
-	// Test with invalid format value
-	require.Panics(t, func() {
-		var invalidFormat Format = 999
-		_ = invalidFormat.String()
-	})
+	// Test that invalid format values are handled gracefully
+	// (returns empty string instead of panicking - improved stability)
+	var invalidFormat Format = 999
+	result := invalidFormat.String()
+	require.Empty(t, result, "Invalid format should return empty string")
 }
 
 func TestFormatType(t *testing.T) {
