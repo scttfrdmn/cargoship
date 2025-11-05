@@ -6,6 +6,62 @@ This document tracks development progress and provides context for Claude Code s
 
 CargoShip is a high-performance S3 file upload optimization tool designed for large-scale data transfers with advanced staging, compression, and multi-region capabilities.
 
+## Development Workflow (IMPORTANT)
+
+### Issue Tracking - **USE GITHUB ISSUES, NOT DOCUMENTS**
+
+**CRITICAL**: Track all bugs, features, and tasks using GitHub issues. DO NOT create verbose documents in `docs/` unless explicitly requested for end-user documentation.
+
+#### When to Create GitHub Issues
+- ✅ **Bug fixes**: Test failures, race conditions, crashes
+- ✅ **Feature requests**: New capabilities or enhancements
+- ✅ **Technical debt**: Refactoring, cleanup, optimization
+- ✅ **Investigation tasks**: Performance analysis, root cause analysis
+- ✅ **Release planning**: Milestone tracking, release checklists
+
+#### Issue Best Practices
+1. **Use descriptive titles**: "pkg/aws/s3 test failures (7 tests)" not "Fix tests"
+2. **Add appropriate labels**: type, area, priority, effort
+3. **Link related issues**: Use "Relates to #X" or "Blocks #Y"
+4. **Break down large tasks**: Create sub-issues with checklists
+5. **Update status**: Use status labels (in-progress, blocked, ready)
+
+#### Available Labels
+- **Type**: `type: bug`, `type: feature`, `type: enhancement`, `type: test`, `type: refactor`, `type: chore`, `type: security`
+- **Area**: `area: s3`, `area: multiregion`, `area: staging`, `area: cli`, `area: testing`, `area: performance`, `area: ci`
+- **Priority**: `priority: critical`, `priority: high`, `priority: medium`, `priority: low`
+- **Effort**: `effort: small` (<4h), `effort: medium` (1-2d), `effort: large` (>2d)
+- **Status**: `status: needs-triage`, `status: in-progress`, `status: blocked`, `status: ready`
+- **Milestones**: `v0.5.0`, `v0.6.0`, `v0.7.0`, etc.
+
+#### Creating Issues with gh CLI
+```bash
+# Basic issue
+gh issue create --title "Title" --body "Description" --label "type: bug,priority: high"
+
+# With body from file
+gh issue create --title "Title" --body-file /tmp/issue.md --label "type: feature,area: s3"
+
+# List existing issues
+gh issue list --label "v0.5.0" --limit 50
+
+# View issue details
+gh issue view 10
+```
+
+#### What NOT to Create
+- ❌ Verbose planning documents (use issues with checklists instead)
+- ❌ Status tracking documents (use GitHub project boards)
+- ❌ Meeting notes or design docs (use issue discussions)
+- ❌ Test failure reports (create issues with reproduction steps)
+
+#### Exception: End-User Documentation
+ONLY create documents in `docs/` for:
+- ✅ User guides (TROUBLESHOOTING.md, GETTING_STARTED.md)
+- ✅ API documentation (API_STABILITY.md, VERSIONING.md)
+- ✅ Architecture diagrams (with explicit user request)
+- ✅ Release notes (CHANGELOG.md)
+
 ## Current Status
 
 ### Version: v0.4.6 (Branch: main) - ✅ COMPLETED
