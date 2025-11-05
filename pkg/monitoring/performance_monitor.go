@@ -25,7 +25,8 @@ type PerformanceMonitor struct {
 	mu               sync.RWMutex
 	ctx              context.Context
 	cancel           context.CancelFunc
-	
+	wg               sync.WaitGroup
+
 	// Subsystem monitors
 	transferMonitor  *TransferPerformanceMonitor
 	systemMonitor    *SystemResourceMonitor
@@ -221,10 +222,11 @@ func (pm *PerformanceMonitor) Start() error {
 	}
 	
 	// Start main monitoring loops
+	pm.wg.Add(3)
 	go pm.monitoringLoop()
 	go pm.alertingLoop()
 	go pm.analyticsLoop()
-	
+
 	pm.isRunning = true
 	return nil
 }
@@ -232,14 +234,17 @@ func (pm *PerformanceMonitor) Start() error {
 // Stop gracefully shuts down the performance monitoring system.
 func (pm *PerformanceMonitor) Stop() error {
 	pm.mu.Lock()
-	defer pm.mu.Unlock()
-	
 	if !pm.isRunning {
+		pm.mu.Unlock()
 		return nil
 	}
-	
-	pm.cancel() // This stops all components
+
+	pm.cancel() // Signal all goroutines to stop
 	pm.isRunning = false
+	pm.mu.Unlock()
+
+	// Wait for all goroutines to finish
+	pm.wg.Wait()
 	return nil
 }
 
@@ -313,9 +318,10 @@ func (pm *PerformanceMonitor) SetThreshold(metric string, threshold *AlertThresh
 
 // monitoringLoop runs the main monitoring collection loop.
 func (pm *PerformanceMonitor) monitoringLoop() {
+	defer pm.wg.Done()
 	ticker := time.NewTicker(pm.config.MetricsInterval)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-pm.ctx.Done():
@@ -328,9 +334,10 @@ func (pm *PerformanceMonitor) monitoringLoop() {
 
 // alertingLoop runs the alert checking loop.
 func (pm *PerformanceMonitor) alertingLoop() {
+	defer pm.wg.Done()
 	ticker := time.NewTicker(pm.config.AlertCheckInterval)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-pm.ctx.Done():
@@ -343,13 +350,14 @@ func (pm *PerformanceMonitor) alertingLoop() {
 
 // analyticsLoop runs predictive analytics.
 func (pm *PerformanceMonitor) analyticsLoop() {
+	defer pm.wg.Done()
 	if !pm.config.EnablePredictive {
 		return
 	}
-	
+
 	ticker := time.NewTicker(time.Minute) // Run analytics every minute
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-pm.ctx.Done():
