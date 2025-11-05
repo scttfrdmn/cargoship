@@ -1489,33 +1489,38 @@ func (c *DefaultCoordinator) failoverDetectionService() {
 // detectAndHandleFailures detects failures and triggers failover if needed
 func (c *DefaultCoordinator) detectAndHandleFailures() {
 	c.logger.Debug("Detecting failures across regions")
-	
-	c.mu.RLock()
-	regions := make([]*Region, 0, len(c.regions))
-	for _, region := range c.regions {
-		regions = append(regions, region)
-	}
-	c.mu.RUnlock()
 
-	// Check each region for failure conditions
-	for _, region := range regions {
+	// Identify regions that need failover while holding read lock
+	c.mu.RLock()
+	regionsNeedingFailover := make([]string, 0)
+
+	for _, region := range c.regions {
+		// Check failover conditions while holding lock to avoid race
 		if c.shouldTriggerFailover(region) {
-			c.logger.Warn("Failure detected, triggering failover",
+			c.logger.Warn("Failure detected, will trigger failover",
 				"region", region.Name,
 				"status", region.Status,
 				"consecutive_failures", region.Metrics.ConsecutiveFailedChecks)
-				
-			// Find a suitable failover target
-			targetRegion := c.selectFailoverTarget(region.Name)
-			if targetRegion == "" {
-				c.logger.Error("No suitable failover target available",
-					"failed_region", region.Name)
-				continue
-			}
-			
-			// Trigger failover based on configuration
-			c.triggerAutomaticFailover(region.Name, targetRegion)
+
+			// Record region name for failover
+			regionsNeedingFailover = append(regionsNeedingFailover, region.Name)
 		}
+	}
+	c.mu.RUnlock()
+
+	// Execute failovers after releasing lock to avoid deadlock
+	// selectFailoverTarget and triggerAutomaticFailover acquire their own locks
+	for _, regionName := range regionsNeedingFailover {
+		// Find a suitable failover target
+		targetRegion := c.selectFailoverTarget(regionName)
+		if targetRegion == "" {
+			c.logger.Error("No suitable failover target available",
+				"failed_region", regionName)
+			continue
+		}
+
+		// Trigger failover based on configuration
+		c.triggerAutomaticFailover(regionName, targetRegion)
 	}
 }
 
