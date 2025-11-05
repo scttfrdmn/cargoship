@@ -214,14 +214,15 @@ func TestPipelineOptimizerHybridOptimization(t *testing.T) {
 
 	pipeline := po.prefixPipelines["test-prefix"]
 
-	// Test with good combined score
-	pipeline.PerformanceScore = 1.3
-	pipeline.StabilityScore = 1.2
-	pipeline.ResourceScore = 1.1
+	// Test with good combined score (must be > 1.2, not == 1.2)
+	// Average score = (1.4 + 1.3 + 1.2) / 3 = 1.3 > 1.2 threshold
+	pipeline.PerformanceScore = 1.4
+	pipeline.StabilityScore = 1.3
+	pipeline.ResourceScore = 1.2
 	pipeline.CongestionState = PipelineCongestionNone
 
 	newDepth, reason := po.optimizeHybrid(pipeline)
-	assert.Equal(t, 5, newDepth) // Should increase by 1
+	assert.Equal(t, 5, newDepth) // Should increase by 1 when score > 1.2
 	assert.Equal(t, ReasonThroughputIncrease, reason)
 
 	// Test with poor combined score

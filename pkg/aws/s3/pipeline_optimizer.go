@@ -274,11 +274,19 @@ func (po *PipelineOptimizer) UpdatePipelineMetrics(prefixID string, metrics *Pip
 		return
 	}
 
+	// Preserve historical data from existing metrics before updating
+	// This prevents data loss when new metrics are provided
+	if pipeline.PerformanceMetrics != nil {
+		metrics.ThroughputHistory = pipeline.PerformanceMetrics.ThroughputHistory
+		metrics.LatencyHistory = pipeline.PerformanceMetrics.LatencyHistory
+		metrics.ErrorRateHistory = pipeline.PerformanceMetrics.ErrorRateHistory
+	}
+
 	// Update current metrics
 	pipeline.PerformanceMetrics = metrics
 	pipeline.PerformanceMetrics.LastUpdate = time.Now()
 
-	// Update historical data
+	// Update historical data (appends to preserved history)
 	po.updateHistoricalMetrics(pipeline, metrics)
 
 	// Update performance scores
@@ -656,16 +664,20 @@ func (po *PipelineOptimizer) optimizeHybrid(pipeline *PipelineMeta) (int, Adjust
 func (po *PipelineOptimizer) applyDepthAdjustment(pipeline *PipelineMeta, newDepth int, reason AdjustmentReason) {
 	oldDepth := pipeline.CurrentDepth
 
+	// Enforce min/max constraints to prevent invalid pipeline depths
+	// This is critical for stability - prevents negative depths or resource exhaustion
+	clampedDepth := max(pipeline.MinDepth, min(pipeline.MaxDepth, newDepth))
+
 	adjustment := DepthAdjustment{
 		Timestamp:           time.Now(),
 		OldDepth:            oldDepth,
-		NewDepth:            newDepth,
+		NewDepth:            clampedDepth, // Use clamped value in history
 		Reason:              reason,
-		ExpectedImprovement: po.calculateExpectedImprovement(pipeline, newDepth),
+		ExpectedImprovement: po.calculateExpectedImprovement(pipeline, clampedDepth),
 	}
 
-	pipeline.CurrentDepth = newDepth
-	pipeline.OptimalDepth = newDepth
+	pipeline.CurrentDepth = clampedDepth
+	pipeline.OptimalDepth = clampedDepth
 	pipeline.LastAdjustment = time.Now()
 	pipeline.AdjustmentHistory = append(pipeline.AdjustmentHistory, adjustment)
 	pipeline.TotalAdjustments++

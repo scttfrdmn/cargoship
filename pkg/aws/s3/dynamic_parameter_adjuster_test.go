@@ -670,7 +670,8 @@ func TestTransitionControllerCreateTransitionPlan(t *testing.T) {
 		CurrentParameters: NewDefaultActiveUploadParameters(),
 	}
 
-	// Test gradual transition for most parameters
+	// Test faster transition for connection-related parameters
+	// ConcurrentConnections uses optimized 500ms/2-step transition (safe to change quickly)
 	request := &ParameterAdjustmentRequest{
 		ParameterName: "ConcurrentConnections",
 		NewValue:      12,
@@ -679,8 +680,8 @@ func TestTransitionControllerCreateTransitionPlan(t *testing.T) {
 	plan := gtc.CreateTransitionPlan(session, request)
 	assert.NotNil(t, plan)
 	assert.Equal(t, TransitionGradual, plan.Strategy)
-	assert.Equal(t, time.Second*30, plan.TotalDuration)
-	assert.Equal(t, 5, plan.TransitionSteps)
+	assert.Equal(t, time.Millisecond*500, plan.TotalDuration) // Optimized for quick transition
+	assert.Equal(t, 2, plan.TransitionSteps)                  // 2 steps of 250ms each
 	assert.NotNil(t, plan.RollbackPlan)
 	assert.True(t, plan.RollbackPlan.Enabled)
 
