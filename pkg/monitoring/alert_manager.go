@@ -72,7 +72,11 @@ func (am *AlertManager) GetActiveAlerts() []*Alert {
 func (am *AlertManager) AddAlert(alert *Alert) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	
+	am.addAlertLocked(alert)
+}
+
+// addAlertLocked adds a new alert without acquiring the lock (assumes lock is already held).
+func (am *AlertManager) addAlertLocked(alert *Alert) {
 	// Check if similar alert already exists
 	for _, existing := range am.activeAlerts {
 		if am.isSimilarAlert(existing, alert) {
@@ -81,13 +85,13 @@ func (am *AlertManager) AddAlert(alert *Alert) {
 			return
 		}
 	}
-	
+
 	// Add new alert
 	alert.ID = am.generateAlertID()
 	alert.Count = 1
 	alert.LastSeen = alert.Timestamp
 	am.activeAlerts = append(am.activeAlerts, alert)
-	
+
 	// Notify
 	am.notifyAlert(alert)
 }
@@ -127,11 +131,11 @@ func (am *AlertManager) EvaluateMetrics(metrics *PerformanceMetrics, thresholds 
 		}
 	}
 	
-	// Add all new alerts
+	// Add all new alerts (using lock-free version since we already hold the lock)
 	for _, alert := range newAlerts {
-		am.AddAlert(alert)
+		am.addAlertLocked(alert)
 	}
-	
+
 	return newAlerts
 }
 
