@@ -278,15 +278,21 @@ func NewRealTimeParameterOptimizer(ctx context.Context, networkMonitor *RealTime
 
 // Core optimization methods
 func (po *RealTimeParameterOptimizer) OptimizeParameters(ctx context.Context) (*RealTimeOptimizationResult, error) {
+	// Check and set isOptimizing flag with fast rejection for concurrent calls
 	po.mu.Lock()
-	defer po.mu.Unlock()
-
 	if po.isOptimizing {
+		po.mu.Unlock()
 		return nil, fmt.Errorf("optimization already in progress")
 	}
-
 	po.isOptimizing = true
-	defer func() { po.isOptimizing = false }()
+	po.mu.Unlock()
+
+	// Ensure flag is reset on exit
+	defer func() {
+		po.mu.Lock()
+		po.isOptimizing = false
+		po.mu.Unlock()
+	}()
 
 	// Get current network conditions
 	networkConditions := po.networkMonitor.GetCurrentConditions()
@@ -312,11 +318,19 @@ func (po *RealTimeParameterOptimizer) OptimizeParameters(ctx context.Context) (*
 		return nil, fmt.Errorf("failed to evaluate candidates: %w", err)
 	}
 
-	// Apply parameter updates if improvement is significant
-	improvementRatio := po.calculateImprovement(bestCandidate, po.currentParameters)
+	// Calculate improvement ratio (needs read lock for currentParameters)
+	po.mu.RLock()
+	currentParams := po.currentParameters
+	po.mu.RUnlock()
+
+	improvementRatio := po.calculateImprovement(bestCandidate, currentParams)
 	if improvementRatio > 0.05 { // 5% improvement threshold
+		// Apply parameter updates with write lock
+		po.mu.Lock()
 		oldParameters := po.currentParameters
 		po.currentParameters = bestCandidate.Parameters
+		po.lastOptimization = time.Now()
+		po.mu.Unlock()
 
 		// Record the optimization
 		snapshot := &RealTimeParameterSnapshot{
@@ -329,13 +343,10 @@ func (po *RealTimeParameterOptimizer) OptimizeParameters(ctx context.Context) (*
 
 		po.recordParameterSnapshot(snapshot)
 
-		// Update optimization state
-		po.lastOptimization = time.Now()
-
 		result := &RealTimeOptimizationResult{
 			Success:           true,
 			OldParameters:     oldParameters,
-			NewParameters:     po.currentParameters,
+			NewParameters:     bestCandidate.Parameters,
 			ImprovementRatio:  improvementRatio,
 			OptimizationTime:  time.Since(snapshot.Timestamp),
 			Strategy:          strategy,
@@ -349,10 +360,10 @@ func (po *RealTimeParameterOptimizer) OptimizeParameters(ctx context.Context) (*
 	// No significant improvement found
 	result := &RealTimeOptimizationResult{
 		Success:           false,
-		OldParameters:     po.currentParameters,
-		NewParameters:     po.currentParameters,
+		OldParameters:     currentParams,
+		NewParameters:     currentParams,
 		ImprovementRatio:  improvementRatio,
-		OptimizationTime:  time.Since(time.Now()),
+		OptimizationTime:  0,
 		Strategy:          strategy,
 		Confidence:        0.0,
 		NetworkConditions: networkConditions,
