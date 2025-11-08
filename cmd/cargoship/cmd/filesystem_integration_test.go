@@ -21,6 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -96,14 +97,23 @@ func (s *IntegrationTestSuite) setupS3Client() {
 		s.S3Bucket = os.Getenv("CARGOSHIP_TEST_BUCKET")
 		if s.S3Bucket == "" {
 			s.S3Bucket = fmt.Sprintf("cargoship-integration-test-%d", time.Now().Unix())
-			s.t.Logf("Creating test bucket: %s", s.S3Bucket)
+			s.t.Logf("Creating test bucket: %s in region %s", s.S3Bucket, cfg.Region)
 
-			// Create bucket
+			// Create bucket with LocationConstraint for non-us-east-1 regions
 			s3Client := s3.NewFromConfig(cfg)
-			_, err = s3Client.CreateBucket(ctx, &s3.CreateBucketInput{
+			createBucketInput := &s3.CreateBucketInput{
 				Bucket: aws.String(s.S3Bucket),
-			})
-			require.NoError(s.t, err, "Failed to create test bucket")
+			}
+
+			// Add LocationConstraint for regions other than us-east-1
+			if cfg.Region != "us-east-1" {
+				createBucketInput.CreateBucketConfiguration = &types.CreateBucketConfiguration{
+					LocationConstraint: types.BucketLocationConstraint(cfg.Region),
+				}
+			}
+
+			_, err = s3Client.CreateBucket(ctx, createBucketInput)
+			require.NoError(s.t, err, "Failed to create test bucket %s in region %s", s.S3Bucket, cfg.Region)
 
 			// Register cleanup to delete bucket
 			s.RegisterCleanup(func() {
