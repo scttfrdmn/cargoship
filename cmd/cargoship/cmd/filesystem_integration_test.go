@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -693,4 +694,127 @@ func TestIntegration_DataIntegrity_EmptyAndSmallFiles(t *testing.T) {
 	}
 
 	t.Logf("✓ All edge case files verified successfully")
+}
+
+// TestIntegration_LargeFiles tests large file handling with memory efficiency validation
+//
+// NOTE: This test can take 30+ minutes to run with full-size files (1GB, 5GB).
+// Set CARGOSHIP_QUICK_LARGE_FILE_TEST=true to use smaller test sizes (100MB, 500MB).
+//
+// Expected runtime:
+//   - Quick mode (100MB, 500MB): ~2-5 minutes
+//   - Full mode (1GB, 5GB): ~30-60 minutes
+func TestIntegration_LargeFiles(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping large file test in short mode (requires significant disk space and time)")
+	}
+
+	suite := setupIntegrationSuite(t)
+	defer suite.Cleanup()
+
+	// Use smaller sizes for quick testing
+	quickMode := os.Getenv("CARGOSHIP_QUICK_LARGE_FILE_TEST") == "true"
+
+	var sizes []struct {
+		name string
+		size int64
+	}
+
+	if quickMode {
+		t.Log("Running in QUICK mode with smaller file sizes")
+		sizes = []struct {
+			name string
+			size int64
+		}{
+			{"100MB", 100 * 1024 * 1024},  // 100MB
+			{"500MB", 500 * 1024 * 1024},  // 500MB
+		}
+	} else {
+		t.Log("Running in FULL mode with production file sizes (this will take 30+ minutes)")
+		sizes = []struct {
+			name string
+			size int64
+		}{
+			{"1GB", 1 * 1024 * 1024 * 1024},    // 1GB
+			{"5GB", 5 * 1024 * 1024 * 1024},    // 5GB
+			// {"10GB", 10 * 1024 * 1024 * 1024}, // 10GB - optional, requires disk space
+		}
+	}
+
+	for _, tc := range sizes {
+		t.Run(tc.name, func(t *testing.T) {
+			fileName := fmt.Sprintf("large_%s.dat", tc.name)
+			t.Logf("Creating %s test file...", tc.name)
+
+			// Create large file
+			largeFilePath := suite.CreateTestFile(fileName, tc.size)
+			originalChecksum := suite.Checksums[fileName]
+			t.Logf("Created %s file with checksum: %s", tc.name, originalChecksum)
+
+			// Memory monitoring
+			var maxMemory uint64
+			done := make(chan bool)
+			go func() {
+				ticker := time.NewTicker(100 * time.Millisecond)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-done:
+						return
+					case <-ticker.C:
+						var m runtime.MemStats
+						runtime.ReadMemStats(&m)
+						if m.Alloc > maxMemory {
+							maxMemory = m.Alloc
+						}
+					}
+				}
+			}()
+
+			// Full round-trip workflow
+			t.Logf("Creating archive...")
+			archivePath := suite.CreateArchive(suite.TestDataDir, "tar.zst")
+
+			t.Logf("Uploading to S3...")
+			s3Key := fmt.Sprintf("test-large-files/%s/archive.tar.zst", tc.name)
+			suite.UploadToS3(archivePath, s3Key)
+
+			t.Logf("Downloading from S3...")
+			downloadedPath := suite.DownloadFromS3(s3Key, fmt.Sprintf("downloaded-%s.tar.zst", tc.name))
+
+			t.Logf("Extracting archive...")
+			extractDir := suite.ExtractArchive(downloadedPath)
+
+			// Stop memory monitoring
+			close(done)
+
+			// Verify integrity
+			extractedPath := filepath.Join(extractDir, fileName)
+			require.True(t, suite.FileExists(extractedPath), "Extracted file should exist")
+
+			t.Logf("Verifying checksum...")
+			extractedChecksum := suite.CalculateChecksum(extractedPath)
+			require.Equal(t, originalChecksum, extractedChecksum,
+				"Checksum mismatch for %s file", tc.name)
+
+			// Verify memory efficiency
+			maxMemoryMB := maxMemory / (1024 * 1024)
+			t.Logf("✓ %s file verified - max memory: %d MB", tc.name, maxMemoryMB)
+
+			// Memory limit check (allow more generous limit for very large files)
+			memoryLimit := uint64(500)
+			if tc.size >= 5*1024*1024*1024 { // For 5GB+ files
+				memoryLimit = 1000 // 1GB limit for very large files
+			}
+			require.Less(t, maxMemoryMB, memoryLimit,
+				"Memory usage exceeded %dMB: actual %dMB", memoryLimit, maxMemoryMB)
+
+			// Cleanup large files to save disk space
+			os.Remove(largeFilePath)
+			os.Remove(archivePath)
+			os.Remove(downloadedPath)
+		})
+	}
+
+	t.Logf("✓ All large file tests completed successfully")
 }
