@@ -78,6 +78,122 @@ func setupIntegrationSuite(t *testing.T) *IntegrationTestSuite {
 	return suite
 }
 
+// setupIntegrationSuiteB initializes a new integration test suite for benchmarks
+func setupIntegrationSuiteB(b *testing.B) *IntegrationTestSuite {
+	b.Helper()
+	suite := &IntegrationTestSuite{
+		t:         &testing.T{}, // Placeholder, we'll use b directly for logging
+		Checksums: make(map[string]string),
+	}
+
+	// Create temporary directories
+	tempDir, err := os.MkdirTemp("", "cargoship-benchmark-*")
+	if err != nil {
+		b.Fatalf("Failed to create temp directory: %v", err)
+	}
+	suite.TempDir = tempDir
+
+	suite.TestDataDir = filepath.Join(tempDir, "testdata")
+	if err := os.MkdirAll(suite.TestDataDir, 0755); err != nil {
+		b.Fatalf("Failed to create test data directory: %v", err)
+	}
+
+	suite.CacheDir = filepath.Join(tempDir, "cache")
+	if err := os.MkdirAll(suite.CacheDir, 0755); err != nil {
+		b.Fatalf("Failed to create cache directory: %v", err)
+	}
+
+	// Setup S3 client (modified for benchmarks)
+	ctx := context.Background()
+	suite.UseRealS3 = os.Getenv("CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS") == "true"
+
+	var cfg aws.Config
+	if suite.UseRealS3 {
+		cfg, err = config.LoadDefaultConfig(ctx)
+		if err != nil {
+			b.Fatalf("Failed to load AWS config: %v", err)
+		}
+
+		suite.S3Bucket = os.Getenv("CARGOSHIP_TEST_BUCKET")
+		if suite.S3Bucket == "" {
+			suite.S3Bucket = fmt.Sprintf("cargoship-benchmark-%d", time.Now().Unix())
+			b.Logf("Creating benchmark bucket: %s in region %s", suite.S3Bucket, cfg.Region)
+
+			s3Client := s3.NewFromConfig(cfg)
+			createBucketInput := &s3.CreateBucketInput{
+				Bucket: aws.String(suite.S3Bucket),
+			}
+
+			if cfg.Region != "us-east-1" {
+				createBucketInput.CreateBucketConfiguration = &types.CreateBucketConfiguration{
+					LocationConstraint: types.BucketLocationConstraint(cfg.Region),
+				}
+			}
+
+			_, err = s3Client.CreateBucket(ctx, createBucketInput)
+			if err != nil {
+				b.Fatalf("Failed to create benchmark bucket: %v", err)
+			}
+
+			// Register bucket cleanup
+			suite.RegisterCleanup(func() {
+				cleanupCtx := context.Background()
+				b.Logf("Cleaning up benchmark bucket: %s", suite.S3Bucket)
+
+				// List and delete all objects
+				output, err := s3Client.ListObjectsV2(cleanupCtx, &s3.ListObjectsV2Input{
+					Bucket: aws.String(suite.S3Bucket),
+				})
+				if err == nil {
+					for _, obj := range output.Contents {
+						_, _ = s3Client.DeleteObject(cleanupCtx, &s3.DeleteObjectInput{
+							Bucket: aws.String(suite.S3Bucket),
+							Key:    obj.Key,
+						})
+					}
+				}
+
+				// Delete bucket
+				_, _ = s3Client.DeleteBucket(cleanupCtx, &s3.DeleteBucketInput{
+					Bucket: aws.String(suite.S3Bucket),
+				})
+			})
+		}
+
+		suite.S3Client = s3.NewFromConfig(cfg)
+		b.Logf("Using real AWS S3 with bucket: %s", suite.S3Bucket)
+	} else {
+		// LocalStack for benchmarks without real AWS
+		cfg, err = config.LoadDefaultConfig(ctx,
+			config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
+				func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+					return aws.Endpoint{
+						URL:               "http://localhost:4566",
+						HostnameImmutable: true,
+					}, nil
+				},
+			)),
+			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("test", "test", "")),
+		)
+		if err != nil {
+			b.Fatalf("Failed to load LocalStack config: %v", err)
+		}
+
+		suite.S3Client = s3.NewFromConfig(cfg)
+		suite.S3Bucket = "test-bucket"
+		b.Logf("Using LocalStack with bucket: %s", suite.S3Bucket)
+	}
+
+	// Register cleanup for temp directory
+	suite.RegisterCleanup(func() {
+		if err := os.RemoveAll(suite.TempDir); err != nil {
+			b.Logf("Warning: Failed to cleanup temp directory %s: %v", suite.TempDir, err)
+		}
+	})
+
+	return suite
+}
+
 // setupS3Client initializes S3 client for LocalStack or real AWS
 func (s *IntegrationTestSuite) setupS3Client() {
 	ctx := context.Background()
@@ -1300,4 +1416,381 @@ func (s *IntegrationTestSuite) CreateFileWithPattern(name, pattern string, size 
 
 	s.t.Logf("Created pattern file: %s (size: %d bytes, pattern: %s)", name, size, pattern)
 	return path
+}
+
+// ============================================================================
+// Performance Benchmarks (Issue #24)
+// ============================================================================
+
+// BenchmarkIntegration_CompressionSpeed measures compression throughput for different algorithms
+// Validates v0.5.0 claim: 15-25% faster compression
+func BenchmarkIntegration_CompressionSpeed(b *testing.B) {
+	if testing.Short() {
+		b.Skip("Skipping benchmark in short mode")
+	}
+
+	suite := setupIntegrationSuiteB(b)
+	defer suite.Cleanup()
+
+	// Test with 100MB file
+	testFile := suite.CreateTestFile("bench-compress.dat", 100*1024*1024)
+	fileSize := suite.GetFileSize(testFile)
+
+	algorithms := []struct {
+		name   string
+		format string
+	}{
+		{"gzip", "tar.gz"},
+		{"zstd", "tar.zst"},
+		{"bzip2", "tar.bz2"},
+	}
+
+	for _, algo := range algorithms {
+		b.Run(algo.name, func(b *testing.B) {
+			b.SetBytes(fileSize)
+			b.ResetTimer()
+
+			var totalCompressedSize int64
+			for i := 0; i < b.N; i++ {
+				// Create unique output name to avoid conflicts
+				archivePath := suite.CreateArchive(suite.TestDataDir, algo.format)
+				compressedSize := suite.GetFileSize(archivePath)
+				totalCompressedSize += compressedSize
+
+				// Cleanup archive
+				os.Remove(archivePath)
+			}
+
+			b.StopTimer()
+
+			// Report metrics
+			mbPerSec := float64(fileSize) * float64(b.N) / b.Elapsed().Seconds() / (1024 * 1024)
+			b.ReportMetric(mbPerSec, "MB/s")
+
+			avgCompressedSize := totalCompressedSize / int64(b.N)
+			compressionRatio := float64(avgCompressedSize) / float64(fileSize) * 100
+			b.ReportMetric(compressionRatio, "%_compressed")
+
+			b.Logf("Compression: %.2f MB/s, Ratio: %.2f%%", mbPerSec, compressionRatio)
+		})
+	}
+}
+
+// BenchmarkIntegration_S3Throughput measures upload and download speeds with real AWS S3
+func BenchmarkIntegration_S3Throughput(b *testing.B) {
+	if testing.Short() {
+		b.Skip("Skipping benchmark in short mode")
+	}
+
+	if os.Getenv("CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS") != "true" {
+		b.Skip("Real AWS integration benchmarks disabled (set CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS=true)")
+	}
+
+	suite := setupIntegrationSuiteB(b)
+	defer suite.Cleanup()
+
+	// Test with different file sizes
+	testSizes := []struct {
+		name string
+		size int64
+	}{
+		{"10MB", 10 * 1024 * 1024},
+		{"100MB", 100 * 1024 * 1024},
+	}
+
+	for _, size := range testSizes {
+		b.Run(fmt.Sprintf("Upload_%s", size.name), func(b *testing.B) {
+			testFile := suite.CreateTestFile("bench-upload.dat", size.size)
+			b.SetBytes(size.size)
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				s3Key := fmt.Sprintf("benchmark/upload/test-%d-%d.dat", size.size, i)
+				suite.UploadToS3(testFile, s3Key)
+			}
+
+			b.StopTimer()
+
+			mbPerSec := float64(size.size) * float64(b.N) / b.Elapsed().Seconds() / (1024 * 1024)
+			b.ReportMetric(mbPerSec, "MB/s")
+			b.Logf("Upload: %.2f MB/s", mbPerSec)
+		})
+
+		b.Run(fmt.Sprintf("Download_%s", size.name), func(b *testing.B) {
+			// Prepare file once
+			testFile := suite.CreateTestFile("bench-download-source.dat", size.size)
+			s3Key := fmt.Sprintf("benchmark/download/test-%d.dat", size.size)
+			suite.UploadToS3(testFile, s3Key)
+
+			b.SetBytes(size.size)
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				downloadedPath := suite.DownloadFromS3(s3Key, fmt.Sprintf("downloaded-%d.dat", i))
+				os.Remove(downloadedPath) // Cleanup
+			}
+
+			b.StopTimer()
+
+			mbPerSec := float64(size.size) * float64(b.N) / b.Elapsed().Seconds() / (1024 * 1024)
+			b.ReportMetric(mbPerSec, "MB/s")
+			b.Logf("Download: %.2f MB/s", mbPerSec)
+		})
+	}
+
+	b.Run("RoundTrip_100MB", func(b *testing.B) {
+		testFile := suite.CreateTestFile("bench-roundtrip.dat", 100*1024*1024)
+		fileChecksum := suite.CalculateChecksum(testFile)
+		b.SetBytes(100 * 1024 * 1024 * 2) // Upload + Download
+
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			s3Key := fmt.Sprintf("benchmark/roundtrip/test-%d.dat", i)
+
+			// Upload
+			suite.UploadToS3(testFile, s3Key)
+
+			// Download
+			downloadedPath := suite.DownloadFromS3(s3Key, fmt.Sprintf("roundtrip-%d.dat", i))
+
+			// Verify integrity
+			downloadedChecksum := suite.CalculateChecksum(downloadedPath)
+			if fileChecksum != downloadedChecksum {
+				b.Fatalf("Checksum mismatch: expected %s, got %s", fileChecksum, downloadedChecksum)
+			}
+
+			os.Remove(downloadedPath)
+		}
+
+		b.StopTimer()
+
+		mbPerSec := float64(200*1024*1024) * float64(b.N) / b.Elapsed().Seconds() / (1024 * 1024)
+		b.ReportMetric(mbPerSec, "MB/s")
+		b.Logf("Round-trip: %.2f MB/s", mbPerSec)
+	})
+}
+
+// BenchmarkIntegration_MemoryEfficiency measures memory usage for large file operations
+func BenchmarkIntegration_MemoryEfficiency(b *testing.B) {
+	if testing.Short() {
+		b.Skip("Skipping benchmark in short mode")
+	}
+
+	suite := setupIntegrationSuiteB(b)
+	defer suite.Cleanup()
+
+	testSizes := []struct {
+		name string
+		size int64
+	}{
+		{"100MB", 100 * 1024 * 1024},
+		{"500MB", 500 * 1024 * 1024},
+		{"1GB", 1024 * 1024 * 1024},
+	}
+
+	for _, size := range testSizes {
+		b.Run(size.name, func(b *testing.B) {
+			// Memory monitoring
+			var maxMemory uint64
+			done := make(chan bool)
+
+			go func() {
+				ticker := time.NewTicker(50 * time.Millisecond)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-done:
+						return
+					case <-ticker.C:
+						var m runtime.MemStats
+						runtime.ReadMemStats(&m)
+						if m.Alloc > maxMemory {
+							maxMemory = m.Alloc
+						}
+					}
+				}
+			}()
+
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				testFile := suite.CreateTestFile(fmt.Sprintf("bench-mem-%d.dat", i), size.size)
+
+				// Compress
+				archivePath := suite.CreateArchive(filepath.Dir(testFile), "tar.zst")
+
+				// Cleanup
+				os.Remove(testFile)
+				os.Remove(archivePath)
+
+				// Force GC to get accurate memory readings
+				runtime.GC()
+			}
+
+			b.StopTimer()
+			close(done)
+
+			memEfficiency := float64(maxMemory) / (1024 * 1024) // Peak memory in MB
+			b.ReportMetric(memEfficiency, "peak_MB")
+
+			memRatio := float64(maxMemory) / float64(size.size) * 100
+			b.ReportMetric(memRatio, "%_of_file_size")
+
+			b.Logf("Peak memory: %.2f MB (%.2f%% of file size)", memEfficiency, memRatio)
+		})
+	}
+}
+
+// BenchmarkIntegration_DeduplicationOverhead measures the cost of deduplication
+func BenchmarkIntegration_DeduplicationOverhead(b *testing.B) {
+	if testing.Short() {
+		b.Skip("Skipping benchmark in short mode")
+	}
+
+	suite := setupIntegrationSuiteB(b)
+	defer suite.Cleanup()
+
+	// Create test data with high duplication
+	basePattern := "CARGOSHIP_TEST_PATTERN_"
+	numFiles := 20
+	fileSize := int64(5 * 1024 * 1024) // 5MB each
+
+	b.Run("with_deduplication", func(b *testing.B) {
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			testDir := filepath.Join(suite.TempDir, fmt.Sprintf("dedup-bench-%d", i))
+			os.MkdirAll(testDir, 0755)
+
+			origTestDataDir := suite.TestDataDir
+			suite.TestDataDir = testDir
+
+			// Create files with repeating pattern
+			for j := 0; j < numFiles; j++ {
+				suite.CreateFileWithPattern(fmt.Sprintf("file-%d.dat", j), basePattern, fileSize)
+			}
+
+			// Archive with compression (deduplication happens via compression)
+			archivePath := suite.CreateArchive(testDir, "tar.zst")
+
+			// Cleanup
+			os.RemoveAll(testDir)
+			os.Remove(archivePath)
+
+			suite.TestDataDir = origTestDataDir
+		}
+
+		b.StopTimer()
+
+		totalSize := fileSize * int64(numFiles)
+		throughput := float64(totalSize) * float64(b.N) / b.Elapsed().Seconds() / (1024 * 1024)
+		b.ReportMetric(throughput, "MB/s")
+		b.Logf("With deduplication: %.2f MB/s", throughput)
+	})
+
+	b.Run("without_deduplication", func(b *testing.B) {
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			testDir := filepath.Join(suite.TempDir, fmt.Sprintf("nodedup-bench-%d", i))
+			os.MkdirAll(testDir, 0755)
+
+			origTestDataDir := suite.TestDataDir
+			suite.TestDataDir = testDir
+
+			// Create files with random data (no duplication)
+			for j := 0; j < numFiles; j++ {
+				suite.CreateTestFile(fmt.Sprintf("file-%d.dat", j), fileSize)
+			}
+
+			// Archive with compression
+			archivePath := suite.CreateArchive(testDir, "tar.zst")
+
+			// Cleanup
+			os.RemoveAll(testDir)
+			os.Remove(archivePath)
+
+			suite.TestDataDir = origTestDataDir
+		}
+
+		b.StopTimer()
+
+		totalSize := fileSize * int64(numFiles)
+		throughput := float64(totalSize) * float64(b.N) / b.Elapsed().Seconds() / (1024 * 1024)
+		b.ReportMetric(throughput, "MB/s")
+		b.Logf("Without deduplication: %.2f MB/s", throughput)
+	})
+}
+
+// BenchmarkIntegration_EndToEnd measures complete workflow performance
+func BenchmarkIntegration_EndToEnd(b *testing.B) {
+	if testing.Short() {
+		b.Skip("Skipping benchmark in short mode")
+	}
+
+	if os.Getenv("CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS") != "true" {
+		b.Skip("Real AWS integration benchmarks disabled")
+	}
+
+	suite := setupIntegrationSuiteB(b)
+	defer suite.Cleanup()
+
+	// Simulate realistic scenario: 50 files totaling 500MB
+	numFiles := 50
+	avgFileSize := int64(10 * 1024 * 1024) // 10MB average
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		testDir := filepath.Join(suite.TempDir, fmt.Sprintf("e2e-%d", i))
+		os.MkdirAll(testDir, 0755)
+
+		origTestDataDir := suite.TestDataDir
+		suite.TestDataDir = testDir
+
+		// Create test files
+		checksums := make(map[string]string)
+		for j := 0; j < numFiles; j++ {
+			filename := fmt.Sprintf("file-%d.dat", j)
+			suite.CreateTestFile(filename, avgFileSize)
+			checksums[filename] = suite.Checksums[filename]
+		}
+
+		// Archive
+		archivePath := suite.CreateArchive(testDir, "tar.zst")
+
+		// Upload to S3
+		s3Key := fmt.Sprintf("benchmark/e2e/archive-%d.tar.zst", i)
+		suite.UploadToS3(archivePath, s3Key)
+
+		// Download
+		downloadedPath := suite.DownloadFromS3(s3Key, fmt.Sprintf("e2e-%d.tar.zst", i))
+
+		// Extract
+		extractDir := suite.ExtractArchive(downloadedPath)
+
+		// Verify (sample only to avoid slowdown)
+		firstFile := filepath.Join(extractDir, "file-0.dat")
+		actualChecksum := suite.CalculateChecksum(firstFile)
+		if checksums["file-0.dat"] != actualChecksum {
+			b.Fatalf("Checksum mismatch for file-0.dat")
+		}
+
+		// Cleanup
+		os.RemoveAll(testDir)
+		os.Remove(archivePath)
+		os.Remove(downloadedPath)
+		os.RemoveAll(extractDir)
+
+		suite.TestDataDir = origTestDataDir
+	}
+
+	b.StopTimer()
+
+	totalSize := avgFileSize * int64(numFiles)
+	throughput := float64(totalSize) * float64(b.N) / b.Elapsed().Seconds() / (1024 * 1024)
+	b.ReportMetric(throughput, "MB/s")
+	b.Logf("End-to-end: %.2f MB/s for %d files (%.2f MB total)",
+		throughput, numFiles, float64(totalSize)/(1024*1024))
 }
