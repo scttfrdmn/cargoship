@@ -2157,3 +2157,434 @@ func TestIntegration_DiskSpaceHandling(t *testing.T) {
 	t.Logf("✓ Disk space handling verified (can create %.2f MB files with %.2f GB available)",
 		float64(testSize)/(1024*1024), float64(availableMB)/1024)
 }
+
+// ==============================================================================
+// Large-Scale Scenario Tests (Issue #25)
+// ==============================================================================
+
+// TestIntegration_LargeDirectoryTree tests handling of 10,000 files
+// Tests capacity limits and ensures performance remains acceptable at scale
+func TestIntegration_LargeDirectoryTree(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping large-scale test in short mode")
+	}
+
+	suite := setupIntegrationSuite(t)
+	defer suite.Cleanup()
+
+	const (
+		numFiles   = 10000
+		filesPerDir = 100
+		fileSize   = 10 * 1024 // 10KB per file (100MB total)
+	)
+
+	t.Logf("Creating directory tree with %d files...", numFiles)
+	startTime := time.Now()
+
+	// Create directory structure: root/dir_0..99/file_0..99.dat
+	treeDir := filepath.Join(suite.TempDir, "large-tree")
+	err := os.MkdirAll(treeDir, 0755)
+	require.NoError(t, err)
+
+	numDirs := numFiles / filesPerDir
+	for dirIdx := 0; dirIdx < numDirs; dirIdx++ {
+		dirPath := filepath.Join(treeDir, fmt.Sprintf("dir_%03d", dirIdx))
+		err := os.MkdirAll(dirPath, 0755)
+		require.NoError(t, err)
+
+		for fileIdx := 0; fileIdx < filesPerDir; fileIdx++ {
+			filePath := filepath.Join(dirPath, fmt.Sprintf("file_%04d.dat", fileIdx))
+
+			// Create file with random content
+			data := make([]byte, fileSize)
+			_, err := rand.Read(data)
+			require.NoError(t, err)
+
+			err = os.WriteFile(filePath, data, 0644)
+			require.NoError(t, err)
+		}
+
+		// Progress logging every 10 directories
+		if (dirIdx+1)%10 == 0 {
+			elapsed := time.Since(startTime)
+			filesCreated := (dirIdx + 1) * filesPerDir
+			rate := float64(filesCreated) / elapsed.Seconds()
+			t.Logf("Created %d/%d files (%.0f files/sec)", filesCreated, numFiles, rate)
+		}
+	}
+
+	creationTime := time.Since(startTime)
+	t.Logf("✓ Created %d files in %v (%.0f files/sec)",
+		numFiles, creationTime, float64(numFiles)/creationTime.Seconds())
+
+	// Create archive
+	t.Log("Creating archive from large directory tree...")
+	archiveStart := time.Now()
+	archivePath := suite.CreateArchive(treeDir, "tar.zst")
+	archiveTime := time.Since(archiveStart)
+
+	archiveSize := suite.GetFileSize(archivePath)
+	compressionRatio := float64(archiveSize) / float64(numFiles*fileSize) * 100
+	throughput := float64(numFiles*fileSize) / archiveTime.Seconds() / (1024 * 1024)
+
+	t.Logf("✓ Archive created: %.2f MB (%.1f%% compression) in %v (%.2f MB/s)",
+		float64(archiveSize)/(1024*1024), compressionRatio, archiveTime, throughput)
+
+	// Upload to S3
+	t.Log("Uploading large archive to S3...")
+	uploadStart := time.Now()
+	s3Key := suite.UploadToS3(archivePath, "test/large/tree.tar.zst")
+	uploadTime := time.Since(uploadStart)
+	uploadThroughput := float64(archiveSize) / uploadTime.Seconds() / (1024 * 1024)
+
+	t.Logf("✓ Upload complete: %s (%.2f MB/s)", s3Key, uploadThroughput)
+
+	// Download and extract
+	t.Log("Downloading and extracting archive...")
+	downloadStart := time.Now()
+	downloadPath := suite.DownloadFromS3(s3Key, "downloaded-tree.tar.zst")
+
+	extractDir := suite.ExtractArchive(downloadPath)
+	downloadTime := time.Since(downloadStart)
+
+	t.Logf("✓ Download and extract complete in %v", downloadTime)
+
+	// Verify file count
+	var extractedFileCount int
+	err = filepath.Walk(extractDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info == nil {
+			return err
+		}
+		if !info.IsDir() {
+			extractedFileCount++
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, numFiles, extractedFileCount, "File count mismatch after extraction")
+
+	totalTime := time.Since(startTime)
+	t.Logf("✓ Large directory tree test complete: %d files in %v (%.2f min)",
+		numFiles, totalTime, totalTime.Minutes())
+
+	// Verify performance expectations
+	require.Less(t, totalTime.Minutes(), 20.0, "Total time should be under 20 minutes")
+	t.Logf("✓ Performance verified: completed in %.2f minutes (target: <20 min)", totalTime.Minutes())
+}
+
+// TestIntegration_DeepNesting tests handling of deeply nested directory structures
+// Tests path handling with 20+ directory levels
+func TestIntegration_DeepNesting(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping deep nesting test in short mode")
+	}
+
+	suite := setupIntegrationSuite(t)
+	defer suite.Cleanup()
+
+	const (
+		nestingDepth = 25
+		fileSize     = 1024 // 1KB
+	)
+
+	t.Logf("Creating deeply nested directory structure (depth: %d)...", nestingDepth)
+
+	// Create deeply nested path: root/level_01/level_02/.../level_25/deep_file.dat
+	currentPath := filepath.Join(suite.TempDir, "deep-nest")
+	err := os.MkdirAll(currentPath, 0755)
+	require.NoError(t, err)
+
+	for level := 1; level <= nestingDepth; level++ {
+		currentPath = filepath.Join(currentPath, fmt.Sprintf("level_%02d", level))
+		err := os.MkdirAll(currentPath, 0755)
+		require.NoError(t, err)
+	}
+
+	// Create file at deepest level
+	deepFilePath := filepath.Join(currentPath, "deep_file.dat")
+	data := make([]byte, fileSize)
+	_, err = rand.Read(data)
+	require.NoError(t, err)
+	err = os.WriteFile(deepFilePath, data, 0644)
+	require.NoError(t, err)
+
+	t.Logf("✓ Created file at nesting depth %d: %s", nestingDepth, deepFilePath)
+	t.Logf("Path length: %d characters", len(deepFilePath))
+
+	// Create archive
+	rootDir := filepath.Join(suite.TempDir, "deep-nest")
+	archivePath := suite.CreateArchive(rootDir, "tar.zst")
+	t.Logf("✓ Archive created: %s", filepath.Base(archivePath))
+
+	// Upload to S3
+	s3Key := suite.UploadToS3(archivePath, "test/deep/nested.tar.zst")
+	t.Logf("✓ Uploaded to S3: %s", s3Key)
+
+	// Download and extract
+	downloadPath := suite.DownloadFromS3(s3Key, "downloaded-deep.tar.zst")
+
+	extractDir := suite.ExtractArchive(downloadPath)
+
+	// Verify deep file exists
+	// Note: CreateArchive archives the contents, not the directory itself
+	extractedDeepPath := extractDir
+	for level := 1; level <= nestingDepth; level++ {
+		extractedDeepPath = filepath.Join(extractedDeepPath, fmt.Sprintf("level_%02d", level))
+	}
+	extractedDeepPath = filepath.Join(extractedDeepPath, "deep_file.dat")
+
+	require.FileExists(t, extractedDeepPath, "Deep file should exist after extraction")
+
+	extractedData, err := os.ReadFile(extractedDeepPath)
+	require.NoError(t, err)
+	require.Equal(t, data, extractedData, "Deep file content should match")
+
+	t.Logf("✓ Deep nesting verified: %d levels, file integrity confirmed", nestingDepth)
+}
+
+// TestIntegration_LongPaths tests handling of very long file paths (>200 characters)
+// Tests path length limits and proper handling across different filesystems
+func TestIntegration_LongPaths(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping long path test in short mode")
+	}
+
+	suite := setupIntegrationSuite(t)
+	defer suite.Cleanup()
+
+	// Create path components that result in >200 character path
+	longDirName := "very_long_directory_name_with_many_characters_to_test_path_limits_abcdefghijklmnopqrstuvwxyz"
+	longFileName := "extremely_long_filename_with_lots_of_characters_to_verify_path_handling_0123456789_abcdefghijklmnopqrstuvwxyz.dat"
+
+	// Build long path
+	longPathDir := filepath.Join(suite.TempDir, "long-paths", longDirName, longDirName, longDirName)
+	err := os.MkdirAll(longPathDir, 0755)
+	require.NoError(t, err)
+
+	longFilePath := filepath.Join(longPathDir, longFileName)
+	pathLength := len(longFilePath)
+	t.Logf("Creating file with path length: %d characters", pathLength)
+	require.Greater(t, pathLength, 200, "Path should be longer than 200 characters")
+
+	// Create file
+	data := []byte("Content in a file with a very long path")
+	err = os.WriteFile(longFilePath, data, 0644)
+	require.NoError(t, err)
+
+	t.Logf("✓ Created file with long path (%d chars)", pathLength)
+
+	// Create archive
+	rootDir := filepath.Join(suite.TempDir, "long-paths")
+	archivePath := suite.CreateArchive(rootDir, "tar.zst")
+	t.Logf("✓ Archive created: %s", filepath.Base(archivePath))
+
+	// Upload to S3
+	s3Key := suite.UploadToS3(archivePath, "test/long/paths.tar.zst")
+	t.Logf("✓ Uploaded to S3: %s", s3Key)
+
+	// Download and extract
+	downloadPath := suite.DownloadFromS3(s3Key, "downloaded-long.tar.zst")
+
+	extractDir := suite.ExtractArchive(downloadPath)
+
+	// Verify long path file exists
+	// Note: CreateArchive archives the contents, not the directory itself
+	extractedLongPath := filepath.Join(extractDir, longDirName, longDirName, longDirName, longFileName)
+	require.FileExists(t, extractedLongPath, "Long path file should exist after extraction")
+
+	extractedData, err := os.ReadFile(extractedLongPath)
+	require.NoError(t, err)
+	require.Equal(t, data, extractedData, "Long path file content should match")
+
+	t.Logf("✓ Long path verified: %d characters, file integrity confirmed", len(extractedLongPath))
+}
+
+// TestIntegration_SpecialCharacters tests handling of special characters in filenames
+// Tests Unicode, spaces, and various special characters
+func TestIntegration_SpecialCharacters(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping special characters test in short mode")
+	}
+
+	suite := setupIntegrationSuite(t)
+	defer suite.Cleanup()
+
+	// Test various special characters in filenames
+	specialFiles := []struct {
+		name        string
+		filename    string
+		description string
+	}{
+		{"spaces", "file with spaces.dat", "spaces"},
+		{"unicode", "文件_файл_αρχείο.dat", "Unicode (Chinese, Russian, Greek)"},
+		{"emoji", "test_🚀_🎉_✅.dat", "emoji"},
+		{"punctuation", "file!@#$%^&()_+-=[]{},.dat", "punctuation"},
+		{"dots", "file.with.many.dots.in.name.dat", "multiple dots"},
+		{"hyphen", "file-with-many-hyphens-here.dat", "hyphens"},
+		{"underscore", "file_with_many_underscores_here.dat", "underscores"},
+	}
+
+	specialDir := filepath.Join(suite.TempDir, "special-chars")
+	err := os.MkdirAll(specialDir, 0755)
+	require.NoError(t, err)
+
+	createdFiles := make(map[string][]byte)
+
+	for _, sf := range specialFiles {
+		filePath := filepath.Join(specialDir, sf.filename)
+		data := []byte(fmt.Sprintf("Content for %s file", sf.description))
+
+		err := os.WriteFile(filePath, data, 0644)
+		require.NoError(t, err, "Failed to create file with %s", sf.description)
+
+		createdFiles[sf.filename] = data
+		t.Logf("✓ Created file with %s: %s", sf.description, sf.filename)
+	}
+
+	t.Logf("✓ Created %d files with special characters", len(specialFiles))
+
+	// Create archive
+	archivePath := suite.CreateArchive(specialDir, "tar.zst")
+	t.Logf("✓ Archive created: %s", filepath.Base(archivePath))
+
+	// Upload to S3
+	s3Key := suite.UploadToS3(archivePath, "test/special/chars.tar.zst")
+	t.Logf("✓ Uploaded to S3: %s", s3Key)
+
+	// Download and extract
+	downloadPath := suite.DownloadFromS3(s3Key, "downloaded-special.tar.zst")
+
+	extractDir := suite.ExtractArchive(downloadPath)
+
+	// Verify all special character files exist and have correct content
+	// Note: CreateArchive archives the contents, not the directory itself
+	extractedDir := extractDir
+	for filename, expectedData := range createdFiles {
+		extractedPath := filepath.Join(extractedDir, filename)
+		require.FileExists(t, extractedPath, "Special character file should exist: %s", filename)
+
+		actualData, err := os.ReadFile(extractedPath)
+		require.NoError(t, err, "Failed to read extracted file: %s", filename)
+		require.Equal(t, expectedData, actualData, "Content mismatch for file: %s", filename)
+	}
+
+	t.Logf("✓ Special characters verified: %d files, all content confirmed", len(specialFiles))
+}
+
+// TestIntegration_MixedFileSizes tests handling of mixed file size distribution
+// Tests realistic workload with various file sizes (1KB to 100MB)
+func TestIntegration_MixedFileSizes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping mixed file sizes test in short mode")
+	}
+
+	suite := setupIntegrationSuite(t)
+	defer suite.Cleanup()
+
+	// Realistic file size distribution
+	fileSizes := []struct {
+		name  string
+		size  int64
+		count int
+	}{
+		{"tiny", 1 * 1024, 100},               // 100 x 1KB = 100KB
+		{"small", 10 * 1024, 50},              // 50 x 10KB = 500KB
+		{"medium", 100 * 1024, 20},            // 20 x 100KB = 2MB
+		{"large", 1024 * 1024, 10},            // 10 x 1MB = 10MB
+		{"xlarge", 10 * 1024 * 1024, 3},       // 3 x 10MB = 30MB
+		{"huge", 50 * 1024 * 1024, 1},         // 1 x 50MB = 50MB
+	}
+
+	mixedDir := filepath.Join(suite.TempDir, "mixed-sizes")
+	err := os.MkdirAll(mixedDir, 0755)
+	require.NoError(t, err)
+
+	t.Log("Creating files with mixed size distribution...")
+	startTime := time.Now()
+
+	var totalFiles int
+	var totalBytes int64
+
+	for _, fs := range fileSizes {
+		categoryDir := filepath.Join(mixedDir, fs.name)
+		err := os.MkdirAll(categoryDir, 0755)
+		require.NoError(t, err)
+
+		for i := 0; i < fs.count; i++ {
+			filePath := filepath.Join(categoryDir, fmt.Sprintf("file_%03d.dat", i))
+
+			// Create file with random content
+			data := make([]byte, fs.size)
+			_, err := rand.Read(data)
+			require.NoError(t, err)
+
+			err = os.WriteFile(filePath, data, 0644)
+			require.NoError(t, err)
+
+			totalFiles++
+			totalBytes += fs.size
+		}
+
+		t.Logf("✓ Created %d %s files (%s each)",
+			fs.count, fs.name, formatBytes(fs.size))
+	}
+
+	creationTime := time.Since(startTime)
+	t.Logf("✓ Created %d files (%.2f MB total) in %v",
+		totalFiles, float64(totalBytes)/(1024*1024), creationTime)
+
+	// Create archive
+	t.Log("Creating archive from mixed size files...")
+	archiveStart := time.Now()
+	archivePath := suite.CreateArchive(mixedDir, "tar.zst")
+	archiveTime := time.Since(archiveStart)
+
+	archiveSize := suite.GetFileSize(archivePath)
+	compressionRatio := float64(archiveSize) / float64(totalBytes) * 100
+	throughput := float64(totalBytes) / archiveTime.Seconds() / (1024 * 1024)
+
+	t.Logf("✓ Archive created: %.2f MB (%.1f%% compression) in %v (%.2f MB/s)",
+		float64(archiveSize)/(1024*1024), compressionRatio, archiveTime, throughput)
+
+	// Upload to S3
+	t.Log("Uploading mixed size archive to S3...")
+	uploadStart := time.Now()
+	s3Key := suite.UploadToS3(archivePath, "test/mixed/sizes.tar.zst")
+	uploadTime := time.Since(uploadStart)
+	uploadThroughput := float64(archiveSize) / uploadTime.Seconds() / (1024 * 1024)
+
+	t.Logf("✓ Upload complete: %s (%.2f MB/s)", s3Key, uploadThroughput)
+
+	// Download and extract
+	t.Log("Downloading and extracting archive...")
+	downloadStart := time.Now()
+	downloadPath := suite.DownloadFromS3(s3Key, "downloaded-mixed.tar.zst")
+
+	extractDir := suite.ExtractArchive(downloadPath)
+	downloadTime := time.Since(downloadStart)
+
+	t.Logf("✓ Download and extract complete in %v", downloadTime)
+
+	// Verify file count and sizes
+	// Note: CreateArchive archives the contents, not the directory itself
+	extractedDir := extractDir
+	for _, fs := range fileSizes {
+		categoryDir := filepath.Join(extractedDir, fs.name)
+
+		files, err := os.ReadDir(categoryDir)
+		require.NoError(t, err)
+		require.Equal(t, fs.count, len(files), "File count mismatch for %s category", fs.name)
+
+		// Verify each file size
+		for _, file := range files {
+			filePath := filepath.Join(categoryDir, file.Name())
+			info, err := os.Stat(filePath)
+			require.NoError(t, err)
+			require.Equal(t, fs.size, info.Size(), "File size mismatch for %s", file.Name())
+		}
+	}
+
+	totalTime := time.Since(startTime)
+	t.Logf("✓ Mixed file sizes test complete: %d files (%.2f MB) in %v",
+		totalFiles, float64(totalBytes)/(1024*1024), totalTime)
+}
