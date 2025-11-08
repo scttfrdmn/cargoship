@@ -399,6 +399,9 @@ func TestFailoverRecoveryScenarios(t *testing.T) {
 
 // TestFailoverPerformanceImpact tests the performance impact of failover operations
 func TestFailoverPerformanceImpact(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping performance impact test in short mode (takes 5s)")
+	}
 	t.Run("FailoverLatencyMeasurement", func(t *testing.T) {
 		config := createValidMultiRegionConfig()
 		config.Failover.FailoverTimeout = 5 * time.Second
@@ -459,6 +462,9 @@ func TestFailoverPerformanceImpact(t *testing.T) {
 
 // TestFailoverEdgeCasesAndErrorConditions tests edge cases and error conditions
 func TestFailoverEdgeCasesAndErrorConditions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping edge cases test in short mode (takes 5s)")
+	}
 	t.Run("InvalidRegionNames", func(t *testing.T) {
 		config := createValidMultiRegionConfig()
 		logger := log.New(nil)

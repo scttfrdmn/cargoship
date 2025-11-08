@@ -1021,6 +1021,9 @@ func TestFailoverScenarios_TimeoutHandling(t *testing.T) {
 }
 
 func TestFailoverScenarios_RealWorldPatterns(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping real-world patterns test in short mode (takes 7s)")
+	}
 	t.Run("network partition simulation", func(t *testing.T) {
 		config := createValidMultiRegionConfig()
 		config.Failover.RetryAttempts = 3

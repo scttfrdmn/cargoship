@@ -534,6 +534,9 @@ func TestFailoverErrorHandlingIntegration(t *testing.T) {
 
 // TestFailoverConfigurationScenarios tests various configuration scenarios
 func TestFailoverConfigurationScenarios(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping configuration scenarios test in short mode (takes 4s)")
+	}
 	t.Run("DifferentFailoverStrategies", func(t *testing.T) {
 		strategies := []FailoverStrategy{
 			FailoverImmediate,

@@ -1,5 +1,4 @@
 //go:build linux
-// +build linux
 
 /*
 Package ioutils provides Linux-specific splice() syscall optimizations for zero-copy I/O.

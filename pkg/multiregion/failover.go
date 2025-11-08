@@ -186,6 +186,7 @@ func (f *DefaultFailoverManager) ExecuteFailover(ctx context.Context, fromRegion
 	// Create failover operation
 	operationID := fmt.Sprintf("failover-%s-%s-%d", fromRegion, toRegion, time.Now().Unix())
 	operationCtx, cancel := context.WithTimeout(ctx, f.config.Failover.FailoverTimeout)
+	defer cancel() // Always cleanup context timer, even on early returns
 
 	operation := &FailoverOperation{
 		ID:         operationID,
@@ -201,6 +202,13 @@ func (f *DefaultFailoverManager) ExecuteFailover(ctx context.Context, fromRegion
 	f.failoverMutex.Lock()
 	f.activeFailovers[operationID] = operation
 	f.failoverMutex.Unlock()
+
+	// Cleanup active failover on function exit
+	defer func() {
+		f.failoverMutex.Lock()
+		delete(f.activeFailovers, operationID)
+		f.failoverMutex.Unlock()
+	}()
 
 	f.logger.Info("Initiating failover",
 		"operation_id", operationID,
@@ -227,14 +235,6 @@ func (f *DefaultFailoverManager) ExecuteFailover(ctx context.Context, fromRegion
 		f.failoverStatus[fromRegion] = toRegion
 	}
 	f.mu.Unlock()
-
-	// Cleanup
-	defer func() {
-		cancel()
-		f.failoverMutex.Lock()
-		delete(f.activeFailovers, operationID)
-		f.failoverMutex.Unlock()
-	}()
 
 	if err != nil {
 		f.logger.Error("Failover failed",

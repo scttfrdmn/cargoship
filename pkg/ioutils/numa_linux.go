@@ -1,5 +1,4 @@
 //go:build linux
-// +build linux
 
 /*
 Package ioutils provides NUMA-aware buffer allocation for Linux systems.

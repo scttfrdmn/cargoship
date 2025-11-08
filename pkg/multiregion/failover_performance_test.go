@@ -143,6 +143,9 @@ func BenchmarkCoordinatorFailoverIntegration(b *testing.B) {
 
 // TestFailoverPerformanceUnderLoad tests failover performance under various load conditions
 func TestFailoverPerformanceUnderLoad(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping performance under load test in short mode (takes 8s)")
+	}
 	t.Run("HighFrequencyFailureDetection", func(t *testing.T) {
 		config := createValidMultiRegionConfig()
 		logger := log.New(nil)
@@ -256,6 +259,9 @@ func TestFailoverPerformanceUnderLoad(t *testing.T) {
 
 // TestFailoverLatencyCharacteristics tests latency characteristics of different failover types
 func TestFailoverLatencyCharacteristics(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping latency characteristics test in short mode (takes 18s)")
+	}
 	t.Run("FailoverLatencyComparison", func(t *testing.T) {
 		config := createValidMultiRegionConfig()
 		config.Failover.FailoverTimeout = 5 * time.Second
@@ -418,6 +424,9 @@ func TestFailoverScalability(t *testing.T) {
 
 // TestFailoverResourceUsage tests resource usage patterns
 func TestFailoverResourceUsage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping resource usage test in short mode (takes 17s)")
+	}
 	t.Run("GoroutineLeakPrevention", func(t *testing.T) {
 		config := createValidMultiRegionConfig()
 		config.Failover.Strategy = FailoverGraceful
@@ -456,6 +465,9 @@ func TestFailoverResourceUsage(t *testing.T) {
 
 // TestFailoverReliabilityUnderStress tests system reliability under stress
 func TestFailoverReliabilityUnderStress(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping stress test in short mode (takes 5s)")
+	}
 	t.Run("ExtendedStressTest", func(t *testing.T) {
 		config := createValidMultiRegionConfig()
 		config.Failover.FailoverTimeout = 2 * time.Second

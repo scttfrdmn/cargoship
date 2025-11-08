@@ -1,5 +1,4 @@
 //go:build !linux
-// +build !linux
 
 /*
 Package ioutils provides fallback implementations for non-Linux platforms.
