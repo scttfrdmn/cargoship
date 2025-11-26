@@ -67,8 +67,8 @@ ONLY create documents in `docs/` for:
 ### Version: v0.5.1 (Branch: main) - ✅ COMPLETED (2025-11-08)
 
 ### Active Development Branches
-- **main**: v0.5.1 - Integration testing framework (current)
-- **feature/phase3-multi-prefix-s3**: Phase 3 optimization work (47 commits) - See "Phase 3 Development Track" below
+- **main**: v0.5.1 + Phase 3 Pipeline - Streaming architecture with chunking engine (current)
+- **feature/phase3-multi-prefix-s3**: Can be archived - code merged to main (Commit 4b1d7c5)
 
 ### Version: v0.5.1 Release (2025-11-08) - Integration Testing Framework ✅ COMPLETE
 **Focus: Comprehensive integration testing with real AWS S3 validation**
@@ -676,24 +676,28 @@ ONLY create documents in `docs/` for:
 - **Phase 3 Work**: Preserved in feature branch, ready for PR/merge decision
 - **Documentation**: `/tmp/session-continuation-repository-sync.md`
 
-**📦 Phase 3 Development Track (In Feature Branch):**
-- **Branch**: `feature/phase3-multi-prefix-s3` (47 commits, pushed to origin)
-- **Status**: Implementation complete, benchmarked, documented
-- **Implementation** (Commit 4ff5aca):
-  - Multi-prefix S3 distribution with upload-ID based sharding
-  - S3 key structure: `uploads/{upload-id}/shard-{shard_id}/chunk-{chunk_id}.tar.zst`
-  - Even distribution via modulo operation across 8 shards
-  - 8× theoretical S3 request rate capacity (44,000 req/sec)
-- **Benchmark Results**:
-  - Small files (10k @ 176MB): 0.43-1.88s (23-41× faster than target) ✅ EXCEPTIONAL
-  - Large files (100 @ 56GB): 311-313s (30% over 240s target) ⚠️ S3 bottleneck identified
+**✅ Phase 3 Merged to Main (2025-11-26):**
+- **Merge**: Manual code migration from `feature/phase3-multi-prefix-s3` (Commit 4b1d7c5)
+- **Status**: ✅ COMPLETE - Now in main branch
+- **New Packages Added to Main**:
+  - `pkg/chunking/` - Intelligent chunking engine (5 files, 72.9% coverage)
+  - `pkg/pipeline/` - Streaming pipeline architecture (11 files, 62.8% coverage)
+  - 16 files total (+5,577 lines of code)
+- **Architecture** (Issue #63):
+  - Scanner → Chunker → Archiver → S3 Uploader streaming pipeline
+  - Zero local disk usage (io.Pipe streaming)
+  - Bounded memory: O(chunk_size × workers) prevents OOM
+  - Multi-prefix S3 sharding (8× request rate capacity)
+- **Benchmark Results** (Real AWS S3):
+  - Small files (10k @ 176MB): 0.43-1.88s (23-41× faster) ✅ EXCEPTIONAL (A+)
+  - Large files (100 @ 56GB): 311-313s (30% over target) ⚠️ NEEDS PHASE 4 (B+)
   - Memory: 3.4-4.9 GB (6-8% of data size) ✅ EXCELLENT SCALING
-  - **Root Cause**: S3 upload takes 20m 43s (398% of total time) - sequential uploads
-- **GitHub Issues Created**:
-  - **Issue #64** (P0-Critical): Phase 4 - Parallel S3 Upload Workers
-  - **Issue #65** (P2-Low): Goroutine leak in benchmark with CPU profiling
-- **Grade**: B+ (85/100) - Solid foundation, Phase 4 needed for full optimization
-- **Next Step**: Create PR or continue development on feature branch
+  - **Bottleneck**: S3 upload 20m43s (sequential) - Phase 4 will add parallel uploads
+- **Test Coverage**: 19/19 integration tests passing, all complete in <2s
+- **Known Issues**:
+  - **Issue #64** (P0-Critical): Phase 4 - Parallel S3 Upload Workers needed
+  - **Issue #65** (P2-Low): Goroutine leak with CPU profiling only
+- **Branch Status**: `feature/phase3-multi-prefix-s3` can be archived (code now in main)
 
 **📋 Technical Debt for v0.6.0:**
 - Issue #14: Add Shutdown() calls to all coordinator-creating tests (medium priority)
@@ -704,9 +708,11 @@ ONLY create documents in `docs/` for:
 - Issue #65: Goroutine leak cleanup (low priority) - **IN FEATURE BRANCH**
 
 **🔄 Next Steps:**
-1. **Decision Required**: Merge feature/phase3-multi-prefix-s3 or continue separate development
-2. **Phase 4 Implementation** (Issue #64): 4-8 concurrent S3 upload workers
-3. **Target**: Reduce large files time from 311s to ≤240s (30% improvement)
+1. **Phase 4 Implementation** (Issue #64): Add 4-8 concurrent S3 upload workers
+   - Target: Reduce large files time from 311s to ≤240s (30% improvement)
+   - Expected: 4-8× S3 upload speedup through parallelization
+2. **CLI Integration**: Wire pipeline to CLI (replace rclone with pipeline)
+3. **Feature Branch Cleanup**: Archive `feature/phase3-multi-prefix-s3` (code merged to main)
 
 ## 🎯 Strategic Development Priorities (Updated for Follow-On Releases)
 
