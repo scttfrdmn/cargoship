@@ -16,7 +16,7 @@ import (
 
 // S3UploaderConfig configures the real S3 uploader stage
 type S3UploaderConfig struct {
-	Workers         int           // Number of concurrent upload workers
+	Workers         int           // Number of concurrent upload workers (default: 8, matches shard count)
 	PartSize        int64         // S3 multipart part size (default: 64MB)
 	MaxRetries      int           // Maximum upload retry attempts
 	RetryDelay      time.Duration // Delay between retries
@@ -60,7 +60,7 @@ func NewS3UploaderStage(config *S3UploaderConfig, input <-chan *Job, output chan
 		return nil, fmt.Errorf("bucket cannot be empty")
 	}
 	if config.Workers <= 0 {
-		config.Workers = 4
+		config.Workers = 8 // Default to 8 workers to match shard count (Phase 4)
 	}
 	if config.PartSize <= 0 {
 		config.PartSize = 64 * 1024 * 1024 // 64MB default
