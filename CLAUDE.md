@@ -655,6 +655,13 @@ ONLY create documents in `docs/` for:
 - **Production-Ready**: All reliability scenarios validated, zero linting issues
 - Release URL: https://github.com/scttfrdmn/cargoship/releases/tag/v0.5.1
 
+**✅ Security Fix (2025-11-26):**
+- **Issue #66** - ✅ RESOLVED (Commit 56b71bc)
+  - Updated golang.org/x/crypto from v0.39.0 to v0.43.0
+  - Fixed GO-2025-4116 vulnerability in ssh/agent
+  - Zero vulnerabilities in code paths used by CargoShip
+  - Also updated x/net, x/sync, x/sys, x/term, x/text, x/tools to latest versions
+
 **🔀 Repository Synchronization (2025-11-26):**
 - **Issue**: Remote main was force-pushed with v0.5.1 work, diverging from local Phase 3 optimization work
 - **Resolution**: Created `feature/phase3-multi-prefix-s3` branch to preserve 47 commits of Phase 3 work
@@ -688,6 +695,7 @@ ONLY create documents in `docs/` for:
 - Issue #17: Fix TestFailoverScenarios_CrossRegionRetry timeout (medium priority)
 - Issue #64: Phase 4 - Parallel S3 Upload Workers (critical priority) - **IN FEATURE BRANCH**
 - Issue #65: Goroutine leak cleanup (low priority) - **IN FEATURE BRANCH**
+- Issue #67: Flaky test: TestTransporter_SendMethods_Signature timeout (medium priority)
 
 **🔄 Next Steps:**
 1. **Decision Required**: Merge feature/phase3-multi-prefix-s3 or continue separate development
