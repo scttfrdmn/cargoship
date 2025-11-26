@@ -1,0 +1,283 @@
+package pipeline
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/scttfrdmn/cargoship/pkg/chunking"
+)
+
+// ScannerStage discovers files and creates chunks
+type ScannerStage struct {
+	config  *ScannerConfig
+	output  chan<- *Job
+	pool    *WorkerPool
+	ctx     context.Context
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
+	mu      sync.RWMutex
+	stats   StageStats
+	strategy chunking.ChunkingStrategy
+
+	// Atomic counters
+	jobsProcessed  int64
+	bytesProcessed int64
+
+	// Error from run() method
+	runError error
+}
+
+// NewScannerStage creates a new scanner stage
+func NewScannerStage(config *ScannerConfig, output chan<- *Job) (*ScannerStage, error) {
+	if config == nil {
+		return nil, fmt.Errorf("scanner config cannot be nil")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Create chunking strategy
+	chunkingConfig := &chunking.ChunkingConfig{
+		Workers:           8,
+		AvailableMemory:   4 * 1024 * 1024 * 1024, // 4GB
+		GroupingStrategy:  "mixed",
+		CostSavingsTarget: 1000,
+	}
+	strategy := chunking.NewAdaptiveChunkingStrategy(chunkingConfig)
+
+	return &ScannerStage{
+		config:   config,
+		output:   output,
+		pool:     NewWorkerPool(ctx, config.Workers),
+		ctx:      ctx,
+		cancel:   cancel,
+		strategy: strategy,
+		stats: StageStats{
+			Name: "scanner",
+		},
+	}, nil
+}
+
+// Name returns the stage name
+func (s *ScannerStage) Name() string {
+	return "scanner"
+}
+
+// Start starts the scanner stage
+func (s *ScannerStage) Start(ctx context.Context) error {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		if err := s.run(ctx); err != nil {
+			// Store error for pipeline to check
+			s.mu.Lock()
+			s.runError = err
+			s.mu.Unlock()
+		}
+	}()
+	return nil
+}
+
+// Stop stops the scanner stage
+func (s *ScannerStage) Stop() error {
+	s.cancel()
+	s.pool.Stop()
+	s.wg.Wait()
+	return nil
+}
+
+// Process is not used for scanner (it's the source stage)
+func (s *ScannerStage) Process(ctx context.Context, job *Job) error {
+	return fmt.Errorf("scanner is a source stage and does not process jobs")
+}
+
+// Stats returns stage statistics
+func (s *ScannerStage) Stats() StageStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	stats := s.stats
+	stats.JobsProcessed = atomic.LoadInt64(&s.jobsProcessed)
+	stats.BytesProcessed = atomic.LoadInt64(&s.bytesProcessed)
+	stats.ActiveWorkers = s.pool.AvailableWorkers()
+
+	return stats
+}
+
+// run executes the scanner logic with streaming file discovery
+func (s *ScannerStage) run(ctx context.Context) error {
+	startTime := time.Now()
+	defer close(s.output) // Close output when done
+
+	// Stream files instead of loading all at once
+	fileChan, errChan := s.streamFiles(ctx, s.config.RootPath)
+
+	// Collect files in batches for chunking
+	var batch []chunking.File
+	var totalSize int64
+	const batchSize = 1000 // Process 1000 files at a time
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-errChan:
+			if err != nil {
+				return fmt.Errorf("failed to stream files: %w", err)
+			}
+		case file, ok := <-fileChan:
+			if !ok {
+				// Channel closed, process final batch
+				if len(batch) > 0 {
+					if err := s.processBatch(ctx, batch, totalSize); err != nil {
+						return err
+					}
+				}
+				goto done
+			}
+
+			batch = append(batch, file)
+			totalSize += file.Size
+
+			// Process batch when full
+			if len(batch) >= batchSize {
+				if err := s.processBatch(ctx, batch, totalSize); err != nil {
+					return err
+				}
+				batch = batch[:0] // Clear batch but keep capacity
+			}
+		}
+	}
+
+done:
+	s.mu.Lock()
+	s.stats.TotalTime = time.Since(startTime)
+	if s.stats.JobsProcessed > 0 {
+		s.stats.AverageTime = s.stats.TotalTime / time.Duration(s.stats.JobsProcessed)
+	}
+	s.mu.Unlock()
+
+	return nil
+}
+
+// shouldExclude checks if a path should be excluded
+func (s *ScannerStage) shouldExclude(path string) bool {
+	if len(s.config.ExcludePatterns) == 0 {
+		return false
+	}
+
+	for _, pattern := range s.config.ExcludePatterns {
+		matched, err := filepath.Match(pattern, filepath.Base(path))
+		if err == nil && matched {
+			return true
+		}
+	}
+
+	return false
+}
+
+// streamFiles streams files from the root path via a channel instead of loading all into memory
+func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan chunking.File, <-chan error) {
+	fileChan := make(chan chunking.File, 100) // Buffer for 100 files
+	errChan := make(chan error, 1)
+
+	go func() {
+		defer close(fileChan)
+		defer close(errChan)
+
+		err := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			// Check context cancellation
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			// Skip directories
+			if info.IsDir() {
+				return nil
+			}
+
+			// Skip symlinks if not following
+			if info.Mode()&os.ModeSymlink != 0 && !s.config.FollowSymlinks {
+				return nil
+			}
+
+			// Check exclude patterns
+			if s.shouldExclude(path) {
+				return nil
+			}
+
+			// Stream file to channel (no slice accumulation!)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case fileChan <- chunking.File{
+				Path:      path,
+				Size:      info.Size(),
+				ModTime:   info.ModTime(),
+				Directory: filepath.Dir(path),
+			}:
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			errChan <- err
+		}
+	}()
+
+	return fileChan, errChan
+}
+
+// processBatch processes a batch of files into chunks
+func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, totalSize int64) error {
+	// Calculate optimal chunk size for this batch
+	chunkSize, _ := s.strategy.CalculateOptimalChunkSize(
+		totalSize,
+		len(files),
+		4*1024*1024*1024, // 4GB
+		1000,             // 1000x cost savings
+	)
+
+	// Group batch into chunks
+	chunks, err := s.strategy.GroupFilesIntoChunks(files, chunkSize)
+	if err != nil {
+		return fmt.Errorf("failed to group files into chunks: %w", err)
+	}
+
+	// Send chunks to output
+	for i := range chunks {
+		chunk := chunks[i]
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case s.output <- &Job{
+			ID:        chunk.ID,
+			Chunk:     chunk,
+			StartTime: time.Now(),
+		}:
+			atomic.AddInt64(&s.jobsProcessed, 1)
+			atomic.AddInt64(&s.bytesProcessed, chunk.TotalSize)
+		}
+	}
+
+	return nil
+}
+
+// Error returns any error that occurred during scanning
+func (s *ScannerStage) Error() error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.runError
+}

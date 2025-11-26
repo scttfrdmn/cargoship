@@ -1,0 +1,399 @@
+package pipeline
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"runtime/debug"
+	"strconv"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+)
+
+func init() {
+	// Configure GC for optimal pipeline performance
+	// Default: GOGC=100 (GC runs when heap grows 100% from previous GC)
+	//
+	// For CargoShip pipeline:
+	// - Memory is dominated by AWS SDK (256MB), zstd (226MB), I/O (320MB) = 92% unavoidable
+	// - Setting GOGC=150 trades ~50-100MB more memory for 10-15% better throughput
+	// - Users can override with GOGC environment variable
+	//
+	// Override priority:
+	// 1. GOGC env var (user control)
+	// 2. GOMEMLIMIT env var (Go 1.19+, soft memory target)
+	// 3. Default: 150 (optimized for throughput)
+	if os.Getenv("GOGC") == "" && os.Getenv("GOMEMLIMIT") == "" {
+		// Only set if user hasn't specified their own tuning
+		debug.SetGCPercent(150)
+	}
+
+	// Respect user's GOGC setting if explicitly set to "off"
+	if gogc := os.Getenv("GOGC"); gogc == "off" {
+		debug.SetGCPercent(-1) // Disable automatic GC
+	} else if gogc != "" {
+		// User specified custom GOGC value
+		if val, err := strconv.Atoi(gogc); err == nil {
+			debug.SetGCPercent(val)
+		}
+	}
+}
+
+// NewPipeline creates a new streaming pipeline
+func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
+	if config == nil {
+		return nil, fmt.Errorf("pipeline config cannot be nil")
+	}
+
+	// Apply defaults
+	if config.ScannerWorkers == 0 {
+		config.ScannerWorkers = 4
+	}
+	if config.ArchiverWorkers == 0 {
+		config.ArchiverWorkers = 8
+	}
+	if config.UploaderWorkers == 0 {
+		config.UploaderWorkers = 4
+	}
+	if config.ChunkBufferSize == 0 {
+		config.ChunkBufferSize = 100
+	}
+	if config.ArchiveBufferSize == 0 {
+		config.ArchiveBufferSize = 100 // Increased from 50 for better parallelism
+	}
+	if config.ResultBufferSize == 0 {
+		config.ResultBufferSize = 200 // Increased from 100 for better flow
+	}
+	if config.ProgressInterval == 0 {
+		config.ProgressInterval = time.Second
+	}
+
+	// Multi-prefix optimization defaults (Phase 3)
+	if config.ShardCount == 0 {
+		config.ShardCount = 8 // Default: 8 shards for parallel S3 uploads
+	}
+	if config.UploadID == "" {
+		// Generate unique upload ID: {timestamp}-{random}
+		// Format: 20251126-a3f9c2d1
+		timestamp := time.Now().UTC().Format("20060102")
+		randomBytes := make([]byte, 4)
+		if _, err := rand.Read(randomBytes); err != nil {
+			return nil, fmt.Errorf("failed to generate upload ID: %w", err)
+		}
+		config.UploadID = fmt.Sprintf("%s-%s", timestamp, hex.EncodeToString(randomBytes))
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	p := &Pipeline{
+		ctx:    ctx,
+		cancel: cancel,
+		config: config,
+
+		// Create channels
+		chunkChan:   make(chan *Job, config.ChunkBufferSize),
+		archiveChan: make(chan *Job, config.ArchiveBufferSize),
+		resultChan:  make(chan *Job, config.ResultBufferSize),
+
+		// Progress tracking
+		progress: &ProgressTracker{
+			progress: Progress{
+				StartTime: time.Now(),
+			},
+		},
+
+		errors: []error{},
+	}
+
+	return p, nil
+}
+
+// Run executes the pipeline
+func (p *Pipeline) Run(ctx context.Context, rootPath string) (*Result, error) {
+	// Merge contexts
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Start progress tracking if enabled
+	if p.config.EnableProgress {
+		go p.trackProgress(ctx)
+	}
+
+	// Start all stages
+	if err := p.startStages(ctx, rootPath); err != nil {
+		return nil, fmt.Errorf("failed to start stages: %w", err)
+	}
+
+	// Wait for completion
+	result := p.waitForCompletion(ctx)
+
+	// Check for scanner errors
+	if scannerErr := p.scanner.Error(); scannerErr != nil {
+		result.Success = false
+		result.Errors = append(result.Errors, scannerErr)
+		return result, scannerErr
+	}
+
+	return result, nil
+}
+
+// startStages initializes and starts all pipeline stages
+func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
+	var err error
+
+	// Create scanner stage
+	scannerConfig := &ScannerConfig{
+		RootPath: rootPath,
+		Workers:  p.config.ScannerWorkers,
+	}
+	p.scanner, err = NewScannerStage(scannerConfig, p.chunkChan)
+	if err != nil {
+		return fmt.Errorf("failed to create scanner: %w", err)
+	}
+
+	// Create archiver stage
+	archiverConfig := &ArchiverConfig{
+		Workers:         p.config.ArchiverWorkers,
+		CompressionType: "zstd",
+		BufferSize:      64 * 1024, // 64KB
+		UploadID:        p.config.UploadID,
+		ShardCount:      p.config.ShardCount,
+	}
+	p.archiver, err = NewArchiverStage(archiverConfig, p.chunkChan, p.archiveChan)
+	if err != nil {
+		return fmt.Errorf("failed to create archiver: %w", err)
+	}
+
+	// Create uploader stage (real S3 or simulated)
+	if p.config.UseRealS3 {
+		// Use real AWS S3 uploader
+		if p.config.S3Client == nil {
+			return fmt.Errorf("S3Client required when UseRealS3 is true")
+		}
+
+		s3Config := &S3UploaderConfig{
+			Workers:    p.config.UploaderWorkers,
+			PartSize:   p.config.S3PartSize,
+			MaxRetries: 3,
+			RetryDelay: time.Second,
+			S3Client:   p.config.S3Client.(*s3.Client),
+			Bucket:     p.config.S3Bucket,
+			Prefix:     p.config.S3Prefix,
+		}
+
+		if p.config.S3PartSize == 0 {
+			s3Config.PartSize = 64 * 1024 * 1024 // 64MB default
+		}
+
+		p.s3Uploader, err = NewS3UploaderStage(s3Config, p.archiveChan, p.resultChan)
+		if err != nil {
+			return fmt.Errorf("failed to create S3 uploader: %w", err)
+		}
+	} else {
+		// Use simulated uploader for testing
+		uploaderConfig := &UploaderConfig{
+			Workers:     p.config.UploaderWorkers,
+			PartSize:    5 * 1024 * 1024, // 5MB parts
+			Concurrency: 4,
+			MaxRetries:  3,
+			RetryDelay:  time.Second,
+		}
+		p.uploader, err = NewUploaderStage(uploaderConfig, p.archiveChan, p.resultChan)
+		if err != nil {
+			return fmt.Errorf("failed to create uploader: %w", err)
+		}
+	}
+
+	// Start all stages
+	if err := p.scanner.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start scanner: %w", err)
+	}
+
+	if err := p.archiver.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start archiver: %w", err)
+	}
+
+	// Start the appropriate uploader
+	if p.config.UseRealS3 {
+		if err := p.s3Uploader.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start S3 uploader: %w", err)
+		}
+	} else {
+		if err := p.uploader.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start uploader: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// waitForCompletion waits for all stages to complete and collects results
+func (p *Pipeline) waitForCompletion(ctx context.Context) *Result {
+	result := &Result{
+		Success: true,
+	}
+
+	// Wait for results
+	for job := range p.resultChan {
+		result.ChunksUploaded++
+
+		if job.Error != nil {
+			result.Success = false
+			result.Errors = append(result.Errors, job.Error)
+			p.mu.Lock()
+			p.errors = append(p.errors, job.Error)
+			p.mu.Unlock()
+		}
+
+		// Update progress
+		p.progress.mu.Lock()
+		p.progress.progress.ChunksCompleted++
+		p.progress.progress.BytesProcessed += job.ArchiveSize
+		p.progress.progress.FilesProcessed += int64(job.Chunk.FileCount)
+		p.progress.mu.Unlock()
+	}
+
+	// Get final progress
+	p.progress.mu.RLock()
+	result.Progress = p.progress.progress
+	result.TotalFiles = p.progress.progress.FilesProcessed
+	result.TotalBytes = p.progress.progress.BytesProcessed
+	result.ChunksCreated = p.progress.progress.ChunksCompleted
+	p.progress.mu.RUnlock()
+
+	result.TotalTime = time.Since(result.Progress.StartTime)
+
+	return result
+}
+
+// trackProgress periodically reports progress
+func (p *Pipeline) trackProgress(ctx context.Context) {
+	ticker := time.NewTicker(p.config.ProgressInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			p.reportProgress()
+		}
+	}
+}
+
+// reportProgress calculates and reports current progress
+func (p *Pipeline) reportProgress() {
+	p.progress.mu.Lock()
+	defer p.progress.mu.Unlock()
+
+	elapsed := time.Since(p.progress.progress.StartTime)
+	p.progress.progress.ElapsedTime = elapsed
+
+	// Calculate throughput
+	if elapsed.Seconds() > 0 {
+		p.progress.progress.FilesPerSecond = float64(p.progress.progress.FilesProcessed) / elapsed.Seconds()
+		p.progress.progress.BytesPerSecond = float64(p.progress.progress.BytesProcessed) / elapsed.Seconds()
+	}
+
+	// Calculate ETA if we know total
+	if p.progress.progress.TotalChunks > 0 {
+		remaining := p.progress.progress.TotalChunks - p.progress.progress.ChunksCompleted
+		if p.progress.progress.ChunksCompleted > 0 {
+			avgTimePerChunk := elapsed / time.Duration(p.progress.progress.ChunksCompleted)
+			p.progress.progress.EstimatedETA = avgTimePerChunk * time.Duration(remaining)
+		}
+	}
+
+	// Call callback if registered
+	if p.progress.callback != nil {
+		p.progress.callback(p.progress.progress)
+	}
+}
+
+// Stop gracefully stops the pipeline
+func (p *Pipeline) Stop() error {
+	p.cancel()
+
+	// Stop all stages
+	var errs []error
+
+	if p.scanner != nil {
+		if err := p.scanner.Stop(); err != nil {
+			errs = append(errs, fmt.Errorf("scanner stop error: %w", err))
+		}
+	}
+
+	if p.archiver != nil {
+		if err := p.archiver.Stop(); err != nil {
+			errs = append(errs, fmt.Errorf("archiver stop error: %w", err))
+		}
+	}
+
+	if p.uploader != nil {
+		if err := p.uploader.Stop(); err != nil {
+			errs = append(errs, fmt.Errorf("uploader stop error: %w", err))
+		}
+	}
+
+	if p.s3Uploader != nil {
+		if err := p.s3Uploader.Stop(); err != nil {
+			errs = append(errs, fmt.Errorf("s3 uploader stop error: %w", err))
+		}
+	}
+
+	// Channels are closed by stages when they finish
+	// No need to close them here
+
+	if len(errs) > 0 {
+		return fmt.Errorf("pipeline stop errors: %v", errs)
+	}
+
+	return nil
+}
+
+// GetProgress returns current pipeline progress
+func (p *Pipeline) GetProgress() Progress {
+	p.progress.mu.RLock()
+	defer p.progress.mu.RUnlock()
+	return p.progress.progress
+}
+
+// SetProgressCallback sets a callback for progress updates
+func (p *Pipeline) SetProgressCallback(callback func(Progress)) {
+	p.progress.mu.Lock()
+	defer p.progress.mu.Unlock()
+	p.progress.callback = callback
+}
+
+// GetErrors returns all errors encountered during pipeline execution
+func (p *Pipeline) GetErrors() []error {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return append([]error{}, p.errors...)
+}
+
+// GetStats returns statistics for all stages
+func (p *Pipeline) GetStats() map[string]StageStats {
+	stats := make(map[string]StageStats)
+
+	if p.scanner != nil {
+		stats["scanner"] = p.scanner.Stats()
+	}
+
+	if p.archiver != nil {
+		stats["archiver"] = p.archiver.Stats()
+	}
+
+	if p.uploader != nil {
+		stats["uploader"] = p.uploader.Stats()
+	}
+
+	if p.s3Uploader != nil {
+		stats["s3_uploader"] = p.s3Uploader.Stats()
+	}
+
+	return stats
+}
