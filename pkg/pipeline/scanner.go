@@ -42,10 +42,12 @@ func NewScannerStage(config *ScannerConfig, output chan<- *Job) (*ScannerStage, 
 
 	// Create chunking strategy
 	chunkingConfig := &chunking.ChunkingConfig{
-		Workers:           8,
-		AvailableMemory:   4 * 1024 * 1024 * 1024, // 4GB
-		GroupingStrategy:  "mixed",
-		CostSavingsTarget: 1000,
+		Workers:            8,
+		AvailableMemory:    4 * 1024 * 1024 * 1024, // 4GB
+		GroupingStrategy:   "mixed",
+		CostSavingsTarget:  1000,
+		EnableFileSplitting: true,                   // Phase 5: Enable adaptive file splitting
+		MaxFileChunkSize:   200 * 1024 * 1024,      // 200MB chunks for split files
 	}
 	strategy := chunking.NewAdaptiveChunkingStrategy(chunkingConfig)
 
