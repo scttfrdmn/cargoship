@@ -13,8 +13,16 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
+	"github.com/scttfrdmn/cargoship/pkg/ioutils"
 )
 
+
+// mmapCacheEntry represents a memory-mapped file in the cache
+type mmapCacheEntry struct {
+	reader  *ioutils.MmapReader
+	file    *os.File
+	refCount int32 // Reference count for cleanup
+}
 
 // ArchiverStage creates streaming tar.zst archives
 type ArchiverStage struct {
@@ -28,6 +36,9 @@ type ArchiverStage struct {
 	mu                 sync.RWMutex
 	stats              StageStats
 	compressionDetector *CompressionDetector
+
+	// Phase 5: Shared mmap cache for split files (one mmap per file, shared across all parts)
+	mmapCache sync.Map // map[string]*mmapCacheEntry (path -> cached mmap reader)
 
 	// Atomic counters
 	jobsProcessed       int64
@@ -86,7 +97,69 @@ func (s *ArchiverStage) Stop() error {
 	s.cancel()
 	s.pool.Stop()
 	s.wg.Wait()
+
+	// Phase 5: Clean up mmap cache
+	s.mmapCache.Range(func(key, value interface{}) bool {
+		if entry, ok := value.(*mmapCacheEntry); ok {
+			_ = entry.reader.Close()
+			_ = entry.file.Close()
+		}
+		return true
+	})
+
 	return nil
+}
+
+// getMmapReader gets or creates a memory-mapped reader for a file (Phase 5)
+// Returns the reader and true if mmap was used, nil and false if file is too small
+func (s *ArchiverStage) getMmapReader(path string) (*ioutils.MmapReader, bool, error) {
+	// Try to load from cache first
+	if cached, ok := s.mmapCache.Load(path); ok {
+		entry := cached.(*mmapCacheEntry)
+		atomic.AddInt32(&entry.refCount, 1)
+		return entry.reader, true, nil
+	}
+
+	// Open file
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// Check if file is suitable for mmap
+	if !ioutils.MmapSupported(file) {
+		_ = file.Close()
+		return nil, false, nil // Too small or not regular file
+	}
+
+	// Create mmap reader
+	reader, err := ioutils.NewMmapReader(file)
+	if err != nil {
+		_ = file.Close()
+		return nil, false, err
+	}
+
+	// Store in cache
+	entry := &mmapCacheEntry{
+		reader:  reader,
+		file:    file,
+		refCount: 1,
+	}
+	s.mmapCache.Store(path, entry)
+
+	return reader, true, nil
+}
+
+// releaseMmapReader decrements reference count (Phase 5)
+func (s *ArchiverStage) releaseMmapReader(path string) {
+	if cached, ok := s.mmapCache.Load(path); ok {
+		entry := cached.(*mmapCacheEntry)
+		newCount := atomic.AddInt32(&entry.refCount, -1)
+
+		// If no more references, clean up (optional - could also keep cached)
+		// For now, keep cached until Stop() to maximize reuse
+		_ = newCount
+	}
 }
 
 // Process processes a single job (called by workers)
@@ -309,42 +382,70 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, files []chunking.
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
 			for fd := range fileChan {
-				// Phase 5: Support partial file reads with offset/length
-				if fd.File.Offset > 0 || fd.File.Length > 0 {
-					// Open file for partial read
-					f, err := os.Open(fd.Path)
+				// Phase 5 Optimized: Use mmap for split files to enable zero-copy sharing
+				if fd.File.TotalParts > 1 {
+					// Try to use mmap for large files (shared across all parts)
+					mmapReader, usedMmap, err := s.getMmapReader(fd.Path)
 					if err != nil {
-						fd.Err = fmt.Errorf("failed to open file for partial read: %w", err)
+						fd.Err = fmt.Errorf("failed to open file: %w", err)
 						close(fd.Done)
 						continue
 					}
 
-					// Seek to offset
-					if fd.File.Offset > 0 {
-						if _, err := f.Seek(fd.File.Offset, io.SeekStart); err != nil {
-							_ = f.Close()
-							fd.Err = fmt.Errorf("failed to seek to offset %d: %w", fd.File.Offset, err)
+					if usedMmap {
+						// Use mmap - read directly from mapped memory at offset
+						offset := fd.File.Offset
+						length := fd.File.Length
+						if length == 0 {
+							length = fd.File.Size
+						}
+
+						// ReadAt from mmap (zero-copy from OS perspective)
+						partData := make([]byte, length)
+						n, err := mmapReader.ReadAt(partData, offset)
+						if err != nil && err != io.EOF {
+							fd.Err = fmt.Errorf("failed to read from mmap: %w", err)
+							s.releaseMmapReader(fd.Path)
 							close(fd.Done)
 							continue
 						}
-					}
-
-					// Read with length limit
-					length := fd.File.Length
-					if length == 0 {
-						length = fd.File.Size // Use Size if Length not specified
-					}
-					data, err := io.ReadAll(io.LimitReader(f, length))
-					_ = f.Close()
-
-					if err != nil {
-						fd.Err = fmt.Errorf("failed to read partial file: %w", err)
+						fd.Data = partData[:n]
+						s.releaseMmapReader(fd.Path)
 					} else {
-						fd.Data = data
+						// File too small for mmap - use regular read
+						data, err := os.ReadFile(fd.Path)
+						if err != nil {
+							fd.Err = fmt.Errorf("failed to read file: %w", err)
+							close(fd.Done)
+							continue
+						}
+
+						// Slice the data based on offset/length
+						offset := fd.File.Offset
+						length := fd.File.Length
+						if length == 0 {
+							length = fd.File.Size
+						}
+
+						// Bounds check
+						if offset+length > int64(len(data)) {
+							length = int64(len(data)) - offset
+						}
+						if offset < 0 || offset >= int64(len(data)) {
+							fd.Err = fmt.Errorf("invalid offset %d for file size %d", offset, len(data))
+							close(fd.Done)
+							continue
+						}
+
+						// Create a slice with the data
+						partData := make([]byte, length)
+						copy(partData, data[offset:offset+length])
+						fd.Data = partData
 					}
 				} else {
-					// Original behavior: read entire file
+					// Not a split file - read entire file normally
 					data, err := os.ReadFile(fd.Path)
 					if err != nil {
 						fd.Err = fmt.Errorf("failed to read file: %w", err)
