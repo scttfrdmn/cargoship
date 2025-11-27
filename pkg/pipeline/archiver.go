@@ -427,69 +427,6 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, files []chunking.
 	return nil
 }
 
-// addFileToArchiveFromMemory adds a file to tar from in-memory data
-func (s *ArchiverStage) addFileToArchiveFromMemory(tw *tar.Writer, filePath string, info os.FileInfo, data []byte) error {
-	// Create tar header
-	header, err := tar.FileInfoHeader(info, "")
-	if err != nil {
-		return fmt.Errorf("failed to create tar header: %w", err)
-	}
-
-	// Use relative path as name in archive
-	header.Name = filePath
-
-	// Write header
-	if err := tw.WriteHeader(header); err != nil {
-		return fmt.Errorf("failed to write tar header: %w", err)
-	}
-
-	// Write data from memory (fast)
-	if _, err := tw.Write(data); err != nil {
-		return fmt.Errorf("failed to write file content: %w", err)
-	}
-
-	return nil
-}
-
-// addFileToArchive adds a single file to the tar archive
-func (s *ArchiverStage) addFileToArchive(tw *tar.Writer, filePath string) error {
-	// Open file
-	file, err := os.Open(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-
-	// Get file info
-	info, err := file.Stat()
-	if err != nil {
-		return fmt.Errorf("failed to stat file: %w", err)
-	}
-
-	// Create tar header
-	header, err := tar.FileInfoHeader(info, "")
-	if err != nil {
-		return fmt.Errorf("failed to create tar header: %w", err)
-	}
-
-	// Use relative path as name in archive
-	header.Name = filePath
-
-	// Write header
-	if err := tw.WriteHeader(header); err != nil {
-		return fmt.Errorf("failed to write tar header: %w", err)
-	}
-
-	// Copy file content
-	if _, err := io.Copy(tw, file); err != nil {
-		return fmt.Errorf("failed to write file content: %w", err)
-	}
-
-	return nil
-}
-
 // addFileToArchiveWithMetadata adds a file to archive with full metadata support (Phase 5)
 // Supports partial file reads with offset/length for split files
 func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, file chunking.File) error {

@@ -719,6 +719,28 @@ ONLY create documents in `docs/` for:
 - **Testing**: All 19/19 pipeline tests passing
 - **Flaky Test Documented**: Issue #68 created for `TestPipeline_ErrorHandling` intermittent failures
 
+**✅ Phase 5 - Adaptive File Splitting (2025-11-26):**
+- **Implementation**: Enable splitting large files across multiple chunks for better parallelization (Commit b82c201)
+- **Status**: ✅ COMPLETE - Issue #69 created and updated
+- **Problem Addressed**: Phase 4 showed no improvement for large files (100 @ 56GB, still 311s)
+  - Root cause: 1:1 file-to-chunk ratio (100 files → 100 chunks) limits worker utilization
+  - With 8 workers: only 12-13 chunks/worker, sequential bottleneck
+- **Changes**: 3 files, +222 lines, -17 lines
+  - `pkg/chunking/types.go`: Added File.Offset, Length, PartIndex, TotalParts for partial reads
+  - `pkg/chunking/types.go`: Added ChunkingConfig.EnableFileSplitting, MaxFileChunkSize
+  - `pkg/chunking/strategy.go` (lines 190-243): Modified groupMixed() to split files >chunk_size
+  - `pkg/pipeline/archiver.go`: Updated parallel I/O workers for partial file reads (Seek + LimitReader)
+  - `pkg/pipeline/archiver.go`: Added addFileToArchiveWithMetadata() and addFileToArchiveFromMemoryWithMetadata()
+- **Expected Impact** (when enabled):
+  - Before: 100 files @ 560MB → 100 chunks (1:1 ratio, 12-13 chunks/worker)
+  - After: 100 files @ 560MB with 200MB chunks → 300 chunks (3× parallelism, 37-38 chunks/worker)
+  - Target: <240s for large files (vs current 311s = 23% improvement)
+- **Backward Compatible**: ✅ Disabled by default, zero breaking changes
+- **Testing**: All 19/19 pipeline tests + 11/11 chunking tests passing
+- **Quality**: Build successful, memory-safe (bounded by chunk size)
+- **Usage**: Set `ChunkingConfig.EnableFileSplitting = true` to enable
+- **Note**: Implementation complete, benchmark validation pending
+
 **📋 Technical Debt for v0.6.0:**
 - Issue #14: Add Shutdown() calls to all coordinator-creating tests (medium priority)
 - Issue #15: Fix flaky CloudWatch test (low priority)
@@ -726,13 +748,14 @@ ONLY create documents in `docs/` for:
 - Issue #17: Fix TestFailoverScenarios_CrossRegionRetry timeout (medium priority)
 - Issue #68: Fix flaky TestPipeline_ErrorHandling test (low priority)
 - Issue #65: Goroutine leak cleanup (low priority)
+- Issue #69: Validate Phase 5 file splitting with real benchmarks (medium priority)
 
 **🔄 Next Steps:**
-1. **Phase 5 (Optional)**: Adaptive chunking for large files
-   - Current: 100 files → 100 chunks (1:1, limits parallelism)
-   - Goal: Break large files (>100MB) into multiple chunks
-   - Expected: Better utilize 8 S3 upload workers, hit 240s target
-   - Priority: Medium (Phase 4 improved small files significantly)
+1. **Phase 5 Validation**: Run benchmarks with file splitting enabled
+   - Enable `ChunkingConfig.EnableFileSplitting = true` in large file benchmark
+   - Target: <240s for 100 @ 56GB (vs current 311s = 23% improvement)
+   - Validate memory usage remains bounded (≤4GB)
+   - Priority: Medium (implementation complete, validation pending)
 2. **CLI Integration**: Wire pipeline to CLI (replace rclone with pipeline)
 3. **Feature Branch Cleanup**: Archive `feature/phase3-multi-prefix-s3` (code merged to main)
 
