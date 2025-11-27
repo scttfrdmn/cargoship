@@ -277,6 +277,9 @@ type fileData struct {
 	Data   []byte
 	Err    error
 	Done   chan struct{}
+
+	// Phase 5: Support for partial file reads
+	File chunking.File // Full file metadata including offset/length for splits
 }
 
 // addFilesWithParallelIO adds files to archive with parallel I/O optimization
@@ -286,7 +289,7 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, files []chunking.
 	// For very small file counts, parallel I/O overhead isn't worth it
 	if len(files) < 3 {
 		for _, file := range files {
-			if err := s.addFileToArchive(tw, file.Path); err != nil {
+			if err := s.addFileToArchiveWithMetadata(tw, file); err != nil {
 				return err
 			}
 			*totalSize += file.Size
@@ -307,12 +310,47 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, files []chunking.
 		go func() {
 			defer wg.Done()
 			for fd := range fileChan {
-				// Read file into memory (parallel I/O)
-				data, err := os.ReadFile(fd.Path)
-				if err != nil {
-					fd.Err = fmt.Errorf("failed to read file: %w", err)
+				// Phase 5: Support partial file reads with offset/length
+				if fd.File.Offset > 0 || fd.File.Length > 0 {
+					// Open file for partial read
+					f, err := os.Open(fd.Path)
+					if err != nil {
+						fd.Err = fmt.Errorf("failed to open file for partial read: %w", err)
+						close(fd.Done)
+						continue
+					}
+
+					// Seek to offset
+					if fd.File.Offset > 0 {
+						if _, err := f.Seek(fd.File.Offset, io.SeekStart); err != nil {
+							_ = f.Close()
+							fd.Err = fmt.Errorf("failed to seek to offset %d: %w", fd.File.Offset, err)
+							close(fd.Done)
+							continue
+						}
+					}
+
+					// Read with length limit
+					length := fd.File.Length
+					if length == 0 {
+						length = fd.File.Size // Use Size if Length not specified
+					}
+					data, err := io.ReadAll(io.LimitReader(f, length))
+					_ = f.Close()
+
+					if err != nil {
+						fd.Err = fmt.Errorf("failed to read partial file: %w", err)
+					} else {
+						fd.Data = data
+					}
 				} else {
-					fd.Data = data
+					// Original behavior: read entire file
+					data, err := os.ReadFile(fd.Path)
+					if err != nil {
+						fd.Err = fmt.Errorf("failed to read file: %w", err)
+					} else {
+						fd.Data = data
+					}
 				}
 
 				// Signal that file has been read
@@ -341,6 +379,7 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, files []chunking.
 			Path: file.Path,
 			Info: info,
 			Done: make(chan struct{}),
+			File: file, // Phase 5: Store full file metadata for partial reads
 		}
 
 		// Dispatch read to worker pool (non-blocking)
@@ -362,7 +401,7 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, files []chunking.
 		}
 
 		// Write to tar sequentially (fast, data already in memory)
-		if err := s.addFileToArchiveFromMemory(tw, fd.Path, fd.Info, fd.Data); err != nil {
+		if err := s.addFileToArchiveFromMemoryWithMetadata(tw, fd.File, fd.Info, fd.Data); err != nil {
 			close(fileChan)
 			return err
 		}
@@ -445,6 +484,115 @@ func (s *ArchiverStage) addFileToArchive(tw *tar.Writer, filePath string) error 
 
 	// Copy file content
 	if _, err := io.Copy(tw, file); err != nil {
+		return fmt.Errorf("failed to write file content: %w", err)
+	}
+
+	return nil
+}
+
+// addFileToArchiveWithMetadata adds a file to archive with full metadata support (Phase 5)
+// Supports partial file reads with offset/length for split files
+func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, file chunking.File) error {
+	// Open file
+	f, err := os.Open(file.Path)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+
+	// Seek to offset for partial reads
+	if file.Offset > 0 {
+		if _, err := f.Seek(file.Offset, io.SeekStart); err != nil {
+			return fmt.Errorf("failed to seek to offset %d: %w", file.Offset, err)
+		}
+	}
+
+	// Determine read length
+	length := file.Length
+	if length == 0 {
+		length = file.Size
+	}
+
+	// Get file info for tar header
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	// Create tar header
+	header, err := tar.FileInfoHeader(info, "")
+	if err != nil {
+		return fmt.Errorf("failed to create tar header: %w", err)
+	}
+
+	// Update header with correct size and name
+	header.Size = length
+
+	// For split files, modify the name to include part information
+	if file.TotalParts > 1 {
+		header.Name = fmt.Sprintf("%s.part%d", file.Path, file.PartIndex)
+
+		// Add PAX records for split file metadata
+		if header.PAXRecords == nil {
+			header.PAXRecords = make(map[string]string)
+		}
+		header.PAXRecords["CARGOSHIP.part_index"] = fmt.Sprintf("%d", file.PartIndex)
+		header.PAXRecords["CARGOSHIP.total_parts"] = fmt.Sprintf("%d", file.TotalParts)
+		header.PAXRecords["CARGOSHIP.offset"] = fmt.Sprintf("%d", file.Offset)
+		header.PAXRecords["CARGOSHIP.original_path"] = file.Path
+	} else {
+		header.Name = file.Path
+	}
+
+	// Write header
+	if err := tw.WriteHeader(header); err != nil {
+		return fmt.Errorf("failed to write tar header: %w", err)
+	}
+
+	// Copy file content with length limit
+	if _, err := io.Copy(tw, io.LimitReader(f, length)); err != nil {
+		return fmt.Errorf("failed to write file content: %w", err)
+	}
+
+	return nil
+}
+
+// addFileToArchiveFromMemoryWithMetadata adds a file to tar from in-memory data with metadata (Phase 5)
+func (s *ArchiverStage) addFileToArchiveFromMemoryWithMetadata(tw *tar.Writer, file chunking.File, info os.FileInfo, data []byte) error {
+	// Create tar header
+	header, err := tar.FileInfoHeader(info, "")
+	if err != nil {
+		return fmt.Errorf("failed to create tar header: %w", err)
+	}
+
+	// Update header with actual data size (for partial reads)
+	header.Size = int64(len(data))
+
+	// For split files, modify the name to include part information
+	if file.TotalParts > 1 {
+		header.Name = fmt.Sprintf("%s.part%d", file.Path, file.PartIndex)
+
+		// Add PAX records for split file metadata
+		if header.PAXRecords == nil {
+			header.PAXRecords = make(map[string]string)
+		}
+		header.PAXRecords["CARGOSHIP.part_index"] = fmt.Sprintf("%d", file.PartIndex)
+		header.PAXRecords["CARGOSHIP.total_parts"] = fmt.Sprintf("%d", file.TotalParts)
+		header.PAXRecords["CARGOSHIP.offset"] = fmt.Sprintf("%d", file.Offset)
+		header.PAXRecords["CARGOSHIP.original_path"] = file.Path
+	} else {
+		header.Name = file.Path
+	}
+
+	// Write header
+	if err := tw.WriteHeader(header); err != nil {
+		return fmt.Errorf("failed to write tar header: %w", err)
+	}
+
+	// Write data from memory
+	if _, err := tw.Write(data); err != nil {
 		return fmt.Errorf("failed to write file content: %w", err)
 	}
 

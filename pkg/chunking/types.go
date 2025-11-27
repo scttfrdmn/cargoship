@@ -11,6 +11,12 @@ type File struct {
 	ModTime   time.Time         // Last modification time
 	Directory string            // Parent directory
 	Metadata  map[string]string // Additional metadata
+
+	// File splitting support (Phase 5)
+	Offset     int64 // Start offset for partial read (0 = full file)
+	Length     int64 // Length to read (0 = read Size bytes from Offset)
+	PartIndex  int   // Part index for split files (0 = not split or first part)
+	TotalParts int   // Total parts if file is split (0 or 1 = not split)
 }
 
 // Chunk represents a group of files to be archived together
@@ -69,6 +75,14 @@ type ChunkingConfig struct {
 	// MultipartPartSize defines the part size for S3 multipart upload operations
 	// estimation (default: 100MB)
 	MultipartPartSize int64
+
+	// EnableFileSplitting enables splitting large files across multiple chunks (Phase 5)
+	// When true, files larger than chunk size will be split into multiple parts
+	EnableFileSplitting bool
+
+	// MaxFileChunkSize defines the maximum size for a single file part when splitting
+	// If 0, uses the calculated chunk size (default behavior)
+	MaxFileChunkSize int64
 }
 
 // ChunkingStrategy defines the interface for chunking algorithms

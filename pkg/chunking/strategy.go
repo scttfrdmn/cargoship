@@ -187,17 +187,60 @@ func (s *AdaptiveChunkingStrategy) groupMixed(files []File, chunkSize int64) ([]
 					chunkID++
 				}
 
-				// Create dedicated chunk for oversized file
-				chunk := Chunk{
-					ID:           chunkID,
-					Files:        []File{file},
-					TotalSize:    file.Size,
-					FileCount:    1,
-					EstimatedOps: s.estimateS3Operations(file.Size),
+				// Phase 5: Check if file splitting is enabled
+				if s.config.EnableFileSplitting {
+					// Split file into multiple chunks
+					splitChunkSize := chunkSize
+					if s.config.MaxFileChunkSize > 0 && s.config.MaxFileChunkSize < chunkSize {
+						splitChunkSize = s.config.MaxFileChunkSize
+					}
+
+					numParts := (file.Size + splitChunkSize - 1) / splitChunkSize
+					for partIdx := 0; partIdx < int(numParts); partIdx++ {
+						offset := int64(partIdx) * splitChunkSize
+						length := splitChunkSize
+						if offset+length > file.Size {
+							length = file.Size - offset
+						}
+
+						// Create partial file entry
+						partialFile := File{
+							Path:       file.Path,
+							Size:       length, // Size represents the length to read
+							ModTime:    file.ModTime,
+							Directory:  file.Directory,
+							Metadata:   file.Metadata,
+							Offset:     offset,
+							Length:     length,
+							PartIndex:  partIdx,
+							TotalParts: int(numParts),
+						}
+
+						// Create chunk for this part
+						chunk := Chunk{
+							ID:           chunkID,
+							Files:        []File{partialFile},
+							TotalSize:    length,
+							FileCount:    1,
+							EstimatedOps: s.estimateS3Operations(length),
+						}
+						chunks = append(chunks, chunk)
+						chunkID++
+					}
+					currentChunk = Chunk{ID: chunkID}
+				} else {
+					// Original behavior: Create dedicated chunk for oversized file
+					chunk := Chunk{
+						ID:           chunkID,
+						Files:        []File{file},
+						TotalSize:    file.Size,
+						FileCount:    1,
+						EstimatedOps: s.estimateS3Operations(file.Size),
+					}
+					chunks = append(chunks, chunk)
+					chunkID++
+					currentChunk = Chunk{ID: chunkID}
 				}
-				chunks = append(chunks, chunk)
-				chunkID++
-				currentChunk = Chunk{ID: chunkID}
 			} else {
 				// File fits in chunk - try to pack it with others
 				if currentChunk.TotalSize+file.Size > chunkSize && len(currentChunk.Files) > 0 {
