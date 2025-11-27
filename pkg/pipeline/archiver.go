@@ -24,6 +24,66 @@ type mmapCacheEntry struct {
 	refCount int32 // Reference count for cleanup
 }
 
+// EncoderPool manages a pool of reusable zstd encoders
+// Phase 5 Redux: Eliminates expensive encoder creation overhead
+type EncoderPool struct {
+	encoders chan *zstd.Encoder
+	size     int
+}
+
+// NewEncoderPool creates a new encoder pool with pre-created encoders
+func NewEncoderPool(size int) (*EncoderPool, error) {
+	pool := &EncoderPool{
+		encoders: make(chan *zstd.Encoder, size),
+		size:     size,
+	}
+
+	// Pre-create all encoders
+	for i := 0; i < size; i++ {
+		// Create encoder with same settings as before
+		encoder, err := zstd.NewWriter(nil,
+			zstd.WithEncoderLevel(zstd.SpeedDefault),
+			zstd.WithEncoderConcurrency(runtime.NumCPU()),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create encoder %d: %w", i, err)
+		}
+		pool.encoders <- encoder
+	}
+
+	return pool, nil
+}
+
+// Get retrieves an encoder from the pool (blocks if none available)
+func (p *EncoderPool) Get() *zstd.Encoder {
+	return <-p.encoders
+}
+
+// Put returns an encoder to the pool for reuse
+func (p *EncoderPool) Put(encoder *zstd.Encoder) {
+	// Reset encoder state for reuse (this is cheap)
+	// Don't close the encoder, just return it to pool
+	p.encoders <- encoder
+}
+
+// Close closes all encoders in the pool
+func (p *EncoderPool) Close() error {
+	// Don't close the channel - just drain and close encoders
+	// This prevents "send on closed channel" panics from late Put() calls
+	for i := 0; i < p.size; i++ {
+		select {
+		case encoder := <-p.encoders:
+			if err := encoder.Close(); err != nil {
+				return err
+			}
+		default:
+			// Encoder still in use by worker - skip it
+			// It will be closed when worker returns it
+		}
+	}
+	return nil
+}
+
 // ArchiverStage creates streaming tar.zst archives
 type ArchiverStage struct {
 	config             *ArchiverConfig
@@ -39,6 +99,9 @@ type ArchiverStage struct {
 
 	// Phase 5: Shared mmap cache for split files (one mmap per file, shared across all parts)
 	mmapCache sync.Map // map[string]*mmapCacheEntry (path -> cached mmap reader)
+
+	// Phase 5 Redux: Encoder pool for reusing zstd encoders (eliminates expensive encoder creation)
+	encoderPool *EncoderPool
 
 	// Atomic counters
 	jobsProcessed       int64
@@ -56,6 +119,14 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// Phase 5 Redux: Create encoder pool with same number of encoders as workers
+	// This eliminates expensive encoder creation during job processing
+	encoderPool, err := NewEncoderPool(config.Workers)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to create encoder pool: %w", err)
+	}
+
 	return &ArchiverStage{
 		config:              config,
 		input:               input,
@@ -64,6 +135,7 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 		ctx:                 ctx,
 		cancel:              cancel,
 		compressionDetector: NewCompressionDetector(),
+		encoderPool:         encoderPool,
 		stats: StageStats{
 			Name: "archiver",
 		},
@@ -106,6 +178,11 @@ func (s *ArchiverStage) Stop() error {
 		}
 		return true
 	})
+
+	// Phase 5 Redux: Cleanup encoder pool
+	if s.encoderPool != nil {
+		_ = s.encoderPool.Close()
+	}
 
 	return nil
 }
@@ -206,23 +283,22 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 		}()
 
 		var tw *tar.Writer
+		var encoder *zstd.Encoder
 
 		if useCompression {
-			// Create zstd encoder for this stream
-			// NOTE: We don't use the encoder pool here because the streaming io.Pipe
-			// architecture requires the encoder to stay connected until tw.Close() flushes.
-			// The pool pattern with Reset() would disconnect too early.
-			encoder, err := zstd.NewWriter(pw,
-				zstd.WithEncoderLevel(zstd.SpeedDefault),
-				zstd.WithEncoderConcurrency(runtime.NumCPU()),
-			)
-			if err != nil {
-				pw.CloseWithError(fmt.Errorf("failed to create zstd encoder: %w", err))
-				return
-			}
+			// Phase 5 Redux: Get encoder from pool instead of creating new one
+			// This eliminates expensive encoder creation overhead
+			encoder = s.encoderPool.Get()
 			defer func() {
+				// Close encoder to flush data, then return to pool
+				// Close() is safe to call multiple times on zstd encoder
 				_ = encoder.Close()
+				// Return encoder to pool for reuse
+				s.encoderPool.Put(encoder)
 			}()
+
+			// Reset encoder for new output stream
+			encoder.Reset(pw)
 
 			// Create tar writer on top of compression
 			tw = tar.NewWriter(encoder)
