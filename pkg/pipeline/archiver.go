@@ -276,27 +276,28 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 	// Create streaming archive using io.Pipe
 	pr, pw := io.Pipe()
 
+	// Phase 5 Redux: Get encoder from pool BEFORE spawning goroutine
+	// This naturally limits concurrency to pool size (8) and prevents deadlock
+	var encoder *zstd.Encoder
+	if useCompression {
+		encoder = s.encoderPool.Get() // Blocks if all encoders in use - natural backpressure
+	}
+
 	// Archive creation goroutine
 	go func() {
 		defer func() {
 			_ = pw.Close()
+			// Return encoder to pool after work is done
+			if encoder != nil {
+				// Close encoder to flush data, then return to pool
+				_ = encoder.Close()
+				s.encoderPool.Put(encoder)
+			}
 		}()
 
 		var tw *tar.Writer
-		var encoder *zstd.Encoder
 
 		if useCompression {
-			// Phase 5 Redux: Get encoder from pool instead of creating new one
-			// This eliminates expensive encoder creation overhead
-			encoder = s.encoderPool.Get()
-			defer func() {
-				// Close encoder to flush data, then return to pool
-				// Close() is safe to call multiple times on zstd encoder
-				_ = encoder.Close()
-				// Return encoder to pool for reuse
-				s.encoderPool.Put(encoder)
-			}()
-
 			// Reset encoder for new output stream
 			encoder.Reset(pw)
 
