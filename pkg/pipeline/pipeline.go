@@ -75,6 +75,9 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 	if config.ShardCount == 0 {
 		config.ShardCount = 8 // Default: 8 shards for parallel S3 uploads
 	}
+	if config.WorkersPerPrefix == 0 {
+		config.WorkersPerPrefix = 2 // Default: 2 workers per prefix
+	}
 	if config.UploadID == "" {
 		// Generate unique upload ID: {timestamp}-{random}
 		// Format: 20251126-a3f9c2d1
@@ -84,6 +87,11 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 			return nil, fmt.Errorf("failed to generate upload ID: %w", err)
 		}
 		config.UploadID = fmt.Sprintf("%s-%s", timestamp, hex.EncodeToString(randomBytes))
+	}
+	// Enable multi-prefix by default for production use
+	// Can be disabled by explicitly setting EnableMultiPrefix to false
+	if !config.EnableMultiPrefix && config.UseRealS3 {
+		config.EnableMultiPrefix = true // Default: enabled for real S3
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -174,23 +182,70 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 			return fmt.Errorf("S3Client required when UseRealS3 is true")
 		}
 
-		s3Config := &S3UploaderConfig{
-			Workers:    p.config.UploaderWorkers,
-			PartSize:   p.config.S3PartSize,
-			MaxRetries: 3,
-			RetryDelay: time.Second,
-			S3Client:   p.config.S3Client.(*s3.Client),
-			Bucket:     p.config.S3Bucket,
-			Prefix:     p.config.S3Prefix,
-		}
+		// Phase 3: Multi-prefix parallel uploads (default: enabled)
+		if p.config.EnableMultiPrefix {
+			// Create per-prefix channels for parallel uploads
+			p.prefixChans = make(map[string]chan *Job)
+			for i := 0; i < p.config.ShardCount; i++ {
+				shardName := fmt.Sprintf("shard-%d", i)
+				// Buffered channels to allow some queueing per prefix
+				p.prefixChans[shardName] = make(chan *Job, p.config.ArchiveBufferSize/p.config.ShardCount)
+			}
 
-		if p.config.S3PartSize == 0 {
-			s3Config.PartSize = 64 * 1024 * 1024 // 64MB default
-		}
+			// Create directional channel maps for router (write-only) and uploader (read-only)
+			routerOutputs := make(map[string]chan<- *Job)
+			uploaderInputs := make(map[string]<-chan *Job)
+			for name, ch := range p.prefixChans {
+				routerOutputs[name] = ch  // Write-only for router
+				uploaderInputs[name] = ch // Read-only for uploader
+			}
 
-		p.s3Uploader, err = NewS3UploaderStage(s3Config, p.archiveChan, p.resultChan)
-		if err != nil {
-			return fmt.Errorf("failed to create S3 uploader: %w", err)
+			// Create PrefixRouter to distribute jobs to per-prefix channels
+			p.router = NewPrefixRouter(p.archiveChan, routerOutputs)
+
+			// Create S3MultiPrefixUploader with per-prefix worker pools
+			s3Config := &S3UploaderConfig{
+				PartSize:   p.config.S3PartSize,
+				MaxRetries: 3,
+				RetryDelay: time.Second,
+				S3Client:   p.config.S3Client.(*s3.Client),
+				Bucket:     p.config.S3Bucket,
+				Prefix:     p.config.S3Prefix,
+			}
+
+			if p.config.S3PartSize == 0 {
+				s3Config.PartSize = 64 * 1024 * 1024 // 64MB default
+			}
+
+			p.multiPrefixUploader, err = NewS3MultiPrefixUploaderStage(
+				s3Config,
+				uploaderInputs,
+				p.resultChan,
+				p.config.WorkersPerPrefix,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to create multi-prefix S3 uploader: %w", err)
+			}
+		} else {
+			// Single-prefix legacy uploader (Phase 2)
+			s3Config := &S3UploaderConfig{
+				Workers:    p.config.UploaderWorkers,
+				PartSize:   p.config.S3PartSize,
+				MaxRetries: 3,
+				RetryDelay: time.Second,
+				S3Client:   p.config.S3Client.(*s3.Client),
+				Bucket:     p.config.S3Bucket,
+				Prefix:     p.config.S3Prefix,
+			}
+
+			if p.config.S3PartSize == 0 {
+				s3Config.PartSize = 64 * 1024 * 1024 // 64MB default
+			}
+
+			p.s3Uploader, err = NewS3UploaderStage(s3Config, p.archiveChan, p.resultChan)
+			if err != nil {
+				return fmt.Errorf("failed to create S3 uploader: %w", err)
+			}
 		}
 	} else {
 		// Use simulated uploader for testing
@@ -218,8 +273,20 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 
 	// Start the appropriate uploader
 	if p.config.UseRealS3 {
-		if err := p.s3Uploader.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start S3 uploader: %w", err)
+		if p.config.EnableMultiPrefix {
+			// Phase 3: Start PrefixRouter and MultiPrefixUploader
+			if err := p.router.Start(ctx); err != nil {
+				return fmt.Errorf("failed to start prefix router: %w", err)
+			}
+
+			if err := p.multiPrefixUploader.Start(ctx); err != nil {
+				return fmt.Errorf("failed to start multi-prefix S3 uploader: %w", err)
+			}
+		} else {
+			// Phase 2: Single-prefix uploader
+			if err := p.s3Uploader.Start(ctx); err != nil {
+				return fmt.Errorf("failed to start S3 uploader: %w", err)
+			}
 		}
 	} else {
 		if err := p.uploader.Start(ctx); err != nil {

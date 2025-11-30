@@ -65,12 +65,19 @@ type Pipeline struct {
 	scanner  *ScannerStage
 	archiver *ArchiverStage
 	uploader *UploaderStage     // Simulated uploader (for testing)
-	s3Uploader *S3UploaderStage // Real AWS S3 uploader
+	s3Uploader *S3UploaderStage // Real AWS S3 uploader (single-prefix)
+
+	// Phase 3: Multi-prefix parallel upload stages
+	router              *PrefixRouter              // Routes jobs to per-prefix channels
+	multiPrefixUploader *S3MultiPrefixUploaderStage // Per-prefix worker pools
 
 	// Channels for communication between stages
 	chunkChan   chan *Job
 	archiveChan chan *Job
 	resultChan  chan *Job
+
+	// Phase 3: Per-prefix channels for parallel uploads
+	prefixChans map[string]chan *Job // Key: "shard-N", Value: channel
 
 	// Progress tracking
 	progress *ProgressTracker
@@ -104,8 +111,10 @@ type PipelineConfig struct {
 	S3SSEKMSKeyId string      // Optional KMS key ID for encryption
 
 	// Multi-prefix optimization (Phase 3)
-	UploadID   string // Unique identifier for this upload session (format: {timestamp}-{random})
-	ShardCount int    // Number of S3 prefix shards for parallel uploads (default: 8)
+	EnableMultiPrefix bool   // If true, use multi-prefix parallel uploads (default: true)
+	WorkersPerPrefix  int    // Workers per S3 prefix (default: 2)
+	UploadID          string // Unique identifier for this upload session (format: {timestamp}-{random})
+	ShardCount        int    // Number of S3 prefix shards for parallel uploads (default: 8)
 
 	// Chunking configuration
 	ChunkingConfig *chunking.ChunkingConfig
