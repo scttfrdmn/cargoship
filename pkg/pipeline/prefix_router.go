@@ -68,18 +68,21 @@ func (r *PrefixRouter) Start(ctx context.Context) error {
 func (r *PrefixRouter) Stop() error {
 	r.cancel()
 	r.wg.Wait()
+	// Output channels are closed by route() via deferred closeOutputChannels()
+	return nil
+}
 
-	// Close all output channels
+// closeOutputChannels closes all output channels (called via defer in route())
+func (r *PrefixRouter) closeOutputChannels() {
 	for _, output := range r.outputs {
 		close(output)
 	}
-
-	return nil
 }
 
 // route continuously routes jobs from input to appropriate prefix channels
 func (r *PrefixRouter) route(ctx context.Context) {
 	defer r.wg.Done()
+	defer r.closeOutputChannels()
 
 	for {
 		select {
