@@ -93,9 +93,6 @@ func BenchmarkPipeline_SmallFiles_10K(b *testing.B) {
 		config.S3Bucket = bucket
 		config.S3Prefix = fmt.Sprintf("benchmark-10k-%d", time.Now().Unix())
 		config.UseRealS3 = true
-		config.EnableMultiPrefix = true // Phase 3.1: Use multi-prefix parallel uploads
-		config.ShardCount = 8             // 8 shards for optimal S3 partition parallelism
-		config.WorkersPerPrefix = 2       // 2 workers per shard = 16 total workers
 		config.S3Client = s3Client
 		config.S3PartSize = 64 * 1024 * 1024 // 64MB parts
 	} else {

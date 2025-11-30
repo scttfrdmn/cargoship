@@ -88,11 +88,9 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 		}
 		config.UploadID = fmt.Sprintf("%s-%s", timestamp, hex.EncodeToString(randomBytes))
 	}
-	// Enable multi-prefix by default for production use
-	// Can be disabled by explicitly setting EnableMultiPrefix to false
-	if !config.EnableMultiPrefix && config.UseRealS3 {
-		config.EnableMultiPrefix = true // Default: enabled for real S3
-	}
+	// Multi-prefix is opt-in, not automatic
+	// Users must explicitly enable it via config.EnableMultiPrefix = true
+	// This allows benchmarks and tests to properly compare Phase 2 vs Phase 3.1
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -460,6 +458,15 @@ func (p *Pipeline) GetStats() map[string]StageStats {
 
 	if p.s3Uploader != nil {
 		stats["s3_uploader"] = p.s3Uploader.Stats()
+	}
+
+	// Phase 3.1: Multi-prefix parallel upload stages
+	if p.router != nil {
+		stats["prefix_router"] = p.router.Stats()
+	}
+
+	if p.multiPrefixUploader != nil {
+		stats["s3_multiprefix_uploader"] = p.multiPrefixUploader.Stats()
 	}
 
 	return stats
