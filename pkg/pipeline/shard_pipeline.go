@@ -37,6 +37,9 @@ type ShardPipelineConfig struct {
 	// Retry configuration
 	MaxRetries int           // Maximum upload retry attempts (default: 3)
 	RetryDelay time.Duration // Delay between retries (default: 1s)
+
+	// Performance tuning
+	FileQueueBuffer int // File queue buffer size (default: 1000)
 }
 
 // ShardPipeline handles streaming tar → zstd → S3 for a single shard
@@ -96,6 +99,9 @@ func NewShardPipeline(ctx context.Context, config *ShardPipelineConfig) (*ShardP
 	if config.RetryDelay <= 0 {
 		config.RetryDelay = time.Second
 	}
+	if config.FileQueueBuffer <= 0 {
+		config.FileQueueBuffer = 1000 // Default: 1000 files per shard
+	}
 
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -103,7 +109,7 @@ func NewShardPipeline(ctx context.Context, config *ShardPipelineConfig) (*ShardP
 		config:    config,
 		ctx:       ctx,
 		cancel:    cancel,
-		fileQueue: make(chan chunking.File, 100), // Buffer for smoother flow
+		fileQueue: make(chan chunking.File, config.FileQueueBuffer),
 		done:      make(chan struct{}),
 	}
 
