@@ -103,15 +103,24 @@ type ArchiverStage struct {
 	// Phase 5 Redux: Encoder pool for reusing zstd encoders (eliminates expensive encoder creation)
 	encoderPool *EncoderPool
 
+	// Phase 3.2: Multi-output support for eliminating router bottleneck
+	outputs           map[string]chan<- *Job // nil = single-output mode (Phase 2)
+	shardCount        int                    // Number of shards (0 = single-output)
+	shardDistribution map[string]*int64      // map[shardName]jobCount for load balancing analysis
+
+	// Phase 3.3: Archive padding for uniform compressed chunk sizes
+	padder *chunking.ArchivePadder // Archive padder for adding zero-byte padding
+
 	// Atomic counters
 	jobsProcessed       int64
 	jobsFailed          int64
 	bytesProcessed      int64
 	filesSkipped        int64 // Files skipped due to pre-compression
 	compressionTimeSaved int64 // Estimated time saved (nanoseconds)
+	paddingBytesAdded   int64 // Total padding bytes added (Phase 3.3)
 }
 
-// NewArchiverStage creates a new archiver stage
+// NewArchiverStage creates a new archiver stage (single-output mode for Phase 2)
 func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *Job) (*ArchiverStage, error) {
 	if config == nil {
 		return nil, fmt.Errorf("archiver config cannot be nil")
@@ -127,6 +136,12 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 		return nil, fmt.Errorf("failed to create encoder pool: %w", err)
 	}
 
+	// Phase 3.3: Initialize archive padder if enabled
+	var padder *chunking.ArchivePadder
+	if config.EnablePadding {
+		padder = chunking.NewArchivePadderWithConfig(config.UseLowEntropyPadding)
+	}
+
 	return &ArchiverStage{
 		config:              config,
 		input:               input,
@@ -136,6 +151,60 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 		cancel:              cancel,
 		compressionDetector: NewCompressionDetector(),
 		encoderPool:         encoderPool,
+		padder:              padder,
+		stats: StageStats{
+			Name: "archiver",
+		},
+	}, nil
+}
+
+// NewArchiverStageWithSharding creates a new archiver stage with multi-output sharding (Phase 3.2)
+// This eliminates the router bottleneck by sharding directly at archiver level
+func NewArchiverStageWithSharding(config *ArchiverConfig, input <-chan *Job, outputs map[string]chan<- *Job, shardCount int) (*ArchiverStage, error) {
+	if config == nil {
+		return nil, fmt.Errorf("archiver config cannot be nil")
+	}
+	if len(outputs) == 0 {
+		return nil, fmt.Errorf("outputs map cannot be empty in sharding mode")
+	}
+	if shardCount <= 0 {
+		return nil, fmt.Errorf("shard count must be positive, got %d", shardCount)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Phase 5 Redux: Create encoder pool with same number of encoders as workers
+	encoderPool, err := NewEncoderPool(config.Workers)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to create encoder pool: %w", err)
+	}
+
+	// Initialize shard distribution tracking
+	shardDist := make(map[string]*int64)
+	for shardName := range outputs {
+		var count int64
+		shardDist[shardName] = &count
+	}
+
+	// Phase 3.3: Initialize archive padder if enabled
+	var padder *chunking.ArchivePadder
+	if config.EnablePadding {
+		padder = chunking.NewArchivePadderWithConfig(config.UseLowEntropyPadding)
+	}
+
+	return &ArchiverStage{
+		config:              config,
+		input:               input,
+		outputs:             outputs,
+		shardCount:          shardCount,
+		shardDistribution:   shardDist,
+		pool:                NewWorkerPool(ctx, config.Workers),
+		ctx:                 ctx,
+		cancel:              cancel,
+		compressionDetector: NewCompressionDetector(),
+		encoderPool:         encoderPool,
+		padder:              padder,
 		stats: StageStats{
 			Name: "archiver",
 		},
@@ -145,6 +214,26 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 // Name returns the stage name
 func (s *ArchiverStage) Name() string {
 	return "archiver"
+}
+
+// selectOutput determines which output channel to use for a job (Phase 3.2)
+// This eliminates single-threaded router by sharding at archiver level
+func (s *ArchiverStage) selectOutput(job *Job) chan<- *Job {
+	// Single-output mode (Phase 2, Phase 3.1 with router)
+	if s.outputs == nil {
+		return s.output
+	}
+
+	// Multi-output mode (Phase 3.2): shard by chunk ID using fast modulo
+	shardID := job.Chunk.ID % s.shardCount
+	shardName := fmt.Sprintf("shard-%d", shardID)
+
+	// Track shard distribution for load balancing analysis
+	if counter, exists := s.shardDistribution[shardName]; exists {
+		atomic.AddInt64(counter, 1)
+	}
+
+	return s.outputs[shardName]
 }
 
 // Start starts the archiver stage
@@ -158,7 +247,17 @@ func (s *ArchiverStage) Start(ctx context.Context) error {
 	// Goroutine to close output when all workers done
 	go func() {
 		s.wg.Wait()
-		close(s.output)
+
+		// Phase 3.2: Close appropriate outputs
+		if s.outputs != nil {
+			// Multi-output mode: close all per-prefix channels
+			for _, output := range s.outputs {
+				close(output)
+			}
+		} else {
+			// Single-output mode
+			close(s.output)
+		}
 	}()
 
 	return nil
@@ -325,6 +424,57 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 			return
 		}
 
+		// Phase 3.3: Add padding if enabled and target size is set
+		if s.padder != nil && job.TargetCompressedSize > 0 {
+			// Calculate padding needed to reach target AFTER compression
+			// Since padding is zero bytes, it compresses to nearly nothing with zstd
+			// So we need to add padding to the uncompressed archive
+			currentSize := totalSize
+
+			// For now, use a simple estimate: assume 50% compression ratio
+			// (This should be replaced with actual compression ratio from CompressedAwareChunker when Task #11 is complete)
+			targetUncompressed := job.TargetCompressedSize * 2
+
+			paddingNeeded := s.padder.CalculatePaddingSize(currentSize, targetUncompressed)
+
+			// Validate padding ratio before adding
+			if paddingNeeded > 0 {
+				paddingRatio := float64(paddingNeeded) / float64(targetUncompressed)
+
+				if paddingRatio <= s.config.MaxPaddingRatio {
+					// Add padding as a special tar file entry
+					header := &tar.Header{
+						Name: ".padding",
+						Mode: 0644,
+						Size: paddingNeeded,
+					}
+					if err := tw.WriteHeader(header); err != nil {
+						_ = pw.CloseWithError(fmt.Errorf("failed to write padding header: %w", err))
+						return
+					}
+
+					// Write padding bytes
+					paddingWritten, err := s.padder.PadToTarget(tw, 0, paddingNeeded)
+					if err != nil {
+						_ = pw.CloseWithError(fmt.Errorf("failed to write padding: %w", err))
+						return
+					}
+
+					atomic.AddInt64(&s.paddingBytesAdded, paddingWritten)
+					totalSize += paddingWritten
+
+					// Store in metadata
+					job.Metadata["padding_bytes"] = fmt.Sprintf("%d", paddingWritten)
+					job.Metadata["padding_ratio"] = fmt.Sprintf("%.2f%%",
+						float64(paddingWritten)/float64(totalSize)*100)
+				} else {
+					// Log warning but continue (padding ratio exceeds limit)
+					job.Metadata["padding_skipped"] = fmt.Sprintf("ratio %.2f%% exceeds limit %.2f%%",
+						paddingRatio*100, s.config.MaxPaddingRatio*100)
+				}
+			}
+		}
+
 		// Update job with archive size (compressed)
 		// Note: This is an estimate since we're streaming
 		job.ArchiveSize = totalSize
@@ -353,12 +503,12 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 	job.S3Key = fmt.Sprintf("uploads/%s/shard-%d/chunk-%d%s",
 		uploadID, shardID, job.ID, extension)
 
-	// Send to output channel
+	// Send to output channel (Phase 3.2: uses selectOutput() for sharding)
 	select {
 	case <-ctx.Done():
 		_ = pr.Close()
 		return ctx.Err()
-	case s.output <- job:
+	case s.selectOutput(job) <- job:
 		atomic.AddInt64(&s.jobsProcessed, 1)
 		atomic.AddInt64(&s.bytesProcessed, job.ArchiveSize)
 
@@ -385,12 +535,29 @@ func (s *ArchiverStage) Stats() StageStats {
 		stats.AverageTime = stats.TotalTime / time.Duration(stats.JobsProcessed)
 	}
 
+	// Phase 3.2: Add shard distribution to metadata for load balancing analysis
+	if s.shardDistribution != nil {
+		if stats.Metadata == nil {
+			stats.Metadata = make(map[string]interface{})
+		}
+		shardDist := make(map[string]interface{})
+		for shardName, count := range s.shardDistribution {
+			shardDist[shardName] = atomic.LoadInt64(count)
+		}
+		stats.Metadata["shard_distribution"] = shardDist
+	}
+
 	return stats
 }
 
 // GetCompressionStats returns compression optimization statistics
 func (s *ArchiverStage) GetCompressionStats() (filesSkipped int64, timeSaved time.Duration) {
 	return atomic.LoadInt64(&s.filesSkipped), time.Duration(atomic.LoadInt64(&s.compressionTimeSaved))
+}
+
+// GetPaddingStats returns Phase 3.3 archive padding statistics
+func (s *ArchiverStage) GetPaddingStats() int64 {
+	return atomic.LoadInt64(&s.paddingBytesAdded)
 }
 
 // worker processes jobs from the input channel
@@ -410,11 +577,11 @@ func (s *ArchiverStage) worker(ctx context.Context) {
 				job.Error = err
 				atomic.AddInt64(&s.jobsFailed, 1)
 
-				// Still send to output for error handling
+				// Still send to output for error handling (Phase 3.2: uses selectOutput())
 				select {
 				case <-ctx.Done():
 					return
-				case s.output <- job:
+				case s.selectOutput(job) <- job:
 				}
 			}
 		}
