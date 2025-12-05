@@ -602,6 +602,143 @@ func TestShardCoordinatorStats_Metrics(t *testing.T) {
 	}
 }
 
+func TestCalculateIntelligentShardCount(t *testing.T) {
+	tests := []struct {
+		name         string
+		dataSize     int64
+		expectedShards int
+		description  string
+	}{
+		{
+			name:         "Very small workload (100 MB)",
+			dataSize:     100 * 1024 * 1024,
+			expectedShards: 4,
+			description:  "Small workload (<1GB) should use 4 shards",
+		},
+		{
+			name:         "Small workload (500 MB)",
+			dataSize:     500 * 1024 * 1024,
+			expectedShards: 4,
+			description:  "Small workload (<1GB) should use 4 shards",
+		},
+		{
+			name:         "Boundary: exactly 1 GB",
+			dataSize:     1 * 1024 * 1024 * 1024,
+			expectedShards: 8,
+			description:  "Medium workload (1-10GB) should use 8 shards",
+		},
+		{
+			name:         "Medium workload (5 GB)",
+			dataSize:     5 * 1024 * 1024 * 1024,
+			expectedShards: 8,
+			description:  "Medium workload (1-10GB) should use 8 shards",
+		},
+		{
+			name:         "Boundary: exactly 10 GB",
+			dataSize:     10 * 1024 * 1024 * 1024,
+			expectedShards: 8,
+			description:  "Medium workload (1-10GB) should use 8 shards",
+		},
+		{
+			name:         "Large workload (15 GB)",
+			dataSize:     15 * 1024 * 1024 * 1024,
+			expectedShards: 10,
+			description:  "Large workload (>10GB) should use 10 shards",
+		},
+		{
+			name:         "Very large workload (1 TB)",
+			dataSize:     1024 * 1024 * 1024 * 1024,
+			expectedShards: 10,
+			description:  "Large workload (>10GB) should use 10 shards",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shardCount := CalculateIntelligentShardCount(tt.dataSize)
+			if shardCount != tt.expectedShards {
+				t.Errorf("%s: got %d shards, want %d shards (data size: %d bytes)",
+					tt.description, shardCount, tt.expectedShards, tt.dataSize)
+			}
+			t.Logf("✓ %s: %d shards for %d bytes", tt.description, shardCount, tt.dataSize)
+		})
+	}
+}
+
+func TestShardCoordinator_IntelligentShardCount(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name              string
+		configShardCount  int
+		estimatedDataSize int64
+		expectedShards    int
+	}{
+		{
+			name:              "Explicit shard count overrides intelligent calculation",
+			configShardCount:  5,
+			estimatedDataSize: 10 * 1024 * 1024 * 1024, // 10 GB
+			expectedShards:    5,
+		},
+		{
+			name:              "Auto-calculate for small workload (500 MB)",
+			configShardCount:  0,
+			estimatedDataSize: 500 * 1024 * 1024,
+			expectedShards:    4,
+		},
+		{
+			name:              "Auto-calculate for medium workload (5 GB)",
+			configShardCount:  0,
+			estimatedDataSize: 5 * 1024 * 1024 * 1024,
+			expectedShards:    8,
+		},
+		{
+			name:              "Auto-calculate for large workload (50 GB)",
+			configShardCount:  0,
+			estimatedDataSize: 50 * 1024 * 1024 * 1024,
+			expectedShards:    10,
+		},
+		{
+			name:              "No estimated size falls back to default (8 shards)",
+			configShardCount:  0,
+			estimatedDataSize: 0,
+			expectedShards:    8,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			routerConfig := &chunking.ShardRouterConfig{
+				Strategy:   chunking.ShardByHash,
+				ShardCount: 10, // Router shard count (doesn't affect coordinator)
+			}
+			router, err := chunking.NewShardRouter(routerConfig)
+			if err != nil {
+				t.Fatalf("Failed to create router: %v", err)
+			}
+
+			config := &ShardCoordinatorConfig{
+				ShardCount:        tt.configShardCount,
+				EstimatedDataSize: tt.estimatedDataSize,
+				Bucket:            "test-bucket",
+				Router:            router,
+				S3Client:          &mockS3Client{},
+			}
+
+			coord, err := NewShardCoordinator(ctx, config)
+			if err != nil {
+				t.Fatalf("Failed to create coordinator: %v", err)
+			}
+
+			actualShards := len(coord.pipelines)
+			if actualShards != tt.expectedShards {
+				t.Errorf("Expected %d shards, got %d shards", tt.expectedShards, actualShards)
+			}
+			t.Logf("✓ %s: created %d shards", tt.name, actualShards)
+		})
+	}
+}
+
 // Benchmark routing overhead (without actually adding to pipelines)
 func BenchmarkShardCoordinator_FileRouting(b *testing.B) {
 	routerConfig := &chunking.ShardRouterConfig{

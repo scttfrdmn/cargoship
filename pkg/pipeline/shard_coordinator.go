@@ -15,9 +15,10 @@ import (
 // ShardCoordinatorConfig configures the shard coordinator
 type ShardCoordinatorConfig struct {
 	// Shard configuration
-	ShardCount int    // Number of shards (default: 10)
-	Bucket     string // Target S3 bucket
-	Prefix     string // S3 key prefix (optional)
+	ShardCount        int  // Number of shards (0 = auto-calculate based on workload size)
+	EstimatedDataSize int64 // Estimated total data size for intelligent shard count (optional)
+	Bucket            string // Target S3 bucket
+	Prefix            string // S3 key prefix (optional)
 
 	// Routing strategy
 	Router *chunking.ShardRouter // File-to-shard router
@@ -59,6 +60,30 @@ type ShardCoordinator struct {
 	bytesProcessed int64 // Total bytes processed across all shards
 }
 
+// CalculateIntelligentShardCount determines optimal shard count based on workload size
+// Returns recommended shard count based on:
+//   - Small workload (<1 GB): 4 shards (saves memory, still good parallelism)
+//   - Medium workload (1-10 GB): 8 shards (hits S3 multi-prefix sweet spot)
+//   - Large workload (>10 GB): 10 shards (maximum throughput)
+func CalculateIntelligentShardCount(estimatedDataSize int64) int {
+	const (
+		smallWorkloadThreshold  = 1 * 1024 * 1024 * 1024  // 1 GB
+		mediumWorkloadThreshold = 10 * 1024 * 1024 * 1024 // 10 GB
+
+		smallShardCount  = 4  // For <1GB
+		mediumShardCount = 8  // For 1-10GB
+		largeShardCount  = 10 // For >10GB
+	)
+
+	if estimatedDataSize < smallWorkloadThreshold {
+		return smallShardCount
+	} else if estimatedDataSize <= mediumWorkloadThreshold {
+		return mediumShardCount
+	} else {
+		return largeShardCount
+	}
+}
+
 // NewShardCoordinator creates a new shard coordinator
 func NewShardCoordinator(ctx context.Context, config *ShardCoordinatorConfig) (*ShardCoordinator, error) {
 	if config == nil {
@@ -76,7 +101,13 @@ func NewShardCoordinator(ctx context.Context, config *ShardCoordinatorConfig) (*
 
 	// Set defaults
 	if config.ShardCount <= 0 {
-		config.ShardCount = 10
+		if config.EstimatedDataSize > 0 {
+			// Use intelligent shard count based on workload size
+			config.ShardCount = CalculateIntelligentShardCount(config.EstimatedDataSize)
+		} else {
+			// Fall back to default (medium workload assumption)
+			config.ShardCount = 8
+		}
 	}
 	if config.MaxRetries <= 0 {
 		config.MaxRetries = 3
