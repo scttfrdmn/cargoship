@@ -571,11 +571,24 @@ func TestShardCoordinatorStats_Metrics(t *testing.T) {
 		t.Errorf("Expected compression ratio ~%.2f, got %.2f", expectedRatio, compressionRatio)
 	}
 
-	// Test throughput
-	throughput := stats.ThroughputMBps()
-	expectedThroughput := 20.0 // 100MB / 5s
-	if throughput < expectedThroughput-1 || throughput > expectedThroughput+1 {
-		t.Errorf("Expected throughput ~%.1f MB/s, got %.1f MB/s", expectedThroughput, throughput)
+	// Test processing throughput (uncompressed)
+	processingThroughput := stats.ThroughputMBps()
+	expectedProcessingThroughput := 20.0 // 100MB / 5s
+	if processingThroughput < expectedProcessingThroughput-1 || processingThroughput > expectedProcessingThroughput+1 {
+		t.Errorf("Expected processing throughput ~%.1f MB/s, got %.1f MB/s", expectedProcessingThroughput, processingThroughput)
+	}
+
+	// Test network throughput (compressed)
+	networkThroughput := stats.NetworkThroughputMBps()
+	expectedNetworkThroughput := 6.0 // 30MB / 5s
+	if networkThroughput < expectedNetworkThroughput-1 || networkThroughput > expectedNetworkThroughput+1 {
+		t.Errorf("Expected network throughput ~%.1f MB/s, got %.1f MB/s", expectedNetworkThroughput, networkThroughput)
+	}
+
+	// Verify network throughput is lower than processing throughput (due to compression)
+	if networkThroughput >= processingThroughput {
+		t.Errorf("Network throughput (%.1f MB/s) should be less than processing throughput (%.1f MB/s) when compression is effective",
+			networkThroughput, processingThroughput)
 	}
 
 	// Test completion

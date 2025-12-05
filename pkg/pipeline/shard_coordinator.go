@@ -294,18 +294,17 @@ func (s ShardCoordinatorStats) String() string {
 		compressionRatio = float64(s.TotalUploadSize) / float64(s.BytesProcessed)
 	}
 
-	throughputMBps := 0.0
-	if s.Duration.Seconds() > 0 {
-		throughputMBps = float64(s.BytesProcessed) / (1 << 20) / s.Duration.Seconds()
-	}
+	processingThroughput := s.ThroughputMBps()
+	networkThroughput := s.NetworkThroughputMBps()
 
-	return fmt.Sprintf("Coordinator: %d shards, %d files, %d MB processed, %d MB uploaded (%.1f%% compression), %.1f MB/s, %s, %s",
+	return fmt.Sprintf("Coordinator: %d shards, %d files, %d MB → %d MB (%.1f%% compression)\nThroughput: %.2f MB/s processing | %.2f MB/s network\nDuration: %s, %s",
 		s.ShardCount,
 		s.FilesAdded,
 		s.BytesProcessed/(1<<20),
 		s.TotalUploadSize/(1<<20),
 		(1-compressionRatio)*100,
-		throughputMBps,
+		processingThroughput,
+		networkThroughput,
 		s.Duration.Round(time.Millisecond),
 		status,
 	)
@@ -319,12 +318,20 @@ func (s ShardCoordinatorStats) CompressionRatio() float64 {
 	return float64(s.TotalUploadSize) / float64(s.BytesProcessed)
 }
 
-// ThroughputMBps returns the processing throughput in MB/s
+// ThroughputMBps returns the processing throughput in MB/s (uncompressed data rate)
 func (s ShardCoordinatorStats) ThroughputMBps() float64 {
 	if s.Duration.Seconds() == 0 {
 		return 0.0
 	}
 	return float64(s.BytesProcessed) / (1 << 20) / s.Duration.Seconds()
+}
+
+// NetworkThroughputMBps returns the network throughput in MB/s (compressed data uploaded to S3)
+func (s ShardCoordinatorStats) NetworkThroughputMBps() float64 {
+	if s.Duration.Seconds() == 0 {
+		return 0.0
+	}
+	return float64(s.TotalUploadSize) / (1 << 20) / s.Duration.Seconds()
 }
 
 // IsComplete returns true if all shards have completed
