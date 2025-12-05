@@ -92,6 +92,13 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 	// Users must explicitly enable it via config.EnableMultiPrefix = true
 	// This allows benchmarks and tests to properly compare Phase 2 vs Phase 3.1
 
+	// Phase 3.3: Compressed-aware chunking defaults (opt-in for now)
+	if config.MaxPaddingRatio == 0 {
+		config.MaxPaddingRatio = 0.25 // Default: 25% max padding overhead
+	}
+	// EnableCompressedAwareChunking and EnableArchivePadding are false by default (opt-in)
+	// ForceChunkSizeMB defaults to 0 (use adaptive sizing)
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	p := &Pipeline{
@@ -152,25 +159,27 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 
 	// Create scanner stage
 	scannerConfig := &ScannerConfig{
-		RootPath: rootPath,
-		Workers:  p.config.ScannerWorkers,
+		RootPath:                   rootPath,
+		Workers:                    p.config.ScannerWorkers,
+		UseCompressedAwareChunking: p.config.EnableCompressedAwareChunking, // Phase 3.3
+		ChunkTargetSizeMB:          p.config.ForceChunkSizeMB,               // Phase 3.3
 	}
 	p.scanner, err = NewScannerStage(scannerConfig, p.chunkChan)
 	if err != nil {
 		return fmt.Errorf("failed to create scanner: %w", err)
 	}
 
-	// Create archiver stage
+	// Create archiver stage based on configuration
 	archiverConfig := &ArchiverConfig{
 		Workers:         p.config.ArchiverWorkers,
 		CompressionType: "zstd",
 		BufferSize:      64 * 1024, // 64KB
 		UploadID:        p.config.UploadID,
 		ShardCount:      p.config.ShardCount,
-	}
-	p.archiver, err = NewArchiverStage(archiverConfig, p.chunkChan, p.archiveChan)
-	if err != nil {
-		return fmt.Errorf("failed to create archiver: %w", err)
+		// Phase 3.3: Archive padding configuration
+		EnablePadding:        p.config.EnableArchivePadding,
+		MaxPaddingRatio:      p.config.MaxPaddingRatio,
+		UseLowEntropyPadding: true, // S3-optimized zero-byte padding
 	}
 
 	// Create uploader stage (real S3 or simulated)
@@ -180,8 +189,64 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 			return fmt.Errorf("S3Client required when UseRealS3 is true")
 		}
 
-		// Phase 3: Multi-prefix parallel uploads (default: enabled)
-		if p.config.EnableMultiPrefix {
+		// Phase 3.2: Direct archiver-to-uploader with built-in sharding (NO ROUTER)
+		if p.config.EnableMultiPrefix && p.config.EnableArchiverSharding {
+			// Create per-prefix channels for archiver to write to directly
+			p.prefixChans = make(map[string]chan *Job)
+			for i := 0; i < p.config.ShardCount; i++ {
+				shardName := fmt.Sprintf("shard-%d", i)
+				p.prefixChans[shardName] = make(chan *Job, p.config.ArchiveBufferSize/p.config.ShardCount)
+			}
+
+			// Create write-only map for archiver, read-only map for uploader
+			archiverOutputs := make(map[string]chan<- *Job)
+			uploaderInputs := make(map[string]<-chan *Job)
+			for name, ch := range p.prefixChans {
+				archiverOutputs[name] = ch
+				uploaderInputs[name] = ch
+			}
+
+			// Create archiver with built-in sharding (NO p.archiveChan!)
+			p.archiver, err = NewArchiverStageWithSharding(archiverConfig, p.chunkChan, archiverOutputs, p.config.ShardCount)
+			if err != nil {
+				return fmt.Errorf("failed to create archiver: %w", err)
+			}
+
+			// Create S3MultiPrefixUploader (same as Phase 3.1)
+			s3Config := &S3UploaderConfig{
+				PartSize:   p.config.S3PartSize,
+				MaxRetries: 3,
+				RetryDelay: time.Second,
+				S3Client:   p.config.S3Client.(*s3.Client),
+				Bucket:     p.config.S3Bucket,
+				Prefix:     p.config.S3Prefix,
+			}
+
+			if p.config.S3PartSize == 0 {
+				s3Config.PartSize = 64 * 1024 * 1024
+			}
+
+			p.multiPrefixUploader, err = NewS3MultiPrefixUploaderStage(
+				s3Config,
+				uploaderInputs,
+				p.resultChan,
+				p.config.WorkersPerPrefix,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to create multi-prefix S3 uploader: %w", err)
+			}
+
+			// NO ROUTER CREATED - archiver shards directly! ✅
+
+		} else if p.config.EnableMultiPrefix {
+			// Phase 3.1: Multi-prefix with router (original implementation)
+
+			// Create archiver with single output (Phase 3.1 uses router)
+			p.archiver, err = NewArchiverStage(archiverConfig, p.chunkChan, p.archiveChan)
+			if err != nil {
+				return fmt.Errorf("failed to create archiver: %w", err)
+			}
+
 			// Create per-prefix channels for parallel uploads
 			p.prefixChans = make(map[string]chan *Job)
 			for i := 0; i < p.config.ShardCount; i++ {
@@ -225,7 +290,14 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				return fmt.Errorf("failed to create multi-prefix S3 uploader: %w", err)
 			}
 		} else {
-			// Single-prefix legacy uploader (Phase 2)
+			// Phase 2: Single-prefix legacy uploader
+
+			// Create archiver with single output (Phase 2)
+			p.archiver, err = NewArchiverStage(archiverConfig, p.chunkChan, p.archiveChan)
+			if err != nil {
+				return fmt.Errorf("failed to create archiver: %w", err)
+			}
+
 			s3Config := &S3UploaderConfig{
 				Workers:    p.config.UploaderWorkers,
 				PartSize:   p.config.S3PartSize,
@@ -247,6 +319,13 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 		}
 	} else {
 		// Use simulated uploader for testing
+
+		// Create archiver with single output (simulated uploader mode)
+		p.archiver, err = NewArchiverStage(archiverConfig, p.chunkChan, p.archiveChan)
+		if err != nil {
+			return fmt.Errorf("failed to create archiver: %w", err)
+		}
+
 		uploaderConfig := &UploaderConfig{
 			Workers:     p.config.UploaderWorkers,
 			PartSize:    5 * 1024 * 1024, // 5MB parts
@@ -272,13 +351,21 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 	// Start the appropriate uploader
 	if p.config.UseRealS3 {
 		if p.config.EnableMultiPrefix {
-			// Phase 3: Start PrefixRouter and MultiPrefixUploader
-			if err := p.router.Start(ctx); err != nil {
-				return fmt.Errorf("failed to start prefix router: %w", err)
-			}
+			// Phase 3.2: Direct archiver sharding (NO ROUTER)
+			if p.config.EnableArchiverSharding {
+				// Only start multi-prefix uploader (router skipped)
+				if err := p.multiPrefixUploader.Start(ctx); err != nil {
+					return fmt.Errorf("failed to start multi-prefix S3 uploader: %w", err)
+				}
+			} else {
+				// Phase 3.1: Start PrefixRouter and MultiPrefixUploader
+				if err := p.router.Start(ctx); err != nil {
+					return fmt.Errorf("failed to start prefix router: %w", err)
+				}
 
-			if err := p.multiPrefixUploader.Start(ctx); err != nil {
-				return fmt.Errorf("failed to start multi-prefix S3 uploader: %w", err)
+				if err := p.multiPrefixUploader.Start(ctx); err != nil {
+					return fmt.Errorf("failed to start multi-prefix S3 uploader: %w", err)
+				}
 			}
 		} else {
 			// Phase 2: Single-prefix uploader

@@ -95,24 +95,34 @@ func BenchmarkPipeline_LargeScale_MultiPrefix(b *testing.B) {
 	// Create S3 client
 	s3Client := s3.NewFromConfig(awsConfig)
 
-	// Test cases: Phase 2 (single-prefix baseline) vs Phase 3.1 (multi-prefix)
+	// Test cases: Phase 2 (single-prefix baseline) vs Phase 3.1 (multi-prefix with router) vs Phase 3.2 (archiver sharding)
 	testCases := []struct {
-		name              string
-		enableMultiPrefix bool
-		shardCount        int
-		workersPerPrefix  int
+		name                   string
+		enableMultiPrefix      bool
+		enableArchiverSharding bool
+		shardCount             int
+		workersPerPrefix       int
 	}{
 		{
-			name:              "Phase2_SinglePrefix_Baseline",
-			enableMultiPrefix: false,
-			shardCount:        0,
-			workersPerPrefix:  0,
+			name:                   "Phase2_SinglePrefix_Baseline",
+			enableMultiPrefix:      false,
+			enableArchiverSharding: false,
+			shardCount:             0,
+			workersPerPrefix:       0,
 		},
 		{
-			name:              "Phase3.1_MultiPrefix_8shards",
-			enableMultiPrefix: true,
-			shardCount:        8,
-			workersPerPrefix:  2,
+			name:                   "Phase3.1_MultiPrefix_8shards",
+			enableMultiPrefix:      true,
+			enableArchiverSharding: false,
+			shardCount:             8,
+			workersPerPrefix:       2,
+		},
+		{
+			name:                   "Phase3.2_ArchiverSharding_8shards",
+			enableMultiPrefix:      true,
+			enableArchiverSharding: true,
+			shardCount:             8,
+			workersPerPrefix:       2,
 		},
 	}
 
@@ -135,18 +145,19 @@ func BenchmarkPipeline_LargeScale_MultiPrefix(b *testing.B) {
 			b.Logf("========================================\n")
 
 			config := &PipelineConfig{
-				ScannerWorkers:    4,
-				ArchiverWorkers:   8,
-				UploaderWorkers:   4,
-				S3Bucket:          bucket,
-				S3Prefix:          fmt.Sprintf("bench-large-scale-%s-%d", tc.name, time.Now().Unix()),
-				EnableProgress:    false, // Disable for cleaner benchmark output
-				UseRealS3:         true,
-				S3Client:          s3Client,
-				S3PartSize:        64 * 1024 * 1024, // 64MB parts
-				EnableMultiPrefix: tc.enableMultiPrefix,
-				ShardCount:        tc.shardCount,
-				WorkersPerPrefix:  tc.workersPerPrefix,
+				ScannerWorkers:         4,
+				ArchiverWorkers:        8,
+				UploaderWorkers:        4,
+				S3Bucket:               bucket,
+				S3Prefix:               fmt.Sprintf("bench-large-scale-%s-%d", tc.name, time.Now().Unix()),
+				EnableProgress:         false, // Disable for cleaner benchmark output
+				UseRealS3:              true,
+				S3Client:               s3Client,
+				S3PartSize:             64 * 1024 * 1024, // 64MB parts
+				EnableMultiPrefix:      tc.enableMultiPrefix,
+				EnableArchiverSharding: tc.enableArchiverSharding,
+				ShardCount:             tc.shardCount,
+				WorkersPerPrefix:       tc.workersPerPrefix,
 			}
 
 			// Measure memory AFTER AWS SDK initialization

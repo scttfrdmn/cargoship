@@ -33,7 +33,7 @@ func (m *mockS3ClientCoordinator) PutObject(ctx context.Context, input *s3.PutOb
 	// Extract shard ID from metadata
 	if shardIDStr, ok := input.Metadata["cargoship-shard-id"]; ok {
 		var shardID int
-		fmt.Sscanf(shardIDStr, "%d", &shardID)
+		_, _ = fmt.Sscanf(shardIDStr, "%d", &shardID)
 
 		m.mu.Lock()
 		m.uploadedShards[shardID]++
@@ -41,6 +41,42 @@ func (m *mockS3ClientCoordinator) PutObject(ctx context.Context, input *s3.PutOb
 	}
 
 	return &s3.PutObjectOutput{}, nil
+}
+
+// Multipart upload methods (required by S3Uploader interface)
+func (m *mockS3ClientCoordinator) CreateMultipartUpload(ctx context.Context, input *s3.CreateMultipartUploadInput, opts ...func(*s3.Options)) (*s3.CreateMultipartUploadOutput, error) {
+	atomic.AddInt64(&m.putObjectCalls, 1)
+
+	// Extract shard ID from metadata and track it
+	if shardIDStr, ok := input.Metadata["cargoship-shard-id"]; ok {
+		var shardID int
+		_, _ = fmt.Sscanf(shardIDStr, "%d", &shardID)
+
+		m.mu.Lock()
+		m.uploadedShards[shardID]++
+		m.mu.Unlock()
+	}
+
+	uploadID := "test-upload-id"
+	return &s3.CreateMultipartUploadOutput{
+		UploadId: &uploadID,
+	}, nil
+}
+
+func (m *mockS3ClientCoordinator) UploadPart(ctx context.Context, input *s3.UploadPartInput, opts ...func(*s3.Options)) (*s3.UploadPartOutput, error) {
+	atomic.AddInt64(&m.putObjectCalls, 1)
+	etag := "test-etag"
+	return &s3.UploadPartOutput{
+		ETag: &etag,
+	}, nil
+}
+
+func (m *mockS3ClientCoordinator) CompleteMultipartUpload(ctx context.Context, input *s3.CompleteMultipartUploadInput, opts ...func(*s3.Options)) (*s3.CompleteMultipartUploadOutput, error) {
+	return &s3.CompleteMultipartUploadOutput{}, nil
+}
+
+func (m *mockS3ClientCoordinator) AbortMultipartUpload(ctx context.Context, input *s3.AbortMultipartUploadInput, opts ...func(*s3.Options)) (*s3.AbortMultipartUploadOutput, error) {
+	return &s3.AbortMultipartUploadOutput{}, nil
 }
 
 func TestNewShardCoordinator(t *testing.T) {
@@ -126,6 +162,7 @@ func TestNewShardCoordinator(t *testing.T) {
 			if !tt.wantErr {
 				if coord == nil {
 					t.Error("NewShardCoordinator() returned nil coordinator without error")
+					return
 				}
 				if len(coord.pipelines) != tt.config.ShardCount {
 					t.Errorf("Expected %d pipelines, got %d", tt.config.ShardCount, len(coord.pipelines))

@@ -3,6 +3,7 @@ package pipeline
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3Types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/klauspost/compress/zstd"
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
 )
@@ -40,6 +42,10 @@ type ShardPipelineConfig struct {
 
 	// Performance tuning
 	FileQueueBuffer int // File queue buffer size (default: 1000)
+
+	// Multipart upload configuration
+	UseMultipartUpload bool  // Enable S3 multipart upload (default: true for AWS compatibility)
+	PartSize           int64 // Part size for multipart upload (default: 50 MB, min: 5 MB)
 }
 
 // ShardPipeline handles streaming tar → zstd → S3 for a single shard
@@ -102,6 +108,15 @@ func NewShardPipeline(ctx context.Context, config *ShardPipelineConfig) (*ShardP
 	if config.FileQueueBuffer <= 0 {
 		config.FileQueueBuffer = 1000 // Default: 1000 files per shard
 	}
+	// Multipart upload is enabled by default for AWS compatibility
+	config.UseMultipartUpload = true
+	if config.PartSize <= 0 {
+		config.PartSize = 50 << 20 // Default: 50 MB parts
+	}
+	// Enforce S3 minimum part size (5 MB)
+	if config.PartSize < (5 << 20) {
+		config.PartSize = 5 << 20
+	}
 
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -133,8 +148,8 @@ func (sp *ShardPipeline) Start() error {
 		zstd.WithEncoderLevel(sp.config.CompressionLevel),
 	)
 	if err != nil {
-		sp.pipeWriter.Close()
-		sp.pipeReader.Close()
+		_ = sp.pipeWriter.Close()
+		_ = sp.pipeReader.Close()
 		return fmt.Errorf("failed to create zstd encoder: %w", err)
 	}
 
@@ -262,7 +277,7 @@ func (sp *ShardPipeline) addFileToTar(file chunking.File) error {
 	return nil
 }
 
-// uploader reads from pipe and uploads to S3
+// uploader reads from pipe and uploads to S3 (multipart or single PutObject)
 func (sp *ShardPipeline) uploader() {
 	defer sp.wg.Done()
 	defer close(sp.done)
@@ -275,8 +290,8 @@ func (sp *ShardPipeline) uploader() {
 
 	// Reserve memory if memory manager available
 	if sp.config.MemoryManager != nil {
-		// Estimate memory usage (64MB for upload buffer)
-		estimatedMemory := int64(64 << 20)
+		// Estimate memory usage based on part size
+		estimatedMemory := sp.config.PartSize
 		if err := sp.config.MemoryManager.ReserveMemory(sp.ctx, &Job{
 			Chunk: chunking.Chunk{TotalSize: estimatedMemory},
 		}); err != nil {
@@ -286,46 +301,187 @@ func (sp *ShardPipeline) uploader() {
 		defer sp.config.MemoryManager.ReleaseMemory(estimatedMemory)
 	}
 
+	// Use multipart upload (required for AWS compatibility)
+	if sp.config.UseMultipartUpload {
+		if err := sp.uploadMultipart(s3Key); err != nil {
+			sp.setUploadError(err)
+		}
+	} else {
+		// Fallback to PutObject (for testing/local only)
+		if err := sp.uploadSingle(s3Key); err != nil {
+			sp.setUploadError(err)
+		}
+	}
+}
+
+// uploadMultipart uploads to S3 using multipart upload API (for AWS compatibility)
+func (sp *ShardPipeline) uploadMultipart(s3Key string) error {
+	// Create multipart upload
+	createResp, err := sp.config.S3Client.CreateMultipartUpload(sp.ctx, &s3.CreateMultipartUploadInput{
+		Bucket: aws.String(sp.config.Bucket),
+		Key:    aws.String(s3Key),
+		Metadata: map[string]string{
+			"cargoship-mode":     "sharded",
+			"cargoship-shard-id": fmt.Sprintf("%d", sp.config.ShardID),
+			"cargoship-shard":    sp.config.ShardName,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create multipart upload: %w", err)
+	}
+
+	uploadID := *createResp.UploadId
+	var completedParts []s3Types.CompletedPart
+	partNumber := int32(1)
+	buffer := make([]byte, sp.config.PartSize)
+	var totalUploaded int64
+
+	// Upload parts
+	for {
+		// Read part data
+		n, readErr := io.ReadFull(sp.pipeReader, buffer)
+		if n == 0 && readErr == io.EOF {
+			// No more data
+			break
+		}
+
+		// Last part can be smaller than PartSize
+		partData := buffer[:n]
+		if len(partData) == 0 {
+			break
+		}
+
+		// Upload part with retries
+		var etag string
+		var lastErr error
+		for attempt := 0; attempt < sp.config.MaxRetries; attempt++ {
+			if attempt > 0 {
+				select {
+				case <-sp.ctx.Done():
+					_, _ = sp.config.S3Client.AbortMultipartUpload(context.Background(), &s3.AbortMultipartUploadInput{
+						Bucket:   aws.String(sp.config.Bucket),
+						Key:      aws.String(s3Key),
+						UploadId: aws.String(uploadID),
+					})
+					return sp.ctx.Err()
+				case <-time.After(sp.config.RetryDelay):
+				}
+			}
+
+			uploadResp, err := sp.config.S3Client.UploadPart(sp.ctx, &s3.UploadPartInput{
+				Bucket:     aws.String(sp.config.Bucket),
+				Key:        aws.String(s3Key),
+				UploadId:   aws.String(uploadID),
+				PartNumber: aws.Int32(partNumber),
+				Body:       bytes.NewReader(partData),
+			})
+
+			if err != nil {
+				lastErr = err
+				continue
+			}
+
+			etag = *uploadResp.ETag
+			break
+		}
+
+		if lastErr != nil {
+			// Abort multipart upload on failure
+			_, _ = sp.config.S3Client.AbortMultipartUpload(context.Background(), &s3.AbortMultipartUploadInput{
+				Bucket:   aws.String(sp.config.Bucket),
+				Key:      aws.String(s3Key),
+				UploadId: aws.String(uploadID),
+			})
+			return fmt.Errorf("failed to upload part %d after %d attempts: %w", partNumber, sp.config.MaxRetries, lastErr)
+		}
+
+		// Record completed part
+		completedParts = append(completedParts, s3Types.CompletedPart{
+			ETag:       aws.String(etag),
+			PartNumber: aws.Int32(partNumber),
+		})
+
+		totalUploaded += int64(len(partData))
+		partNumber++
+
+		// Check if we've reached EOF
+		if readErr == io.EOF || readErr == io.ErrUnexpectedEOF {
+			break
+		}
+	}
+
+	// Complete multipart upload
+	_, err = sp.config.S3Client.CompleteMultipartUpload(sp.ctx, &s3.CompleteMultipartUploadInput{
+		Bucket:   aws.String(sp.config.Bucket),
+		Key:      aws.String(s3Key),
+		UploadId: aws.String(uploadID),
+		MultipartUpload: &s3Types.CompletedMultipartUpload{
+			Parts: completedParts,
+		},
+	})
+
+	if err != nil {
+		// Abort on completion failure
+		_, _ = sp.config.S3Client.AbortMultipartUpload(context.Background(), &s3.AbortMultipartUploadInput{
+			Bucket:   aws.String(sp.config.Bucket),
+			Key:      aws.String(s3Key),
+			UploadId: aws.String(uploadID),
+		})
+		return fmt.Errorf("failed to complete multipart upload: %w", err)
+	}
+
+	// Update upload size
+	sp.mu.Lock()
+	sp.uploadSize = totalUploaded
+	sp.mu.Unlock()
+
+	return nil
+}
+
+// uploadSingle uploads to S3 using PutObject (fallback for testing/local only)
+func (sp *ShardPipeline) uploadSingle(s3Key string) error {
+	// Buffer entire stream (not recommended for production)
+	data, err := io.ReadAll(sp.pipeReader)
+	if err != nil {
+		return fmt.Errorf("failed to read pipe: %w", err)
+	}
+
 	// Upload with retries
 	var lastErr error
 	for attempt := 0; attempt < sp.config.MaxRetries; attempt++ {
 		if attempt > 0 {
-			// Wait before retry
 			select {
 			case <-sp.ctx.Done():
-				sp.setUploadError(sp.ctx.Err())
-				return
+				return sp.ctx.Err()
 			case <-time.After(sp.config.RetryDelay):
 			}
 		}
 
-		// Upload to S3
-		output, err := sp.config.S3Client.PutObject(sp.ctx, &s3.PutObjectInput{
+		_, err := sp.config.S3Client.PutObject(sp.ctx, &s3.PutObjectInput{
 			Bucket: aws.String(sp.config.Bucket),
 			Key:    aws.String(s3Key),
-			Body:   sp.pipeReader,
+			Body:   bytes.NewReader(data),
 			Metadata: map[string]string{
-				"cargoship-mode":    "cargohold",
+				"cargoship-mode":     "sharded",
 				"cargoship-shard-id": fmt.Sprintf("%d", sp.config.ShardID),
-				"cargoship-shard":   sp.config.ShardName,
+				"cargoship-shard":    sp.config.ShardName,
 			},
 		})
 
 		if err != nil {
 			lastErr = err
-			// Note: pipe is consumed, can't retry from same reader
-			// In production, would need to implement buffering or re-streaming
 			continue
 		}
 
-		// Success
-		if output.ETag != nil {
-			sp.uploadSize = 0 // S3 doesn't always return size in response
-		}
-		return
+		// Update upload size
+		sp.mu.Lock()
+		sp.uploadSize = int64(len(data))
+		sp.mu.Unlock()
+
+		return nil
 	}
 
-	sp.setUploadError(fmt.Errorf("upload failed after %d attempts: %w", sp.config.MaxRetries, lastErr))
+	return fmt.Errorf("upload failed after %d attempts: %w", sp.config.MaxRetries, lastErr)
 }
 
 // buildS3Key constructs the S3 key for this shard

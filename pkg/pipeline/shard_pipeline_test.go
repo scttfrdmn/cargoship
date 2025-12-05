@@ -43,6 +43,46 @@ func (m *mockS3ClientShard) PutObject(ctx context.Context, input *s3.PutObjectIn
 	return &s3.PutObjectOutput{}, nil
 }
 
+// Multipart upload methods (required by S3Uploader interface)
+func (m *mockS3ClientShard) CreateMultipartUpload(ctx context.Context, input *s3.CreateMultipartUploadInput, opts ...func(*s3.Options)) (*s3.CreateMultipartUploadOutput, error) {
+	uploadID := "test-upload-id"
+	return &s3.CreateMultipartUploadOutput{
+		UploadId: &uploadID,
+	}, nil
+}
+
+func (m *mockS3ClientShard) UploadPart(ctx context.Context, input *s3.UploadPartInput, opts ...func(*s3.Options)) (*s3.UploadPartOutput, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.putObjectCalls++
+	if m.failAfter > 0 && m.putObjectCalls <= m.failAfter {
+		return nil, fmt.Errorf("simulated upload failure")
+	}
+
+	// Read data from part body
+	if input.Body != nil {
+		data, err := io.ReadAll(input.Body)
+		if err != nil {
+			return nil, err
+		}
+		m.uploadedData = append(m.uploadedData, data...)
+	}
+
+	etag := "test-etag"
+	return &s3.UploadPartOutput{
+		ETag: &etag,
+	}, nil
+}
+
+func (m *mockS3ClientShard) CompleteMultipartUpload(ctx context.Context, input *s3.CompleteMultipartUploadInput, opts ...func(*s3.Options)) (*s3.CompleteMultipartUploadOutput, error) {
+	return &s3.CompleteMultipartUploadOutput{}, nil
+}
+
+func (m *mockS3ClientShard) AbortMultipartUpload(ctx context.Context, input *s3.AbortMultipartUploadInput, opts ...func(*s3.Options)) (*s3.AbortMultipartUploadOutput, error) {
+	return &s3.AbortMultipartUploadOutput{}, nil
+}
+
 func TestNewShardPipeline(t *testing.T) {
 	ctx := context.Background()
 	mockClient := &mockS3ClientShard{}

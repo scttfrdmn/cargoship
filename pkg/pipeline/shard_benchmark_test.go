@@ -16,13 +16,36 @@ import (
 // Benchmark-specific mock S3 client with minimal overhead
 type benchmarkS3Client struct {
 	uploadCount int64
-	bytesUploaded int64
 }
 
 func (m *benchmarkS3Client) PutObject(ctx context.Context, input *s3.PutObjectInput, opts ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 	atomic.AddInt64(&m.uploadCount, 1)
 	// Don't actually read the body to minimize overhead
 	return &s3.PutObjectOutput{}, nil
+}
+
+// Multipart upload methods (required by S3Uploader interface)
+func (m *benchmarkS3Client) CreateMultipartUpload(ctx context.Context, input *s3.CreateMultipartUploadInput, opts ...func(*s3.Options)) (*s3.CreateMultipartUploadOutput, error) {
+	uploadID := "test-upload-id"
+	return &s3.CreateMultipartUploadOutput{
+		UploadId: &uploadID,
+	}, nil
+}
+
+func (m *benchmarkS3Client) UploadPart(ctx context.Context, input *s3.UploadPartInput, opts ...func(*s3.Options)) (*s3.UploadPartOutput, error) {
+	atomic.AddInt64(&m.uploadCount, 1)
+	etag := "test-etag"
+	return &s3.UploadPartOutput{
+		ETag: &etag,
+	}, nil
+}
+
+func (m *benchmarkS3Client) CompleteMultipartUpload(ctx context.Context, input *s3.CompleteMultipartUploadInput, opts ...func(*s3.Options)) (*s3.CompleteMultipartUploadOutput, error) {
+	return &s3.CompleteMultipartUploadOutput{}, nil
+}
+
+func (m *benchmarkS3Client) AbortMultipartUpload(ctx context.Context, input *s3.AbortMultipartUploadInput, opts ...func(*s3.Options)) (*s3.AbortMultipartUploadOutput, error) {
+	return &s3.AbortMultipartUploadOutput{}, nil
 }
 
 // createBenchmarkFiles creates a temporary directory with N test files

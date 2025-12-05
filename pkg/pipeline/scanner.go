@@ -24,6 +24,9 @@ type ScannerStage struct {
 	stats   StageStats
 	strategy chunking.ChunkingStrategy
 
+	// Phase 3.3: Compressed-aware chunker for optimal chunk sizing
+	compressedChunker *chunking.CompressedAwareChunker
+
 	// Atomic counters
 	jobsProcessed  int64
 	bytesProcessed int64
@@ -51,13 +54,25 @@ func NewScannerStage(config *ScannerConfig, output chan<- *Job) (*ScannerStage, 
 	}
 	strategy := chunking.NewAdaptiveChunkingStrategy(chunkingConfig)
 
+	// Phase 3.3: Initialize compressed-aware chunker if enabled
+	var compressedChunker *chunking.CompressedAwareChunker
+	if config.UseCompressedAwareChunking {
+		chunker, err := chunking.NewCompressedAwareChunker()
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to create compressed-aware chunker: %w", err)
+		}
+		compressedChunker = chunker
+	}
+
 	return &ScannerStage{
-		config:   config,
-		output:   output,
-		pool:     NewWorkerPool(ctx, config.Workers),
-		ctx:      ctx,
-		cancel:   cancel,
-		strategy: strategy,
+		config:            config,
+		output:            output,
+		pool:              NewWorkerPool(ctx, config.Workers),
+		ctx:               ctx,
+		cancel:            cancel,
+		strategy:          strategy,
+		compressedChunker: compressedChunker,
 		stats: StageStats{
 			Name: "scanner",
 		},
@@ -243,34 +258,81 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 
 // processBatch processes a batch of files into chunks
 func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, totalSize int64) error {
-	// Calculate optimal chunk size for this batch
-	chunkSize, _ := s.strategy.CalculateOptimalChunkSize(
-		totalSize,
-		len(files),
-		4*1024*1024*1024, // 4GB
-		1000,             // 1000x cost savings
-	)
+	var chunks []chunking.Chunk
+	var err error
 
-	// Group batch into chunks
-	chunks, err := s.strategy.GroupFilesIntoChunks(files, chunkSize)
-	if err != nil {
-		return fmt.Errorf("failed to group files into chunks: %w", err)
-	}
+	// Phase 3.3: Use compressed-aware chunking if enabled
+	if s.compressedChunker != nil {
+		result, err := s.compressedChunker.CreateChunksWithMetadata(files)
+		if err != nil {
+			return fmt.Errorf("failed to create compressed-aware chunks: %w", err)
+		}
+		chunks = result.Chunks
 
-	// Send chunks to output
-	for i := range chunks {
-		chunk := chunks[i]
+		// Log chunking decision
+		fmt.Printf("Phase 3.3: Created %d chunks with %dMB target (total: %.2f GB compressed)\n",
+			len(chunks), result.OptimalChunkSizeMB,
+			float64(result.TotalEstimatedCompressedSize)/(1024*1024*1024))
 
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case s.output <- &Job{
-			ID:        chunk.ID,
-			Chunk:     chunk,
-			StartTime: time.Now(),
-		}:
-			atomic.AddInt64(&s.jobsProcessed, 1)
-			atomic.AddInt64(&s.bytesProcessed, chunk.TotalSize)
+		// Calculate target compressed size per chunk (average)
+		targetCompressedSize := int64(0)
+		if len(result.ChunkMetadata) > 0 {
+			targetCompressedSize = result.TotalEstimatedCompressedSize / int64(len(result.ChunkMetadata))
+		}
+
+		// Send chunks with target sizes
+		for i := range chunks {
+			chunk := chunks[i]
+
+			// Use metadata for this specific chunk if available
+			estimatedCompressed := chunk.TotalSize / 2 // Default: 50% compression
+			if i < len(result.ChunkMetadata) {
+				estimatedCompressed = result.ChunkMetadata[i].EstimatedCompressedSize
+			}
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case s.output <- &Job{
+				ID:                   chunk.ID,
+				Chunk:                chunk,
+				TargetCompressedSize: targetCompressedSize,  // Phase 3.3
+				EstimatedCompressed:  estimatedCompressed,   // Phase 3.3
+				StartTime:            time.Now(),
+			}:
+				atomic.AddInt64(&s.jobsProcessed, 1)
+				atomic.AddInt64(&s.bytesProcessed, chunk.TotalSize)
+			}
+		}
+	} else {
+		// Fallback: Use existing simple chunking strategy
+		chunkSize, _ := s.strategy.CalculateOptimalChunkSize(
+			totalSize,
+			len(files),
+			4*1024*1024*1024, // 4GB
+			1000,             // 1000x cost savings
+		)
+
+		chunks, err = s.strategy.GroupFilesIntoChunks(files, chunkSize)
+		if err != nil {
+			return fmt.Errorf("failed to group files into chunks: %w", err)
+		}
+
+		// Send chunks without target sizes
+		for i := range chunks {
+			chunk := chunks[i]
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case s.output <- &Job{
+				ID:        chunk.ID,
+				Chunk:     chunk,
+				StartTime: time.Now(),
+			}:
+				atomic.AddInt64(&s.jobsProcessed, 1)
+				atomic.AddInt64(&s.bytesProcessed, chunk.TotalSize)
+			}
 		}
 	}
 

@@ -20,6 +20,10 @@ type Job struct {
 	Error       error            // Error if job failed
 	StartTime   time.Time        // When job started
 	EndTime     time.Time        // When job completed
+
+	// Phase 3.3: Compressed-aware chunking with adaptive sizing
+	TargetCompressedSize int64  // Target compressed size from CompressedAwareChunker (0 = no target)
+	EstimatedCompressed  int64  // Estimated compressed size from CompressionEstimator
 }
 
 // Stage represents a pipeline stage
@@ -50,6 +54,7 @@ type StageStats struct {
 	AverageTime   time.Duration // Average time per job
 	ActiveWorkers int           // Current active workers
 	QueuedJobs    int           // Jobs waiting in queue
+	Metadata      map[string]interface{} // Additional stage-specific metadata (Phase 3.2: shard distribution, etc.)
 }
 
 // Pipeline orchestrates the entire streaming pipeline
@@ -115,6 +120,15 @@ type PipelineConfig struct {
 	WorkersPerPrefix  int    // Workers per S3 prefix (default: 2)
 	UploadID          string // Unique identifier for this upload session (format: {timestamp}-{random})
 	ShardCount        int    // Number of S3 prefix shards for parallel uploads (default: 8)
+
+	// Phase 3.2: Archiver-level sharding (eliminates router bottleneck)
+	EnableArchiverSharding bool // If true, archiver shards directly to per-prefix channels (no router)
+
+	// Phase 3.3: Compressed-aware chunking with adaptive sizing and padding
+	EnableCompressedAwareChunking bool    // Enable compression-aware chunking (default: true)
+	EnableArchivePadding          bool    // Enable padding to reach target sizes (default: true)
+	MaxPaddingRatio               float64 // Maximum padding ratio (default: 0.25 = 25%)
+	ForceChunkSizeMB              int     // Override adaptive sizing (0 = adaptive, default: 0)
 
 	// Chunking configuration
 	ChunkingConfig *chunking.ChunkingConfig
@@ -187,6 +201,10 @@ type ScannerConfig struct {
 	Workers       int
 	FollowSymlinks bool
 	ExcludePatterns []string
+
+	// Phase 3.3: Compressed-aware chunking
+	UseCompressedAwareChunking bool // Enable compression-aware chunking
+	ChunkTargetSizeMB          int  // Manual override (0 = adaptive)
 }
 
 // ArchiverConfig configures the archiver stage
@@ -199,6 +217,11 @@ type ArchiverConfig struct {
 	// Multi-prefix optimization (Phase 3)
 	UploadID   string // Unique identifier for this upload session (format: {timestamp}-{random})
 	ShardCount int    // Number of S3 prefix shards for parallel uploads (default: 8)
+
+	// Phase 3.3: Archive padding for uniform compressed chunk sizes
+	EnablePadding      bool    // Enable zero-byte padding to reach target compressed sizes
+	MaxPaddingRatio    float64 // Maximum allowed padding ratio (default: 0.25 = 25%)
+	UseLowEntropyPadding bool  // Use low-entropy (zero-byte) padding (default: true for S3 optimization)
 }
 
 // UploaderConfig configures the uploader stage

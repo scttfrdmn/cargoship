@@ -25,6 +25,23 @@ func (m *mockS3Client) PutObject(ctx context.Context, input *s3.PutObjectInput, 
 	return &s3.PutObjectOutput{}, nil
 }
 
+// Multipart upload methods (not used by DirectUploaderStage but required by interface)
+func (m *mockS3Client) CreateMultipartUpload(ctx context.Context, input *s3.CreateMultipartUploadInput, opts ...func(*s3.Options)) (*s3.CreateMultipartUploadOutput, error) {
+	return &s3.CreateMultipartUploadOutput{}, nil
+}
+
+func (m *mockS3Client) UploadPart(ctx context.Context, input *s3.UploadPartInput, opts ...func(*s3.Options)) (*s3.UploadPartOutput, error) {
+	return &s3.UploadPartOutput{}, nil
+}
+
+func (m *mockS3Client) CompleteMultipartUpload(ctx context.Context, input *s3.CompleteMultipartUploadInput, opts ...func(*s3.Options)) (*s3.CompleteMultipartUploadOutput, error) {
+	return &s3.CompleteMultipartUploadOutput{}, nil
+}
+
+func (m *mockS3Client) AbortMultipartUpload(ctx context.Context, input *s3.AbortMultipartUploadInput, opts ...func(*s3.Options)) (*s3.AbortMultipartUploadOutput, error) {
+	return &s3.AbortMultipartUploadOutput{}, nil
+}
+
 type mockError struct {
 	message string
 }
