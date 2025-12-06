@@ -2,39 +2,28 @@
 
 ## Project Overview
 
-CargoShip is a high-performance S3 file upload optimization tool featuring streaming pipeline architecture, multi-prefix parallel uploads (8× throughput), and zero-disk usage.
+CargoShip is a high-performance S3 archiving tool featuring streaming pipeline architecture, multi-prefix parallel uploads (8× throughput), and zero-disk usage.
 
-**Foundation**: Built on Duke University's SuitcaseCTL with enterprise AWS optimizations.
+**Foundation**: Built on Duke University's SuitcaseCTL research with enterprise AWS optimizations.
 
-## Current Status (2025-12-05)
+## Current Status (2025-12-06)
 
 **Version**: v0.5.1+ (Branch: main)
-**Latest Work**: Real-time TUI progress tracking for `cargoship create upload`
 
-### Recently Completed
-- ✅ **Issue #125**: BufferedPipeWriter race condition fixed (Commit a0ea650)
-  - Root cause: Write() racing with CloseWithError() closing buffer channel
-  - Fix: Added sync.WaitGroup to track active writers, wait before closing channel
-  - Validated: Production test (100MB) completed with zero panics (80.77 MB/s)
-  - Impact: Eliminates production panics during zstd compression uploads
-- ✅ **Issue #118**: CLI progress tracking with terminal detection (Commit 9dd105e, 3173615)
-- ✅ **Issue #120**: Legacy code removal - Removed Porter/rclone/suitcase (83 files, ~23,300 lines)
-- ✅ **Issue #121**: MemoryManager goroutine leak fixed (Commit 7715f4d)
-- ✅ **Issue #122**: Storage format documentation issue created
-- ✅ **Issue #123**: Blog post series issue created (5 posts with full outlines)
-- ✅ **Production Test 1**: Small dataset (50 files @ 10MB = 500MB)
-  - Uploaded in 45.5s at 10.99 MB/s
-  - Only 2 of 8 shards utilized (too few chunks created)
-- ✅ **Production Test 2**: Large dataset (200 files @ 100MB = 20GB)
-  - Uploaded in 28m3s at 11.88 MB/s
-  - All 8 shards utilized ✅
-  - 🚨 BufferedPipeWriter panic detected → Fixed in Issue #125
-  - 🚨 Performance gap: 16× slower than 185 MB/s benchmark (Issue #126)
+### Recently Completed (Last 7 Days)
+- ✅ **Issue #128**: RSA-PSS signature verification (security P1-Critical)
+- ✅ **Issue #127**: Glob pattern matching for manifest queries
+- ✅ **Issue #97**: CLI integration with ManifestQuery API
+- ✅ **Issue #122**: Storage format documentation (STORAGE_FORMAT.md)
+- ✅ **Issue #124**: README updates with new CLI examples
+- ✅ **Issue #125**: BufferedPipeWriter race condition fixed
+- ✅ **Issue #118**: CLI progress tracking with terminal detection
+- ✅ **Issue #120**: Legacy code removal (83 files, ~23,300 lines)
 
-### Open Issues
+### Active Issues
 - **Issue #126**: Performance investigation - 11.88 MB/s vs 185 MB/s benchmark (P1-High)
-- **Issue #65**: MemoryManager goroutine leak (P2-Low) - Test-only, doesn't affect production
-- **Issue #14-17**: Coordinator/test cleanup (P2-Medium) - Technical debt for v0.6.0
+- **Issue #135**: Flaky test - TestEnhancedCongestionControlWithCommunication (P2-Low)
+- **Issues #136-141**: TODO audit items (budget, diagnostics, compression, lifecycle)
 
 ## Issue Tracking - **USE GITHUB ISSUES, NOT DOCUMENTS**
 
@@ -57,30 +46,23 @@ gh issue view 123
 
 ## Development Roadmap
 
-### v0.6.0 (Next) - Production Readiness
-**Focus**: Documentation, community outreach, production validation
+### v0.6.0 (Next) - Production Hardening
+**Focus**: Performance investigation, documentation, test reliability
 
 **High Priority**:
-- ✅ Test `cargoship create upload` with real S3 (COMPLETE - see Recently Completed)
-- Create `docs/STORAGE_FORMAT.md` (Issue #122) - Open format documentation
-- Update README with new CLI command examples
-- Fix MemoryManager goroutine leak (Issue #65)
+- Investigate performance gap (Issue #126) - 11.88 MB/s vs 185 MB/s
+- Fix flaky tests (Issues #135, #68)
+- Blog post series (Issue #123) - Community outreach
 
 **Medium Priority**:
-- Blog post series (Issue #123) - 5 posts introducing CargoShip to community
-- Resolve coordinator shutdown issues (Issue #14-17)
+- TODO audit items (Issues #136-141)
+- Coordinator test cleanup (Issues #14-17)
 
-### v0.7.0 - Performance & Observability
-- Go-native performance optimizations (zero-copy I/O, network tuning)
-- Distributed tracing (OpenTelemetry/Jaeger)
-- Circuit breaker patterns for production resilience
-- Performance benchmarking suite
-
-### v0.8.0+ - Enterprise Features
-- Budget controls with grant period management
-- io_uring support (Linux high-performance async I/O)
-- HTTP/3 and QUIC protocol support
-- Kubernetes operator for container deployments
+### v0.7.0+ - Enterprise Features
+- Performance optimizations (zero-copy I/O, network tuning)
+- Distributed tracing and observability
+- Budget controls and lifecycle management
+- Kubernetes operator
 
 ## Key Architecture Components
 
@@ -88,41 +70,26 @@ gh issue view 123
 **Streaming architecture**: Scanner → Chunker → Archiver → S3 Uploader
 
 **Features**:
-- **Zero disk usage**: Streams directly from filesystem → compression → S3
-- **Bounded memory**: O(chunk_size × workers) prevents OOM
-- **Adaptive chunking**: Smart file grouping based on size/compressibility
-- **Multi-prefix sharding**: 8× S3 request rate capacity (Phase 3)
-- **Real-time progress**: Live TUI with throughput tracking
+- Zero disk usage - streams directly to S3
+- Bounded memory - O(chunk_size × workers)
+- Multi-prefix sharding - 8× S3 request rate capacity
+- Real-time progress - terminal detection with graceful fallback
 
-**Key Files**:
-- `pkg/pipeline/pipeline.go` - Core orchestrator
-- `pkg/pipeline/scanner.go` - Multi-threaded file discovery
-- `pkg/pipeline/archiver.go` - Streaming tar+zstd compression
-- `pkg/pipeline/s3_uploader.go` - Parallel S3 uploads (8 workers default)
+**Key Components**:
+- `pipeline.go` - Core orchestrator
+- `scanner.go` - Multi-threaded file discovery
+- `archiver.go` - Streaming tar+zstd compression
+- `s3_uploader.go` - Parallel uploads (8 workers)
 
-### ShardCoordinator vs Pipeline
-**Pipeline**: Used by CLI (`cargoship create upload`)
-- Single streaming pipeline with progress callback
-- Simpler architecture for typical use cases
-- Terminal detection with graceful fallback
+### Manifest System (pkg/manifest/)
+**Fast file queries**: List and filter uploaded files without downloading archives
 
-**ShardCoordinator**: Used by benchmarks only
-- Multiple ShardPipeline instances for maximum parallelism
-- Per-shard compression and memory management
-- Bubbletea TUI (ShardProgressRenderer) for advanced metrics
+**Features**:
+- Glob pattern matching (`*.log`, `data/*.csv`)
+- Compression statistics and shard distribution
+- S3 key: `[prefix/]uploads/{upload-id}/manifest.json.gz`
 
-### Chunking Engine (pkg/chunking/)
-**Intelligent file grouping**: Creates 200MB tar.zst chunks for S3 multipart optimization
-
-**Strategies**:
-- `groupSmall()`: Pack small files together
-- `groupMixed()`: Balance small/medium/large files (includes file splitting in Phase 5)
-- `groupLarge()`: Handle files >chunk_size
-
-**Key Features**:
-- Compression-aware boundary detection
-- Adaptive target size calculation
-- Archive padding for alignment
+**Documentation**: See `pkg/manifest/README.md` and `docs/STORAGE_FORMAT.md`
 
 ## Common Commands
 
@@ -149,21 +116,20 @@ govulncheck ./...
 
 ### CLI Usage
 ```bash
-# Modern streaming upload (v0.5.1+)
-cargoship create upload /data/genomics \
-  --bucket my-research-bucket \
-  --prefix 2024-analysis \
+# Upload with streaming pipeline
+cargoship create upload /data/project \
+  --bucket my-bucket \
+  --prefix archive-2024 \
   --storage-class INTELLIGENT_TIERING \
-  --shards 8 \
-  --workers 4
+  --workers 8
 
-# Real-time progress display:
-# 🚢 Uploading: 1234 files | 5.67 GB | 89 chunks | 123.4 MB/s | 1m30s elapsed
+# List uploaded files (no download)
+cargoship list --bucket my-bucket --upload-id 20251206-123456-abcd1234 --pattern "*.log"
 
 # Cost estimation
-cargoship estimate /data --storage-class DEEP_ARCHIVE --show-breakdown
+cargoship estimate /data --storage-class DEEP_ARCHIVE
 
-# Lifecycle policy management
+# Lifecycle policies
 cargoship lifecycle --bucket my-bucket --template archive-optimization
 ```
 
@@ -184,48 +150,33 @@ git push origin feature/new-feature
 gh pr create --title "Title" --body "Description"
 ```
 
-## Performance Benchmarks (v0.5.1)
+## Performance Benchmarks
 
-**Real AWS S3 Results**:
-- **Small files** (10k @ 176MB): 437ms (403 MB/s) - 23-41× faster than target
-- **Large files** (100 @ 56GB): 311s (185 MB/s) - 30% over target
-- **Memory usage**: 3.4-4.9 GB (6-8% of data size) - Excellent scaling
-- **Compression**: zstd 527 MB/s (10.7× faster than gzip)
+**Real AWS S3 (v0.5.1)**:
+- Small files (10k @ 176MB): 437ms (403 MB/s)
+- Large files (100 @ 56GB): 311s (185 MB/s)
+- Memory: 3.4-4.9 GB (6-8% of data size)
+- Compression: zstd 527 MB/s
 
-**Phase 5 Improvements** (Adaptive file splitting):
-- Enables splitting large files across multiple chunks
-- Target: <240s for 100 @ 56GB (23% improvement)
-- Implementation complete (Commit b82c201), validation pending
+**Known Issue**: Production uploads showing 11.88 MB/s (16× slower than benchmark)
+- See Issue #126 for investigation
 
-## Known Technical Debt
+## Code Quality
 
-Tracked in GitHub issues for transparent project management:
-
-- **Issue #65** (P2-Low): MemoryManager goroutine leak in tests
-- **Issue #14** (P2-Medium): Add Shutdown() calls to coordinator tests
-- **Issue #15** (P1-Low): Fix flaky CloudWatch test
-- **Issue #17** (P2-Medium): Fix TestFailoverScenarios_CrossRegionRetry timeout
-- **Issue #68** (P1-Low): Fix flaky TestPipeline_ErrorHandling test
-
-All critical bugs and test failures resolved in v0.5.0 Phase 1.
-
-## Code Quality Standards
-
-- **Linting**: 0 issues (golangci-lint)
-- **Security**: 0 vulnerabilities (govulncheck)
-- **Test Coverage**: All integration tests passing with real AWS S3
-- **Go Style**: Follow official Go best practices and idiomatic patterns
-- **Error Handling**: Comprehensive error handling with graceful degradation
-- **Thread Safety**: Proper synchronization for concurrent operations
+- Zero linting issues (golangci-lint)
+- Zero security vulnerabilities (govulncheck)
+- Comprehensive error handling with graceful degradation
+- Thread-safe concurrent operations
 
 ## Documentation Philosophy
 
-- **CRITICAL**: Track work in GitHub issues, NOT verbose planning documents
-- **Exception**: Only create docs for end-user documentation (guides, API docs, architecture diagrams)
-- **Quality over quantity**: Prefer clear, actionable issues over long documents
-- **Transparency**: Open development with public issue tracking
+**Use GitHub issues for work tracking, NOT verbose planning documents.**
+
+Only create documentation for:
+- End-user guides (TROUBLESHOOTING.md, USER_GUIDE.md)
+- API documentation (STORAGE_FORMAT.md, API_STABILITY.md)
+- Architecture diagrams (when explicitly requested)
 
 ---
 
-**Last Updated**: 2025-12-05
-**Next Session**: Begin comprehensive README/documentation updates (Issue #124)
+**Last Updated**: 2025-12-06
