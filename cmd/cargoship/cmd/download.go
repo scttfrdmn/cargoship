@@ -346,7 +346,8 @@ func extractFilesFromChunk(reader io.Reader, filesToExtract []manifest.FileEntry
 		}
 
 		// Extract file
-		if header.Typeflag == tar.TypeReg {
+		switch header.Typeflag {
+		case tar.TypeReg:
 			// Regular file
 			outFile, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
 			if err != nil {
@@ -373,7 +374,8 @@ func extractFilesFromChunk(reader io.Reader, filesToExtract []manifest.FileEntry
 			if verbose {
 				fmt.Printf("  ✓ %s (%s)\n", header.Name, humanize.Bytes(uint64(written)))
 			}
-		} else if header.Typeflag == tar.TypeDir {
+
+		case tar.TypeDir:
 			// Directory
 			if err := os.MkdirAll(outputPath, os.FileMode(header.Mode)); err != nil {
 				return extractedCount, extractedSize, fmt.Errorf("failed to create directory %s: %w", outputPath, err)
