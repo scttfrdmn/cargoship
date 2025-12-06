@@ -148,12 +148,18 @@ func TestManifestIntegration_Generation(t *testing.T) {
 	// Verify shard statistics
 	totalFilesInShards := int64(0)
 	totalCompressedInShards := int64(0)
+	shardsWithChunks := 0
 	for i, shard := range m.Shards {
-		assert.Greater(t, shard.ChunkCount, 0, "Shard %d should have chunks", i)
-		assert.NotEmpty(t, shard.ChunkKeys, "Shard %d should have chunk keys", i)
+		// Only check shards that have chunks (small datasets may not use all shards)
+		if shard.ChunkCount > 0 {
+			shardsWithChunks++
+			assert.NotEmpty(t, shard.ChunkKeys, "Shard %d should have chunk keys", i)
+			assert.Greater(t, shard.FileCount, int64(0), "Shard %d should have files", i)
+		}
 		totalFilesInShards += shard.FileCount
 		totalCompressedInShards += shard.CompressedSize
 	}
+	assert.Greater(t, shardsWithChunks, 0, "At least one shard should have chunks")
 	assert.Equal(t, m.TotalFiles, totalFilesInShards, "Shard file counts should sum to total files")
 	assert.Greater(t, totalCompressedInShards, int64(0), "Total compressed size should be positive")
 
