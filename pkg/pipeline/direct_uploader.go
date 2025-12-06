@@ -146,11 +146,16 @@ func (s *DirectUploaderStage) dispatcher(ctx context.Context) {
 			}
 
 			// Process each file in the chunk independently
+			var fileWg sync.WaitGroup
 			for _, file := range job.Chunk.Files {
 				// Create a copy of job for each file to avoid race conditions
 				fileCopy := file
-				s.submitFileUpload(ctx, fileCopy)
+				fileWg.Add(1)
+				s.submitFileUpload(ctx, fileCopy, &fileWg)
 			}
+
+			// Wait for all files in this job to complete
+			fileWg.Wait()
 
 			// Mark job as processed and send to output
 			atomic.AddInt64(&s.jobsProcessed, 1)
@@ -166,12 +171,15 @@ func (s *DirectUploaderStage) dispatcher(ctx context.Context) {
 }
 
 // submitFileUpload submits a single file upload to the worker pool
-func (s *DirectUploaderStage) submitFileUpload(ctx context.Context, file chunking.File) {
+func (s *DirectUploaderStage) submitFileUpload(ctx context.Context, file chunking.File, wg *sync.WaitGroup) {
 	err := s.pool.Submit(func(workerCtx context.Context) error {
+		defer wg.Done()
 		return s.uploadFile(workerCtx, file)
 	})
 
 	if err != nil {
+		// If submission failed, still decrement WaitGroup
+		wg.Done()
 		// Log error but continue processing other files
 		s.mu.Lock()
 		s.stats.JobsFailed++

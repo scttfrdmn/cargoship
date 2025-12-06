@@ -206,8 +206,13 @@ func TestDirectUploaderStage_MultipleFiles(t *testing.T) {
 	input <- job
 	close(input)
 
-	// Wait for completion
-	time.Sleep(200 * time.Millisecond)
+	// Wait for completion via output channel
+	select {
+	case <-output:
+		// Job completed successfully
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timeout waiting for upload completion")
+	}
 	_ = uploader.Stop()
 
 	// Verify all files were uploaded

@@ -201,7 +201,7 @@
    limitations under the License.
 
 
-   NOTICE: Portions of this software are derived from SuitcaseCTL
+   NOTICE: This software contains code derived from SuitcaseCTL
    Copyright (c) Duke University
    Original source: https://gitlab.oit.duke.edu/devil-ops/suitcasectl
-   Licensed under the MIT License
+   Licensed under the MIT License (see THIRD_PARTY_LICENSES/SUITCASECTL_ORIGINAL_LICENSE.txt)
