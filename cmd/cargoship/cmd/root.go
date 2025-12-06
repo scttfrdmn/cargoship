@@ -93,6 +93,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 		NewInfoCmd(),     // Issue #98: Info command for upload metadata
 		NewDeleteCmd(),   // Delete specific upload
 		NewScuttleCmd(),  // Nuclear option: delete everything
+		NewCostCmd(),     // Issue #145: Cost management and budget tracking
 	)
 	// Legacy commands removed: NewWizardCmd, NewAnalyzeCmd, NewSchemaCmd, newTravelAgentCmd
 	cmd.AddCommand(NewMDDocsCmd())
