@@ -29,8 +29,8 @@ func TestNewRootCmd(t *testing.T) {
 		subCommands[subcmd.Use] = true
 	}
 
-	// Test that some essential commands are present
-	essentialCommands := []string{"create", "config", "benchmark", "wizard", "schema"}
+	// Test that some essential commands are present (modern Pipeline architecture)
+	essentialCommands := []string{"create", "config", "benchmark", "lifecycle", "metrics"}
 	for _, expected := range essentialCommands {
 		assert.True(t, subCommands[expected], "Expected essential subcommand %s not found", expected)
 	}

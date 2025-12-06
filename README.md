@@ -15,7 +15,7 @@
 [![GitHub Issues](https://img.shields.io/github/issues/scttfrdmn/cargoship)](https://github.com/scttfrdmn/cargoship/issues)
 [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/scttfrdmn/cargoship)](https://github.com/scttfrdmn/cargoship/pulls)
 
-CargoShip is a next-generation data archiving tool optimized for AWS infrastructure. Built on the foundation of Duke University's [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl), CargoShip adds native AWS integration, intelligent cost optimization, and enterprise-grade observability with advanced network optimization algorithms.
+CargoShip is a next-generation data archiving tool optimized for AWS infrastructure, featuring streaming pipeline architecture, multi-prefix parallel uploads (8× throughput), and intelligent cost optimization. Originally inspired by Duke University's SuitcaseCTL research, CargoShip has evolved into a modern, production-ready solution for enterprise-scale data archiving.
 
 ## 🚀 Enterprise Features with Modern Architecture
 
