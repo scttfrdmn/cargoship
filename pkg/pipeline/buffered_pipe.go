@@ -20,9 +20,13 @@ type BufferedPipe struct {
 
 	writerErr error      // Error from writer goroutine
 
-	mu        sync.Mutex // Protects error state
+	mu        sync.Mutex // Protects error state and active writers
 	once      sync.Once  // Ensures close happens once
 	done      chan struct{} // Signals pipe is closed
+
+	// Track active writers to prevent closing channel while writes are in progress
+	activeWriters sync.WaitGroup
+	closing       bool // Set to true when Close() is called
 }
 
 // BufferedPipeReader is the reading side of a BufferedPipe
@@ -140,6 +144,18 @@ func (w *BufferedPipeWriter) Write(p []byte) (n int, err error) {
 		return 0, errors.New("write on closed pipe")
 	}
 
+	// Register this write operation
+	w.pipe.mu.Lock()
+	if w.pipe.closing {
+		w.pipe.mu.Unlock()
+		return 0, errors.New("write on closed pipe")
+	}
+	w.pipe.activeWriters.Add(1)
+	w.pipe.mu.Unlock()
+
+	// Ensure we deregister when done
+	defer w.pipe.activeWriters.Done()
+
 	// Check if pipe is closed
 	select {
 	case <-w.pipe.done:
@@ -192,7 +208,15 @@ func (w *BufferedPipeWriter) CloseWithError(err error) error {
 		w.pipe.mu.Unlock()
 	}
 
-	// Close buffer channel to signal EOF to reader
+	// Set closing flag and wait for active writers
+	w.pipe.mu.Lock()
+	w.pipe.closing = true
+	w.pipe.mu.Unlock()
+
+	// Wait for all active writes to complete before closing channel
+	w.pipe.activeWriters.Wait()
+
+	// Now safe to close buffer channel to signal EOF to reader
 	close(w.pipe.buffer)
 
 	// Signal done

@@ -197,6 +197,54 @@ func BenchmarkBufferedPipe(b *testing.B) {
 	}
 }
 
+func TestBufferedPipe_ConcurrentWriteAndClose(t *testing.T) {
+	// This test reproduces the race condition that caused panics in production:
+	// Multiple goroutines writing while another goroutine closes the pipe.
+	// Without proper synchronization, this causes "send on closed channel" panics.
+
+	pr, pw := NewBufferedPipe(1024*1024, 4096) // 1MB buffer, 4KB chunks
+
+	// Start multiple concurrent writers
+	numWriters := 10
+	writeSize := 100 * 1024 // 100KB per writer
+	done := make(chan struct{})
+
+	for i := 0; i < numWriters; i++ {
+		go func(id int) {
+			data := make([]byte, writeSize)
+			for j := range data {
+				data[j] = byte((id + j) % 256)
+			}
+			// This write might be in progress when Close() is called
+			_, _ = pw.Write(data)
+		}(i)
+	}
+
+	// Close the pipe while writes may still be in progress
+	go func() {
+		defer close(done)
+		_ = pw.Close()
+	}()
+
+	// Read whatever data we can
+	buf := make([]byte, 8192)
+	for {
+		_, err := pr.Read(buf)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			// Reader error is acceptable
+			break
+		}
+	}
+
+	_ = pr.Close()
+	<-done // Wait for close to complete
+
+	// If we reach here without panic, the fix is working
+}
+
 func BenchmarkBufferedPipe_vs_IOPipe(b *testing.B) {
 	data := make([]byte, 1024*1024) // 1MB
 
