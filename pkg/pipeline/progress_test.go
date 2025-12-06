@@ -259,6 +259,11 @@ func createMockCoordinator(t *testing.T, shardCount int) *ShardCoordinator {
 	ctx := context.Background()
 	memMgr := NewMemoryManager(ctx, nil) // Use defaults
 
+	// Register cleanup for MemoryManager
+	t.Cleanup(func() {
+		memMgr.Stop()
+	})
+
 	// Create router
 	router, err := chunking.NewShardRouter(&chunking.ShardRouterConfig{
 		ShardCount: shardCount,
@@ -352,6 +357,11 @@ func createMockCoordinatorBench(b *testing.B, shardCount int) *ShardCoordinator 
 
 	ctx := context.Background()
 	memMgr := NewMemoryManager(ctx, nil) // Use defaults
+
+	// Register cleanup for MemoryManager after benchmark completes
+	b.Cleanup(func() {
+		memMgr.Stop()
+	})
 
 	// Create router
 	router, err := chunking.NewShardRouter(&chunking.ShardRouterConfig{
