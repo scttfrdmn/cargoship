@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 )
@@ -176,12 +177,34 @@ func createPipelineRunE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create pipeline: %w", err)
 	}
 
-	// TODO: Wire ShardProgressRenderer here for TUI progress tracking
-	// This will be implemented in the next step when we integrate with ShardCoordinator
+	// Setup progress tracking based on format and terminal detection
+	if !quiet && progressFormat == "tui" {
+		// Check if stdout is a TTY (terminal detection)
+		if term.IsTerminal(int(os.Stdout.Fd())) {
+			// Register TUI progress callback
+			pipe.SetProgressCallback(func(p pipeline.Progress) {
+				// Clear line and move cursor to start
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\r\033[K")
+
+				// Calculate throughput
+				mbps := float64(p.BytesPerSecond) / (1024 * 1024)
+
+				// Render progress line
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(),
+					"🚢 Uploading: %d files | %.2f GB | %d chunks | %.1f MB/s | %s elapsed",
+					p.FilesProcessed,
+					float64(p.BytesProcessed)/(1024*1024*1024),
+					p.ChunksCompleted,
+					mbps,
+					p.ElapsedTime.Round(1000000000), // Round to 1s
+				)
+			})
+		}
+		// Note: If not a TTY, progress display is automatically disabled (graceful fallback)
+	}
 
 	// Run pipeline for each source directory
 	for _, sourceDir := range sourceDirs {
-		logger.Info("starting upload", "source", sourceDir, "bucket", bucket, "prefix", prefix)
 
 		result, err := pipe.Run(ctx, sourceDir)
 		if err != nil {
@@ -190,6 +213,11 @@ func createPipelineRunE(cmd *cobra.Command, args []string) error {
 
 		if !result.Success {
 			return fmt.Errorf("pipeline completed with errors for %s: %v", sourceDir, result.Errors)
+		}
+
+		// Print newline after progress display (if TUI mode was active)
+		if !quiet && progressFormat == "tui" && term.IsTerminal(int(os.Stdout.Fd())) {
+			_, _ = fmt.Fprintln(cmd.OutOrStdout())
 		}
 
 		// Print summary
