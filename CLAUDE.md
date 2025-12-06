@@ -12,6 +12,11 @@ CargoShip is a high-performance S3 file upload optimization tool featuring strea
 **Latest Work**: Real-time TUI progress tracking for `cargoship create upload`
 
 ### Recently Completed
+- ✅ **Issue #125**: BufferedPipeWriter race condition fixed (Commit a0ea650)
+  - Root cause: Write() racing with CloseWithError() closing buffer channel
+  - Fix: Added sync.WaitGroup to track active writers, wait before closing channel
+  - Validated: Production test (100MB) completed with zero panics (80.77 MB/s)
+  - Impact: Eliminates production panics during zstd compression uploads
 - ✅ **Issue #118**: CLI progress tracking with terminal detection (Commit 9dd105e, 3173615)
 - ✅ **Issue #120**: Legacy code removal - Removed Porter/rclone/suitcase (83 files, ~23,300 lines)
 - ✅ **Issue #121**: MemoryManager goroutine leak fixed (Commit 7715f4d)
@@ -23,11 +28,10 @@ CargoShip is a high-performance S3 file upload optimization tool featuring strea
 - ✅ **Production Test 2**: Large dataset (200 files @ 100MB = 20GB)
   - Uploaded in 28m3s at 11.88 MB/s
   - All 8 shards utilized ✅
-  - 🚨 CRITICAL: BufferedPipeWriter panic detected (Issue #125)
+  - 🚨 BufferedPipeWriter panic detected → Fixed in Issue #125
   - 🚨 Performance gap: 16× slower than 185 MB/s benchmark (Issue #126)
 
 ### Open Issues
-- **Issue #125**: CRITICAL - BufferedPipeWriter panic causing goroutine leaks (P0-Critical)
 - **Issue #126**: Performance investigation - 11.88 MB/s vs 185 MB/s benchmark (P1-High)
 - **Issue #65**: MemoryManager goroutine leak (P2-Low) - Test-only, doesn't affect production
 - **Issue #14-17**: Coordinator/test cleanup (P2-Medium) - Technical debt for v0.6.0
