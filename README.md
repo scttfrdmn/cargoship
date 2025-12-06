@@ -184,7 +184,7 @@ CargoShip excels at large-scale data archiving:
 
 ## 🤝 Contributing
 
-CargoShip welcomes contributions from developers and researchers! Built on Duke University's SuitcaseCTL foundation with enterprise enhancements.
+CargoShip welcomes contributions from developers and researchers! Originally inspired by Duke University's SuitcaseCTL research, now a fully independent project.
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
