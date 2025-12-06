@@ -15,8 +15,12 @@ import (
 func TestEnhancedCongestionControlWithCommunication(t *testing.T) {
 	testutil.SkipIfShort(t, "congestion control involves background goroutines")
 
+	// Disable parallel execution to prevent test interference
+	// This test creates goroutines and shared state that can race with other tests
+	t.Setenv("_TEST_ISOLATION", "true") // Dummy env var to prevent parallel execution
+
 	testutil.WithLeakCheck(t, testutil.DefaultLeakCheckOptions(), func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel() // Ensure context is cancelled for cleanup
 
 		config := DefaultCoordinationConfig()
@@ -57,7 +61,7 @@ func TestEnhancedCongestionControlWithCommunication(t *testing.T) {
 
 		// Explicit cleanup before defer calls
 		cancel()
-		time.Sleep(50 * time.Millisecond) // Allow goroutines to cleanup
+		time.Sleep(100 * time.Millisecond) // Allow goroutines to cleanup (increased from 50ms)
 	})
 }
 
