@@ -17,16 +17,16 @@
 
 CargoShip is a next-generation data archiving tool optimized for AWS infrastructure. Built on the foundation of Duke University's [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl), CargoShip adds native AWS integration, intelligent cost optimization, and enterprise-grade observability with advanced network optimization algorithms.
 
-## 🚀 Enterprise Features with Research Flexibility
+## 🚀 Enterprise Features with Modern Architecture
 
-**Advanced data archiving for any environment (v0.4.2):**
-- 📊 **Intelligent cost optimization** - Save up to 90% with proven algorithms
-- ⚡ **Advanced network algorithms** - BBR and CUBIC congestion control for maximum throughput  
-- 🧠 **Smart compression** - ZSTD with adaptive chunking and staging
-- 🤖 **AI-Powered S3 Optimization** - Predictive prefetching with pattern analysis **(NEW in v0.4.2)**
-- 🎯 **Intelligent Caching** - Multi-policy cache with network-aware optimization **(NEW in v0.4.2)**
-- 📈 **Advanced Monitoring** - Real-time analytics with predictive alerting **(NEW in v0.4.2)**
-- 💰 **Advanced budget controls** - Cost AND volume limits with grant period management
+**High-performance streaming data uploads (v0.5.1+):**
+- 🚀 **Streaming Pipeline** - Zero local disk usage, stream directly to S3
+- ⚡ **Multi-Prefix Parallel Uploads** - 8x throughput improvement with S3 prefix sharding
+- 📊 **Real-Time Progress Tracking** - Beautiful TUI with live upload metrics
+- 🧠 **Intelligent Chunking** - Adaptive chunk sizing with compression-aware optimization
+- 💰 **Cost Optimization** - Intelligent storage class selection and lifecycle policies
+- 🎯 **Advanced S3 Features** - Multi-region support, predictive prefetching
+- 📈 **Performance Monitoring** - Comprehensive metrics and analytics
 - 🛡️ **Security first** - KMS encryption and compliance-ready audit trails
 
 ## 🚀 Quick Start
@@ -44,26 +44,22 @@ curl -sSL https://get.cargoship.dev/install.sh | sh
 ### Basic Workflow
 
 ```bash
-# 1. Survey your data and estimate costs with advanced algorithms
-cargoship survey /data/project-2024
-cargoship estimate /data/completed-analysis --storage-class deep-archive
+# 1. Estimate costs before uploading
+cargoship estimate /data/project-2024 --storage-class deep-archive
 
-# 2. Archive with AI-powered S3 optimization (v0.4.2)
-cargoship ship /data/completed-analysis \
-  --destination s3://my-bucket/project-2024 \
-  --storage-class intelligent-tiering \
-  --enable-bbr-congestion-control \
-  --enable-predictive-prefetching \
-  --cache-policy adaptive \
-  --max-cost-per-month 200 \
-  --max-volume 500GB
+# 2. Upload with streaming pipeline (NEW in v0.5.1+)
+cargoship create upload /data/completed-analysis \
+  --bucket my-bucket \
+  --prefix project-2024 \
+  --storage-class INTELLIGENT_TIERING \
+  --shards 8 \
+  --workers 4
 
-# 3. Deploy with advanced monitoring and ML predictions
-docker run -d --name cargoship-agent \
-  -v /mnt/data:/data:ro \
-  -v ~/.aws:/root/.aws:ro \
-  scttfrdmn/cargoship:v0.4.2 \
-  --watch /data --enable-s3-optimization --enable-predictive-analytics
+# Real-time progress display:
+# 🚢 Uploading: 1234 files | 5.67 GB | 89 chunks | 123.4 MB/s | 1m30s elapsed
+
+# 3. Manage S3 lifecycle policies
+cargoship lifecycle --bucket my-bucket --template archive-optimization
 ```
 
 ## 💰 Intelligent Cost Optimization
@@ -82,97 +78,86 @@ $ cargoship estimate ./genomics-analysis --show-breakdown
 │ Deep Archive    │ $12.29      │ $147.48     │
 └─────────────────┴──────────────┴──────────────┘
 
-💡 Optimization Recommendations (v0.4.2):
+💡 Optimization Recommendations (v0.5.1+):
 • Archive raw data → Deep Archive (90% savings)
-• Analysis results → Glacier with BBR congestion control (75% savings)  
+• Analysis results → Glacier (75% savings)
 • Enable lifecycle policies → Additional 15% savings
-• Advanced flow control algorithms → 4.6x faster uploads
-• AI-powered predictive prefetching → 40% reduction in access latency
-• Intelligent caching → 65% fewer redundant S3 requests
+• Multi-prefix parallel uploads → 8x throughput improvement
+• Streaming pipeline → Zero local disk usage
+• Intelligent chunking → Optimal compression ratios
 
-Total annual savings: $3,170/year with 360% performance gain + 40% faster access
+Total annual savings: $3,170/year with 8x upload performance
 
-💡 Coming in v0.5.0 (Dec 2025):
-• Volume-based budget controls (--max-volume 100GB)
-• Grant period management (1-3 year budgets with rollover)
-• Real-time burn rate monitoring with optimization suggestions
+✅ Available Now:
+• `cargoship create upload` - High-performance streaming uploads
+• `cargoship lifecycle` - Automated lifecycle policy management
+• Real-time progress tracking with TUI
 ```
 
-## 🏗️ Enterprise Architecture
+## 🏗️ Modern Streaming Architecture
 
-### Advanced S3 Optimization (v0.4.2)
+### High-Performance Pipeline (v0.5.1+)
 
-CargoShip v0.4.2 introduces intelligent S3 optimization with predictive prefetching:
+CargoShip uses a modern streaming pipeline architecture for maximum performance:
 
-**Network Optimization (v0.4.0+)**:
-- **BBR Congestion Control**: Google's production-tested algorithm for optimal bandwidth utilization
-- **CUBIC TCP Algorithm**: Linux kernel's proven congestion window management  
-- **RTT Estimation**: Signal processing with Kalman filtering and statistical methods
-- **Loss Detection**: Multi-method packet loss detection with deterministic recovery
-- **Bandwidth-Delay Product**: Dynamic buffer sizing with network-aware optimization
+**Pipeline Stages**:
+- **Scanner**: Multi-threaded file discovery with parallel directory traversal
+- **Chunker**: Intelligent chunking with compression-aware boundary detection
+- **Archiver**: Streaming tar+zstd compression with zero disk writes
+- **Uploader**: Multi-prefix parallel S3 uploads (8x capacity improvement)
 
-**Intelligent Prefetching (v0.4.2)**:
-- **Predictive Prefetcher**: AI-powered prefetching based on access patterns
-- **Pattern Analysis**: Detects sequential, temporal, cyclic, and burst access patterns
-- **ML Predictions**: Ensemble learning with online adaptation for request prediction
-- **Adaptive Caching**: LRU/LFU/Priority-based cache with intelligent eviction
-- **Network-Aware Scheduling**: Priority-based job scheduling optimized for network conditions
+**Performance Features**:
+- **Zero Local Disk**: Streams directly from filesystem → compression → S3
+- **Bounded Memory**: O(chunk_size × workers) prevents OOM conditions
+- **Adaptive Chunking**: Smart file grouping based on size and compressibility
+- **Multi-Prefix Sharding**: Parallel uploads across 8 S3 prefixes
+- **Real-Time Progress**: Live metrics with throughput and ETA tracking
 
-### Deployment Architecture
-
-Deploy CargoShip with enterprise-grade features:
-
-```yaml
-# docker-compose.yml for enterprise deployment
-version: '3.8'
-services:
-  cargoship-enterprise:
-    image: scttfrdmn/cargoship:v0.4.2
-    volumes:
-      - /mnt/enterprise-storage:/data:ro
-      - ./config:/config
-    environment:
-      - CARGOSHIP_WATCH_PATHS=/data/completed,/data/analysis-output
-      - CARGOSHIP_DESTINATION=s3://enterprise-archive
-      - CARGOSHIP_STORAGE_CLASS=intelligent-tiering
-      - CARGOSHIP_ENABLE_BBR=true
-      - CARGOSHIP_ENABLE_CUBIC=true
-      - CARGOSHIP_ENABLE_PREDICTIVE_PREFETCHING=true
-      - CARGOSHIP_ADVANCED_MONITORING=true
-      - CARGOSHIP_MAX_MONTHLY_COST=5000
-```
-
-### Intelligent Data Detection
-
-CargoShip automatically detects datasets ready for archival:
-
-```bash
-# Configure advanced archival rules with S3 optimization (v0.4.2)
-cargoship config set rules.auto-archive true
-cargoship config set rules.detect-patterns "*.bam,*.fastq.gz,analysis_complete.txt"
-cargoship config set rules.min-age-days 7
-cargoship config set rules.storage-class intelligent-tiering
-cargoship config set flow-control.algorithm bbr
-cargoship config set s3-optimization.enable-predictive-prefetching true
-cargoship config set s3-optimization.cache-policy lru
-cargoship config set monitoring.enable-advanced-metrics true
-```
-
-## 🏗️ Enterprise Architecture
+### Architecture Diagram
 
 ```
 ┌─────────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Enterprise Data   │    │  CargoShip       │    │   AWS S3        │
-│                     │    │  v0.4.2          │    │                 │
-│ • Data Lakes        │───▶│                  │───▶│ • All Storage   │
-│ • Analytics Output  │    │ • BBR/CUBIC      │    │   Classes       │
-│ • ML Training Data  │    │ • RTT Estimation │    │ • Intelligent   │
-│ • Archive Systems   │    │ • Loss Recovery  │    │   Tiering       │
-└─────────────────────┘    │ • BDP Optimization│    │ • Cost Optimize │
-                           │ • Predictive AI   │    │ • Pattern Cache │
-                           │ • Smart Prefetch  │    │ • Auto-Optimize │
-                           └──────────────────┘    └─────────────────┘
+│   Source Data       │    │  CargoShip       │    │   AWS S3        │
+│                     │    │  Pipeline        │    │                 │
+│ • Local Files       │───▶│                  │───▶│ • Standard      │
+│ • Network Shares    │    │ • Scanner        │    │ • IA            │
+│ • Data Lakes        │    │ • Chunker        │    │ • Glacier       │
+│ • Archive Systems   │    │ • Archiver       │    │ • Deep Archive  │
+└─────────────────────┘    │ • Uploader (8x)  │    └─────────────────┘
+                           └──────────────────┘
+                                    │
+                                    ▼
+                           Real-Time Progress TUI
+                           Files | GB | MB/s | ETA
 ```
+
+### Performance Tuning
+
+Optimize CargoShip for your workload:
+
+```bash
+# For many small files (<1MB):
+cargoship create upload /data --bucket my-bucket \
+  --chunk-size-mb 50 --workers 8
+
+# For large files (>100MB):
+cargoship create upload /data --bucket my-bucket \
+  --chunk-size-mb 500 --workers 4
+
+# Maximum throughput:
+cargoship create upload /data --bucket my-bucket \
+  --shards 16 --workers 8 --storage-class STANDARD
+```
+
+## 🎯 Use Cases
+
+CargoShip excels at large-scale data archiving:
+
+- **Research Data**: Genomics, imaging, sensor data archiving
+- **Analytics Output**: ML training data, analysis results
+- **Enterprise Backup**: Long-term retention with cost optimization
+- **Compliance**: Audit trails and secure archival storage
+- **Data Lakes**: Cost-effective cold storage tier migration
 
 ## 📖 Documentation
 
