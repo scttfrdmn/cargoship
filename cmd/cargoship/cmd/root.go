@@ -17,8 +17,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/dustin/go-humanize"
-	slogmulti "github.com/samber/slog-multi"
 	"github.com/spf13/cobra"
+	"math"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
@@ -74,20 +74,9 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 	if oerr := createCmd.MarkPersistentFlagDirname("destination"); oerr != nil {
 		panic(oerr)
 	}
-	createSuitcaseCmd := NewCreateSuitcaseCmd()
-	createCmd.AddCommand(createSuitcaseCmd)
 	cmd.AddCommand(createCmd)
-	rcloneCmd := NewRcloneCmd()
-	cmd.AddCommand(rcloneCmd)
-
-	cmd.AddCommand(NewRetierCmd())
 
 	cmd.AddCommand(
-		NewFindCmd(),
-		NewBrowseCmd(),
-		NewRestoreCmd(),
-		NewExtractCmd(),
-		NewTreeCmd(),
 		NewEstimateCmd(),
 		NewLifecycleCmd(),
 		NewMetricsCmd(),
@@ -100,13 +89,9 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 		NewShellCmd(),
 		NewDashboardCmd(),
 	)
-	cmd.AddCommand(NewWizardCmd())
-	cmd.AddCommand(NewAnalyzeCmd())
-
-	// cmd.AddCommand(NewCompletionCmd())
-	cmd.AddCommand(NewSchemaCmd())
+	// Legacy commands removed: NewWizardCmd, NewAnalyzeCmd, NewSchemaCmd, newTravelAgentCmd
 	cmd.AddCommand(NewMDDocsCmd())
-	cmd.AddCommand(newManCmd(), newTravelAgentCmd())
+	cmd.AddCommand(newManCmd())
 	cmd.AddCommand(webuiCmd)
 
 	// cmd.SetContext(context.WithValue(context.Background(), inventory.LogWriterKey, lo))
@@ -203,31 +188,12 @@ func setupLogging(w io.Writer) {
 	slog.SetDefault(logger)
 }
 
-func setupMultiLoggingWithCmd(cmd *cobra.Command) error {
-	// If we have an outDir, also write the logs to a file
-	o, err := getDestinationWithCobra(cmd)
-	if err != nil {
-		return err
+// uint64ToInt64 converts uint64 to int64 safely, checking for overflow
+func uint64ToInt64(u uint64) (int64, error) {
+	if u > math.MaxInt64 {
+		return 0, errors.New("value out of range for int64")
 	}
-	if o == "" {
-		return errors.New("no output directory specified")
-	}
-	ptr, err := porterWithCmd(cmd)
-	if err != nil {
-		return err
-	}
-
-	logger = slog.New(
-		slogmulti.Fanout(
-			log.NewWithOptions(cmd.OutOrStdout(), newLoggerOpts()),
-			log.NewWithOptions(ptr.LogFile, newJSONLoggerOpts()),
-		),
-	)
-
-	// Make sure the Porter object still has the right logger
-	ptr.Logger = logger
-	slog.SetDefault(logger)
-	return nil
+	return int64(u), nil
 }
 
 func globalPersistentPreRun(cmd *cobra.Command, _ []string) {
