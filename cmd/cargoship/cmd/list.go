@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -96,21 +95,11 @@ Examples:
 				return fmt.Errorf("failed to deserialize manifest: %w", err)
 			}
 
-			// Filter files by pattern if specified
-			files := m.Files
-			if pattern != "" {
-				filtered := []manifest.FileEntry{}
-				for _, file := range files {
-					matched, err := filepath.Match(pattern, filepath.Base(file.Path))
-					if err != nil {
-						return fmt.Errorf("invalid pattern: %w", err)
-					}
-					if matched {
-						filtered = append(filtered, file)
-					}
-				}
-				files = filtered
-			}
+			// Create query interface
+			query := manifest.NewManifestQuery(m)
+
+			// Filter files by pattern using ManifestQuery API
+			files := query.ListFiles(pattern)
 
 			// Calculate total compressed size from shards
 			var totalCompressedSize int64
