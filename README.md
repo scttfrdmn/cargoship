@@ -58,7 +58,10 @@ cargoship create upload /data/completed-analysis \
 # Real-time progress display:
 # 🚢 Uploading: 1234 files | 5.67 GB | 89 chunks | 123.4 MB/s | 1m30s elapsed
 
-# 3. Manage S3 lifecycle policies
+# 3. List uploaded files using manifest (no download required)
+cargoship list --bucket my-bucket --upload-id 20251206-123456-abcd1234
+
+# 4. Manage S3 lifecycle policies
 cargoship lifecycle --bucket my-bucket --template archive-optimization
 ```
 
@@ -168,10 +171,11 @@ CargoShip excels at large-scale data archiving:
 - **[Complete Documentation](https://cargoship.app)** - Full documentation site
 
 ### Key Features
+- **[Storage Format Documentation](docs/STORAGE_FORMAT.md)** - Open S3 storage format for data portability
+- **[Manifest System](pkg/manifest/README.md)** - File indexing and fast query API
 - **[Advanced Flow Control](docs/TASK_4_ADVANCED_FLOW_CONTROL.md)** - v0.4.0 network optimization algorithms
 - **[AWS Integration Guide](docs/AWS_INTEGRATION_REPORT.md)** - Complete AWS setup and configuration
 - **[Cost Management](docs/cost-management.md)** - Intelligent cost optimization features
-- **[Architecture Overview](docs/ARCHITECTURE.md)** - System design and components
 
 ### Deployment & Operations
 - **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)** - Production deployment strategies
