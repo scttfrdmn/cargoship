@@ -194,7 +194,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 CargoShip is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
-**Built on SuitcaseCTL**: CargoShip extends [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl) by Duke University. We gratefully acknowledge their innovative foundation for research data management.
+**Research Origins**: Originally inspired by Duke University's [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl) research project. CargoShip has evolved into an independent, production-ready solution with a modern streaming architecture and enterprise features.
 
 ## 🆘 Support
 
