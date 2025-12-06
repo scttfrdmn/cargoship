@@ -14,9 +14,14 @@ CargoShip is a high-performance S3 file upload optimization tool featuring strea
 ### Recently Completed
 - ✅ **Issue #118**: CLI progress tracking with terminal detection (Commit 9dd105e, 3173615)
 - ✅ **Issue #120**: Legacy code removal - Removed Porter/rclone/suitcase (83 files, ~23,300 lines)
-- ✅ **Issue #121**: MemoryManager goroutine leak documented
+- ✅ **Issue #121**: MemoryManager goroutine leak fixed (Commit 7715f4d)
 - ✅ **Issue #122**: Storage format documentation issue created
 - ✅ **Issue #123**: Blog post series issue created (5 posts with full outlines)
+- ✅ **Production Test**: Successfully tested `cargoship create upload` with real S3
+  - 50 files (500MB) uploaded in 45.5 seconds at 10.99 MB/s
+  - Multi-prefix sharding: 2 shards (chunk-0: 419MB, chunk-1: 105MB compressed)
+  - TUI progress gracefully disabled (non-TTY detection working correctly)
+  - S3 Location: s3://cargoship-pipeline-test/test-upload-1764993999
 
 ### Open Issues
 - **Issue #65**: MemoryManager goroutine leak (P2-Low) - Test-only, doesn't affect production
@@ -44,10 +49,10 @@ gh issue view 123
 ## Development Roadmap
 
 ### v0.6.0 (Next) - Production Readiness
-**Focus**: Testing, documentation, community outreach
+**Focus**: Documentation, community outreach, production validation
 
 **High Priority**:
-- Test `cargoship create upload` with real S3 (validate TUI progress tracking)
+- ✅ Test `cargoship create upload` with real S3 (COMPLETE - see Recently Completed)
 - Create `docs/STORAGE_FORMAT.md` (Issue #122) - Open format documentation
 - Update README with new CLI command examples
 - Fix MemoryManager goroutine leak (Issue #65)
@@ -214,4 +219,4 @@ All critical bugs and test failures resolved in v0.5.0 Phase 1.
 ---
 
 **Last Updated**: 2025-12-05
-**Next Session**: Test `cargoship create upload` with real S3, validate TUI progress tracking
+**Next Session**: Begin comprehensive README/documentation updates (Issue #124)
