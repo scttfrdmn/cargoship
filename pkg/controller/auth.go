@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
@@ -439,12 +441,57 @@ func (am *AuthManager) validatePublicKey(publicKey string) error {
 	return nil
 }
 
-func (am *AuthManager) verifySignature(agentID, signature, publicKey string) error {
-	// TODO: Implement actual signature verification
-	// For now, just check signature is not empty
+func (am *AuthManager) verifySignature(agentID, signature, publicKeyBase64 string) error {
+	// Validate inputs
 	if signature == "" {
 		return fmt.Errorf("signature required")
 	}
+	if publicKeyBase64 == "" {
+		return fmt.Errorf("public key required")
+	}
+
+	// Decode base64 signature
+	signatureBytes, err := base64.StdEncoding.DecodeString(signature)
+	if err != nil {
+		return fmt.Errorf("invalid signature encoding: %w", err)
+	}
+
+	// Decode base64 public key to PEM
+	publicKeyPEM, err := base64.StdEncoding.DecodeString(publicKeyBase64)
+	if err != nil {
+		return fmt.Errorf("invalid public key encoding: %w", err)
+	}
+
+	// Parse PEM-encoded public key
+	block, _ := pem.Decode(publicKeyPEM)
+	if block == nil {
+		return fmt.Errorf("failed to decode PEM public key")
+	}
+
+	// Parse the public key
+	pubKeyInterface, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse public key: %w", err)
+	}
+
+	// Type assert to RSA public key
+	rsaPubKey, ok := pubKeyInterface.(*rsa.PublicKey)
+	if !ok {
+		return fmt.Errorf("public key is not RSA type")
+	}
+
+	// Hash the message (agentID) using SHA-256
+	hashed := sha256.Sum256([]byte(agentID))
+
+	// Verify RSA-PSS signature
+	// Use PSS padding for better security than PKCS#1 v1.5
+	err = rsa.VerifyPSS(rsaPubKey, crypto.SHA256, hashed[:], signatureBytes, &rsa.PSSOptions{
+		SaltLength: rsa.PSSSaltLengthAuto,
+	})
+	if err != nil {
+		return fmt.Errorf("signature verification failed: %w", err)
+	}
+
 	return nil
 }
 

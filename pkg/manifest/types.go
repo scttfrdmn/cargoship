@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"path/filepath"
 	"time"
 )
 
@@ -124,16 +125,42 @@ func (mq *ManifestQuery) FindFile(path string) *FileEntry {
 	return nil
 }
 
-// ListFiles returns all files, optionally filtered by pattern
+// ListFiles returns all files, optionally filtered by glob pattern
+// Pattern matching uses filepath.Match syntax:
+//   - "*" matches any sequence of non-separator characters
+//   - "?" matches any single non-separator character
+//   - "[...]" matches any character in the set
+// Examples:
+//   - "*.log" matches all files ending in .log
+//   - "data/*.csv" matches all CSV files in data directory
+//   - "**/*.json" would require custom implementation (not supported by filepath.Match)
 func (mq *ManifestQuery) ListFiles(pattern string) []FileEntry {
 	if pattern == "" {
 		return mq.manifest.Files
 	}
 
-	// Simple glob pattern matching (can be enhanced with filepath.Match)
-	// TODO: Implement proper glob matching
-	// For now, return all files
-	matches := append([]FileEntry{}, mq.manifest.Files...)
+	// Filter files by glob pattern
+	var matches []FileEntry
+	for _, file := range mq.manifest.Files {
+		// Try matching against full path first
+		matched, err := filepath.Match(pattern, file.Path)
+		if err != nil {
+			// Invalid pattern - skip this file
+			continue
+		}
+		if matched {
+			matches = append(matches, file)
+			continue
+		}
+
+		// Also try matching against basename for convenience
+		// This allows "*.log" to match "dir/file.log"
+		basename := filepath.Base(file.Path)
+		matched, err = filepath.Match(pattern, basename)
+		if err == nil && matched {
+			matches = append(matches, file)
+		}
+	}
 	return matches
 }
 
