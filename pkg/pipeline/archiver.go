@@ -503,6 +503,10 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 	job.S3Key = fmt.Sprintf("uploads/%s/shard-%d/chunk-%d%s",
 		uploadID, shardID, job.ID, extension)
 
+	// Issue #103: Populate shard context for error reporting
+	job.ShardID = shardID
+	job.ShardPrefix = fmt.Sprintf("shard-%d", shardID)
+
 	// Send to output channel (Phase 3.2: uses selectOutput() for sharding)
 	select {
 	case <-ctx.Done():

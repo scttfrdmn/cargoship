@@ -137,6 +137,9 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 	// Upload with retries
 	var lastErr error
 	for attempt := 0; attempt < s.config.MaxRetries; attempt++ {
+		// Issue #103: Track attempt number for error reporting
+		job.AttemptNumber = attempt + 1
+
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
@@ -147,6 +150,11 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 
 		if err := s.uploadToS3(ctx, job); err != nil {
 			lastErr = err
+			// Issue #103: Track error history for detailed reporting
+			if job.ErrorHistory == nil {
+				job.ErrorHistory = make([]error, 0, s.config.MaxRetries)
+			}
+			job.ErrorHistory = append(job.ErrorHistory, fmt.Errorf("attempt %d: %w", attempt+1, err))
 			continue
 		}
 

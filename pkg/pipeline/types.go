@@ -24,6 +24,12 @@ type Job struct {
 	// Phase 3.3: Compressed-aware chunking with adaptive sizing
 	TargetCompressedSize int64  // Target compressed size from CompressedAwareChunker (0 = no target)
 	EstimatedCompressed  int64  // Estimated compressed size from CompressionEstimator
+
+	// Issue #103: Enhanced error reporting with shard context
+	ShardID       int      // Shard identifier (e.g., 0, 1, 2, ..., 7 for 8 shards)
+	ShardPrefix   string   // Shard prefix (e.g., "shard-0", "shard-1", ...)
+	AttemptNumber int      // Current retry attempt (1 = first attempt, 2+ = retries)
+	ErrorHistory  []error  // History of errors from retry attempts
 }
 
 // Stage represents a pipeline stage
@@ -201,6 +207,7 @@ type Result struct {
 	TotalTime      time.Duration
 	Errors         []error
 	Progress       Progress
+	FailedJobs     []*Job // Issue #103: Track failed jobs for detailed error reporting
 }
 
 // ScannerConfig configures the scanner stage
