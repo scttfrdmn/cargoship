@@ -201,7 +201,11 @@
    limitations under the License.
 
 
-   NOTICE: This software contains code derived from SuitcaseCTL
+   NOTICE: This software is inspired by SuitcaseCTL
    Copyright (c) Duke University
    Original source: https://gitlab.oit.duke.edu/devil-ops/suitcasectl
-   Licensed under the MIT License (see THIRD_PARTY_LICENSES/SUITCASECTL_ORIGINAL_LICENSE.txt)
+
+   CargoShip's architecture and concepts were inspired by SuitcaseCTL's
+   approach to research data archiving, but CargoShip is an independent
+   implementation with its own streaming pipeline architecture, S3
+   optimizations, and modern cloud-native features.

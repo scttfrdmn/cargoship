@@ -17,5 +17,12 @@ func NewCreateCmd() *cobra.Command {
 		},
 	}
 	bindCreateKeys(cmd)
+	bindCreatePipeline(cmd)
 	return cmd
+}
+
+// bindCreatePipeline adds the pipeline upload command
+func bindCreatePipeline(createCmd *cobra.Command) {
+	pipelineCmd := NewCreatePipelineCmd()
+	createCmd.AddCommand(pipelineCmd)
 }

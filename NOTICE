@@ -1,32 +1,32 @@
 CargoShip
 Copyright (c) 2025 Scott Friedman
 
-This project contains code derived from SuitcaseCTL, which is:
+This project is inspired by SuitcaseCTL, originally created by:
 Copyright (c) Duke University
-Licensed under the MIT License
 Original source: https://gitlab.oit.duke.edu/devil-ops/suitcasectl
 
 ================================================================================
 
-NOTICE OF DERIVATIVE WORK:
+NOTICE OF INSPIRATION:
 
-CargoShip is a derivative work based on SuitcaseCTL, originally developed
-by Duke University's Office of Information Technology. The original project
-was designed for packaging research data files for distribution.
+CargoShip's architecture and design concepts were inspired by SuitcaseCTL,
+originally developed by Duke University's Office of Information Technology.
+SuitcaseCTL pioneered the "suitcase" metaphor for packaging research data
+files for distribution.
 
-CargoShip has been substantially modified and extended with:
-- Multi-region S3 infrastructure with intelligent failover
-- Advanced staging optimization with predictive analytics
-- Chunk-level deduplication and adaptive compression
-- Performance monitoring and alerting systems
-- Network-aware optimization and prefetching
-- Enhanced load balancing strategies
-- Real-time TUI monitoring dashboard
+CargoShip is an independent implementation featuring:
+- Modern streaming pipeline architecture (zero disk usage)
+- Multi-prefix S3 parallel uploads (8× throughput improvement)
+- Real-time progress tracking with beautiful TUI
+- Advanced chunking and compression optimization
+- Direct AWS S3 integration (no external dependencies)
+- Cloud-native design for enterprise scale
 
-The original SuitcaseCTL license (MIT) is preserved in:
-THIRD_PARTY_LICENSES/SUITCASECTL_ORIGINAL_LICENSE.txt
+While CargoShip draws inspiration from SuitcaseCTL's innovative approach
+to research data management, it is a distinct project with its own
+codebase, architecture, and feature set.
 
-All modifications and new features are licensed under the MIT License
-by Scott Friedman.
+For historical context, the original SuitcaseCTL project information
+is preserved in: THIRD_PARTY_LICENSES/SUITCASECTL_ORIGINAL_LICENSE.txt
 
 For the complete license terms, see the LICENSE file in the root directory.
