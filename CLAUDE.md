@@ -2,80 +2,113 @@
 
 ## Project Overview
 
-CargoShip is a high-performance S3 file upload optimization tool featuring streaming pipeline architecture, multi-prefix parallel uploads, and advanced chunking/compression.
+CargoShip is a high-performance S3 file upload optimization tool featuring streaming pipeline architecture, multi-prefix parallel uploads (8× throughput), and zero-disk usage.
 
-## Current Version: v0.5.1+ (Branch: main)
+**Foundation**: Built on Duke University's SuitcaseCTL with enterprise AWS optimizations.
 
-**Latest**: Real-time TUI progress tracking for `cargoship create upload` (2025-12-05)
+## Current Status (2025-12-05)
 
-## Issue Tracking - **USE GITHUB ISSUES**
+**Version**: v0.5.1+ (Branch: main)
+**Latest Work**: Real-time TUI progress tracking for `cargoship create upload`
 
-Track all bugs, features, and tasks using GitHub issues. DO NOT create verbose documents.
+### Recently Completed
+- ✅ **Issue #118**: CLI progress tracking with terminal detection (Commit 9dd105e, 3173615)
+- ✅ **Issue #120**: Legacy code removal - Removed Porter/rclone/suitcase (83 files, ~23,300 lines)
+- ✅ **Issue #121**: MemoryManager goroutine leak documented
+- ✅ **Issue #122**: Storage format documentation issue created
+- ✅ **Issue #123**: Blog post series issue created (5 posts with full outlines)
 
-### Creating Issues
+### Open Issues
+- **Issue #65**: MemoryManager goroutine leak (P2-Low) - Test-only, doesn't affect production
+- **Issue #14-17**: Coordinator/test cleanup (P2-Medium) - Technical debt for v0.6.0
+
+## Issue Tracking - **USE GITHUB ISSUES, NOT DOCUMENTS**
+
 ```bash
-# Create issue
+# Create issue with labels
 gh issue create --title "Title" --body "Description" --label "type: bug,priority: high"
 
-# List issues
+# List issues by milestone
 gh issue list --label "v0.6.0" --limit 50
+
+# View issue
+gh issue view 123
 ```
 
-### Available Labels
-- **Type**: `type: bug`, `type: feature`, `type: enhancement`, `type: test`, `type: refactor`
-- **Area**: `area: s3`, `area: cli`, `area: pipeline`, `area: testing`, `area: performance`
+**Available Labels**:
+- **Type**: `type: bug`, `type: feature`, `type: enhancement`, `type: test`, `type: refactor`, `type: documentation`
+- **Area**: `area: s3`, `area: cli`, `area: pipeline`, `area: testing`, `area: performance`, `area: docs`
 - **Priority**: `priority: critical`, `priority: high`, `priority: medium`, `priority: low`
 - **Effort**: `effort: small` (<4h), `effort: medium` (1-2d), `effort: large` (>2d)
-- **Status**: `status: in-progress`, `status: blocked`, `status: ready`
-
-## Active Work (2025-12-05)
-
-### ✅ Completed - Issue #118: CLI Progress Tracking Integration
-- **New Command**: `cargoship create upload` replaces Porter/rclone system
-- **Real-time TUI**: Single-line progress display with terminal detection
-- **Graceful Fallback**: Auto-disables for non-TTY (pipes, CI/CD)
-- **Architecture**: Uses Pipeline's SetProgressCallback() (not ShardCoordinator)
-- **Commits**: 9dd105e (CLI integration), 3173615 (progress tracking)
-
-### 📋 Open Issues
-- **Issue #120**: Remove Porter/rclone system (P1-High) - Phased deprecation plan
-- **Issue #65**: MemoryManager goroutine leak (P2-Low) - Known test issue
-- **Issue #14-17**: Coordinator/test cleanup (P2-Medium) - Technical debt
 
 ## Development Roadmap
 
-### v0.6.0 (Next) - Testing & Documentation
-- Test `cargoship create upload` with real S3
-- Update README and CLI help
-- Phase 1: Deprecate Porter/rclone (Issue #120)
+### v0.6.0 (Next) - Production Readiness
+**Focus**: Testing, documentation, community outreach
+
+**High Priority**:
+- Test `cargoship create upload` with real S3 (validate TUI progress tracking)
+- Create `docs/STORAGE_FORMAT.md` (Issue #122) - Open format documentation
+- Update README with new CLI command examples
+- Fix MemoryManager goroutine leak (Issue #65)
+
+**Medium Priority**:
+- Blog post series (Issue #123) - 5 posts introducing CargoShip to community
+- Resolve coordinator shutdown issues (Issue #14-17)
 
 ### v0.7.0 - Performance & Observability
 - Go-native performance optimizations (zero-copy I/O, network tuning)
-- Distributed tracing (OpenTelemetry)
-- Circuit breaker patterns
+- Distributed tracing (OpenTelemetry/Jaeger)
+- Circuit breaker patterns for production resilience
+- Performance benchmarking suite
 
 ### v0.8.0+ - Enterprise Features
 - Budget controls with grant period management
-- io_uring support (Linux high-performance I/O)
-- Kubernetes operator
+- io_uring support (Linux high-performance async I/O)
+- HTTP/3 and QUIC protocol support
+- Kubernetes operator for container deployments
 
 ## Key Architecture Components
 
 ### Pipeline (pkg/pipeline/)
 **Streaming architecture**: Scanner → Chunker → Archiver → S3 Uploader
-- **Phase 2**: BufferedPipe eliminates serialization (v0.5.0)
-- **Phase 3**: Multi-prefix sharding (8× throughput, v0.5.1)
-- **Features**: Zero disk usage, bounded memory, adaptive chunking
 
-### ShardCoordinator (pkg/pipeline/shard_coordinator.go)
-**Advanced orchestration**: Multiple ShardPipeline instances for parallel upload
-- Intelligent shard count (4-10 based on data size)
-- Per-shard pipelines with compression and memory management
-- Used by benchmarks, NOT by CLI (CLI uses basic Pipeline)
+**Features**:
+- **Zero disk usage**: Streams directly from filesystem → compression → S3
+- **Bounded memory**: O(chunk_size × workers) prevents OOM
+- **Adaptive chunking**: Smart file grouping based on size/compressibility
+- **Multi-prefix sharding**: 8× S3 request rate capacity (Phase 3)
+- **Real-time progress**: Live TUI with throughput tracking
 
-### Progress Tracking
-- **CLI**: Pipeline.SetProgressCallback() → terminal display
-- **ShardProgressRenderer**: Bubbletea TUI for ShardCoordinator (benchmarks only)
+**Key Files**:
+- `pkg/pipeline/pipeline.go` - Core orchestrator
+- `pkg/pipeline/scanner.go` - Multi-threaded file discovery
+- `pkg/pipeline/archiver.go` - Streaming tar+zstd compression
+- `pkg/pipeline/s3_uploader.go` - Parallel S3 uploads (8 workers default)
+
+### ShardCoordinator vs Pipeline
+**Pipeline**: Used by CLI (`cargoship create upload`)
+- Single streaming pipeline with progress callback
+- Simpler architecture for typical use cases
+- Terminal detection with graceful fallback
+
+**ShardCoordinator**: Used by benchmarks only
+- Multiple ShardPipeline instances for maximum parallelism
+- Per-shard compression and memory management
+- Bubbletea TUI (ShardProgressRenderer) for advanced metrics
+
+### Chunking Engine (pkg/chunking/)
+**Intelligent file grouping**: Creates 200MB tar.zst chunks for S3 multipart optimization
+
+**Strategies**:
+- `groupSmall()`: Pack small files together
+- `groupMixed()`: Balance small/medium/large files (includes file splitting in Phase 5)
+- `groupLarge()`: Handle files >chunk_size
+
+**Key Features**:
+- Compression-aware boundary detection
+- Adaptive target size calculation
+- Archive padding for alignment
 
 ## Common Commands
 
@@ -90,67 +123,95 @@ go test ./... -short
 # Test with real AWS S3
 export AWS_PROFILE=aws AWS_REGION=us-west-2
 export CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1
+export CARGOSHIP_TEST_BUCKET=cargoship-pipeline-test
 go test -v ./pkg/pipeline -timeout=30m
 
-# Lint
+# Lint (target: 0 issues)
 golangci-lint run ./... --timeout=120s
+
+# Security scan
+govulncheck ./...
 ```
 
-### New CLI Command
+### CLI Usage
 ```bash
-# Upload with pipeline (replaces Porter/rclone)
-./cargoship create upload /path/to/data --bucket my-bucket --prefix backups/2025-12-05
+# Modern streaming upload (v0.5.1+)
+cargoship create upload /data/genomics \
+  --bucket my-research-bucket \
+  --prefix 2024-analysis \
+  --storage-class INTELLIGENT_TIERING \
+  --shards 8 \
+  --workers 4
 
-# Quiet mode
-./cargoship create upload /path/to/data --bucket my-bucket --quiet
+# Real-time progress display:
+# 🚢 Uploading: 1234 files | 5.67 GB | 89 chunks | 123.4 MB/s | 1m30s elapsed
 
-# JSON output
-./cargoship create upload /path/to/data --bucket my-bucket --progress-format json
+# Cost estimation
+cargoship estimate /data --storage-class DEEP_ARCHIVE --show-breakdown
+
+# Lifecycle policy management
+cargoship lifecycle --bucket my-bucket --template archive-optimization
 ```
 
-### Bypass Pre-commit Hook (Known Test Issues)
+### Git Workflow
 ```bash
-# Use --no-verify for known goroutine leak (Issue #65)
-git commit --no-verify -m "message"
+# Create feature branch
+git checkout -b feature/new-feature
+
+# Commit with conventional commits
+git commit -m "feat: Add new feature description"
+git commit -m "fix: Resolve bug description"
+git commit -m "docs: Update documentation"
+
+# Push to remote
+git push origin feature/new-feature
+
+# Create PR
+gh pr create --title "Title" --body "Description"
 ```
+
+## Performance Benchmarks (v0.5.1)
+
+**Real AWS S3 Results**:
+- **Small files** (10k @ 176MB): 437ms (403 MB/s) - 23-41× faster than target
+- **Large files** (100 @ 56GB): 311s (185 MB/s) - 30% over target
+- **Memory usage**: 3.4-4.9 GB (6-8% of data size) - Excellent scaling
+- **Compression**: zstd 527 MB/s (10.7× faster than gzip)
+
+**Phase 5 Improvements** (Adaptive file splitting):
+- Enables splitting large files across multiple chunks
+- Target: <240s for 100 @ 56GB (23% improvement)
+- Implementation complete (Commit b82c201), validation pending
 
 ## Known Technical Debt
 
-| Issue | Description | Priority | Effort |
-|-------|-------------|----------|--------|
-| #120 | Remove Porter/rclone system | P1-High | Large |
-| #65 | MemoryManager goroutine leak | P2-Low | Medium |
-| #14 | Coordinator test cleanup | P2-Medium | Medium |
-| #15 | Flaky CloudWatch test | P2-Low | Small |
-| #16 | Staging package refactor | P2-Low | Large |
-| #17 | Failover test timeout | P2-Medium | Medium |
+Tracked in GitHub issues for transparent project management:
 
-## Recent Milestones
+- **Issue #65** (P2-Low): MemoryManager goroutine leak in tests
+- **Issue #14** (P2-Medium): Add Shutdown() calls to coordinator tests
+- **Issue #15** (P1-Low): Fix flaky CloudWatch test
+- **Issue #17** (P2-Medium): Fix TestFailoverScenarios_CrossRegionRetry timeout
+- **Issue #68** (P1-Low): Fix flaky TestPipeline_ErrorHandling test
 
-### v0.5.1 (2025-11-08) - Integration Testing Framework ✅
-- 19 new integration tests with real AWS S3
-- Performance benchmarks: zstd 527 MB/s, S3 upload 23-32 MB/s
-- Large-scale: 10,000 files in 9.26s (133× faster than target)
+All critical bugs and test failures resolved in v0.5.0 Phase 1.
 
-### v0.5.0 (2025-11-07) - Test Quality & Performance ✅
-- Phase 1: 100% test pass rate, 6 production bugs fixed
-- Phase 3: Zero-copy I/O (15-25% improvement)
-- Linux splice() syscall (20-40% improvement)
-- Memory-mapped file I/O for 128MB+ files
-- NUMA-aware buffer allocation (10-20% reduced latency)
+## Code Quality Standards
 
-### v0.4.6 (2025-10-16) - Developer Experience ✅
-- Interactive configuration wizard (`cargoship setup`)
-- Profiling commands (CPU, memory, goroutine)
-- Configuration validation with AWS connectivity checks
-- Troubleshooting guides
+- **Linting**: 0 issues (golangci-lint)
+- **Security**: 0 vulnerabilities (govulncheck)
+- **Test Coverage**: All integration tests passing with real AWS S3
+- **Go Style**: Follow official Go best practices and idiomatic patterns
+- **Error Handling**: Comprehensive error handling with graceful degradation
+- **Thread Safety**: Proper synchronization for concurrent operations
 
-## License & Attribution
+## Documentation Philosophy
 
-- **License**: Apache 2.0
-- **Attribution**: Inspired by SuitcaseCTL (Duke University)
-- **Status**: Independent implementation with streaming pipeline architecture
+- **CRITICAL**: Track work in GitHub issues, NOT verbose planning documents
+- **Exception**: Only create docs for end-user documentation (guides, API docs, architecture diagrams)
+- **Quality over quantity**: Prefer clear, actionable issues over long documents
+- **Transparency**: Open development with public issue tracking
 
 ---
 
-**Note**: This document tracks current development context for Claude Code sessions. For user documentation, see README.md and docs/.
+**Last Updated**: 2025-12-05
+**Next Session**: Test `cargoship create upload` with real S3, validate TUI progress tracking
