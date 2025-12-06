@@ -192,7 +192,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## 📄 License and Attribution
 
-CargoShip is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+CargoShip is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
 
 **Research Origins**: Originally inspired by Duke University's [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl) research project. CargoShip has evolved into an independent, production-ready solution with a modern streaming architecture and enterprise features.
 
