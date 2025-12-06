@@ -35,6 +35,7 @@ DEVELOPMENT_NOTES.md
 
 # Archive directory (historical docs not tracked in repo)
 docs/archive/
+.archive/
 
 # Temporary development artifacts
 temp_*
