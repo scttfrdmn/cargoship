@@ -17,13 +17,18 @@ CargoShip is a high-performance S3 file upload optimization tool featuring strea
 - ✅ **Issue #121**: MemoryManager goroutine leak fixed (Commit 7715f4d)
 - ✅ **Issue #122**: Storage format documentation issue created
 - ✅ **Issue #123**: Blog post series issue created (5 posts with full outlines)
-- ✅ **Production Test**: Successfully tested `cargoship create upload` with real S3
-  - 50 files (500MB) uploaded in 45.5 seconds at 10.99 MB/s
-  - Multi-prefix sharding: 2 shards (chunk-0: 419MB, chunk-1: 105MB compressed)
-  - TUI progress gracefully disabled (non-TTY detection working correctly)
-  - S3 Location: s3://cargoship-pipeline-test/test-upload-1764993999
+- ✅ **Production Test 1**: Small dataset (50 files @ 10MB = 500MB)
+  - Uploaded in 45.5s at 10.99 MB/s
+  - Only 2 of 8 shards utilized (too few chunks created)
+- ✅ **Production Test 2**: Large dataset (200 files @ 100MB = 20GB)
+  - Uploaded in 28m3s at 11.88 MB/s
+  - All 8 shards utilized ✅
+  - 🚨 CRITICAL: BufferedPipeWriter panic detected (Issue #125)
+  - 🚨 Performance gap: 16× slower than 185 MB/s benchmark (Issue #126)
 
 ### Open Issues
+- **Issue #125**: CRITICAL - BufferedPipeWriter panic causing goroutine leaks (P0-Critical)
+- **Issue #126**: Performance investigation - 11.88 MB/s vs 185 MB/s benchmark (P1-High)
 - **Issue #65**: MemoryManager goroutine leak (P2-Low) - Test-only, doesn't affect production
 - **Issue #14-17**: Coordinator/test cleanup (P2-Medium) - Technical debt for v0.6.0
 
