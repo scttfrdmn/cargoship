@@ -4,16 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/cobra"
 
 	cargoconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
+	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
 
 // NewCostCmd creates the 'cost' command for cost management
@@ -100,6 +105,47 @@ Examples:
 		panic(fmt.Sprintf("failed to mark size flag as required: %v", err))
 	}
 
+	// Upload subcommand - Show actual costs for specific uploads
+	uploadCmd := &cobra.Command{
+		Use:   "upload",
+		Short: "Show actual cost for a specific upload",
+		Long: `Display actual storage costs for a CargoShip upload.
+
+Query the manifest to calculate real costs based on:
+- Actual compressed size stored in S3
+- Storage duration (from CreatedAt timestamp)
+- Region and storage class
+- Compression savings achieved
+
+Examples:
+  # Show cost for specific upload
+  cargoship cost upload --bucket my-bucket --upload-id 20231208-123456-abcd1234
+
+  # Show cost with compression ROI details
+  cargoship cost upload --bucket my-bucket --upload-id xxx --show-savings
+
+  # JSON output
+  cargoship cost upload --bucket my-bucket --upload-id xxx --json
+`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			bucket, _ := cmd.Flags().GetString("bucket")
+			prefix, _ := cmd.Flags().GetString("prefix")
+			uploadID, _ := cmd.Flags().GetString("upload-id")
+			showSavings, _ := cmd.Flags().GetBool("show-savings")
+			return runCostUpload(cmd.Context(), region, bucket, prefix, uploadID, showSavings, jsonOutput)
+		},
+	}
+	uploadCmd.Flags().String("bucket", "", "S3 bucket name (required)")
+	uploadCmd.Flags().String("prefix", "cargoship", "S3 prefix")
+	uploadCmd.Flags().String("upload-id", "", "Upload ID (required)")
+	uploadCmd.Flags().Bool("show-savings", true, "Show compression savings")
+	if err := uploadCmd.MarkFlagRequired("bucket"); err != nil {
+		panic(fmt.Sprintf("failed to mark bucket flag as required: %v", err))
+	}
+	if err := uploadCmd.MarkFlagRequired("upload-id"); err != nil {
+		panic(fmt.Sprintf("failed to mark upload-id flag as required: %v", err))
+	}
+
 	// Budget subcommand
 	budgetCmd := &cobra.Command{
 		Use:   "budget",
@@ -181,7 +227,7 @@ Examples:
 	reportCmd.Flags().StringVar(&outputFile, "output", "", "Output file path (default: stdout)")
 
 	// Add subcommands
-	cmd.AddCommand(estimateCmd, budgetCmd, pricingCmd, reportCmd)
+	cmd.AddCommand(estimateCmd, uploadCmd, budgetCmd, pricingCmd, reportCmd)
 
 	return cmd
 }
@@ -519,4 +565,122 @@ func parseStorageClass(class string) (cargoconfig.StorageClass, error) {
 	default:
 		return "", fmt.Errorf("unknown storage class: %s", class)
 	}
+}
+
+func runCostUpload(ctx context.Context, region, bucket, prefix, uploadID string, showSavings, jsonOutput bool) error {
+	// Download manifest from S3
+	awsCfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	if err != nil {
+		return fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	s3Client := s3.NewFromConfig(awsCfg)
+
+	// Build manifest key
+	manifestKey := fmt.Sprintf("%s/uploads/%s/manifest.json.gz", prefix, uploadID)
+
+	// Download manifest
+	getObjectInput := &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(manifestKey),
+	}
+
+	result, err := s3Client.GetObject(ctx, getObjectInput)
+	if err != nil {
+		return fmt.Errorf("failed to download manifest from S3: %w", err)
+	}
+	defer func() {
+		if cerr := result.Body.Close(); cerr != nil {
+			slog.Warn("failed to close manifest body", "error", cerr)
+		}
+	}()
+
+	// Read and decompress manifest
+	manifestBytes, err := io.ReadAll(result.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read manifest: %w", err)
+	}
+
+	m, err := manifest.FromJSONCompressed(manifestBytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse manifest: %w", err)
+	}
+
+	// Calculate total compressed size
+	var totalCompressedSize int64
+	for _, shard := range m.Shards {
+		totalCompressedSize += shard.CompressedSize
+	}
+
+	// Calculate storage duration
+	now := time.Now()
+	durationDays := now.Sub(m.CreatedAt).Hours() / 24
+	durationMonths := durationDays / 30.0
+
+	// Calculate costs (simplified - using STANDARD pricing)
+	// S3 STANDARD: $0.023 per GB/month
+	pricePerGBMonth := 0.023
+	compressedSizeGB := float64(totalCompressedSize) / (1024 * 1024 * 1024)
+	uncompressedSizeGB := float64(m.TotalBytes) / (1024 * 1024 * 1024)
+
+	monthlyCost := compressedSizeGB * pricePerGBMonth
+	totalSpent := monthlyCost * durationMonths
+
+	// Calculate compression savings
+	uncompressedCost := uncompressedSizeGB * pricePerGBMonth
+	savingsPerMonth := uncompressedCost - monthlyCost
+	savingsPercent := (savingsPerMonth / uncompressedCost) * 100
+	effectiveCostPerGB := monthlyCost / uncompressedSizeGB
+
+	if jsonOutput {
+		output := map[string]interface{}{
+			"upload_id":           m.UploadID,
+			"region":              m.Region,
+			"created_at":          m.CreatedAt,
+			"duration_days":       durationDays,
+			"uncompressed_size_gb": uncompressedSizeGB,
+			"compressed_size_gb":   compressedSizeGB,
+			"compression_ratio":    m.CompressionRatio,
+			"monthly_cost":         monthlyCost,
+			"total_spent":          totalSpent,
+			"uncompressed_cost":    uncompressedCost,
+			"savings_per_month":    savingsPerMonth,
+			"savings_percent":      savingsPercent,
+			"effective_cost_per_gb": effectiveCostPerGB,
+		}
+		jsonBytes, err := json.MarshalIndent(output, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal JSON: %w", err)
+		}
+		fmt.Println(string(jsonBytes))
+		return nil
+	}
+
+	// Human-readable output
+	fmt.Printf("%s\n", makeHeader("📦 Upload Cost Analysis"))
+	fmt.Printf("   Upload ID:           %s\n", m.UploadID)
+	fmt.Printf("   Region:              %s\n", m.Region)
+	fmt.Printf("   Created:             %s\n", m.CreatedAt.Format("2006-01-02"))
+	fmt.Printf("   Duration:            %.0f days\n", durationDays)
+	fmt.Println()
+
+	fmt.Printf("%s\n", makeHeader("💰 Storage Costs"))
+	fmt.Printf("   Monthly Cost:        $%.2f/month\n", monthlyCost)
+	fmt.Printf("   Total Spent:         $%.2f (%.0f days)\n", totalSpent, durationDays)
+	fmt.Println()
+
+	if showSavings {
+		fmt.Printf("%s\n", makeHeader("🗜️  Compression Savings"))
+		fmt.Printf("   Actual Data:         %.2f GB\n", uncompressedSizeGB)
+		fmt.Printf("   Stored As:           %.2f GB (%.1f%% compression)\n",
+			compressedSizeGB, m.CompressionRatio*100)
+		fmt.Printf("   Uncompressed Cost:   $%.2f/month (if stored uncompressed)\n", uncompressedCost)
+		fmt.Printf("   Savings:             $%.2f/month (%.1f%% reduction)\n",
+			savingsPerMonth, savingsPercent)
+		fmt.Printf("   Effective Cost:      $%.5f/GB (vs $%.3f/GB STANDARD)\n",
+			effectiveCostPerGB, pricePerGBMonth)
+		fmt.Println()
+	}
+
+	return nil
 }
