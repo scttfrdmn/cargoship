@@ -4,6 +4,8 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
 
 // S3MultiPrefixUploaderStage uploads to S3 using per-prefix worker pools for parallel uploads.
@@ -44,6 +47,9 @@ type S3MultiPrefixUploaderStage struct {
 
 	// S3 uploader (shared across all workers)
 	uploader *manager.Uploader
+
+	// Manifest tracking (Issue #97)
+	pipeline *Pipeline // Reference to parent pipeline for manifest tracking
 }
 
 // PrefixStats tracks statistics for a specific S3 prefix
@@ -59,6 +65,7 @@ func NewS3MultiPrefixUploaderStage(
 	inputs map[string]<-chan *Job,
 	output chan<- *Job,
 	workersPerPrefix int,
+	pipeline *Pipeline,
 ) (*S3MultiPrefixUploaderStage, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
@@ -115,6 +122,7 @@ func NewS3MultiPrefixUploaderStage(
 		stats: StageStats{
 			Name: "s3_multiprefix_uploader",
 		},
+		pipeline: pipeline, // Store reference for manifest tracking
 	}, nil
 }
 
@@ -224,6 +232,49 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 		}
 		s.mu.Unlock()
 
+		// Track chunk in manifest (Issue #97)
+		if s.pipeline != nil && s.pipeline.manifestBuilder != nil {
+			builder := s.pipeline.manifestBuilder.(*manifest.Builder)
+
+			// Extract shard ID from S3 key (format: "prefix/uploads/uploadID/shard-N/chunk-M.tar.zst")
+			shardID := extractShardIDFromS3Key(job.S3Key)
+
+			// Extract file paths from chunk
+			filePaths := make([]string, len(job.Chunk.Files))
+			for i, f := range job.Chunk.Files {
+				filePaths[i] = f.Path
+			}
+
+			s.pipeline.manifestMu.Lock()
+
+			// Update file entries with S3 key and shard ID
+			builder.UpdateFileS3Keys(job.Chunk.ID, shardID, job.S3Key)
+
+			// Add chunk entry
+			builder.AddChunk(manifest.ChunkEntry{
+				ID:               job.Chunk.ID,
+				ShardID:          shardID,
+				S3Key:            job.S3Key,
+				FileCount:        len(job.Chunk.Files),
+				FilePaths:        filePaths,
+				UncompressedSize: job.Chunk.TotalSize,
+				CompressedSize:   job.ArchiveSize,
+				CreatedAt:        job.StartTime,
+				UploadedAt:       job.EndTime,
+			})
+
+			// Update shard stats
+			builder.UpdateShardStats(
+				shardID,
+				job.S3Key,
+				int64(len(job.Chunk.Files)),
+				job.Chunk.TotalSize,
+				job.ArchiveSize,
+			)
+
+			s.pipeline.manifestMu.Unlock()
+		}
+
 		return nil
 	}
 
@@ -312,4 +363,18 @@ func (s *S3MultiPrefixUploaderStage) GetUploadedBytes() int64 {
 // GetUploadedJobs returns total jobs uploaded
 func (s *S3MultiPrefixUploaderStage) GetUploadedJobs() int64 {
 	return atomic.LoadInt64(&s.jobsProcessed)
+}
+
+// extractShardIDFromS3Key extracts shard ID from S3 key
+// Key format: "prefix/uploads/uploadID/shard-N/chunk-M.tar.zst"
+func extractShardIDFromS3Key(s3Key string) int {
+	parts := strings.Split(s3Key, "/")
+	for _, part := range parts {
+		if strings.HasPrefix(part, "shard-") {
+			if id, err := strconv.Atoi(strings.TrimPrefix(part, "shard-")); err == nil {
+				return id
+			}
+		}
+	}
+	return 0 // Default to shard 0 if not found
 }

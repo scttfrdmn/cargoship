@@ -161,7 +161,7 @@ func TestScannerStage_DiscoverFiles(t *testing.T) {
 		Workers:  2,
 	}
 
-	scanner, err := NewScannerStage(config, output)
+	scanner, err := NewScannerStage(config, output, nil)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -223,7 +223,7 @@ func TestScannerStage_ExcludePatterns(t *testing.T) {
 		ExcludePatterns: []string{"*.log", "*.tmp"},
 	}
 
-	scanner, err := NewScannerStage(config, output)
+	scanner, err := NewScannerStage(config, output, nil)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -278,7 +278,7 @@ func TestScannerStage_StreamFiles(t *testing.T) {
 		Workers:  2,
 	}
 
-	scanner, err := NewScannerStage(config, output)
+	scanner, err := NewScannerStage(config, output, nil)
 	require.NoError(t, err)
 
 	// Test streamFiles method
@@ -340,7 +340,7 @@ func TestScannerStage_ProcessBatch(t *testing.T) {
 		Workers:  2,
 	}
 
-	scanner, err := NewScannerStage(config, output)
+	scanner, err := NewScannerStage(config, output, nil)
 	require.NoError(t, err)
 
 	// Create batch of files
@@ -388,7 +388,7 @@ func TestScannerStage_StreamingWithCancellation(t *testing.T) {
 		Workers:  2,
 	}
 
-	scanner, err := NewScannerStage(config, output)
+	scanner, err := NewScannerStage(config, output, nil)
 	require.NoError(t, err)
 
 	// Create cancellable context

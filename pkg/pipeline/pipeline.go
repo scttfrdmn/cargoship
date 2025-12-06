@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -10,7 +11,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
 
 func init() {
@@ -121,6 +125,27 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 		errors: []error{},
 	}
 
+	// Initialize manifest builder if enabled and using real S3
+	if config.EnableManifest && config.UseRealS3 {
+		builder, err := manifest.NewBuilder(
+			config.UploadID,
+			config.SourcePath,
+			config.S3Bucket,
+			config.S3Prefix,
+			config.S3Region,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create manifest builder: %w", err)
+		}
+		p.manifestBuilder = builder
+
+		// Set compression info (will be updated by archiver with actual compression ratio)
+		builder.SetCompression("zstd", 3, 1.0) // Default values
+
+		// Set shard count for manifest
+		builder.SetShardCount(config.ShardCount)
+	}
+
 	return p, nil
 }
 
@@ -164,7 +189,7 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 		UseCompressedAwareChunking: p.config.EnableCompressedAwareChunking, // Phase 3.3
 		ChunkTargetSizeMB:          p.config.ForceChunkSizeMB,               // Phase 3.3
 	}
-	p.scanner, err = NewScannerStage(scannerConfig, p.chunkChan)
+	p.scanner, err = NewScannerStage(scannerConfig, p.chunkChan, p) // Pass pipeline reference for manifest tracking
 	if err != nil {
 		return fmt.Errorf("failed to create scanner: %w", err)
 	}
@@ -231,6 +256,7 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				uploaderInputs,
 				p.resultChan,
 				p.config.WorkersPerPrefix,
+				p, // Pass pipeline reference for manifest tracking
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create multi-prefix S3 uploader: %w", err)
@@ -285,6 +311,7 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				uploaderInputs,
 				p.resultChan,
 				p.config.WorkersPerPrefix,
+				p, // Pass pipeline reference for manifest tracking
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create multi-prefix S3 uploader: %w", err)
@@ -418,7 +445,63 @@ func (p *Pipeline) waitForCompletion(ctx context.Context) *Result {
 
 	result.TotalTime = time.Since(result.Progress.StartTime)
 
+	// Step 5: Upload manifest to S3 after all chunks complete (Issue #97)
+	if p.manifestBuilder != nil && p.config.UseRealS3 {
+		if err := p.uploadManifest(ctx); err != nil {
+			// Log warning but don't fail the upload
+			fmt.Printf("Warning: Failed to upload manifest: %v\n", err)
+		}
+	}
+
 	return result
+}
+
+// uploadManifest finalizes and uploads the manifest to S3
+func (p *Pipeline) uploadManifest(ctx context.Context) error {
+	builder := p.manifestBuilder.(*manifest.Builder)
+
+	// Finalize the manifest
+	p.manifestMu.Lock()
+	manifestData := builder.Build()
+	p.manifestMu.Unlock()
+
+	// Serialize to JSON and compress with gzip
+	manifestBytes, err := manifestData.ToJSONCompressed()
+	if err != nil {
+		return fmt.Errorf("failed to serialize manifest: %w", err)
+	}
+
+	// Construct S3 key: prefix/uploads/{uploadID}/manifest.json.gz
+	s3Key := fmt.Sprintf("%s/uploads/%s/manifest.json.gz", p.config.S3Prefix, p.config.UploadID)
+
+	// Upload to S3 using the same S3 client
+	s3Client := p.config.S3Client.(*s3.Client)
+	uploader := manager.NewUploader(s3Client, func(u *manager.Uploader) {
+		u.PartSize = 5 * 1024 * 1024 // 5MB parts (manifest should be <1MB)
+	})
+
+	input := &s3.PutObjectInput{
+		Bucket:      aws.String(p.config.S3Bucket),
+		Key:         aws.String(s3Key),
+		Body:        bytes.NewReader(manifestBytes),
+		ContentType: aws.String("application/gzip"),
+		Metadata: map[string]string{
+			"cargoship-manifest-version": "1.0",
+			"cargoship-upload-id":        p.config.UploadID,
+			"cargoship-file-count":       fmt.Sprintf("%d", len(manifestData.Files)),
+			"cargoship-chunk-count":      fmt.Sprintf("%d", len(manifestData.Chunks)),
+		},
+	}
+
+	_, err = uploader.Upload(ctx, input)
+	if err != nil {
+		return fmt.Errorf("failed to upload manifest to S3: %w", err)
+	}
+
+	fmt.Printf("✅ Manifest uploaded: s3://%s/%s (%d files, %d chunks)\n",
+		p.config.S3Bucket, s3Key, len(manifestData.Files), len(manifestData.Chunks))
+
+	return nil
 }
 
 // trackProgress periodically reports progress

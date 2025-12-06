@@ -88,6 +88,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 		NewContextCmd(),
 		NewShellCmd(),
 		NewDashboardCmd(),
+		NewListCmd(), // Issue #97: List uploaded files from manifest
 	)
 	// Legacy commands removed: NewWizardCmd, NewAnalyzeCmd, NewSchemaCmd, newTravelAgentCmd
 	cmd.AddCommand(NewMDDocsCmd())

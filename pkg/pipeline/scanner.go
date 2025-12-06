@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
+	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
 
 // ScannerStage discovers files and creates chunks
@@ -33,10 +34,13 @@ type ScannerStage struct {
 
 	// Error from run() method
 	runError error
+
+	// Manifest tracking (Issue #97)
+	pipeline *Pipeline // Reference to parent pipeline for manifest tracking
 }
 
 // NewScannerStage creates a new scanner stage
-func NewScannerStage(config *ScannerConfig, output chan<- *Job) (*ScannerStage, error) {
+func NewScannerStage(config *ScannerConfig, output chan<- *Job, pipeline *Pipeline) (*ScannerStage, error) {
 	if config == nil {
 		return nil, fmt.Errorf("scanner config cannot be nil")
 	}
@@ -76,6 +80,7 @@ func NewScannerStage(config *ScannerConfig, output chan<- *Job) (*ScannerStage, 
 		stats: StageStats{
 			Name: "scanner",
 		},
+		pipeline: pipeline, // Store reference for manifest tracking
 	}, nil
 }
 
@@ -290,6 +295,23 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 				estimatedCompressed = result.ChunkMetadata[i].EstimatedCompressedSize
 			}
 
+			// Track files in manifest (Issue #97)
+			if s.pipeline != nil && s.pipeline.manifestBuilder != nil {
+				builder := s.pipeline.manifestBuilder.(*manifest.Builder)
+				s.pipeline.manifestMu.Lock()
+				for _, file := range chunk.Files {
+					builder.AddFile(manifest.FileEntry{
+						Path:    file.Path,
+						Size:    file.Size,
+						ModTime: file.ModTime,
+						ChunkID: chunk.ID,
+						ShardID: -1,      // Will be determined by archiver
+						S3Key:   "",      // Will be filled by uploader
+					})
+				}
+				s.pipeline.manifestMu.Unlock()
+			}
+
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -321,6 +343,23 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 		// Send chunks without target sizes
 		for i := range chunks {
 			chunk := chunks[i]
+
+			// Track files in manifest (Issue #97)
+			if s.pipeline != nil && s.pipeline.manifestBuilder != nil {
+				builder := s.pipeline.manifestBuilder.(*manifest.Builder)
+				s.pipeline.manifestMu.Lock()
+				for _, file := range chunk.Files {
+					builder.AddFile(manifest.FileEntry{
+						Path:    file.Path,
+						Size:    file.Size,
+						ModTime: file.ModTime,
+						ChunkID: chunk.ID,
+						ShardID: -1,      // Will be determined by archiver
+						S3Key:   "",      // Will be filled by uploader
+					})
+				}
+				s.pipeline.manifestMu.Unlock()
+			}
 
 			select {
 			case <-ctx.Done():

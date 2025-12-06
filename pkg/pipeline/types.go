@@ -89,6 +89,10 @@ type Pipeline struct {
 
 	// Errors
 	errors []error
+
+	// Manifest tracking
+	manifestBuilder interface{} // *manifest.Builder for tracking files/chunks (type: *github.com/scttfrdmn/cargoship/pkg/manifest.Builder)
+	manifestMu      sync.Mutex  // Protects manifest updates
 }
 
 // PipelineConfig contains configuration for the pipeline
@@ -132,6 +136,10 @@ type PipelineConfig struct {
 
 	// Chunking configuration
 	ChunkingConfig *chunking.ChunkingConfig
+
+	// Manifest configuration
+	EnableManifest  bool   // Enable manifest generation (default: true for real S3)
+	SourcePath      string // Original source path for manifest
 
 	// Progress tracking
 	EnableProgress bool
