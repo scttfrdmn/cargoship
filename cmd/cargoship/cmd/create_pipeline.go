@@ -212,13 +212,30 @@ func createPipelineRunE(cmd *cobra.Command, args []string) error {
 		}
 
 		if !result.Success {
-			// Issue #103: Display detailed per-shard error breakdown
+			// Issue #103 Phase 2: Display detailed per-shard error breakdown with classification
 			_, _ = fmt.Fprintf(cmd.OutOrStderr(), "\n❌ Upload failed for %s\n\n", sourceDir)
 
-			// Group failed jobs by shard
+			// Create error classifier
+			classifier := pipeline.NewErrorClassifier()
+
+			// Group failed jobs by shard and collect error types
 			shardErrors := make(map[int][]*pipeline.Job)
+			errorTypeCount := make(map[pipeline.ErrorType]int)
+			var firstClassifiedError *pipeline.ClassifiedError
+
 			for _, job := range result.FailedJobs {
 				shardErrors[job.ShardID] = append(shardErrors[job.ShardID], job)
+
+				// Classify the first error we encounter for summary
+				if firstClassifiedError == nil && job.Error != nil {
+					firstClassifiedError = classifier.Classify(job.Error)
+				}
+
+				// Count error types
+				if job.Error != nil {
+					classified := classifier.Classify(job.Error)
+					errorTypeCount[classified.Type]++
+				}
 			}
 
 			// Display per-shard status
@@ -235,19 +252,37 @@ func createPipelineRunE(cmd *cobra.Command, args []string) error {
 						} else {
 							_, _ = fmt.Fprintf(cmd.OutOrStderr(), "    • Job %d: Failed on first attempt\n", job.ID)
 						}
-						// Show error history
-						if len(job.ErrorHistory) > 0 {
-							for i, err := range job.ErrorHistory {
-								_, _ = fmt.Fprintf(cmd.OutOrStderr(), "      Attempt %d: %v\n", i+1, err)
-							}
-						} else if job.Error != nil {
-							_, _ = fmt.Fprintf(cmd.OutOrStderr(), "      Error: %v\n", job.Error)
+
+						// Classify and display error with type
+						if job.Error != nil {
+							classified := classifier.Classify(job.Error)
+							_, _ = fmt.Fprintf(cmd.OutOrStderr(), "      Type: %s\n", classified.Type)
+							_, _ = fmt.Fprintf(cmd.OutOrStderr(), "      %s\n", classified.UserMessage)
 						}
 					}
 				}
 			}
 
-			_, _ = fmt.Fprintf(cmd.OutOrStderr(), "\nTotal errors: %d\n", len(result.Errors))
+			// Display error summary with most common error type
+			_, _ = fmt.Fprintf(cmd.OutOrStderr(), "\n📊 Error Summary:\n")
+			_, _ = fmt.Fprintf(cmd.OutOrStderr(), "   Total errors: %d\n", len(result.Errors))
+
+			// Show error type breakdown
+			if len(errorTypeCount) > 0 {
+				_, _ = fmt.Fprintf(cmd.OutOrStderr(), "   Error types:\n")
+				for errType, count := range errorTypeCount {
+					_, _ = fmt.Fprintf(cmd.OutOrStderr(), "     • %s: %d\n", errType, count)
+				}
+			}
+
+			// Display troubleshooting tips for the most common error type
+			if firstClassifiedError != nil && len(firstClassifiedError.TroubleshootingTips) > 0 {
+				_, _ = fmt.Fprintf(cmd.OutOrStderr(), "\n💡 Troubleshooting Tips:\n")
+				for _, tip := range firstClassifiedError.TroubleshootingTips {
+					_, _ = fmt.Fprintf(cmd.OutOrStderr(), "   • %s\n", tip)
+				}
+			}
+
 			return fmt.Errorf("pipeline completed with %d errors", len(result.Errors))
 		}
 
