@@ -128,22 +128,47 @@ func (m *Manager) RequestCostApproval(operation string, estimatedCost float64, j
 }
 
 // RecordOperationCost records the actual cost of a completed operation
+// It performs budget enforcement before recording costs
 func (m *Manager) RecordOperationCost(ctx context.Context, operation string, fileName string, sizeBytes int64, storageClass config.StorageClass, region string, jobID string, projectID string, tags map[string]string) error {
-	// Record cost with reporter
-	err := m.reporter.RecordArchivalCost(ctx, fileName, sizeBytes, storageClass, region, jobID, projectID, tags)
+	// Estimate the cost before recording
+	sizeGB := float64(sizeBytes) / (1024 * 1024 * 1024)
+	estimate, err := m.pricingMgr.EstimateArchivalCost(ctx, sizeGB, storageClass, region)
+	if err != nil {
+		m.logger.Warn("Failed to get cost estimate for budget enforcement", "error", err)
+		// Continue recording even if estimate fails (non-blocking)
+	} else {
+		// Check budget limits BEFORE recording (if cost estimation succeeded)
+		if projectID != "" {
+			// Check project-specific budget
+			if err := m.CheckProjectBudget(projectID, estimate.TotalCost); err != nil {
+				// Budget would be exceeded, return error
+				m.logger.Warn("Operation blocked by budget enforcement",
+					"project_id", projectID,
+					"estimated_cost", estimate.TotalCost,
+					"error", err)
+				return fmt.Errorf("budget enforcement: %w", err)
+			}
+		} else {
+			// Check global budget only
+			if err := m.checkGlobalBudget(estimate.TotalCost); err != nil {
+				m.logger.Warn("Operation blocked by budget enforcement",
+					"estimated_cost", estimate.TotalCost,
+					"error", err)
+				return fmt.Errorf("budget enforcement: %w", err)
+			}
+		}
+	}
+
+	// Budget check passed, record cost with reporter
+	err = m.reporter.RecordArchivalCost(ctx, fileName, sizeBytes, storageClass, region, jobID, projectID, tags)
 	if err != nil {
 		return fmt.Errorf("failed to record cost: %w", err)
 	}
 
-	// Update budget tracking
-	sizeGB := float64(sizeBytes) / (1024 * 1024 * 1024)
-	estimate, err := m.pricingMgr.EstimateArchivalCost(ctx, sizeGB, storageClass, region)
-	if err != nil {
-		m.logger.Warn("Failed to get cost estimate for budget tracking", "error", err)
-		return nil
+	// Update legacy budget tracking (for backward compatibility)
+	if estimate != nil {
+		m.budgetTracker.currentSpend += estimate.TotalCost
 	}
-
-	m.budgetTracker.currentSpend += estimate.TotalCost
 
 	// Check for budget alerts
 	if err := m.checkAndSendBudgetAlerts(); err != nil {
