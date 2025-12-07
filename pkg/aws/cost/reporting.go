@@ -44,6 +44,7 @@ type CostRecord struct {
 	Currency        string            `json:"currency"`
 	FileName        string            `json:"file_name,omitempty"`
 	JobID           string            `json:"job_id,omitempty"`
+	ProjectID       string            `json:"project_id,omitempty"`       // Manifest UploadID (Issue #147 Phase 2)
 	Tags            map[string]string `json:"tags,omitempty"`
 }
 
@@ -57,6 +58,7 @@ type CostSummary struct {
 	ByRegion        map[string]float64   `json:"by_region"`
 	ByStorageClass  map[string]float64   `json:"by_storage_class"`
 	ByOperation     map[string]float64   `json:"by_operation"`
+	ByProject       map[string]float64   `json:"by_project,omitempty"`       // Project-based cost tracking (Issue #147 Phase 2)
 	TopFiles        []CostRecord         `json:"top_files"`
 	DailyCosts      map[string]float64   `json:"daily_costs"`
 	Trends          CostTrends           `json:"trends"`
@@ -127,7 +129,7 @@ func (cr *CostReporter) RecordCost(record CostRecord) {
 }
 
 // RecordArchivalCost records cost for an archival operation
-func (cr *CostReporter) RecordArchivalCost(ctx context.Context, fileName string, sizeBytes int64, storageClass config.StorageClass, region string, jobID string, tags map[string]string) error {
+func (cr *CostReporter) RecordArchivalCost(ctx context.Context, fileName string, sizeBytes int64, storageClass config.StorageClass, region string, jobID string, projectID string, tags map[string]string) error {
 	sizeGB := float64(sizeBytes) / (1024 * 1024 * 1024)
 
 	// Get cost estimate
@@ -151,6 +153,7 @@ func (cr *CostReporter) RecordArchivalCost(ctx context.Context, fileName string,
 		Currency:        estimate.Currency,
 		FileName:        filepath.Base(fileName),
 		JobID:           jobID,
+		ProjectID:       projectID,
 		Tags:            tags,
 	}
 
@@ -189,6 +192,7 @@ func (cr *CostReporter) GenerateReport(ctx context.Context, period string) (*Cos
 		ByRegion:       make(map[string]float64),
 		ByStorageClass: make(map[string]float64),
 		ByOperation:    make(map[string]float64),
+		ByProject:      make(map[string]float64),
 		DailyCosts:     make(map[string]float64),
 	}
 
@@ -203,6 +207,9 @@ func (cr *CostReporter) GenerateReport(ctx context.Context, period string) (*Cos
 			summary.ByStorageClass[cost.StorageClass] += cost.Cost
 		}
 		summary.ByOperation[cost.Operation] += cost.Cost
+		if cost.ProjectID != "" {
+			summary.ByProject[cost.ProjectID] += cost.Cost
+		}
 
 		// Daily breakdown
 		day := cost.Timestamp.Format("2006-01-02")
@@ -558,4 +565,206 @@ func (cr *CostReporter) PurgeCosts(olderThan time.Duration) int {
 	}
 
 	return purged
+}
+
+// Project-based cost tracking methods (Issue #147 Phase 2)
+
+// ListProjects returns all unique project IDs that have cost records
+func (cr *CostReporter) ListProjects() []string {
+	cr.mu.RLock()
+	defer cr.mu.RUnlock()
+
+	projectSet := make(map[string]bool)
+	for _, cost := range cr.costs {
+		if cost.ProjectID != "" {
+			projectSet[cost.ProjectID] = true
+		}
+	}
+
+	projects := make([]string, 0, len(projectSet))
+	for project := range projectSet {
+		projects = append(projects, project)
+	}
+
+	// Sort alphabetically for consistent ordering
+	sort.Strings(projects)
+	return projects
+}
+
+// GetProjectCosts returns total costs for a specific project
+func (cr *CostReporter) GetProjectCosts(projectID string) float64 {
+	cr.mu.RLock()
+	defer cr.mu.RUnlock()
+
+	totalCost := 0.0
+	for _, cost := range cr.costs {
+		if cost.ProjectID == projectID {
+			totalCost += cost.Cost
+		}
+	}
+
+	return totalCost
+}
+
+// GetProjectCostsByPeriod returns costs for a specific project within a period
+func (cr *CostReporter) GetProjectCostsByPeriod(projectID string, period string) (float64, error) {
+	cr.mu.RLock()
+	defer cr.mu.RUnlock()
+
+	startTime, endTime, err := cr.parsePeriod(period)
+	if err != nil {
+		return 0, fmt.Errorf("invalid period: %w", err)
+	}
+
+	totalCost := 0.0
+	for _, cost := range cr.costs {
+		if cost.ProjectID == projectID && cost.Timestamp.After(startTime) && cost.Timestamp.Before(endTime) {
+			totalCost += cost.Cost
+		}
+	}
+
+	return totalCost, nil
+}
+
+// ProjectSummary provides detailed summary for a single project
+type ProjectSummary struct {
+	ProjectID        string             `json:"project_id"`
+	TotalCost        float64            `json:"total_cost"`
+	TotalSavings     float64            `json:"total_savings"`
+	TotalFiles       int                `json:"total_files"`
+	TotalSizeGB      float64            `json:"total_size_gb"`
+	Currency         string             `json:"currency"`
+	FirstUpload      time.Time          `json:"first_upload"`
+	LastUpload       time.Time          `json:"last_upload"`
+	ByRegion         map[string]float64 `json:"by_region"`
+	ByStorageClass   map[string]float64 `json:"by_storage_class"`
+	AverageCostPerGB float64            `json:"average_cost_per_gb"`
+}
+
+// GetProjectSummary returns detailed summary for a specific project
+func (cr *CostReporter) GetProjectSummary(projectID string) (*ProjectSummary, error) {
+	cr.mu.RLock()
+	defer cr.mu.RUnlock()
+
+	var projectCosts []CostRecord
+	for _, cost := range cr.costs {
+		if cost.ProjectID == projectID {
+			projectCosts = append(projectCosts, cost)
+		}
+	}
+
+	if len(projectCosts) == 0 {
+		return nil, fmt.Errorf("no cost records found for project: %s", projectID)
+	}
+
+	summary := &ProjectSummary{
+		ProjectID:      projectID,
+		Currency:       projectCosts[0].Currency,
+		ByRegion:       make(map[string]float64),
+		ByStorageClass: make(map[string]float64),
+		FirstUpload:    projectCosts[0].Timestamp,
+		LastUpload:     projectCosts[0].Timestamp,
+	}
+
+	totalSize := 0.0
+
+	for _, cost := range projectCosts {
+		summary.TotalCost += cost.Cost
+		summary.TotalSavings += cost.DiscountApplied
+		summary.TotalFiles++
+		totalSize += cost.SizeGB
+
+		summary.ByRegion[cost.Region] += cost.Cost
+		if cost.StorageClass != "" {
+			summary.ByStorageClass[cost.StorageClass] += cost.Cost
+		}
+
+		// Track first and last upload times
+		if cost.Timestamp.Before(summary.FirstUpload) {
+			summary.FirstUpload = cost.Timestamp
+		}
+		if cost.Timestamp.After(summary.LastUpload) {
+			summary.LastUpload = cost.Timestamp
+		}
+	}
+
+	summary.TotalSizeGB = totalSize
+	if totalSize > 0 {
+		summary.AverageCostPerGB = summary.TotalCost / totalSize
+	}
+
+	return summary, nil
+}
+
+// GenerateProjectReport generates a cost report filtered by project
+func (cr *CostReporter) GenerateProjectReport(ctx context.Context, projectID string, period string) (*CostSummary, error) {
+	cr.mu.RLock()
+	defer cr.mu.RUnlock()
+
+	// Filter costs by period
+	startTime, endTime, err := cr.parsePeriod(period)
+	if err != nil {
+		return nil, fmt.Errorf("invalid period: %w", err)
+	}
+
+	// Filter by both project and period
+	var filteredCosts []CostRecord
+	for _, cost := range cr.costs {
+		if cost.ProjectID == projectID && cost.Timestamp.After(startTime) && cost.Timestamp.Before(endTime) {
+			filteredCosts = append(filteredCosts, cost)
+		}
+	}
+
+	if len(filteredCosts) == 0 {
+		return &CostSummary{
+			Period:         period,
+			Currency:       "USD",
+			ByService:      make(map[string]float64),
+			ByRegion:       make(map[string]float64),
+			ByStorageClass: make(map[string]float64),
+			ByOperation:    make(map[string]float64),
+			ByProject:      make(map[string]float64),
+			DailyCosts:     make(map[string]float64),
+		}, nil
+	}
+
+	summary := &CostSummary{
+		Period:         period,
+		Currency:       filteredCosts[0].Currency,
+		ByService:      make(map[string]float64),
+		ByRegion:       make(map[string]float64),
+		ByStorageClass: make(map[string]float64),
+		ByOperation:    make(map[string]float64),
+		ByProject:      map[string]float64{projectID: 0},
+		DailyCosts:     make(map[string]float64),
+	}
+
+	// Calculate totals and breakdowns
+	for _, cost := range filteredCosts {
+		summary.TotalCost += cost.Cost
+		summary.TotalSavings += cost.DiscountApplied
+
+		summary.ByService[cost.Service] += cost.Cost
+		summary.ByRegion[cost.Region] += cost.Cost
+		if cost.StorageClass != "" {
+			summary.ByStorageClass[cost.StorageClass] += cost.Cost
+		}
+		summary.ByOperation[cost.Operation] += cost.Cost
+		summary.ByProject[projectID] += cost.Cost
+
+		// Daily breakdown
+		day := cost.Timestamp.Format("2006-01-02")
+		summary.DailyCosts[day] += cost.Cost
+	}
+
+	// Get top cost files
+	summary.TopFiles = cr.getTopCostFiles(filteredCosts, 10)
+
+	// Calculate trends
+	summary.Trends = cr.calculateTrends(filteredCosts, startTime, endTime)
+
+	// Generate recommendations
+	summary.Recommendations = cr.generateRecommendations(filteredCosts)
+
+	return summary, nil
 }

@@ -226,8 +226,59 @@ Examples:
 	reportCmd.Flags().StringVar(&period, "period", "month", "Report period (today, week, month, last_month)")
 	reportCmd.Flags().StringVar(&outputFile, "output", "", "Output file path (default: stdout)")
 
+	// Projects subcommand (Issue #147 Phase 2)
+	projectsCmd := &cobra.Command{
+		Use:   "projects",
+		Short: "List all projects with cost records",
+		Long: `List all projects (manifest upload IDs) that have associated cost records.
+
+Projects are identified by their manifest upload IDs (e.g., 20251206-abc123).
+Each upload to S3 creates a unique project that can be tracked separately.
+
+Examples:
+  # List all projects
+  cargoship cost projects
+
+  # List projects as JSON
+  cargoship cost projects --json
+`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runProjectsList(cmd.Context(), region, jsonOutput)
+		},
+	}
+
+	// Project subcommand (Issue #147 Phase 2)
+	projectCmd := &cobra.Command{
+		Use:   "project PROJECT_ID",
+		Short: "Show costs for a specific project",
+		Long: `Show detailed cost information for a specific project (manifest upload ID).
+
+Displays:
+- Total costs and savings for the project
+- Total files and data size uploaded
+- Cost breakdown by region and storage class
+- First and last upload timestamps
+- Average cost per GB
+
+Examples:
+  # Show costs for specific project
+  cargoship cost project 20251206-abc123
+
+  # Show project costs for specific period
+  cargoship cost project 20251206-abc123 --period month
+
+  # Project costs as JSON
+  cargoship cost project 20251206-abc123 --json
+`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runProjectSummary(cmd.Context(), region, args[0], period, jsonOutput)
+		},
+	}
+	projectCmd.Flags().StringVar(&period, "period", "all", "Report period (all, today, week, month, last_month)")
+
 	// Add subcommands
-	cmd.AddCommand(estimateCmd, uploadCmd, budgetCmd, pricingCmd, reportCmd)
+	cmd.AddCommand(estimateCmd, uploadCmd, budgetCmd, pricingCmd, reportCmd, projectsCmd, projectCmd)
 
 	return cmd
 }
@@ -794,6 +845,175 @@ func runCostUpload(ctx context.Context, region, bucket, prefix, uploadID string,
 			savingsPerMonth, savingsPercent)
 		fmt.Printf("   Effective Cost:      $%.5f/GB (vs $%.3f/GB STANDARD)\n",
 			effectiveCostPerGB, pricePerGBMonth)
+		fmt.Println()
+	}
+
+	return nil
+}
+
+// Project-based cost query functions (Issue #147 Phase 2)
+
+func runProjectsList(ctx context.Context, region string, jsonOutput bool) error {
+	// Load AWS config
+	awsCfg, cargoConfig, err := loadAWSConfigForCost(ctx, region)
+	if err != nil {
+		return err
+	}
+
+	// Create cost manager
+	costMgr, err := cost.NewManager(&cargoConfig.CostControl, awsCfg, slog.Default())
+	if err != nil {
+		return fmt.Errorf("failed to create cost manager: %w", err)
+	}
+
+	// Get list of projects
+	projects := costMgr.GetReporter().ListProjects()
+
+	// Display results
+	if jsonOutput {
+		output := map[string]interface{}{
+			"projects": projects,
+			"count":    len(projects),
+		}
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(output)
+	}
+
+	// Human-readable output
+	if len(projects) == 0 {
+		fmt.Printf("📦 No projects found\n")
+		fmt.Printf("   Projects are created automatically when you upload data to S3.\n")
+		fmt.Printf("   Each upload has a unique project ID (manifest upload ID).\n")
+		return nil
+	}
+
+	fmt.Printf("📦 %s\n", makeHeader(fmt.Sprintf("%d Projects with Cost Records", len(projects))))
+	fmt.Println()
+
+	for i, projectID := range projects {
+		projectCost := costMgr.GetReporter().GetProjectCosts(projectID)
+		fmt.Printf("   %2d. %s\n", i+1, projectID)
+		fmt.Printf("       Total Cost: $%.4f\n", projectCost)
+	}
+	fmt.Println()
+	fmt.Printf("💡 Tip: View details for a project with: cargoship cost project <PROJECT_ID>\n")
+	fmt.Println()
+
+	return nil
+}
+
+func runProjectSummary(ctx context.Context, region, projectID, period string, jsonOutput bool) error {
+	// Load AWS config
+	awsCfg, cargoConfig, err := loadAWSConfigForCost(ctx, region)
+	if err != nil {
+		return err
+	}
+
+	// Create cost manager
+	costMgr, err := cost.NewManager(&cargoConfig.CostControl, awsCfg, slog.Default())
+	if err != nil {
+		return fmt.Errorf("failed to create cost manager: %w", err)
+	}
+
+	reporter := costMgr.GetReporter()
+
+	// Get project summary
+	summary, err := reporter.GetProjectSummary(projectID)
+	if err != nil {
+		return fmt.Errorf("failed to get project summary: %w", err)
+	}
+
+	// If period specified and not "all", filter by period
+	var periodCost float64
+	if period != "all" {
+		periodCost, err = reporter.GetProjectCostsByPeriod(projectID, period)
+		if err != nil {
+			return fmt.Errorf("failed to get project costs for period: %w", err)
+		}
+	}
+
+	// Display results
+	if jsonOutput {
+		output := summary
+		if period != "all" {
+			// Create a modified output with period costs
+			outputMap := map[string]interface{}{
+				"project_id":         summary.ProjectID,
+				"period":             period,
+				"period_cost":        periodCost,
+				"total_cost":         summary.TotalCost,
+				"total_savings":      summary.TotalSavings,
+				"total_files":        summary.TotalFiles,
+				"total_size_gb":      summary.TotalSizeGB,
+				"currency":           summary.Currency,
+				"first_upload":       summary.FirstUpload,
+				"last_upload":        summary.LastUpload,
+				"by_region":          summary.ByRegion,
+				"by_storage_class":   summary.ByStorageClass,
+				"average_cost_per_gb": summary.AverageCostPerGB,
+			}
+			encoder := json.NewEncoder(os.Stdout)
+			encoder.SetIndent("", "  ")
+			return encoder.Encode(outputMap)
+		}
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(output)
+	}
+
+	// Human-readable output
+	fmt.Printf("📊 %s\n", makeHeader(fmt.Sprintf("Project: %s", projectID)))
+	fmt.Println()
+
+	// Period-specific costs
+	if period != "all" {
+		fmt.Printf("📅 %s\n", makeHeader(fmt.Sprintf("Period: %s", period)))
+		fmt.Printf("   Period Cost:      $%.4f %s\n", periodCost, summary.Currency)
+		fmt.Println()
+	}
+
+	// Overall project stats
+	fmt.Printf("💰 %s\n", makeHeader("Overall Project Costs"))
+	fmt.Printf("   Total Cost:       $%.4f %s\n", summary.TotalCost, summary.Currency)
+	fmt.Printf("   Total Savings:    $%.4f %s\n", summary.TotalSavings, summary.Currency)
+	fmt.Printf("   Effective Cost:   $%.4f %s\n", summary.TotalCost-summary.TotalSavings, summary.Currency)
+	fmt.Println()
+
+	// Data volume
+	fmt.Printf("📦 %s\n", makeHeader("Data Volume"))
+	fmt.Printf("   Total Files:      %d\n", summary.TotalFiles)
+	fmt.Printf("   Total Size:       %.2f GB\n", summary.TotalSizeGB)
+	fmt.Printf("   Avg Cost/GB:      $%.6f\n", summary.AverageCostPerGB)
+	fmt.Println()
+
+	// Timeline
+	fmt.Printf("📅 %s\n", makeHeader("Timeline"))
+	fmt.Printf("   First Upload:     %s\n", summary.FirstUpload.Format("2006-01-02 15:04:05 MST"))
+	fmt.Printf("   Last Upload:      %s\n", summary.LastUpload.Format("2006-01-02 15:04:05 MST"))
+	duration := summary.LastUpload.Sub(summary.FirstUpload)
+	if duration > 0 {
+		fmt.Printf("   Duration:         %s\n", duration.Round(time.Second))
+	}
+	fmt.Println()
+
+	// Regional breakdown
+	if len(summary.ByRegion) > 0 {
+		fmt.Printf("🌍 %s\n", makeHeader("Cost by Region"))
+		for region, regionCost := range summary.ByRegion {
+			percent := (regionCost / summary.TotalCost) * 100
+			fmt.Printf("   %-20s $%.4f (%.1f%%)\n", region, regionCost, percent)
+		}
+		fmt.Println()
+	}
+
+	// Storage class breakdown
+	if len(summary.ByStorageClass) > 0 {
+		fmt.Printf("💾 %s\n", makeHeader("Cost by Storage Class"))
+		for class, classCost := range summary.ByStorageClass {
+			percent := (classCost / summary.TotalCost) * 100
+			fmt.Printf("   %-25s $%.4f (%.1f%%)\n", class, classCost, percent)
+		}
 		fmt.Println()
 	}
 

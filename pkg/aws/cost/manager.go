@@ -128,9 +128,9 @@ func (m *Manager) RequestCostApproval(operation string, estimatedCost float64, j
 }
 
 // RecordOperationCost records the actual cost of a completed operation
-func (m *Manager) RecordOperationCost(ctx context.Context, operation string, fileName string, sizeBytes int64, storageClass config.StorageClass, region string, jobID string, tags map[string]string) error {
+func (m *Manager) RecordOperationCost(ctx context.Context, operation string, fileName string, sizeBytes int64, storageClass config.StorageClass, region string, jobID string, projectID string, tags map[string]string) error {
 	// Record cost with reporter
-	err := m.reporter.RecordArchivalCost(ctx, fileName, sizeBytes, storageClass, region, jobID, tags)
+	err := m.reporter.RecordArchivalCost(ctx, fileName, sizeBytes, storageClass, region, jobID, projectID, tags)
 	if err != nil {
 		return fmt.Errorf("failed to record cost: %w", err)
 	}
@@ -468,4 +468,9 @@ func (m *Manager) GetCurrentPricing(ctx context.Context, region string) (map[str
 	}
 
 	return pricing, nil
+}
+
+// GetReporter returns the cost reporter (Issue #147 Phase 2)
+func (m *Manager) GetReporter() *CostReporter {
+	return m.reporter
 }

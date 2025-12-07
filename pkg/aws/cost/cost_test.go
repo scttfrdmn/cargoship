@@ -417,9 +417,10 @@ func TestRecordArchivalCost(t *testing.T) {
 	region := "us-east-1"
 	fileName := "/path/to/test-file.txt"
 	jobID := "job456"
+	projectID := "test-project-20251206"
 	tags := map[string]string{"project": "test"}
 
-	err = reporter.RecordArchivalCost(ctx, fileName, sizeBytes, storageClass, region, jobID, tags)
+	err = reporter.RecordArchivalCost(ctx, fileName, sizeBytes, storageClass, region, jobID, projectID, tags)
 	require.NoError(t, err)
 
 	assert.Equal(t, 1, len(reporter.costs))
