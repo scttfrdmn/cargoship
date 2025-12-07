@@ -4,9 +4,12 @@ package cost
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/smtp"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -104,6 +107,22 @@ type BudgetAlertConfig struct {
 	CloudWatchNamespace string `yaml:"cloudwatch_namespace" json:"cloudwatch_namespace"`
 	CloudWatchRegion    string `yaml:"cloudwatch_region" json:"cloudwatch_region"`
 
+	// Email notification configuration (Issue #147 Phase 4)
+	EmailEnabled    bool     `yaml:"email_enabled" json:"email_enabled"`
+	EmailRecipients []string `yaml:"email_recipients" json:"email_recipients,omitempty"`
+	SMTPHost        string   `yaml:"smtp_host" json:"smtp_host,omitempty"`
+	SMTPPort        int      `yaml:"smtp_port" json:"smtp_port,omitempty"`
+	SMTPUsername    string   `yaml:"smtp_username" json:"smtp_username,omitempty"`
+	SMTPPassword    string   `yaml:"smtp_password" json:"smtp_password,omitempty"`
+	SMTPFrom        string   `yaml:"smtp_from" json:"smtp_from,omitempty"`
+	SMTPUseTLS      bool     `yaml:"smtp_use_tls" json:"smtp_use_tls"`
+
+	// Slack notification configuration (Issue #147 Phase 4)
+	SlackEnabled    bool   `yaml:"slack_enabled" json:"slack_enabled"`
+	SlackWebhookURL string `yaml:"slack_webhook_url" json:"slack_webhook_url,omitempty"`
+	SlackChannel    string `yaml:"slack_channel" json:"slack_channel,omitempty"` // Optional override
+	SlackUsername   string `yaml:"slack_username" json:"slack_username,omitempty"` // Optional bot name
+
 	// Alert delivery options
 	SendProjectAlerts bool `yaml:"send_project_alerts" json:"send_project_alerts"`
 	SendGlobalAlerts  bool `yaml:"send_global_alerts" json:"send_global_alerts"`
@@ -154,6 +173,10 @@ func DefaultBudgetAlertConfig() *BudgetAlertConfig {
 		WebhookTimeout:      10 * time.Second,
 		CloudWatchEnabled:   false,
 		CloudWatchNamespace: "CargoShip/Budget",
+		EmailEnabled:        false, // Issue #147 Phase 4
+		SMTPPort:            587,   // Default SMTP port with STARTTLS
+		SMTPUseTLS:          true,  // Enable TLS by default
+		SlackEnabled:        false, // Issue #147 Phase 4
 		SendProjectAlerts:   true,
 		SendGlobalAlerts:    true,
 	}
@@ -202,6 +225,28 @@ func (n *BudgetAlertNotifier) SendAlert(ctx context.Context, alert *BudgetAlert)
 				lastErr = fmt.Errorf("%v; cloudwatch alert failed: %w", lastErr, err)
 			} else {
 				lastErr = fmt.Errorf("cloudwatch alert failed: %w", err)
+			}
+		}
+	}
+
+	// Send email notification (Issue #147 Phase 4)
+	if n.config.EmailEnabled && len(n.config.EmailRecipients) > 0 && n.config.SMTPHost != "" {
+		if err := n.sendEmailAlert(ctx, alert); err != nil {
+			if lastErr != nil {
+				lastErr = fmt.Errorf("%v; email alert failed: %w", lastErr, err)
+			} else {
+				lastErr = fmt.Errorf("email alert failed: %w", err)
+			}
+		}
+	}
+
+	// Send Slack notification (Issue #147 Phase 4)
+	if n.config.SlackEnabled && n.config.SlackWebhookURL != "" {
+		if err := n.sendSlackAlert(ctx, alert); err != nil {
+			if lastErr != nil {
+				lastErr = fmt.Errorf("%v; slack alert failed: %w", lastErr, err)
+			} else {
+				lastErr = fmt.Errorf("slack alert failed: %w", err)
 			}
 		}
 	}
@@ -311,6 +356,325 @@ func (n *BudgetAlertNotifier) sendCloudWatchAlert(ctx context.Context, alert *Bu
 	}
 
 	return nil
+}
+
+// sendEmailAlert sends an alert via email (Issue #147 Phase 4)
+func (n *BudgetAlertNotifier) sendEmailAlert(ctx context.Context, alert *BudgetAlert) error {
+	// Validate configuration
+	if len(n.config.EmailRecipients) == 0 {
+		return fmt.Errorf("no email recipients configured")
+	}
+	if n.config.SMTPHost == "" {
+		return fmt.Errorf("SMTP host not configured")
+	}
+	if n.config.SMTPFrom == "" {
+		return fmt.Errorf("SMTP from address not configured")
+	}
+
+	// Build email subject
+	subject := fmt.Sprintf("[CargoShip Budget Alert] %s - %s", alert.Severity, alert.Type)
+	if alert.ProjectID != "" {
+		subject = fmt.Sprintf("%s - Project: %s", subject, alert.ProjectID)
+	}
+
+	// Build email body
+	body := n.formatEmailBody(alert)
+
+	// Construct email message
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\n\r\n%s",
+		n.config.SMTPFrom,
+		strings.Join(n.config.EmailRecipients, ", "),
+		subject,
+		body)
+
+	// Send via SMTP
+	addr := fmt.Sprintf("%s:%d", n.config.SMTPHost, n.config.SMTPPort)
+
+	// Determine authentication
+	var auth smtp.Auth
+	if n.config.SMTPUsername != "" && n.config.SMTPPassword != "" {
+		auth = smtp.PlainAuth("", n.config.SMTPUsername, n.config.SMTPPassword, n.config.SMTPHost)
+	}
+
+	// Send with or without TLS
+	if n.config.SMTPUseTLS {
+		return n.sendEmailTLS(addr, auth, n.config.SMTPFrom, n.config.EmailRecipients, []byte(msg))
+	}
+
+	return smtp.SendMail(addr, auth, n.config.SMTPFrom, n.config.EmailRecipients, []byte(msg))
+}
+
+// sendEmailTLS sends email with TLS encryption
+func (n *BudgetAlertNotifier) sendEmailTLS(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
+	// Connect with TLS
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ServerName: n.config.SMTPHost,
+	}
+
+	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	if err != nil {
+		return fmt.Errorf("failed to connect with TLS: %w", err)
+	}
+	defer func() {
+		_ = conn.Close()
+	}()
+
+	client, err := smtp.NewClient(conn, n.config.SMTPHost)
+	if err != nil {
+		return fmt.Errorf("failed to create SMTP client: %w", err)
+	}
+	defer func() {
+		_ = client.Close()
+	}()
+
+	// Authenticate if configured
+	if auth != nil {
+		if err = client.Auth(auth); err != nil {
+			return fmt.Errorf("SMTP authentication failed: %w", err)
+		}
+	}
+
+	// Set sender
+	if err = client.Mail(from); err != nil {
+		return fmt.Errorf("failed to set sender: %w", err)
+	}
+
+	// Set recipients
+	for _, addr := range to {
+		if err = client.Rcpt(addr); err != nil {
+			return fmt.Errorf("failed to set recipient %s: %w", addr, err)
+		}
+	}
+
+	// Send message body
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("failed to initiate data transfer: %w", err)
+	}
+
+	_, err = w.Write(msg)
+	if err != nil {
+		return fmt.Errorf("failed to write message: %w", err)
+	}
+
+	err = w.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close data writer: %w", err)
+	}
+
+	return client.Quit()
+}
+
+// formatEmailBody formats the alert as an email body
+func (n *BudgetAlertNotifier) formatEmailBody(alert *BudgetAlert) string {
+	var buf bytes.Buffer
+
+	buf.WriteString("CargoShip Budget Alert\n")
+	buf.WriteString("======================\n\n")
+	buf.WriteString(fmt.Sprintf("Severity: %s\n", alert.Severity))
+	buf.WriteString(fmt.Sprintf("Type: %s\n", alert.Type))
+	buf.WriteString(fmt.Sprintf("Time: %s\n\n", alert.Timestamp.Format(time.RFC3339)))
+
+	if alert.ProjectID != "" {
+		buf.WriteString(fmt.Sprintf("Project: %s\n", alert.ProjectID))
+	} else {
+		buf.WriteString("Scope: Global\n")
+	}
+
+	buf.WriteString(fmt.Sprintf("\n%s\n\n", alert.Description))
+
+	// Cost details
+	if alert.MaxBudget > 0 {
+		buf.WriteString("Budget Details:\n")
+		buf.WriteString(fmt.Sprintf("  Maximum Budget: $%.2f\n", alert.MaxBudget))
+		buf.WriteString(fmt.Sprintf("  Current Spend: $%.2f\n", alert.CurrentSpend))
+		buf.WriteString(fmt.Sprintf("  Remaining: $%.2f\n", alert.BudgetRemaining))
+		buf.WriteString(fmt.Sprintf("  Used: %.1f%%\n\n", alert.BudgetUsedPercent))
+	}
+
+	// Volume details
+	if alert.MaxVolumeGB > 0 {
+		buf.WriteString("Volume Details:\n")
+		buf.WriteString(fmt.Sprintf("  Maximum Quota: %.2f GB\n", alert.MaxVolumeGB))
+		buf.WriteString(fmt.Sprintf("  Current Volume: %.2f GB\n", alert.CurrentVolumeGB))
+		buf.WriteString(fmt.Sprintf("  Remaining: %.2f GB\n", alert.VolumeRemaining))
+		buf.WriteString(fmt.Sprintf("  Used: %.1f%%\n\n", alert.VolumeUsedPercent))
+	}
+
+	if alert.Recommendation != "" {
+		buf.WriteString(fmt.Sprintf("Recommendation:\n%s\n\n", alert.Recommendation))
+	}
+
+	if alert.ActionRequired {
+		buf.WriteString("⚠️ IMMEDIATE ACTION REQUIRED ⚠️\n\n")
+	}
+
+	buf.WriteString("--\nCargoShip Budget Alert System\n")
+	buf.WriteString("https://github.com/scttfrdmn/cargoship\n")
+
+	return buf.String()
+}
+
+// sendSlackAlert sends an alert via Slack webhook (Issue #147 Phase 4)
+func (n *BudgetAlertNotifier) sendSlackAlert(ctx context.Context, alert *BudgetAlert) error {
+	if n.config.SlackWebhookURL == "" {
+		return fmt.Errorf("slack webhook URL not configured")
+	}
+
+	// Build Slack message payload
+	payload := n.buildSlackPayload(alert)
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal Slack payload: %w", err)
+	}
+
+	// Create HTTP request
+	req, err := http.NewRequestWithContext(ctx, "POST", n.config.SlackWebhookURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create Slack request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Send request
+	resp, err := n.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send Slack webhook: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("slack API returned status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// buildSlackPayload builds a Slack message payload
+func (n *BudgetAlertNotifier) buildSlackPayload(alert *BudgetAlert) map[string]interface{} {
+	// Determine color based on severity
+	var color string
+	var emoji string
+	switch alert.Severity {
+	case SeverityCritical:
+		color = "danger"
+		emoji = ":rotating_light:"
+	case SeverityWarning:
+		color = "warning"
+		emoji = ":warning:"
+	default:
+		color = "good"
+		emoji = ":information_source:"
+	}
+
+	// Build attachment fields
+	fields := []map[string]interface{}{
+		{
+			"title": "Severity",
+			"value": string(alert.Severity),
+			"short": true,
+		},
+		{
+			"title": "Alert Type",
+			"value": string(alert.Type),
+			"short": true,
+		},
+	}
+
+	if alert.ProjectID != "" {
+		fields = append(fields, map[string]interface{}{
+			"title": "Project",
+			"value": alert.ProjectID,
+			"short": true,
+		})
+	} else {
+		fields = append(fields, map[string]interface{}{
+			"title": "Scope",
+			"value": "Global",
+			"short": true,
+		})
+	}
+
+	// Add budget details
+	if alert.MaxBudget > 0 {
+		fields = append(fields,
+			map[string]interface{}{
+				"title": "Current Spend",
+				"value": fmt.Sprintf("$%.2f", alert.CurrentSpend),
+				"short": true,
+			},
+			map[string]interface{}{
+				"title": "Budget",
+				"value": fmt.Sprintf("$%.2f", alert.MaxBudget),
+				"short": true,
+			},
+			map[string]interface{}{
+				"title": "Budget Used",
+				"value": fmt.Sprintf("%.1f%%", alert.BudgetUsedPercent),
+				"short": true,
+			},
+		)
+	}
+
+	// Add volume details
+	if alert.MaxVolumeGB > 0 {
+		fields = append(fields,
+			map[string]interface{}{
+				"title": "Current Volume",
+				"value": fmt.Sprintf("%.2f GB", alert.CurrentVolumeGB),
+				"short": true,
+			},
+			map[string]interface{}{
+				"title": "Quota",
+				"value": fmt.Sprintf("%.2f GB", alert.MaxVolumeGB),
+				"short": true,
+			},
+			map[string]interface{}{
+				"title": "Volume Used",
+				"value": fmt.Sprintf("%.1f%%", alert.VolumeUsedPercent),
+				"short": true,
+			},
+		)
+	}
+
+	// Build payload
+	payload := map[string]interface{}{
+		"username":   n.getSlackUsername(),
+		"icon_emoji": ":moneybag:",
+		"attachments": []map[string]interface{}{
+			{
+				"color":      color,
+				"title":      fmt.Sprintf("%s %s", emoji, alert.Description),
+				"text":       alert.Recommendation,
+				"fields":     fields,
+				"footer":     "CargoShip",
+				"footer_icon": "https://github.com/scttfrdmn/cargoship/raw/main/docs/logo.png",
+				"ts":         alert.Timestamp.Unix(),
+			},
+		},
+	}
+
+	if n.config.SlackChannel != "" {
+		payload["channel"] = n.config.SlackChannel
+	}
+
+	if alert.ActionRequired {
+		payload["text"] = "<!here> *IMMEDIATE ACTION REQUIRED*"
+	}
+
+	return payload
+}
+
+// getSlackUsername returns the configured Slack username or default
+func (n *BudgetAlertNotifier) getSlackUsername() string {
+	if n.config.SlackUsername != "" {
+		return n.config.SlackUsername
+	}
+	return "CargoShip Budget Alerts"
 }
 
 // CheckBudgetStatus evaluates budget status and generates alerts if needed
