@@ -1,0 +1,39 @@
+ok  	github.com/scttfrdmn/cargoship/cmd/cargoship	0.559s	coverage: 60.0% of statements
+ok  	github.com/scttfrdmn/cargoship/cmd/cargoship/cmd	45.142s	coverage: 24.0% of statements
+ok  	github.com/scttfrdmn/cargoship/cmd/cargoship-cost	0.818s	coverage: 57.4% of statements
+ok  	github.com/scttfrdmn/cargoship/cmd/cargoship-launch	(cached)	coverage: 49.3% of statements
+	github.com/scttfrdmn/cargoship/cmd/cargoship-test		coverage: 0.0% of statements
+ok  	github.com/scttfrdmn/cargoship/cmd/controller	(cached)	coverage: 17.1% of statements
+	github.com/scttfrdmn/cargoship/cmd/ghost-ship		coverage: 0.0% of statements
+	github.com/scttfrdmn/cargoship/cmd/launch-server		coverage: 0.0% of statements
+	github.com/scttfrdmn/cargoship/examples/basic-upload		coverage: 0.0% of statements
+	github.com/scttfrdmn/cargoship/internal/testutil		coverage: 0.0% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/aws/config	0.608s	coverage: 22.6% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/aws/cost	0.873s	coverage: 47.7% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/aws/costs	(cached)	coverage: 87.5% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/aws/lifecycle	(cached)	coverage: 90.4% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/aws/metrics	(cached)	coverage: 100.0% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/aws/pricing	(cached)	coverage: 90.5% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/aws/s3	(cached)	coverage: 75.6% of statements
+	github.com/scttfrdmn/cargoship/pkg/benchmarks		coverage: 0.0% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/benchmarks/scenarios	(cached)	coverage: [no statements] [no tests to run]
+ok  	github.com/scttfrdmn/cargoship/pkg/chunking	(cached)	coverage: 81.4% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/compression	(cached)	coverage: 91.4% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/config	(cached)	coverage: 94.0% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/context	(cached)	coverage: 40.5% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/controller	(cached)	coverage: 39.5% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/errors	(cached)	coverage: 99.1% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/gpg	(cached)	coverage: 88.7% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/ioutils	(cached)	coverage: 53.9% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/launch	(cached)	coverage: 4.9% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/manifest	(cached)	coverage: 22.1% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/monitoring	(cached)	coverage: 39.6% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/multiregion	32.116s	coverage: 75.6% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/pipeline	(cached)	coverage: 57.0% of statements
+	github.com/scttfrdmn/cargoship/pkg/profiling		coverage: 0.0% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/progress	(cached)	coverage: 99.1% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/repl	(cached)	coverage: 41.8% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/s3optimization	(cached)	coverage: 58.2% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/staging	(cached)	coverage: 84.3% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/testutils	(cached)	coverage: 71.2% of statements
+ok  	github.com/scttfrdmn/cargoship/pkg/tui	(cached)	coverage: 79.6% of statements

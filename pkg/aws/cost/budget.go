@@ -114,8 +114,8 @@ func (e *VolumeQuotaExceededError) Error() string {
 	)
 }
 
-// CheckProjectBudget checks if a project would exceed its budget
-// Returns nil if within budget, BudgetExceededError otherwise
+// CheckProjectBudget checks if a project would exceed its budget OR volume quota
+// Returns nil if within limits, BudgetExceededError or VolumeQuotaExceededError otherwise
 func (m *Manager) CheckProjectBudget(projectID string, additionalCost float64) error {
 	// Check if project has a specific budget configured
 	projectBudget, hasProjectBudget := m.config.ProjectBudgets[projectID]
@@ -146,6 +146,90 @@ func (m *Manager) CheckProjectBudget(projectID string, additionalCost float64) e
 
 	// Project budget check passed, also check global budget
 	return m.checkGlobalBudget(additionalCost)
+}
+
+// CheckProjectVolumeQuota checks if a project would exceed its volume quota
+// Returns nil if within quota, VolumeQuotaExceededError otherwise
+func (m *Manager) CheckProjectVolumeQuota(projectID string, additionalGB float64) error {
+	// Check if project has a specific volume quota configured
+	projectBudget, hasProjectBudget := m.config.ProjectBudgets[projectID]
+
+	if !hasProjectBudget || projectBudget.MaxVolumeGB == 0 {
+		// No project-specific volume quota, check against global quota
+		return m.checkGlobalVolumeQuota(additionalGB)
+	}
+
+	// Get current project volume usage
+	currentVolume := m.reporter.GetProjectVolume(projectID)
+	projectedVolume := currentVolume + additionalGB
+
+	// Check if projected volume would exceed project quota
+	if projectedVolume > projectBudget.MaxVolumeGB {
+		overage := projectedVolume - projectBudget.MaxVolumeGB
+		return &VolumeQuotaExceededError{
+			ProjectID:       projectID,
+			QuotaType:       "project",
+			MaxVolumeGB:     projectBudget.MaxVolumeGB,
+			CurrentVolumeGB: currentVolume,
+			AdditionalGB:    additionalGB,
+			ProjectedVolume: projectedVolume,
+			Overage:         overage,
+		}
+	}
+
+	// Project quota check passed, also check global quota
+	return m.checkGlobalVolumeQuota(additionalGB)
+}
+
+// checkGlobalVolumeQuota checks if an operation would exceed the global volume quota
+func (m *Manager) checkGlobalVolumeQuota(additionalGB float64) error {
+	// Check if budget periods are configured (new system)
+	if len(m.config.BudgetPeriods) > 0 {
+		return m.checkBudgetPeriodVolume(additionalGB)
+	}
+
+	// No global volume quota configured (legacy system has no volume quotas)
+	return nil
+}
+
+// checkBudgetPeriodVolume checks against the active budget period's volume quota
+func (m *Manager) checkBudgetPeriodVolume(additionalGB float64) error {
+	activeIndex := m.config.ActiveBudgetPeriodIndex
+	if activeIndex < 0 || activeIndex >= len(m.config.BudgetPeriods) {
+		activeIndex = 0
+	}
+
+	budgetPeriod := m.config.BudgetPeriods[activeIndex]
+
+	// If MaxVolumeGB is 0, volume quota is unlimited
+	if budgetPeriod.MaxVolumeGB == 0 {
+		return nil
+	}
+
+	// Get period bounds and current volume
+	now := time.Now()
+	start, end, err := budgetPeriod.GetPeriodBounds(now)
+	if err != nil {
+		m.logger.Warn("Failed to get budget period bounds for volume check", "error", err)
+		return nil // Don't block on error
+	}
+
+	currentVolume := m.reporter.GetCurrentPeriodVolume(start, end)
+	projectedVolume := currentVolume + additionalGB
+
+	if projectedVolume > budgetPeriod.MaxVolumeGB {
+		overage := projectedVolume - budgetPeriod.MaxVolumeGB
+		return &VolumeQuotaExceededError{
+			QuotaType:       "global",
+			MaxVolumeGB:     budgetPeriod.MaxVolumeGB,
+			CurrentVolumeGB: currentVolume,
+			AdditionalGB:    additionalGB,
+			ProjectedVolume: projectedVolume,
+			Overage:         overage,
+		}
+	}
+
+	return nil
 }
 
 // checkGlobalBudget checks if an operation would exceed the global budget

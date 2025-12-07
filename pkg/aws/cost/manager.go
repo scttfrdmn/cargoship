@@ -128,10 +128,32 @@ func (m *Manager) RequestCostApproval(operation string, estimatedCost float64, j
 }
 
 // RecordOperationCost records the actual cost of a completed operation
-// It performs budget enforcement before recording costs
+// It performs budget AND volume quota enforcement before recording
 func (m *Manager) RecordOperationCost(ctx context.Context, operation string, fileName string, sizeBytes int64, storageClass config.StorageClass, region string, jobID string, projectID string, tags map[string]string) error {
-	// Estimate the cost before recording
+	// Calculate size in GB
 	sizeGB := float64(sizeBytes) / (1024 * 1024 * 1024)
+
+	// ENFORCEMENT CHECK 1: Volume quota (always check, independent of cost estimation)
+	if projectID != "" {
+		// Check project-specific volume quota
+		if err := m.CheckProjectVolumeQuota(projectID, sizeGB); err != nil {
+			m.logger.Warn("Operation blocked by volume quota enforcement",
+				"project_id", projectID,
+				"size_gb", sizeGB,
+				"error", err)
+			return fmt.Errorf("volume quota enforcement: %w", err)
+		}
+	} else {
+		// Check global volume quota only
+		if err := m.checkGlobalVolumeQuota(sizeGB); err != nil {
+			m.logger.Warn("Operation blocked by volume quota enforcement",
+				"size_gb", sizeGB,
+				"error", err)
+			return fmt.Errorf("volume quota enforcement: %w", err)
+		}
+	}
+
+	// ENFORCEMENT CHECK 2: Cost budget
 	estimate, err := m.pricingMgr.EstimateArchivalCost(ctx, sizeGB, storageClass, region)
 	if err != nil {
 		m.logger.Warn("Failed to get cost estimate for budget enforcement", "error", err)
@@ -159,7 +181,7 @@ func (m *Manager) RecordOperationCost(ctx context.Context, operation string, fil
 		}
 	}
 
-	// Budget check passed, record cost with reporter
+	// Both checks passed, record cost with reporter
 	err = m.reporter.RecordArchivalCost(ctx, fileName, sizeBytes, storageClass, region, jobID, projectID, tags)
 	if err != nil {
 		return fmt.Errorf("failed to record cost: %w", err)
