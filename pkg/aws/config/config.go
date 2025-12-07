@@ -68,6 +68,10 @@ type CostControlConfig struct {
 	// Active budget period index (defaults to 0 if multiple periods defined)
 	ActiveBudgetPeriodIndex int `yaml:"active_budget_period_index,omitempty" json:"active_budget_period_index,omitempty"`
 
+	// Project-specific budgets (keyed by project ID / manifest upload ID)
+	// If not set, projects use the global budget period
+	ProjectBudgets map[string]ProjectBudget `yaml:"project_budgets,omitempty" json:"project_budgets,omitempty"`
+
 	// Enable automatic cost optimization
 	AutoOptimize bool `yaml:"auto_optimize" json:"auto_optimize"`
 
@@ -136,6 +140,26 @@ type BudgetPeriod struct {
 
 	// Alert threshold (0.0-1.0, percentage of budget)
 	AlertThreshold float64 `yaml:"alert_threshold" json:"alert_threshold"`
+}
+
+// ProjectBudget represents a budget for a specific project (manifest upload ID)
+type ProjectBudget struct {
+	// Project ID (manifest upload ID, e.g., "20251206-abc123")
+	ProjectID string `yaml:"project_id" json:"project_id"`
+
+	// Budget period (references a BudgetPeriod by type, or uses custom dates)
+	// If not set, inherits from the global active budget period
+	BudgetPeriod *BudgetPeriod `yaml:"budget_period,omitempty" json:"budget_period,omitempty"`
+
+	// Maximum budget for this project
+	MaxBudget float64 `yaml:"max_budget" json:"max_budget"`
+
+	// Alert threshold (0.0-1.0, percentage of budget)
+	// If not set, uses budget period's alert threshold
+	AlertThreshold float64 `yaml:"alert_threshold,omitempty" json:"alert_threshold,omitempty"`
+
+	// Description of the project (optional)
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
 }
 
 // StorageClass represents S3 storage classes
