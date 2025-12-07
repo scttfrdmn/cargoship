@@ -261,8 +261,140 @@ Examples:
 	}
 	projectCmd.Flags().StringVar(&period, "period", "all", "Report period (all, today, week, month, last_month)")
 
+	// Forecast subcommand (Issue #147 Phase 6)
+	forecastCmd := &cobra.Command{
+		Use:   "forecast [PROJECT_ID]",
+		Short: "Generate cost forecasts with ML-based projections",
+		Long: `Generate cost forecasts using multiple forecasting models.
+
+Predicts future costs based on historical spending patterns using:
+- Linear regression (best for stable/trending patterns)
+- Exponential smoothing (for seasonal patterns)
+- Moving average (for smoothing volatility)
+- Ensemble model (combines all models)
+
+Displays:
+- Predicted costs at 7, 14, 30, 60, 90 days
+- Confidence intervals (90%, 95%, 99%)
+- Model accuracy metrics (R², MAE, RMSE)
+- Daily cost forecasts
+
+Examples:
+  # Generate forecast for all projects (global)
+  cargoship cost forecast
+
+  # Generate forecast for specific project
+  cargoship cost forecast 20251206-abc123
+
+  # Forecast with specific model
+  cargoship cost forecast --model linear
+
+  # Forecast as JSON
+  cargoship cost forecast --json
+`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID := ""
+			if len(args) > 0 {
+				projectID = args[0]
+			}
+			model, _ := cmd.Flags().GetString("model")
+			days, _ := cmd.Flags().GetInt("days")
+			return runForecast(cmd.Context(), region, projectID, model, days, jsonOutput)
+		},
+	}
+	forecastCmd.Flags().String("model", "linear", "Forecasting model (linear, exponential, moving_average, ensemble)")
+	forecastCmd.Flags().Int("days", 90, "Number of days to forecast (7-90)")
+
+	// Burnrate subcommand (Issue #147 Phase 6)
+	burnrateCmd := &cobra.Command{
+		Use:   "burnrate [PROJECT_ID]",
+		Short: "Analyze burn rate with trend detection",
+		Long: `Analyze current and historical burn rates with trend detection.
+
+Provides detailed burn rate metrics:
+- Current rates (daily, weekly, monthly)
+- Historical statistics (average, min, max, std dev, volatility)
+- Trend detection (increasing/decreasing/stable) with strength
+- Acceleration rate (change in burn rate per day)
+- Predicted future burn rates (30/60/90 days)
+- Confidence intervals for predictions
+
+Examples:
+  # Analyze burn rate for all projects (global)
+  cargoship cost burnrate
+
+  # Analyze burn rate for specific project
+  cargoship cost burnrate 20251206-abc123
+
+  # Analyze last 60 days
+  cargoship cost burnrate --days 60
+
+  # Burn rate as JSON
+  cargoship cost burnrate --json
+`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID := ""
+			if len(args) > 0 {
+				projectID = args[0]
+			}
+			days, _ := cmd.Flags().GetInt("days")
+			return runBurnrate(cmd.Context(), region, projectID, days, jsonOutput)
+		},
+	}
+	burnrateCmd.Flags().Int("days", 90, "Number of days of historical data to analyze (7-365)")
+
+	// Exhaustion subcommand (Issue #147 Phase 6)
+	exhaustionCmd := &cobra.Command{
+		Use:   "exhaustion [PROJECT_ID] --budget AMOUNT",
+		Short: "Predict when budget will be exhausted",
+		Long: `Predict when a budget will be exhausted based on current spending patterns.
+
+Calculates:
+- Exact date when budget will run out
+- Days until exhaustion
+- Probability of exhaustion (based on confidence intervals)
+- Budget usage forecast with confidence bounds
+
+Handles edge cases:
+- Budget already exhausted (today)
+- Budget never exhausts within 90 days
+- High/low confidence scenarios
+
+Examples:
+  # Predict exhaustion for $1000 budget (global)
+  cargoship cost exhaustion --budget 1000
+
+  # Predict for specific project
+  cargoship cost exhaustion 20251206-abc123 --budget 500
+
+  # Include current spending
+  cargoship cost exhaustion --budget 1000 --spent 400
+
+  # Exhaustion prediction as JSON
+  cargoship cost exhaustion --budget 1000 --json
+`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID := ""
+			if len(args) > 0 {
+				projectID = args[0]
+			}
+			budget, _ := cmd.Flags().GetFloat64("budget")
+			spent, _ := cmd.Flags().GetFloat64("spent")
+			if budget <= 0 {
+				return fmt.Errorf("--budget is required and must be > 0")
+			}
+			return runExhaustion(cmd.Context(), region, projectID, budget, spent, jsonOutput)
+		},
+	}
+	exhaustionCmd.Flags().Float64("budget", 0, "Total budget amount (required)")
+	exhaustionCmd.Flags().Float64("spent", 0, "Amount already spent (default: calculated from cost records)")
+	_ = exhaustionCmd.MarkFlagRequired("budget")
+
 	// Add subcommands
-	cmd.AddCommand(estimateCmd, uploadCmd, budgetCmd, pricingCmd, reportCmd, projectsCmd, projectCmd)
+	cmd.AddCommand(estimateCmd, uploadCmd, budgetCmd, pricingCmd, reportCmd, projectsCmd, projectCmd, forecastCmd, burnrateCmd, exhaustionCmd)
 
 	return cmd
 }
@@ -342,178 +474,6 @@ func runCostEstimate(ctx context.Context, region, sizeStr, storageClassStr, oper
 		fmt.Printf("   Monthly Savings:     $%.4f (%.1f%% reduction)\n", savings, savingsPercent)
 		fmt.Println()
 	}
-
-	return nil
-}
-
-func runBudget(ctx context.Context, region string, jsonOutput bool) error {
-	// Load AWS config
-	awsCfg, cargoConfig, err := loadAWSConfigForCost(ctx, region)
-	if err != nil {
-		return err
-	}
-
-	// Create cost manager
-	costMgr, err := cost.NewManager(&cargoConfig.CostControl, awsCfg, slog.Default())
-	if err != nil {
-		return fmt.Errorf("failed to create cost manager: %w", err)
-	}
-
-	// Get budget status
-	status := costMgr.GetBudgetStatus()
-
-	// Display results
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(status)
-	}
-
-	// Human-readable output with Issue #147 Phase 1 support for custom budget periods
-	fmt.Printf("📊 %s\n", makeHeader("Budget Status"))
-
-	maxBudget := status["max_budget"].(float64)
-	currentSpend := status["current_spend"].(float64)
-	remaining := status["budget_remaining"].(float64)
-	usedPercent := status["budget_used"].(float64) * 100
-	alertThreshold := status["alert_threshold"].(float64) * 100
-
-	// Check if this is a new budget period (has period_type field) or legacy monthly budget
-	periodType, hasPeriodType := status["period_type"]
-	if hasPeriodType && periodType != nil {
-		// New budget period system
-		fmt.Printf("   Budget Period:    %s\n", status["period_type"])
-		if periodStart, ok := status["period_start"].(string); ok {
-			fmt.Printf("   Period Start:     %s\n", periodStart)
-		}
-		if periodEnd, ok := status["period_end"].(string); ok {
-			fmt.Printf("   Period End:       %s\n", periodEnd)
-		}
-		if grantName, ok := status["grant_name"].(string); ok && grantName != "" {
-			fmt.Printf("   Grant:            %s\n", grantName)
-		}
-		fmt.Printf("   Max Budget:       $%.2f\n", maxBudget)
-		fmt.Printf("   Current Spend:    $%.2f\n", currentSpend)
-		fmt.Printf("   Remaining:        $%.2f\n", remaining)
-		fmt.Printf("   Usage:            %.1f%%\n", usedPercent)
-		fmt.Printf("   Alert Threshold:  %.1f%%\n", alertThreshold)
-
-		// Visual progress bar
-		barWidth := 40
-		filledWidth := int(usedPercent / 100.0 * float64(barWidth))
-		if filledWidth > barWidth {
-			filledWidth = barWidth
-		}
-		bar := strings.Repeat("█", filledWidth) + strings.Repeat("░", barWidth-filledWidth)
-		fmt.Printf("   Progress:         [%s] %.1f%%\n", bar, usedPercent)
-		fmt.Println()
-
-		// Budget period projection
-		if daysElapsed, ok := status["days_elapsed"].(int); ok {
-			if daysRemaining, ok := status["days_remaining"].(int); ok {
-				if totalDays, ok := status["total_days"].(int); ok {
-					if burnRate, ok := status["daily_burn_rate"].(float64); ok {
-						if projectedSpend, ok := status["projected_eop_spend"].(float64); ok {
-							fmt.Printf("📈 %s\n", makeHeader("Budget Period Projection"))
-							fmt.Printf("   Days Elapsed:       %d of %d\n", daysElapsed, totalDays)
-							fmt.Printf("   Days Remaining:     %d\n", daysRemaining)
-							fmt.Printf("   Daily Burn Rate:    $%.2f/day\n", burnRate)
-							if targetRate, ok := status["target_daily_rate"].(float64); ok {
-								fmt.Printf("   Target Daily Rate:  $%.2f/day\n", targetRate)
-							}
-							fmt.Printf("   Projected EOP:      $%.2f\n", projectedSpend)
-
-							if willExceed, ok := status["will_exceed_budget"].(bool); ok && willExceed {
-								if overage, ok := status["projected_overage"].(float64); ok {
-									overagePercent, _ := status["projected_overage_percent"].(float64)
-									fmt.Printf("   Projected Overage:  $%.2f (%.1f%% over budget)\n", overage, overagePercent)
-								}
-							} else {
-								if savings, ok := status["projected_savings"].(float64); ok {
-									savingsPercent, _ := status["projected_savings_percent"].(float64)
-									fmt.Printf("   Projected Savings:  $%.2f (%.1f%% under budget)\n", savings, savingsPercent)
-								}
-							}
-							fmt.Println()
-						}
-					}
-				}
-			}
-		}
-	} else {
-		// Legacy monthly budget system
-		fmt.Printf("   Max Budget:       $%.2f/month\n", maxBudget)
-		fmt.Printf("   Current Spend:    $%.2f\n", currentSpend)
-		fmt.Printf("   Remaining:        $%.2f\n", remaining)
-		fmt.Printf("   Usage:            %.1f%%\n", usedPercent)
-		fmt.Printf("   Alert Threshold:  %.1f%%\n", alertThreshold)
-
-		// Visual progress bar
-		barWidth := 40
-		filledWidth := int(usedPercent / 100.0 * float64(barWidth))
-		if filledWidth > barWidth {
-			filledWidth = barWidth
-		}
-		bar := strings.Repeat("█", filledWidth) + strings.Repeat("░", barWidth-filledWidth)
-		fmt.Printf("   Progress:         [%s] %.1f%%\n", bar, usedPercent)
-		fmt.Println()
-
-		// Monthly projection for legacy system
-		now := time.Now()
-		dayOfMonth := now.Day()
-		daysInMonth := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).Day()
-		daysRemaining := daysInMonth - dayOfMonth
-
-		if dayOfMonth > 0 {
-			dailyBurnRate := currentSpend / float64(dayOfMonth)
-			projectedEOM := currentSpend + (dailyBurnRate * float64(daysRemaining))
-
-			fmt.Printf("📈 %s\n", makeHeader("Monthly Projection"))
-			fmt.Printf("   Day of Month:       %d of %d\n", dayOfMonth, daysInMonth)
-			fmt.Printf("   Daily Burn Rate:    $%.2f/day\n", dailyBurnRate)
-			fmt.Printf("   Projected EOM:      $%.2f\n", projectedEOM)
-
-			if projectedEOM > maxBudget {
-				overage := projectedEOM - maxBudget
-				fmt.Printf("   Projected Overage:  $%.2f (%.1f%% over budget)\n", overage, (overage/maxBudget)*100)
-			} else {
-				underBudget := maxBudget - projectedEOM
-				fmt.Printf("   Under Budget:       $%.2f (%.1f%% savings)\n", underBudget, (underBudget/maxBudget)*100)
-			}
-			fmt.Println()
-		}
-	}
-
-	// Status indicator with enhanced recommendations
-	if status["over_budget"].(bool) {
-		fmt.Printf("🚨 %s\n", makeHeader("STATUS: OVER BUDGET"))
-		fmt.Printf("   ⚠️  You have exceeded your monthly budget limit.\n")
-		fmt.Println()
-		fmt.Printf("💡 Recommendations:\n")
-		fmt.Printf("   • Review recent uploads and identify cost drivers\n")
-		fmt.Printf("   • Consider switching to INTELLIGENT_TIERING storage class\n")
-		fmt.Printf("   • Enable lifecycle policies to transition old data to cheaper tiers\n")
-		fmt.Printf("   • Increase monthly budget if current spending is justified\n")
-		fmt.Printf("   • Set up cost alerts to catch overspending earlier\n")
-	} else if status["alert_triggered"].(bool) {
-		fmt.Printf("⚠️  %s\n", makeHeader("STATUS: ALERT THRESHOLD EXCEEDED"))
-		fmt.Printf("   You are approaching your budget limit (%.1f%% used).\n", usedPercent)
-		fmt.Println()
-		fmt.Printf("💡 Recommendations:\n")
-		fmt.Printf("   • Monitor daily spending for remainder of month\n")
-		fmt.Printf("   • Review planned uploads and defer non-critical transfers\n")
-		fmt.Printf("   • Check for any unexpected cost spikes\n")
-		fmt.Printf("   • Consider storage class optimizations\n")
-	} else {
-		fmt.Printf("✅ %s\n", makeHeader("STATUS: WITHIN BUDGET"))
-		fmt.Printf("   Budget usage is healthy (%.1f%% used).\n", usedPercent)
-		fmt.Println()
-		fmt.Printf("💡 Cost Optimization Tips:\n")
-		fmt.Printf("   • Continue monitoring spending throughout the month\n")
-		fmt.Printf("   • Review compression ratios to maximize storage savings\n")
-		fmt.Printf("   • Consider INTELLIGENT_TIERING for rarely accessed data\n")
-	}
-	fmt.Println()
 
 	return nil
 }
@@ -1002,4 +962,308 @@ func runProjectSummary(ctx context.Context, region, projectID, period string, js
 	}
 
 	return nil
+}
+
+// runForecast generates cost forecasts using the forecast engine
+func runForecast(ctx context.Context, region, projectID, modelStr string, days int, jsonOutput bool) error {
+	// Load cost manager
+	costMgr, err := loadCostManagerWithRegion(ctx, region)
+	if err != nil {
+		return fmt.Errorf("failed to load cost manager: %w", err)
+	}
+
+	// Create forecast engine
+	engine := cost.NewForecastEngine(costMgr.GetReporter())
+
+	// Parse forecast model
+	var model cost.ForecastModel
+	switch strings.ToLower(modelStr) {
+	case "linear":
+		model = cost.ForecastModelLinear
+	case "exponential":
+		model = cost.ForecastModelExponential
+	case "moving_average":
+		model = cost.ForecastModelMovingAverage
+	case "ensemble":
+		model = cost.ForecastModelEnsemble
+	default:
+		return fmt.Errorf("invalid forecast model: %s (choose: linear, exponential, moving_average, ensemble)", modelStr)
+	}
+
+	// Validate days
+	if days < 7 || days > 90 {
+		return fmt.Errorf("days must be between 7 and 90 (got %d)", days)
+	}
+
+	// Generate forecast
+	forecast, err := engine.GenerateForecast(projectID, model, days)
+	if err != nil {
+		return fmt.Errorf("failed to generate forecast: %w", err)
+	}
+
+	// JSON output
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(forecast)
+	}
+
+	// Human-readable output
+	scope := "all projects (global)"
+	if projectID != "" {
+		scope = fmt.Sprintf("project %s", projectID)
+	}
+
+	fmt.Printf("📈 %s\n", makeHeader(fmt.Sprintf("Cost Forecast for %s", scope)))
+	fmt.Println()
+
+	fmt.Printf("Model:              %s\n", forecast.Model)
+	fmt.Printf("Generated:          %s\n", forecast.GeneratedAt.Format(time.RFC3339))
+	fmt.Printf("Historical Data:    %d days\n", forecast.HistoricalDays)
+	fmt.Printf("Forecast Period:    %d days\n", forecast.ForecastDays)
+	fmt.Printf("Base Cost:          $%.2f\n", forecast.BaseCost)
+	fmt.Printf("Base Date:          %s\n", forecast.BaseDate.Format("2006-01-02"))
+	fmt.Println()
+
+	fmt.Printf("📊 %s\n", makeHeader("Cost Predictions"))
+	if forecast.Predicted7Days > 0 {
+		fmt.Printf("   7 days:          $%.2f\n", forecast.Predicted7Days)
+	}
+	if forecast.Predicted14Days > 0 {
+		fmt.Printf("   14 days:         $%.2f\n", forecast.Predicted14Days)
+	}
+	if forecast.Predicted30Days > 0 {
+		fmt.Printf("   30 days:         $%.2f\n", forecast.Predicted30Days)
+	}
+	if forecast.Predicted60Days > 0 {
+		fmt.Printf("   60 days:         $%.2f\n", forecast.Predicted60Days)
+	}
+	if forecast.Predicted90Days > 0 {
+		fmt.Printf("   90 days:         $%.2f\n", forecast.Predicted90Days)
+	}
+	fmt.Println()
+
+	// Confidence intervals
+	if forecast.Confidence30Days != nil {
+		fmt.Printf("🎯 %s\n", makeHeader("30-Day Confidence Interval (95%)"))
+		fmt.Printf("   Prediction:      $%.2f\n", forecast.Confidence30Days.Prediction)
+		fmt.Printf("   Lower Bound:     $%.2f\n", forecast.Confidence30Days.LowerBound)
+		fmt.Printf("   Upper Bound:     $%.2f\n", forecast.Confidence30Days.UpperBound)
+		fmt.Println()
+	}
+
+	// Model accuracy
+	fmt.Printf("✅ %s\n", makeHeader("Model Accuracy"))
+	fmt.Printf("   R² Score:        %.3f (%.1f%%)\n", forecast.R2Score, forecast.R2Score*100)
+	fmt.Printf("   MAE:             $%.2f\n", forecast.MeanAbsoluteError)
+	fmt.Printf("   RMSE:            $%.2f\n", forecast.RootMeanSquaredError)
+	fmt.Printf("   Accuracy:        %.1f%%\n", forecast.ModelAccuracy*100)
+	fmt.Println()
+
+	return nil
+}
+
+// runBurnrate analyzes burn rates with trend detection
+func runBurnrate(ctx context.Context, region, projectID string, days int, jsonOutput bool) error {
+	// Load cost manager
+	costMgr, err := loadCostManagerWithRegion(ctx, region)
+	if err != nil {
+		return fmt.Errorf("failed to load cost manager: %w", err)
+	}
+
+	// Create forecast engine
+	engine := cost.NewForecastEngine(costMgr.GetReporter())
+
+	// Validate days
+	if days < 7 || days > 365 {
+		return fmt.Errorf("days must be between 7 and 365 (got %d)", days)
+	}
+
+	// Analyze burn rate
+	analysis, err := engine.AnalyzeBurnRate(projectID, days)
+	if err != nil {
+		return fmt.Errorf("failed to analyze burn rate: %w", err)
+	}
+
+	// JSON output
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(analysis)
+	}
+
+	// Human-readable output
+	scope := "all projects (global)"
+	if projectID != "" {
+		scope = fmt.Sprintf("project %s", projectID)
+	}
+
+	fmt.Printf("🔥 %s\n", makeHeader(fmt.Sprintf("Burn Rate Analysis for %s", scope)))
+	fmt.Println()
+
+	fmt.Printf("📊 %s\n", makeHeader("Current Burn Rates"))
+	fmt.Printf("   Daily:           $%.2f/day\n", analysis.CurrentDailyRate)
+	if analysis.CurrentWeeklyRate > 0 {
+		fmt.Printf("   Weekly:          $%.2f/week\n", analysis.CurrentWeeklyRate)
+	}
+	if analysis.CurrentMonthlyRate > 0 {
+		fmt.Printf("   Monthly:         $%.2f/month\n", analysis.CurrentMonthlyRate)
+	}
+	fmt.Println()
+
+	fmt.Printf("📈 %s\n", makeHeader("Historical Statistics"))
+	fmt.Printf("   Average:         $%.2f/day\n", analysis.AverageDailyRate)
+	fmt.Printf("   Min:             $%.2f/day\n", analysis.MinDailyRate)
+	fmt.Printf("   Max:             $%.2f/day\n", analysis.MaxDailyRate)
+	fmt.Printf("   Std Dev:         $%.2f\n", analysis.StdDevDailyRate)
+	fmt.Printf("   Volatility:      %.1f%%\n", analysis.Volatility*100)
+	fmt.Println()
+
+	fmt.Printf("📉 %s\n", makeHeader("Trend Analysis"))
+	trendIcon := "➡️"
+	if analysis.TrendDirection == "increasing" {
+		trendIcon = "📈"
+	} else if analysis.TrendDirection == "decreasing" {
+		trendIcon = "📉"
+	}
+	fmt.Printf("   Direction:       %s %s\n", trendIcon, analysis.TrendDirection)
+	fmt.Printf("   Strength:        %.1f%%\n", analysis.TrendStrength*100)
+	fmt.Printf("   Acceleration:    $%.2f/day²\n", analysis.AccelerationRate)
+	fmt.Println()
+
+	fmt.Printf("🔮 %s\n", makeHeader("Predicted Burn Rates"))
+	fmt.Printf("   30 days:         $%.2f/day\n", analysis.PredictedDailyRate30Days)
+	fmt.Printf("   60 days:         $%.2f/day\n", analysis.PredictedDailyRate60Days)
+	fmt.Printf("   90 days:         $%.2f/day\n", analysis.PredictedDailyRate90Days)
+	fmt.Println()
+
+	// Confidence intervals
+	if ci95, ok := analysis.ConfidenceIntervals[95]; ok {
+		fmt.Printf("🎯 %s\n", makeHeader("Confidence Interval (95%)"))
+		fmt.Printf("   Prediction:      $%.2f/day\n", ci95.Prediction)
+		fmt.Printf("   Lower Bound:     $%.2f/day\n", ci95.LowerBound)
+		fmt.Printf("   Upper Bound:     $%.2f/day\n", ci95.UpperBound)
+		fmt.Println()
+	}
+
+	return nil
+}
+
+// runExhaustion predicts when budget will be exhausted
+func runExhaustion(ctx context.Context, region, projectID string, budget, spent float64, jsonOutput bool) error {
+	// Load cost manager
+	costMgr, err := loadCostManagerWithRegion(ctx, region)
+	if err != nil {
+		return fmt.Errorf("failed to load cost manager: %w", err)
+	}
+
+	// Create forecast engine
+	engine := cost.NewForecastEngine(costMgr.GetReporter())
+
+	// If spent not provided, calculate from cost records
+	if spent == 0 {
+		if projectID != "" {
+			spent = costMgr.GetReporter().GetProjectCosts(projectID)
+		} else {
+			// Get global costs (current month as default)
+			spent = costMgr.GetReporter().GetCurrentMonthCosts()
+		}
+	}
+
+	// Validate budget
+	if budget <= 0 {
+		return fmt.Errorf("budget must be > 0 (got %.2f)", budget)
+	}
+
+	// Predict exhaustion
+	forecast, err := engine.PredictBudgetExhaustion(projectID, budget, spent)
+	if err != nil {
+		return fmt.Errorf("failed to predict budget exhaustion: %w", err)
+	}
+
+	// JSON output
+	if jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(forecast)
+	}
+
+	// Human-readable output
+	scope := "all projects (global)"
+	if projectID != "" {
+		scope = fmt.Sprintf("project %s", projectID)
+	}
+
+	fmt.Printf("⚠️  %s\n", makeHeader(fmt.Sprintf("Budget Exhaustion Prediction for %s", scope)))
+	fmt.Println()
+
+	fmt.Printf("💰 %s\n", makeHeader("Budget Status"))
+	fmt.Printf("   Total Budget:    $%.2f\n", budget)
+	fmt.Printf("   Current Spend:   $%.2f\n", spent)
+	fmt.Printf("   Remaining:       $%.2f\n", budget-spent)
+	fmt.Printf("   Usage:           %.1f%%\n", (spent/budget)*100)
+	fmt.Println()
+
+	// Exhaustion prediction
+	fmt.Printf("📅 %s\n", makeHeader("Exhaustion Forecast"))
+	if forecast.BudgetExhaustionDate != nil {
+		if forecast.DaysUntilExhaustion == 0 {
+			fmt.Printf("   Status:          ⚠️  BUDGET EXHAUSTED\n")
+			fmt.Printf("   Exhausted On:    %s (today)\n", forecast.BudgetExhaustionDate.Format("2006-01-02"))
+			fmt.Printf("   Probability:     %.0f%%\n", forecast.ExhaustionProbability*100)
+		} else if forecast.DaysUntilExhaustion > 0 {
+			fmt.Printf("   Exhaustion Date: %s\n", forecast.BudgetExhaustionDate.Format("2006-01-02"))
+			fmt.Printf("   Days Until:      %d days\n", forecast.DaysUntilExhaustion)
+			fmt.Printf("   Probability:     %.1f%%\n", forecast.ExhaustionProbability*100)
+
+			// Warning levels
+			if forecast.DaysUntilExhaustion <= 7 {
+				fmt.Printf("   Warning:         🔴 CRITICAL - Budget exhausts within a week\n")
+			} else if forecast.DaysUntilExhaustion <= 14 {
+				fmt.Printf("   Warning:         🟡 HIGH - Budget exhausts within 2 weeks\n")
+			} else if forecast.DaysUntilExhaustion <= 30 {
+				fmt.Printf("   Warning:         🟠 MEDIUM - Budget exhausts within a month\n")
+			} else {
+				fmt.Printf("   Warning:         🟢 LOW - Budget exhausts in %d days\n", forecast.DaysUntilExhaustion)
+			}
+		}
+	} else {
+		fmt.Printf("   Status:          ✅ Budget will NOT exhaust within 90 days\n")
+		fmt.Printf("   Probability:     %.1f%%\n", forecast.ExhaustionProbability*100)
+	}
+	fmt.Println()
+
+	// Forecast details
+	fmt.Printf("📈 %s\n", makeHeader("Cost Forecast"))
+	fmt.Printf("   Model:           %s\n", forecast.Model)
+	fmt.Printf("   Base Cost:       $%.2f\n", forecast.BaseCost)
+	if forecast.Predicted30Days > 0 {
+		fmt.Printf("   30-day Forecast: $%.2f\n", forecast.Predicted30Days)
+	}
+	if forecast.Predicted90Days > 0 {
+		fmt.Printf("   90-day Forecast: $%.2f\n", forecast.Predicted90Days)
+	}
+	fmt.Println()
+
+	return nil
+}
+
+// loadCostManagerWithRegion loads cost manager with specific region
+func loadCostManagerWithRegion(ctx context.Context, region string) (*cost.Manager, error) {
+	// Load AWS config with region
+	awsCfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	// Load CargoShip config
+	cargoConfig := cargoconfig.DefaultAWSConfig()
+
+	// Create cost manager
+	costMgr, err := cost.NewManager(&cargoConfig.CostControl, awsCfg, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cost manager: %w", err)
+	}
+
+	return costMgr, nil
 }

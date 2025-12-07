@@ -408,7 +408,7 @@ func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays 
 	// Confidence intervals at key time points (95% confidence, z = 1.96)
 	z := 1.96
 	if forecastDays >= 7 {
-		margin := z * stdError * math.Sqrt(1 + 1/n + math.Pow(7, 2)/(n*sumX2/n))
+		margin := z * stdError * math.Sqrt(1 + 1/n + 7*7/(n*sumX2/n))
 		forecast.Confidence7Days = &ConfidenceInterval{
 			ConfidenceLevel: 95,
 			Prediction:      forecast.Predicted7Days,
@@ -417,7 +417,7 @@ func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays 
 		}
 	}
 	if forecastDays >= 30 {
-		margin := z * stdError * math.Sqrt(1 + 1/n + math.Pow(30, 2)/(n*sumX2/n))
+		margin := z * stdError * math.Sqrt(1 + 1/n + 30*30/(n*sumX2/n))
 		forecast.Confidence30Days = &ConfidenceInterval{
 			ConfidenceLevel: 95,
 			Prediction:      forecast.Predicted30Days,
@@ -426,7 +426,7 @@ func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays 
 		}
 	}
 	if forecastDays >= 90 {
-		margin := z * stdError * math.Sqrt(1 + 1/n + math.Pow(90, 2)/(n*sumX2/n))
+		margin := z * stdError * math.Sqrt(1 + 1/n + 90*90/(n*sumX2/n))
 		forecast.Confidence90Days = &ConfidenceInterval{
 			ConfidenceLevel: 95,
 			Prediction:      forecast.Predicted90Days,
@@ -441,8 +441,10 @@ func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays 
 	ssResidual := 0.0
 	for i, c := range costs {
 		predicted := intercept + slope*float64(i)
-		ssTotal += math.Pow(c.cumulativeCost-meanY, 2)
-		ssResidual += math.Pow(c.cumulativeCost-predicted, 2)
+		diff1 := c.cumulativeCost - meanY
+		diff2 := c.cumulativeCost - predicted
+		ssTotal += diff1 * diff1
+		ssResidual += diff2 * diff2
 	}
 	if ssTotal > 0 {
 		forecast.R2Score = 1 - (ssResidual / ssTotal)
