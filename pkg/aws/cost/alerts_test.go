@@ -71,13 +71,15 @@ func TestSendWebhookAlert(t *testing.T) {
 
 	// Create notifier with webhook enabled
 	cfg := &BudgetAlertConfig{
-		Enabled:        true,
-		WebhookEnabled: true,
-		WebhookURL:     server.URL,
-		WebhookHeaders: map[string]string{
+		Enabled:           true,
+		WebhookEnabled:    true,
+		WebhookURL:        server.URL,
+		WebhookHeaders:    map[string]string{
 			"X-Test-Header": "test-value",
 		},
-		WebhookTimeout: 10 * time.Second,
+		WebhookTimeout:    10 * time.Second,
+		SendProjectAlerts: true, // Enable project alerts
+		SendGlobalAlerts:  true,
 	}
 	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
 
@@ -117,19 +119,22 @@ func TestSendWebhookAlertFailure(t *testing.T) {
 
 	// Create notifier with webhook enabled
 	cfg := &BudgetAlertConfig{
-		Enabled:        true,
-		WebhookEnabled: true,
-		WebhookURL:     server.URL,
-		WebhookTimeout: 10 * time.Second,
+		Enabled:           true,
+		WebhookEnabled:    true,
+		WebhookURL:        server.URL,
+		WebhookTimeout:    10 * time.Second,
+		SendProjectAlerts: true, // Enable project alerts
+		SendGlobalAlerts:  true,
 	}
 	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
 
-	// Create test alert
+	// Create test alert (with ProjectID to avoid being filtered as global)
 	alert := &BudgetAlert{
 		ID:        "test-alert-2",
 		Timestamp: time.Now(),
 		Type:      AlertTypeCostThreshold,
 		Severity:  SeverityWarning,
+		ProjectID: "project1", // Add project ID
 	}
 
 	// Send alert (should fail)
@@ -152,11 +157,12 @@ func TestAlertCooldownPeriod(t *testing.T) {
 
 	// Create notifier with short cooldown period
 	cfg := &BudgetAlertConfig{
-		Enabled:        true,
-		WebhookEnabled: true,
-		WebhookURL:     server.URL,
-		WebhookTimeout: 10 * time.Second,
-		CooldownPeriod: 100 * time.Millisecond, // Short for testing
+		Enabled:           true,
+		WebhookEnabled:    true,
+		WebhookURL:        server.URL,
+		WebhookTimeout:    10 * time.Second,
+		CooldownPeriod:    100 * time.Millisecond, // Short for testing
+		SendProjectAlerts: true,
 	}
 	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
 
@@ -215,11 +221,14 @@ func TestCheckBudgetStatusCostOverBudget(t *testing.T) {
 	manager, err := NewManager(cfg, aws.Config{}, nil)
 	require.NoError(t, err)
 
-	// Record costs that exceed budget
+	// Record costs that exceed budget ($500 budget)
+	// S3 Standard = ~$0.023/GB, so we need ~22,000 GB to exceed $500
+	// Use 10 files of 2,500 GB each (2.5 TB) = 25,000 GB total ≈ $575
 	reporter := manager.GetReporter()
 	ctx := context.Background()
+	fileSizeBytes := int64(2500 * 1024 * 1024 * 1024) // 2.5 TB per file
 	for i := 0; i < 10; i++ {
-		_ = reporter.RecordArchivalCost(ctx, "file.dat", 100, config.StorageClassStandard, "us-east-1", "job1", "project1", nil)
+		_ = reporter.RecordArchivalCost(ctx, "file.dat", fileSizeBytes, config.StorageClassStandard, "us-east-1", "job1", "project1", nil)
 	}
 
 	// Check budget status
@@ -262,10 +271,13 @@ func TestCheckBudgetStatusCostThreshold(t *testing.T) {
 	require.NoError(t, err)
 
 	// Record costs that reach alert threshold (85% of $500 = $425)
+	// S3 Standard = ~$0.023/GB, so we need ~18,500 GB to reach $425
+	// Use 8 files of 2,300 GB each = 18,400 GB total ≈ $423
 	reporter := manager.GetReporter()
 	ctx := context.Background()
-	for i := 0; i < 7; i++ {
-		_ = reporter.RecordArchivalCost(ctx, "file.dat", 100, config.StorageClassStandard, "us-east-1", "job1", "project1", nil)
+	fileSizeBytes := int64(2300 * 1024 * 1024 * 1024) // 2.3 TB per file
+	for i := 0; i < 8; i++ {
+		_ = reporter.RecordArchivalCost(ctx, "file.dat", fileSizeBytes, config.StorageClassStandard, "us-east-1", "job1", "project1", nil)
 	}
 
 	// Check budget status
@@ -448,18 +460,24 @@ func TestCheckAndNotifyBudgetStatus(t *testing.T) {
 	manager, err := NewManager(cfg, aws.Config{}, nil)
 	require.NoError(t, err)
 
-	// Record costs that exceed budget
+	// Record costs that exceed budget ($100 budget)
+	// S3 Standard = ~$0.023/GB, so we need ~4,500 GB to exceed $100
+	// Use 5 files of 1,000 GB each = 5,000 GB total ≈ $115
 	reporter := manager.GetReporter()
 	ctx := context.Background()
-	_ = reporter.RecordArchivalCost(ctx, "file.dat", 200, config.StorageClassStandard, "us-east-1", "job1", "project1", nil)
+	fileSizeBytes := int64(1000 * 1024 * 1024 * 1024) // 1 TB per file
+	for i := 0; i < 5; i++ {
+		_ = reporter.RecordArchivalCost(ctx, "file.dat", fileSizeBytes, config.StorageClassStandard, "us-east-1", "job1", "project1", nil)
+	}
 
 	// Create notifier
 	notifierCfg := &BudgetAlertConfig{
-		Enabled:        true,
-		WebhookEnabled: true,
-		WebhookURL:     server.URL,
-		WebhookTimeout: 10 * time.Second,
-		CooldownPeriod: time.Hour,
+		Enabled:           true,
+		WebhookEnabled:    true,
+		WebhookURL:        server.URL,
+		WebhookTimeout:    10 * time.Second,
+		CooldownPeriod:    time.Hour,
+		SendProjectAlerts: true,
 	}
 	notifier := NewBudgetAlertNotifier(notifierCfg, aws.Config{})
 
@@ -511,10 +529,18 @@ func TestMonitorAllBudgets(t *testing.T) {
 	require.NoError(t, err)
 
 	// Record costs that exceed budget for both projects
+	// Project1: $100 budget, need ~4,500 GB
+	// Project2: $200 budget, need ~9,000 GB
 	reporter := manager.GetReporter()
 	ctx := context.Background()
-	_ = reporter.RecordArchivalCost(ctx, "file.dat", 200, config.StorageClassStandard, "us-east-1", "job1", "project1", nil)
-	_ = reporter.RecordArchivalCost(ctx, "file.dat", 300, config.StorageClassStandard, "us-east-1", "job2", "project2", nil)
+	fileSizeBytes1 := int64(1000 * 1024 * 1024 * 1024) // 1 TB per file
+	for i := 0; i < 5; i++ {
+		_ = reporter.RecordArchivalCost(ctx, "file1.dat", fileSizeBytes1, config.StorageClassStandard, "us-east-1", "job1", "project1", nil)
+	}
+	fileSizeBytes2 := int64(2000 * 1024 * 1024 * 1024) // 2 TB per file
+	for i := 0; i < 5; i++ {
+		_ = reporter.RecordArchivalCost(ctx, "file2.dat", fileSizeBytes2, config.StorageClassStandard, "us-east-1", "job2", "project2", nil)
+	}
 
 	// Create notifier
 	notifierCfg := &BudgetAlertConfig{
