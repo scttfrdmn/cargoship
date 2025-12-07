@@ -40,6 +40,18 @@ type BudgetStatus struct {
 	AlertTriggered  bool   `json:"alert_triggered"`
 	Currency        string `json:"currency"`
 
+	// Volume quota tracking (if enabled)
+	MaxVolumeGB          float64 `json:"max_volume_gb,omitempty"`           // 0 = unlimited
+	CurrentVolumeGB      float64 `json:"current_volume_gb,omitempty"`
+	VolumeRemaining      float64 `json:"volume_remaining,omitempty"`
+	VolumeUsed           float64 `json:"volume_used,omitempty"`              // Percentage (0.0-1.0)
+	VolumeAlertThreshold float64 `json:"volume_alert_threshold,omitempty"`   // Percentage (0.0-1.0)
+	DailyVolumeBurnRate  float64 `json:"daily_volume_burn_rate,omitempty"`   // GB/day
+	ProjectedEOPVolume   float64 `json:"projected_eop_volume,omitempty"`     // GB
+	WillExceedVolume     bool    `json:"will_exceed_volume,omitempty"`
+	OverVolume           bool    `json:"over_volume,omitempty"`
+	VolumeAlertTriggered bool    `json:"volume_alert_triggered,omitempty"`
+
 	// Optional grant information
 	GrantName      string `json:"grant_name,omitempty"`
 	EnableRollover bool   `json:"enable_rollover,omitempty"`
@@ -71,6 +83,34 @@ func (e *BudgetExceededError) Error() string {
 		"additional_cost=%.2f %s, projected_spend=%.2f %s, overage=%.2f %s",
 		e.MaxBudget, e.Currency, e.CurrentSpend, e.Currency,
 		e.AdditionalCost, e.Currency, e.ProjectedSpend, e.Currency, e.Overage, e.Currency,
+	)
+}
+
+// VolumeQuotaExceededError represents an error when volume quota would be exceeded
+type VolumeQuotaExceededError struct {
+	ProjectID        string
+	QuotaType        string  // "global" or "project"
+	MaxVolumeGB      float64
+	CurrentVolumeGB  float64
+	AdditionalGB     float64
+	ProjectedVolume  float64
+	Overage          float64
+}
+
+func (e *VolumeQuotaExceededError) Error() string {
+	if e.ProjectID != "" {
+		return fmt.Sprintf(
+			"project volume quota exceeded: project=%s, max_volume=%.2f GB, current_volume=%.2f GB, "+
+			"additional_volume=%.2f GB, projected_volume=%.2f GB, overage=%.2f GB",
+			e.ProjectID, e.MaxVolumeGB, e.CurrentVolumeGB,
+			e.AdditionalGB, e.ProjectedVolume, e.Overage,
+		)
+	}
+	return fmt.Sprintf(
+		"global volume quota exceeded: max_volume=%.2f GB, current_volume=%.2f GB, "+
+		"additional_volume=%.2f GB, projected_volume=%.2f GB, overage=%.2f GB",
+		e.MaxVolumeGB, e.CurrentVolumeGB,
+		e.AdditionalGB, e.ProjectedVolume, e.Overage,
 	)
 }
 

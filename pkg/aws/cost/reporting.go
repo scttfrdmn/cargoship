@@ -606,6 +606,36 @@ func (cr *CostReporter) GetProjectCosts(projectID string) float64 {
 	return totalCost
 }
 
+// GetProjectVolume returns total volume in GB for a specific project
+func (cr *CostReporter) GetProjectVolume(projectID string) float64 {
+	cr.mu.RLock()
+	defer cr.mu.RUnlock()
+
+	totalVolume := 0.0
+	for _, cost := range cr.costs {
+		if cost.ProjectID == projectID {
+			totalVolume += cost.SizeGB
+		}
+	}
+
+	return totalVolume
+}
+
+// GetCurrentPeriodVolume returns total volume in GB for the current period
+func (cr *CostReporter) GetCurrentPeriodVolume(start, end time.Time) float64 {
+	cr.mu.RLock()
+	defer cr.mu.RUnlock()
+
+	totalVolume := 0.0
+	for _, cost := range cr.costs {
+		if cost.Timestamp.After(start) && cost.Timestamp.Before(end) {
+			totalVolume += cost.SizeGB
+		}
+	}
+
+	return totalVolume
+}
+
 // GetProjectCostsByPeriod returns costs for a specific project within a period
 func (cr *CostReporter) GetProjectCostsByPeriod(projectID string, period string) (float64, error) {
 	cr.mu.RLock()

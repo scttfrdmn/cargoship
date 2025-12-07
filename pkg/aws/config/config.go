@@ -138,8 +138,15 @@ type BudgetPeriod struct {
 	// Maximum budget amount for this period
 	MaxBudget float64 `yaml:"max_budget" json:"max_budget"`
 
+	// Maximum volume quota in GB (0 = unlimited)
+	MaxVolumeGB float64 `yaml:"max_volume_gb,omitempty" json:"max_volume_gb,omitempty"`
+
 	// Alert threshold (0.0-1.0, percentage of budget)
 	AlertThreshold float64 `yaml:"alert_threshold" json:"alert_threshold"`
+
+	// Volume alert threshold (0.0-1.0, percentage of volume quota)
+	// If not set, uses AlertThreshold for both cost and volume
+	VolumeAlertThreshold float64 `yaml:"volume_alert_threshold,omitempty" json:"volume_alert_threshold,omitempty"`
 }
 
 // ProjectBudget represents a budget for a specific project (manifest upload ID)
@@ -154,9 +161,16 @@ type ProjectBudget struct {
 	// Maximum budget for this project
 	MaxBudget float64 `yaml:"max_budget" json:"max_budget"`
 
+	// Maximum volume quota in GB (0 = unlimited)
+	MaxVolumeGB float64 `yaml:"max_volume_gb,omitempty" json:"max_volume_gb,omitempty"`
+
 	// Alert threshold (0.0-1.0, percentage of budget)
 	// If not set, uses budget period's alert threshold
 	AlertThreshold float64 `yaml:"alert_threshold,omitempty" json:"alert_threshold,omitempty"`
+
+	// Volume alert threshold (0.0-1.0, percentage of volume quota)
+	// If not set, uses AlertThreshold or budget period's volume alert threshold
+	VolumeAlertThreshold float64 `yaml:"volume_alert_threshold,omitempty" json:"volume_alert_threshold,omitempty"`
 
 	// Description of the project (optional)
 	Description string `yaml:"description,omitempty" json:"description,omitempty"`
