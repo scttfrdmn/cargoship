@@ -827,3 +827,470 @@ func BenchmarkRecordCost(b *testing.B) {
 		}
 	})
 }
+
+// TestListProjects tests listing all unique project IDs (Issue #147 Phase 2)
+func TestListProjects(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	cfg := &config.CostReportingConfig{}
+	reporter := NewCostReporter(cfg, nil, nil, nil)
+
+	// Initially should have no projects
+	projects := reporter.ListProjects()
+	assert.Empty(t, projects)
+
+	// Add cost records with different project IDs
+	reporter.RecordCost(CostRecord{
+		ProjectID: "project-20251201-abc123",
+		Cost:      10.0,
+		Currency:  "USD",
+	})
+	reporter.RecordCost(CostRecord{
+		ProjectID: "project-20251202-def456",
+		Cost:      20.0,
+		Currency:  "USD",
+	})
+	reporter.RecordCost(CostRecord{
+		ProjectID: "project-20251201-abc123", // Duplicate project
+		Cost:      5.0,
+		Currency:  "USD",
+	})
+	reporter.RecordCost(CostRecord{
+		ProjectID: "", // Empty project ID
+		Cost:      1.0,
+		Currency:  "USD",
+	})
+
+	// Should return 2 unique projects (empty project ID excluded)
+	projects = reporter.ListProjects()
+	assert.Equal(t, 2, len(projects))
+	assert.Contains(t, projects, "project-20251201-abc123")
+	assert.Contains(t, projects, "project-20251202-def456")
+
+	// Projects should be sorted alphabetically
+	assert.Equal(t, "project-20251201-abc123", projects[0])
+	assert.Equal(t, "project-20251202-def456", projects[1])
+}
+
+// TestGetProjectCosts tests getting total costs for a specific project (Issue #147 Phase 2)
+func TestGetProjectCosts(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	cfg := &config.CostReportingConfig{}
+	reporter := NewCostReporter(cfg, nil, nil, nil)
+
+	projectID := "test-project-20251206"
+
+	// Initially should have zero cost
+	totalCost := reporter.GetProjectCosts(projectID)
+	assert.Equal(t, 0.0, totalCost)
+
+	// Add cost records for the project
+	reporter.RecordCost(CostRecord{
+		ProjectID: projectID,
+		Cost:      10.0,
+		Currency:  "USD",
+	})
+	reporter.RecordCost(CostRecord{
+		ProjectID: projectID,
+		Cost:      20.5,
+		Currency:  "USD",
+	})
+	reporter.RecordCost(CostRecord{
+		ProjectID: projectID,
+		Cost:      5.25,
+		Currency:  "USD",
+	})
+
+	// Add cost for different project (should be excluded)
+	reporter.RecordCost(CostRecord{
+		ProjectID: "other-project",
+		Cost:      100.0,
+		Currency:  "USD",
+	})
+
+	// Should return sum of costs for this project only
+	totalCost = reporter.GetProjectCosts(projectID)
+	assert.Equal(t, 35.75, totalCost)
+}
+
+// TestGetProjectCostsByPeriod tests getting project costs filtered by time period (Issue #147 Phase 2)
+func TestGetProjectCostsByPeriod(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	cfg := &config.CostReportingConfig{}
+	reporter := NewCostReporter(cfg, nil, nil, nil)
+
+	projectID := "test-project-20251206"
+	now := time.Now()
+
+	// Add cost records with different timestamps
+	reporter.RecordCost(CostRecord{
+		ProjectID: projectID,
+		Timestamp: now.Add(-1 * time.Hour), // Today
+		Cost:      10.0,
+		Currency:  "USD",
+	})
+	reporter.RecordCost(CostRecord{
+		ProjectID: projectID,
+		Timestamp: now.Add(-48 * time.Hour), // 2 days ago
+		Cost:      20.0,
+		Currency:  "USD",
+	})
+	reporter.RecordCost(CostRecord{
+		ProjectID: projectID,
+		Timestamp: now.Add(-10 * 24 * time.Hour), // 10 days ago
+		Cost:      30.0,
+		Currency:  "USD",
+	})
+	reporter.RecordCost(CostRecord{
+		ProjectID: projectID,
+		Timestamp: now.Add(-60 * 24 * time.Hour), // 60 days ago
+		Cost:      40.0,
+		Currency:  "USD",
+	})
+
+	tests := []struct {
+		name         string
+		period       string
+		expectedCost float64
+	}{
+		{
+			name:         "today",
+			period:       "today",
+			expectedCost: 10.0,
+		},
+		{
+			name:         "week",
+			period:       "week",
+			expectedCost: 30.0, // 10 + 20 (last 7 days)
+		},
+		{
+			name:         "month",
+			period:       "month",
+			expectedCost: 30.0, // 10 + 20 (this month)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cost, err := reporter.GetProjectCostsByPeriod(projectID, tt.period)
+			require.NoError(t, err)
+			assert.InDelta(t, tt.expectedCost, cost, 0.01)
+		})
+	}
+}
+
+// TestGetProjectSummary tests getting detailed project summary (Issue #147 Phase 2)
+func TestGetProjectSummary(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	cfg := &config.CostReportingConfig{}
+	reporter := NewCostReporter(cfg, nil, nil, nil)
+
+	projectID := "test-project-20251206"
+	now := time.Now()
+
+	// Test error when project doesn't exist
+	_, err := reporter.GetProjectSummary("nonexistent-project")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no cost records found")
+
+	// Add cost records with various attributes
+	reporter.RecordCost(CostRecord{
+		ProjectID:       projectID,
+		Timestamp:       now.Add(-10 * time.Hour),
+		Cost:            10.0,
+		OriginalCost:    12.0,
+		DiscountApplied: 2.0,
+		SizeGB:          5.0,
+		Region:          "us-east-1",
+		StorageClass:    "STANDARD",
+		Currency:        "USD",
+	})
+	reporter.RecordCost(CostRecord{
+		ProjectID:       projectID,
+		Timestamp:       now.Add(-5 * time.Hour),
+		Cost:            20.0,
+		OriginalCost:    25.0,
+		DiscountApplied: 5.0,
+		SizeGB:          10.0,
+		Region:          "us-west-2",
+		StorageClass:    "GLACIER",
+		Currency:        "USD",
+	})
+	reporter.RecordCost(CostRecord{
+		ProjectID:       projectID,
+		Timestamp:       now.Add(-2 * time.Hour),
+		Cost:            15.0,
+		OriginalCost:    18.0,
+		DiscountApplied: 3.0,
+		SizeGB:          7.5,
+		Region:          "us-east-1",
+		StorageClass:    "STANDARD",
+		Currency:        "USD",
+	})
+
+	// Get project summary
+	summary, err := reporter.GetProjectSummary(projectID)
+	require.NoError(t, err)
+	require.NotNil(t, summary)
+
+	// Verify summary fields
+	assert.Equal(t, projectID, summary.ProjectID)
+	assert.Equal(t, 45.0, summary.TotalCost)     // 10 + 20 + 15
+	assert.Equal(t, 10.0, summary.TotalSavings)  // 2 + 5 + 3
+	assert.Equal(t, 3, summary.TotalFiles)       // 3 cost records
+	assert.Equal(t, 22.5, summary.TotalSizeGB)   // 5 + 10 + 7.5
+	assert.Equal(t, "USD", summary.Currency)
+	assert.Equal(t, 2.0, summary.AverageCostPerGB) // 45.0 / 22.5
+
+	// Verify regional breakdown
+	assert.Equal(t, 25.0, summary.ByRegion["us-east-1"]) // 10 + 15
+	assert.Equal(t, 20.0, summary.ByRegion["us-west-2"])
+
+	// Verify storage class breakdown
+	assert.Equal(t, 25.0, summary.ByStorageClass["STANDARD"]) // 10 + 15
+	assert.Equal(t, 20.0, summary.ByStorageClass["GLACIER"])
+
+	// Verify timeline
+	assert.False(t, summary.FirstUpload.IsZero())
+	assert.False(t, summary.LastUpload.IsZero())
+	assert.True(t, summary.FirstUpload.Before(summary.LastUpload) || summary.FirstUpload.Equal(summary.LastUpload))
+}
+
+// TestGenerateProjectReport tests generating project-specific reports (Issue #147 Phase 2)
+func TestGenerateProjectReport(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	cfg := &config.CostReportingConfig{}
+	reporter := NewCostReporter(cfg, nil, nil, nil)
+
+	projectID := "test-project-20251206"
+	now := time.Now()
+
+	// Add cost records for the project
+	reporter.RecordCost(CostRecord{
+		ProjectID:    projectID,
+		Timestamp:    now.Add(-1 * time.Hour),
+		Cost:         10.0,
+		SizeGB:       5.0,
+		Region:       "us-east-1",
+		StorageClass: "STANDARD",
+		Currency:     "USD",
+		Operation:    "upload",
+		Service:      "s3",
+	})
+	reporter.RecordCost(CostRecord{
+		ProjectID:    projectID,
+		Timestamp:    now.Add(-48 * time.Hour),
+		Cost:         20.0,
+		SizeGB:       10.0,
+		Region:       "us-west-2",
+		StorageClass: "GLACIER",
+		Currency:     "USD",
+		Operation:    "upload",
+		Service:      "s3",
+	})
+
+	ctx := context.Background()
+
+	tests := []struct {
+		name         string
+		period       string
+		expectedCost float64
+		expectError  bool
+	}{
+		{
+			name:         "today",
+			period:       "today",
+			expectedCost: 10.0,
+			expectError:  false,
+		},
+		{
+			name:         "week",
+			period:       "week",
+			expectedCost: 30.0,
+			expectError:  false,
+		},
+		{
+			name:         "nonexistent project",
+			period:       "today",
+			expectedCost: 0.0,
+			expectError:  false, // GenerateProjectReport returns CostSummary with zero cost, not error
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testProjectID := projectID
+			if tt.name == "nonexistent project" {
+				testProjectID = "nonexistent-project-id"
+			}
+
+			summary, err := reporter.GenerateProjectReport(ctx, testProjectID, tt.period)
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, summary)
+				// GenerateProjectReport returns CostSummary, not ProjectSummary
+				assert.InDelta(t, tt.expectedCost, summary.TotalCost, 0.01)
+				assert.Equal(t, "USD", summary.Currency)
+				// Only check maps are not empty for valid project with data
+				if tt.expectedCost > 0 {
+					assert.NotEmpty(t, summary.ByRegion)
+					assert.NotEmpty(t, summary.ByStorageClass)
+				}
+			}
+		})
+	}
+}
+
+// TestProjectCostsWithEmptyProjectID tests that empty project IDs are handled correctly (Issue #147 Phase 2)
+func TestProjectCostsWithEmptyProjectID(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	cfg := &config.CostReportingConfig{}
+	reporter := NewCostReporter(cfg, nil, nil, nil)
+
+	// Add cost records with empty project ID
+	reporter.RecordCost(CostRecord{
+		ProjectID: "",
+		Cost:      10.0,
+		Currency:  "USD",
+		SizeGB:    1.0,
+		Region:    "us-east-1",
+	})
+	reporter.RecordCost(CostRecord{
+		ProjectID: "",
+		Cost:      20.0,
+		Currency:  "USD",
+		SizeGB:    2.0,
+		Region:    "us-east-1",
+	})
+
+	// Empty project IDs should not appear in project list
+	projects := reporter.ListProjects()
+	assert.Empty(t, projects)
+
+	// Should be able to query costs for empty project ID
+	totalCost := reporter.GetProjectCosts("")
+	assert.Equal(t, 30.0, totalCost)
+
+	// GetProjectSummary should return summary for empty project ID (it has cost records)
+	summary, err := reporter.GetProjectSummary("")
+	require.NoError(t, err)
+	assert.Equal(t, "", summary.ProjectID)
+	assert.Equal(t, 30.0, summary.TotalCost)
+	assert.Equal(t, 2, summary.TotalFiles)
+}
+
+// TestProjectSummaryWithMultipleRegionsAndStorageClasses tests complex project scenarios (Issue #147 Phase 2)
+func TestProjectSummaryWithMultipleRegionsAndStorageClasses(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	cfg := &config.CostReportingConfig{}
+	reporter := NewCostReporter(cfg, nil, nil, nil)
+
+	projectID := "multi-region-project-20251206"
+	now := time.Now()
+
+	// Add cost records across multiple regions and storage classes
+	regions := []string{"us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"}
+	storageClasses := []string{"STANDARD", "GLACIER", "DEEP_ARCHIVE", "INTELLIGENT_TIERING"}
+
+	expectedTotalCost := 0.0
+	for i, region := range regions {
+		for j, storageClass := range storageClasses {
+			cost := float64((i+1)*(j+1)) * 10.0
+			expectedTotalCost += cost
+			reporter.RecordCost(CostRecord{
+				ProjectID:    projectID,
+				Timestamp:    now.Add(time.Duration(-i*j) * time.Hour),
+				Cost:         cost,
+				SizeGB:       float64(i+j) * 5.0,
+				Region:       region,
+				StorageClass: storageClass,
+				Currency:     "USD",
+			})
+		}
+	}
+
+	summary, err := reporter.GetProjectSummary(projectID)
+	require.NoError(t, err)
+	require.NotNil(t, summary)
+
+	// Verify all regions are represented
+	assert.Equal(t, len(regions), len(summary.ByRegion))
+	for _, region := range regions {
+		assert.Contains(t, summary.ByRegion, region)
+		assert.True(t, summary.ByRegion[region] > 0)
+	}
+
+	// Verify all storage classes are represented
+	assert.Equal(t, len(storageClasses), len(summary.ByStorageClass))
+	for _, storageClass := range storageClasses {
+		assert.Contains(t, summary.ByStorageClass, storageClass)
+		assert.True(t, summary.ByStorageClass[storageClass] > 0)
+	}
+
+	// Verify total cost matches expected
+	assert.Equal(t, expectedTotalCost, summary.TotalCost)
+	assert.Equal(t, len(regions)*len(storageClasses), summary.TotalFiles)
+}
+
+// BenchmarkListProjects benchmarks listing projects with many unique project IDs (Issue #147 Phase 2)
+func BenchmarkListProjects(b *testing.B) {
+	testutil.BenchmarkNoGoroutineLeak(b, func(b *testing.B) {
+		cfg := &config.CostReportingConfig{}
+		reporter := NewCostReporter(cfg, nil, nil, nil)
+
+		// Add 100 unique projects with multiple cost records each
+		for i := 0; i < 100; i++ {
+			projectID := "project-" + time.Now().Format("20060102") + "-" + string(rune(i))
+			for j := 0; j < 10; j++ {
+				reporter.RecordCost(CostRecord{
+					ProjectID: projectID,
+					Cost:      float64(i+j) * 1.5,
+					Currency:  "USD",
+				})
+			}
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = reporter.ListProjects()
+		}
+	})
+}
+
+// BenchmarkGetProjectSummary benchmarks getting project summary (Issue #147 Phase 2)
+func BenchmarkGetProjectSummary(b *testing.B) {
+	testutil.BenchmarkNoGoroutineLeak(b, func(b *testing.B) {
+		cfg := &config.CostReportingConfig{}
+		reporter := NewCostReporter(cfg, nil, nil, nil)
+
+		projectID := "benchmark-project-20251206"
+		now := time.Now()
+
+		// Add 1000 cost records for a single project
+		for i := 0; i < 1000; i++ {
+			reporter.RecordCost(CostRecord{
+				ProjectID:    projectID,
+				Timestamp:    now.Add(time.Duration(-i) * time.Hour),
+				Cost:         float64(i) * 0.1,
+				SizeGB:       float64(i) * 0.5,
+				Region:       "us-east-1",
+				StorageClass: "STANDARD",
+				Currency:     "USD",
+			})
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = reporter.GetProjectSummary(projectID)
+		}
+	})
+}
