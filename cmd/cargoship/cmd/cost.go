@@ -334,7 +334,7 @@ func runBudget(ctx context.Context, region string, jsonOutput bool) error {
 		return encoder.Encode(status)
 	}
 
-	// Human-readable output
+	// Human-readable output with Phase 2 enhancements
 	fmt.Printf("📊 %s\n", makeHeader("Budget Status"))
 
 	maxBudget := status["max_budget"].(float64)
@@ -343,25 +343,75 @@ func runBudget(ctx context.Context, region string, jsonOutput bool) error {
 	usedPercent := status["budget_used"].(float64) * 100
 	alertThreshold := status["alert_threshold"].(float64) * 100
 
-	fmt.Printf("   Max Budget:       $%.2f\n", maxBudget)
+	fmt.Printf("   Max Budget:       $%.2f/month\n", maxBudget)
 	fmt.Printf("   Current Spend:    $%.2f\n", currentSpend)
 	fmt.Printf("   Remaining:        $%.2f\n", remaining)
 	fmt.Printf("   Usage:            %.1f%%\n", usedPercent)
 	fmt.Printf("   Alert Threshold:  %.1f%%\n", alertThreshold)
+
+	// Phase 2: Visual progress bar
+	barWidth := 40
+	filledWidth := int(usedPercent / 100.0 * float64(barWidth))
+	if filledWidth > barWidth {
+		filledWidth = barWidth
+	}
+	bar := strings.Repeat("█", filledWidth) + strings.Repeat("░", barWidth-filledWidth)
+	fmt.Printf("   Progress:         [%s] %.1f%%\n", bar, usedPercent)
 	fmt.Println()
 
-	// Status indicator
+	// Phase 2: Monthly projection
+	now := time.Now()
+	dayOfMonth := now.Day()
+	daysInMonth := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).Day()
+	daysRemaining := daysInMonth - dayOfMonth
+
+	if dayOfMonth > 0 {
+		dailyBurnRate := currentSpend / float64(dayOfMonth)
+		projectedEOM := currentSpend + (dailyBurnRate * float64(daysRemaining))
+
+		fmt.Printf("📈 %s\n", makeHeader("Monthly Projection"))
+		fmt.Printf("   Day of Month:       %d of %d\n", dayOfMonth, daysInMonth)
+		fmt.Printf("   Daily Burn Rate:    $%.2f/day\n", dailyBurnRate)
+		fmt.Printf("   Projected EOM:      $%.2f\n", projectedEOM)
+
+		if projectedEOM > maxBudget {
+			overage := projectedEOM - maxBudget
+			fmt.Printf("   Projected Overage:  $%.2f (%.1f%% over budget)\n", overage, (overage/maxBudget)*100)
+		} else {
+			underBudget := maxBudget - projectedEOM
+			fmt.Printf("   Under Budget:       $%.2f (%.1f%% savings)\n", underBudget, (underBudget/maxBudget)*100)
+		}
+		fmt.Println()
+	}
+
+	// Status indicator with enhanced recommendations
 	if status["over_budget"].(bool) {
-		fmt.Printf("🚨 %s - Budget exceeded!\n", makeHeader("STATUS: OVER BUDGET"))
-		fmt.Printf("   You have exceeded your budget limit.\n")
-		fmt.Printf("   Please review spending or increase budget.\n")
+		fmt.Printf("🚨 %s\n", makeHeader("STATUS: OVER BUDGET"))
+		fmt.Printf("   ⚠️  You have exceeded your monthly budget limit.\n")
+		fmt.Println()
+		fmt.Printf("💡 Recommendations:\n")
+		fmt.Printf("   • Review recent uploads and identify cost drivers\n")
+		fmt.Printf("   • Consider switching to INTELLIGENT_TIERING storage class\n")
+		fmt.Printf("   • Enable lifecycle policies to transition old data to cheaper tiers\n")
+		fmt.Printf("   • Increase monthly budget if current spending is justified\n")
+		fmt.Printf("   • Set up cost alerts to catch overspending earlier\n")
 	} else if status["alert_triggered"].(bool) {
 		fmt.Printf("⚠️  %s\n", makeHeader("STATUS: ALERT THRESHOLD EXCEEDED"))
 		fmt.Printf("   You are approaching your budget limit (%.1f%% used).\n", usedPercent)
-		fmt.Printf("   Consider reviewing spending patterns.\n")
+		fmt.Println()
+		fmt.Printf("💡 Recommendations:\n")
+		fmt.Printf("   • Monitor daily spending for remainder of month\n")
+		fmt.Printf("   • Review planned uploads and defer non-critical transfers\n")
+		fmt.Printf("   • Check for any unexpected cost spikes\n")
+		fmt.Printf("   • Consider storage class optimizations\n")
 	} else {
 		fmt.Printf("✅ %s\n", makeHeader("STATUS: WITHIN BUDGET"))
 		fmt.Printf("   Budget usage is healthy (%.1f%% used).\n", usedPercent)
+		fmt.Println()
+		fmt.Printf("💡 Cost Optimization Tips:\n")
+		fmt.Printf("   • Continue monitoring spending throughout the month\n")
+		fmt.Printf("   • Review compression ratios to maximize storage savings\n")
+		fmt.Printf("   • Consider INTELLIGENT_TIERING for rarely accessed data\n")
 	}
 	fmt.Println()
 
