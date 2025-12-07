@@ -422,6 +422,7 @@ func (p *Pipeline) waitForCompletion(ctx context.Context) *Result {
 		if job.Error != nil {
 			result.Success = false
 			result.Errors = append(result.Errors, job.Error)
+			result.FailedJobs = append(result.FailedJobs, job) // Issue #103: Track failed jobs
 			p.mu.Lock()
 			p.errors = append(p.errors, job.Error)
 			p.mu.Unlock()

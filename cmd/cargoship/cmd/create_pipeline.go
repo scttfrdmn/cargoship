@@ -212,7 +212,43 @@ func createPipelineRunE(cmd *cobra.Command, args []string) error {
 		}
 
 		if !result.Success {
-			return fmt.Errorf("pipeline completed with errors for %s: %v", sourceDir, result.Errors)
+			// Issue #103: Display detailed per-shard error breakdown
+			_, _ = fmt.Fprintf(cmd.OutOrStderr(), "\n❌ Upload failed for %s\n\n", sourceDir)
+
+			// Group failed jobs by shard
+			shardErrors := make(map[int][]*pipeline.Job)
+			for _, job := range result.FailedJobs {
+				shardErrors[job.ShardID] = append(shardErrors[job.ShardID], job)
+			}
+
+			// Display per-shard status
+			_, _ = fmt.Fprintf(cmd.OutOrStderr(), "Shard Status:\n")
+			for shardID := 0; shardID < 8; shardID++ { // Default 8 shards
+				jobs := shardErrors[shardID]
+				if len(jobs) == 0 {
+					_, _ = fmt.Fprintf(cmd.OutOrStderr(), "  Shard %d (shard-%d): ✅ Success\n", shardID, shardID)
+				} else {
+					_, _ = fmt.Fprintf(cmd.OutOrStderr(), "  Shard %d (shard-%d): ❌ Failed (%d jobs)\n", shardID, shardID, len(jobs))
+					for _, job := range jobs {
+						if job.AttemptNumber > 1 {
+							_, _ = fmt.Fprintf(cmd.OutOrStderr(), "    • Job %d: Failed after %d attempts\n", job.ID, job.AttemptNumber)
+						} else {
+							_, _ = fmt.Fprintf(cmd.OutOrStderr(), "    • Job %d: Failed on first attempt\n", job.ID)
+						}
+						// Show error history
+						if len(job.ErrorHistory) > 0 {
+							for i, err := range job.ErrorHistory {
+								_, _ = fmt.Fprintf(cmd.OutOrStderr(), "      Attempt %d: %v\n", i+1, err)
+							}
+						} else if job.Error != nil {
+							_, _ = fmt.Fprintf(cmd.OutOrStderr(), "      Error: %v\n", job.Error)
+						}
+					}
+				}
+			}
+
+			_, _ = fmt.Fprintf(cmd.OutOrStderr(), "\nTotal errors: %d\n", len(result.Errors))
+			return fmt.Errorf("pipeline completed with %d errors", len(result.Errors))
 		}
 
 		// Print newline after progress display (if TUI mode was active)
