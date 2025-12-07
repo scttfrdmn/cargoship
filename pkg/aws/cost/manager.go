@@ -169,8 +169,97 @@ func (m *Manager) GetCurrentMonthSpend() float64 {
 }
 
 // GetBudgetStatus returns current budget status
+// Supports both new budget periods and legacy monthly budget (backward compatible)
 func (m *Manager) GetBudgetStatus() map[string]interface{} {
 	currentSpend := m.GetCurrentMonthSpend()
+	now := time.Now()
+
+	// Check if budget periods are configured (new system)
+	if len(m.config.BudgetPeriods) > 0 {
+		// Use active budget period (default to index 0)
+		activeIndex := m.config.ActiveBudgetPeriodIndex
+		if activeIndex < 0 || activeIndex >= len(m.config.BudgetPeriods) {
+			activeIndex = 0
+		}
+
+		budgetPeriod := m.config.BudgetPeriods[activeIndex]
+
+		// Get period bounds
+		start, end, err := budgetPeriod.GetPeriodBounds(now)
+		if err != nil {
+			m.logger.Error("Failed to get budget period bounds", "error", err)
+			// Fall back to legacy system
+			return m.getLegacyBudgetStatus(currentSpend)
+		}
+
+		daysElapsed, _ := budgetPeriod.GetDaysElapsed(now)
+		daysRemaining, _ := budgetPeriod.GetDaysRemaining(now)
+		totalDays, _ := budgetPeriod.GetTotalDays(now)
+		burnRate, _ := budgetPeriod.CalculateBurnRate(currentSpend, now)
+		projectedSpend, _ := budgetPeriod.ProjectEndOfPeriodSpend(currentSpend, now)
+		willExceed, _, _ := budgetPeriod.WillExceedBudget(currentSpend, now)
+
+		budgetUsed := currentSpend / budgetPeriod.MaxBudget
+		remaining := budgetPeriod.MaxBudget - currentSpend
+
+		// Calculate target daily rate to stay within budget
+		targetDailyRate := 0.0
+		if daysRemaining > 0 {
+			targetDailyRate = remaining / float64(daysRemaining)
+		}
+
+		status := map[string]interface{}{
+			// Period information
+			"period_type":          budgetPeriod.Type,
+			"period_start":         start.Format("2006-01-02"),
+			"period_end":           end.Format("2006-01-02"),
+			"days_elapsed":         daysElapsed,
+			"days_remaining":       daysRemaining,
+			"total_days":           totalDays,
+
+			// Budget information
+			"max_budget":           budgetPeriod.MaxBudget,
+			"current_spend":        currentSpend,
+			"budget_used":          budgetUsed,
+			"budget_remaining":     remaining,
+			"alert_threshold":      budgetPeriod.AlertThreshold,
+			"currency":             m.config.Pricing.Currency,
+
+			// Burn rate and projections
+			"daily_burn_rate":      burnRate,
+			"projected_eop_spend":  projectedSpend,
+			"will_exceed_budget":   willExceed,
+			"target_daily_rate":    targetDailyRate,
+
+			// Status flags
+			"over_budget":          budgetUsed > 1.0,
+			"alert_triggered":      budgetUsed > budgetPeriod.AlertThreshold,
+
+			// Grant-specific information
+			"grant_name":           budgetPeriod.GrantName,
+			"enable_rollover":      budgetPeriod.EnableRollover,
+		}
+
+		// Add overage/savings information
+		if willExceed {
+			overage := projectedSpend - budgetPeriod.MaxBudget
+			status["projected_overage"] = overage
+			status["projected_overage_percent"] = (overage / budgetPeriod.MaxBudget) * 100
+		} else {
+			savings := budgetPeriod.MaxBudget - projectedSpend
+			status["projected_savings"] = savings
+			status["projected_savings_percent"] = (savings / budgetPeriod.MaxBudget) * 100
+		}
+
+		return status
+	}
+
+	// Fall back to legacy monthly budget system
+	return m.getLegacyBudgetStatus(currentSpend)
+}
+
+// getLegacyBudgetStatus provides backward compatibility with old monthly budget system
+func (m *Manager) getLegacyBudgetStatus(currentSpend float64) map[string]interface{} {
 	budgetUsed := currentSpend / m.config.MaxMonthlyBudget
 	remaining := m.config.MaxMonthlyBudget - currentSpend
 

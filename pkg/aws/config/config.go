@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -52,11 +53,20 @@ type S3Config struct {
 
 // CostControlConfig holds cost management settings
 type CostControlConfig struct {
-	// Maximum monthly budget (USD)
-	MaxMonthlyBudget float64 `yaml:"max_monthly_budget" json:"max_monthly_budget"`
+	// DEPRECATED: Maximum monthly budget (USD) - Use BudgetPeriods instead for flexible periods
+	// Kept for backward compatibility. If set, creates a default monthly budget period.
+	MaxMonthlyBudget float64 `yaml:"max_monthly_budget,omitempty" json:"max_monthly_budget,omitempty"`
 
-	// Alert threshold (0.0-1.0, percentage of budget)
-	AlertThreshold float64 `yaml:"alert_threshold" json:"alert_threshold"`
+	// DEPRECATED: Alert threshold (0.0-1.0, percentage of budget) - Use BudgetPeriods instead
+	// Kept for backward compatibility. Applied to default monthly budget if BudgetPeriods not set.
+	AlertThreshold float64 `yaml:"alert_threshold,omitempty" json:"alert_threshold,omitempty"`
+
+	// Budget periods with flexible time ranges (daily, weekly, monthly, quarterly, yearly, custom, fiscal_year, grant)
+	// If not set, falls back to MaxMonthlyBudget for backward compatibility
+	BudgetPeriods []BudgetPeriod `yaml:"budget_periods,omitempty" json:"budget_periods,omitempty"`
+
+	// Active budget period index (defaults to 0 if multiple periods defined)
+	ActiveBudgetPeriodIndex int `yaml:"active_budget_period_index,omitempty" json:"active_budget_period_index,omitempty"`
 
 	// Enable automatic cost optimization
 	AutoOptimize bool `yaml:"auto_optimize" json:"auto_optimize"`
@@ -69,6 +79,63 @@ type CostControlConfig struct {
 
 	// Cost reporting settings
 	Reporting CostReportingConfig `yaml:"reporting" json:"reporting"`
+}
+
+// BudgetPeriodType represents the type of budget period
+type BudgetPeriodType string
+
+const (
+	// BudgetPeriodDaily represents a daily budget period
+	BudgetPeriodDaily BudgetPeriodType = "daily"
+
+	// BudgetPeriodWeekly represents a weekly budget period
+	BudgetPeriodWeekly BudgetPeriodType = "weekly"
+
+	// BudgetPeriodMonthly represents a monthly budget period (calendar month)
+	BudgetPeriodMonthly BudgetPeriodType = "monthly"
+
+	// BudgetPeriodQuarterly represents a quarterly budget period (3 calendar months)
+	BudgetPeriodQuarterly BudgetPeriodType = "quarterly"
+
+	// BudgetPeriodYearly represents a yearly budget period (calendar year)
+	BudgetPeriodYearly BudgetPeriodType = "yearly"
+
+	// BudgetPeriodCustom represents a custom date range budget period
+	BudgetPeriodCustom BudgetPeriodType = "custom"
+
+	// BudgetPeriodFiscalYear represents a fiscal year budget period (non-calendar year)
+	BudgetPeriodFiscalYear BudgetPeriodType = "fiscal_year"
+
+	// BudgetPeriodGrant represents a grant period budget (multi-year with rollover)
+	BudgetPeriodGrant BudgetPeriodType = "grant"
+)
+
+// BudgetPeriod represents a flexible budget period with custom date ranges
+type BudgetPeriod struct {
+	// Type of budget period (daily, weekly, monthly, etc.)
+	Type BudgetPeriodType `yaml:"type" json:"type"`
+
+	// Start date of the budget period (required for custom, fiscal_year, grant types)
+	StartDate *time.Time `yaml:"start_date,omitempty" json:"start_date,omitempty"`
+
+	// End date of the budget period (required for custom, grant types)
+	EndDate *time.Time `yaml:"end_date,omitempty" json:"end_date,omitempty"`
+
+	// Fiscal year start month (1-12, required for fiscal_year type)
+	// Example: 10 for October (fiscal year starting October 1)
+	FiscalYearStartMonth int `yaml:"fiscal_year_start_month,omitempty" json:"fiscal_year_start_month,omitempty"`
+
+	// Grant name or identifier (optional, for tracking grant budgets)
+	GrantName string `yaml:"grant_name,omitempty" json:"grant_name,omitempty"`
+
+	// Enable budget rollover (for grant periods that allow unspent funds to carry over)
+	EnableRollover bool `yaml:"enable_rollover,omitempty" json:"enable_rollover,omitempty"`
+
+	// Maximum budget amount for this period
+	MaxBudget float64 `yaml:"max_budget" json:"max_budget"`
+
+	// Alert threshold (0.0-1.0, percentage of budget)
+	AlertThreshold float64 `yaml:"alert_threshold" json:"alert_threshold"`
 }
 
 // StorageClass represents S3 storage classes
@@ -363,3 +430,336 @@ func getLocalStackEndpoint() string {
 func IsLocalStackConfig() bool {
 	return isLocalStackEndpoint()
 }
+
+// GetPeriodBounds returns the start and end dates for the budget period
+// relative to the given reference time (usually time.Now())
+func (bp *BudgetPeriod) GetPeriodBounds(referenceTime time.Time) (start time.Time, end time.Time, err error) {
+	switch bp.Type {
+	case BudgetPeriodDaily:
+		start = time.Date(referenceTime.Year(), referenceTime.Month(), referenceTime.Day(), 0, 0, 0, 0, referenceTime.Location())
+		end = start.AddDate(0, 0, 1).Add(-time.Nanosecond)
+
+	case BudgetPeriodWeekly:
+		// Start on Sunday of the current week
+		weekday := int(referenceTime.Weekday())
+		start = time.Date(referenceTime.Year(), referenceTime.Month(), referenceTime.Day()-weekday, 0, 0, 0, 0, referenceTime.Location())
+		end = start.AddDate(0, 0, 7).Add(-time.Nanosecond)
+
+	case BudgetPeriodMonthly:
+		// Start on first day of current month
+		start = time.Date(referenceTime.Year(), referenceTime.Month(), 1, 0, 0, 0, 0, referenceTime.Location())
+		end = start.AddDate(0, 1, 0).Add(-time.Nanosecond)
+
+	case BudgetPeriodQuarterly:
+		// Calculate quarter (Q1: Jan-Mar, Q2: Apr-Jun, Q3: Jul-Sep, Q4: Oct-Dec)
+		month := int(referenceTime.Month())
+		quarterStartMonth := ((month - 1) / 3) * 3 + 1
+		start = time.Date(referenceTime.Year(), time.Month(quarterStartMonth), 1, 0, 0, 0, 0, referenceTime.Location())
+		end = start.AddDate(0, 3, 0).Add(-time.Nanosecond)
+
+	case BudgetPeriodYearly:
+		// Calendar year
+		start = time.Date(referenceTime.Year(), 1, 1, 0, 0, 0, 0, referenceTime.Location())
+		end = start.AddDate(1, 0, 0).Add(-time.Nanosecond)
+
+	case BudgetPeriodFiscalYear:
+		if bp.FiscalYearStartMonth < 1 || bp.FiscalYearStartMonth > 12 {
+			return time.Time{}, time.Time{}, fmt.Errorf("fiscal_year_start_month must be between 1 and 12")
+		}
+
+		// Determine fiscal year start based on reference time
+		fiscalStartMonth := time.Month(bp.FiscalYearStartMonth)
+		if referenceTime.Month() < fiscalStartMonth {
+			// Current fiscal year started last calendar year
+			start = time.Date(referenceTime.Year()-1, fiscalStartMonth, 1, 0, 0, 0, 0, referenceTime.Location())
+		} else {
+			// Current fiscal year started this calendar year
+			start = time.Date(referenceTime.Year(), fiscalStartMonth, 1, 0, 0, 0, 0, referenceTime.Location())
+		}
+		end = start.AddDate(1, 0, 0).Add(-time.Nanosecond)
+
+	case BudgetPeriodCustom:
+		if bp.StartDate == nil || bp.EndDate == nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("custom budget period requires both start_date and end_date")
+		}
+		start = *bp.StartDate
+		end = *bp.EndDate
+
+	case BudgetPeriodGrant:
+		if bp.StartDate == nil || bp.EndDate == nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("grant budget period requires both start_date and end_date")
+		}
+		start = *bp.StartDate
+		end = *bp.EndDate
+
+	default:
+		return time.Time{}, time.Time{}, fmt.Errorf("unknown budget period type: %s", bp.Type)
+	}
+
+	return start, end, nil
+}
+
+// GetDaysElapsed returns the number of days elapsed in the current budget period
+func (bp *BudgetPeriod) GetDaysElapsed(referenceTime time.Time) (int, error) {
+	start, _, err := bp.GetPeriodBounds(referenceTime)
+	if err != nil {
+		return 0, err
+	}
+
+	elapsed := referenceTime.Sub(start)
+	days := int(elapsed.Hours() / 24)
+
+	// Always return at least 1 day to avoid division by zero
+	if days < 1 {
+		days = 1
+	}
+
+	return days, nil
+}
+
+// GetDaysRemaining returns the number of days remaining in the current budget period
+func (bp *BudgetPeriod) GetDaysRemaining(referenceTime time.Time) (int, error) {
+	_, end, err := bp.GetPeriodBounds(referenceTime)
+	if err != nil {
+		return 0, err
+	}
+
+	remaining := end.Sub(referenceTime)
+	days := int(remaining.Hours() / 24)
+
+	// Return 0 if period has ended
+	if days < 0 {
+		days = 0
+	}
+
+	return days, nil
+}
+
+// GetTotalDays returns the total number of days in the current budget period
+func (bp *BudgetPeriod) GetTotalDays(referenceTime time.Time) (int, error) {
+	start, end, err := bp.GetPeriodBounds(referenceTime)
+	if err != nil {
+		return 0, err
+	}
+
+	duration := end.Sub(start)
+	days := int(duration.Hours() / 24)
+
+	// Add 1 to include the end day
+	return days + 1, nil
+}
+
+// CalculateBurnRate calculates the daily burn rate for the current budget period
+// Returns daily burn rate in the same currency as maxBudget
+func (bp *BudgetPeriod) CalculateBurnRate(currentSpend float64, referenceTime time.Time) (float64, error) {
+	daysElapsed, err := bp.GetDaysElapsed(referenceTime)
+	if err != nil {
+		return 0, err
+	}
+
+	if daysElapsed == 0 {
+		return 0, fmt.Errorf("cannot calculate burn rate: no days elapsed")
+	}
+
+	return currentSpend / float64(daysElapsed), nil
+}
+
+// ProjectEndOfPeriodSpend projects the total spending at the end of the budget period
+// based on current burn rate
+func (bp *BudgetPeriod) ProjectEndOfPeriodSpend(currentSpend float64, referenceTime time.Time) (float64, error) {
+	burnRate, err := bp.CalculateBurnRate(currentSpend, referenceTime)
+	if err != nil {
+		return 0, err
+	}
+
+	daysRemaining, err := bp.GetDaysRemaining(referenceTime)
+	if err != nil {
+		return 0, err
+	}
+
+	projectedSpend := currentSpend + (burnRate * float64(daysRemaining))
+	return projectedSpend, nil
+}
+
+// WillExceedBudget determines if current spending rate will exceed the budget
+// Returns true if projected spending exceeds max budget, along with projected amount
+func (bp *BudgetPeriod) WillExceedBudget(currentSpend float64, referenceTime time.Time) (bool, float64, error) {
+	projectedSpend, err := bp.ProjectEndOfPeriodSpend(currentSpend, referenceTime)
+	if err != nil {
+		return false, 0, err
+	}
+
+	willExceed := projectedSpend > bp.MaxBudget
+	return willExceed, projectedSpend, nil
+}
+
+// GetBudgetStatus returns comprehensive status information for the budget period
+func (bp *BudgetPeriod) GetBudgetStatus(currentSpend float64, referenceTime time.Time) (map[string]interface{}, error) {
+	start, end, err := bp.GetPeriodBounds(referenceTime)
+	if err != nil {
+		return nil, err
+	}
+
+	daysElapsed, err := bp.GetDaysElapsed(referenceTime)
+	if err != nil {
+		return nil, err
+	}
+
+	daysRemaining, err := bp.GetDaysRemaining(referenceTime)
+	if err != nil {
+		return nil, err
+	}
+
+	totalDays, err := bp.GetTotalDays(referenceTime)
+	if err != nil {
+		return nil, err
+	}
+
+	burnRate, err := bp.CalculateBurnRate(currentSpend, referenceTime)
+	if err != nil {
+		return nil, err
+	}
+
+	projectedSpend, err := bp.ProjectEndOfPeriodSpend(currentSpend, referenceTime)
+	if err != nil {
+		return nil, err
+	}
+
+	willExceed, _, err := bp.WillExceedBudget(currentSpend, referenceTime)
+	if err != nil {
+		return nil, err
+	}
+
+	budgetUsed := currentSpend / bp.MaxBudget
+	remaining := bp.MaxBudget - currentSpend
+
+	// Calculate target daily rate to stay within budget
+	targetDailyRate := 0.0
+	if daysRemaining > 0 {
+		targetDailyRate = remaining / float64(daysRemaining)
+	}
+
+	status := map[string]interface{}{
+		// Period information
+		"period_type":          bp.Type,
+		"period_start":         start.Format("2006-01-02"),
+		"period_end":           end.Format("2006-01-02"),
+		"days_elapsed":         daysElapsed,
+		"days_remaining":       daysRemaining,
+		"total_days":           totalDays,
+
+		// Budget information
+		"max_budget":           bp.MaxBudget,
+		"current_spend":        currentSpend,
+		"budget_used":          budgetUsed,
+		"budget_remaining":     remaining,
+		"alert_threshold":      bp.AlertThreshold,
+
+		// Burn rate and projections
+		"daily_burn_rate":      burnRate,
+		"projected_eop_spend":  projectedSpend,
+		"will_exceed_budget":   willExceed,
+		"target_daily_rate":    targetDailyRate,
+
+		// Status flags
+		"over_budget":          budgetUsed > 1.0,
+		"alert_triggered":      budgetUsed > bp.AlertThreshold,
+
+		// Grant-specific information
+		"grant_name":           bp.GrantName,
+		"enable_rollover":      bp.EnableRollover,
+	}
+
+	// Add overage/savings information
+	if willExceed {
+		overage := projectedSpend - bp.MaxBudget
+		status["projected_overage"] = overage
+		status["projected_overage_percent"] = (overage / bp.MaxBudget) * 100
+	} else {
+		savings := bp.MaxBudget - projectedSpend
+		status["projected_savings"] = savings
+		status["projected_savings_percent"] = (savings / bp.MaxBudget) * 100
+	}
+
+	return status, nil
+}
+
+// Validate validates the budget period configuration
+func (bp *BudgetPeriod) Validate() error {
+	// Check max budget
+	if bp.MaxBudget <= 0 {
+		return fmt.Errorf("max_budget must be greater than 0")
+	}
+
+	// Check alert threshold
+	if bp.AlertThreshold < 0 || bp.AlertThreshold > 1 {
+		return fmt.Errorf("alert_threshold must be between 0.0 and 1.0")
+	}
+
+	// Validate type-specific requirements
+	switch bp.Type {
+	case BudgetPeriodCustom:
+		if bp.StartDate == nil || bp.EndDate == nil {
+			return fmt.Errorf("custom budget period requires both start_date and end_date")
+		}
+		if bp.EndDate.Before(*bp.StartDate) {
+			return fmt.Errorf("end_date must be after start_date")
+		}
+
+	case BudgetPeriodGrant:
+		if bp.StartDate == nil || bp.EndDate == nil {
+			return fmt.Errorf("grant budget period requires both start_date and end_date")
+		}
+		if bp.EndDate.Before(*bp.StartDate) {
+			return fmt.Errorf("end_date must be after start_date")
+		}
+		if bp.GrantName == "" {
+			return fmt.Errorf("grant budget period requires grant_name")
+		}
+
+	case BudgetPeriodFiscalYear:
+		if bp.FiscalYearStartMonth < 1 || bp.FiscalYearStartMonth > 12 {
+			return fmt.Errorf("fiscal_year_start_month must be between 1 and 12")
+		}
+
+	case BudgetPeriodDaily, BudgetPeriodWeekly, BudgetPeriodMonthly, BudgetPeriodQuarterly, BudgetPeriodYearly:
+		// No additional validation needed for these types
+
+	default:
+		return fmt.Errorf("unknown budget period type: %s", bp.Type)
+	}
+
+	return nil
+}
+
+// String returns a human-readable string representation of the budget period
+func (bp *BudgetPeriod) String() string {
+	switch bp.Type {
+	case BudgetPeriodDaily:
+		return "Daily Budget"
+	case BudgetPeriodWeekly:
+		return "Weekly Budget"
+	case BudgetPeriodMonthly:
+		return "Monthly Budget"
+	case BudgetPeriodQuarterly:
+		return "Quarterly Budget"
+	case BudgetPeriodYearly:
+		return "Yearly Budget"
+	case BudgetPeriodFiscalYear:
+		return fmt.Sprintf("Fiscal Year Budget (starts %s)", time.Month(bp.FiscalYearStartMonth).String())
+	case BudgetPeriodCustom:
+		if bp.StartDate != nil && bp.EndDate != nil {
+			return fmt.Sprintf("Custom Budget (%s to %s)",
+				bp.StartDate.Format("2006-01-02"), bp.EndDate.Format("2006-01-02"))
+		}
+		return "Custom Budget"
+	case BudgetPeriodGrant:
+		if bp.GrantName != "" {
+			return fmt.Sprintf("Grant Budget: %s", bp.GrantName)
+		}
+		return "Grant Budget"
+	default:
+		return string(bp.Type)
+	}
+}
+

@@ -334,7 +334,7 @@ func runBudget(ctx context.Context, region string, jsonOutput bool) error {
 		return encoder.Encode(status)
 	}
 
-	// Human-readable output with Phase 2 enhancements
+	// Human-readable output with Issue #147 Phase 1 support for custom budget periods
 	fmt.Printf("📊 %s\n", makeHeader("Budget Status"))
 
 	maxBudget := status["max_budget"].(float64)
@@ -343,45 +343,110 @@ func runBudget(ctx context.Context, region string, jsonOutput bool) error {
 	usedPercent := status["budget_used"].(float64) * 100
 	alertThreshold := status["alert_threshold"].(float64) * 100
 
-	fmt.Printf("   Max Budget:       $%.2f/month\n", maxBudget)
-	fmt.Printf("   Current Spend:    $%.2f\n", currentSpend)
-	fmt.Printf("   Remaining:        $%.2f\n", remaining)
-	fmt.Printf("   Usage:            %.1f%%\n", usedPercent)
-	fmt.Printf("   Alert Threshold:  %.1f%%\n", alertThreshold)
-
-	// Phase 2: Visual progress bar
-	barWidth := 40
-	filledWidth := int(usedPercent / 100.0 * float64(barWidth))
-	if filledWidth > barWidth {
-		filledWidth = barWidth
-	}
-	bar := strings.Repeat("█", filledWidth) + strings.Repeat("░", barWidth-filledWidth)
-	fmt.Printf("   Progress:         [%s] %.1f%%\n", bar, usedPercent)
-	fmt.Println()
-
-	// Phase 2: Monthly projection
-	now := time.Now()
-	dayOfMonth := now.Day()
-	daysInMonth := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).Day()
-	daysRemaining := daysInMonth - dayOfMonth
-
-	if dayOfMonth > 0 {
-		dailyBurnRate := currentSpend / float64(dayOfMonth)
-		projectedEOM := currentSpend + (dailyBurnRate * float64(daysRemaining))
-
-		fmt.Printf("📈 %s\n", makeHeader("Monthly Projection"))
-		fmt.Printf("   Day of Month:       %d of %d\n", dayOfMonth, daysInMonth)
-		fmt.Printf("   Daily Burn Rate:    $%.2f/day\n", dailyBurnRate)
-		fmt.Printf("   Projected EOM:      $%.2f\n", projectedEOM)
-
-		if projectedEOM > maxBudget {
-			overage := projectedEOM - maxBudget
-			fmt.Printf("   Projected Overage:  $%.2f (%.1f%% over budget)\n", overage, (overage/maxBudget)*100)
-		} else {
-			underBudget := maxBudget - projectedEOM
-			fmt.Printf("   Under Budget:       $%.2f (%.1f%% savings)\n", underBudget, (underBudget/maxBudget)*100)
+	// Check if this is a new budget period (has period_type field) or legacy monthly budget
+	periodType, hasPeriodType := status["period_type"]
+	if hasPeriodType && periodType != nil {
+		// New budget period system
+		fmt.Printf("   Budget Period:    %s\n", status["period_type"])
+		if periodStart, ok := status["period_start"].(string); ok {
+			fmt.Printf("   Period Start:     %s\n", periodStart)
 		}
+		if periodEnd, ok := status["period_end"].(string); ok {
+			fmt.Printf("   Period End:       %s\n", periodEnd)
+		}
+		if grantName, ok := status["grant_name"].(string); ok && grantName != "" {
+			fmt.Printf("   Grant:            %s\n", grantName)
+		}
+		fmt.Printf("   Max Budget:       $%.2f\n", maxBudget)
+		fmt.Printf("   Current Spend:    $%.2f\n", currentSpend)
+		fmt.Printf("   Remaining:        $%.2f\n", remaining)
+		fmt.Printf("   Usage:            %.1f%%\n", usedPercent)
+		fmt.Printf("   Alert Threshold:  %.1f%%\n", alertThreshold)
+
+		// Visual progress bar
+		barWidth := 40
+		filledWidth := int(usedPercent / 100.0 * float64(barWidth))
+		if filledWidth > barWidth {
+			filledWidth = barWidth
+		}
+		bar := strings.Repeat("█", filledWidth) + strings.Repeat("░", barWidth-filledWidth)
+		fmt.Printf("   Progress:         [%s] %.1f%%\n", bar, usedPercent)
 		fmt.Println()
+
+		// Budget period projection
+		if daysElapsed, ok := status["days_elapsed"].(int); ok {
+			if daysRemaining, ok := status["days_remaining"].(int); ok {
+				if totalDays, ok := status["total_days"].(int); ok {
+					if burnRate, ok := status["daily_burn_rate"].(float64); ok {
+						if projectedSpend, ok := status["projected_eop_spend"].(float64); ok {
+							fmt.Printf("📈 %s\n", makeHeader("Budget Period Projection"))
+							fmt.Printf("   Days Elapsed:       %d of %d\n", daysElapsed, totalDays)
+							fmt.Printf("   Days Remaining:     %d\n", daysRemaining)
+							fmt.Printf("   Daily Burn Rate:    $%.2f/day\n", burnRate)
+							if targetRate, ok := status["target_daily_rate"].(float64); ok {
+								fmt.Printf("   Target Daily Rate:  $%.2f/day\n", targetRate)
+							}
+							fmt.Printf("   Projected EOP:      $%.2f\n", projectedSpend)
+
+							if willExceed, ok := status["will_exceed_budget"].(bool); ok && willExceed {
+								if overage, ok := status["projected_overage"].(float64); ok {
+									overagePercent, _ := status["projected_overage_percent"].(float64)
+									fmt.Printf("   Projected Overage:  $%.2f (%.1f%% over budget)\n", overage, overagePercent)
+								}
+							} else {
+								if savings, ok := status["projected_savings"].(float64); ok {
+									savingsPercent, _ := status["projected_savings_percent"].(float64)
+									fmt.Printf("   Projected Savings:  $%.2f (%.1f%% under budget)\n", savings, savingsPercent)
+								}
+							}
+							fmt.Println()
+						}
+					}
+				}
+			}
+		}
+	} else {
+		// Legacy monthly budget system
+		fmt.Printf("   Max Budget:       $%.2f/month\n", maxBudget)
+		fmt.Printf("   Current Spend:    $%.2f\n", currentSpend)
+		fmt.Printf("   Remaining:        $%.2f\n", remaining)
+		fmt.Printf("   Usage:            %.1f%%\n", usedPercent)
+		fmt.Printf("   Alert Threshold:  %.1f%%\n", alertThreshold)
+
+		// Visual progress bar
+		barWidth := 40
+		filledWidth := int(usedPercent / 100.0 * float64(barWidth))
+		if filledWidth > barWidth {
+			filledWidth = barWidth
+		}
+		bar := strings.Repeat("█", filledWidth) + strings.Repeat("░", barWidth-filledWidth)
+		fmt.Printf("   Progress:         [%s] %.1f%%\n", bar, usedPercent)
+		fmt.Println()
+
+		// Monthly projection for legacy system
+		now := time.Now()
+		dayOfMonth := now.Day()
+		daysInMonth := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).Day()
+		daysRemaining := daysInMonth - dayOfMonth
+
+		if dayOfMonth > 0 {
+			dailyBurnRate := currentSpend / float64(dayOfMonth)
+			projectedEOM := currentSpend + (dailyBurnRate * float64(daysRemaining))
+
+			fmt.Printf("📈 %s\n", makeHeader("Monthly Projection"))
+			fmt.Printf("   Day of Month:       %d of %d\n", dayOfMonth, daysInMonth)
+			fmt.Printf("   Daily Burn Rate:    $%.2f/day\n", dailyBurnRate)
+			fmt.Printf("   Projected EOM:      $%.2f\n", projectedEOM)
+
+			if projectedEOM > maxBudget {
+				overage := projectedEOM - maxBudget
+				fmt.Printf("   Projected Overage:  $%.2f (%.1f%% over budget)\n", overage, (overage/maxBudget)*100)
+			} else {
+				underBudget := maxBudget - projectedEOM
+				fmt.Printf("   Under Budget:       $%.2f (%.1f%% savings)\n", underBudget, (underBudget/maxBudget)*100)
+			}
+			fmt.Println()
+		}
 	}
 
 	// Status indicator with enhanced recommendations
