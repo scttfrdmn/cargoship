@@ -295,8 +295,16 @@ func (m *Manager) GetProjectBudgetStatus(projectID string) (*BudgetStatus, error
 		return nil, fmt.Errorf("no budget configured for project: %s", projectID)
 	}
 
-	// Get current project spending
+	// Get current project spending and volume
 	currentSpend := m.reporter.GetProjectCosts(projectID)
+
+	// Calculate current volume for project
+	projectSummary, err := m.reporter.GetProjectSummary(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project summary: %w", err)
+	}
+	currentVolumeGB := projectSummary.TotalSizeGB
+
 	now := time.Now()
 
 	// Determine which budget period to use
@@ -336,6 +344,33 @@ func (m *Manager) GetProjectBudgetStatus(projectID string) (*BudgetStatus, error
 	budgetUsed := currentSpend / projectBudget.MaxBudget
 	remaining := projectBudget.MaxBudget - currentSpend
 
+	// Calculate volume metrics
+	volumeUsed := 0.0
+	volumeRemaining := 0.0
+	dailyVolumeBurnRate := 0.0
+	projectedEOPVolume := 0.0
+	volumeAlertTriggered := false
+	overVolume := false
+	willExceedVolume := false
+
+	if projectBudget.MaxVolumeGB > 0 {
+		volumeUsed = currentVolumeGB / projectBudget.MaxVolumeGB
+		volumeRemaining = projectBudget.MaxVolumeGB - currentVolumeGB
+		overVolume = volumeUsed > 1.0
+		volumeAlertTriggered = volumeUsed > projectBudget.VolumeAlertThreshold
+
+		// Calculate daily volume burn rate
+		if daysElapsed > 0 {
+			dailyVolumeBurnRate = currentVolumeGB / float64(daysElapsed)
+		}
+
+		// Project end-of-period volume
+		if totalDays > 0 {
+			projectedEOPVolume = (currentVolumeGB / float64(daysElapsed)) * float64(totalDays)
+			willExceedVolume = projectedEOPVolume > projectBudget.MaxVolumeGB
+		}
+	}
+
 	// Calculate target daily rate to stay within budget
 	targetDailyRate := 0.0
 	if daysRemaining > 0 {
@@ -373,6 +408,17 @@ func (m *Manager) GetProjectBudgetStatus(projectID string) (*BudgetStatus, error
 
 		OverBudget:     budgetUsed > 1.0,
 		AlertTriggered: budgetUsed > alertThreshold,
+
+		// Volume quota fields
+		MaxVolumeGB:           projectBudget.MaxVolumeGB,
+		CurrentVolumeGB:       currentVolumeGB,
+		VolumeRemaining:       volumeRemaining,
+		VolumeUsed:            volumeUsed,
+		DailyVolumeBurnRate:   dailyVolumeBurnRate,
+		ProjectedEOPVolume:    projectedEOPVolume,
+		OverVolume:            overVolume,
+		VolumeAlertTriggered:  volumeAlertTriggered,
+		WillExceedVolume:      willExceedVolume,
 
 		GrantName:      budgetPeriod.GrantName,
 		EnableRollover: budgetPeriod.EnableRollover,
@@ -463,16 +509,22 @@ func (m *Manager) ListProjectBudgets() []config.ProjectBudget {
 	return budgets
 }
 
-// SetProjectBudget creates or updates a project budget
-func (m *Manager) SetProjectBudget(projectID string, maxBudget float64, alertThreshold float64, description string) error {
+// SetProjectBudget creates or updates a project budget with cost and volume quota support
+func (m *Manager) SetProjectBudget(projectID string, maxBudget float64, maxVolumeGB float64, costAlertThreshold float64, volumeAlertThreshold float64) error {
 	if projectID == "" {
 		return fmt.Errorf("project ID cannot be empty")
 	}
-	if maxBudget <= 0 {
-		return fmt.Errorf("max budget must be greater than 0")
+	if maxBudget < 0 {
+		return fmt.Errorf("max budget cannot be negative (use 0 for unlimited)")
 	}
-	if alertThreshold < 0 || alertThreshold > 1 {
-		return fmt.Errorf("alert threshold must be between 0.0 and 1.0")
+	if maxVolumeGB < 0 {
+		return fmt.Errorf("max volume cannot be negative (use 0 for unlimited)")
+	}
+	if costAlertThreshold < 0 || costAlertThreshold > 1 {
+		return fmt.Errorf("cost alert threshold must be between 0.0 and 1.0")
+	}
+	if volumeAlertThreshold < 0 || volumeAlertThreshold > 1 {
+		return fmt.Errorf("volume alert threshold must be between 0.0 and 1.0")
 	}
 
 	if m.config.ProjectBudgets == nil {
@@ -480,16 +532,19 @@ func (m *Manager) SetProjectBudget(projectID string, maxBudget float64, alertThr
 	}
 
 	m.config.ProjectBudgets[projectID] = config.ProjectBudget{
-		ProjectID:      projectID,
-		MaxBudget:      maxBudget,
-		AlertThreshold: alertThreshold,
-		Description:    description,
+		ProjectID:             projectID,
+		MaxBudget:             maxBudget,
+		MaxVolumeGB:           maxVolumeGB,
+		AlertThreshold:        costAlertThreshold,
+		VolumeAlertThreshold:  volumeAlertThreshold,
 	}
 
 	m.logger.Info("Project budget updated",
 		"project_id", projectID,
 		"max_budget", maxBudget,
-		"alert_threshold", alertThreshold)
+		"max_volume_gb", maxVolumeGB,
+		"cost_alert_threshold", costAlertThreshold,
+		"volume_alert_threshold", volumeAlertThreshold)
 
 	return nil
 }
@@ -508,4 +563,9 @@ func (m *Manager) DeleteProjectBudget(projectID string) error {
 
 	m.logger.Info("Project budget deleted", "project_id", projectID)
 	return nil
+}
+
+// RemoveProjectBudget is an alias for DeleteProjectBudget for CLI compatibility
+func (m *Manager) RemoveProjectBudget(projectID string) error {
+	return m.DeleteProjectBudget(projectID)
 }

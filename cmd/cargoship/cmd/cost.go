@@ -147,29 +147,13 @@ Examples:
 	}
 
 	// Budget subcommand
-	budgetCmd := &cobra.Command{
-		Use:   "budget",
-		Short: "Show budget status and spending",
-		Long: `Display budget status, spending, and alerts.
-
-Shows:
-- Maximum budget configured
-- Current spending
-- Remaining budget
-- Budget usage percentage
-- Alert status
-
-Examples:
-  # Show budget status
-  cargoship cost budget
-
-  # Budget status as JSON
-  cargoship cost budget --json
-`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runBudget(cmd.Context(), region, jsonOutput)
-		},
-	}
+	// Budget subcommand - replaced with comprehensive project budget management
+	// The NewBudgetCmd() provides full budget management with:
+	// - status: Show budget status for a project
+	// - set: Set cost budget and volume quota for a project
+	// - list: List all configured project budgets
+	// - remove: Remove project budget configuration
+	budgetCmd := NewBudgetCmd()
 
 	// Pricing subcommand
 	pricingCmd := &cobra.Command{
