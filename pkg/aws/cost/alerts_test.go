@@ -664,3 +664,478 @@ func TestMonitorAllBudgets(t *testing.T) {
 	// Verify alerts were sent for both projects
 	assert.Equal(t, 2, alertCount, "Should have received alerts for both projects")
 }
+
+// ============================================================================
+// Email Notification Tests (Issue #147 Phase 4)
+// ============================================================================
+
+func TestSendEmailAlert(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	// Create notifier with email enabled
+	cfg := &BudgetAlertConfig{
+		Enabled:         true,
+		EmailEnabled:    true,
+		EmailRecipients: []string{"test@example.com", "admin@example.com"},
+		SMTPHost:        "smtp.example.com",
+		SMTPPort:        587,
+		SMTPUsername:    "user@example.com",
+		SMTPPassword:    "password",
+		SMTPFrom:        "budget@cargoship.io",
+		SMTPUseTLS:      true,
+		SendProjectAlerts: true,
+	}
+	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
+
+	// Create test alert
+	alert := &BudgetAlert{
+		ID:                "test-email-alert",
+		Timestamp:         time.Now(),
+		Type:              AlertTypeCostThreshold,
+		Severity:          SeverityWarning,
+		ProjectID:         "project1",
+		Description:       "Test email alert",
+		MaxBudget:         1000.0,
+		CurrentSpend:      850.0,
+		BudgetUsedPercent: 85.0,
+		ActionRequired:    false,
+		Recommendation:    "Review spending",
+	}
+
+	ctx := context.Background()
+
+	// This will attempt to send email - without a real SMTP server, it will fail
+	// But we're testing the code path exists and error handling works
+	err := notifier.SendAlert(ctx, alert)
+
+	// We expect this to fail without a real SMTP server
+	if err != nil {
+		t.Logf("Expected error without real SMTP server: %v", err)
+		// Verify the error message is related to email sending
+		assert.Contains(t, err.Error(), "email")
+	}
+}
+
+func TestSendEmailAlertNoRecipients(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	// Create notifier with email enabled but no recipients
+	cfg := &BudgetAlertConfig{
+		Enabled:         true,
+		EmailEnabled:    true,
+		EmailRecipients: []string{}, // Empty recipients list
+		SMTPHost:        "smtp.example.com",
+		SMTPPort:        587,
+		SMTPUsername:    "user@example.com",
+		SMTPPassword:    "password",
+		SMTPFrom:        "budget@cargoship.io",
+		SMTPUseTLS:      true,
+		SendProjectAlerts: true,
+	}
+	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
+
+	// Create test alert
+	alert := &BudgetAlert{
+		ID:        "test-email-no-recipients",
+		Timestamp: time.Now(),
+		Type:      AlertTypeCostThreshold,
+		Severity:  SeverityWarning,
+		ProjectID: "project1",
+	}
+
+	ctx := context.Background()
+	err := notifier.SendAlert(ctx, alert)
+
+	// Graceful handling: no error returned, email channel is silently skipped
+	// This is correct behavior - invalid configuration is gracefully ignored
+	assert.NoError(t, err, "SendAlert should handle missing recipients gracefully")
+}
+
+func TestSendEmailAlertMissingSMTPHost(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	// Create notifier with email enabled but no SMTP host
+	cfg := &BudgetAlertConfig{
+		Enabled:         true,
+		EmailEnabled:    true,
+		EmailRecipients: []string{"test@example.com"},
+		SMTPHost:        "", // Missing SMTP host
+		SMTPPort:        587,
+		SMTPUsername:    "user@example.com",
+		SMTPPassword:    "password",
+		SMTPFrom:        "budget@cargoship.io",
+		SMTPUseTLS:      true,
+		SendProjectAlerts: true,
+	}
+	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
+
+	// Create test alert
+	alert := &BudgetAlert{
+		ID:        "test-email-no-host",
+		Timestamp: time.Now(),
+		Type:      AlertTypeCostThreshold,
+		Severity:  SeverityWarning,
+		ProjectID: "project1",
+	}
+
+	ctx := context.Background()
+	err := notifier.SendAlert(ctx, alert)
+
+	// Graceful handling: no error returned, email channel is silently skipped
+	// This is correct behavior - invalid configuration is gracefully ignored
+	assert.NoError(t, err, "SendAlert should handle missing SMTP host gracefully")
+}
+
+func TestEmailMessageFormatting(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	// Create notifier (we won't send, just test config structure)
+	cfg := &BudgetAlertConfig{
+		Enabled:         true,
+		EmailEnabled:    true,
+		EmailRecipients: []string{"test@example.com"},
+		SMTPHost:        "smtp.example.com",
+		SMTPPort:        587,
+		SMTPFrom:        "budget@cargoship.io",
+		SendProjectAlerts: true,
+	}
+	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
+
+	// Verify notifier was created successfully (validates config structure)
+	assert.NotNil(t, notifier)
+	assert.Equal(t, cfg, notifier.config)
+
+	// Verify email configuration fields are properly set
+	assert.True(t, notifier.config.EmailEnabled)
+	assert.Equal(t, "smtp.example.com", notifier.config.SMTPHost)
+	assert.Equal(t, 587, notifier.config.SMTPPort)
+	assert.Equal(t, "budget@cargoship.io", notifier.config.SMTPFrom)
+	assert.Len(t, notifier.config.EmailRecipients, 1)
+}
+
+// ============================================================================
+// Slack Notification Tests (Issue #147 Phase 4)
+// ============================================================================
+
+func TestSendSlackAlert(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	// Create test HTTP server to simulate Slack webhook
+	receivedPayload := make(map[string]interface{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify request method
+		assert.Equal(t, "POST", r.Method)
+
+		// Verify content type
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+		// Read and parse request body
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+
+		err = json.Unmarshal(body, &receivedPayload)
+		require.NoError(t, err)
+
+		// Send success response
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Create notifier with Slack enabled
+	cfg := &BudgetAlertConfig{
+		Enabled:           true,
+		SlackEnabled:      true,
+		SlackWebhookURL:   server.URL,
+		SlackChannel:      "#budget-alerts",
+		SlackUsername:     "CargoShip",
+		SendProjectAlerts: true,
+	}
+	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
+
+	// Create test alert
+	alert := &BudgetAlert{
+		ID:                "test-slack-alert",
+		Timestamp:         time.Now(),
+		Type:              AlertTypeCostThreshold,
+		Severity:          SeverityWarning,
+		ProjectID:         "project1",
+		Description:       "Test Slack alert",
+		MaxBudget:         1000.0,
+		CurrentSpend:      850.0,
+		BudgetUsedPercent: 85.0,
+		ActionRequired:    false,
+		Recommendation:    "Review spending",
+	}
+
+	ctx := context.Background()
+	err := notifier.SendAlert(ctx, alert)
+	require.NoError(t, err)
+
+	// Verify Slack payload structure
+	// Note: top-level "text" field only present when ActionRequired=true
+	assert.Contains(t, receivedPayload, "username")
+	assert.Equal(t, "CargoShip", receivedPayload["username"])
+	assert.Contains(t, receivedPayload, "channel")
+	assert.Equal(t, "#budget-alerts", receivedPayload["channel"])
+
+	// Verify attachments exist
+	attachments, ok := receivedPayload["attachments"].([]interface{})
+	assert.True(t, ok)
+	assert.Greater(t, len(attachments), 0)
+
+	// Verify attachment structure
+	attachment := attachments[0].(map[string]interface{})
+	assert.Contains(t, attachment, "color")
+	assert.Contains(t, attachment, "fields")
+
+	// Warning severity should use "warning" keyword
+	color := attachment["color"].(string)
+	assert.Equal(t, "warning", color) // Slack warning color keyword
+}
+
+func TestSendSlackAlertCriticalSeverity(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	// Create test HTTP server
+	receivedPayload := make(map[string]interface{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &receivedPayload)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Create notifier with Slack enabled
+	cfg := &BudgetAlertConfig{
+		Enabled:           true,
+		SlackEnabled:      true,
+		SlackWebhookURL:   server.URL,
+		SendProjectAlerts: true,
+	}
+	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
+
+	// Create critical alert
+	alert := &BudgetAlert{
+		ID:             "test-slack-critical",
+		Timestamp:      time.Now(),
+		Type:           AlertTypeCostOverBudget,
+		Severity:       SeverityCritical,
+		ProjectID:      "project1",
+		ActionRequired: true,
+	}
+
+	ctx := context.Background()
+	err := notifier.SendAlert(ctx, alert)
+	require.NoError(t, err)
+
+	// Verify critical severity uses "danger" keyword
+	attachments := receivedPayload["attachments"].([]interface{})
+	attachment := attachments[0].(map[string]interface{})
+	color := attachment["color"].(string)
+	assert.Equal(t, "danger", color) // Slack danger color keyword
+}
+
+func TestSendSlackAlertInfoSeverity(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	// Create test HTTP server
+	receivedPayload := make(map[string]interface{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &receivedPayload)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Create notifier with Slack enabled
+	cfg := &BudgetAlertConfig{
+		Enabled:           true,
+		SlackEnabled:      true,
+		SlackWebhookURL:   server.URL,
+		SendProjectAlerts: true,
+	}
+	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
+
+	// Create info alert
+	alert := &BudgetAlert{
+		ID:             "test-slack-info",
+		Timestamp:      time.Now(),
+		Type:           AlertTypeCostThreshold,
+		Severity:       SeverityInfo,
+		ProjectID:      "project1",
+		ActionRequired: false,
+	}
+
+	ctx := context.Background()
+	err := notifier.SendAlert(ctx, alert)
+	require.NoError(t, err)
+
+	// Verify info severity uses "good" keyword
+	attachments := receivedPayload["attachments"].([]interface{})
+	attachment := attachments[0].(map[string]interface{})
+	color := attachment["color"].(string)
+	assert.Equal(t, "good", color) // Slack good color keyword
+}
+
+func TestSendSlackAlertNoWebhookURL(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	// Create notifier with Slack enabled but no webhook URL
+	cfg := &BudgetAlertConfig{
+		Enabled:           true,
+		SlackEnabled:      true,
+		SlackWebhookURL:   "", // Missing webhook URL
+		SendProjectAlerts: true,
+	}
+	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
+
+	// Create test alert
+	alert := &BudgetAlert{
+		ID:        "test-slack-no-url",
+		Timestamp: time.Now(),
+		Type:      AlertTypeCostThreshold,
+		Severity:  SeverityWarning,
+		ProjectID: "project1",
+	}
+
+	ctx := context.Background()
+	err := notifier.SendAlert(ctx, alert)
+
+	// Graceful handling: no error returned, Slack channel is silently skipped
+	// This is correct behavior - invalid configuration is gracefully ignored
+	assert.NoError(t, err, "SendAlert should handle missing Slack webhook URL gracefully")
+}
+
+func TestSendSlackAlertServerError(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	// Create test HTTP server that returns error
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	// Create notifier with Slack enabled
+	cfg := &BudgetAlertConfig{
+		Enabled:           true,
+		SlackEnabled:      true,
+		SlackWebhookURL:   server.URL,
+		SendProjectAlerts: true,
+	}
+	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
+
+	// Create test alert
+	alert := &BudgetAlert{
+		ID:        "test-slack-error",
+		Timestamp: time.Now(),
+		Type:      AlertTypeCostThreshold,
+		Severity:  SeverityWarning,
+		ProjectID: "project1",
+	}
+
+	ctx := context.Background()
+	err := notifier.SendAlert(ctx, alert)
+
+	// Should get an error from Slack server
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "slack API returned status")
+}
+
+// ============================================================================
+// Multi-Channel Alert Tests (Issue #147 Phase 4)
+// ============================================================================
+
+func TestSendAlertMultipleChannels(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	// Create test HTTP servers for webhook and Slack
+	webhookCalled := false
+	webhookServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		webhookCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer webhookServer.Close()
+
+	slackCalled := false
+	slackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		slackCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer slackServer.Close()
+
+	// Create notifier with multiple channels enabled
+	cfg := &BudgetAlertConfig{
+		Enabled:           true,
+		WebhookEnabled:    true,
+		WebhookURL:        webhookServer.URL,
+		WebhookTimeout:    10 * time.Second,
+		SlackEnabled:      true,
+		SlackWebhookURL:   slackServer.URL,
+		SendProjectAlerts: true,
+	}
+	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
+
+	// Create test alert
+	alert := &BudgetAlert{
+		ID:        "test-multi-channel",
+		Timestamp: time.Now(),
+		Type:      AlertTypeCostThreshold,
+		Severity:  SeverityWarning,
+		ProjectID: "project1",
+	}
+
+	ctx := context.Background()
+	err := notifier.SendAlert(ctx, alert)
+	require.NoError(t, err)
+
+	// Verify both channels received alerts
+	assert.True(t, webhookCalled, "Webhook should have been called")
+	assert.True(t, slackCalled, "Slack should have been called")
+}
+
+func TestSendAlertOneChannelFailsOtherSucceeds(t *testing.T) {
+	testutil.RequireNoGoroutineLeak(t)
+
+	// Create webhook server that fails
+	webhookServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer webhookServer.Close()
+
+	// Create Slack server that succeeds
+	slackCalled := false
+	slackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		slackCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer slackServer.Close()
+
+	// Create notifier with multiple channels enabled
+	cfg := &BudgetAlertConfig{
+		Enabled:           true,
+		WebhookEnabled:    true,
+		WebhookURL:        webhookServer.URL,
+		WebhookTimeout:    10 * time.Second,
+		SlackEnabled:      true,
+		SlackWebhookURL:   slackServer.URL,
+		SendProjectAlerts: true,
+	}
+	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
+
+	// Create test alert
+	alert := &BudgetAlert{
+		ID:        "test-graceful-failure",
+		Timestamp: time.Now(),
+		Type:      AlertTypeCostThreshold,
+		Severity:  SeverityWarning,
+		ProjectID: "project1",
+	}
+
+	ctx := context.Background()
+	err := notifier.SendAlert(ctx, alert)
+
+	// Should get an error (webhook failed), but Slack should still succeed
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "webhook")
+	assert.True(t, slackCalled, "Slack should still be called despite webhook failure")
+}

@@ -1120,11 +1120,14 @@ func runBurnrate(ctx context.Context, region, projectID string, days int, jsonOu
 	fmt.Println()
 
 	fmt.Printf("📉 %s\n", makeHeader("Trend Analysis"))
-	trendIcon := "➡️"
-	if analysis.TrendDirection == "increasing" {
+	var trendIcon string
+	switch analysis.TrendDirection {
+	case "increasing":
 		trendIcon = "📈"
-	} else if analysis.TrendDirection == "decreasing" {
+	case "decreasing":
 		trendIcon = "📉"
+	default:
+		trendIcon = "➡️"
 	}
 	fmt.Printf("   Direction:       %s %s\n", trendIcon, analysis.TrendDirection)
 	fmt.Printf("   Strength:        %.1f%%\n", analysis.TrendStrength*100)

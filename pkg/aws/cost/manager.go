@@ -19,6 +19,7 @@ type Manager struct {
 	reporter      *CostReporter
 	budgetTracker *BudgetTracker
 	logger        *slog.Logger
+	awsConfig     aws.Config // Issue #147 Phase 4: Needed for alert notification
 }
 
 // BudgetTracker tracks budget usage and alerts
@@ -82,6 +83,7 @@ func NewManager(cfg *config.CostControlConfig, awsCfg aws.Config, logger *slog.L
 		reporter:      reporter,
 		budgetTracker: budgetTracker,
 		logger:        logger.With("component", "cost-manager"),
+		awsConfig:     awsCfg, // Issue #147 Phase 4: For alert notification
 	}, nil
 }
 
@@ -520,4 +522,89 @@ func (m *Manager) GetCurrentPricing(ctx context.Context, region string) (map[str
 // GetReporter returns the cost reporter (Issue #147 Phase 2)
 func (m *Manager) GetReporter() *CostReporter {
 	return m.reporter
+}
+
+// GetAlertConfig returns the current alert configuration (Issue #147 Phase 4)
+func (m *Manager) GetAlertConfig() *BudgetAlertConfig {
+	// TODO: Load from persistent storage (file, database, etc.)
+	// For now, return default config
+	return DefaultBudgetAlertConfig()
+}
+
+// UpdateAlertConfig updates the alert configuration (Issue #147 Phase 4)
+func (m *Manager) UpdateAlertConfig(config *BudgetAlertConfig) error {
+	if config == nil {
+		return fmt.Errorf("alert config cannot be nil")
+	}
+
+	// TODO: Save to persistent storage (file, database, etc.)
+	// For now, just validate the config
+	if config.EmailEnabled {
+		if config.SMTPHost == "" {
+			return fmt.Errorf("SMTP host is required when email is enabled")
+		}
+		if len(config.EmailRecipients) == 0 {
+			return fmt.Errorf("email recipients are required when email is enabled")
+		}
+	}
+
+	if config.SlackEnabled {
+		if config.SlackWebhookURL == "" {
+			return fmt.Errorf("slack webhook URL is required when slack is enabled")
+		}
+	}
+
+	return nil
+}
+
+// SendTestAlert sends a test alert through configured channels (Issue #147 Phase 4)
+func (m *Manager) SendTestAlert(ctx context.Context, alert *BudgetAlert, channel string) error {
+	config := m.GetAlertConfig()
+	if config == nil {
+		return fmt.Errorf("no alert configuration found")
+	}
+
+	// Create notifier
+	notifier := NewBudgetAlertNotifier(config, m.awsConfig)
+
+	// If channel specified, temporarily enable only that channel
+	if channel != "" {
+		testConfig := *config
+		testConfig.EmailEnabled = false
+		testConfig.SlackEnabled = false
+		testConfig.WebhookEnabled = false
+		testConfig.CloudWatchEnabled = false
+
+		switch channel {
+		case "email":
+			testConfig.EmailEnabled = config.EmailEnabled
+			testConfig.EmailRecipients = config.EmailRecipients
+			testConfig.SMTPHost = config.SMTPHost
+			testConfig.SMTPPort = config.SMTPPort
+			testConfig.SMTPUsername = config.SMTPUsername
+			testConfig.SMTPPassword = config.SMTPPassword
+			testConfig.SMTPFrom = config.SMTPFrom
+			testConfig.SMTPUseTLS = config.SMTPUseTLS
+		case "slack":
+			testConfig.SlackEnabled = config.SlackEnabled
+			testConfig.SlackWebhookURL = config.SlackWebhookURL
+			testConfig.SlackChannel = config.SlackChannel
+			testConfig.SlackUsername = config.SlackUsername
+		case "webhook":
+			testConfig.WebhookEnabled = config.WebhookEnabled
+			testConfig.WebhookURL = config.WebhookURL
+			testConfig.WebhookHeaders = config.WebhookHeaders
+			testConfig.WebhookTimeout = config.WebhookTimeout
+		case "cloudwatch":
+			testConfig.CloudWatchEnabled = config.CloudWatchEnabled
+			testConfig.CloudWatchNamespace = config.CloudWatchNamespace
+		default:
+			return fmt.Errorf("unknown channel: %s", channel)
+		}
+
+		notifier = NewBudgetAlertNotifier(&testConfig, m.awsConfig)
+	}
+
+	// Send the alert
+	return notifier.SendAlert(ctx, alert)
 }

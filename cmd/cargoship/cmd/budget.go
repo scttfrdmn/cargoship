@@ -337,8 +337,8 @@ func runBudgetList(ctx context.Context, jsonOutput bool) error {
 
 	fmt.Printf("Project Budgets (%d total)\n\n", len(budgets))
 
-	for projectID, budget := range budgets {
-		fmt.Printf("Project: %s\n", projectID)
+	for _, budget := range budgets {
+		fmt.Printf("Project: %s\n", budget.ProjectID)
 		if budget.MaxBudget > 0 {
 			fmt.Printf("  Cost Budget:    $%.2f\n", budget.MaxBudget)
 		} else {
