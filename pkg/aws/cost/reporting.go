@@ -291,9 +291,11 @@ func (cr *CostReporter) parsePeriod(period string) (time.Time, time.Time, error)
 		return start, end, nil
 
 	case "week", "this_week":
+		// Calculate start of current week (Sunday at 00:00:00 local time)
 		weekday := int(now.Weekday())
-		start := now.AddDate(0, 0, -weekday).Truncate(24 * time.Hour)
-		end := start.Add(7 * 24 * time.Hour)
+		startOfWeek := now.AddDate(0, 0, -weekday)
+		start := time.Date(startOfWeek.Year(), startOfWeek.Month(), startOfWeek.Day(), 0, 0, 0, 0, now.Location())
+		end := start.AddDate(0, 0, 7)
 		return start, end, nil
 
 	case "month", "this_month":
@@ -329,7 +331,8 @@ func (cr *CostReporter) filterCostsByPeriod(start, end time.Time) []CostRecord {
 	var filtered []CostRecord
 
 	for _, cost := range cr.costs {
-		if cost.Timestamp.After(start) && cost.Timestamp.Before(end) {
+		// Use inclusive start bound and exclusive end bound: [start, end)
+		if (cost.Timestamp.After(start) || cost.Timestamp.Equal(start)) && cost.Timestamp.Before(end) {
 			filtered = append(filtered, cost)
 		}
 	}
