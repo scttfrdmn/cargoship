@@ -6,24 +6,40 @@ CargoShip is a high-performance S3 archiving tool featuring streaming pipeline a
 
 **Foundation**: Built on Duke University's SuitcaseCTL research with enterprise AWS optimizations.
 
-## Current Status (2025-12-06)
+## Current Status (2025-12-09)
 
 **Version**: v0.5.1+ (Branch: main)
 
-### Recently Completed (Last 7 Days)
-- ✅ **Issue #128**: RSA-PSS signature verification (security P1-Critical)
-- ✅ **Issue #127**: Glob pattern matching for manifest queries
-- ✅ **Issue #97**: CLI integration with ManifestQuery API
-- ✅ **Issue #122**: Storage format documentation (STORAGE_FORMAT.md)
-- ✅ **Issue #124**: README updates with new CLI examples
-- ✅ **Issue #125**: BufferedPipeWriter race condition fixed
-- ✅ **Issue #118**: CLI progress tracking with terminal detection
-- ✅ **Issue #120**: Legacy code removal (83 files, ~23,300 lines)
+### Recently Completed - Phase 3-5 Pipeline (2025-11-26 to 2025-12-09)
+
+**✅ Phase 3 - Streaming Pipeline Architecture (Issue #63)**
+- Multi-prefix S3 sharding (8× request rate capacity)
+- Zero local disk usage with io.Pipe streaming
+- Bounded memory: O(chunk_size × workers)
+- Real-time progress tracking with terminal detection
+- **Benchmarks**: Small files 437ms (403 MB/s), Large files 311s (185 MB/s)
+
+**✅ Phase 4 - Parallel S3 Upload Workers (Issue #64)**
+- Increased default workers from 4 to 8 (matches shard count)
+- **Impact**: Small files improved 10-90%, Large files unchanged (chunking bottleneck)
+
+**✅ Phase 5 - Adaptive File Splitting (Issue #69)**
+- Implementation complete with configuration bug fixes
+- Per-stage instrumentation added for performance analysis
+- **Finding**: File splitting is memory safety feature (not performance optimization)
+- **Decision**: Disabled by default for backward compatibility
+
+**✅ CLI Integration Complete (Issue #118)**
+- `cargoship create upload` command fully functional
+- TUI progress: `🚢 Uploading: N files | X GB | Y chunks | Z MB/s | elapsed`
+- Terminal detection with graceful fallback to quiet mode
+- JSON output mode for automation
 
 ### Active Issues
+- **Issue #68**: Flaky test - TestPipeline_ErrorHandling (P2-Low)
+- **Issue #65**: Goroutine leak cleanup with CPU profiling (P2-Low)
+- **Issues #14, #17**: Coordinator test cleanup (P2-Medium)
 - **Issue #126**: Performance investigation - 11.88 MB/s vs 185 MB/s benchmark (P1-High)
-- **Issue #135**: Flaky test - TestEnhancedCongestionControlWithCommunication (P2-Low)
-- **Issues #136-141**: TODO audit items (budget, diagnostics, compression, lifecycle)
 
 ## Issue Tracking - **USE GITHUB ISSUES, NOT DOCUMENTS**
 
@@ -179,4 +195,4 @@ Only create documentation for:
 
 ---
 
-**Last Updated**: 2025-12-06
+**Last Updated**: 2025-12-09
