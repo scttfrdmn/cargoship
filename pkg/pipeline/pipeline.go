@@ -188,6 +188,7 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 		Workers:                    p.config.ScannerWorkers,
 		UseCompressedAwareChunking: p.config.EnableCompressedAwareChunking, // Phase 3.3
 		ChunkTargetSizeMB:          p.config.ForceChunkSizeMB,               // Phase 3.3
+		ChunkingConfig:             p.config.ChunkingConfig,                 // Phase 5: Pass chunking config
 	}
 	p.scanner, err = NewScannerStage(scannerConfig, p.chunkChan, p) // Pass pipeline reference for manifest tracking
 	if err != nil {

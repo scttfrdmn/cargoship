@@ -220,6 +220,9 @@ type ScannerConfig struct {
 	// Phase 3.3: Compressed-aware chunking
 	UseCompressedAwareChunking bool // Enable compression-aware chunking
 	ChunkTargetSizeMB          int  // Manual override (0 = adaptive)
+
+	// Phase 5: Chunking configuration (optional, will use defaults if nil)
+	ChunkingConfig *chunking.ChunkingConfig
 }
 
 // ArchiverConfig configures the archiver stage

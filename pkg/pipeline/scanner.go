@@ -47,14 +47,18 @@ func NewScannerStage(config *ScannerConfig, output chan<- *Job, pipeline *Pipeli
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Create chunking strategy
-	chunkingConfig := &chunking.ChunkingConfig{
-		Workers:            8,
-		AvailableMemory:    4 * 1024 * 1024 * 1024, // 4GB
-		GroupingStrategy:   "mixed",
-		CostSavingsTarget:  1000,
-		EnableFileSplitting: false,                  // Phase 5 Redux: Disable file splitting, use encoder pooling instead
-		MaxFileChunkSize:   200 * 1024 * 1024,      // 200MB chunks for split files
+	// Create chunking strategy - use provided config or fall back to defaults
+	chunkingConfig := config.ChunkingConfig
+	if chunkingConfig == nil {
+		// Default configuration (Phase 5: file splitting disabled by default for backward compatibility)
+		chunkingConfig = &chunking.ChunkingConfig{
+			Workers:            8,
+			AvailableMemory:    4 * 1024 * 1024 * 1024, // 4GB
+			GroupingStrategy:   "mixed",
+			CostSavingsTarget:  1000,
+			EnableFileSplitting: false,                  // Disabled by default
+			MaxFileChunkSize:   200 * 1024 * 1024,      // 200MB chunks for split files
+		}
 	}
 	strategy := chunking.NewAdaptiveChunkingStrategy(chunkingConfig)
 

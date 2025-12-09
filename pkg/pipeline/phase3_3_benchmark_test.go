@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -504,4 +505,179 @@ func validatePhase3_3Improvement(baseline, optimized Phase3_3Metrics) error {
 	}
 
 	return nil
+}
+
+// BenchmarkPipeline_Phase5_FileSplitting validates Phase 5 adaptive file splitting (Issue #69)
+// Expected: 23% improvement over baseline (311s → <240s) with 100 files @ 56GB
+func BenchmarkPipeline_Phase5_FileSplitting(b *testing.B) {
+	if !enableS3IntegrationTests() {
+		b.Skip("S3 integration tests disabled (set CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1)")
+	}
+
+	// Check if test data exists
+	testDataDir := "/Volumes/External HD/benchmark-data/large-files"
+	if _, err := os.Stat(testDataDir); os.IsNotExist(err) {
+		b.Skipf("Skipping Phase 5 benchmark: test data not found at %s", testDataDir)
+	}
+
+	// Verify file count
+	entries, err := os.ReadDir(testDataDir)
+	if err != nil {
+		b.Fatalf("Failed to read test data directory: %v", err)
+	}
+	fileCount := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			fileCount++
+		}
+	}
+	if fileCount < 100 {
+		b.Skipf("Skipping Phase 5 benchmark: expected 100 files, found %d", fileCount)
+	}
+
+	b.Logf("Using REAL AWS S3 for Phase 5 benchmark (100 files @ 56GB with file splitting)")
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		config := &PipelineConfig{
+			ScannerWorkers:  4,
+			ArchiverWorkers: 8,
+			UploaderWorkers: 8, // Same as Phase 4 baseline
+
+			ChunkBufferSize:   100,
+			ArchiveBufferSize: 100,
+			ResultBufferSize:  100,
+
+			S3Bucket: getTestBucket(),
+			S3Prefix: fmt.Sprintf("phase5-filesplit-%d", time.Now().Unix()),
+			S3Region: getTestRegion(),
+
+			UseRealS3:         true,
+			S3Client:          getTestS3Client(b),
+			S3PartSize:        64 * 1024 * 1024, // 64MB parts
+			EnableMultiPrefix: true,
+			ShardCount:        8,
+			WorkersPerPrefix:  1, // 8 total workers across 8 shards
+
+			// Phase 5: Enable file splitting with adaptive chunking
+			ChunkingConfig: &chunking.ChunkingConfig{
+				Workers:             8,
+				AvailableMemory:     4 * 1024 * 1024 * 1024, // 4GB
+				GroupingStrategy:    "mixed",
+				EnableFileSplitting: true,                          // KEY: Enable Phase 5 file splitting
+				MaxFileChunkSize:    200 * 1024 * 1024,             // 200MB chunks (for 560MB files = 3 chunks each)
+				TargetChunkSize:     200 * 1024 * 1024,             // 200MB target
+				MinChunkSize:        10 * 1024 * 1024,              // 10MB minimum
+				MaxChunkSize:        5 * 1024 * 1024 * 1024,        // 5GB maximum (S3 limit)
+				CostSavingsTarget:   100,                           // 100x cost savings target
+				LargeFileThreshold:  100 * 1024 * 1024,             // 100MB threshold
+				MultipartPartSize:   100 * 1024 * 1024,             // 100MB multipart parts
+				Bandwidth:           100 * 1024 * 1024,             // 100MB/s assumed bandwidth
+			},
+
+			EnableProgress: false,
+		}
+
+		pipeline, err := NewPipeline(config)
+		if err != nil {
+			b.Fatalf("Failed to create pipeline: %v", err)
+		}
+
+		ctx := context.Background()
+		startTime := time.Now()
+
+		result, err := pipeline.Run(ctx, testDataDir)
+		if err != nil {
+			b.Fatalf("Pipeline failed: %v", err)
+		}
+
+		if !result.Success {
+			b.Fatalf("Pipeline failed: %v", result.Errors)
+		}
+
+		duration := time.Since(startTime)
+
+		// Report results
+		totalGB := float64(result.TotalBytes) / (1024 * 1024 * 1024)
+		throughputMBps := float64(result.TotalBytes) / duration.Seconds() / (1024 * 1024)
+
+		b.Logf("\n=== Phase 5 File Splitting Results (Issue #69) ===")
+		b.Logf("Files:        %d", result.TotalFiles)
+		b.Logf("Total Size:   %.2f GB", totalGB)
+		b.Logf("Chunks:       %d", result.ChunksCreated)
+		b.Logf("Duration:     %v", duration)
+		b.Logf("Throughput:   %.2f MB/s", throughputMBps)
+	// Phase 5: Per-stage timing breakdown (instrumentation per user request)
+	// Write to separate file to avoid test logger truncation
+	stats := pipeline.GetStats()
+	stageFile, err := os.Create("/tmp/phase5-stage-breakdown.txt")
+	if err != nil {
+		b.Logf("WARNING: Failed to create stage breakdown file: %v", err)
+	} else {
+		defer stageFile.Close()
+		fmt.Fprintf(stageFile, "\n=== Phase 5 Stage Breakdown (Issue #69) ===\n")
+		fmt.Fprintf(stageFile, "Total Duration: %v\n\n", duration)
+
+		// Sort stage names for consistent output
+		stageNames := make([]string, 0, len(stats))
+		for name := range stats {
+			stageNames = append(stageNames, name)
+		}
+		sort.Strings(stageNames)
+
+		for _, name := range stageNames {
+			stat := stats[name]
+			pct := float64(stat.TotalTime) / float64(duration) * 100
+			avgTime := time.Duration(0)
+			if stat.JobsProcessed > 0 {
+				avgTime = stat.TotalTime / time.Duration(stat.JobsProcessed)
+			}
+			fmt.Fprintf(stageFile, "%-12s %12v (%5.1f%%) | %d jobs | avg %v/job\n",
+				name+":", stat.TotalTime, pct, stat.JobsProcessed, avgTime)
+		}
+		b.Logf("\n=== Phase 5 Stage Breakdown (Issue #69) ===")
+		b.Logf("Stage timing details written to: /tmp/phase5-stage-breakdown.txt")
+	}
+
+
+		b.Logf("\n=== Phase 5 Target Validation (Issue #69) ===")
+
+		// Phase 5 Target 1: Duration ≤240s (23% improvement over 311s baseline)
+		b.Logf("Target Time:  ≤240s (23%% improvement over 311s baseline)")
+		if duration.Seconds() <= 240 {
+			improvement := (311 - duration.Seconds()) / 311 * 100
+			b.Logf("✅ PASS: Completed in %.2fs (%.1f%% improvement)", duration.Seconds(), improvement)
+		} else {
+			b.Logf("❌ FAIL: Took %.2fs (%.2fx over 240s target)", duration.Seconds(), duration.Seconds()/240.0)
+			b.Logf("   Baseline was 311s, expected 23%% improvement to ≤240s")
+		}
+
+		// Phase 5 Target 2: ~300 chunks (3× parallelism from splitting 100 files)
+		b.Logf("Target Chunks: ~300 chunks (3× parallelism, 100 files @ 560MB → 200MB chunks)")
+		if result.ChunksCreated >= 250 && result.ChunksCreated <= 350 {
+			parallelism := float64(result.ChunksCreated) / 100.0
+			b.Logf("✅ PASS: Created %d chunks (%.1f× parallelism)", result.ChunksCreated, parallelism)
+		} else {
+			parallelism := float64(result.ChunksCreated) / 100.0
+			b.Logf("⚠️  WARN: Created %d chunks (%.1f× parallelism, expected ~300)", result.ChunksCreated, parallelism)
+		}
+
+		// Comparison with Phase 4 baseline
+		b.Logf("\n=== Comparison with Phase 4 Baseline ===")
+		baselineDuration := 311.0 // seconds (from Phase 4 benchmark)
+		improvement := (baselineDuration - duration.Seconds()) / baselineDuration * 100
+		b.Logf("Baseline:     311s (100 files @ 56GB, 8 workers, NO file splitting)")
+		b.Logf("Phase 5:      %.2fs (100 files @ 56GB, 8 workers, WITH file splitting)", duration.Seconds())
+		if improvement > 0 {
+			b.Logf("Improvement:  %.1f%% faster", improvement)
+		} else {
+			b.Logf("Regression:   %.1f%% slower", -improvement)
+		}
+
+		// Cleanup
+		if err := pipeline.Stop(); err != nil {
+			b.Logf("Warning: pipeline stop error: %v", err)
+		}
+	}
 }
