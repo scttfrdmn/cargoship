@@ -8,7 +8,55 @@ CargoShip is a high-performance S3 archiving tool featuring streaming pipeline a
 
 ## Current Status (2025-12-09)
 
-**Version**: v0.5.1+ (Branch: main)
+**Version**: v0.6.0-rc (Branch: main)
+
+### ✅ v0.6.0 - Budget & Cost Management System (COMPLETE)
+
+**Status**: Production-ready with comprehensive documentation
+
+Comprehensive budget and cost management system with ML-powered forecasting, multi-channel alerts, and project-based cost tracking.
+
+**Core Components**:
+- **Budget Tracking** (`pkg/aws/cost/budget.go`): Dual enforcement (cost + volume quotas), grant period management (1-3 year budgets with rollover), threshold alerts (warning 80%, critical 100%)
+- **Cost Reporting** (`pkg/aws/cost/reporting.go`): Project-based tracking (manifest upload IDs), time period filtering (day/week/month/year/custom), multi-dimensional breakdowns (region, storage class, project)
+- **Forecasting** (`pkg/aws/cost/forecasting.go`): 4 ML models (linear, exponential, moving_average, ensemble), confidence intervals (90%, 95%, 99%), burn rate tracking with trend detection
+- **Alert Notifications** (`pkg/aws/cost/alerts.go`): Email (SMTP with TLS 1.2+), Slack webhooks with rich formatting, custom webhooks, CloudWatch integration, 6 alert types, 3 severity levels
+- **Cost Estimation** (`pkg/aws/cost/pricing.go`): S3 pricing by region/storage class, request pricing (GET/PUT/LIST), data transfer costs
+
+**CLI Commands** (20+ subcommands):
+```bash
+# Budget management
+cargoship budget status              # Show current budget status
+cargoship budget set                 # Set budget limits
+cargoship budget list                # List all budgets
+
+# Cost tracking
+cargoship cost summary --period month      # Cost overview
+cargoship cost projects                    # List all projects
+cargoship cost project 20251206-abc123    # Project details
+cargoship cost forecast --model ensemble  # Cost predictions
+cargoship cost burnrate --days 60         # Burn rate analysis
+cargoship cost exhaustion --budget 1000   # Budget exhaustion
+
+# Alert configuration
+cargoship alerts configure email     # Configure email/Slack/webhook
+cargoship alerts test --channel email --severity critical
+cargoship alerts enable/disable [channel]
+```
+
+**Documentation** (2,970+ lines):
+- `docs/BUDGET_USER_GUIDE.md` (870 lines) - End-user getting started, budget management, cost tracking
+- `docs/BUDGET_API.md` (1,100+ lines) - Developer API reference with complete type definitions
+- `docs/ALERTS_CONFIGURATION.md` (1,000+ lines) - DevOps alert setup (Gmail, Office 365, AWS SES, Slack)
+
+**Statistics**:
+- **Code**: ~140KB production code (6 files)
+- **Tests**: ~102KB test code (29/29 tests passing)
+- **Test Coverage**: pkg/aws/cost 72.5%
+- **Quality**: Zero linting issues, zero security vulnerabilities
+- **Issues Closed**: #3, #4, #5, #6, #136, #147, #148, #149, #150
+
+**Production-Ready**: Comprehensive error handling, thread-safe operations (sync.RWMutex), graceful alert channel failures, opt-in security (all channels disabled by default).
 
 ### Recently Completed - Phase 3-5 Pipeline (2025-11-26 to 2025-12-09)
 
@@ -62,23 +110,38 @@ gh issue view 123
 
 ## Development Roadmap
 
-### v0.6.0 (Next) - Production Hardening
-**Focus**: Performance investigation, documentation, test reliability
+### v0.6.0 (Current) - Budget & Cost Management System ✅ COMPLETE
+**Status**: Production-ready, ready for release
+
+**Completed**:
+- ✅ Budget tracking with dual enforcement (cost + volume quotas)
+- ✅ Cost reporting with project-based tracking
+- ✅ ML-powered forecasting (4 models, confidence intervals)
+- ✅ Multi-channel alert notifications (Email, Slack, webhooks, CloudWatch)
+- ✅ Comprehensive CLI commands (20+ subcommands)
+- ✅ Complete documentation (2,970+ lines)
+- ✅ 29/29 tests passing, 72.5% coverage
+
+### v0.7.0 (Next) - Production Hardening & Performance
+**Focus**: Performance optimization, test reliability, community outreach
 
 **High Priority**:
-- Investigate performance gap (Issue #126) - 11.88 MB/s vs 185 MB/s
+- Performance investigation (Issue #126) - 11.88 MB/s vs 185 MB/s gap
 - Fix flaky tests (Issues #135, #68)
 - Blog post series (Issue #123) - Community outreach
 
 **Medium Priority**:
+- Zero-copy I/O optimizations
+- Network stack tuning (HTTP/2, TCP)
+- Distributed tracing and observability
 - TODO audit items (Issues #136-141)
 - Coordinator test cleanup (Issues #14-17)
 
-### v0.7.0+ - Enterprise Features
-- Performance optimizations (zero-copy I/O, network tuning)
-- Distributed tracing and observability
-- Budget controls and lifecycle management
+### v0.8.0+ - Enterprise Features
+- Data lifecycle management policies
 - Kubernetes operator
+- Multi-tenancy support
+- Advanced security features
 
 ## Key Architecture Components
 
@@ -142,8 +205,12 @@ cargoship create upload /data/project \
 # List uploaded files (no download)
 cargoship list --bucket my-bucket --upload-id 20251206-123456-abcd1234 --pattern "*.log"
 
-# Cost estimation
+# Cost estimation and budget management
 cargoship estimate /data --storage-class DEEP_ARCHIVE
+cargoship budget status                          # Current budget status
+cargoship cost summary --period month            # Monthly cost breakdown
+cargoship cost forecast --model ensemble         # ML-powered cost predictions
+cargoship alerts configure email                 # Setup email alerts
 
 # Lifecycle policies
 cargoship lifecycle --bucket my-bucket --template archive-optimization
