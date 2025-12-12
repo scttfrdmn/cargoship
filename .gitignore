@@ -40,3 +40,5 @@ docs/archive/
 # Temporary development artifacts
 temp_*
 working_*
+public/
+site/

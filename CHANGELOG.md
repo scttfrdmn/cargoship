@@ -8,12 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned for v0.7.0
-- Performance investigation and optimization (Issue #126)
-- Fix flaky tests (Issues #135, #68)
+- Performance investigation and optimization (Issue #126) ✅ CLOSED
+- Fix flaky tests (Issues #135, #68) ✅ CLOSED
 - Blog post series for community outreach (Issue #123)
-- Zero-copy I/O optimizations
-- Network stack tuning (HTTP/2, TCP)
-- Distributed tracing and observability
+- Zero-copy I/O optimizations (Issue #153)
+- Network stack tuning: HTTP/2 and TCP (Issue #154)
+- Distributed tracing and observability (Issue #155)
 
 ## [0.6.0] - 2025-12-09
 

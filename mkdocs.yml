@@ -37,8 +37,8 @@ theme:
 
 plugins:
   - search
-  - awesome-pages:
-      strict: false
+  # - awesome-pages:
+  #     strict: false
 
 markdown_extensions:
   - def_list
@@ -83,6 +83,13 @@ nav:
     - Quick Start Wizard: wizard.md
     - User Guide: USER_GUIDE.md
     - Basic Configuration: advanced/defaults_overrides.md
+  - Blog:
+    - Overview: blog/index.md
+    - "Part 1: Why We Built CargoShip": blog/post-1-why-we-built-cargoship.md
+    - "Part 2: Zero-Disk Streaming": blog/post-2-zero-disk-streaming.md
+    - "Part 3: 8x S3 Performance": blog/post-3-multi-prefix-sharding.md
+    - "Part 4: Save 90% on S3 Costs": blog/post-4-cost-optimization.md
+    - "Part 5: Open Format, Open Source": blog/post-5-open-source.md
   - Core Features:
     - Architecture: ARCHITECTURE.md
     - Components:
