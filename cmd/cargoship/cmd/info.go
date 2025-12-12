@@ -28,7 +28,7 @@ func NewInfoCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "info",
+		Use:   "info [s3://bucket/prefix/uploads/upload-id]",
 		Short: "Display metadata and statistics for a CargoShip upload",
 		Long: `Display comprehensive metadata for a CargoShip upload without downloading data.
 
@@ -46,24 +46,55 @@ This is useful for:
 - Auditing archived datasets
 
 Examples:
-  # Display basic upload information
-  cargoship info --bucket my-bucket --upload-id 20231208-123456-abcd1234
+  # Using S3 URL (Issue #98)
+  cargoship info s3://my-bucket/cargoship/uploads/20231208-123456-abcd1234
+
+  # Using flags (backward compatibility)
+  cargoship info --bucket my-bucket --prefix cargoship --upload-id 20231208-123456-abcd1234
 
   # Show detailed per-shard statistics
-  cargoship info --bucket my-bucket --upload-id 20231208-123456-abcd1234 --verbose
+  cargoship info s3://my-bucket/cargoship/uploads/20231208-123456-abcd1234 --verbose
 
   # Output as JSON for scripting
-  cargoship info --bucket my-bucket --upload-id 20231208-123456-abcd1234 --json
+  cargoship info s3://my-bucket/cargoship/uploads/20231208-123456-abcd1234 --json
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
 
-			// Validate required flags
+			// Parse S3 URL from positional argument if provided (Issue #98)
+			if len(args) > 0 {
+				s3URL := args[0]
+				parsedBucket, parsedPath, err := manifest.ParseS3URL(s3URL)
+				if err != nil {
+					return fmt.Errorf("invalid S3 URL: %w", err)
+				}
+
+				// Extract prefix and upload ID from path
+				// Expected format: prefix/uploads/upload-id
+				// Or just: uploads/upload-id (if no prefix)
+				parsedPrefix, parsedUploadID, err := parseUploadPath(parsedPath)
+				if err != nil {
+					return fmt.Errorf("invalid upload path in S3 URL: %w", err)
+				}
+
+				// Override flags with parsed values (only if not already set)
+				if bucket == "" {
+					bucket = parsedBucket
+				}
+				if prefix == "" {
+					prefix = parsedPrefix
+				}
+				if uploadID == "" {
+					uploadID = parsedUploadID
+				}
+			}
+
+			// Validate required parameters
 			if bucket == "" {
-				return fmt.Errorf("--bucket is required")
+				return fmt.Errorf("bucket is required (provide S3 URL or use --bucket flag)")
 			}
 			if uploadID == "" {
-				return fmt.Errorf("--upload-id is required")
+				return fmt.Errorf("upload-id is required (provide S3 URL or use --upload-id flag)")
 			}
 
 			// Load AWS config
@@ -227,19 +258,12 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVarP(&bucket, "bucket", "b", "", "S3 bucket name (required)")
+	cmd.Flags().StringVarP(&bucket, "bucket", "b", "", "S3 bucket name (or provide S3 URL as argument)")
 	cmd.Flags().StringVarP(&prefix, "prefix", "p", "", "S3 prefix for upload (default: empty)")
-	cmd.Flags().StringVarP(&uploadID, "upload-id", "u", "", "Upload ID to inspect (required)")
+	cmd.Flags().StringVarP(&uploadID, "upload-id", "u", "", "Upload ID to inspect (or provide S3 URL as argument)")
 	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "Show detailed per-shard statistics")
 	cmd.Flags().BoolVar(&json, "json", false, "Output manifest as JSON for scripting")
-
-	if err := cmd.MarkFlagRequired("bucket"); err != nil {
-		panic(fmt.Sprintf("failed to mark bucket flag as required: %v", err))
-	}
-	if err := cmd.MarkFlagRequired("upload-id"); err != nil {
-		panic(fmt.Sprintf("failed to mark upload-id flag as required: %v", err))
-	}
 
 	return cmd
 }
@@ -247,4 +271,48 @@ Examples:
 // makeHeader creates a formatted section header
 func makeHeader(title string) string {
 	return fmt.Sprintf("\033[1m%s\033[0m", title) // Bold text
+}
+
+// parseUploadPath extracts prefix and upload ID from an S3 path
+// Expected formats:
+//   - "uploads/upload-id" (no prefix)
+//   - "prefix/uploads/upload-id" (with prefix)
+//   - "prefix/subdir/uploads/upload-id" (nested prefix)
+func parseUploadPath(path string) (prefix, uploadID string, err error) {
+	if path == "" {
+		return "", "", fmt.Errorf("path cannot be empty")
+	}
+
+	// Find "/uploads/" in the path
+	uploadsMarker := "/uploads/"
+	idx := -1
+	for i := 0; i <= len(path)-len(uploadsMarker); i++ {
+		if path[i:i+len(uploadsMarker)] == uploadsMarker {
+			idx = i
+			break
+		}
+	}
+
+	// Handle "uploads/upload-id" (starts with uploads/)
+	if idx == -1 {
+		if len(path) >= 8 && path[:8] == "uploads/" {
+			// No prefix
+			uploadID = path[8:]
+			if uploadID == "" {
+				return "", "", fmt.Errorf("upload ID cannot be empty")
+			}
+			return "", uploadID, nil
+		}
+		return "", "", fmt.Errorf("path must contain '/uploads/' or start with 'uploads/'")
+	}
+
+	// Extract prefix and upload ID
+	prefix = path[:idx]
+	uploadID = path[idx+len(uploadsMarker):]
+
+	if uploadID == "" {
+		return "", "", fmt.Errorf("upload ID cannot be empty")
+	}
+
+	return prefix, uploadID, nil
 }
