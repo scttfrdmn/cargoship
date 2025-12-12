@@ -336,6 +336,9 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 			)
 
 			s.pipeline.manifestMu.Unlock()
+
+			// Issue #158: Track uploaded key for cleanup on failure
+			s.pipeline.trackUploadedKey(job.S3Key)
 		}
 
 		return nil

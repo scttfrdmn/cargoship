@@ -99,6 +99,10 @@ type Pipeline struct {
 	// Manifest tracking
 	manifestBuilder interface{} // *manifest.Builder for tracking files/chunks (type: *github.com/scttfrdmn/cargoship/pkg/manifest.Builder)
 	manifestMu      sync.Mutex  // Protects manifest updates
+
+	// Cleanup tracking (Issue #158)
+	uploadedKeys   []string   // All uploaded S3 keys for cleanup on failure
+	uploadedKeysMu sync.Mutex // Protects uploadedKeys list
 }
 
 // PipelineConfig contains configuration for the pipeline
@@ -162,6 +166,9 @@ type PipelineConfig struct {
 	// Partial manifest saving (Issue #157: Resume capability)
 	EnablePartialManifest       bool          // Enable periodic manifest saves (default: true for real S3)
 	PartialManifestSaveInterval time.Duration // How often to save partial manifest (default: 30s)
+
+	// Cleanup configuration (Issue #158: Automatic cleanup on failure)
+	CleanupOnFailure bool // Automatically delete partial uploads on error (default: true)
 }
 
 // Progress represents current pipeline progress
@@ -218,7 +225,9 @@ type Result struct {
 	TotalTime      time.Duration
 	Errors         []error
 	Progress       Progress
-	FailedJobs     []*Job // Issue #103: Track failed jobs for detailed error reporting
+	FailedJobs     []*Job   // Issue #103: Track failed jobs for detailed error reporting
+	UploadedKeys   []string // Issue #158: Track all uploaded S3 keys for cleanup on failure
+	UploadID       string   // Issue #158: Upload ID for cleanup operations
 }
 
 // ScannerConfig configures the scanner stage

@@ -74,6 +74,10 @@ architecture that provides:
 	cmd.Flags().String("upload-id", "", "Upload ID to resume (auto-detect if not specified)")
 	cmd.Flags().Bool("skip-existing", false, "Skip chunks that already exist in S3 (HeadObject check)")
 
+	// Cleanup flags (Issue #158)
+	cmd.Flags().Bool("cleanup-on-failure", true, "Automatically delete partial uploads on error")
+	cmd.Flags().Bool("no-cleanup", false, "Disable automatic cleanup on failure (for debugging)")
+
 	// Mark required flags
 	_ = cmd.MarkFlagRequired("bucket")
 
@@ -129,6 +133,13 @@ func createPipelineRunE(cmd *cobra.Command, args []string) error {
 	resumeMode, _ := cmd.Flags().GetBool("resume")
 	uploadID, _ := cmd.Flags().GetString("upload-id")
 	skipExisting, _ := cmd.Flags().GetBool("skip-existing")
+	cleanupOnFailure, _ := cmd.Flags().GetBool("cleanup-on-failure")
+	noCleanup, _ := cmd.Flags().GetBool("no-cleanup")
+
+	// Handle --no-cleanup flag (overrides --cleanup-on-failure)
+	if noCleanup {
+		cleanupOnFailure = false
+	}
 
 	// Build HTTP transport configuration based on network profile and flags
 	var httpConfig *cargoconfig.HTTPTransportConfig
@@ -215,6 +226,9 @@ func createPipelineRunE(cmd *cobra.Command, args []string) error {
 		PartialManifestSaveInterval: 30 * time.Second,
 		EnableManifest:              true,
 		SourcePath:                  sourceDirs[0], // Use first source dir for manifest
+
+		// Cleanup configuration (Issue #158)
+		CleanupOnFailure: cleanupOnFailure,
 	}
 
 	// Override chunk size if specified

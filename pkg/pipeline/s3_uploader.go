@@ -240,6 +240,11 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 		}
 		s.mu.Unlock()
 
+		// Issue #158: Track uploaded key for cleanup on failure
+		if s.pipeline != nil {
+			s.pipeline.trackUploadedKey(job.S3Key)
+		}
+
 		return nil
 	}
 

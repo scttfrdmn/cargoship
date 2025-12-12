@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
 
@@ -205,11 +206,31 @@ func (p *Pipeline) Run(ctx context.Context, rootPath string) (*Result, error) {
 	// Wait for completion
 	result := p.waitForCompletion(ctx)
 
+	// Copy uploaded keys to result (Issue #158)
+	p.uploadedKeysMu.Lock()
+	result.UploadedKeys = append([]string(nil), p.uploadedKeys...)
+	result.UploadID = p.config.UploadID
+	p.uploadedKeysMu.Unlock()
+
 	// Check for scanner errors
 	if scannerErr := p.scanner.Error(); scannerErr != nil {
 		result.Success = false
 		result.Errors = append(result.Errors, scannerErr)
+
+		// Issue #158: Cleanup partial upload on failure
+		if err := p.cleanupPartialUpload(ctx); err != nil {
+			// Log but don't override the original error
+			fmt.Printf("Warning: Cleanup failed: %v\n", err)
+		}
+
 		return result, scannerErr
+	}
+
+	// Issue #158: Check if upload failed and cleanup if needed
+	if !result.Success {
+		if err := p.cleanupPartialUpload(ctx); err != nil {
+			fmt.Printf("Warning: Cleanup failed: %v\n", err)
+		}
 	}
 
 	return result, nil
@@ -776,4 +797,70 @@ func (p *Pipeline) GetStats() map[string]StageStats {
 	}
 
 	return stats
+}
+
+// trackUploadedKey adds an S3 key to the list of uploaded keys for cleanup (Issue #158)
+func (p *Pipeline) trackUploadedKey(s3Key string) {
+	p.uploadedKeysMu.Lock()
+	defer p.uploadedKeysMu.Unlock()
+	p.uploadedKeys = append(p.uploadedKeys, s3Key)
+}
+
+// cleanupPartialUpload deletes uploaded chunks and partial manifest on failure (Issue #158)
+func (p *Pipeline) cleanupPartialUpload(ctx context.Context) error {
+	if !p.config.CleanupOnFailure || !p.config.UseRealS3 {
+		return nil
+	}
+
+	s3Client := p.config.S3Client.(*s3.Client)
+
+	p.uploadedKeysMu.Lock()
+	keys := append([]string(nil), p.uploadedKeys...)
+	p.uploadedKeysMu.Unlock()
+
+	if len(keys) == 0 {
+		return nil
+	}
+
+	fmt.Printf("\n🧹 Cleaning up %d partial chunks...\n", len(keys))
+
+	// Add partial manifest to cleanup list
+	partialManifestKey := fmt.Sprintf("%s/uploads/%s/manifest.partial.json.gz", p.config.S3Prefix, p.config.UploadID)
+	keys = append(keys, partialManifestKey)
+
+	// DeleteObjects supports up to 1000 keys per request
+	var deletedCount int
+	for i := 0; i < len(keys); i += 1000 {
+		end := i + 1000
+		if end > len(keys) {
+			end = len(keys)
+		}
+		batch := keys[i:end]
+
+		// Build delete request
+		objects := make([]types.ObjectIdentifier, len(batch))
+		for j, key := range batch {
+			objects[j] = types.ObjectIdentifier{
+				Key: aws.String(key),
+			}
+		}
+
+		_, err := s3Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: aws.String(p.config.S3Bucket),
+			Delete: &types.Delete{
+				Objects: objects,
+				Quiet:   aws.Bool(true), // Don't return successfully deleted objects
+			},
+		})
+
+		if err != nil {
+			// Log but don't fail - cleanup is best effort
+			fmt.Printf("⚠️  Warning: Failed to delete some objects: %v\n", err)
+		} else {
+			deletedCount += len(batch)
+		}
+	}
+
+	fmt.Printf("✅ Cleanup complete: %d objects deleted\n", deletedCount)
+	return nil
 }
