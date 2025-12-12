@@ -49,6 +49,9 @@ type S3Config struct {
 
 	// Enable transfer acceleration
 	UseTransferAcceleration bool `yaml:"use_transfer_acceleration" json:"use_transfer_acceleration"`
+
+	// HTTP transport configuration for network tuning (optional)
+	HTTPTransport *HTTPTransportConfig `yaml:"http_transport,omitempty" json:"http_transport,omitempty"`
 }
 
 // CostControlConfig holds cost management settings

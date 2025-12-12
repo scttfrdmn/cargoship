@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -48,18 +49,20 @@ var globalS3ClientCache = &S3ClientCache{
 
 // GetOrCreateS3Client retrieves a cached S3 client or creates a new one
 // This dramatically improves performance by reusing HTTP/2 connections and credentials
-func GetOrCreateS3Client(ctx context.Context, bucket, region, profile string) (*s3.Client, error) {
+// httpConfig is optional; if nil, default AWS SDK transport settings are used
+func GetOrCreateS3Client(ctx context.Context, bucket, region, profile string, httpConfig *HTTPTransportConfig) (*s3.Client, error) {
 	key := ClientCacheKey{
 		Bucket:  bucket,
 		Region:  region,
 		Profile: profile,
 	}
 
-	return globalS3ClientCache.GetOrCreate(ctx, key)
+	return globalS3ClientCache.GetOrCreate(ctx, key, httpConfig)
 }
 
 // GetOrCreate retrieves a cached S3 client or creates a new one
-func (c *S3ClientCache) GetOrCreate(ctx context.Context, key ClientCacheKey) (*s3.Client, error) {
+// httpConfig is optional; if nil, default AWS SDK transport settings are used
+func (c *S3ClientCache) GetOrCreate(ctx context.Context, key ClientCacheKey, httpConfig *HTTPTransportConfig) (*s3.Client, error) {
 	keyHash := key.Hash()
 
 	// Fast path: check if client already cached
@@ -79,8 +82,8 @@ func (c *S3ClientCache) GetOrCreate(ctx context.Context, key ClientCacheKey) (*s
 		return client, nil
 	}
 
-	// Create new AWS config and S3 client
-	cfg, err := c.loadAWSConfig(ctx, key)
+	// Create new AWS config and S3 client with custom HTTP transport
+	cfg, err := c.loadAWSConfig(ctx, key, httpConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config for %s: %w", key.String(), err)
 	}
@@ -94,8 +97,8 @@ func (c *S3ClientCache) GetOrCreate(ctx context.Context, key ClientCacheKey) (*s
 	return client, nil
 }
 
-// loadAWSConfig loads AWS configuration with the specified region and profile
-func (c *S3ClientCache) loadAWSConfig(ctx context.Context, key ClientCacheKey) (aws.Config, error) {
+// loadAWSConfig loads AWS configuration with the specified region, profile, and HTTP transport settings
+func (c *S3ClientCache) loadAWSConfig(ctx context.Context, key ClientCacheKey, httpConfig *HTTPTransportConfig) (aws.Config, error) {
 	var opts []func(*awsconfig.LoadOptions) error
 
 	// Set region if specified
@@ -106,6 +109,15 @@ func (c *S3ClientCache) loadAWSConfig(ctx context.Context, key ClientCacheKey) (
 	// Set profile if specified
 	if key.Profile != "" {
 		opts = append(opts, awsconfig.WithSharedConfigProfile(key.Profile))
+	}
+
+	// Add custom HTTP client with tuned transport
+	if httpConfig != nil {
+		customTransport := httpConfig.BuildTransport()
+		customClient := &http.Client{
+			Transport: customTransport,
+		}
+		opts = append(opts, awsconfig.WithHTTPClient(customClient))
 	}
 
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)

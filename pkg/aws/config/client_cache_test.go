@@ -67,7 +67,7 @@ func TestS3ClientCache_BasicCaching(t *testing.T) {
 	}
 
 	// First call should create client
-	client1, err := cache.GetOrCreate(ctx, key)
+	client1, err := cache.GetOrCreate(ctx, key, nil)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestS3ClientCache_BasicCaching(t *testing.T) {
 	}
 
 	// Second call should return cached client
-	client2, err := cache.GetOrCreate(ctx, key)
+	client2, err := cache.GetOrCreate(ctx, key, nil)
 	if err != nil {
 		t.Fatalf("Failed to get cached client: %v", err)
 	}
@@ -114,12 +114,12 @@ func TestS3ClientCache_MultipleRegions(t *testing.T) {
 	}
 
 	// Create clients for different regions
-	client1, err := cache.GetOrCreate(ctx, key1)
+	client1, err := cache.GetOrCreate(ctx, key1, nil)
 	if err != nil {
 		t.Fatalf("Failed to create client for us-west-2: %v", err)
 	}
 
-	client2, err := cache.GetOrCreate(ctx, key2)
+	client2, err := cache.GetOrCreate(ctx, key2, nil)
 	if err != nil {
 		t.Fatalf("Failed to create client for us-east-1: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestS3ClientCache_ConcurrentAccess(t *testing.T) {
 
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
-			client, err := cache.GetOrCreate(ctx, key)
+			client, err := cache.GetOrCreate(ctx, key, nil)
 			if err != nil {
 				errors <- err
 				return
@@ -205,7 +205,7 @@ func TestS3ClientCache_Clear(t *testing.T) {
 	}
 
 	// Create client
-	_, err := cache.GetOrCreate(ctx, key)
+	_, err := cache.GetOrCreate(ctx, key, nil)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -244,12 +244,12 @@ func TestS3ClientCache_Invalidate(t *testing.T) {
 	}
 
 	// Create two clients
-	_, err := cache.GetOrCreate(ctx, key1)
+	_, err := cache.GetOrCreate(ctx, key1, nil)
 	if err != nil {
 		t.Fatalf("Failed to create client 1: %v", err)
 	}
 
-	_, err = cache.GetOrCreate(ctx, key2)
+	_, err = cache.GetOrCreate(ctx, key2, nil)
 	if err != nil {
 		t.Fatalf("Failed to create client 2: %v", err)
 	}
@@ -287,7 +287,7 @@ func TestGetOrCreateS3Client_GlobalCache(t *testing.T) {
 	ClearGlobalCache()
 
 	// Create client using global cache
-	client1, err := GetOrCreateS3Client(ctx, "test-bucket", "us-west-2", "")
+	client1, err := GetOrCreateS3Client(ctx, "test-bucket", "us-west-2", "", nil)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -297,7 +297,7 @@ func TestGetOrCreateS3Client_GlobalCache(t *testing.T) {
 	}
 
 	// Get same client again
-	client2, err := GetOrCreateS3Client(ctx, "test-bucket", "us-west-2", "")
+	client2, err := GetOrCreateS3Client(ctx, "test-bucket", "us-west-2", "", nil)
 	if err != nil {
 		t.Fatalf("Failed to get cached client: %v", err)
 	}
@@ -321,12 +321,12 @@ func TestGetOrCreateS3Client_DifferentBuckets(t *testing.T) {
 	ClearGlobalCache()
 
 	// Create clients for different buckets
-	client1, err := GetOrCreateS3Client(ctx, "bucket-1", "us-west-2", "")
+	client1, err := GetOrCreateS3Client(ctx, "bucket-1", "us-west-2", "", nil)
 	if err != nil {
 		t.Fatalf("Failed to create client 1: %v", err)
 	}
 
-	client2, err := GetOrCreateS3Client(ctx, "bucket-2", "us-west-2", "")
+	client2, err := GetOrCreateS3Client(ctx, "bucket-2", "us-west-2", "", nil)
 	if err != nil {
 		t.Fatalf("Failed to create client 2: %v", err)
 	}
@@ -357,12 +357,12 @@ func BenchmarkS3ClientCache_GetOrCreate(b *testing.B) {
 	}
 
 	// Pre-create client for benchmark (avoid first-time creation overhead)
-	_, _ = cache.GetOrCreate(ctx, key)
+	_, _ = cache.GetOrCreate(ctx, key, nil)
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = cache.GetOrCreate(ctx, key)
+		_, _ = cache.GetOrCreate(ctx, key, nil)
 	}
 }
 
@@ -380,12 +380,12 @@ func BenchmarkS3ClientCache_ConcurrentGetOrCreate(b *testing.B) {
 	}
 
 	// Pre-create client
-	_, _ = cache.GetOrCreate(ctx, key)
+	_, _ = cache.GetOrCreate(ctx, key, nil)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, _ = cache.GetOrCreate(ctx, key)
+			_, _ = cache.GetOrCreate(ctx, key, nil)
 		}
 	})
 }

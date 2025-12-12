@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	cargoconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 )
 
@@ -39,11 +40,11 @@ architecture that provides:
 
   # JSON progress output (for scripts)
   cargoship create upload /path/to/data --bucket my-bucket --progress-format json`,
-		Args:             cobra.MinimumNArgs(1),
-		RunE:             createPipelineRunE,
-		PreRunE:          createPipelinePreRunE,
-		SilenceUsage:     true,
-		SilenceErrors:    false,
+		Args:          cobra.MinimumNArgs(1),
+		RunE:          createPipelineRunE,
+		PreRunE:       createPipelinePreRunE,
+		SilenceUsage:  true,
+		SilenceErrors: false,
 	}
 
 	// S3 configuration flags
@@ -60,6 +61,13 @@ architecture that provides:
 	cmd.Flags().Int("shards", 8, "Number of S3 prefix shards for parallel uploads")
 	cmd.Flags().Int("workers", 4, "Workers per stage (scanner, archiver, uploader)")
 	cmd.Flags().Int64("chunk-size-mb", 200, "Target chunk size in MB (0 = adaptive)")
+
+	// Network tuning flags
+	cmd.Flags().String("network-profile", "default", "Network tuning profile: default, aggressive, conservative")
+	cmd.Flags().Bool("http2", true, "Enable HTTP/2")
+	cmd.Flags().Int("http2-max-streams", 250, "Max concurrent HTTP/2 streams per connection")
+	cmd.Flags().Int("max-idle-conns", 100, "Max idle connections per host")
+	cmd.Flags().Duration("idle-conn-timeout", 300*time.Second, "Idle connection timeout")
 
 	// Mark required flags
 	_ = cmd.MarkFlagRequired("bucket")
@@ -108,17 +116,43 @@ func createPipelineRunE(cmd *cobra.Command, args []string) error {
 	shardCount, _ := cmd.Flags().GetInt("shards")
 	workers, _ := cmd.Flags().GetInt("workers")
 	chunkSizeMB, _ := cmd.Flags().GetInt64("chunk-size-mb")
+	networkProfile, _ := cmd.Flags().GetString("network-profile")
+	enableHTTP2, _ := cmd.Flags().GetBool("http2")
+	maxStreams, _ := cmd.Flags().GetInt("http2-max-streams")
+	maxIdleConns, _ := cmd.Flags().GetInt("max-idle-conns")
+	idleConnTimeout, _ := cmd.Flags().GetDuration("idle-conn-timeout")
 
-	// Load AWS config
-	awsConfig, err := config.LoadDefaultConfig(ctx,
-		config.WithRegion(region),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
+	// Build HTTP transport configuration based on network profile and flags
+	var httpConfig *cargoconfig.HTTPTransportConfig
+	switch networkProfile {
+	case "aggressive":
+		httpConfig = cargoconfig.AggressiveHTTPTransportConfig()
+	case "conservative":
+		httpConfig = cargoconfig.ConservativeHTTPTransportConfig()
+	default:
+		httpConfig = cargoconfig.DefaultHTTPTransportConfig()
 	}
 
-	// Create S3 client
-	s3Client := s3.NewFromConfig(awsConfig)
+	// Apply CLI flag overrides
+	if cmd.Flags().Changed("http2") {
+		httpConfig.EnableHTTP2 = enableHTTP2
+	}
+	if cmd.Flags().Changed("http2-max-streams") {
+		httpConfig.MaxConcurrentStreams = maxStreams
+	}
+	if cmd.Flags().Changed("max-idle-conns") {
+		httpConfig.MaxIdleConnsPerHost = maxIdleConns
+		httpConfig.MaxConnsPerHost = maxIdleConns
+	}
+	if cmd.Flags().Changed("idle-conn-timeout") {
+		httpConfig.IdleConnTimeout = idleConnTimeout
+	}
+
+	// Create S3 client with optimized HTTP transport
+	s3Client, err := cargoconfig.GetOrCreateS3Client(ctx, bucket, region, "", httpConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create S3 client: %w", err)
+	}
 
 	// Verify bucket exists and is accessible
 	_, err = s3Client.HeadBucket(ctx, &s3.HeadBucketInput{
