@@ -838,8 +838,8 @@ func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, file chunki
 		return fmt.Errorf("failed to write tar header: %w", err)
 	}
 
-	// Copy file content with length limit (zero-copy optimized)
-	if _, err := ioutils.CopyN(tw, f, length); err != nil {
+	// Copy file content with length limit (platform-specific zero-copy)
+	if err := s.copyFileToArchive(tw, f, length); err != nil {
 		return fmt.Errorf("failed to write file content: %w", err)
 	}
 
