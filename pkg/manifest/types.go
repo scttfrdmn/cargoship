@@ -107,22 +107,27 @@ type ShardEntry struct {
 
 // ManifestQuery provides query capabilities for the manifest
 type ManifestQuery struct {
-	manifest *Manifest
+	manifest  *Manifest
+	fileIndex map[string]*FileEntry // O(1) lookup index for files by path
 }
 
 // NewManifestQuery creates a new query interface for a manifest
 func NewManifestQuery(m *Manifest) *ManifestQuery {
-	return &ManifestQuery{manifest: m}
+	// Build file index for O(1) lookups
+	fileIndex := make(map[string]*FileEntry, len(m.Files))
+	for i := range m.Files {
+		fileIndex[m.Files[i].Path] = &m.Files[i]
+	}
+
+	return &ManifestQuery{
+		manifest:  m,
+		fileIndex: fileIndex,
+	}
 }
 
-// FindFile finds a file by exact path
+// FindFile finds a file by exact path using O(1) hash map lookup
 func (mq *ManifestQuery) FindFile(path string) *FileEntry {
-	for i := range mq.manifest.Files {
-		if mq.manifest.Files[i].Path == path {
-			return &mq.manifest.Files[i]
-		}
-	}
-	return nil
+	return mq.fileIndex[path]
 }
 
 // ListFiles returns all files, optionally filtered by glob pattern

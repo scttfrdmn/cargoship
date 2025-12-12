@@ -706,13 +706,11 @@ func TestManifestQuery_FindFile_Performance(t *testing.T) {
 	elapsed := time.Since(start)
 	avgPerLookup := elapsed / time.Duration(iterations*3)
 
-	// NOTE: Current implementation uses linear search O(n)
-	// For 10K files, average case scans ~5K files per lookup
-	// This is acceptable for datasets up to ~100K files
-	t.Logf("Average lookup time for %d files: %v (linear search O(n))", numFiles, avgPerLookup)
+	// With O(1) hash map index, lookups should be nearly instantaneous
+	t.Logf("Average lookup time for %d files: %v (hash map O(1))", numFiles, avgPerLookup)
 
-	// Verify performance is reasonable for 10K files
-	assert.Less(t, avgPerLookup, 10*time.Millisecond, "Lookup should complete in reasonable time for 10K files")
+	// Verify O(1) performance - should be microseconds, not milliseconds
+	assert.Less(t, avgPerLookup, 100*time.Microsecond, "O(1) hash map lookup should be <100μs even for 10K files")
 }
 
 // TestManifestQuery_Performance_1MFiles tests performance with 1M files (Issue #94)
@@ -756,11 +754,10 @@ func TestManifestQuery_Performance_1MFiles(t *testing.T) {
 
 	t.Logf("Total lookup time: %v for %d lookups, average per lookup: %v", lookupTime, iterations, avgLookup)
 
-	// NOTE: Current implementation uses linear search O(n), not hash map O(1)
-	// This test documents actual performance characteristics
-	// For 1M files with distributed lookups, average case is O(n/2) = 500K iterations
-	// Performance is acceptable for current use case but could be optimized with map index
-	t.Logf("Current implementation uses linear search O(n) - average lookup scans ~%d files", numFiles/2)
+	// With O(1) hash map index, lookups should be constant time regardless of dataset size
+	// Target: <10μs per lookup even with 1M files (Issue #159)
+	t.Logf("Hash map O(1) lookup - performance independent of file count")
+	assert.Less(t, avgLookup, 10*time.Microsecond, "O(1) hash map lookup should be <10μs even for 1M files")
 
 	// Test selective extraction (100 files from 1M) - Issue #94 acceptance criteria
 	pattern := "dir0/*/file*.txt"
@@ -807,6 +804,41 @@ func TestManifest_MemoryUsage(t *testing.T) {
 	// Memory usage is implicit (managed by Go runtime)
 	// The map structure should be efficient - O(n) space for n files
 	t.Logf("Created index for %d files", numFiles)
+}
+
+// TestManifestQuery_IndexVerification verifies O(1) hash map index is built and used (Issue #159)
+func TestManifestQuery_IndexVerification(t *testing.T) {
+	// Create manifest with known files
+	files := []FileEntry{
+		{Path: "file1.txt", Size: 100},
+		{Path: "file2.txt", Size: 200},
+		{Path: "file3.txt", Size: 300},
+	}
+
+	m := &Manifest{Files: files}
+	query := NewManifestQuery(m)
+
+	// Verify index is built
+	require.NotNil(t, query.fileIndex, "File index should be initialized")
+	assert.Equal(t, 3, len(query.fileIndex), "Index should contain all files")
+
+	// Verify index contains correct mappings
+	for _, file := range files {
+		entry := query.fileIndex[file.Path]
+		require.NotNil(t, entry, "Index should contain entry for %s", file.Path)
+		assert.Equal(t, file.Path, entry.Path)
+		assert.Equal(t, file.Size, entry.Size)
+	}
+
+	// Verify FindFile uses the index
+	result := query.FindFile("file2.txt")
+	require.NotNil(t, result)
+	assert.Equal(t, "file2.txt", result.Path)
+	assert.Equal(t, int64(200), result.Size)
+
+	// Verify non-existent file returns nil
+	result = query.FindFile("nonexistent.txt")
+	assert.Nil(t, result, "FindFile should return nil for non-existent files")
 }
 
 // BenchmarkManifestQuery_FindFile benchmarks file lookup
