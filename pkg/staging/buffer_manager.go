@@ -12,6 +12,7 @@ import (
 func NewStagingBufferManager(config *StagingConfig) *StagingBufferManager {
 	dedupeConfig := DefaultDeduplicationConfig()
 	compressionConfig := DefaultAdaptiveCompressionConfig()
+	ctx, cancel := context.WithCancel(context.Background())
 	return &StagingBufferManager{
 		bufferPool:          NewBufferPool(config),
 		activeBuffers:       make(map[string]*StagedChunk),
@@ -21,6 +22,8 @@ func NewStagingBufferManager(config *StagingConfig) *StagingBufferManager {
 		compressionSelector: NewAdaptiveCompressionSelector(compressionConfig),
 		duplicateRefs:       make(map[string][]string),
 		config:              config,
+		ctx:                 ctx,
+		cancel:              cancel,
 	}
 }
 
@@ -28,14 +31,26 @@ func NewStagingBufferManager(config *StagingConfig) *StagingBufferManager {
 func (sbm *StagingBufferManager) Start(ctx context.Context) {
 	// Start staging workers
 	for i := 0; i < sbm.config.MaxConcurrentStaging; i++ {
-		go sbm.stagingWorker(ctx, i)
+		sbm.wg.Add(1)
+		go func(workerID int) {
+			defer sbm.wg.Done()
+			sbm.stagingWorker(sbm.ctx, workerID)
+		}(i)
 	}
 
 	// Start memory monitor
-	go sbm.memoryMonitor.Start(ctx)
+	sbm.wg.Add(1)
+	go func() {
+		defer sbm.wg.Done()
+		sbm.memoryMonitor.Start(sbm.ctx)
+	}()
 
 	// Start cleanup routine
-	go sbm.cleanupLoop(ctx)
+	sbm.wg.Add(1)
+	go func() {
+		defer sbm.wg.Done()
+		sbm.cleanupLoop(sbm.ctx)
+	}()
 }
 
 // StageChunk stages a chunk with the given boundary.
@@ -252,29 +267,29 @@ func (sbm *StagingBufferManager) processStagingRequest(req *StagingRequest, work
 		// Store full chunk data
 		chunk.Data = actualData
 		chunk.Hash = sbm.deduplicator.computeStrongHash(actualData)
-		
+
 	case ActionDuplicate:
 		// Don't store data, just reference existing chunk
 		sbm.bufferPool.ReturnBuffer(buffer) // Return unused buffer
 		chunk.Data = nil
 		chunk.Hash = dedupeResult.ExistingHash
-		
+
 		// Track reference
 		sbm.mu.Lock()
 		sbm.duplicateRefs[dedupeResult.ExistingHash] = append(sbm.duplicateRefs[dedupeResult.ExistingHash], chunk.ID)
 		sbm.mu.Unlock()
-		
+
 	case ActionDeltaCompress:
 		// Store delta-compressed data (simplified implementation)
 		chunk.Data = actualData
 		chunk.Hash = sbm.deduplicator.computeStrongHash(actualData)
 		chunk.CompressedSize = int(dedupeResult.DeltaSize)
-		
+
 	case ActionSimilarityReplace:
 		// Store reference to similar chunk
 		chunk.Data = nil
 		chunk.Hash = dedupeResult.ExistingHash
-		
+
 		// Track reference
 		sbm.mu.Lock()
 		sbm.duplicateRefs[dedupeResult.ExistingHash] = append(sbm.duplicateRefs[dedupeResult.ExistingHash], chunk.ID)
@@ -285,7 +300,7 @@ func (sbm *StagingBufferManager) processStagingRequest(req *StagingRequest, work
 	if chunk.Data != nil {
 		sbm.analyzeChunkContent(chunk)
 	}
-	
+
 	// Always select compression algorithm (even for duplicates for compatibility)
 	sbm.selectOptimalCompression(chunk, req)
 
@@ -352,8 +367,8 @@ func (sbm *StagingBufferManager) selectOptimalCompression(chunk *StagedChunk, re
 		Entropy:         chunk.Entropy,
 		Compressibility: 1.0 - chunk.CompressionRatio,
 		Patterns:        []ContentPattern{}, // Could be enhanced with pattern detection
-		Metadata:        map[string]interface{}{
-			"duplicate": chunk.IsDuplicate,
+		Metadata: map[string]interface{}{
+			"duplicate":        chunk.IsDuplicate,
 			"similarity_score": chunk.SimilarityScore,
 		},
 	}
@@ -362,9 +377,9 @@ func (sbm *StagingBufferManager) selectOptimalCompression(chunk *StagedChunk, re
 	networkCondition := req.NetworkCondition
 	if networkCondition == nil {
 		networkCondition = &NetworkCondition{
-			BandwidthMBps: 10.0,  // Default bandwidth
-			LatencyMs:     50.0,  // Default latency
-			Reliability:   0.95,  // Default reliability
+			BandwidthMBps: 10.0, // Default bandwidth
+			LatencyMs:     50.0, // Default latency
+			Reliability:   0.95, // Default reliability
 		}
 	}
 
@@ -414,17 +429,17 @@ func (sbm *StagingBufferManager) getSystemLoad() float64 {
 	sbm.mu.RLock()
 	activeCount := len(sbm.activeBuffers)
 	sbm.mu.RUnlock()
-	
+
 	maxActive := sbm.config.MaxConcurrentStaging * 10
 	if maxActive == 0 {
 		maxActive = 100
 	}
-	
+
 	load := float64(activeCount) / float64(maxActive)
 	if load > 1.0 {
 		load = 1.0
 	}
-	
+
 	return load
 }
 
@@ -432,16 +447,16 @@ func (sbm *StagingBufferManager) getSystemLoad() float64 {
 func (sbm *StagingBufferManager) getAvailableMemoryMB() int64 {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	
+
 	// Estimate available memory based on system stats
 	allocatedMB := int64(m.Sys / 1024 / 1024)
 	totalEstimate := allocatedMB * 4 // Rough estimate
 	availableMB := totalEstimate - allocatedMB
-	
+
 	if availableMB < 256 {
 		availableMB = 256 // Minimum
 	}
-	
+
 	return availableMB
 }
 
@@ -549,23 +564,36 @@ type MemoryMonitor struct {
 	lastUpdate       time.Time
 	pressureDetected bool
 	mu               sync.RWMutex
+
+	// Issue #142: Goroutine lifecycle management
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 // NewMemoryMonitor creates a new memory monitor.
 func NewMemoryMonitor(config *StagingConfig) *MemoryMonitor {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &MemoryMonitor{
 		config:     config,
 		lastUpdate: time.Now(),
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 }
 
 // Start begins memory monitoring.
 func (mm *MemoryMonitor) Start(ctx context.Context) {
+	mm.wg.Add(1)
+	defer mm.wg.Done()
+
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 
 	for {
 		select {
+		case <-mm.ctx.Done():
+			return
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
@@ -609,6 +637,17 @@ func (mm *MemoryMonitor) IsUnderPressure() bool {
 	return mm.pressureDetected
 }
 
+// Shutdown gracefully shuts down the memory monitor (Issue #142).
+func (mm *MemoryMonitor) Shutdown() error {
+	// Cancel context to signal all goroutines to stop
+	mm.cancel()
+
+	// Wait for all goroutines to complete
+	mm.wg.Wait()
+
+	return nil
+}
+
 // GetDeduplicationStats returns current deduplication statistics.
 func (sbm *StagingBufferManager) GetDeduplicationStats() *DeduplicationStats {
 	return sbm.deduplicator.GetStats()
@@ -624,7 +663,7 @@ func (sbm *StagingBufferManager) removeDuplicateReference(hash, chunkID string) 
 				break
 			}
 		}
-		
+
 		// Clean up empty reference lists
 		if len(sbm.duplicateRefs[hash]) == 0 {
 			delete(sbm.duplicateRefs, hash)
@@ -636,7 +675,7 @@ func (sbm *StagingBufferManager) removeDuplicateReference(hash, chunkID string) 
 func (sbm *StagingBufferManager) GetDuplicateReferenceCount(hash string) int {
 	sbm.mu.RLock()
 	defer sbm.mu.RUnlock()
-	
+
 	if refs, exists := sbm.duplicateRefs[hash]; exists {
 		return len(refs)
 	}
@@ -676,4 +715,18 @@ func (sbm *StagingBufferManager) UpdateCompressionRule(extension string, rule *C
 // ClearCompressionHistory clears compression performance history.
 func (sbm *StagingBufferManager) ClearCompressionHistory() {
 	sbm.compressionSelector.ClearPerformanceHistory()
+}
+
+// Shutdown gracefully shuts down the staging buffer manager (Issue #142).
+func (sbm *StagingBufferManager) Shutdown() error {
+	// Cancel context to signal all goroutines to stop
+	sbm.cancel()
+
+	// Close staging queue to unblock workers waiting on channel
+	close(sbm.stagingQueue)
+
+	// Wait for all goroutines to complete
+	sbm.wg.Wait()
+
+	return nil
 }

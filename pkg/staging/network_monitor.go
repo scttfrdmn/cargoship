@@ -9,6 +9,7 @@ import (
 
 // NewNetworkConditionMonitor creates a new network condition monitor.
 func NewNetworkConditionMonitor(config *StagingConfig) *NetworkConditionMonitor {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &NetworkConditionMonitor{
 		currentCondition: NewDefaultNetworkCondition(),
 		conditionHistory: make([]*NetworkCondition, 0, 100),
@@ -16,16 +17,23 @@ func NewNetworkConditionMonitor(config *StagingConfig) *NetworkConditionMonitor 
 		predictor:        NewNetworkPredictor(config),
 		updateInterval:   time.Second * 5, // Update every 5 seconds
 		predictionWindow: config.NetworkPredictionWindow,
+		ctx:              ctx,
+		cancel:           cancel,
 	}
 }
 
 // Start begins network condition monitoring.
 func (ncm *NetworkConditionMonitor) Start(ctx context.Context) {
+	ncm.wg.Add(1)
+	defer ncm.wg.Done()
+
 	ticker := time.NewTicker(ncm.updateInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
+		case <-ncm.ctx.Done():
+			return
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
@@ -601,4 +609,15 @@ type MetricPrediction struct {
 	Value      float64
 	Confidence float64
 	Timestamp  time.Time
+}
+
+// Shutdown gracefully shuts down the network condition monitor (Issue #142).
+func (ncm *NetworkConditionMonitor) Shutdown() error {
+	// Cancel context to signal all goroutines to stop
+	ncm.cancel()
+
+	// Wait for all goroutines to complete
+	ncm.wg.Wait()
+
+	return nil
 }

@@ -10,6 +10,7 @@ import (
 
 // NewPerformancePredictor creates a new performance predictor.
 func NewPerformancePredictor(config *StagingConfig) *PerformancePredictor {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &PerformancePredictor{
 		performanceModel:  NewPerformanceModel(config),
 		historicalData:    NewPerformanceHistory(config),
@@ -17,16 +18,26 @@ func NewPerformancePredictor(config *StagingConfig) *PerformancePredictor {
 		contentAnalyzer:   NewContentPerformanceAnalyzer(),
 		predictionCache:   make(map[string]*PerformancePrediction),
 		cacheExpiry:       time.Minute * 5, // 5-minute cache expiry
+		ctx:               ctx,
+		cancel:            cancel,
 	}
 }
 
 // Start begins the performance predictor.
 func (pp *PerformancePredictor) Start(ctx context.Context) {
 	// Start cache cleanup routine
-	go pp.cacheCleanupLoop(ctx)
+	pp.wg.Add(1)
+	go func() {
+		defer pp.wg.Done()
+		pp.cacheCleanupLoop(pp.ctx)
+	}()
 
 	// Start model update routine
-	go pp.modelUpdateLoop(ctx)
+	pp.wg.Add(1)
+	go func() {
+		defer pp.wg.Done()
+		pp.modelUpdateLoop(pp.ctx)
+	}()
 }
 
 // PredictPerformance predicts upload performance for a chunk boundary.
@@ -286,6 +297,8 @@ func (pp *PerformancePredictor) cacheCleanupLoop(ctx context.Context) {
 
 	for {
 		select {
+		case <-pp.ctx.Done():
+			return
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
@@ -314,6 +327,8 @@ func (pp *PerformancePredictor) modelUpdateLoop(ctx context.Context) {
 
 	for {
 		select {
+		case <-pp.ctx.Done():
+			return
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
@@ -647,4 +662,15 @@ func NewContentPerformanceAnalyzer() *ContentPerformanceAnalyzer {
 
 // ContentPerformanceAnalyzer analyzes content characteristics for performance prediction.
 type ContentPerformanceAnalyzer struct {
+}
+
+// Shutdown gracefully shuts down the performance predictor (Issue #142).
+func (pp *PerformancePredictor) Shutdown() error {
+	// Cancel context to signal all goroutines to stop
+	pp.cancel()
+
+	// Wait for all goroutines to complete
+	pp.wg.Wait()
+
+	return nil
 }

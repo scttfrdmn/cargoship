@@ -109,9 +109,14 @@ type StagingBufferManager struct {
 	memoryMonitor       *MemoryMonitor
 	deduplicator        *ChunkDeduplicator
 	compressionSelector *AdaptiveCompressionSelector
-	duplicateRefs       map[string][]string  // Hash -> list of chunk IDs that reference this hash
+	duplicateRefs       map[string][]string // Hash -> list of chunk IDs that reference this hash
 	config              *StagingConfig
 	mu                  sync.RWMutex
+
+	// Issue #142: Goroutine lifecycle management
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 // StagedChunk represents a chunk that has been pre-processed and staged.
@@ -172,8 +177,12 @@ type NetworkConditionMonitor struct {
 	updateInterval   time.Duration
 	predictionWindow time.Duration
 	mu               sync.RWMutex
-}
 
+	// Issue #142: Goroutine lifecycle management
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+}
 
 // PerformancePredictor predicts upload performance based on chunk characteristics and network conditions.
 type PerformancePredictor struct {
@@ -184,6 +193,11 @@ type PerformancePredictor struct {
 	predictionCache   map[string]*PerformancePrediction
 	cacheExpiry       time.Duration
 	mu                sync.RWMutex
+
+	// Issue #142: Goroutine lifecycle management
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 // PerformancePrediction represents predicted performance for a chunk.
