@@ -13,6 +13,7 @@ import (
 	"github.com/klauspost/compress/s2"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
+	"github.com/scttfrdmn/cargoship/pkg/ioutils"
 )
 
 // Algorithm represents a compression algorithm
@@ -109,7 +110,7 @@ func (c *Compressor) Compress(data io.Reader) (io.Reader, *CompressionResult, er
 
 	switch c.algorithm {
 	case AlgorithmNone:
-		originalSize, err = io.Copy(&buf, data)
+		originalSize, err = ioutils.CopyOptimized(&buf, data)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to copy data: %w", err)
 		}
@@ -154,7 +155,7 @@ func (c *Compressor) Decompress(data io.Reader) (io.Reader, error) {
 
 	switch c.algorithm {
 	case AlgorithmNone:
-		_, err = io.Copy(&buf, data)
+		_, err = ioutils.CopyOptimized(&buf, data)
 	case AlgorithmGzip:
 		err = c.decompressGzip(data, &buf)
 	case AlgorithmZlib:
@@ -350,7 +351,7 @@ func (c *Compressor) compressGzip(src io.Reader, dst io.Writer) (int64, error) {
 	w.Reset(dst)
 	defer func() { _ = w.Close() }()
 
-	written, err := io.Copy(w, src)
+	written, err := ioutils.CopyOptimized(w, src)
 	if err != nil {
 		return 0, err
 	}
@@ -365,7 +366,7 @@ func (c *Compressor) decompressGzip(src io.Reader, dst io.Writer) error {
 	}
 	defer func() { _ = r.Close() }()
 
-	_, err = io.Copy(dst, r)
+	_, err = ioutils.CopyOptimized(dst, r)
 	return err
 }
 
@@ -376,7 +377,7 @@ func (c *Compressor) compressZlib(src io.Reader, dst io.Writer) (int64, error) {
 	w.Reset(dst)
 	defer func() { _ = w.Close() }()
 
-	written, err := io.Copy(w, src)
+	written, err := ioutils.CopyOptimized(w, src)
 	if err != nil {
 		return 0, err
 	}
@@ -391,14 +392,14 @@ func (c *Compressor) decompressZlib(src io.Reader, dst io.Writer) error {
 	}
 	defer func() { _ = r.Close() }()
 
-	_, err = io.Copy(dst, r)
+	_, err = ioutils.CopyOptimized(dst, r)
 	return err
 }
 
 func (c *Compressor) compressZstd(src io.Reader, dst io.Writer) (int64, error) {
 	c.zstdEncoder.Reset(dst)
 
-	written, err := io.Copy(c.zstdEncoder, src)
+	written, err := ioutils.CopyOptimized(c.zstdEncoder, src)
 	if err != nil {
 		return 0, err
 	}
@@ -411,7 +412,7 @@ func (c *Compressor) decompressZstd(src io.Reader, dst io.Writer) error {
 		return err
 	}
 
-	_, err := io.Copy(dst, c.zstdDecoder)
+	_, err := ioutils.CopyOptimized(dst, c.zstdDecoder)
 	return err
 }
 
@@ -422,7 +423,7 @@ func (c *Compressor) compressS2(src io.Reader, dst io.Writer) (int64, error) {
 	w.Reset(dst)
 	defer func() { _ = w.Close() }()
 
-	written, err := io.Copy(w, src)
+	written, err := ioutils.CopyOptimized(w, src)
 	if err != nil {
 		return 0, err
 	}
@@ -436,7 +437,7 @@ func (c *Compressor) decompressS2(src io.Reader, dst io.Writer) error {
 
 	r.Reset(src)
 
-	_, err := io.Copy(dst, r)
+	_, err := ioutils.CopyOptimized(dst, r)
 	return err
 }
 
@@ -447,7 +448,7 @@ func (c *Compressor) compressLZ4(src io.Reader, dst io.Writer) (int64, error) {
 	w.Reset(dst)
 	defer func() { _ = w.Close() }()
 
-	written, err := io.Copy(w, src)
+	written, err := ioutils.CopyOptimized(w, src)
 	if err != nil {
 		return 0, err
 	}
@@ -461,6 +462,6 @@ func (c *Compressor) decompressLZ4(src io.Reader, dst io.Writer) error {
 
 	r.Reset(src)
 
-	_, err := io.Copy(dst, r)
+	_, err := ioutils.CopyOptimized(dst, r)
 	return err
 }

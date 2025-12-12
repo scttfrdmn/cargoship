@@ -17,6 +17,7 @@ import (
 	s3Types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/klauspost/compress/zstd"
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
+	"github.com/scttfrdmn/cargoship/pkg/ioutils"
 )
 
 // ShardPipelineConfig configures a single shard pipeline
@@ -269,8 +270,8 @@ func (sp *ShardPipeline) addFileToTar(file chunking.File) error {
 		return fmt.Errorf("failed to write tar header: %w", err)
 	}
 
-	// Copy file data to tar
-	if _, err := io.Copy(sp.tarWriter, f); err != nil {
+	// Copy file data to tar (zero-copy optimized)
+	if _, err := ioutils.CopyOptimized(sp.tarWriter, f); err != nil {
 		return fmt.Errorf("failed to copy file data: %w", err)
 	}
 
