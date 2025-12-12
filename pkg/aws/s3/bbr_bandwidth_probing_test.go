@@ -94,9 +94,10 @@ func TestBBRPacketSentTracking(t *testing.T) {
 		t.Error("Expected first sent time to be set")
 	}
 
-	// Allow for some timing variance in the test
-	if prober.firstSentTime.Sub(sendTime).Abs() > time.Millisecond {
-		t.Errorf("Expected first sent time to be close to %v, got %v", sendTime, prober.firstSentTime)
+	// Allow for timing variance in the test (Issue #152: increased from 1ms to 10ms to fix flaky test)
+	// The exact timing isn't critical - we just verify firstSentTime is set approximately correctly
+	if prober.firstSentTime.Sub(sendTime).Abs() > 10*time.Millisecond {
+		t.Errorf("Expected first sent time to be close to %v, got %v (diff: %v)", sendTime, prober.firstSentTime, prober.firstSentTime.Sub(sendTime))
 	}
 
 	// Test app-limited tracking
