@@ -27,6 +27,9 @@ type BufferedPipe struct {
 	// Track active writers to prevent closing channel while writes are in progress
 	activeWriters sync.WaitGroup
 	closing       bool // Set to true when Close() is called
+
+	// Pool for chunk reuse (Phase 1: Zero-Copy I/O optimization)
+	chunkPool *sync.Pool
 }
 
 // BufferedPipeReader is the reading side of a BufferedPipe
@@ -61,6 +64,12 @@ func NewBufferedPipe(bufferSize, chunkSize int) (*BufferedPipeReader, *BufferedP
 		size:      bufferSize,
 		chunkSize: chunkSize,
 		done:      make(chan struct{}),
+		chunkPool: &sync.Pool{
+			New: func() interface{} {
+				chunk := make([]byte, chunkSize)
+				return &chunk
+			},
+		},
 	}
 
 	return &BufferedPipeReader{pipe: pipe}, &BufferedPipeWriter{pipe: pipe}
@@ -79,8 +88,11 @@ func (r *BufferedPipeReader) Read(p []byte) (n int, err error) {
 			r.currentPos += copied
 			n += copied
 
-			// If chunk exhausted, clear it
+			// If chunk exhausted, return it to pool and clear it
 			if r.currentPos >= len(r.current) {
+				// Restore full capacity before returning to pool
+				fullChunk := r.current[:cap(r.current)]
+				r.pipe.chunkPool.Put(&fullChunk)
 				r.current = nil
 				r.currentPos = 0
 			}
@@ -130,9 +142,19 @@ func (r *BufferedPipeReader) Close() error {
 		close(r.pipe.done)
 	})
 
-	// Drain remaining chunks to unblock writer
-	for range r.pipe.buffer {
-		// Discard
+	// Return current chunk to pool if not yet returned
+	if r.current != nil {
+		// Restore full capacity before returning to pool
+		fullChunk := r.current[:cap(r.current)]
+		r.pipe.chunkPool.Put(&fullChunk)
+		r.current = nil
+	}
+
+	// Drain remaining chunks to unblock writer and return them to pool
+	for chunk := range r.pipe.buffer {
+		// Restore full capacity before returning to pool
+		fullChunk := chunk[:cap(chunk)]
+		r.pipe.chunkPool.Put(&fullChunk)
 	}
 
 	return nil
@@ -171,8 +193,12 @@ func (w *BufferedPipeWriter) Write(p []byte) (n int, err error) {
 			end = len(p)
 		}
 
-		// Create chunk (copy to avoid holding references to large buffers)
-		chunk := make([]byte, end-n)
+		// Get chunk from pool (zero-copy optimization)
+		chunkPtr := w.pipe.chunkPool.Get().(*[]byte)
+		fullChunk := *chunkPtr // Keep reference to full slice for pool return
+
+		// Slice to the actual data size we need
+		chunk := fullChunk[:end-n]
 		copy(chunk, p[n:end])
 
 		// Send chunk to buffer (blocks if buffer full - this is the backpressure)
@@ -180,6 +206,8 @@ func (w *BufferedPipeWriter) Write(p []byte) (n int, err error) {
 		case w.pipe.buffer <- chunk:
 			n = end
 		case <-w.pipe.done:
+			// Return full chunk to pool on error (not the sliced version)
+			w.pipe.chunkPool.Put(&fullChunk)
 			return n, errors.New("write on closed pipe")
 		}
 	}
