@@ -127,23 +127,55 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 
 	// Initialize manifest builder if enabled and using real S3
 	if config.EnableManifest && config.UseRealS3 {
-		builder, err := manifest.NewBuilder(
-			config.UploadID,
-			config.SourcePath,
-			config.S3Bucket,
-			config.S3Prefix,
-			config.S3Region,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create manifest builder: %w", err)
+		var builder *manifest.Builder
+		var err error
+
+		// Issue #157: Resume mode - load existing partial manifest
+		if config.ResumeMode && config.ResumeUploadID != "" {
+			// Download partial manifest from S3
+			partialManifest, downloadErr := manifest.DownloadPartialManifestFromS3(
+				ctx,
+				config.S3Client.(*s3.Client),
+				config.S3Bucket,
+				config.S3Prefix,
+				config.ResumeUploadID,
+			)
+			if downloadErr != nil {
+				return nil, fmt.Errorf("failed to download partial manifest for resume: %w", downloadErr)
+			}
+
+			// Create builder from existing manifest
+			builder, err = manifest.NewBuilderFromExisting(partialManifest)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create builder from existing manifest: %w", err)
+			}
+
+			// Override UploadID with the resumed upload ID
+			config.UploadID = config.ResumeUploadID
+
+			fmt.Printf("📦 Resuming upload %s (%d files, %d chunks already uploaded)\n",
+				config.ResumeUploadID, len(partialManifest.Files), len(partialManifest.Chunks))
+		} else {
+			// Normal mode - create new manifest builder
+			builder, err = manifest.NewBuilder(
+				config.UploadID,
+				config.SourcePath,
+				config.S3Bucket,
+				config.S3Prefix,
+				config.S3Region,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create manifest builder: %w", err)
+			}
+
+			// Set compression info (will be updated by archiver with actual compression ratio)
+			builder.SetCompression("zstd", 3, 1.0) // Default values
+
+			// Set shard count for manifest
+			builder.SetShardCount(config.ShardCount)
 		}
+
 		p.manifestBuilder = builder
-
-		// Set compression info (will be updated by archiver with actual compression ratio)
-		builder.SetCompression("zstd", 3, 1.0) // Default values
-
-		// Set shard count for manifest
-		builder.SetShardCount(config.ShardCount)
 	}
 
 	return p, nil
@@ -158,6 +190,11 @@ func (p *Pipeline) Run(ctx context.Context, rootPath string) (*Result, error) {
 	// Start progress tracking if enabled
 	if p.config.EnableProgress {
 		go p.trackProgress(ctx)
+	}
+
+	// Start partial manifest saving if enabled (Issue #157: Resume capability)
+	if p.config.EnablePartialManifest && p.manifestBuilder != nil && p.config.UseRealS3 {
+		go p.savePartialManifestPeriodically(ctx)
 	}
 
 	// Start all stages
@@ -187,8 +224,8 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 		RootPath:                   rootPath,
 		Workers:                    p.config.ScannerWorkers,
 		UseCompressedAwareChunking: p.config.EnableCompressedAwareChunking, // Phase 3.3
-		ChunkTargetSizeMB:          p.config.ForceChunkSizeMB,               // Phase 3.3
-		ChunkingConfig:             p.config.ChunkingConfig,                 // Phase 5: Pass chunking config
+		ChunkTargetSizeMB:          p.config.ForceChunkSizeMB,              // Phase 3.3
+		ChunkingConfig:             p.config.ChunkingConfig,                // Phase 5: Pass chunking config
 	}
 	p.scanner, err = NewScannerStage(scannerConfig, p.chunkChan, p) // Pass pipeline reference for manifest tracking
 	if err != nil {
@@ -340,7 +377,7 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				s3Config.PartSize = 64 * 1024 * 1024 // 64MB default
 			}
 
-			p.s3Uploader, err = NewS3UploaderStage(s3Config, p.archiveChan, p.resultChan)
+			p.s3Uploader, err = NewS3UploaderStage(s3Config, p.archiveChan, p.resultChan, p)
 			if err != nil {
 				return fmt.Errorf("failed to create S3 uploader: %w", err)
 			}
@@ -503,7 +540,104 @@ func (p *Pipeline) uploadManifest(ctx context.Context) error {
 	fmt.Printf("✅ Manifest uploaded: s3://%s/%s (%d files, %d chunks)\n",
 		p.config.S3Bucket, s3Key, len(manifestData.Files), len(manifestData.Chunks))
 
+	// Delete partial manifest after successful upload (Issue #157)
+	p.deletePartialManifest(ctx)
+
 	return nil
+}
+
+// savePartialManifestPeriodically periodically saves the partial manifest to S3 (Issue #157: Resume capability)
+func (p *Pipeline) savePartialManifestPeriodically(ctx context.Context) {
+	interval := p.config.PartialManifestSaveInterval
+	if interval == 0 {
+		interval = 30 * time.Second // Default: 30s
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := p.savePartialManifest(ctx); err != nil {
+				// Log warning but don't fail the upload
+				fmt.Printf("Warning: Failed to save partial manifest: %v\n", err)
+			}
+		}
+	}
+}
+
+// savePartialManifest saves the current manifest state to S3 as manifest.partial.json.gz (Issue #157)
+func (p *Pipeline) savePartialManifest(ctx context.Context) error {
+	if p.manifestBuilder == nil {
+		return fmt.Errorf("manifest builder not initialized")
+	}
+
+	builder := p.manifestBuilder.(*manifest.Builder)
+
+	// Build current manifest state (non-finalized)
+	p.manifestMu.Lock()
+	manifestData := builder.Build()
+	p.manifestMu.Unlock()
+
+	// Skip if no chunks yet
+	if len(manifestData.Chunks) == 0 {
+		return nil
+	}
+
+	// Serialize to JSON and compress with gzip
+	manifestBytes, err := manifestData.ToJSONCompressed()
+	if err != nil {
+		return fmt.Errorf("failed to serialize partial manifest: %w", err)
+	}
+
+	// Construct S3 key: prefix/uploads/{uploadID}/manifest.partial.json.gz
+	s3Key := fmt.Sprintf("%s/uploads/%s/manifest.partial.json.gz", p.config.S3Prefix, p.config.UploadID)
+
+	// Upload to S3 using the same S3 client
+	s3Client := p.config.S3Client.(*s3.Client)
+	uploader := manager.NewUploader(s3Client, func(u *manager.Uploader) {
+		u.PartSize = 5 * 1024 * 1024 // 5MB parts
+	})
+
+	input := &s3.PutObjectInput{
+		Bucket:      aws.String(p.config.S3Bucket),
+		Key:         aws.String(s3Key),
+		Body:        bytes.NewReader(manifestBytes),
+		ContentType: aws.String("application/gzip"),
+		Metadata: map[string]string{
+			"cargoship-manifest-version": "1.0-partial",
+			"cargoship-upload-id":        p.config.UploadID,
+			"cargoship-file-count":       fmt.Sprintf("%d", len(manifestData.Files)),
+			"cargoship-chunk-count":      fmt.Sprintf("%d", len(manifestData.Chunks)),
+			"cargoship-last-updated":     time.Now().Format(time.RFC3339),
+		},
+	}
+
+	_, err = uploader.Upload(ctx, input)
+	if err != nil {
+		return fmt.Errorf("failed to upload partial manifest to S3: %w", err)
+	}
+
+	return nil
+}
+
+// deletePartialManifest removes the partial manifest from S3 after successful completion (Issue #157)
+func (p *Pipeline) deletePartialManifest(ctx context.Context) {
+	s3Key := fmt.Sprintf("%s/uploads/%s/manifest.partial.json.gz", p.config.S3Prefix, p.config.UploadID)
+	s3Client := p.config.S3Client.(*s3.Client)
+
+	_, err := s3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(p.config.S3Bucket),
+		Key:    aws.String(s3Key),
+	})
+
+	if err != nil {
+		// Log warning but don't fail - partial manifest cleanup is non-critical
+		fmt.Printf("Warning: Failed to delete partial manifest: %v\n", err)
+	}
 }
 
 // trackProgress periodically reports progress

@@ -12,20 +12,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
 
 // S3UploaderConfig configures the real S3 uploader stage
 type S3UploaderConfig struct {
-	Workers         int           // Number of concurrent upload workers (default: 8, matches shard count)
-	PartSize        int64         // S3 multipart part size (default: 64MB)
-	MaxRetries      int           // Maximum upload retry attempts
-	RetryDelay      time.Duration // Delay between retries
-	S3Client        *s3.Client    // AWS S3 client
-	Bucket          string        // Target S3 bucket
-	Prefix          string        // S3 key prefix (optional)
-	StorageClass    types.StorageClass
+	Workers              int           // Number of concurrent upload workers (default: 8, matches shard count)
+	PartSize             int64         // S3 multipart part size (default: 64MB)
+	MaxRetries           int           // Maximum upload retry attempts
+	RetryDelay           time.Duration // Delay between retries
+	S3Client             *s3.Client    // AWS S3 client
+	Bucket               string        // Target S3 bucket
+	Prefix               string        // S3 key prefix (optional)
+	StorageClass         types.StorageClass
 	ServerSideEncryption types.ServerSideEncryption
-	SSEKMSKeyId     string        // Optional KMS key ID
+	SSEKMSKeyId          string // Optional KMS key ID
 }
 
 // S3UploaderStage uploads streaming archives to real AWS S3
@@ -46,10 +47,13 @@ type S3UploaderStage struct {
 
 	// S3 uploader
 	uploader *manager.Uploader
+
+	// Manifest tracking (Issue #157)
+	pipeline *Pipeline // Reference to parent pipeline for resume capability
 }
 
 // NewS3UploaderStage creates a new real S3 uploader stage
-func NewS3UploaderStage(config *S3UploaderConfig, input <-chan *Job, output chan<- *Job) (*S3UploaderStage, error) {
+func NewS3UploaderStage(config *S3UploaderConfig, input <-chan *Job, output chan<- *Job, pipeline *Pipeline) (*S3UploaderStage, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
@@ -90,6 +94,7 @@ func NewS3UploaderStage(config *S3UploaderConfig, input <-chan *Job, output chan
 		ctx:      ctx,
 		cancel:   cancel,
 		uploader: uploader,
+		pipeline: pipeline, // Issue #157: Reference for resume capability
 		stats: StageStats{
 			Name: "s3_uploader",
 		},
@@ -125,6 +130,52 @@ func (s *S3UploaderStage) Stop() error {
 	return nil
 }
 
+// shouldSkipUpload checks if a chunk should be skipped (already uploaded) - Issue #157
+func (s *S3UploaderStage) shouldSkipUpload(ctx context.Context, job *Job) (bool, error) {
+	// Check if resume mode is enabled
+	if s.pipeline == nil || s.pipeline.config == nil || !s.pipeline.config.ResumeMode {
+		return false, nil
+	}
+
+	// Check manifest for already uploaded chunks
+	if s.pipeline.manifestBuilder != nil {
+		builder := s.pipeline.manifestBuilder.(*manifest.Builder)
+		manifestData := builder.Build()
+
+		// Look for existing chunk with same ID
+		for _, chunk := range manifestData.Chunks {
+			if chunk.ID == job.Chunk.ID {
+				// Check if UploadedAt is set (non-zero time)
+				if !chunk.UploadedAt.IsZero() {
+					// Chunk already uploaded
+					return true, nil
+				}
+			}
+		}
+	}
+
+	// Optional: Check S3 existence with HeadObject if SkipExisting is enabled
+	if s.pipeline.config.SkipExisting {
+		s3Key := job.S3Key
+		if s.config.Prefix != "" {
+			s3Key = s.config.Prefix + "/" + job.S3Key
+		}
+
+		_, err := s.config.S3Client.HeadObject(ctx, &s3.HeadObjectInput{
+			Bucket: aws.String(s.config.Bucket),
+			Key:    aws.String(s3Key),
+		})
+
+		if err == nil {
+			// Object exists in S3
+			return true, nil
+		}
+		// If HeadObject fails, continue with upload (object may not exist or permission issue)
+	}
+
+	return false, nil
+}
+
 // Process processes a single upload job (called by workers)
 func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 	startTime := time.Now()
@@ -133,6 +184,23 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 			_ = job.Archive.Close()
 		}
 	}()
+
+	// Issue #157: Check if chunk should be skipped (resume mode)
+	skip, err := s.shouldSkipUpload(ctx, job)
+	if err != nil {
+		return fmt.Errorf("failed to check if upload should be skipped: %w", err)
+	}
+
+	if skip {
+		// Chunk already uploaded - skip and mark as complete
+		job.EndTime = time.Now()
+
+		// Update statistics (but not bytes processed since we didn't actually upload)
+		atomic.AddInt64(&s.jobsProcessed, 1)
+
+		fmt.Printf("⏭️  Skipped chunk %d (already uploaded)\n", job.Chunk.ID)
+		return nil
+	}
 
 	// Upload with retries
 	var lastErr error

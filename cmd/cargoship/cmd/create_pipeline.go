@@ -69,6 +69,11 @@ architecture that provides:
 	cmd.Flags().Int("max-idle-conns", 100, "Max idle connections per host")
 	cmd.Flags().Duration("idle-conn-timeout", 300*time.Second, "Idle connection timeout")
 
+	// Resume capability flags (Issue #157)
+	cmd.Flags().Bool("resume", false, "Resume a previous incomplete upload")
+	cmd.Flags().String("upload-id", "", "Upload ID to resume (auto-detect if not specified)")
+	cmd.Flags().Bool("skip-existing", false, "Skip chunks that already exist in S3 (HeadObject check)")
+
 	// Mark required flags
 	_ = cmd.MarkFlagRequired("bucket")
 
@@ -121,6 +126,9 @@ func createPipelineRunE(cmd *cobra.Command, args []string) error {
 	maxStreams, _ := cmd.Flags().GetInt("http2-max-streams")
 	maxIdleConns, _ := cmd.Flags().GetInt("max-idle-conns")
 	idleConnTimeout, _ := cmd.Flags().GetDuration("idle-conn-timeout")
+	resumeMode, _ := cmd.Flags().GetBool("resume")
+	uploadID, _ := cmd.Flags().GetString("upload-id")
+	skipExisting, _ := cmd.Flags().GetBool("skip-existing")
 
 	// Build HTTP transport configuration based on network profile and flags
 	var httpConfig *cargoconfig.HTTPTransportConfig
@@ -198,11 +206,35 @@ func createPipelineRunE(cmd *cobra.Command, args []string) error {
 		ChunkBufferSize:   100,
 		ArchiveBufferSize: 100,
 		ResultBufferSize:  200,
+
+		// Resume capability (Issue #157)
+		ResumeMode:                  resumeMode,
+		ResumeUploadID:              uploadID,
+		SkipExisting:                skipExisting,
+		EnablePartialManifest:       true,
+		PartialManifestSaveInterval: 30 * time.Second,
+		EnableManifest:              true,
+		SourcePath:                  sourceDirs[0], // Use first source dir for manifest
 	}
 
 	// Override chunk size if specified
 	if chunkSizeMB > 0 {
 		pipelineConfig.ForceChunkSizeMB = int(chunkSizeMB)
+	}
+
+	// Handle resume mode with auto-detect upload ID
+	if resumeMode && uploadID == "" {
+		// Auto-detect most recent incomplete upload
+		fmt.Println("🔍 Auto-detecting most recent incomplete upload...")
+		detectedID, err := autoDetectResumeUploadID(ctx, s3Client, bucket, prefix)
+		if err != nil {
+			return fmt.Errorf("failed to auto-detect upload ID: %w", err)
+		}
+		if detectedID == "" {
+			return fmt.Errorf("no incomplete uploads found - cannot resume")
+		}
+		pipelineConfig.ResumeUploadID = detectedID
+		fmt.Printf("✅ Detected upload ID: %s\n", detectedID)
 	}
 
 	// Create pipeline
@@ -343,4 +375,77 @@ func createPipelineRunE(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// autoDetectResumeUploadID finds the most recent incomplete upload (Issue #157)
+func autoDetectResumeUploadID(ctx context.Context, s3Client *s3.Client, bucket, prefix string) (string, error) {
+	// List all partial manifests in the uploads/ directory
+	listPrefix := prefix
+	if listPrefix != "" {
+		listPrefix += "/"
+	}
+	listPrefix += "uploads/"
+
+	input := &s3.ListObjectsV2Input{
+		Bucket: &bucket,
+		Prefix: &listPrefix,
+	}
+
+	result, err := s3Client.ListObjectsV2(ctx, input)
+	if err != nil {
+		return "", fmt.Errorf("failed to list S3 objects: %w", err)
+	}
+
+	// Find all partial manifest files and extract upload IDs with timestamps
+	type partialManifest struct {
+		uploadID     string
+		lastModified time.Time
+	}
+	var manifests []partialManifest
+
+	for _, obj := range result.Contents {
+		key := *obj.Key
+		// Check if it's a partial manifest: uploads/{uploadID}/manifest.partial.json.gz
+		if len(key) > len("manifest.partial.json.gz") {
+			if key[len(key)-len("manifest.partial.json.gz"):] == "manifest.partial.json.gz" {
+				// Extract upload ID from key path
+				parts := make([]string, 0)
+				start := 0
+				for i := 0; i < len(key); i++ {
+					if key[i] == '/' {
+						if i > start {
+							parts = append(parts, key[start:i])
+						}
+						start = i + 1
+					}
+				}
+				if start < len(key) {
+					parts = append(parts, key[start:])
+				}
+
+				// Parts should be: [prefix?, "uploads", uploadID, "manifest.partial.json.gz"]
+				if len(parts) >= 3 {
+					uploadID := parts[len(parts)-2]
+					manifests = append(manifests, partialManifest{
+						uploadID:     uploadID,
+						lastModified: *obj.LastModified,
+					})
+				}
+			}
+		}
+	}
+
+	if len(manifests) == 0 {
+		return "", nil
+	}
+
+	// Find the most recent partial manifest
+	mostRecent := manifests[0]
+	for i := 1; i < len(manifests); i++ {
+		if manifests[i].lastModified.After(mostRecent.lastModified) {
+			mostRecent = manifests[i]
+		}
+	}
+
+	return mostRecent.uploadID, nil
 }

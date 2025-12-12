@@ -11,25 +11,25 @@ import (
 
 // Job represents a unit of work flowing through the pipeline
 type Job struct {
-	ID          int              // Job identifier
-	Chunk       chunking.Chunk   // Chunk to process
-	Archive     io.ReadCloser    // Streamed archive (from archiver)
-	ArchiveSize int64            // Size of archive
-	S3Key       string           // S3 destination key
+	ID          int               // Job identifier
+	Chunk       chunking.Chunk    // Chunk to process
+	Archive     io.ReadCloser     // Streamed archive (from archiver)
+	ArchiveSize int64             // Size of archive
+	S3Key       string            // S3 destination key
 	Metadata    map[string]string // Additional metadata
-	Error       error            // Error if job failed
-	StartTime   time.Time        // When job started
-	EndTime     time.Time        // When job completed
+	Error       error             // Error if job failed
+	StartTime   time.Time         // When job started
+	EndTime     time.Time         // When job completed
 
 	// Phase 3.3: Compressed-aware chunking with adaptive sizing
-	TargetCompressedSize int64  // Target compressed size from CompressedAwareChunker (0 = no target)
-	EstimatedCompressed  int64  // Estimated compressed size from CompressionEstimator
+	TargetCompressedSize int64 // Target compressed size from CompressedAwareChunker (0 = no target)
+	EstimatedCompressed  int64 // Estimated compressed size from CompressionEstimator
 
 	// Issue #103: Enhanced error reporting with shard context
-	ShardID       int      // Shard identifier (e.g., 0, 1, 2, ..., 7 for 8 shards)
-	ShardPrefix   string   // Shard prefix (e.g., "shard-0", "shard-1", ...)
-	AttemptNumber int      // Current retry attempt (1 = first attempt, 2+ = retries)
-	ErrorHistory  []error  // History of errors from retry attempts
+	ShardID       int     // Shard identifier (e.g., 0, 1, 2, ..., 7 for 8 shards)
+	ShardPrefix   string  // Shard prefix (e.g., "shard-0", "shard-1", ...)
+	AttemptNumber int     // Current retry attempt (1 = first attempt, 2+ = retries)
+	ErrorHistory  []error // History of errors from retry attempts
 }
 
 // Stage represents a pipeline stage
@@ -52,15 +52,15 @@ type Stage interface {
 
 // StageStats contains statistics for a pipeline stage
 type StageStats struct {
-	Name          string        // Stage name
-	JobsProcessed int64         // Total jobs processed
-	JobsFailed    int64         // Total jobs failed
-	BytesProcessed int64        // Total bytes processed
-	TotalTime     time.Duration // Total processing time
-	AverageTime   time.Duration // Average time per job
-	ActiveWorkers int           // Current active workers
-	QueuedJobs    int           // Jobs waiting in queue
-	Metadata      map[string]interface{} // Additional stage-specific metadata (Phase 3.2: shard distribution, etc.)
+	Name           string                 // Stage name
+	JobsProcessed  int64                  // Total jobs processed
+	JobsFailed     int64                  // Total jobs failed
+	BytesProcessed int64                  // Total bytes processed
+	TotalTime      time.Duration          // Total processing time
+	AverageTime    time.Duration          // Average time per job
+	ActiveWorkers  int                    // Current active workers
+	QueuedJobs     int                    // Jobs waiting in queue
+	Metadata       map[string]interface{} // Additional stage-specific metadata (Phase 3.2: shard distribution, etc.)
 }
 
 // Pipeline orchestrates the entire streaming pipeline
@@ -73,13 +73,13 @@ type Pipeline struct {
 	config *PipelineConfig
 
 	// Stages
-	scanner  *ScannerStage
-	archiver *ArchiverStage
-	uploader *UploaderStage     // Simulated uploader (for testing)
+	scanner    *ScannerStage
+	archiver   *ArchiverStage
+	uploader   *UploaderStage   // Simulated uploader (for testing)
 	s3Uploader *S3UploaderStage // Real AWS S3 uploader (single-prefix)
 
 	// Phase 3: Multi-prefix parallel upload stages
-	router              *PrefixRouter              // Routes jobs to per-prefix channels
+	router              *PrefixRouter               // Routes jobs to per-prefix channels
 	multiPrefixUploader *S3MultiPrefixUploaderStage // Per-prefix worker pools
 
 	// Channels for communication between stages
@@ -119,11 +119,11 @@ type PipelineConfig struct {
 	S3Region string
 
 	// Real S3 uploader configuration (optional)
-	UseRealS3     bool        // If true, use real AWS S3 uploader instead of simulated
-	S3Client      interface{} // *s3.Client for real uploads (type: *github.com/aws/aws-sdk-go-v2/service/s3.Client)
-	S3PartSize    int64       // S3 multipart part size (default: 64MB)
-	S3StorageClass string     // S3 storage class (STANDARD, INTELLIGENT_TIERING, etc.)
-	S3SSEKMSKeyId string      // Optional KMS key ID for encryption
+	UseRealS3      bool        // If true, use real AWS S3 uploader instead of simulated
+	S3Client       interface{} // *s3.Client for real uploads (type: *github.com/aws/aws-sdk-go-v2/service/s3.Client)
+	S3PartSize     int64       // S3 multipart part size (default: 64MB)
+	S3StorageClass string      // S3 storage class (STANDARD, INTELLIGENT_TIERING, etc.)
+	S3SSEKMSKeyId  string      // Optional KMS key ID for encryption
 
 	// Multi-prefix optimization (Phase 3)
 	EnableMultiPrefix bool   // If true, use multi-prefix parallel uploads (default: true)
@@ -144,15 +144,24 @@ type PipelineConfig struct {
 	ChunkingConfig *chunking.ChunkingConfig
 
 	// Manifest configuration
-	EnableManifest  bool   // Enable manifest generation (default: true for real S3)
-	SourcePath      string // Original source path for manifest
+	EnableManifest bool   // Enable manifest generation (default: true for real S3)
+	SourcePath     string // Original source path for manifest
 
 	// Progress tracking
-	EnableProgress bool
+	EnableProgress   bool
 	ProgressInterval time.Duration
 
 	// Timeouts
 	StageTimeout time.Duration
+
+	// Resume configuration (Issue #157: Resume capability)
+	ResumeMode     bool   // Enable resume capability
+	ResumeUploadID string // Upload ID to resume (empty = auto-detect)
+	SkipExisting   bool   // Skip chunks that exist in S3 (HeadObject check)
+
+	// Partial manifest saving (Issue #157: Resume capability)
+	EnablePartialManifest       bool          // Enable periodic manifest saves (default: true for real S3)
+	PartialManifestSaveInterval time.Duration // How often to save partial manifest (default: 30s)
 }
 
 // Progress represents current pipeline progress
@@ -172,8 +181,8 @@ type Progress struct {
 	BytesInFlight    int64
 
 	// Time tracking
-	StartTime   time.Time
-	ElapsedTime time.Duration
+	StartTime    time.Time
+	ElapsedTime  time.Duration
 	EstimatedETA time.Duration
 
 	// Throughput
@@ -204,6 +213,8 @@ type Result struct {
 	TotalBytes     int64
 	ChunksCreated  int
 	ChunksUploaded int
+	ChunksSkipped  int // Issue #157: Number of chunks skipped (already uploaded)
+	TotalChunks    int // Issue #157: Total chunks (skipped + uploaded + created)
 	TotalTime      time.Duration
 	Errors         []error
 	Progress       Progress
@@ -212,9 +223,9 @@ type Result struct {
 
 // ScannerConfig configures the scanner stage
 type ScannerConfig struct {
-	RootPath      string
-	Workers       int
-	FollowSymlinks bool
+	RootPath        string
+	Workers         int
+	FollowSymlinks  bool
 	ExcludePatterns []string
 
 	// Phase 3.3: Compressed-aware chunking
@@ -227,28 +238,28 @@ type ScannerConfig struct {
 
 // ArchiverConfig configures the archiver stage
 type ArchiverConfig struct {
-	Workers        int
+	Workers          int
 	CompressionLevel int
 	CompressionType  string // "gzip", "zstd", "bzip2"
-	BufferSize     int
+	BufferSize       int
 
 	// Multi-prefix optimization (Phase 3)
 	UploadID   string // Unique identifier for this upload session (format: {timestamp}-{random})
 	ShardCount int    // Number of S3 prefix shards for parallel uploads (default: 8)
 
 	// Phase 3.3: Archive padding for uniform compressed chunk sizes
-	EnablePadding      bool    // Enable zero-byte padding to reach target compressed sizes
-	MaxPaddingRatio    float64 // Maximum allowed padding ratio (default: 0.25 = 25%)
-	UseLowEntropyPadding bool  // Use low-entropy (zero-byte) padding (default: true for S3 optimization)
+	EnablePadding        bool    // Enable zero-byte padding to reach target compressed sizes
+	MaxPaddingRatio      float64 // Maximum allowed padding ratio (default: 0.25 = 25%)
+	UseLowEntropyPadding bool    // Use low-entropy (zero-byte) padding (default: true for S3 optimization)
 }
 
 // UploaderConfig configures the uploader stage
 type UploaderConfig struct {
-	Workers       int
-	PartSize      int64 // Size of each multipart upload part
-	Concurrency   int   // Concurrent parts per upload
-	MaxRetries    int
-	RetryDelay    time.Duration
+	Workers     int
+	PartSize    int64 // Size of each multipart upload part
+	Concurrency int   // Concurrent parts per upload
+	MaxRetries  int
+	RetryDelay  time.Duration
 }
 
 // WorkerPool manages a pool of workers for a stage

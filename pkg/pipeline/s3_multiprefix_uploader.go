@@ -26,14 +26,14 @@ import (
 //
 // Phase 3.1: Multi-Prefix Parallel Upload
 type S3MultiPrefixUploaderStage struct {
-	config  *S3UploaderConfig
-	inputs  map[string]<-chan *Job // Key: "shard-N", Value: input channel
-	output  chan<- *Job
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-	mu      sync.RWMutex
-	stats   StageStats
+	config *S3UploaderConfig
+	inputs map[string]<-chan *Job // Key: "shard-N", Value: input channel
+	output chan<- *Job
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+	mu     sync.RWMutex
+	stats  StageStats
 
 	// Per-prefix worker pools
 	workersPerPrefix int
@@ -187,6 +187,52 @@ func (s *S3MultiPrefixUploaderStage) prefixWorker(ctx context.Context, prefix st
 }
 
 // processJob processes a single upload job
+// shouldSkipUpload checks if a chunk should be skipped (already uploaded) - Issue #157
+func (s *S3MultiPrefixUploaderStage) shouldSkipUpload(ctx context.Context, job *Job) (bool, error) {
+	// Check if resume mode is enabled
+	if s.pipeline == nil || s.pipeline.config == nil || !s.pipeline.config.ResumeMode {
+		return false, nil
+	}
+
+	// Check manifest for already uploaded chunks
+	if s.pipeline.manifestBuilder != nil {
+		builder := s.pipeline.manifestBuilder.(*manifest.Builder)
+		manifestData := builder.Build()
+
+		// Look for existing chunk with same ID
+		for _, chunk := range manifestData.Chunks {
+			if chunk.ID == job.Chunk.ID {
+				// Check if UploadedAt is set (non-zero time)
+				if !chunk.UploadedAt.IsZero() {
+					// Chunk already uploaded
+					return true, nil
+				}
+			}
+		}
+	}
+
+	// Optional: Check S3 existence with HeadObject if SkipExisting is enabled
+	if s.pipeline.config.SkipExisting {
+		s3Key := job.S3Key
+		if s.config.Prefix != "" {
+			s3Key = s.config.Prefix + "/" + job.S3Key
+		}
+
+		_, err := s.config.S3Client.HeadObject(ctx, &s3.HeadObjectInput{
+			Bucket: aws.String(s.config.Bucket),
+			Key:    aws.String(s3Key),
+		})
+
+		if err == nil {
+			// Object exists in S3
+			return true, nil
+		}
+		// If HeadObject fails, continue with upload (object may not exist or permission issue)
+	}
+
+	return false, nil
+}
+
 func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, prefix string) error {
 	startTime := time.Now()
 	defer func() {
@@ -194,6 +240,23 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 			_ = job.Archive.Close()
 		}
 	}()
+
+	// Issue #157: Check if chunk should be skipped (resume mode)
+	skip, err := s.shouldSkipUpload(ctx, job)
+	if err != nil {
+		return fmt.Errorf("failed to check if upload should be skipped: %w", err)
+	}
+
+	if skip {
+		// Chunk already uploaded - skip and mark as complete
+		job.EndTime = time.Now()
+
+		// Update statistics (but not bytes processed since we didn't actually upload)
+		atomic.AddInt64(&s.jobsProcessed, 1)
+
+		fmt.Printf("⏭️  Skipped chunk %d (already uploaded)\n", job.Chunk.ID)
+		return nil
+	}
 
 	// Upload with retries
 	var lastErr error

@@ -58,6 +58,42 @@ func NewBuilder(uploadID, sourcePath, bucket, prefix, region string) (*Builder, 
 	}, nil
 }
 
+// NewBuilderFromExisting creates a builder from an existing manifest for resume (Issue #157)
+func NewBuilderFromExisting(existing *Manifest) (*Builder, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown"
+	}
+
+	// Clone the existing manifest to avoid modifying the original
+	cloned := &Manifest{
+		Version:          existing.Version,
+		UploadID:         existing.UploadID,
+		CreatedAt:        existing.CreatedAt,
+		CompletedAt:      existing.CompletedAt,
+		SourcePath:       existing.SourcePath,
+		Hostname:         hostname, // Use current hostname for resumed portion
+		Bucket:           existing.Bucket,
+		Prefix:           existing.Prefix,
+		Region:           existing.Region,
+		TotalFiles:       existing.TotalFiles,
+		TotalBytes:       existing.TotalBytes,
+		TotalChunks:      existing.TotalChunks,
+		ShardCount:       existing.ShardCount,
+		CompressionType:  existing.CompressionType,
+		CompressionLevel: existing.CompressionLevel,
+		CompressionRatio: existing.CompressionRatio,
+		Files:            append([]FileEntry(nil), existing.Files...),
+		Chunks:           append([]ChunkEntry(nil), existing.Chunks...),
+		Shards:           append([]ShardEntry(nil), existing.Shards...),
+	}
+
+	return &Builder{
+		manifest: cloned,
+		hostname: hostname,
+	}, nil
+}
+
 // AddFile adds a file to the manifest
 func (b *Builder) AddFile(entry FileEntry) {
 	b.manifest.Files = append(b.manifest.Files, entry)
@@ -85,9 +121,9 @@ func (b *Builder) SetShardCount(count int) {
 	b.manifest.Shards = make([]ShardEntry, count)
 	for i := 0; i < count; i++ {
 		b.manifest.Shards[i] = ShardEntry{
-			ID:         i,
-			Prefix:     fmt.Sprintf("%s/uploads/%s/shard-%d", b.manifest.Prefix, b.manifest.UploadID, i),
-			ChunkKeys:  make([]string, 0),
+			ID:        i,
+			Prefix:    fmt.Sprintf("%s/uploads/%s/shard-%d", b.manifest.Prefix, b.manifest.UploadID, i),
+			ChunkKeys: make([]string, 0),
 		}
 	}
 }
@@ -246,6 +282,18 @@ func DownloadFromS3(ctx context.Context, s3Client *s3.Client, bucket, prefix, up
 	}
 
 	return FromJSON(data)
+}
+
+// DownloadPartialManifestFromS3 downloads a partial manifest from S3 (Issue #157: Resume capability)
+func DownloadPartialManifestFromS3(ctx context.Context, s3Client *s3.Client, bucket, prefix, uploadID string) (*Manifest, error) {
+	// Try partial manifest (compressed only)
+	key := fmt.Sprintf("%s/uploads/%s/manifest.partial.json.gz", prefix, uploadID)
+	data, err := downloadS3Object(ctx, s3Client, bucket, key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download partial manifest from S3: %w", err)
+	}
+
+	return FromJSONCompressed(data)
 }
 
 // downloadS3Object downloads an object from S3
