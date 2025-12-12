@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/scttfrdmn/cargoship/pkg/ioutils"
 )
 
 // UploaderStage uploads archives to S3 using multipart upload
@@ -194,7 +196,11 @@ func (s *UploaderStage) simpleUpload(ctx context.Context, job *Job) error {
 	// TODO: Integrate with actual S3 client
 	// For now, just read and discard the stream to simulate upload
 
-	buf := make([]byte, 64*1024) // 64KB buffer
+	// Get buffer from pool (zero-copy optimization)
+	bufPtr := ioutils.DefaultBufferPool.Get()
+	defer ioutils.DefaultBufferPool.Put(bufPtr)
+	buf := *bufPtr
+
 	var totalBytes int64
 
 	for {
@@ -226,7 +232,11 @@ func (s *UploaderStage) multipartUpload(ctx context.Context, job *Job) error {
 	// TODO: Integrate with actual S3 multipart upload API
 	// For now, simulate by reading in parts
 
-	partBuffer := make([]byte, s.config.PartSize)
+	// Get buffer from staged pool (zero-copy optimization)
+	partBufPtr, poolSize := ioutils.DefaultStagedPool.Get(int(s.config.PartSize))
+	defer ioutils.DefaultStagedPool.Put(partBufPtr, poolSize)
+	partBuffer := (*partBufPtr)[:s.config.PartSize]
+
 	var totalBytes int64
 	partNumber := 0
 
