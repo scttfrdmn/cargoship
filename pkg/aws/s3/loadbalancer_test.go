@@ -268,11 +268,12 @@ func TestRealTimeLoadBalancerGetRealTimeMetrics(t *testing.T) {
 }
 
 func TestRealTimeLoadBalancerRealTimeMonitoring(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
 
 	rtlb := NewRealTimeLoadBalancer(LoadBalanceAdaptive)
 	rtlb.rebalanceInterval = time.Millisecond * 100 // Fast rebalancing for test
+	rtlb.monitoringInterval = time.Millisecond * 200 // Fast monitoring for test
 
 	// Start real-time monitoring
 	rtlb.Start(ctx)
@@ -290,8 +291,8 @@ func TestRealTimeLoadBalancerRealTimeMonitoring(t *testing.T) {
 
 	rtlb.UpdatePrefixMetrics("test-prefix", metrics)
 
-	// Wait for monitoring loops to run (monitoring loop runs every 2 seconds)
-	time.Sleep(time.Millisecond * 2100)
+	// Wait for monitoring loop to run (with configurable interval)
+	time.Sleep(rtlb.monitoringInterval * 3)
 
 	// Verify system load metrics were updated
 	assert.Greater(t, rtlb.systemLoad.TotalCapacity, 0.0)

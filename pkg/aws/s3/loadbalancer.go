@@ -29,6 +29,7 @@ type RealTimeLoadBalancer struct {
 	// Configuration
 	rebalanceThreshold float64
 	rebalanceInterval  time.Duration
+	monitoringInterval time.Duration
 	predictionWindow   time.Duration
 	adaptationRate     float64
 
@@ -349,6 +350,7 @@ func NewRealTimeLoadBalancer(strategy LoadBalanceStrategy) *RealTimeLoadBalancer
 		optimizer:          NewLoadBalanceOptimizer(),
 		rebalanceThreshold: 0.15, // 15% imbalance triggers rebalancing
 		rebalanceInterval:  time.Second * 10,
+		monitoringInterval: time.Second * 2,
 		predictionWindow:   time.Minute * 5,
 		adaptationRate:     0.1,
 		systemLoad:         &SystemLoadMetrics{},
@@ -494,7 +496,7 @@ func (rtlb *RealTimeLoadBalancer) GetRealTimeMetrics() *RealTimeMetrics {
 // Internal implementation methods
 
 func (rtlb *RealTimeLoadBalancer) realTimeMonitoringLoop(ctx context.Context) {
-	ticker := time.NewTicker(time.Second * 2)
+	ticker := time.NewTicker(rtlb.monitoringInterval)
 	defer ticker.Stop()
 
 	for {
