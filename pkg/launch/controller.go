@@ -3,11 +3,13 @@ package launch
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -428,9 +430,36 @@ func (cc *ControllerConnection) buildTLSConfig() *tls.Config {
 
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: cc.config.TLSConfig.InsecureSkipVerify,
+		MinVersion:         tls.VersionTLS12, // Enforce TLS 1.2 minimum
 	}
 
-	// TODO: Add certificate loading if cert files are specified
+	// Issue #141: Load client certificate if specified
+	if cc.config.TLSConfig.CertFile != "" && cc.config.TLSConfig.KeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(cc.config.TLSConfig.CertFile, cc.config.TLSConfig.KeyFile)
+		if err != nil {
+			cc.logger.Error("Failed to load TLS certificate", "cert", cc.config.TLSConfig.CertFile, "key", cc.config.TLSConfig.KeyFile, "error", err)
+			// Continue without client cert - server may not require it
+		} else {
+			tlsConfig.Certificates = []tls.Certificate{cert}
+			cc.logger.Info("Loaded TLS client certificate", "cert", cc.config.TLSConfig.CertFile)
+		}
+	}
+
+	// Issue #141: Load CA certificate bundle if specified
+	if cc.config.TLSConfig.CAFile != "" {
+		caCert, err := os.ReadFile(cc.config.TLSConfig.CAFile)
+		if err != nil {
+			cc.logger.Error("Failed to read CA certificate", "ca", cc.config.TLSConfig.CAFile, "error", err)
+		} else {
+			caCertPool := x509.NewCertPool()
+			if !caCertPool.AppendCertsFromPEM(caCert) {
+				cc.logger.Error("Failed to parse CA certificate", "ca", cc.config.TLSConfig.CAFile)
+			} else {
+				tlsConfig.RootCAs = caCertPool
+				cc.logger.Info("Loaded CA certificate bundle", "ca", cc.config.TLSConfig.CAFile)
+			}
+		}
+	}
 
 	return tlsConfig
 }
