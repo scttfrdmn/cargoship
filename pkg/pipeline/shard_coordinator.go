@@ -4,6 +4,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -144,20 +145,29 @@ func NewShardCoordinator(ctx context.Context, config *ShardCoordinatorConfig) (*
 		sc.ownsMemoryManager = true
 	}
 
+	// Calculate intelligent compression concurrency per shard (Issue #80)
+	// Distribute CPU cores across shards for optimal compression parallelism
+	cpuCores := runtime.GOMAXPROCS(0)
+	compressionConcurrency := cpuCores / config.ShardCount
+	if compressionConcurrency < 1 {
+		compressionConcurrency = 1 // Minimum 1 thread per shard
+	}
+
 	// Create shard pipelines
 	sc.pipelines = make([]*ShardPipeline, config.ShardCount)
 	for i := 0; i < config.ShardCount; i++ {
 		shardName := fmt.Sprintf("shard-%05d", i)
 		pipeConfig := &ShardPipelineConfig{
-			ShardID:          i,
-			ShardName:        shardName,
-			S3Client:         config.S3Client,
-			Bucket:           config.Bucket,
-			Prefix:           config.Prefix,
-			CompressionLevel: config.CompressionLevel,
-			MemoryManager:    config.MemoryManager,
-			MaxRetries:       config.MaxRetries,
-			RetryDelay:       config.RetryDelay,
+			ShardID:                i,
+			ShardName:              shardName,
+			S3Client:               config.S3Client,
+			Bucket:                 config.Bucket,
+			Prefix:                 config.Prefix,
+			CompressionLevel:       config.CompressionLevel,
+			CompressionConcurrency: compressionConcurrency, // Issue #80
+			MemoryManager:          config.MemoryManager,
+			MaxRetries:             config.MaxRetries,
+			RetryDelay:             config.RetryDelay,
 		}
 
 		pipeline, err := NewShardPipeline(ctx, pipeConfig)

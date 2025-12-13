@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -908,4 +909,94 @@ func TestShardCoordinator_MemoryManagement(t *testing.T) {
 
 		t.Logf("Coordinator stats with memory: %s", stats.String())
 	})
+}
+
+// TestShardCoordinator_ParallelCompression tests compression concurrency configuration (Issue #80)
+func TestShardCoordinator_ParallelCompression(t *testing.T) {
+	ctx := context.Background()
+	mockClient := newMockS3ClientCoordinator()
+
+	tests := []struct {
+		name                   string
+		shardCount             int
+		cpuCores               int // Simulated GOMAXPROCS
+		expectedConcurrencyMin int
+		expectedConcurrencyMax int
+	}{
+		{
+			name:                   "More cores than shards (16 cores, 4 shards)",
+			shardCount:             4,
+			cpuCores:               16,
+			expectedConcurrencyMin: 4,
+			expectedConcurrencyMax: 4, // 16/4 = 4 cores per shard
+		},
+		{
+			name:                   "Equal cores and shards (8 cores, 8 shards)",
+			shardCount:             8,
+			cpuCores:               8,
+			expectedConcurrencyMin: 1,
+			expectedConcurrencyMax: 1, // 8/8 = 1 core per shard
+		},
+		{
+			name:                   "Fewer cores than shards (4 cores, 10 shards)",
+			shardCount:             10,
+			cpuCores:               4,
+			expectedConcurrencyMin: 1,
+			expectedConcurrencyMax: 1, // 4/10 = 0, clamped to 1
+		},
+		{
+			name:                   "Many cores (32 cores, 8 shards)",
+			shardCount:             8,
+			cpuCores:               32,
+			expectedConcurrencyMin: 4,
+			expectedConcurrencyMax: 4, // 32/8 = 4 cores per shard
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save and restore GOMAXPROCS
+			oldMaxProcs := runtime.GOMAXPROCS(tt.cpuCores)
+			defer runtime.GOMAXPROCS(oldMaxProcs)
+
+			routerConfig := &chunking.ShardRouterConfig{
+				Strategy:   chunking.ShardByHash,
+				ShardCount: tt.shardCount,
+			}
+			router, err := chunking.NewShardRouter(routerConfig)
+			if err != nil {
+				t.Fatalf("Failed to create router: %v", err)
+			}
+
+			config := &ShardCoordinatorConfig{
+				ShardCount: tt.shardCount,
+				Router:     router,
+				S3Client:   mockClient,
+				Bucket:     "test-bucket",
+				Prefix:     "test",
+			}
+
+			coordinator, err := NewShardCoordinator(ctx, config)
+			if err != nil {
+				t.Fatalf("Failed to create coordinator: %v", err)
+			}
+
+			// Verify each shard has correct compression concurrency
+			for i := 0; i < tt.shardCount; i++ {
+				pipeline := coordinator.pipelines[i]
+				concurrency := pipeline.config.CompressionConcurrency
+
+				if concurrency < tt.expectedConcurrencyMin || concurrency > tt.expectedConcurrencyMax {
+					t.Errorf("Shard %d: expected concurrency in range [%d, %d], got %d",
+						i, tt.expectedConcurrencyMin, tt.expectedConcurrencyMax, concurrency)
+				}
+			}
+
+			// Log the configuration
+			sampleConcurrency := coordinator.pipelines[0].config.CompressionConcurrency
+			t.Logf("%s: %d shards × %d concurrency/shard = %d total threads (from %d CPU cores)",
+				tt.name, tt.shardCount, sampleConcurrency,
+				tt.shardCount*sampleConcurrency, tt.cpuCores)
+		})
+	}
 }

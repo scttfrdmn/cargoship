@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,7 +33,8 @@ type ShardPipelineConfig struct {
 	Prefix   string     // S3 key prefix (optional)
 
 	// Compression configuration
-	CompressionLevel zstd.EncoderLevel // Zstd compression level (default: SpeedDefault)
+	CompressionLevel       zstd.EncoderLevel // Zstd compression level (default: SpeedDefault)
+	CompressionConcurrency int               // Zstd encoder concurrency (default: GOMAXPROCS / ShardCount) (Issue #80)
 
 	// Memory management
 	MemoryManager *MemoryManager // Memory manager for bounded usage
@@ -108,6 +110,11 @@ func NewShardPipeline(ctx context.Context, config *ShardPipelineConfig) (*ShardP
 	// Set defaults
 	if config.CompressionLevel == 0 {
 		config.CompressionLevel = zstd.SpeedDefault
+	}
+	// Default compression concurrency to GOMAXPROCS (Issue #80)
+	// Coordinator will override this with intelligent per-shard distribution
+	if config.CompressionConcurrency <= 0 {
+		config.CompressionConcurrency = runtime.GOMAXPROCS(0)
 	}
 	if config.MaxRetries <= 0 {
 		config.MaxRetries = 3
@@ -185,10 +192,11 @@ func (sp *ShardPipeline) Start() error {
 	// Create pipe for streaming
 	sp.pipeReader, sp.pipeWriter = io.Pipe()
 
-	// Create zstd encoder writing to pipe
+	// Create zstd encoder writing to pipe (Issue #80: parallel compression)
 	var err error
 	sp.encoder, err = zstd.NewWriter(sp.pipeWriter,
 		zstd.WithEncoderLevel(sp.config.CompressionLevel),
+		zstd.WithEncoderConcurrency(sp.config.CompressionConcurrency),
 	)
 	if err != nil {
 		_ = sp.pipeWriter.Close()
