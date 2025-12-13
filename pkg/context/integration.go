@@ -124,7 +124,6 @@ func getAvailableCommands(ctx ExecutionContext) map[string]bool {
 			"tree":      true,
 			"estimate":  true,
 			"wizard":    true,
-			"rclone":    true,
 			"benchmark": true,
 
 			// Management commands
@@ -181,7 +180,6 @@ func getAvailableCommands(ctx ExecutionContext) map[string]bool {
 			"tree":        true,
 			"estimate":    true,
 			"wizard":      true,
-			"rclone":      true,
 			"benchmark":   true,
 			"config":      true,
 			"lifecycle":   true,

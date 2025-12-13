@@ -109,7 +109,6 @@ func (cf *CommandFilter) getContextCommands(ctx ExecutionContext) map[string]boo
 			"wizard":   true,
 
 			// File operations
-			"rclone":    true,
 			"benchmark": true,
 
 			// Configuration and management
@@ -177,7 +176,6 @@ func (cf *CommandFilter) getContextCommands(ctx ExecutionContext) map[string]boo
 			"tree":        true,
 			"estimate":    true,
 			"wizard":      true,
-			"rclone":      true,
 			"benchmark":   true,
 			"config":      true,
 			"lifecycle":   true,

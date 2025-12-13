@@ -375,7 +375,7 @@ func (s *Shell) getAvailableCommands(ctx context.ExecutionContext) map[string]bo
 	case context.ContextLocal:
 		return map[string]bool{
 			"create": true, "analyze": true, "find": true, "tree": true,
-			"estimate": true, "wizard": true, "rclone": true, "benchmark": true,
+			"estimate": true, "wizard": true, "benchmark": true,
 			"config": true, "lifecycle": true, "metrics": true, "retier": true,
 			"context": true, "controller": true, "travelagent": true,
 			"schema": true, "man": true, "mddocs": true,
@@ -397,7 +397,7 @@ func (s *Shell) getAvailableCommands(ctx context.ExecutionContext) map[string]bo
 		// REPL has access to all commands
 		return map[string]bool{
 			"create": true, "analyze": true, "find": true, "tree": true,
-			"estimate": true, "wizard": true, "rclone": true, "benchmark": true,
+			"estimate": true, "wizard": true, "benchmark": true,
 			"config": true, "lifecycle": true, "metrics": true, "retier": true,
 			"context": true, "controller": true, "travelagent": true,
 			"schema": true, "man": true, "mddocs": true,
