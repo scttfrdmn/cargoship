@@ -240,8 +240,8 @@ func CalculateShardDistribution(shards []ShardMetrics, strategy string) ShardDis
 
 	// Calculate basic statistics
 	var totalSize int64
-	var minSize int64 = shards[0].TotalBytes
-	var maxSize int64 = shards[0].TotalBytes
+	minSize := shards[0].TotalBytes
+	maxSize := shards[0].TotalBytes
 
 	for _, shard := range shards {
 		totalSize += shard.TotalBytes
