@@ -1000,3 +1000,311 @@ func TestShardCoordinator_ParallelCompression(t *testing.T) {
 		})
 	}
 }
+
+// generateTestFiles creates a temporary directory with test files for integration tests
+func generateTestFiles(t *testing.T, count int, sizes []int64) (string, []chunking.File) {
+	t.Helper()
+
+	tmpDir, err := os.MkdirTemp("", "integration-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	files := make([]chunking.File, count)
+	for i := 0; i < count; i++ {
+		// Distribute sizes across files
+		size := sizes[i%len(sizes)]
+
+		// Create subdirectories for variety
+		subdir := filepath.Join(tmpDir, fmt.Sprintf("dir%d", i%10))
+		if err := os.MkdirAll(subdir, 0755); err != nil {
+			t.Fatalf("Failed to create subdir: %v", err)
+		}
+
+		// Create file with pattern in name for type-based routing
+		var filename string
+		fileType := i % 3
+		switch fileType {
+		case 0:
+			filename = fmt.Sprintf("file%05d.txt", i)
+		case 1:
+			filename = fmt.Sprintf("file%05d.log", i)
+		case 2:
+			filename = fmt.Sprintf("file%05d.json", i)
+		}
+
+		path := filepath.Join(subdir, filename)
+
+		// Write file with content
+		content := make([]byte, size)
+		for j := range content {
+			content[j] = byte('a' + (i % 26)) // Vary content by file
+		}
+		if err := os.WriteFile(path, content, 0644); err != nil {
+			t.Fatalf("Failed to write file: %v", err)
+		}
+
+		files[i] = chunking.File{
+			Path:    path,
+			Size:    size,
+			ModTime: time.Now(),
+		}
+	}
+
+	return tmpDir, files
+}
+
+// TestShardCoordinator_Integration_HashRouting tests hash-based routing with 10k files (Issue #85)
+func TestShardCoordinator_Integration_HashRouting(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mockClient := newMockS3ClientCoordinator()
+
+	// Test with 1k files, 10 shards (scaled down for test performance)
+	// In production, this scales to 10k+ files
+	const fileCount = 1000
+	const shardCount = 10
+
+	// Generate test files with varied sizes
+	sizes := []int64{1024, 4096, 16384, 65536} // 1KB, 4KB, 16KB, 64KB
+	tmpDir, files := generateTestFiles(t, fileCount, sizes)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	t.Logf("Generated %d test files in %s", fileCount, tmpDir)
+
+	// Create coordinator with hash-based routing
+	routerConfig := &chunking.ShardRouterConfig{
+		Strategy:   chunking.ShardByHash,
+		ShardCount: shardCount,
+	}
+	router, err := chunking.NewShardRouter(routerConfig)
+	if err != nil {
+		t.Fatalf("Failed to create router: %v", err)
+	}
+
+	config := &ShardCoordinatorConfig{
+		ShardCount: shardCount,
+		Router:     router,
+		S3Client:   mockClient,
+		Bucket:     "test-bucket",
+		Prefix:     "integration-test",
+	}
+
+	coordinator, err := NewShardCoordinator(ctx, config)
+	if err != nil {
+		t.Fatalf("Failed to create coordinator: %v", err)
+	}
+
+	// Start coordinator
+	if err := coordinator.Start(); err != nil {
+		t.Fatalf("Failed to start coordinator: %v", err)
+	}
+
+	// Add all files
+	startTime := time.Now()
+	for i, file := range files {
+		if err := coordinator.AddFile(file); err != nil {
+			t.Fatalf("Failed to add file %d: %v", i, err)
+		}
+
+		// Log progress
+		if (i+1)%100 == 0 {
+			t.Logf("Added %d/%d files", i+1, fileCount)
+		}
+	}
+
+	// Close and wait for completion
+	if err := coordinator.Close(); err != nil {
+		t.Fatalf("Failed to close coordinator: %v", err)
+	}
+
+	duration := time.Since(startTime)
+	t.Logf("Uploaded %d files in %s", fileCount, duration)
+
+	// Verify statistics
+	stats := coordinator.GetStats()
+	if stats.FilesAdded != fileCount {
+		t.Errorf("Expected %d files added, got %d", fileCount, stats.FilesAdded)
+	}
+	if !stats.IsComplete() {
+		t.Error("Expected all shards to be complete")
+	}
+	if stats.HasErrors() {
+		t.Errorf("Expected no errors, got: %v", stats.FirstError)
+	}
+
+	// Verify shard distribution (hash-based should be relatively even)
+	t.Logf("Shard distribution:")
+	for i := 0; i < shardCount; i++ {
+		shardStats := stats.ShardStats[i]
+		filesInShard := shardStats.FilesAdded
+		percentage := float64(filesInShard) / float64(fileCount) * 100
+
+		t.Logf("  Shard %d: %d files (%.1f%%)", i, filesInShard, percentage)
+
+		// Hash-based routing should distribute relatively evenly (within 25% of average)
+		// With 1000 files, some variance is expected due to hash randomness
+		expectedAvg := fileCount / shardCount
+		lowerBound := int64(float64(expectedAvg) * 0.75)
+		upperBound := int64(float64(expectedAvg) * 1.25)
+
+		if filesInShard < lowerBound || filesInShard > upperBound {
+			t.Errorf("Shard %d has uneven distribution: %d files (expected %d ±25%%)",
+				i, filesInShard, expectedAvg)
+		}
+	}
+
+	// Log performance metrics
+	throughput := stats.ThroughputMBps()
+	networkThroughput := stats.NetworkThroughputMBps()
+	compressionRatio := stats.CompressionRatio()
+
+	t.Logf("Performance metrics:")
+	t.Logf("  Throughput: %.2f MB/s (processing)", throughput)
+	t.Logf("  Network throughput: %.2f MB/s (upload)", networkThroughput)
+	t.Logf("  Compression ratio: %.1f%%", compressionRatio*100)
+	t.Logf("  Total uploads: %d", mockClient.putObjectCalls)
+}
+// TestShardCoordinator_Integration_Cancellation tests graceful shutdown (Issue #85)
+func TestShardCoordinator_Integration_Cancellation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	mockClient := newMockS3ClientCoordinator()
+
+	// Test with 500 files
+	const fileCount = 500
+	const shardCount = 5
+
+	sizes := []int64{1024, 4096}
+	tmpDir, files := generateTestFiles(t, fileCount, sizes)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	routerConfig := &chunking.ShardRouterConfig{
+		Strategy:   chunking.ShardByHash,
+		ShardCount: shardCount,
+	}
+	router, err := chunking.NewShardRouter(routerConfig)
+	if err != nil {
+		t.Fatalf("Failed to create router: %v", err)
+	}
+
+	config := &ShardCoordinatorConfig{
+		ShardCount: shardCount,
+		Router:     router,
+		S3Client:   mockClient,
+		Bucket:     "test-bucket",
+		Prefix:     "cancel-test",
+	}
+
+	coordinator, err := NewShardCoordinator(ctx, config)
+	if err != nil {
+		t.Fatalf("Failed to create coordinator: %v", err)
+	}
+
+	if err := coordinator.Start(); err != nil {
+		t.Fatalf("Failed to start coordinator: %v", err)
+	}
+
+	// Add files in background
+	addDone := make(chan struct{})
+	go func() {
+		defer close(addDone)
+		for i, file := range files {
+			select {
+			case <-ctx.Done():
+				t.Logf("Context cancelled after adding %d files", i)
+				return
+			default:
+				if err := coordinator.AddFile(file); err != nil {
+					if ctx.Err() != nil {
+						return // Expected during cancellation
+					}
+					t.Errorf("Failed to add file %d: %v", i, err)
+					return
+				}
+			}
+		}
+	}()
+
+	// Wait a bit for some files to be added
+	time.Sleep(50 * time.Millisecond)
+
+	// Cancel context
+	t.Logf("Cancelling context...")
+	cancel()
+
+	// Wait for add goroutine to finish
+	<-addDone
+
+	// Close coordinator (should handle cancellation gracefully)
+	err = coordinator.Close()
+	// May have errors due to cancellation, which is expected
+	t.Logf("Close completed with result: %v", err)
+
+	stats := coordinator.GetStats()
+	t.Logf("Processed %d/%d files before cancellation", stats.FilesAdded, fileCount)
+
+	// Verify some files were processed (but not necessarily all)
+	if stats.FilesAdded == 0 {
+		t.Error("Expected at least some files to be processed")
+	}
+	if stats.FilesAdded > fileCount {
+		t.Errorf("Expected at most %d files, got %d", fileCount, stats.FilesAdded)
+	}
+}
+
+// BenchmarkShardCoordinator_ParallelUpload benchmarks parallel shard uploads (Issue #85)
+func BenchmarkShardCoordinator_ParallelUpload(b *testing.B) {
+	ctx := context.Background()
+
+	// Generate test files once
+	const fileCount = 100
+	const shardCount = 10
+	sizes := []int64{1024, 4096}
+	tmpDir, files := generateTestFiles(&testing.T{}, fileCount, sizes)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		mockClient := newMockS3ClientCoordinator()
+
+		routerConfig := &chunking.ShardRouterConfig{
+			Strategy:   chunking.ShardByHash,
+			ShardCount: shardCount,
+		}
+		router, _ := chunking.NewShardRouter(routerConfig)
+
+		config := &ShardCoordinatorConfig{
+			ShardCount: shardCount,
+			Router:     router,
+			S3Client:   mockClient,
+			Bucket:     "benchmark-bucket",
+		}
+
+		coordinator, _ := NewShardCoordinator(ctx, config)
+		_ = coordinator.Start()
+
+		for _, file := range files {
+			_ = coordinator.AddFile(file)
+		}
+
+		_ = coordinator.Close()
+
+		stats := coordinator.GetStats()
+		b.ReportMetric(stats.ThroughputMBps(), "throughput_mbps")
+		b.ReportMetric(float64(stats.FilesAdded), "files")
+	}
+}
