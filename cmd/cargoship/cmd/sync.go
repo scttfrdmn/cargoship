@@ -245,7 +245,7 @@ Examples:
 					fmt.Printf("📤 Uploading %d changed files (skipping %d unchanged)\n\n",
 						len(includeFiles), len(delta.Same))
 				} else {
-					fmt.Println("📤 Performing full upload (first sync)\n")
+					fmt.Println("📤 Performing full upload (first sync)")
 				}
 			}
 
@@ -305,7 +305,12 @@ func downloadLatestManifest(ctx context.Context, s3Client *s3.Client, bucket, pr
 			return nil, fmt.Errorf("manifest not found: %w", err)
 		}
 	}
-	defer result.Body.Close()
+	defer func() {
+		if closeErr := result.Body.Close(); closeErr != nil {
+			// Log but don't fail on close error
+			_ = closeErr
+		}
+	}()
 
 	// Read and deserialize manifest
 	manifestBytes, err := os.ReadFile(manifestKey)

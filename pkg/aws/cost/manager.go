@@ -18,6 +18,7 @@ type Manager struct {
 	pricingMgr    *PricingManager
 	reporter      *CostReporter
 	budgetTracker *BudgetTracker
+	notifier      *BudgetAlertNotifier // Issue #133: Budget alert notifier
 	logger        *slog.Logger
 	awsConfig     aws.Config // Issue #147 Phase 4: Needed for alert notification
 }
@@ -77,11 +78,16 @@ func NewManager(cfg *config.CostControlConfig, awsCfg aws.Config, logger *slog.L
 		alertCooldown:  24 * time.Hour, // Don't spam alerts
 	}
 
+	// Issue #133: Initialize budget alert notifier
+	alertConfig := DefaultBudgetAlertConfig()
+	notifier := NewBudgetAlertNotifier(alertConfig, awsCfg)
+
 	return &Manager{
 		config:        cfg,
 		pricingMgr:    pricingMgr,
 		reporter:      reporter,
 		budgetTracker: budgetTracker,
+		notifier:      notifier,
 		logger:        logger.With("component", "cost-manager"),
 		awsConfig:     awsCfg, // Issue #147 Phase 4: For alert notification
 	}, nil
@@ -194,8 +200,8 @@ func (m *Manager) RecordOperationCost(ctx context.Context, operation string, fil
 		m.budgetTracker.currentSpend += estimate.TotalCost
 	}
 
-	// Check for budget alerts
-	if err := m.checkAndSendBudgetAlerts(); err != nil {
+	// Check for budget alerts (Issue #133)
+	if err := m.checkAndSendBudgetAlerts(ctx); err != nil {
 		m.logger.Error("Failed to check budget alerts", "error", err)
 	}
 
@@ -372,8 +378,8 @@ func (m *Manager) checkBudgetLimits(additionalCost float64) error {
 	return nil
 }
 
-// checkAndSendBudgetAlerts checks if budget alerts should be sent
-func (m *Manager) checkAndSendBudgetAlerts() error {
+// checkAndSendBudgetAlerts checks if budget alerts should be sent (Issue #133)
+func (m *Manager) checkAndSendBudgetAlerts(ctx context.Context) error {
 	currentSpend := m.GetCurrentMonthSpend()
 	budgetUsed := currentSpend / m.config.MaxMonthlyBudget
 
@@ -387,8 +393,14 @@ func (m *Manager) checkAndSendBudgetAlerts() error {
 				"budget_used_percent", budgetUsed*100,
 				"alert_threshold_percent", m.config.AlertThreshold*100)
 
-			// TODO: Implement actual alert sending (email, Slack, etc.)
-			// For now, just log and update timestamp
+			// Issue #133: Send actual alert notifications via configured channels
+			// Check global budget and send alert if needed
+			if err := m.CheckAndNotifyBudgetStatus(ctx, "", m.notifier); err != nil {
+				m.logger.Error("Failed to send budget alert", "error", err)
+				return fmt.Errorf("failed to send budget alert: %w", err)
+			}
+
+			// Update last alert timestamp to respect cooldown
 			m.budgetTracker.lastAlertSent = time.Now()
 		}
 	}
