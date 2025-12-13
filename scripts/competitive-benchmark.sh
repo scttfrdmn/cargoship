@@ -1,6 +1,6 @@
 #!/bin/bash
 # Competitive Benchmark Script - Sequential Execution
-# Compares CargoShip against s5cmd, mc, aws-cli, and rclone
+# Compares CargoShip against s5cmd, mc, and aws-cli
 # IMPORTANT: Runs ONE tool at a time to avoid resource contention
 
 set -e
@@ -87,7 +87,7 @@ echo "tool,duration_ms" > "$RESULTS_DIR/results.csv"
 # 1. s5cmd - HIGH PERFORMANCE S3 CLI
 #
 log_info "========================"
-log_info "Benchmark 1/5: s5cmd"
+log_info "Benchmark 1/4: s5cmd"
 log_info "========================"
 cleanup_s3_prefix "s5cmd-test"
 measure_time "s5cmd" "s5cmd --profile $AWS_PROFILE cp '$TEST_DATA_DIR/*' s3://$BENCHMARK_BUCKET/s5cmd-test/"
@@ -97,7 +97,7 @@ sleep 5
 # 2. MinIO mc - CLOUD STORAGE CLIENT
 #
 log_info "========================"
-log_info "Benchmark 2/5: mc"
+log_info "Benchmark 2/4: mc"
 log_info "========================"
 cleanup_s3_prefix "mc-test"
 # Configure mc alias if not exists
@@ -109,27 +109,17 @@ sleep 5
 # 3. aws-cli - OFFICIAL AWS CLI
 #
 log_info "========================"
-log_info "Benchmark 3/5: aws-cli"
+log_info "Benchmark 3/4: aws-cli"
 log_info "========================"
 cleanup_s3_prefix "aws-cli-test"
 measure_time "aws-cli" "AWS_PROFILE=$AWS_PROFILE aws s3 cp '$TEST_DATA_DIR' s3://$BENCHMARK_BUCKET/aws-cli-test/ --recursive"
 sleep 5
 
 #
-# 4. rclone - UNIVERSAL CLOUD SYNC
+# 4. cargoship - OUR TOOL
 #
 log_info "========================"
-log_info "Benchmark 4/5: rclone"
-log_info "========================"
-cleanup_s3_prefix "rclone-test"
-measure_time "rclone" "rclone copy '$TEST_DATA_DIR' :s3,provider=AWS,env_auth=true,region=$AWS_REGION:$BENCHMARK_BUCKET/rclone-test/"
-sleep 5
-
-#
-# 5. cargoship - OUR TOOL
-#
-log_info "========================"
-log_info "Benchmark 5/5: cargoship"
+log_info "Benchmark 4/4: cargoship"
 log_info "========================"
 cleanup_s3_prefix "cargoship-test"
 # Build cargoship if needed
@@ -137,7 +127,7 @@ if [ ! -f "./cargoship" ]; then
     log_info "Building cargoship..."
     go build -o ./cargoship ./cmd/cargoship
 fi
-measure_time "cargoship" "AWS_PROFILE=$AWS_PROFILE ./cargoship upload '$TEST_DATA_DIR' s3://$BENCHMARK_BUCKET/cargoship-test/"
+measure_time "cargoship" "AWS_PROFILE=$AWS_PROFILE ./cargoship create upload '$TEST_DATA_DIR' --bucket $BENCHMARK_BUCKET --prefix cargoship-test --region $AWS_REGION --quiet"
 
 # Generate report
 log_info "Generating comparison report..."
