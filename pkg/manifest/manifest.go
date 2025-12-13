@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -26,7 +27,9 @@ const (
 )
 
 // Builder helps construct a manifest incrementally during upload
+// All methods are thread-safe for concurrent use (Issue #88)
 type Builder struct {
+	mu       sync.RWMutex
 	manifest *Manifest
 
 	// Hostname for upload source tracking
@@ -94,28 +97,40 @@ func NewBuilderFromExisting(existing *Manifest) (*Builder, error) {
 	}, nil
 }
 
-// AddFile adds a file to the manifest
+// AddFile adds a file to the manifest (thread-safe)
 func (b *Builder) AddFile(entry FileEntry) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.manifest.Files = append(b.manifest.Files, entry)
 	b.manifest.TotalFiles++
 	b.manifest.TotalBytes += entry.Size
 }
 
-// AddChunk adds a chunk to the manifest
+// AddChunk adds a chunk to the manifest (thread-safe)
 func (b *Builder) AddChunk(entry ChunkEntry) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.manifest.Chunks = append(b.manifest.Chunks, entry)
 	b.manifest.TotalChunks++
 }
 
-// SetCompression sets compression information
+// SetCompression sets compression information (thread-safe)
 func (b *Builder) SetCompression(compressionType string, level int, ratio float64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.manifest.CompressionType = compressionType
 	b.manifest.CompressionLevel = level
 	b.manifest.CompressionRatio = ratio
 }
 
-// SetShardCount sets the number of shards
+// SetShardCount sets the number of shards (thread-safe)
 func (b *Builder) SetShardCount(count int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.manifest.ShardCount = count
 	// Initialize shard entries
 	b.manifest.Shards = make([]ShardEntry, count)
@@ -128,14 +143,20 @@ func (b *Builder) SetShardCount(count int) {
 	}
 }
 
-// SetSyncInfo sets sync-related fields for incremental sync (Issue #148)
+// SetSyncInfo sets sync-related fields for incremental sync (Issue #148, thread-safe)
 func (b *Builder) SetSyncInfo(syncType string, previousUploadID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.manifest.SyncType = syncType
 	b.manifest.PreviousManifestID = previousUploadID
 }
 
-// UpdateShardStats updates statistics for a shard
+// UpdateShardStats updates statistics for a shard (thread-safe)
 func (b *Builder) UpdateShardStats(shardID int, chunkKey string, fileCount int64, uncompressed, compressed int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if shardID < 0 || shardID >= len(b.manifest.Shards) {
 		return
 	}
@@ -148,8 +169,11 @@ func (b *Builder) UpdateShardStats(shardID int, chunkKey string, fileCount int64
 	shard.ChunkKeys = append(shard.ChunkKeys, chunkKey)
 }
 
-// UpdateFileS3Keys updates all files in a chunk with the chunk's S3 key and shard ID
+// UpdateFileS3Keys updates all files in a chunk with the chunk's S3 key and shard ID (thread-safe)
 func (b *Builder) UpdateFileS3Keys(chunkID int, shardID int, s3Key string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	for i := range b.manifest.Files {
 		if b.manifest.Files[i].ChunkID == chunkID {
 			b.manifest.Files[i].ShardID = shardID
@@ -158,14 +182,20 @@ func (b *Builder) UpdateFileS3Keys(chunkID int, shardID int, s3Key string) {
 	}
 }
 
-// Finalize completes the manifest and returns it
+// Finalize completes the manifest and returns it (thread-safe)
 func (b *Builder) Finalize() *Manifest {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.manifest.CompletedAt = time.Now()
 	return b.manifest
 }
 
-// Build returns the current manifest (without finalizing)
+// Build returns the current manifest (without finalizing, thread-safe)
 func (b *Builder) Build() *Manifest {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
 	return b.manifest
 }
 

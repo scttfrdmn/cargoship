@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -908,4 +909,181 @@ func BenchmarkManifest_Serialization(b *testing.B) {
 			_, _ = m.ToJSONCompressed()
 		}
 	})
+}
+
+// ============================================================================
+// Thread-Safety Tests (Issue #88)
+// ============================================================================
+
+// TestBuilder_ConcurrentAccess tests thread-safe concurrent access to builder
+func TestBuilder_ConcurrentAccess(t *testing.T) {
+	builder, err := NewBuilder("concurrent-123", "/data", "bucket", "prefix", "us-west-2")
+	require.NoError(t, err)
+
+	// Initialize shards first (non-concurrent)
+	builder.SetShardCount(4)
+
+	// Number of concurrent operations per type
+	numFiles := 100
+	numChunks := 10
+	numUpdates := 50
+
+	// WaitGroup to synchronize all goroutines
+	var wg sync.WaitGroup
+
+	// Concurrent file additions
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < numFiles; i++ {
+			builder.AddFile(FileEntry{
+				Path:    fmt.Sprintf("file-%d.txt", i),
+				Size:    int64(i * 1024),
+				ChunkID: i % numChunks,
+			})
+		}
+	}()
+
+	// Concurrent chunk additions
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < numChunks; i++ {
+			builder.AddChunk(ChunkEntry{
+				ID:               i,
+				CompressedSize:   1024,
+				UncompressedSize: 2048,
+			})
+		}
+	}()
+
+	// Concurrent shard stats updates
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < numUpdates; i++ {
+			shardID := i % 4
+			builder.UpdateShardStats(shardID, fmt.Sprintf("chunk-%d.tar.zst", i), 10, 2048, 1024)
+		}
+	}()
+
+	// Concurrent compression updates
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < numUpdates; i++ {
+			builder.SetCompression("zstd", 3, 0.5+float64(i)*0.001)
+		}
+	}()
+
+	// Concurrent reads (should not interfere with writes)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < numUpdates; i++ {
+			m := builder.Build()
+			_ = m.UploadID // Use the manifest
+		}
+	}()
+
+	// Wait for all operations to complete
+	wg.Wait()
+
+	// Verify final state
+	manifest := builder.Build()
+	assert.Equal(t, int64(numFiles), manifest.TotalFiles)
+	assert.Equal(t, numChunks, manifest.TotalChunks)
+	assert.Equal(t, 4, manifest.ShardCount)
+	assert.Len(t, manifest.Files, numFiles)
+	assert.Len(t, manifest.Chunks, numChunks)
+	assert.Len(t, manifest.Shards, 4)
+
+	// Verify shard stats were accumulated correctly
+	totalChunkCount := 0
+	for i := 0; i < 4; i++ {
+		totalChunkCount += manifest.Shards[i].ChunkCount
+	}
+	assert.Equal(t, numUpdates, totalChunkCount)
+}
+
+// TestBuilder_ConcurrentFileS3KeyUpdates tests concurrent UpdateFileS3Keys calls
+func TestBuilder_ConcurrentFileS3KeyUpdates(t *testing.T) {
+	builder, err := NewBuilder("update-keys-123", "/data", "bucket", "prefix", "us-west-2")
+	require.NoError(t, err)
+
+	// Add files with different chunk IDs
+	numChunks := 10
+	filesPerChunk := 10
+	for chunk := 0; chunk < numChunks; chunk++ {
+		for i := 0; i < filesPerChunk; i++ {
+			builder.AddFile(FileEntry{
+				Path:    fmt.Sprintf("chunk-%d-file-%d.txt", chunk, i),
+				Size:    1024,
+				ChunkID: chunk,
+			})
+		}
+	}
+
+	// Concurrently update S3 keys for different chunks
+	var wg sync.WaitGroup
+	for chunk := 0; chunk < numChunks; chunk++ {
+		wg.Add(1)
+		chunkID := chunk
+		go func() {
+			defer wg.Done()
+			s3Key := fmt.Sprintf("shard-%d/chunk-%d.tar.zst", chunkID%4, chunkID)
+			builder.UpdateFileS3Keys(chunkID, chunkID%4, s3Key)
+		}()
+	}
+
+	wg.Wait()
+
+	// Verify all files have been updated correctly
+	manifest := builder.Build()
+	assert.Len(t, manifest.Files, numChunks*filesPerChunk)
+
+	for _, file := range manifest.Files {
+		// S3Key should be set based on ChunkID
+		expectedKey := fmt.Sprintf("shard-%d/chunk-%d.tar.zst", file.ChunkID%4, file.ChunkID)
+		assert.Equal(t, expectedKey, file.S3Key, "File %s should have correct S3 key", file.Path)
+		assert.Equal(t, file.ChunkID%4, file.ShardID, "File %s should have correct shard ID", file.Path)
+	}
+}
+
+// TestBuilder_ConcurrentFinalize tests that Finalize is thread-safe
+func TestBuilder_ConcurrentFinalize(t *testing.T) {
+	builder, err := NewBuilder("finalize-123", "/data", "bucket", "prefix", "us-west-2")
+	require.NoError(t, err)
+
+	// Add some data
+	for i := 0; i < 10; i++ {
+		builder.AddFile(FileEntry{Path: fmt.Sprintf("file-%d.txt", i), Size: 1024})
+	}
+
+	// Multiple goroutines try to finalize concurrently
+	// Only one should succeed in setting CompletedAt
+	var wg sync.WaitGroup
+	numGoroutines := 10
+	manifests := make([]*Manifest, numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		idx := i
+		go func() {
+			defer wg.Done()
+			manifests[idx] = builder.Finalize()
+		}()
+	}
+
+	wg.Wait()
+
+	// All manifests should have CompletedAt set
+	for i, m := range manifests {
+		assert.NotZero(t, m.CompletedAt, "Manifest %d should have CompletedAt set", i)
+	}
+
+	// All manifests should be the same instance
+	for i := 1; i < numGoroutines; i++ {
+		assert.Equal(t, manifests[0].UploadID, manifests[i].UploadID)
+	}
 }
