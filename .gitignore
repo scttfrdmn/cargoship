@@ -42,3 +42,10 @@ temp_*
 working_*
 public/
 site/
+
+# Profiling data (generated artifacts)
+profiles/benchmarks/*.prof
+profiles/benchmarks/*.out
+profiles/reports/*.txt
+profiles/reports/*.svg
+profiles/baselines/*.json

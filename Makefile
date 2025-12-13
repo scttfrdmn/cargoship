@@ -54,6 +54,25 @@ test-benchmark: ## Run benchmark tests
 	@echo "⚡ Running benchmarks..."
 	go test -bench=. -benchmem ./...
 
+benchmark-profile: ## Run benchmarks with CPU and memory profiling
+	@echo "📊 Running benchmarks with profiling..."
+	@mkdir -p profiles/benchmarks
+	go test -bench=. -benchmem -cpuprofile=profiles/benchmarks/cpu.prof -memprofile=profiles/benchmarks/mem.prof ./...
+	@echo "✅ Profiles saved to profiles/benchmarks/"
+
+analyze-performance: ## Analyze performance profiles and generate bottleneck report
+	@echo "🔍 Analyzing performance profiles..."
+	./scripts/analyze-profiles.sh
+
+profile-interactive: ## Open interactive profile viewer (requires CPU profile)
+	@echo "🌐 Opening interactive profile viewer..."
+	@if [ -f profiles/benchmarks/cpu.prof ]; then \
+		go tool pprof -http=:8080 profiles/benchmarks/cpu.prof; \
+	else \
+		echo "❌ No CPU profile found. Run 'make benchmark-profile' first."; \
+		exit 1; \
+	fi
+
 # Test categorization targets (new testing architecture)
 test-unit: ## Run fast unit tests only (no external dependencies)
 	@echo "🧪 Running unit tests..."
