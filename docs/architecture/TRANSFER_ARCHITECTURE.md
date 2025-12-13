@@ -194,17 +194,19 @@ uploader := s3.NewParallelUploader(transporter, config)
 result := uploader.UploadParallel(ctx, []Archive{archive})
 ```
 
-### TravelAgent Integration
+### S3-Native Architecture (v0.6.0+)
 
-The TravelAgent uses rclone as a **fallback** for non-S3 destinations:
+**CargoShip is S3-focused** and uses native AWS SDK integration exclusively:
 ```go
-// TravelAgent chooses optimal transport
-if destination.IsS3() {
-    return s3.NewTransporter(client, s3Config) // Native high-performance
-} else {
-    return cloud.Transporter{rclone: true}     // Compatibility layer
-}
+// Direct S3 transporter - no fallback layers
+transporter := s3.NewTransporter(client, s3Config)
+
+// Multi-prefix parallel upload for maximum throughput
+uploader := s3.NewParallelUploader(transporter, config)
+result := uploader.UploadParallel(ctx, archives)
 ```
+
+**Note**: Non-S3 cloud providers are no longer supported. CargoShip removed rclone integration in v0.6.0 to focus on S3 performance optimization. Users needing other cloud providers should use [rclone](https://rclone.org/) directly.
 
 ## Comparison with Enterprise Tools
 

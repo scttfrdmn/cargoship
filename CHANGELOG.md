@@ -54,6 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Timezone issue in week period calculation (Issue #150)
 
+### Removed
+- **Rclone Integration** - CargoShip transitioned to S3-native architecture
+  - `--cloud-destination` CLI flag removed (use direct S3 commands instead)
+  - `cargoship rclone` command removed (use [rclone](https://rclone.org/) directly for non-S3 providers)
+  - Cloud transporter plugin removed (S3-only focus)
+  - Rclone configuration sections removed from config files
+  - **Migration**: Use `cargoship create upload` with `--bucket` and `--prefix` flags for S3 uploads
+  - **Note**: Non-S3 cloud providers are no longer supported; users needing GCS, Azure Blob, etc. should use rclone as a standalone tool
+
 ### Technical Details
 - **Production Code**: ~140KB across 6 core files
 - **Test Code**: ~102KB with 67 tests passing
@@ -65,9 +74,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - #4: Implement cost estimator for S3 operations
 - #5: Implement budget CLI commands
 - #6: Implement budget alert system
+- #39: Remove rclone integration code (Phase 2)
+- #40: Update dependencies (Phase 3)
+- #41: Remove configuration and documentation (Phase 4)
 - #136: Implement alert notification system (duplicate of #6)
 - #147: Budget & Cost Management System (Phase 1-6)
-- #148: Budget enforcement with dual controls
+- #148: Incremental sync with manifest-based delta detection
 - #149: Project-based cost tracking
 - #150: Timezone issue in week period calculation
 
