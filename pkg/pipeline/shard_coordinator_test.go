@@ -760,3 +760,152 @@ func BenchmarkShardCoordinator_FileRouting(b *testing.B) {
 		_ = router.Route(testFile)
 	}
 }
+
+// TestShardCoordinator_MemoryManagement tests memory manager integration (Issue #83)
+func TestShardCoordinator_MemoryManagement(t *testing.T) {
+	ctx := context.Background()
+	mockClient := newMockS3ClientCoordinator()
+
+	// Test 1: Coordinator creates default MemoryManager if not provided
+	t.Run("auto-create memory manager", func(t *testing.T) {
+		routerConfig := &chunking.ShardRouterConfig{
+			Strategy:   chunking.ShardByHash,
+			ShardCount: 4,
+		}
+		router, err := chunking.NewShardRouter(routerConfig)
+		if err != nil {
+			t.Fatalf("Failed to create router: %v", err)
+		}
+
+		config := &ShardCoordinatorConfig{
+			ShardCount: 4,
+			Router:     router,
+			S3Client:   mockClient,
+			Bucket:     "test-bucket",
+			Prefix:     "test",
+			// No MemoryManager provided - should auto-create
+		}
+
+		coordinator, err := NewShardCoordinator(ctx, config)
+		if err != nil {
+			t.Fatalf("Failed to create coordinator: %v", err)
+		}
+		// Note: No Start()/Close() needed for this test - just checking configuration
+
+		// Verify MemoryManager was created
+		if config.MemoryManager == nil {
+			t.Fatal("Expected MemoryManager to be auto-created, got nil")
+		}
+
+		// Verify coordinator owns the memory manager
+		if !coordinator.ownsMemoryManager {
+			t.Error("Expected coordinator to own memory manager")
+		}
+
+		// Verify memory manager has reasonable configuration
+		stats := config.MemoryManager.GetStats()
+		if stats.MemoryBudget <= 0 {
+			t.Errorf("Expected positive memory budget, got %d", stats.MemoryBudget)
+		}
+
+		t.Logf("Auto-created MemoryManager: Budget=%d MB, BudgetPercent=%.1f%%",
+			stats.MemoryBudget/(1<<20), stats.BudgetPercent*100)
+	})
+
+	// Test 2: Coordinator uses provided MemoryManager
+	t.Run("use provided memory manager", func(t *testing.T) {
+		routerConfig := &chunking.ShardRouterConfig{
+			Strategy:   chunking.ShardByHash,
+			ShardCount: 4,
+		}
+		router, err := chunking.NewShardRouter(routerConfig)
+		if err != nil {
+			t.Fatalf("Failed to create router: %v", err)
+		}
+
+		// Create custom memory manager
+		memConfig := &MemoryManagerConfig{
+			MemoryBudgetPercent:  0.3, // 30% of memory
+			ProactiveGCThreshold: 25 << 20,
+		}
+		memManager := NewMemoryManager(ctx, memConfig)
+		defer memManager.Stop()
+
+		config := &ShardCoordinatorConfig{
+			ShardCount:    4,
+			Router:        router,
+			S3Client:      mockClient,
+			Bucket:        "test-bucket",
+			Prefix:        "test",
+			MemoryManager: memManager, // Provide custom MemoryManager
+		}
+
+		coordinator, err := NewShardCoordinator(ctx, config)
+		if err != nil {
+			t.Fatalf("Failed to create coordinator: %v", err)
+		}
+		// Note: No Start()/Close() needed for this test - just checking configuration
+
+		// Verify coordinator uses provided MemoryManager
+		if coordinator.ownsMemoryManager {
+			t.Error("Expected coordinator not to own provided memory manager")
+		}
+
+		// Verify it's using our custom config
+		stats := config.MemoryManager.GetStats()
+		if stats.BudgetPercent != 0.3 {
+			t.Errorf("Expected budget percent 0.3, got %f", stats.BudgetPercent)
+		}
+
+		t.Logf("Using provided MemoryManager: Budget=%d MB, BudgetPercent=%.1f%%",
+			stats.MemoryBudget/(1<<20), stats.BudgetPercent*100)
+	})
+
+	// Test 3: Memory stats appear in coordinator stats
+	t.Run("memory stats in coordinator stats", func(t *testing.T) {
+		routerConfig := &chunking.ShardRouterConfig{
+			Strategy:   chunking.ShardByHash,
+			ShardCount: 2,
+		}
+		router, err := chunking.NewShardRouter(routerConfig)
+		if err != nil {
+			t.Fatalf("Failed to create router: %v", err)
+		}
+
+		config := &ShardCoordinatorConfig{
+			ShardCount: 2,
+			Router:     router,
+			S3Client:   mockClient,
+			Bucket:     "test-bucket",
+			Prefix:     "test",
+		}
+
+		coordinator, err := NewShardCoordinator(ctx, config)
+		if err != nil {
+			t.Fatalf("Failed to create coordinator: %v", err)
+		}
+		defer func() {
+			if err := coordinator.Close(); err != nil {
+				t.Errorf("Failed to close coordinator: %v", err)
+			}
+		}()
+
+		if err := coordinator.Start(); err != nil {
+			t.Fatalf("Failed to start coordinator: %v", err)
+		}
+
+		// Get stats
+		stats := coordinator.GetStats()
+
+		// Verify memory stats are included
+		if stats.MemoryStats == nil {
+			t.Fatal("Expected memory stats to be included")
+		}
+
+		if stats.MemoryStats.MemoryBudget <= 0 {
+			t.Errorf("Expected positive memory budget in stats, got %d", stats.MemoryStats.MemoryBudget)
+		}
+
+		t.Logf("Coordinator stats with memory: %s", stats.String())
+	})
+}

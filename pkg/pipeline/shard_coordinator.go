@@ -58,6 +58,9 @@ type ShardCoordinator struct {
 	// Statistics
 	filesAdded     int64 // Total files added across all shards
 	bytesProcessed int64 // Total bytes processed across all shards
+
+	// Memory management (Issue #83)
+	ownsMemoryManager bool // True if we created the MemoryManager and should stop it
 }
 
 // CalculateIntelligentShardCount determines optimal shard count based on workload size
@@ -122,6 +125,23 @@ func NewShardCoordinator(ctx context.Context, config *ShardCoordinatorConfig) (*
 		config: config,
 		ctx:    ctx,
 		cancel: cancel,
+	}
+
+	// Create default MemoryManager if not provided (Issue #83)
+	if config.MemoryManager == nil {
+		// Calculate part size for memory estimation (default 50MB per shard)
+		partSize := int64(50 << 20)
+		// Total memory budget: shard_count × 4 × partSize
+		// Use 50% of available memory by default, with proactive GC for large chunks
+		memConfig := &MemoryManagerConfig{
+			MemoryBudgetPercent:  0.5,                 // Use 50% of available memory
+			MinMemoryBuffer:      512 << 20,           // Keep 512MB free
+			ProactiveGCThreshold: 50 << 20,            // Proactive GC for >50MB chunks
+			PartSize:             partSize,            // Part size for estimation
+			MonitorInterval:      time.Second,         // Monitor every second
+		}
+		config.MemoryManager = NewMemoryManager(ctx, memConfig)
+		sc.ownsMemoryManager = true
 	}
 
 	// Create shard pipelines
@@ -217,6 +237,11 @@ func (sc *ShardCoordinator) Close() error {
 		// Wait for all pipelines to close
 		sc.wg.Wait()
 
+		// Stop memory manager if we own it (Issue #83)
+		if sc.ownsMemoryManager && sc.config.MemoryManager != nil {
+			sc.config.MemoryManager.Stop()
+		}
+
 		// Aggregate errors
 		sc.errorsMu.Lock()
 		if len(sc.errors) > 0 {
@@ -271,6 +296,13 @@ func (sc *ShardCoordinator) GetStats() ShardCoordinatorStats {
 	}
 	sc.errorsMu.Unlock()
 
+	// Get memory manager stats if available (Issue #83)
+	var memStats *MemoryManagerStats
+	if sc.config.MemoryManager != nil {
+		stats := sc.config.MemoryManager.GetStats()
+		memStats = &stats
+	}
+
 	return ShardCoordinatorStats{
 		ShardCount:       sc.config.ShardCount,
 		FilesAdded:       atomic.LoadInt64(&sc.filesAdded),
@@ -282,6 +314,7 @@ func (sc *ShardCoordinator) GetStats() ShardCoordinatorStats {
 		ShardStats:       shardStats,
 		ErrorCount:       errorCount,
 		FirstError:       firstError,
+		MemoryStats:      memStats,
 	}
 }
 
@@ -305,6 +338,7 @@ type ShardCoordinatorStats struct {
 	ShardStats      []ShardPipelineStats  // Per-shard statistics
 	ErrorCount      int                   // Total number of errors
 	FirstError      error                 // First error encountered (if any)
+	MemoryStats     *MemoryManagerStats   // Memory manager statistics (Issue #83)
 }
 
 // String returns a formatted string representation of coordinator stats
@@ -328,7 +362,7 @@ func (s ShardCoordinatorStats) String() string {
 	processingThroughput := s.ThroughputMBps()
 	networkThroughput := s.NetworkThroughputMBps()
 
-	return fmt.Sprintf("Coordinator: %d shards, %d files, %d MB → %d MB (%.1f%% compression)\nThroughput: %.2f MB/s processing | %.2f MB/s network\nDuration: %s, %s",
+	baseStats := fmt.Sprintf("Coordinator: %d shards, %d files, %d MB → %d MB (%.1f%% compression)\nThroughput: %.2f MB/s processing | %.2f MB/s network\nDuration: %s, %s",
 		s.ShardCount,
 		s.FilesAdded,
 		s.BytesProcessed/(1<<20),
@@ -339,6 +373,13 @@ func (s ShardCoordinatorStats) String() string {
 		s.Duration.Round(time.Millisecond),
 		status,
 	)
+
+	// Include memory stats if available (Issue #83)
+	if s.MemoryStats != nil {
+		return fmt.Sprintf("%s\n%s", baseStats, s.MemoryStats.String())
+	}
+
+	return baseStats
 }
 
 // CompressionRatio returns the compression ratio (0-1, where 0 = perfect compression, 1 = no compression)

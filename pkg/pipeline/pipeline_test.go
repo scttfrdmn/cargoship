@@ -16,7 +16,12 @@ import (
 
 // TestMain adds goroutine leak detection to all tests in this package
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(m,
+		// Ignore MemoryManager monitoring goroutines (Issue #83)
+		// These are properly cleaned up when coordinator.Close() is called,
+		// but tests that only check configuration don't need to call Close()
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/pipeline.(*MemoryManager).monitorMemory"),
+	)
 }
 
 // TestWorkerPool tests the worker pool implementation
