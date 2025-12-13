@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/dustin/go-humanize"
@@ -284,59 +283,17 @@ Examples:
 	return cmd
 }
 
-// downloadLatestManifest attempts to download the latest manifest for a source path
+// downloadLatestManifest attempts to download the latest manifest for a source path (Issue #148)
+// Uses the new FindLatestManifestForSource function to search all manifests
 func downloadLatestManifest(ctx context.Context, s3Client *s3.Client, bucket, prefix, sourcePath string) (*manifest.Manifest, error) {
-	// Try to download manifest.json first, then manifest.json.gz
-	manifestKey := filepath.Join(prefix, "manifest.json")
-
-	result, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(manifestKey),
-	})
-
-	// If .json not found, try .json.gz
+	// Use FindLatestManifestForSource to search through all manifests
+	m, err := manifest.FindLatestManifestForSource(ctx, s3Client, bucket, prefix, sourcePath)
 	if err != nil {
-		manifestKey = filepath.Join(prefix, "manifest.json.gz")
-		result, err = s3Client.GetObject(ctx, &s3.GetObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(manifestKey),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("manifest not found: %w", err)
-		}
-	}
-	defer func() {
-		if closeErr := result.Body.Close(); closeErr != nil {
-			// Log but don't fail on close error
-			_ = closeErr
-		}
-	}()
-
-	// Read and deserialize manifest
-	manifestBytes, err := os.ReadFile(manifestKey)
-	if err != nil {
-		// Read from S3 response body instead
-		manifestBytes = make([]byte, 0)
-		buf := make([]byte, 32*1024)
-		for {
-			n, readErr := result.Body.Read(buf)
-			if n > 0 {
-				manifestBytes = append(manifestBytes, buf[:n]...)
-			}
-			if readErr != nil {
-				break
-			}
-		}
+		return nil, fmt.Errorf("failed to find latest manifest: %w", err)
 	}
 
-	m, err := manifest.FromJSONAuto(manifestBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse manifest: %w", err)
-	}
-
-	// Verify manifest is for the same source path
-	if m.SourcePath != "" && m.SourcePath != sourcePath {
-		return nil, fmt.Errorf("manifest source path mismatch: expected %s, got %s", sourcePath, m.SourcePath)
+	if m == nil {
+		return nil, fmt.Errorf("no manifest found for source path: %s", sourcePath)
 	}
 
 	return m, nil
