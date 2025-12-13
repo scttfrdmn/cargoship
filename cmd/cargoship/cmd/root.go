@@ -91,6 +91,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 		NewListCmd(),     // Issue #97: List uploaded files from manifest
 		NewDownloadCmd(), // Issue #96: Download with selective extraction
 		NewInfoCmd(),     // Issue #98: Info command for upload metadata
+		NewVerifyCmd(),   // Issue #99: Verify command for integrity checks
 		NewDeleteCmd(),   // Delete specific upload
 		NewScuttleCmd(),  // Nuclear option: delete everything
 		NewCostCmd(),     // Issue #145: Cost management and budget tracking
