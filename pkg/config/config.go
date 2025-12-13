@@ -13,12 +13,13 @@ import (
 
 // Config represents the complete CargoShip configuration
 type Config struct {
-	AWS      AWSConfig      `yaml:"aws" mapstructure:"aws"`
-	Storage  StorageConfig  `yaml:"storage" mapstructure:"storage"`
-	Upload   UploadConfig   `yaml:"upload" mapstructure:"upload"`
-	Metrics  MetricsConfig  `yaml:"metrics" mapstructure:"metrics"`
-	Logging  LoggingConfig  `yaml:"logging" mapstructure:"logging"`
-	Security SecurityConfig `yaml:"security" mapstructure:"security"`
+	AWS       AWSConfig       `yaml:"aws" mapstructure:"aws"`
+	Storage   StorageConfig   `yaml:"storage" mapstructure:"storage"`
+	Upload    UploadConfig    `yaml:"upload" mapstructure:"upload"`
+	Metrics   MetricsConfig   `yaml:"metrics" mapstructure:"metrics"`
+	Logging   LoggingConfig   `yaml:"logging" mapstructure:"logging"`
+	Security  SecurityConfig  `yaml:"security" mapstructure:"security"`
+	CargoHold CargoHoldConfig `yaml:"cargohold" mapstructure:"cargohold"`
 }
 
 // AWSConfig contains AWS-specific configuration
@@ -86,6 +87,14 @@ type SecurityConfig struct {
 	BlockedExtensions     []string `yaml:"blocked_extensions,omitempty" mapstructure:"blocked_extensions"`
 }
 
+// CargoHoldConfig contains CargoHold-specific settings (Issue #101)
+type CargoHoldConfig struct {
+	Enable           bool   `yaml:"enable" mapstructure:"enable"`
+	ShardCount       int    `yaml:"shard_count" mapstructure:"shard_count"`
+	ShardStrategy    string `yaml:"shard_strategy" mapstructure:"shard_strategy"`
+	CompressionLevel int    `yaml:"compression_level" mapstructure:"compression_level"`
+}
+
 // DefaultConfig returns a configuration with sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
@@ -133,6 +142,12 @@ func DefaultConfig() *Config {
 				"GLACIER",
 				"DEEP_ARCHIVE",
 			},
+		},
+		CargoHold: CargoHoldConfig{
+			Enable:           true,
+			ShardCount:       10,
+			ShardStrategy:    "hash",
+			CompressionLevel: 3,
 		},
 	}
 }
@@ -239,6 +254,12 @@ func (m *Manager) setDefaults() {
 	// Security defaults
 	m.viper.SetDefault("security.require_encryption", defaults.Security.RequireEncryption)
 	m.viper.SetDefault("security.allowed_storage_classes", defaults.Security.AllowedStorageClasses)
+
+	// CargoHold defaults (Issue #101)
+	m.viper.SetDefault("cargohold.enable", defaults.CargoHold.Enable)
+	m.viper.SetDefault("cargohold.shard_count", defaults.CargoHold.ShardCount)
+	m.viper.SetDefault("cargohold.shard_strategy", defaults.CargoHold.ShardStrategy)
+	m.viper.SetDefault("cargohold.compression_level", defaults.CargoHold.CompressionLevel)
 }
 
 // validateConfig validates the loaded configuration
@@ -282,6 +303,26 @@ func (m *Manager) validateConfig() error {
 
 	if !validLogLevels[m.config.Logging.Level] {
 		return fmt.Errorf("invalid log level: %s", m.config.Logging.Level)
+	}
+
+	// Validate CargoHold settings (Issue #101)
+	if m.config.CargoHold.ShardCount < 1 || m.config.CargoHold.ShardCount > 100 {
+		return fmt.Errorf("cargohold.shard_count must be between 1 and 100")
+	}
+
+	validShardStrategies := map[string]bool{
+		"hash":      true,
+		"size":      true,
+		"type":      true,
+		"directory": true,
+	}
+
+	if !validShardStrategies[m.config.CargoHold.ShardStrategy] {
+		return fmt.Errorf("invalid cargohold.shard_strategy: %s (valid: hash, size, type, directory)", m.config.CargoHold.ShardStrategy)
+	}
+
+	if m.config.CargoHold.CompressionLevel < 1 || m.config.CargoHold.CompressionLevel > 22 {
+		return fmt.Errorf("cargohold.compression_level must be between 1 and 22 (zstd range)")
 	}
 
 	return nil

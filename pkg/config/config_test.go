@@ -88,6 +88,20 @@ func TestDefaultConfig(t *testing.T) {
 	if !reflect.DeepEqual(config.Security.AllowedStorageClasses, expectedStorageClasses) {
 		t.Errorf("DefaultConfig() Security.AllowedStorageClasses mismatch")
 	}
+
+	// Test CargoHold defaults (Issue #101)
+	if !config.CargoHold.Enable {
+		t.Errorf("DefaultConfig() CargoHold.Enable = false, want true")
+	}
+	if config.CargoHold.ShardCount != 10 {
+		t.Errorf("DefaultConfig() CargoHold.ShardCount = %v, want 10", config.CargoHold.ShardCount)
+	}
+	if config.CargoHold.ShardStrategy != "hash" {
+		t.Errorf("DefaultConfig() CargoHold.ShardStrategy = %v, want hash", config.CargoHold.ShardStrategy)
+	}
+	if config.CargoHold.CompressionLevel != 3 {
+		t.Errorf("DefaultConfig() CargoHold.CompressionLevel = %v, want 3", config.CargoHold.CompressionLevel)
+	}
 }
 
 func TestNewManager(t *testing.T) {
@@ -673,5 +687,179 @@ func TestManager_SaveConfig_CreateDirectory(t *testing.T) {
 	// Verify file exists
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
 		t.Errorf("SaveConfig() did not create file in nested directory")
+	}
+}
+
+// TestCargoHoldConfig_Validation tests CargoHold configuration validation (Issue #101)
+func TestCargoHoldConfig_Validation(t *testing.T) {
+	tests := []struct {
+		name      string
+		config    CargoHoldConfig
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name: "valid default config",
+			config: CargoHoldConfig{
+				Enable:           true,
+				ShardCount:       10,
+				ShardStrategy:    "hash",
+				CompressionLevel: 3,
+			},
+			expectErr: false,
+		},
+		{
+			name: "valid with size strategy",
+			config: CargoHoldConfig{
+				Enable:           true,
+				ShardCount:       8,
+				ShardStrategy:    "size",
+				CompressionLevel: 5,
+			},
+			expectErr: false,
+		},
+		{
+			name: "valid with type strategy",
+			config: CargoHoldConfig{
+				Enable:           true,
+				ShardCount:       12,
+				ShardStrategy:    "type",
+				CompressionLevel: 1,
+			},
+			expectErr: false,
+		},
+		{
+			name: "valid with directory strategy",
+			config: CargoHoldConfig{
+				Enable:           true,
+				ShardCount:       50,
+				ShardStrategy:    "directory",
+				CompressionLevel: 22,
+			},
+			expectErr: false,
+		},
+		{
+			name: "invalid shard count - too low",
+			config: CargoHoldConfig{
+				Enable:           true,
+				ShardCount:       0,
+				ShardStrategy:    "hash",
+				CompressionLevel: 3,
+			},
+			expectErr: true,
+			errMsg:    "shard_count must be between 1 and 100",
+		},
+		{
+			name: "invalid shard count - too high",
+			config: CargoHoldConfig{
+				Enable:           true,
+				ShardCount:       101,
+				ShardStrategy:    "hash",
+				CompressionLevel: 3,
+			},
+			expectErr: true,
+			errMsg:    "shard_count must be between 1 and 100",
+		},
+		{
+			name: "invalid shard strategy",
+			config: CargoHoldConfig{
+				Enable:           true,
+				ShardCount:       10,
+				ShardStrategy:    "invalid",
+				CompressionLevel: 3,
+			},
+			expectErr: true,
+			errMsg:    "invalid cargohold.shard_strategy",
+		},
+		{
+			name: "invalid compression level - too low",
+			config: CargoHoldConfig{
+				Enable:           true,
+				ShardCount:       10,
+				ShardStrategy:    "hash",
+				CompressionLevel: 0,
+			},
+			expectErr: true,
+			errMsg:    "compression_level must be between 1 and 22",
+		},
+		{
+			name: "invalid compression level - too high",
+			config: CargoHoldConfig{
+				Enable:           true,
+				ShardCount:       10,
+				ShardStrategy:    "hash",
+				CompressionLevel: 23,
+			},
+			expectErr: true,
+			errMsg:    "compression_level must be between 1 and 22",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager := NewManager()
+			manager.config.CargoHold = tt.config
+
+			err := manager.validateConfig()
+
+			if tt.expectErr {
+				if err == nil {
+					t.Errorf("validateConfig() expected error containing %q, got nil", tt.errMsg)
+				} else if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("validateConfig() error = %v, want error containing %q", err, tt.errMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("validateConfig() unexpected error = %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestCargoHoldConfig_LoadFromYAML tests loading CargoHold config from YAML (Issue #101)
+func TestCargoHoldConfig_LoadFromYAML(t *testing.T) {
+	yaml := `
+aws:
+  region: us-west-2
+
+storage:
+  default_bucket: test-bucket
+  default_storage_class: INTELLIGENT_TIERING
+  sse_encryption: true
+
+cargohold:
+  enable: true
+  shard_count: 20
+  shard_strategy: size
+  compression_level: 5
+`
+
+	// Create temp file
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "test-config.yaml")
+	if err := os.WriteFile(configPath, []byte(yaml), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	// Load config
+	manager := NewManager()
+	if err := manager.LoadConfig(configPath); err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	// Verify CargoHold config was loaded correctly
+	cfg := manager.GetConfig()
+	if !cfg.CargoHold.Enable {
+		t.Errorf("CargoHold.Enable = false, want true")
+	}
+	if cfg.CargoHold.ShardCount != 20 {
+		t.Errorf("CargoHold.ShardCount = %d, want 20", cfg.CargoHold.ShardCount)
+	}
+	if cfg.CargoHold.ShardStrategy != "size" {
+		t.Errorf("CargoHold.ShardStrategy = %s, want size", cfg.CargoHold.ShardStrategy)
+	}
+	if cfg.CargoHold.CompressionLevel != 5 {
+		t.Errorf("CargoHold.CompressionLevel = %d, want 5", cfg.CargoHold.CompressionLevel)
 	}
 }

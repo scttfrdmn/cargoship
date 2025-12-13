@@ -283,6 +283,40 @@ func validateConfig(manager *config.Manager, detailed bool) error {
 	}
 	fmt.Println()
 
+	// Validate CargoHold Configuration (Issue #101)
+	fmt.Println("CargoHold Configuration:")
+	fmt.Printf("  ✅ Enabled: %t\n", cfg.CargoHold.Enable)
+
+	if cfg.CargoHold.ShardCount < 1 || cfg.CargoHold.ShardCount > 100 {
+		errors = append(errors, fmt.Sprintf("Invalid shard count: %d (must be 1-100)", cfg.CargoHold.ShardCount))
+		fmt.Printf("  ❌ Shard Count: %d (invalid)\n", cfg.CargoHold.ShardCount)
+	} else {
+		fmt.Printf("  ✅ Shard Count: %d\n", cfg.CargoHold.ShardCount)
+	}
+
+	validShardStrategies := []string{"hash", "size", "type", "directory"}
+	shardStrategyValid := false
+	for _, strategy := range validShardStrategies {
+		if cfg.CargoHold.ShardStrategy == strategy {
+			shardStrategyValid = true
+			break
+		}
+	}
+	if !shardStrategyValid {
+		errors = append(errors, fmt.Sprintf("Invalid shard strategy: %s", cfg.CargoHold.ShardStrategy))
+		fmt.Printf("  ❌ Shard Strategy: %s (invalid)\n", cfg.CargoHold.ShardStrategy)
+	} else {
+		fmt.Printf("  ✅ Shard Strategy: %s\n", cfg.CargoHold.ShardStrategy)
+	}
+
+	if cfg.CargoHold.CompressionLevel < 1 || cfg.CargoHold.CompressionLevel > 22 {
+		errors = append(errors, fmt.Sprintf("Invalid compression level: %d (must be 1-22)", cfg.CargoHold.CompressionLevel))
+		fmt.Printf("  ❌ Compression Level: %d (invalid)\n", cfg.CargoHold.CompressionLevel)
+	} else {
+		fmt.Printf("  ✅ Compression Level: %d\n", cfg.CargoHold.CompressionLevel)
+	}
+	fmt.Println()
+
 	// Summary
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println("Validation Summary:")
