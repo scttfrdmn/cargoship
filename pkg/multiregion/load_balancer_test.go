@@ -434,3 +434,217 @@ func TestDefaultLoadBalancer_StartSessionCleanup(t *testing.T) {
 		balancer.GetSessionAffinityStats()
 	})
 }
+
+// TestGenerateSessionKey_Priority tests session key generation priority (Issue #139)
+func TestGenerateSessionKey_Priority(t *testing.T) {
+	config := createValidMultiRegionConfig()
+	logger := log.New(nil)
+	balancer := NewLoadBalancer(config, logger).(*DefaultLoadBalancer)
+
+	t.Run("priority 1: explicit session_id in metadata", func(t *testing.T) {
+		request := &UploadRequest{
+			ID:       "request-123",
+			FilePath: "/test/file.txt",
+			Metadata: map[string]string{
+				"session_id": "my-custom-session",
+				"user_id":    "user-456",
+				"client_id":  "client-789",
+			},
+		}
+
+		sessionKey := balancer.generateSessionKey(request)
+		assert.Equal(t, "my-custom-session", sessionKey)
+	})
+
+	t.Run("priority 2: user_id when no session_id", func(t *testing.T) {
+		request := &UploadRequest{
+			ID:       "request-123",
+			FilePath: "/test/file.txt",
+			Metadata: map[string]string{
+				"user_id":   "user-456",
+				"client_id": "client-789",
+			},
+		}
+
+		sessionKey := balancer.generateSessionKey(request)
+		assert.Equal(t, "user:user-456", sessionKey)
+	})
+
+	t.Run("priority 3: client_id when no session_id or user_id", func(t *testing.T) {
+		request := &UploadRequest{
+			ID:       "request-123",
+			FilePath: "/test/file.txt",
+			Metadata: map[string]string{
+				"client_id": "client-789",
+			},
+		}
+
+		sessionKey := balancer.generateSessionKey(request)
+		assert.Equal(t, "client:client-789", sessionKey)
+	})
+
+	t.Run("priority 4: request ID when no metadata", func(t *testing.T) {
+		request := &UploadRequest{
+			ID:       "request-123",
+			FilePath: "/test/file.txt",
+		}
+
+		sessionKey := balancer.generateSessionKey(request)
+		assert.Equal(t, "request-123", sessionKey)
+	})
+
+	t.Run("priority 5: generated UUID when no identifiers", func(t *testing.T) {
+		request := &UploadRequest{
+			FilePath: "/test/file.txt",
+		}
+
+		sessionKey := balancer.generateSessionKey(request)
+		
+		// Should be a valid UUID format
+		assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, sessionKey)
+		
+		// Generate another one - should be different (random)
+		sessionKey2 := balancer.generateSessionKey(request)
+		assert.NotEqual(t, sessionKey, sessionKey2)
+	})
+
+	t.Run("empty string values are ignored", func(t *testing.T) {
+		request := &UploadRequest{
+			ID:       "request-123",
+			FilePath: "/test/file.txt",
+			Metadata: map[string]string{
+				"session_id": "", // Empty, should be ignored
+				"user_id":    "", // Empty, should be ignored
+			},
+		}
+
+		sessionKey := balancer.generateSessionKey(request)
+		assert.Equal(t, "request-123", sessionKey, "Should fall back to request ID when metadata values are empty")
+	})
+}
+
+// TestGenerateSecureSessionID tests secure session ID generation (Issue #139)
+func TestGenerateSecureSessionID(t *testing.T) {
+	config := createValidMultiRegionConfig()
+	logger := log.New(nil)
+	balancer := NewLoadBalancer(config, logger).(*DefaultLoadBalancer)
+
+	t.Run("generates valid UUID v4 format", func(t *testing.T) {
+		sessionID := balancer.generateSecureSessionID()
+		
+		// Should match UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+		// where y is 8, 9, a, or b
+		assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`, sessionID)
+	})
+
+	t.Run("generates unique IDs", func(t *testing.T) {
+		// Generate 100 session IDs and ensure they're all unique
+		ids := make(map[string]bool)
+		for i := 0; i < 100; i++ {
+			sessionID := balancer.generateSecureSessionID()
+			assert.False(t, ids[sessionID], "Generated duplicate session ID: %s", sessionID)
+			ids[sessionID] = true
+		}
+		assert.Len(t, ids, 100)
+	})
+
+	t.Run("UUID version and variant bits are correct", func(t *testing.T) {
+		sessionID := balancer.generateSecureSessionID()
+		
+		// Parse UUID and check version/variant
+		// Version should be 4 (random)
+		assert.Equal(t, "4", string(sessionID[14]), "UUID version should be 4")
+		
+		// Variant should be 8, 9, a, or b (RFC 4122 variant)
+		variantChar := sessionID[19]
+		assert.Contains(t, "89ab", string(variantChar), "UUID variant should be 8, 9, a, or b")
+	})
+}
+
+// TestSessionAffinity_WithMetadata tests session affinity using metadata (Issue #139)
+func TestSessionAffinity_WithMetadata(t *testing.T) {
+	config := createValidMultiRegionConfig()
+	config.LoadBalancing.StickySessions = true
+	config.LoadBalancing.SessionTTL = 5 * time.Minute
+
+	logger := log.New(nil)
+	balancer := NewLoadBalancer(config, logger).(*DefaultLoadBalancer)
+	ctx := context.Background()
+
+	t.Run("requests with same session_id go to same region", func(t *testing.T) {
+		// First request with session_id
+		request1 := &UploadRequest{
+			ID:       "request-1",
+			FilePath: "/test/file1.txt",
+			Size:     1024,
+			Metadata: map[string]string{
+				"session_id": "shared-session-abc",
+			},
+		}
+
+		region1, err := balancer.Route(ctx, request1)
+		require.NoError(t, err)
+		assert.NotNil(t, region1)
+
+		// Second request with same session_id (but different request ID)
+		request2 := &UploadRequest{
+			ID:       "request-2",
+			FilePath: "/test/file2.txt",
+			Size:     2048,
+			Metadata: map[string]string{
+				"session_id": "shared-session-abc",
+			},
+		}
+
+		region2, err := balancer.Route(ctx, request2)
+		require.NoError(t, err)
+		assert.NotNil(t, region2)
+
+		// Should route to same region due to session affinity
+		assert.Equal(t, region1.Name, region2.Name)
+
+		// Verify session affinity is tracked
+		affinity, exists := balancer.sessionAffinityMap["shared-session-abc"]
+		assert.True(t, exists)
+		assert.Equal(t, region1.Name, affinity.RegionName)
+		assert.Equal(t, int64(2), affinity.RequestCount)
+	})
+
+	t.Run("requests with same user_id go to same region", func(t *testing.T) {
+		// First request with user_id
+		request1 := &UploadRequest{
+			ID:       "request-3",
+			FilePath: "/test/file3.txt",
+			Size:     1024,
+			Metadata: map[string]string{
+				"user_id": "user-123",
+			},
+		}
+
+		region1, err := balancer.Route(ctx, request1)
+		require.NoError(t, err)
+		assert.NotNil(t, region1)
+
+		// Second request with same user_id
+		request2 := &UploadRequest{
+			ID:       "request-4",
+			FilePath: "/test/file4.txt",
+			Size:     2048,
+			Metadata: map[string]string{
+				"user_id": "user-123",
+			},
+		}
+
+		region2, err := balancer.Route(ctx, request2)
+		require.NoError(t, err)
+		assert.NotNil(t, region2)
+
+		// Should route to same region due to user session affinity
+		assert.Equal(t, region1.Name, region2.Name)
+
+		// Verify session affinity is tracked with "user:" prefix
+		affinity, exists := balancer.sessionAffinityMap["user:user-123"]
+		assert.True(t, exists)
+		assert.Equal(t, region1.Name, affinity.RegionName)
+	})
+}

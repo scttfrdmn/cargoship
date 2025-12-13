@@ -3,6 +3,7 @@ package multiregion
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"fmt"
 	"math"
 	"math/rand"
@@ -490,17 +491,66 @@ func (lb *DefaultLoadBalancer) createSessionAffinity(request *UploadRequest, reg
 	}
 }
 
-// generateSessionKey generates a session key for sticky sessions
+// generateSessionKey generates a session key for sticky sessions (Issue #139)
+// Session key generation priority:
+// 1. Explicit session_id from request metadata (for multi-request workflows)
+// 2. Request ID (backward compatibility, deterministic per-request affinity)
+// 3. Generated secure UUID (for requests without identifiers)
 func (lb *DefaultLoadBalancer) generateSessionKey(request *UploadRequest) string {
-	// TODO: Implement proper session key generation
-	// This could be based on:
-	// 1. Client IP address
-	// 2. User ID
-	// 3. Session token
-	// 4. Request metadata
+	// Priority 1: Check for explicit session ID in metadata
+	// This allows clients to maintain session affinity across multiple requests
+	if request.Metadata != nil {
+		if sessionID, ok := request.Metadata["session_id"]; ok && sessionID != "" {
+			return sessionID
+		}
 
-	// For now, use request ID as session key
-	return request.ID
+		// Check for user_id as alternative session identifier
+		if userID, ok := request.Metadata["user_id"]; ok && userID != "" {
+			return "user:" + userID
+		}
+
+		// Check for client_id as alternative session identifier
+		if clientID, ok := request.Metadata["client_id"]; ok && clientID != "" {
+			return "client:" + clientID
+		}
+	}
+
+	// Priority 2: Use request ID (backward compatibility)
+	// For most use cases, request ID provides sufficient session identification
+	if request.ID != "" {
+		return request.ID
+	}
+
+	// Priority 3: Generate secure random session key
+	// This should rarely be used, as requests should have IDs
+	// Uses cryptographically secure random UUID for unpredictable session keys
+	return lb.generateSecureSessionID()
+}
+
+// generateSecureSessionID generates a cryptographically secure session ID (Issue #139)
+// Uses crypto/rand for unpredictable, secure session identifiers
+// Returns a UUID v4 format string (e.g., "550e8400-e29b-41d4-a716-446655440000")
+func (lb *DefaultLoadBalancer) generateSecureSessionID() string {
+	// Generate 16 random bytes for UUID v4
+	uuid := make([]byte, 16)
+	_, err := cryptorand.Read(uuid)
+	if err != nil {
+		// Fallback to timestamp-based ID if crypto/rand fails (should never happen)
+		lb.logger.Warn("Failed to generate secure session ID, using timestamp fallback", "error", err)
+		return fmt.Sprintf("fallback-%d", time.Now().UnixNano())
+	}
+
+	// Set version (4) and variant bits according to RFC 4122
+	uuid[6] = (uuid[6] & 0x0f) | 0x40 // Version 4
+	uuid[8] = (uuid[8] & 0x3f) | 0x80 // Variant 10
+
+	// Format as UUID string: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		uuid[0:4],
+		uuid[4:6],
+		uuid[6:8],
+		uuid[8:10],
+		uuid[10:16])
 }
 
 // routeAdaptive implements adaptive load balancing based on real-time performance
