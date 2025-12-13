@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/viper"
 
 	contextpkg "github.com/scttfrdmn/cargoship/pkg/context"
+	"github.com/scttfrdmn/cargoship/pkg/profiling"
 )
 
 var (
@@ -34,9 +35,10 @@ var (
 	trace   bool
 
 	// Profiling data
-	profile bool
-	cpufile *os.File
-	logger  *slog.Logger
+	profile        bool
+	runtimeProfile bool
+	cpufile        *os.File
+	logger         *slog.Logger
 )
 
 // NewRootCmd represents the base command when called without any subcommands
@@ -63,6 +65,8 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 	cmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Enable verbose output")
 	cmd.PersistentFlags().BoolVarP(&trace, "trace", "t", false, "Enable trace messages in output")
 	cmd.PersistentFlags().BoolVar(&profile, "profile", false, "Enable performance profiling. This will generate profile files in a temp directory")
+	cmd.PersistentFlags().BoolVar(&runtimeProfile, "pprof", false, "Enable runtime profiling HTTP endpoint at localhost:6060")
+	cmd.PersistentFlags().String("pprof-addr", "localhost:6060", "Address for runtime profiling HTTP endpoint")
 	cmd.PersistentFlags().String("memory-limit", "", "Set a memory limit for the run. This will slow things down, but will less likely to OOM in certain situations. Avoid this unless you are having memory issues.")
 	cmd.PersistentFlags().String("context", "", "Override execution context (local, agent, controller, repl)")
 	cmd.SetVersionTemplate("{{ .Version }}\n")
@@ -217,6 +221,12 @@ func globalPersistentPreRun(cmd *cobra.Command, _ []string) {
 
 	// Initialize context awareness
 	initializeContextAwareness(cmd)
+
+	// Enable runtime profiling if requested
+	if runtimeProfile {
+		addr, _ := cmd.Flags().GetString("pprof-addr")
+		enableRuntimeProfiling(addr)
+	}
 	/*
 		lo, ok := cmd.Context().Value(inventory.LogWriterKey).(io.Writer)
 		if ok {
@@ -301,5 +311,13 @@ func initializeContextAwareness(cmd *cobra.Command) {
 		logger.Info("Current execution context",
 			"context", currentCtx,
 			"description", filter.GetContextDescription(currentCtx))
+	}
+}
+
+// enableRuntimeProfiling starts the HTTP pprof endpoint
+func enableRuntimeProfiling(addr string) {
+	_, err := profiling.StartRuntimeProfiler(addr)
+	if err != nil {
+		slog.Error("failed to start runtime profiler", "error", err)
 	}
 }

@@ -73,6 +73,18 @@ profile-interactive: ## Open interactive profile viewer (requires CPU profile)
 		exit 1; \
 	fi
 
+profile-runtime: ## Example: Run cargoship with runtime profiling endpoint
+	@echo "🔍 Starting cargoship with runtime profiling..."
+	@echo "📊 Profiling endpoints will be available at http://localhost:6060/debug/pprof/"
+	@echo ""
+	@echo "Usage examples:"
+	@echo "  CPU profile (30s): curl http://localhost:6060/debug/pprof/profile?seconds=30 -o cpu.prof"
+	@echo "  Heap profile:      curl http://localhost:6060/debug/pprof/heap -o heap.prof"
+	@echo "  Goroutines:        curl http://localhost:6060/debug/pprof/goroutine -o goroutine.prof"
+	@echo ""
+	@echo "Press Ctrl+C to stop profiling"
+	@./bin/cargoship --pprof estimate .
+
 # Test categorization targets (new testing architecture)
 test-unit: ## Run fast unit tests only (no external dependencies)
 	@echo "🧪 Running unit tests..."
