@@ -19,6 +19,10 @@ type Manifest struct {
 	SourcePath string `json:"source_path"` // Original local path that was uploaded
 	Hostname   string `json:"hostname"`    // Machine that performed the upload
 
+	// Sync information (Issue #148)
+	PreviousManifestID string `json:"previous_manifest_id,omitempty"` // For version chain in incremental syncs
+	SyncType           string `json:"sync_type,omitempty"`            // "full" or "incremental" (empty = full for backwards compat)
+
 	// S3 location
 	Bucket string `json:"bucket"` // S3 bucket name
 	Prefix string `json:"prefix"` // S3 prefix (key prefix)
