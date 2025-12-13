@@ -47,6 +47,12 @@ type ShardPipelineConfig struct {
 	// Multipart upload configuration
 	UseMultipartUpload bool  // Enable S3 multipart upload (default: true for AWS compatibility)
 	PartSize           int64 // Part size for multipart upload (default: 50 MB, min: 5 MB)
+
+	// Adaptive worker pool (Issue #84)
+	WorkerPool       *AdaptiveWorkerPool // Optional: Use existing worker pool
+	MinWorkers       int                 // Minimum workers for adaptive scaling (default: 2)
+	MaxWorkers       int                 // Maximum workers for adaptive scaling (default: auto-calculated)
+	EnableAdaptive   bool                // Enable adaptive worker scaling (default: true)
 }
 
 // ShardPipeline handles streaming tar → zstd → S3 for a single shard
@@ -79,6 +85,9 @@ type ShardPipeline struct {
 
 	// Synchronization
 	wg sync.WaitGroup
+
+	// Worker pool for adaptive parallelism (Issue #84)
+	pool *AdaptiveWorkerPool
 }
 
 // NewShardPipeline creates a new shard pipeline
@@ -127,6 +136,39 @@ func NewShardPipeline(ctx context.Context, config *ShardPipelineConfig) (*ShardP
 		cancel:    cancel,
 		fileQueue: make(chan chunking.File, config.FileQueueBuffer),
 		done:      make(chan struct{}),
+	}
+
+	// Create or use provided worker pool (Issue #84)
+	if config.WorkerPool != nil {
+		sp.pool = config.WorkerPool
+	} else {
+		// Calculate intelligent worker limits based on shard characteristics
+		minWorkers := config.MinWorkers
+		if minWorkers <= 0 {
+			minWorkers = 2
+		}
+
+		maxWorkers := config.MaxWorkers
+		if maxWorkers <= 0 {
+			// Auto-calculate based on part size as proxy for file size
+			// Small parts (small files) → fewer workers (CPU-bound compression)
+			// Large parts (large files) → more workers (I/O-bound upload)
+			if config.PartSize < (10 << 20) { // < 10 MB parts (small files)
+				maxWorkers = 16 // CPU-bound compression
+			} else if config.PartSize < (50 << 20) { // < 50 MB parts (medium files)
+				maxWorkers = 64 // Mixed workload
+			} else { // >= 50 MB parts (large files)
+				maxWorkers = 256 // I/O-bound upload
+			}
+		}
+
+		// Create adaptive worker pool
+		poolConfig := &AdaptiveWorkerPoolConfig{
+			MinWorkers:     minWorkers,
+			MaxWorkers:     maxWorkers,
+			EnableAdaptive: config.EnableAdaptive,
+		}
+		sp.pool = NewAdaptiveWorkerPool(ctx, poolConfig)
 	}
 
 	return sp, nil
@@ -196,6 +238,11 @@ func (sp *ShardPipeline) Close() error {
 	// Wait for upload to complete
 	<-sp.done
 
+	// Stop worker pool
+	if sp.pool != nil {
+		sp.pool.Stop()
+	}
+
 	return sp.uploadErr
 }
 
@@ -236,6 +283,11 @@ func (sp *ShardPipeline) fileAdder() {
 
 			atomic.AddInt64(&sp.filesAdded, 1)
 			atomic.AddInt64(&sp.bytesProcessed, file.Size)
+
+			// Track throughput for adaptive worker scaling (Issue #84)
+			if sp.pool != nil {
+				sp.pool.AddBytes(file.Size)
+			}
 		}
 	}
 }
@@ -513,6 +565,12 @@ func (sp *ShardPipeline) GetStats() ShardPipelineStats {
 		duration = sp.endTime.Sub(sp.startTime)
 	}
 
+	// Get worker count if pool exists (Issue #84)
+	workerCount := 0
+	if sp.pool != nil {
+		workerCount = sp.pool.GetWorkerCount()
+	}
+
 	return ShardPipelineStats{
 		ShardID:        sp.config.ShardID,
 		ShardName:      sp.config.ShardName,
@@ -522,6 +580,7 @@ func (sp *ShardPipeline) GetStats() ShardPipelineStats {
 		Duration:       duration,
 		Completed:      sp.closed.Load(),
 		Error:          sp.uploadErr,
+		WorkerCount:    workerCount,
 	}
 }
 
@@ -535,6 +594,7 @@ type ShardPipelineStats struct {
 	Duration       time.Duration // Total processing time
 	Completed      bool          // Whether pipeline has completed
 	Error          error         // Upload error (if any)
+	WorkerCount    int           // Current worker count (Issue #84)
 }
 
 // String returns a formatted string representation of stats
@@ -551,6 +611,20 @@ func (s ShardPipelineStats) String() string {
 	compressionRatio := 0.0
 	if s.BytesProcessed > 0 && s.UploadSize > 0 {
 		compressionRatio = float64(s.UploadSize) / float64(s.BytesProcessed)
+	}
+
+	// Include worker count if available (Issue #84)
+	if s.WorkerCount > 0 {
+		return fmt.Sprintf("Shard %s: %d files, %d MB processed, %d MB uploaded (%.1f%% compression), %d workers, %s, %s",
+			s.ShardName,
+			s.FilesAdded,
+			s.BytesProcessed/(1<<20),
+			s.UploadSize/(1<<20),
+			(1-compressionRatio)*100,
+			s.WorkerCount,
+			s.Duration.Round(time.Millisecond),
+			status,
+		)
 	}
 
 	return fmt.Sprintf("Shard %s: %d files, %d MB processed, %d MB uploaded (%.1f%% compression), %s, %s",

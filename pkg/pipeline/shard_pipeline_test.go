@@ -581,3 +581,147 @@ func BenchmarkShardPipeline_SingleFile(b *testing.B) {
 		_ = pipeline.Close()
 	}
 }
+
+// TestShardPipeline_AdaptiveWorkers tests adaptive worker pool integration (Issue #84)
+func TestShardPipeline_AdaptiveWorkers(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name            string
+		partSize        int64
+		expectedMin     int
+		expectedMaxMin  int // Minimum expected max workers
+		expectedMaxMax  int // Maximum expected max workers
+	}{
+		{
+			name:            "small files (< 10 MB parts) - CPU-bound",
+			partSize:        5 << 20, // 5 MB
+			expectedMin:     2,
+			expectedMaxMin:  16,
+			expectedMaxMax:  16,
+		},
+		{
+			name:            "medium files (10-50 MB parts)",
+			partSize:        25 << 20, // 25 MB
+			expectedMin:     2,
+			expectedMaxMin:  64,
+			expectedMaxMax:  64,
+		},
+		{
+			name:            "large files (>= 50 MB parts) - I/O-bound",
+			partSize:        50 << 20, // 50 MB
+			expectedMin:     2,
+			expectedMaxMin:  256,
+			expectedMaxMax:  256,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockClient := &mockS3ClientShard{}
+			
+			config := &ShardPipelineConfig{
+				ShardID:   0,
+				ShardName: "shard-00000",
+				S3Client:  mockClient,
+				Bucket:    "test-bucket",
+				PartSize:  tt.partSize,
+				EnableAdaptive: true,
+			}
+
+			pipeline, err := NewShardPipeline(ctx, config)
+			if err != nil {
+				t.Fatalf("Failed to create pipeline: %v", err)
+			}
+			// Stop the worker pool to prevent goroutine leaks
+			defer func() {
+				if pipeline.pool != nil {
+					pipeline.pool.Stop()
+				}
+			}()
+
+			// Verify worker pool was created
+			if pipeline.pool == nil {
+				t.Fatal("Worker pool not created")
+			}
+
+			// Check initial worker count
+			workerCount := pipeline.pool.GetWorkerCount()
+			if workerCount < tt.expectedMin {
+				t.Errorf("Expected at least %d initial workers, got %d", tt.expectedMin, workerCount)
+			}
+
+			// Check max workers configuration
+			maxWorkers := pipeline.pool.maxWorkers
+			if maxWorkers < tt.expectedMaxMin || maxWorkers > tt.expectedMaxMax {
+				t.Errorf("Expected max workers between %d and %d for %s, got %d",
+					tt.expectedMaxMin, tt.expectedMaxMax, tt.name, maxWorkers)
+			}
+
+			t.Logf("%s: Initial workers=%d, Max workers=%d", tt.name, workerCount, maxWorkers)
+		})
+	}
+}
+
+// TestShardPipeline_WorkerStats tests that worker count appears in statistics (Issue #84)
+func TestShardPipeline_WorkerStats(t *testing.T) {
+	ctx := context.Background()
+	mockClient := &mockS3ClientShard{}
+
+	// Create temp test files
+	tmpDir, err := os.MkdirTemp("", "cargoship-test-")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	// Create test file
+	testFile := filepath.Join(tmpDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("test data"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	config := &ShardPipelineConfig{
+		ShardID:   0,
+		ShardName: "shard-00000",
+		S3Client:  mockClient,
+		Bucket:    "test-bucket",
+		EnableAdaptive: true,
+	}
+
+	pipeline, err := NewShardPipeline(ctx, config)
+	if err != nil {
+		t.Fatalf("Failed to create pipeline: %v", err)
+	}
+
+	if err := pipeline.Start(); err != nil {
+		t.Fatalf("Failed to start pipeline: %v", err)
+	}
+
+	// Add test file
+	file := chunking.File{
+		Path:    testFile,
+		Size:    9,
+		ModTime: time.Now(),
+	}
+	if err := pipeline.AddFile(file); err != nil {
+		t.Fatalf("Failed to add file: %v", err)
+	}
+
+	// Close and wait
+	if err := pipeline.Close(); err != nil {
+		t.Fatalf("Failed to close pipeline: %v", err)
+	}
+
+	// Get statistics
+	stats := pipeline.GetStats()
+
+	// Verify worker count is reported
+	if stats.WorkerCount <= 0 {
+		t.Errorf("Expected positive worker count in stats, got %d", stats.WorkerCount)
+	}
+
+	t.Logf("Pipeline stats: %s", stats.String())
+}
