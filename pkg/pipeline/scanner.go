@@ -206,6 +206,33 @@ func (s *ScannerStage) shouldExclude(path string) bool {
 	return false
 }
 
+// shouldInclude checks if a file should be included based on IncludeOnlyFiles filter (Issue #148)
+// Returns true if file should be included:
+// - If IncludeOnlyFiles is empty, all files are included
+// - If IncludeOnlyFiles is set, only files in the list are included
+func (s *ScannerStage) shouldInclude(path string, rootPath string) bool {
+	// If no filter is set, include all files
+	if len(s.config.IncludeOnlyFiles) == 0 {
+		return true
+	}
+
+	// Get relative path from root for comparison
+	relPath, err := filepath.Rel(rootPath, path)
+	if err != nil {
+		// If we can't compute relative path, exclude it to be safe
+		return false
+	}
+
+	// Check if this file is in the include list
+	for _, includePath := range s.config.IncludeOnlyFiles {
+		if relPath == includePath {
+			return true
+		}
+	}
+
+	return false
+}
+
 // streamFiles streams files from the root path via a channel instead of loading all into memory
 func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan chunking.File, <-chan error) {
 	fileChan := make(chan chunking.File, 100) // Buffer for 100 files
@@ -239,6 +266,11 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 
 			// Check exclude patterns
 			if s.shouldExclude(path) {
+				return nil
+			}
+
+			// Check include filter (Issue #148: Incremental sync)
+			if !s.shouldInclude(path, rootPath) {
 				return nil
 			}
 

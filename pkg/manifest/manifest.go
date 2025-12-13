@@ -128,6 +128,12 @@ func (b *Builder) SetShardCount(count int) {
 	}
 }
 
+// SetSyncInfo sets sync-related fields for incremental sync (Issue #148)
+func (b *Builder) SetSyncInfo(syncType string, previousUploadID string) {
+	b.manifest.SyncType = syncType
+	b.manifest.PreviousManifestID = previousUploadID
+}
+
 // UpdateShardStats updates statistics for a shard
 func (b *Builder) UpdateShardStats(shardID int, chunkKey string, fileCount int64, uncompressed, compressed int64) {
 	if shardID < 0 || shardID >= len(b.manifest.Shards) {

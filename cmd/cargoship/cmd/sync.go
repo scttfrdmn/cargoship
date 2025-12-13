@@ -205,9 +205,12 @@ Examples:
 				return nil
 			}
 
-			// Step 4: Upload changed files using existing pipeline
-			// TODO: This needs to be implemented to filter files in the pipeline
-			// For now, we'll create a full pipeline but note this in the manifest
+			// Step 4: Upload changed files using existing pipeline with file filtering
+			// Convert FileInfo to string paths for pipeline
+			var includeFiles []string
+			for _, file := range changedFiles {
+				includeFiles = append(includeFiles, file.Path)
+			}
 
 			pipelineConfig := &pipeline.PipelineConfig{
 				S3Bucket:          bucket,
@@ -219,6 +222,16 @@ Examples:
 				WorkersPerPrefix:  2,
 				EnableManifest:    true,
 				SourcePath:        absPath,
+
+				// Issue #148: Incremental sync configuration
+				IncludeOnlyFiles: includeFiles,
+				SyncType:         syncType,
+				PreviousUploadID: func() string {
+					if previousManifest != nil {
+						return previousManifest.UploadID
+					}
+					return ""
+				}(),
 			}
 
 			pipe, err := pipeline.NewPipeline(pipelineConfig)
@@ -226,18 +239,15 @@ Examples:
 				return fmt.Errorf("failed to create pipeline: %w", err)
 			}
 
-			// TODO: Implement file filtering in pipeline to only upload delta.GetChangedFiles()
-			// For now, this uploads all files (Phase 1 implementation limitation)
-			// Phase 2 will add filtered upload support
-
-			// TODO: Manifest sync fields (SyncType, PreviousManifestID) need to be set
-			// This requires pipeline modifications to accept these fields
-			// For Phase 1, we focus on delta detection - manifest updates come in Phase 2
-
-			fmt.Println("⚠️  Note: Phase 1 implementation - uploading all files")
-			fmt.Printf("    Delta detection is working (%s)\n", delta.SummaryString())
-			fmt.Println("    Phase 2 will add filtered upload and manifest chaining")
-			fmt.Println()
+			// Inform user about filtered upload
+			if !quiet {
+				if len(includeFiles) > 0 {
+					fmt.Printf("📤 Uploading %d changed files (skipping %d unchanged)\n\n",
+						len(includeFiles), len(delta.Same))
+				} else {
+					fmt.Println("📤 Performing full upload (first sync)\n")
+				}
+			}
 
 			result, err := pipe.Run(ctx, absPath)
 			if err != nil {

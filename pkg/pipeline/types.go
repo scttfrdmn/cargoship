@@ -151,6 +151,11 @@ type PipelineConfig struct {
 	EnableManifest bool   // Enable manifest generation (default: true for real S3)
 	SourcePath     string // Original source path for manifest
 
+	// Incremental sync configuration (Issue #148)
+	IncludeOnlyFiles []string // If set, only upload these files (for incremental sync)
+	SyncType         string   // "full" or "incremental" (for manifest)
+	PreviousUploadID string   // Previous upload ID (for manifest chaining)
+
 	// Progress tracking
 	EnableProgress   bool
 	ProgressInterval time.Duration
@@ -236,6 +241,9 @@ type ScannerConfig struct {
 	Workers         int
 	FollowSymlinks  bool
 	ExcludePatterns []string
+
+	// Issue #148: Incremental sync file filtering
+	IncludeOnlyFiles []string // If set, only scan these files (relative paths)
 
 	// Phase 3.3: Compressed-aware chunking
 	UseCompressedAwareChunking bool // Enable compression-aware chunking

@@ -174,6 +174,11 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 
 			// Set shard count for manifest
 			builder.SetShardCount(config.ShardCount)
+
+			// Set sync info for incremental sync (Issue #148)
+			if config.SyncType != "" {
+				builder.SetSyncInfo(config.SyncType, config.PreviousUploadID)
+			}
 		}
 
 		p.manifestBuilder = builder
@@ -244,6 +249,7 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 	scannerConfig := &ScannerConfig{
 		RootPath:                   rootPath,
 		Workers:                    p.config.ScannerWorkers,
+		IncludeOnlyFiles:           p.config.IncludeOnlyFiles,             // Issue #148: Incremental sync file filtering
 		UseCompressedAwareChunking: p.config.EnableCompressedAwareChunking, // Phase 3.3
 		ChunkTargetSizeMB:          p.config.ForceChunkSizeMB,              // Phase 3.3
 		ChunkingConfig:             p.config.ChunkingConfig,                // Phase 5: Pass chunking config
