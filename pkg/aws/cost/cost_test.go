@@ -969,7 +969,7 @@ func TestGetProjectCostsByPeriod(t *testing.T) {
 		{
 			name:         "month",
 			period:       "month",
-			expectedCost: 30.0, // 10 + 20 (both this month)
+			expectedCost: 60.0, // 10 + 20 (today) + 30 (10 days ago, still this month)
 		},
 	}
 

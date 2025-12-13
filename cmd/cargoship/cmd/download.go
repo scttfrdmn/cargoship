@@ -23,21 +23,17 @@ import (
 // NewDownloadCmd creates the 'download' command for selective extraction
 func NewDownloadCmd() *cobra.Command {
 	var (
-		bucket     string
-		prefix     string
-		uploadID   string
-		pattern    string
-		files      []string
-		shardIDs   []int
-		outputDir  string
-		region     string
-		verbose    bool
-		dryRun     bool
-		workers    int
+		pattern   string
+		files     []string
+		shardIDs  []int
+		region    string
+		verbose   bool
+		dryRun    bool
+		workers   int
 	)
 
 	cmd := &cobra.Command{
-		Use:   "download",
+		Use:   "download S3_URL OUTPUT_DIR",
 		Short: "Download and extract files from a CargoShip upload",
 		Long: `Download and selectively extract files from a CargoShip upload using the manifest.
 
@@ -53,36 +49,42 @@ Selective extraction options:
 
 Examples:
   # Download all files from an upload
-  cargoship download --bucket my-bucket --upload-id 20231208-123456-abcd1234 --output-dir ./restored
+  cargoship download s3://my-bucket/uploads/20231208-123456-abcd1234 ./restored
 
   # Download files matching a pattern
-  cargoship download --bucket my-bucket --upload-id 20231208-123456-abcd1234 \
-    --pattern "*.log" --output-dir ./logs
+  cargoship download s3://my-bucket/uploads/20231208-123456-abcd1234 ./logs \
+    --pattern "*.log"
 
   # Download specific files
-  cargoship download --bucket my-bucket --upload-id 20231208-123456-abcd1234 \
-    --files "data/report.csv,data/summary.csv" --output-dir ./reports
+  cargoship download s3://my-bucket/uploads/20231208-123456-abcd1234 ./reports \
+    --files "data/report.csv,data/summary.csv"
 
   # Download specific shards only
-  cargoship download --bucket my-bucket --upload-id 20231208-123456-abcd1234 \
-    --shard-ids 0,2,4 --output-dir ./restored
+  cargoship download s3://my-bucket/uploads/20231208-123456-abcd1234 ./restored \
+    --shard-ids 0,2,4
 
   # Dry run to see what would be downloaded
-  cargoship download --bucket my-bucket --upload-id 20231208-123456-abcd1234 \
+  cargoship download s3://my-bucket/uploads/20231208-123456-abcd1234 ./restored \
     --pattern "*.csv" --dry-run
 `,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
 
-			// Validate required flags
-			if bucket == "" {
-				return fmt.Errorf("--bucket is required")
+			// Parse S3 URL
+			s3URL := args[0]
+			bucket, prefix, err := parseS3URL(s3URL)
+			if err != nil {
+				return fmt.Errorf("invalid S3 URL: %w", err)
 			}
-			if uploadID == "" {
-				return fmt.Errorf("--upload-id is required")
+
+			// Get output directory (optional for dry-run)
+			var outputDir string
+			if len(args) >= 2 {
+				outputDir = args[1]
 			}
 			if outputDir == "" && !dryRun {
-				return fmt.Errorf("--output-dir is required (unless --dry-run is specified)")
+				return fmt.Errorf("OUTPUT_DIR is required (unless --dry-run is specified)")
 			}
 
 			// Load AWS config
@@ -93,18 +95,26 @@ Examples:
 
 			s3Client := s3.NewFromConfig(cfg)
 
-			// Step 1: Download manifest from S3
-			manifestKey := fmt.Sprintf("%s/uploads/%s/manifest.json.gz", prefix, uploadID)
+			// Step 1: Download manifest from S3 (try .json first, then .json.gz for backwards compatibility)
+			manifestKey := filepath.Join(prefix, "manifest.json")
 			fmt.Printf("📥 Downloading manifest: s3://%s/%s\n", bucket, manifestKey)
 
-			getObjectInput := &s3.GetObjectInput{
+			result, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
 				Bucket: aws.String(bucket),
 				Key:    aws.String(manifestKey),
-			}
+			})
 
-			result, err := s3Client.GetObject(ctx, getObjectInput)
+			// If .json not found, try .json.gz for backwards compatibility
 			if err != nil {
-				return fmt.Errorf("failed to download manifest from S3: %w", err)
+				manifestKey = filepath.Join(prefix, "manifest.json.gz")
+				fmt.Printf("📥 Trying compressed manifest: s3://%s/%s\n", bucket, manifestKey)
+				result, err = s3Client.GetObject(ctx, &s3.GetObjectInput{
+					Bucket: aws.String(bucket),
+					Key:    aws.String(manifestKey),
+				})
+				if err != nil {
+					return fmt.Errorf("failed to download manifest from S3: %w", err)
+				}
 			}
 			defer func() {
 				if closeErr := result.Body.Close(); closeErr != nil {
@@ -118,8 +128,8 @@ Examples:
 				return fmt.Errorf("failed to read manifest from S3: %w", err)
 			}
 
-			// Decompress and deserialize manifest
-			m, err := manifest.FromJSONCompressed(manifestBytes)
+			// Deserialize with automatic compression detection (Issue #92)
+			m, err := manifest.FromJSONAuto(manifestBytes)
 			if err != nil {
 				return fmt.Errorf("failed to deserialize manifest: %w", err)
 			}
@@ -253,26 +263,51 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVarP(&bucket, "bucket", "b", "", "S3 bucket name (required)")
-	cmd.Flags().StringVarP(&prefix, "prefix", "p", "", "S3 prefix for upload (default: empty)")
-	cmd.Flags().StringVarP(&uploadID, "upload-id", "u", "", "Upload ID to download (required)")
 	cmd.Flags().StringVar(&pattern, "pattern", "", "Filter files by glob pattern (e.g., '*.log')")
 	cmd.Flags().StringSliceVar(&files, "files", nil, "Comma-separated list of exact file paths to download")
 	cmd.Flags().IntSliceVar(&shardIDs, "shard-ids", nil, "Comma-separated list of shard IDs to download (0-7)")
-	cmd.Flags().StringVarP(&outputDir, "output-dir", "o", "", "Output directory for extracted files (required unless --dry-run)")
 	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "Show verbose output (list each file as extracted)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be downloaded without actually downloading")
 	cmd.Flags().IntVar(&workers, "workers", 4, "Number of parallel download workers (future use)")
 
-	if err := cmd.MarkFlagRequired("bucket"); err != nil {
-		panic(fmt.Sprintf("failed to mark bucket flag as required: %v", err))
-	}
-	if err := cmd.MarkFlagRequired("upload-id"); err != nil {
-		panic(fmt.Sprintf("failed to mark upload-id flag as required: %v", err))
+	return cmd
+}
+
+// parseS3URL parses s3://bucket/prefix/uploads/upload-id format
+func parseS3URL(s3URL string) (bucket, prefix string, err error) {
+	if len(s3URL) < 5 || s3URL[:5] != "s3://" {
+		return "", "", fmt.Errorf("URL must start with s3://")
 	}
 
-	return cmd
+	// Remove s3:// prefix
+	path := s3URL[5:]
+
+	// Split bucket and prefix
+	parts := filepath.SplitList(path)
+	if len(parts) == 0 {
+		// No slashes - just bucket
+		return path, "", nil
+	}
+
+	// Find first slash
+	slashIdx := -1
+	for i, c := range path {
+		if c == '/' {
+			slashIdx = i
+			break
+		}
+	}
+
+	if slashIdx == -1 {
+		// No slash found - just bucket
+		return path, "", nil
+	}
+
+	bucket = path[:slashIdx]
+	prefix = path[slashIdx+1:]
+
+	return bucket, prefix, nil
 }
 
 // findChunk finds a chunk by ID in the manifest
