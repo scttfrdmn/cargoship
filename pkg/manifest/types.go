@@ -11,8 +11,8 @@ type Manifest struct {
 	Version string `json:"version"`
 
 	// Upload metadata
-	UploadID  string    `json:"upload_id"`  // Unique upload session ID (timestamp-random)
-	CreatedAt time.Time `json:"created_at"` // When upload started
+	UploadID    string    `json:"upload_id"`    // Unique upload session ID (timestamp-random)
+	CreatedAt   time.Time `json:"created_at"`   // When upload started
 	CompletedAt time.Time `json:"completed_at"` // When upload finished
 
 	// Source information
@@ -76,10 +76,10 @@ type ChunkEntry struct {
 	S3Key   string `json:"s3_key"`   // Full S3 key (e.g., "uploads/20251206-abc123/shard-0/chunk-0.tar.zst")
 
 	// Contents
-	FileCount      int      `json:"file_count"`       // Number of files in this chunk
-	FilePaths      []string `json:"file_paths"`       // Paths of files in this chunk (for quick lookup)
-	UncompressedSize int64  `json:"uncompressed_size"` // Total uncompressed size
-	CompressedSize   int64  `json:"compressed_size"`   // Actual compressed size in S3
+	FileCount        int      `json:"file_count"`        // Number of files in this chunk
+	FilePaths        []string `json:"file_paths"`        // Paths of files in this chunk (for quick lookup)
+	UncompressedSize int64    `json:"uncompressed_size"` // Total uncompressed size
+	CompressedSize   int64    `json:"compressed_size"`   // Actual compressed size in S3
 
 	// Timestamps
 	CreatedAt  time.Time `json:"created_at"`  // When chunk was created
@@ -92,14 +92,14 @@ type ChunkEntry struct {
 // ShardEntry represents a shard (S3 prefix) in the manifest
 type ShardEntry struct {
 	// Shard identification
-	ID     int    `json:"id"`      // Shard ID (0-7 for default 8 shards)
-	Prefix string `json:"prefix"`  // S3 prefix path (e.g., "uploads/20251206-abc123/shard-0")
+	ID     int    `json:"id"`     // Shard ID (0-7 for default 8 shards)
+	Prefix string `json:"prefix"` // S3 prefix path (e.g., "uploads/20251206-abc123/shard-0")
 
 	// Statistics
-	ChunkCount       int   `json:"chunk_count"`        // Number of chunks in this shard
-	FileCount        int64 `json:"file_count"`         // Total files across all chunks
-	UncompressedSize int64 `json:"uncompressed_size"`  // Total uncompressed size
-	CompressedSize   int64 `json:"compressed_size"`    // Total compressed size
+	ChunkCount       int   `json:"chunk_count"`       // Number of chunks in this shard
+	FileCount        int64 `json:"file_count"`        // Total files across all chunks
+	UncompressedSize int64 `json:"uncompressed_size"` // Total uncompressed size
+	CompressedSize   int64 `json:"compressed_size"`   // Total compressed size
 
 	// S3 keys
 	ChunkKeys []string `json:"chunk_keys"` // All chunk S3 keys in this shard
@@ -135,6 +135,7 @@ func (mq *ManifestQuery) FindFile(path string) *FileEntry {
 //   - "*" matches any sequence of non-separator characters
 //   - "?" matches any single non-separator character
 //   - "[...]" matches any character in the set
+//
 // Examples:
 //   - "*.log" matches all files ending in .log
 //   - "data/*.csv" matches all CSV files in data directory
@@ -215,4 +216,25 @@ type ManifestSummary struct {
 	UploadID         string
 	CreatedAt        time.Time
 	CompletedAt      time.Time
+}
+
+// GetShard returns shard metadata for the specified shard ID (Issue #90)
+// Returns nil if shard ID is invalid
+func (mq *ManifestQuery) GetShard(shardID int) *ShardEntry {
+	for i := range mq.manifest.Shards {
+		if mq.manifest.Shards[i].ID == shardID {
+			return &mq.manifest.Shards[i]
+		}
+	}
+	return nil
+}
+
+// CountFiles returns the total number of files in the manifest (Issue #90)
+func (mq *ManifestQuery) CountFiles() int64 {
+	return mq.manifest.TotalFiles
+}
+
+// TotalSize returns the total uncompressed size of all files in bytes (Issue #90)
+func (mq *ManifestQuery) TotalSize() int64 {
+	return mq.manifest.TotalBytes
 }
