@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -174,6 +175,15 @@ func BenchmarkPipeline_MixedWorkload(b *testing.B) {
 
 		b.StartTimer()
 	}
+
+	// Cleanup AWS SDK HTTP connections (Issue #72)
+	// Close idle connections to prevent goroutine leaks in goleak tests
+	if s3Client != nil {
+		if httpClient, ok := s3Client.Options().HTTPClient.(*http.Client); ok {
+			httpClient.CloseIdleConnections()
+			b.Logf("Closed AWS SDK HTTP idle connections")
+		}
+	}
 }
 
 // BenchmarkPipeline_BurstyPattern benchmarks the pipeline with bursty file arrival patterns
@@ -309,6 +319,15 @@ func BenchmarkPipeline_BurstyPattern(b *testing.B) {
 		}
 
 		b.StartTimer()
+	}
+
+	// Cleanup AWS SDK HTTP connections (Issue #72)
+	// Close idle connections to prevent goroutine leaks in goleak tests
+	if s3Client != nil {
+		if httpClient, ok := s3Client.Options().HTTPClient.(*http.Client); ok {
+			httpClient.CloseIdleConnections()
+			b.Logf("Closed AWS SDK HTTP idle connections")
+		}
 	}
 }
 
