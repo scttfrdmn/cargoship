@@ -1,0 +1,172 @@
+name: Performance Regression Detection
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'pkg/**'
+      - 'cmd/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/performance-regression.yml'
+
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: 'Baseline git ref (branch/tag/commit)'
+        required: false
+        default: 'main'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  regression:
+    name: Performance Regression Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true  # Don't fail the entire build on performance issues
+
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Install benchstat
+        run: go install golang.org/x/perf/cmd/benchstat@latest
+
+      - name: Run current benchmarks
+        run: |
+          echo "Running benchmarks on current code..."
+          go test -bench=. -benchmem -count=5 -timeout=20m ./pkg/compression ./pkg/chunking ./pkg/pipeline > benchmark-current.txt
+          echo "Current benchmarks complete"
+
+      - name: Checkout baseline (main branch)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.baseline_ref || 'main' }}
+          path: baseline
+
+      - name: Run baseline benchmarks
+        working-directory: baseline
+        run: |
+          echo "Running benchmarks on baseline..."
+          go test -bench=. -benchmem -count=5 -timeout=20m ./pkg/compression ./pkg/chunking ./pkg/pipeline > ../benchmark-baseline.txt
+          echo "Baseline benchmarks complete"
+
+      - name: Compare benchmarks
+        id: compare
+        run: |
+          echo "Comparing benchmarks..."
+
+          # Use benchstat for statistical comparison
+          benchstat benchmark-baseline.txt benchmark-current.txt > benchmark-comparison.txt || true
+
+          # Check for significant regressions (>20% slower)
+          CRITICAL=$(grep -E '\+[2-9][0-9]\.' benchmark-comparison.txt | grep -v '~' || true)
+
+          # Check for moderate regressions (>10% slower)
+          HIGH=$(grep -E '\+1[0-9]\.' benchmark-comparison.txt | grep -v '~' || true)
+
+          # Check for mild regressions (>5% slower)
+          MEDIUM=$(grep -E '\+[5-9]\.' benchmark-comparison.txt | grep -v '~' || true)
+
+          if [ -n "$CRITICAL" ]; then
+            echo "severity=critical" >> $GITHUB_OUTPUT
+            echo "has_regression=true" >> $GITHUB_OUTPUT
+          elif [ -n "$HIGH" ]; then
+            echo "severity=high" >> $GITHUB_OUTPUT
+            echo "has_regression=true" >> $GITHUB_OUTPUT
+          elif [ -n "$MEDIUM" ]; then
+            echo "severity=medium" >> $GITHUB_OUTPUT
+            echo "has_regression=true" >> $GITHUB_OUTPUT
+          else
+            echo "severity=none" >> $GITHUB_OUTPUT
+            echo "has_regression=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Save comparison for PR comment
+          cat benchmark-comparison.txt
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            benchmark-current.txt
+            benchmark-baseline.txt
+            benchmark-comparison.txt
+          retention-days: 30
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && steps.compare.outputs.has_regression == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const comparison = fs.readFileSync('benchmark-comparison.txt', 'utf8');
+            const severity = '${{ steps.compare.outputs.severity }}';
+
+            let icon = '⚠️';
+            let title = 'Performance Regression Detected';
+
+            if (severity === 'critical') {
+              icon = '🔴';
+              title = 'Critical Performance Regression';
+            } else if (severity === 'high') {
+              icon = '🟠';
+              title = 'High Severity Performance Regression';
+            }
+
+            const body = `${icon} **${title}**
+
+            <details>
+            <summary>Benchmark Comparison</summary>
+
+            \`\`\`
+            ${comparison}
+            \`\`\`
+
+            </details>
+
+            **Severity:** ${severity}
+
+            ### What this means:
+            - **Critical (>20% slower):** Significant performance degradation that should be investigated
+            - **High (10-20% slower):** Notable performance impact worth reviewing
+            - **Medium (5-10% slower):** Minor performance change, may be acceptable depending on trade-offs
+
+            ### Next steps:
+            1. Review the benchmark comparison above
+            2. If intentional (e.g., added features), document the trade-off
+            3. If unintentional, investigate and optimize before merging
+            4. Consider profiling with \`--pprof\` flag to identify bottlenecks
+
+            _This check is informational and will not block the PR._`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Success summary
+        if: steps.compare.outputs.has_regression == 'false'
+        run: |
+          echo "✅ No significant performance regressions detected"
+          echo "All benchmarks are within acceptable thresholds"
+
+      - name: Regression summary
+        if: steps.compare.outputs.has_regression == 'true'
+        run: |
+          echo "⚠️  Performance regression detected: ${{ steps.compare.outputs.severity }} severity"
+          echo "Review the benchmark comparison in the artifacts"
+          echo "This is informational only and will not fail the build"

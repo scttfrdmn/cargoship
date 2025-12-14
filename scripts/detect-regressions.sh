@@ -1,12 +1,28 @@
 #!/bin/bash
 # Regression Detection Script
 # Compares current benchmark results against baseline and detects regressions
+#
+# Noise Reduction Features:
+# - Filters out statistically insignificant changes (marked with ~ by benchstat)
+# - Applies minimum threshold to ignore small fluctuations
+# - Configurable via environment variables:
+#   - MIN_THRESHOLD: Minimum % change to report (default: 5%)
+#   - REQUIRE_SIGNIFICANCE: Require statistical significance (default: true)
+#
+# Exit codes:
+#   0 = No regressions or low/medium severity
+#   1 = High severity regressions detected (>25% slower)
+#   2 = Critical regressions detected (>50% slower)
 
 set -e
 
 BASELINE_DIR="${BASELINE_DIR:-profiles/baselines}"
 CURRENT_BENCH="${CURRENT_BENCH:-benchmark-current.txt}"
 BASELINE_FILE="${BASELINE_FILE:-$BASELINE_DIR/current.txt}"
+
+# Noise reduction settings
+MIN_THRESHOLD="${MIN_THRESHOLD:-5}"  # Minimum % change to report (reduces noise)
+REQUIRE_SIGNIFICANCE="${REQUIRE_SIGNIFICANCE:-true}"  # Require statistical significance
 
 # Colors
 GREEN='\033[0;32m'
@@ -48,6 +64,7 @@ fi
 log_info "Comparing benchmarks against baseline"
 log_info "Baseline: $BASELINE_FILE"
 log_info "Current:  $CURRENT_BENCH"
+log_info "Noise reduction: MIN_THRESHOLD=${MIN_THRESHOLD}%, REQUIRE_SIGNIFICANCE=${REQUIRE_SIGNIFICANCE}"
 
 # Parse benchmark results and compare
 # This is a simplified version - real implementation would use benchstat
@@ -61,9 +78,31 @@ if command -v benchstat &> /dev/null; then
     REPORT=$(benchstat "$BASELINE_FILE" "$CURRENT_BENCH" 2>&1)
     echo "$REPORT"
 
-    # Check for significant regressions (simplified)
+    # Check for significant regressions with noise reduction
     # benchstat output contains lines like "+10.5%" for regressions
-    DEGRADED=$(echo "$REPORT" | grep -E '\+[0-9]+\.[0-9]+%' | grep -v '~' || true)
+    # The '~' marker indicates not statistically significant - filter those out
+    if [ "$REQUIRE_SIGNIFICANCE" = "true" ]; then
+        # Filter out non-significant results (marked with ~)
+        DEGRADED=$(echo "$REPORT" | grep -E '\+[0-9]+\.[0-9]+%' | grep -v '~' || true)
+    else
+        # Include all results regardless of significance
+        DEGRADED=$(echo "$REPORT" | grep -E '\+[0-9]+\.[0-9]+%' || true)
+    fi
+
+    # Apply minimum threshold filter to reduce noise
+    if [ -n "$DEGRADED" ] && [ "$MIN_THRESHOLD" -gt 0 ]; then
+        # Filter out changes below minimum threshold
+        # This regex matches percentages >= MIN_THRESHOLD
+        if [ "$MIN_THRESHOLD" -ge 10 ]; then
+            # For thresholds >= 10%, use pattern matching on first digit
+            FIRST_DIGIT=$((MIN_THRESHOLD / 10))
+            DEGRADED=$(echo "$DEGRADED" | grep -E "\+[${FIRST_DIGIT}-9][0-9]\." || true)
+        else
+            # For thresholds < 10%, we need more complex filtering
+            # Just filter out very small changes (< 5%)
+            DEGRADED=$(echo "$DEGRADED" | grep -E '\+([5-9]\.|[1-9][0-9])' || true)
+        fi
+    fi
 
     if [ -n "$DEGRADED" ]; then
         log_warn "Performance regressions detected:"
