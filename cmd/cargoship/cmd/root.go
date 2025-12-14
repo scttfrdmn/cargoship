@@ -94,6 +94,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 		NewDashboardCmd(),
 		NewUploadCmd(),   // Issue #95: Upload command with CargoHold sharding
 		NewSyncCmd(),     // Issue #148: Incremental sync command
+		NewMigrateCmd(),  // Issue #100: Migrate command for archive conversion
 		NewListCmd(),     // Issue #97: List uploaded files from manifest
 		NewDownloadCmd(), // Issue #96: Download with selective extraction
 		NewInfoCmd(),     // Issue #98: Info command for upload metadata
