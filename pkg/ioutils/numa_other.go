@@ -1,4 +1,4 @@
-//go:build !disabled_for_now
+// No build constraints - this file is always built
 
 /*
 Package ioutils provides fallback NUMA implementations for all platforms.
