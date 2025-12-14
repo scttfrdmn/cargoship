@@ -24,26 +24,26 @@ type BudgetAlert struct {
 	Timestamp time.Time `json:"timestamp"`
 
 	// Alert type
-	Type     BudgetAlertType     `json:"type"`      // cost_threshold, volume_threshold, cost_over_budget, volume_over_quota
+	Type     BudgetAlertType     `json:"type"`     // cost_threshold, volume_threshold, cost_over_budget, volume_over_quota
 	Severity BudgetAlertSeverity `json:"severity"` // info, warning, critical
 
 	// Budget/Project context
-	ProjectID   string  `json:"project_id,omitempty"`   // Empty if global budget
-	Description string  `json:"description"`            // Human-readable description
-	IsGlobal    bool    `json:"is_global"`              // True if global budget alert
+	ProjectID   string `json:"project_id,omitempty"` // Empty if global budget
+	Description string `json:"description"`          // Human-readable description
+	IsGlobal    bool   `json:"is_global"`            // True if global budget alert
 
 	// Cost metrics (if cost alert)
-	MaxBudget          float64 `json:"max_budget,omitempty"`
-	CurrentSpend       float64 `json:"current_spend,omitempty"`
-	BudgetRemaining    float64 `json:"budget_remaining,omitempty"`
-	BudgetUsedPercent  float64 `json:"budget_used_percent,omitempty"`
-	ThresholdPercent   float64 `json:"threshold_percent,omitempty"`
+	MaxBudget         float64 `json:"max_budget,omitempty"`
+	CurrentSpend      float64 `json:"current_spend,omitempty"`
+	BudgetRemaining   float64 `json:"budget_remaining,omitempty"`
+	BudgetUsedPercent float64 `json:"budget_used_percent,omitempty"`
+	ThresholdPercent  float64 `json:"threshold_percent,omitempty"`
 
 	// Volume metrics (if volume alert)
-	MaxVolumeGB          float64 `json:"max_volume_gb,omitempty"`
-	CurrentVolumeGB      float64 `json:"current_volume_gb,omitempty"`
-	VolumeRemaining      float64 `json:"volume_remaining,omitempty"`
-	VolumeUsedPercent    float64 `json:"volume_used_percent,omitempty"`
+	MaxVolumeGB            float64 `json:"max_volume_gb,omitempty"`
+	CurrentVolumeGB        float64 `json:"current_volume_gb,omitempty"`
+	VolumeRemaining        float64 `json:"volume_remaining,omitempty"`
+	VolumeUsedPercent      float64 `json:"volume_used_percent,omitempty"`
 	VolumeThresholdPercent float64 `json:"volume_threshold_percent,omitempty"`
 
 	// Actions and recommendations
@@ -120,7 +120,7 @@ type BudgetAlertConfig struct {
 	// Slack notification configuration (Issue #147 Phase 4)
 	SlackEnabled    bool   `yaml:"slack_enabled" json:"slack_enabled"`
 	SlackWebhookURL string `yaml:"slack_webhook_url" json:"slack_webhook_url,omitempty"`
-	SlackChannel    string `yaml:"slack_channel" json:"slack_channel,omitempty"` // Optional override
+	SlackChannel    string `yaml:"slack_channel" json:"slack_channel,omitempty"`   // Optional override
 	SlackUsername   string `yaml:"slack_username" json:"slack_username,omitempty"` // Optional bot name
 
 	// Alert delivery options
@@ -647,13 +647,13 @@ func (n *BudgetAlertNotifier) buildSlackPayload(alert *BudgetAlert) map[string]i
 		"icon_emoji": ":moneybag:",
 		"attachments": []map[string]interface{}{
 			{
-				"color":      color,
-				"title":      fmt.Sprintf("%s %s", emoji, alert.Description),
-				"text":       alert.Recommendation,
-				"fields":     fields,
-				"footer":     "CargoShip",
+				"color":       color,
+				"title":       fmt.Sprintf("%s %s", emoji, alert.Description),
+				"text":        alert.Recommendation,
+				"fields":      fields,
+				"footer":      "CargoShip",
 				"footer_icon": "https://github.com/scttfrdmn/cargoship/raw/main/docs/logo.png",
-				"ts":         alert.Timestamp.Unix(),
+				"ts":          alert.Timestamp.Unix(),
 			},
 		},
 	}
@@ -690,60 +690,60 @@ func (m *Manager) CheckBudgetStatus(ctx context.Context, projectID string) (*Bud
 		// Check if over budget (critical)
 		if status.OverBudget {
 			return &BudgetAlert{
-				ID:                 fmt.Sprintf("cost-over-%s-%d", projectID, time.Now().Unix()),
-				Timestamp:          time.Now(),
-				Type:               AlertTypeCostOverBudget,
-				Severity:           SeverityCritical,
-				ProjectID:          projectID,
-				Description:        fmt.Sprintf("Project %s has exceeded its budget", projectID),
-				IsGlobal:           projectID == "",
-				MaxBudget:          status.MaxBudget,
-				CurrentSpend:       status.CurrentSpend,
-				BudgetRemaining:    status.BudgetRemaining,
-				BudgetUsedPercent:  status.BudgetUsed * 100,
-				ThresholdPercent:   status.MaxBudget * 0.8,
-				Recommendation:     "Immediate action required: Budget exceeded. Consider pausing uploads or requesting additional budget.",
-				ActionRequired:     true,
+				ID:                fmt.Sprintf("cost-over-%s-%d", projectID, time.Now().Unix()),
+				Timestamp:         time.Now(),
+				Type:              AlertTypeCostOverBudget,
+				Severity:          SeverityCritical,
+				ProjectID:         projectID,
+				Description:       fmt.Sprintf("Project %s has exceeded its budget", projectID),
+				IsGlobal:          projectID == "",
+				MaxBudget:         status.MaxBudget,
+				CurrentSpend:      status.CurrentSpend,
+				BudgetRemaining:   status.BudgetRemaining,
+				BudgetUsedPercent: status.BudgetUsed * 100,
+				ThresholdPercent:  status.MaxBudget * 0.8,
+				Recommendation:    "Immediate action required: Budget exceeded. Consider pausing uploads or requesting additional budget.",
+				ActionRequired:    true,
 			}, nil
 		}
 
 		// Check if alert threshold reached (warning)
 		if status.AlertTriggered {
 			return &BudgetAlert{
-				ID:                 fmt.Sprintf("cost-threshold-%s-%d", projectID, time.Now().Unix()),
-				Timestamp:          time.Now(),
-				Type:               AlertTypeCostThreshold,
-				Severity:           SeverityWarning,
-				ProjectID:          projectID,
-				Description:        fmt.Sprintf("Project %s has reached its budget alert threshold", projectID),
-				IsGlobal:           projectID == "",
-				MaxBudget:          status.MaxBudget,
-				CurrentSpend:       status.CurrentSpend,
-				BudgetRemaining:    status.BudgetRemaining,
-				BudgetUsedPercent:  status.BudgetUsed * 100,
-				ThresholdPercent:   status.MaxBudget * 0.8,
-				Recommendation:     fmt.Sprintf("Budget threshold reached. %.2f%% of budget consumed. Consider optimizing uploads or requesting additional budget.", status.BudgetUsed*100),
-				ActionRequired:     false,
+				ID:                fmt.Sprintf("cost-threshold-%s-%d", projectID, time.Now().Unix()),
+				Timestamp:         time.Now(),
+				Type:              AlertTypeCostThreshold,
+				Severity:          SeverityWarning,
+				ProjectID:         projectID,
+				Description:       fmt.Sprintf("Project %s has reached its budget alert threshold", projectID),
+				IsGlobal:          projectID == "",
+				MaxBudget:         status.MaxBudget,
+				CurrentSpend:      status.CurrentSpend,
+				BudgetRemaining:   status.BudgetRemaining,
+				BudgetUsedPercent: status.BudgetUsed * 100,
+				ThresholdPercent:  status.MaxBudget * 0.8,
+				Recommendation:    fmt.Sprintf("Budget threshold reached. %.2f%% of budget consumed. Consider optimizing uploads or requesting additional budget.", status.BudgetUsed*100),
+				ActionRequired:    false,
 			}, nil
 		}
 
 		// Check if projected to exceed (warning)
 		if status.WillExceedBudget {
 			return &BudgetAlert{
-				ID:                 fmt.Sprintf("cost-projection-%s-%d", projectID, time.Now().Unix()),
-				Timestamp:          time.Now(),
-				Type:               AlertTypeBudgetProjection,
-				Severity:           SeverityWarning,
-				ProjectID:          projectID,
-				Description:        fmt.Sprintf("Project %s is projected to exceed its budget", projectID),
-				IsGlobal:           projectID == "",
-				MaxBudget:          status.MaxBudget,
-				CurrentSpend:       status.CurrentSpend,
-				BudgetRemaining:    status.BudgetRemaining,
-				BudgetUsedPercent:  status.BudgetUsed * 100,
-				ThresholdPercent:   status.MaxBudget * 0.8,
-				Recommendation:     fmt.Sprintf("Current burn rate ($%.2f/day) will exceed budget. Projected end-of-period spend: $%.2f", status.DailyBurnRate, status.ProjectedEOPSpend),
-				ActionRequired:     false,
+				ID:                fmt.Sprintf("cost-projection-%s-%d", projectID, time.Now().Unix()),
+				Timestamp:         time.Now(),
+				Type:              AlertTypeBudgetProjection,
+				Severity:          SeverityWarning,
+				ProjectID:         projectID,
+				Description:       fmt.Sprintf("Project %s is projected to exceed its budget", projectID),
+				IsGlobal:          projectID == "",
+				MaxBudget:         status.MaxBudget,
+				CurrentSpend:      status.CurrentSpend,
+				BudgetRemaining:   status.BudgetRemaining,
+				BudgetUsedPercent: status.BudgetUsed * 100,
+				ThresholdPercent:  status.MaxBudget * 0.8,
+				Recommendation:    fmt.Sprintf("Current burn rate ($%.2f/day) will exceed budget. Projected end-of-period spend: $%.2f", status.DailyBurnRate, status.ProjectedEOPSpend),
+				ActionRequired:    false,
 			}, nil
 		}
 	}

@@ -20,12 +20,12 @@ type AdaptiveWorkerPool struct {
 	scalingFactor  int           // Workers to add per scaling cycle (default: runtime.GOMAXPROCS(0))
 
 	// State
-	workers      int32         // Current worker count (atomic)
-	semaphore    chan struct{} // Semaphore for worker concurrency
-	wg           sync.WaitGroup
-	ctx          context.Context
-	cancel       context.CancelFunc
-	mu           sync.RWMutex
+	workers   int32         // Current worker count (atomic)
+	semaphore chan struct{} // Semaphore for worker concurrency
+	wg        sync.WaitGroup
+	ctx       context.Context
+	cancel    context.CancelFunc
+	mu        sync.RWMutex
 
 	// Throughput monitoring
 	totalBytes     int64     // Total bytes processed (atomic)

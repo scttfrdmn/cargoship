@@ -1,3 +1,4 @@
+//go:build benchmark
 // +build benchmark
 
 package pipeline
@@ -565,15 +566,15 @@ func BenchmarkPipeline_Phase5_FileSplitting(b *testing.B) {
 				Workers:             8,
 				AvailableMemory:     4 * 1024 * 1024 * 1024, // 4GB
 				GroupingStrategy:    "mixed",
-				EnableFileSplitting: true,                          // KEY: Enable Phase 5 file splitting
-				MaxFileChunkSize:    200 * 1024 * 1024,             // 200MB chunks (for 560MB files = 3 chunks each)
-				TargetChunkSize:     200 * 1024 * 1024,             // 200MB target
-				MinChunkSize:        10 * 1024 * 1024,              // 10MB minimum
-				MaxChunkSize:        5 * 1024 * 1024 * 1024,        // 5GB maximum (S3 limit)
-				CostSavingsTarget:   100,                           // 100x cost savings target
-				LargeFileThreshold:  100 * 1024 * 1024,             // 100MB threshold
-				MultipartPartSize:   100 * 1024 * 1024,             // 100MB multipart parts
-				Bandwidth:           100 * 1024 * 1024,             // 100MB/s assumed bandwidth
+				EnableFileSplitting: true,                   // KEY: Enable Phase 5 file splitting
+				MaxFileChunkSize:    200 * 1024 * 1024,      // 200MB chunks (for 560MB files = 3 chunks each)
+				TargetChunkSize:     200 * 1024 * 1024,      // 200MB target
+				MinChunkSize:        10 * 1024 * 1024,       // 10MB minimum
+				MaxChunkSize:        5 * 1024 * 1024 * 1024, // 5GB maximum (S3 limit)
+				CostSavingsTarget:   100,                    // 100x cost savings target
+				LargeFileThreshold:  100 * 1024 * 1024,      // 100MB threshold
+				MultipartPartSize:   100 * 1024 * 1024,      // 100MB multipart parts
+				Bandwidth:           100 * 1024 * 1024,      // 100MB/s assumed bandwidth
 			},
 
 			EnableProgress: false,
@@ -608,38 +609,37 @@ func BenchmarkPipeline_Phase5_FileSplitting(b *testing.B) {
 		b.Logf("Chunks:       %d", result.ChunksCreated)
 		b.Logf("Duration:     %v", duration)
 		b.Logf("Throughput:   %.2f MB/s", throughputMBps)
-	// Phase 5: Per-stage timing breakdown (instrumentation per user request)
-	// Write to separate file to avoid test logger truncation
-	stats := pipeline.GetStats()
-	stageFile, err := os.Create("/tmp/phase5-stage-breakdown.txt")
-	if err != nil {
-		b.Logf("WARNING: Failed to create stage breakdown file: %v", err)
-	} else {
-		defer stageFile.Close()
-		fmt.Fprintf(stageFile, "\n=== Phase 5 Stage Breakdown (Issue #69) ===\n")
-		fmt.Fprintf(stageFile, "Total Duration: %v\n\n", duration)
+		// Phase 5: Per-stage timing breakdown (instrumentation per user request)
+		// Write to separate file to avoid test logger truncation
+		stats := pipeline.GetStats()
+		stageFile, err := os.Create("/tmp/phase5-stage-breakdown.txt")
+		if err != nil {
+			b.Logf("WARNING: Failed to create stage breakdown file: %v", err)
+		} else {
+			defer stageFile.Close()
+			fmt.Fprintf(stageFile, "\n=== Phase 5 Stage Breakdown (Issue #69) ===\n")
+			fmt.Fprintf(stageFile, "Total Duration: %v\n\n", duration)
 
-		// Sort stage names for consistent output
-		stageNames := make([]string, 0, len(stats))
-		for name := range stats {
-			stageNames = append(stageNames, name)
-		}
-		sort.Strings(stageNames)
-
-		for _, name := range stageNames {
-			stat := stats[name]
-			pct := float64(stat.TotalTime) / float64(duration) * 100
-			avgTime := time.Duration(0)
-			if stat.JobsProcessed > 0 {
-				avgTime = stat.TotalTime / time.Duration(stat.JobsProcessed)
+			// Sort stage names for consistent output
+			stageNames := make([]string, 0, len(stats))
+			for name := range stats {
+				stageNames = append(stageNames, name)
 			}
-			fmt.Fprintf(stageFile, "%-12s %12v (%5.1f%%) | %d jobs | avg %v/job\n",
-				name+":", stat.TotalTime, pct, stat.JobsProcessed, avgTime)
-		}
-		b.Logf("\n=== Phase 5 Stage Breakdown (Issue #69) ===")
-		b.Logf("Stage timing details written to: /tmp/phase5-stage-breakdown.txt")
-	}
+			sort.Strings(stageNames)
 
+			for _, name := range stageNames {
+				stat := stats[name]
+				pct := float64(stat.TotalTime) / float64(duration) * 100
+				avgTime := time.Duration(0)
+				if stat.JobsProcessed > 0 {
+					avgTime = stat.TotalTime / time.Duration(stat.JobsProcessed)
+				}
+				fmt.Fprintf(stageFile, "%-12s %12v (%5.1f%%) | %d jobs | avg %v/job\n",
+					name+":", stat.TotalTime, pct, stat.JobsProcessed, avgTime)
+			}
+			b.Logf("\n=== Phase 5 Stage Breakdown (Issue #69) ===")
+			b.Logf("Stage timing details written to: /tmp/phase5-stage-breakdown.txt")
+		}
 
 		b.Logf("\n=== Phase 5 Target Validation (Issue #69) ===")
 

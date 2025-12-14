@@ -767,4 +767,3 @@ func (tpt *TransferPerformanceTracker) RecordPerformance(sessionID string, snaps
 		tpt.performanceData[sessionID] = tpt.performanceData[sessionID][1:]
 	}
 }
-

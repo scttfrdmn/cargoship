@@ -108,9 +108,9 @@ func TestDownloadCmd_Flags(t *testing.T) {
 		{"verbose", true},
 		{"dry-run", true},
 		{"workers", true},
-		{"bucket", false},      // Should not exist (using positional arg)
-		{"upload-id", false},   // Should not exist (using positional arg)
-		{"output-dir", false},  // Should not exist (using positional arg)
+		{"bucket", false},     // Should not exist (using positional arg)
+		{"upload-id", false},  // Should not exist (using positional arg)
+		{"output-dir", false}, // Should not exist (using positional arg)
 	}
 
 	for _, tt := range tests {

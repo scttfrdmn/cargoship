@@ -15,9 +15,10 @@ import (
 // throughput limit (~5-10 MB/s) and achieving 5-8x performance improvement.
 //
 // Architecture:
-//   Input: Single channel from archiver
-//   Output: Map of per-prefix channels (shard-0, shard-1, ..., shard-N)
-//   Routing: Extract shard ID from S3 key (e.g., "uploads/id/shard-3/chunk-42.tar.zst" → 3)
+//
+//	Input: Single channel from archiver
+//	Output: Map of per-prefix channels (shard-0, shard-1, ..., shard-N)
+//	Routing: Extract shard ID from S3 key (e.g., "uploads/id/shard-3/chunk-42.tar.zst" → 3)
 type PrefixRouter struct {
 	input   <-chan *Job
 	outputs map[string]chan<- *Job // Key: "shard-N", Value: output channel
@@ -28,8 +29,8 @@ type PrefixRouter struct {
 	// Statistics
 	mu              sync.RWMutex
 	stats           StageStats
-	jobsRouted      int64 // Atomic counter
-	routingErrors   int64 // Atomic counter
+	jobsRouted      int64            // Atomic counter
+	routingErrors   int64            // Atomic counter
 	perPrefixCounts map[string]int64 // Jobs routed to each prefix
 }
 

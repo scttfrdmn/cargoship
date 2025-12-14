@@ -80,7 +80,7 @@ func DefaultShardRouterConfig() *ShardRouterConfig {
 	return &ShardRouterConfig{
 		Strategy:                ShardByHash,
 		ShardCount:              10,
-		SmallFileSizeThreshold:  1 << 20,  // 1MB
+		SmallFileSizeThreshold:  1 << 20,   // 1MB
 		MediumFileSizeThreshold: 100 << 20, // 100MB
 	}
 }
@@ -257,16 +257,16 @@ func (r *ShardRouter) GetStrategy() ShardStrategy {
 
 // ShardDistribution represents statistics about file distribution across shards
 type ShardDistribution struct {
-	TotalFiles  int            // Total number of files
-	TotalSize   int64          // Total size in bytes
-	ShardCount  int            // Number of shards
-	FileCounts  []int          // Files per shard
-	Sizes       []int64        // Size per shard (bytes)
-	MinFiles    int            // Minimum files in any shard
-	MaxFiles    int            // Maximum files in any shard
-	AvgFiles    float64        // Average files per shard
-	Variance    float64        // Variance in file count distribution
-	BalanceQuality float64     // Balance quality score (0-1, 1 = perfect balance)
+	TotalFiles     int     // Total number of files
+	TotalSize      int64   // Total size in bytes
+	ShardCount     int     // Number of shards
+	FileCounts     []int   // Files per shard
+	Sizes          []int64 // Size per shard (bytes)
+	MinFiles       int     // Minimum files in any shard
+	MaxFiles       int     // Maximum files in any shard
+	AvgFiles       float64 // Average files per shard
+	Variance       float64 // Variance in file count distribution
+	BalanceQuality float64 // Balance quality score (0-1, 1 = perfect balance)
 }
 
 // AnalyzeDistribution analyzes the distribution of files across shards

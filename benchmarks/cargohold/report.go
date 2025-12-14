@@ -63,7 +63,7 @@ func generateTextReport(resultsDir, scenario string, results []BenchmarkResult) 
 		if i == 0 {
 			fmt.Fprintf(f, "   ⭐ FASTEST\n")
 		} else {
-			slowdownPct := (result.UploadDuration.Seconds() / sorted[0].UploadDuration.Seconds() - 1.0) * 100
+			slowdownPct := (result.UploadDuration.Seconds()/sorted[0].UploadDuration.Seconds() - 1.0) * 100
 			fmt.Fprintf(f, "   %.1f%% slower than fastest\n", slowdownPct)
 		}
 		fmt.Fprintf(f, "\n")
@@ -140,10 +140,10 @@ func generateHTMLReport(resultsDir, scenario string, results []BenchmarkResult) 
 	defer f.Close()
 
 	data := struct {
-		Scenario    string
-		Generated   string
-		Results     []BenchmarkResult
-		ChartData   string
+		Scenario  string
+		Generated string
+		Results   []BenchmarkResult
+		ChartData string
 	}{
 		Scenario:  scenario,
 		Generated: time.Now().Format("2006-01-02 15:04:05"),

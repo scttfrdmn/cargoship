@@ -21,14 +21,14 @@ type RequestPredictor struct {
 
 // RequestPrediction represents a predicted future request.
 type RequestPrediction struct {
-	Key            string        `json:"key"`
-	Bucket         string        `json:"bucket"`
-	PredictedTime  time.Time     `json:"predicted_time"`
-	Confidence     float64       `json:"confidence"`
-	EstimatedSize  int64         `json:"estimated_size"`
-	PatternType    PatternType   `json:"pattern_type"`
-	PatternSource  string        `json:"pattern_source"`
-	TimeToAccess   time.Duration `json:"time_to_access"`
+	Key           string        `json:"key"`
+	Bucket        string        `json:"bucket"`
+	PredictedTime time.Time     `json:"predicted_time"`
+	Confidence    float64       `json:"confidence"`
+	EstimatedSize int64         `json:"estimated_size"`
+	PatternType   PatternType   `json:"pattern_type"`
+	PatternSource string        `json:"pattern_source"`
+	TimeToAccess  time.Duration `json:"time_to_access"`
 }
 
 // PredictionModel represents a prediction model for a specific pattern type.
@@ -45,19 +45,19 @@ type PredictionModel struct {
 // NewRequestPredictor creates a new request predictor.
 func NewRequestPredictor(config *PrefetchConfig) *RequestPredictor {
 	rp := &RequestPredictor{
-		config:              config,
-		patterns:            make(map[string]*AccessPattern),
-		predictionModels:    make(map[string]*PredictionModel),
-		temporalPredictor:   NewTemporalPredictor(config),
-		sequentialPredictor: NewSequentialPredictor(config),
-		cyclicPredictor:     NewCyclicPredictor(config),
-		burstPredictor:      NewBurstPredictor(config),
+		config:                config,
+		patterns:              make(map[string]*AccessPattern),
+		predictionModels:      make(map[string]*PredictionModel),
+		temporalPredictor:     NewTemporalPredictor(config),
+		sequentialPredictor:   NewSequentialPredictor(config),
+		cyclicPredictor:       NewCyclicPredictor(config),
+		burstPredictor:        NewBurstPredictor(config),
 		machineLearningEngine: NewMLPredictionEngine(config),
 	}
-	
+
 	// Initialize prediction models
 	rp.initializePredictionModels()
-	
+
 	return rp
 }
 
@@ -65,39 +65,39 @@ func NewRequestPredictor(config *PrefetchConfig) *RequestPredictor {
 func (rp *RequestPredictor) PredictNextRequests(currentKey string, maxPredictions int) []*RequestPrediction {
 	rp.mu.RLock()
 	defer rp.mu.RUnlock()
-	
+
 	var allPredictions []*RequestPrediction
-	
+
 	// Get predictions from different predictors with nil checks
 	temporalPreds := rp.temporalPredictor.Predict(currentKey, rp.patterns)
 	if temporalPreds != nil {
 		allPredictions = append(allPredictions, temporalPreds...)
 	}
-	
+
 	sequentialPreds := rp.sequentialPredictor.Predict(currentKey, rp.patterns)
 	if sequentialPreds != nil {
 		allPredictions = append(allPredictions, sequentialPreds...)
 	}
-	
+
 	cyclicPreds := rp.cyclicPredictor.Predict(currentKey, rp.patterns)
 	if cyclicPreds != nil {
 		allPredictions = append(allPredictions, cyclicPreds...)
 	}
-	
+
 	burstPreds := rp.burstPredictor.Predict(currentKey, rp.patterns)
 	if burstPreds != nil {
 		allPredictions = append(allPredictions, burstPreds...)
 	}
-	
+
 	mlPreds := rp.machineLearningEngine.Predict(currentKey, rp.patterns)
 	if mlPreds != nil {
 		allPredictions = append(allPredictions, mlPreds...)
 	}
-	
+
 	// Deduplicate and enhance predictions
 	deduplicatedPreds := rp.deduplicatePredictions(allPredictions)
 	enhancedPreds := rp.enhancePredictions(deduplicatedPreds)
-	
+
 	// Sort by confidence and predicted time
 	sort.Slice(enhancedPreds, func(i, j int) bool {
 		// First sort by confidence (higher is better)
@@ -107,12 +107,12 @@ func (rp *RequestPredictor) PredictNextRequests(currentKey string, maxPrediction
 		// Then by predicted time (sooner is better)
 		return enhancedPreds[i].PredictedTime.Before(enhancedPreds[j].PredictedTime)
 	})
-	
+
 	// Limit to max predictions
 	if len(enhancedPreds) > maxPredictions {
 		enhancedPreds = enhancedPreds[:maxPredictions]
 	}
-	
+
 	// Apply confidence threshold
 	var filteredPreds []*RequestPrediction
 	for _, pred := range enhancedPreds {
@@ -120,7 +120,7 @@ func (rp *RequestPredictor) PredictNextRequests(currentKey string, maxPrediction
 			filteredPreds = append(filteredPreds, pred)
 		}
 	}
-	
+
 	// Ensure we never return nil - return empty slice if no predictions
 	if filteredPreds == nil {
 		return []*RequestPrediction{}
@@ -132,9 +132,9 @@ func (rp *RequestPredictor) PredictNextRequests(currentKey string, maxPrediction
 func (rp *RequestPredictor) UpdatePatterns(patterns map[string]*AccessPattern) {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
-	
+
 	rp.patterns = patterns
-	
+
 	// Update individual predictors
 	rp.temporalPredictor.UpdatePatterns(patterns)
 	rp.sequentialPredictor.UpdatePatterns(patterns)
@@ -147,20 +147,20 @@ func (rp *RequestPredictor) UpdatePatterns(patterns map[string]*AccessPattern) {
 func (rp *RequestPredictor) RecordPredictionResult(prediction *RequestPrediction, actualAccessTime time.Time, wasAccessed bool) {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
-	
+
 	// Update prediction model accuracy
 	modelKey := prediction.PatternType.String()
 	if model, exists := rp.predictionModels[modelKey]; exists {
 		model.PredictionCount++
 		if wasAccessed {
 			model.SuccessfulCount++
-			
+
 			// Calculate time accuracy
 			timeDiff := actualAccessTime.Sub(prediction.PredictedTime)
 			if timeDiff < 0 {
 				timeDiff = -timeDiff
 			}
-			
+
 			// Update confidence adjustment based on timing accuracy
 			if timeDiff < time.Minute*5 { // Very accurate timing
 				model.ConfidenceAdjust += 0.05
@@ -172,11 +172,11 @@ func (rp *RequestPredictor) RecordPredictionResult(prediction *RequestPrediction
 		} else {
 			model.ConfidenceAdjust -= 0.03 // Prediction was wrong
 		}
-		
+
 		// Update overall accuracy
 		model.Accuracy = float64(model.SuccessfulCount) / float64(model.PredictionCount)
 		model.LastUpdated = time.Now()
-		
+
 		// Clamp confidence adjustment
 		if model.ConfidenceAdjust > 0.2 {
 			model.ConfidenceAdjust = 0.2
@@ -190,12 +190,12 @@ func (rp *RequestPredictor) RecordPredictionResult(prediction *RequestPrediction
 func (rp *RequestPredictor) GetPredictionAccuracy() map[string]float64 {
 	rp.mu.RLock()
 	defer rp.mu.RUnlock()
-	
+
 	accuracy := make(map[string]float64)
 	for modelKey, model := range rp.predictionModels {
 		accuracy[modelKey] = model.Accuracy
 	}
-	
+
 	return accuracy
 }
 
@@ -207,7 +207,7 @@ func (rp *RequestPredictor) initializePredictionModels() {
 		PatternCyclic,
 		PatternBurst,
 	}
-	
+
 	for _, patternType := range patternTypes {
 		model := &PredictionModel{
 			PatternType:      patternType,
@@ -223,7 +223,7 @@ func (rp *RequestPredictor) initializePredictionModels() {
 // deduplicatePredictions removes duplicate predictions and merges similar ones.
 func (rp *RequestPredictor) deduplicatePredictions(predictions []*RequestPrediction) []*RequestPrediction {
 	predMap := make(map[string]*RequestPrediction)
-	
+
 	for _, pred := range predictions {
 		if existing, exists := predMap[pred.Key]; exists {
 			// Merge predictions for the same key
@@ -233,13 +233,13 @@ func (rp *RequestPredictor) deduplicatePredictions(predictions []*RequestPredict
 			predMap[pred.Key] = pred
 		}
 	}
-	
+
 	// Convert back to slice
 	var result []*RequestPrediction
 	for _, pred := range predMap {
 		result = append(result, pred)
 	}
-	
+
 	return result
 }
 
@@ -252,7 +252,7 @@ func (rp *RequestPredictor) mergePredictions(pred1, pred2 *RequestPrediction) *R
 	} else {
 		base, other = pred2, pred1
 	}
-	
+
 	// Create merged prediction
 	merged := &RequestPrediction{
 		Key:           base.Key,
@@ -260,30 +260,30 @@ func (rp *RequestPredictor) mergePredictions(pred1, pred2 *RequestPrediction) *R
 		PatternType:   base.PatternType,
 		PatternSource: base.PatternSource + "+" + other.PatternSource,
 	}
-	
+
 	// Weighted average of confidence
 	weight1 := base.Confidence
 	weight2 := other.Confidence
 	totalWeight := weight1 + weight2
-	
+
 	merged.Confidence = (base.Confidence*weight1 + other.Confidence*weight2) / totalWeight
-	
+
 	// Choose earlier predicted time
 	if base.PredictedTime.Before(other.PredictedTime) {
 		merged.PredictedTime = base.PredictedTime
 	} else {
 		merged.PredictedTime = other.PredictedTime
 	}
-	
+
 	// Use larger estimated size
 	if base.EstimatedSize > other.EstimatedSize {
 		merged.EstimatedSize = base.EstimatedSize
 	} else {
 		merged.EstimatedSize = other.EstimatedSize
 	}
-	
+
 	merged.TimeToAccess = time.Until(merged.PredictedTime)
-	
+
 	return merged
 }
 
@@ -295,10 +295,10 @@ func (rp *RequestPredictor) enhancePredictions(predictions []*RequestPrediction)
 		if model, exists := rp.predictionModels[modelKey]; exists {
 			// Apply confidence adjustment
 			pred.Confidence += model.ConfidenceAdjust
-			
+
 			// Weight by model accuracy
 			pred.Confidence *= model.Accuracy
-			
+
 			// Clamp confidence to valid range
 			if pred.Confidence > 1.0 {
 				pred.Confidence = 1.0
@@ -306,21 +306,21 @@ func (rp *RequestPredictor) enhancePredictions(predictions []*RequestPrediction)
 				pred.Confidence = 0.0
 			}
 		}
-		
+
 		// Update time to access
 		pred.TimeToAccess = time.Until(pred.PredictedTime)
-		
+
 		// Estimate size if not set
 		if pred.EstimatedSize == 0 {
 			pred.EstimatedSize = rp.estimateObjectSize(pred.Key)
 		}
-		
+
 		// Set bucket if not set
 		if pred.Bucket == "" {
 			pred.Bucket = rp.extractBucketFromKey(pred.Key)
 		}
 	}
-	
+
 	return predictions
 }
 
@@ -328,7 +328,7 @@ func (rp *RequestPredictor) enhancePredictions(predictions []*RequestPrediction)
 func (rp *RequestPredictor) estimateObjectSize(key string) int64 {
 	// Default size estimation (would use historical data in real implementation)
 	defaultSize := int64(1024 * 1024) // 1MB default
-	
+
 	// Simple heuristic based on file extension
 	if len(key) > 4 {
 		ext := key[len(key)-4:]
@@ -343,7 +343,7 @@ func (rp *RequestPredictor) estimateObjectSize(key string) int64 {
 			return defaultSize * 20 // Archive files ~20MB
 		}
 	}
-	
+
 	return defaultSize
 }
 
@@ -370,7 +370,7 @@ func NewTemporalPredictor(config *PrefetchConfig) *TemporalPredictor {
 
 func (tp *TemporalPredictor) Predict(currentKey string, patterns map[string]*AccessPattern) []*RequestPrediction {
 	var predictions []*RequestPrediction
-	
+
 	for _, pattern := range patterns {
 		if pattern.Type == PatternTemporal {
 			for _, key := range pattern.Keys {
@@ -393,7 +393,7 @@ func (tp *TemporalPredictor) Predict(currentKey string, patterns map[string]*Acc
 			}
 		}
 	}
-	
+
 	return predictions
 }
 
@@ -412,7 +412,7 @@ func NewSequentialPredictor(config *PrefetchConfig) *SequentialPredictor {
 
 func (sp *SequentialPredictor) Predict(currentKey string, patterns map[string]*AccessPattern) []*RequestPrediction {
 	var predictions []*RequestPrediction
-	
+
 	for _, pattern := range patterns {
 		if pattern.Type == PatternSequential {
 			for i, key := range pattern.Keys {
@@ -431,7 +431,7 @@ func (sp *SequentialPredictor) Predict(currentKey string, patterns map[string]*A
 			}
 		}
 	}
-	
+
 	return predictions
 }
 
@@ -450,7 +450,7 @@ func NewCyclicPredictor(config *PrefetchConfig) *CyclicPredictor {
 
 func (cp *CyclicPredictor) Predict(currentKey string, patterns map[string]*AccessPattern) []*RequestPrediction {
 	var predictions []*RequestPrediction
-	
+
 	for _, pattern := range patterns {
 		if pattern.Type == PatternCyclic {
 			for _, key := range pattern.Keys {
@@ -468,7 +468,7 @@ func (cp *CyclicPredictor) Predict(currentKey string, patterns map[string]*Acces
 			}
 		}
 	}
-	
+
 	return predictions
 }
 
@@ -487,7 +487,7 @@ func NewBurstPredictor(config *PrefetchConfig) *BurstPredictor {
 
 func (bp *BurstPredictor) Predict(currentKey string, patterns map[string]*AccessPattern) []*RequestPrediction {
 	var predictions []*RequestPrediction
-	
+
 	for _, pattern := range patterns {
 		if pattern.Type == PatternBurst {
 			for _, key := range pattern.Keys {
@@ -510,7 +510,7 @@ func (bp *BurstPredictor) Predict(currentKey string, patterns map[string]*Access
 			}
 		}
 	}
-	
+
 	return predictions
 }
 
@@ -537,10 +537,10 @@ func NewMLPredictionEngine(config *PrefetchConfig) *MLPredictionEngine {
 
 func (ml *MLPredictionEngine) Predict(currentKey string, patterns map[string]*AccessPattern) []*RequestPrediction {
 	var predictions []*RequestPrediction
-	
+
 	// Extract features
 	features := ml.extractFeatures(currentKey, patterns)
-	
+
 	// Generate ML-based predictions
 	for key, score := range ml.scorePredictions(features) {
 		if score > 0.5 && key != currentKey {
@@ -554,7 +554,7 @@ func (ml *MLPredictionEngine) Predict(currentKey string, patterns map[string]*Ac
 			predictions = append(predictions, prediction)
 		}
 	}
-	
+
 	return predictions
 }
 
@@ -565,11 +565,11 @@ func (ml *MLPredictionEngine) UpdatePatterns(patterns map[string]*AccessPattern)
 
 func (ml *MLPredictionEngine) extractFeatures(currentKey string, patterns map[string]*AccessPattern) map[string]float64 {
 	features := make(map[string]float64)
-	
+
 	// Basic features
 	features["key_length"] = float64(len(currentKey))
 	features["pattern_count"] = float64(len(patterns))
-	
+
 	// Pattern-based features
 	var sequentialScore, temporalScore, cyclicScore, burstScore float64
 	for _, pattern := range patterns {
@@ -588,34 +588,34 @@ func (ml *MLPredictionEngine) extractFeatures(currentKey string, patterns map[st
 			}
 		}
 	}
-	
+
 	features["sequential_score"] = sequentialScore
 	features["temporal_score"] = temporalScore
 	features["cyclic_score"] = cyclicScore
 	features["burst_score"] = burstScore
-	
+
 	return features
 }
 
 func (ml *MLPredictionEngine) scorePredictions(features map[string]float64) map[string]float64 {
 	scores := make(map[string]float64)
-	
+
 	// Simple linear model (would be more sophisticated in real implementation)
 	baseScore := 0.3
-	
+
 	// Apply feature weights
 	for feature, value := range features {
 		if weight, exists := ml.modelWeights[feature]; exists {
 			baseScore += value * weight
 		}
 	}
-	
+
 	// Generate scores for potential keys (simplified)
 	candidates := []string{"key1", "key2", "key3"} // Would be derived from patterns
 	for _, candidate := range candidates {
 		scores[candidate] = baseScore + randomFloat()*0.2 // Add some variation
 	}
-	
+
 	return scores
 }
 
@@ -626,11 +626,11 @@ func (ml *MLPredictionEngine) updateModelWeights(patterns map[string]*AccessPatt
 		if _, exists := ml.modelWeights[weightKey]; !exists {
 			ml.modelWeights[weightKey] = 0.1
 		}
-		
+
 		// Adjust weight based on pattern confidence
 		adjustment := (pattern.Confidence - 0.5) * ml.learningRate
 		ml.modelWeights[weightKey] += adjustment
-		
+
 		// Clamp weights
 		if ml.modelWeights[weightKey] > 1.0 {
 			ml.modelWeights[weightKey] = 1.0
@@ -645,10 +645,10 @@ func splitString(s, sep string) []string {
 	if s == "" {
 		return []string{}
 	}
-	
+
 	var parts []string
 	current := ""
-	
+
 	for _, char := range s {
 		if string(char) == sep {
 			if current != "" {
@@ -659,11 +659,11 @@ func splitString(s, sep string) []string {
 			current += string(char)
 		}
 	}
-	
+
 	if current != "" {
 		parts = append(parts, current)
 	}
-	
+
 	return parts
 }
 

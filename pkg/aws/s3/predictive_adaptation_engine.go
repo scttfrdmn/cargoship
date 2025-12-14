@@ -734,7 +734,7 @@ type PredictionModelEnsemble struct {
 	weights            []float64
 	votingStrategy     VotingStrategy
 	performanceTracker *ModelPerformanceTracker
-	mu                 sync.RWMutex  //nolint:unused // Reserved for future thread-safe operations
+	mu                 sync.RWMutex //nolint:unused // Reserved for future thread-safe operations
 }
 
 type VotingStrategy string
@@ -784,7 +784,7 @@ type NetworkAnomalyDetector struct {
 	threshold        float64
 	detectionMethods []AnomalyDetectionMethod
 	alertSystem      *AnomalyAlertSystem
-	mu               sync.RWMutex  //nolint:unused // Reserved for future thread-safe operations
+	mu               sync.RWMutex //nolint:unused // Reserved for future thread-safe operations
 }
 
 type AnomalyDetectionMethod string
@@ -812,7 +812,7 @@ type NetworkTrendAnalyzer struct {
 	trends          map[string]PredictiveTrendDirection
 	trendStrength   map[string]float64
 	trendConfidence map[string]float64
-	mu              sync.RWMutex  //nolint:unused // Reserved for future thread-safe operations
+	mu              sync.RWMutex //nolint:unused // Reserved for future thread-safe operations
 }
 
 type PredictiveTrendDirection string
@@ -852,7 +852,7 @@ type AdaptiveLearningEngine struct {
 	experienceBuffer   []LearningExperience
 	modelWeights       map[string]float64
 	performanceHistory []float64
-	mu                 sync.RWMutex  //nolint:unused // Reserved for future thread-safe operations
+	mu                 sync.RWMutex //nolint:unused // Reserved for future thread-safe operations
 }
 
 type LearningExperience struct {
@@ -875,7 +875,7 @@ func NewAdaptiveLearningEngine() *AdaptiveLearningEngine {
 type PredictionAccuracyTracker struct {
 	predictions     []PredictionRecord
 	accuracyMetrics *PredictionAccuracyMetrics
-	mu              sync.RWMutex  //nolint:unused // Reserved for future thread-safe operations
+	mu              sync.RWMutex //nolint:unused // Reserved for future thread-safe operations
 }
 
 type PredictionRecord struct {
@@ -939,7 +939,7 @@ type PredictiveAdaptationMetrics struct {
 	AverageRisk           float64
 	AdaptationHistory     []AdaptationSummary
 	LastUpdate            time.Time
-	mu                    sync.RWMutex  //nolint:unused // Reserved for future thread-safe operations
+	mu                    sync.RWMutex //nolint:unused // Reserved for future thread-safe operations
 }
 
 type AdaptationSummary struct {

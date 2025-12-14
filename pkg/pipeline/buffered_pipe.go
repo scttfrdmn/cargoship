@@ -14,15 +14,15 @@ import (
 // Phase 2: This replaces io.Pipe() to eliminate the 751% serialization overhead
 // (353% archiver + 398% uploader) caused by the tiny 4KB buffer.
 type BufferedPipe struct {
-	buffer   chan []byte // Channel of data chunks
-	size     int         // Buffer size in bytes
-	chunkSize int        // Size of each chunk
+	buffer    chan []byte // Channel of data chunks
+	size      int         // Buffer size in bytes
+	chunkSize int         // Size of each chunk
 
-	writerErr error      // Error from writer goroutine
+	writerErr error // Error from writer goroutine
 
-	mu        sync.Mutex // Protects error state and active writers
-	once      sync.Once  // Ensures close happens once
-	done      chan struct{} // Signals pipe is closed
+	mu   sync.Mutex    // Protects error state and active writers
+	once sync.Once     // Ensures close happens once
+	done chan struct{} // Signals pipe is closed
 
 	// Track active writers to prevent closing channel while writes are in progress
 	activeWriters sync.WaitGroup
@@ -34,10 +34,10 @@ type BufferedPipe struct {
 
 // BufferedPipeReader is the reading side of a BufferedPipe
 type BufferedPipeReader struct {
-	pipe        *BufferedPipe
-	current     []byte // Current chunk being read
-	currentPos  int    // Position in current chunk
-	closed      bool
+	pipe       *BufferedPipe
+	current    []byte // Current chunk being read
+	currentPos int    // Position in current chunk
+	closed     bool
 }
 
 // BufferedPipeWriter is the writing side of a BufferedPipe
@@ -51,8 +51,9 @@ type BufferedPipeWriter struct {
 // one giant buffer up front.
 //
 // Typical usage for Phase 2:
-//   bufferSize: 64MB (allows archiver to work 64MB ahead)
-//   chunkSize: 32KB (efficient for I/O, 2048 chunks total)
+//
+//	bufferSize: 64MB (allows archiver to work 64MB ahead)
+//	chunkSize: 32KB (efficient for I/O, 2048 chunks total)
 func NewBufferedPipe(bufferSize, chunkSize int) (*BufferedPipeReader, *BufferedPipeWriter) {
 	numChunks := bufferSize / chunkSize
 	if numChunks == 0 {

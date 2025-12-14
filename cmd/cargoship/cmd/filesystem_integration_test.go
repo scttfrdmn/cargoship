@@ -661,7 +661,7 @@ func TestIntegration_DataIntegrity_BasicRoundTrip(t *testing.T) {
 		name string
 		size int64
 	}{
-		{"small.txt", 1 * 1024},        // 1KB
+		{"small.txt", 1 * 1024},          // 1KB
 		{"medium.dat", 10 * 1024 * 1024}, // 10MB
 		{"large.bin", 100 * 1024 * 1024}, // 100MB
 	}
@@ -855,8 +855,8 @@ func TestIntegration_LargeFiles(t *testing.T) {
 			name string
 			size int64
 		}{
-			{"100MB", 100 * 1024 * 1024},  // 100MB
-			{"500MB", 500 * 1024 * 1024},  // 500MB
+			{"100MB", 100 * 1024 * 1024}, // 100MB
+			{"500MB", 500 * 1024 * 1024}, // 500MB
 		}
 	} else {
 		t.Log("Running in FULL mode with production file sizes (this will take 30+ minutes)")
@@ -864,8 +864,8 @@ func TestIntegration_LargeFiles(t *testing.T) {
 			name string
 			size int64
 		}{
-			{"1GB", 1 * 1024 * 1024 * 1024},    // 1GB
-			{"5GB", 5 * 1024 * 1024 * 1024},    // 5GB
+			{"1GB", 1 * 1024 * 1024 * 1024}, // 1GB
+			{"5GB", 5 * 1024 * 1024 * 1024}, // 5GB
 			// {"10GB", 10 * 1024 * 1024 * 1024}, // 10GB - optional, requires disk space
 		}
 	}
@@ -2173,9 +2173,9 @@ func TestIntegration_LargeDirectoryTree(t *testing.T) {
 	defer suite.Cleanup()
 
 	const (
-		numFiles   = 10000
+		numFiles    = 10000
 		filesPerDir = 100
-		fileSize   = 10 * 1024 // 10KB per file (100MB total)
+		fileSize    = 10 * 1024 // 10KB per file (100MB total)
 	)
 
 	t.Logf("Creating directory tree with %d files...", numFiles)
@@ -2487,12 +2487,12 @@ func TestIntegration_MixedFileSizes(t *testing.T) {
 		size  int64
 		count int
 	}{
-		{"tiny", 1 * 1024, 100},               // 100 x 1KB = 100KB
-		{"small", 10 * 1024, 50},              // 50 x 10KB = 500KB
-		{"medium", 100 * 1024, 20},            // 20 x 100KB = 2MB
-		{"large", 1024 * 1024, 10},            // 10 x 1MB = 10MB
-		{"xlarge", 10 * 1024 * 1024, 3},       // 3 x 10MB = 30MB
-		{"huge", 50 * 1024 * 1024, 1},         // 1 x 50MB = 50MB
+		{"tiny", 1 * 1024, 100},         // 100 x 1KB = 100KB
+		{"small", 10 * 1024, 50},        // 50 x 10KB = 500KB
+		{"medium", 100 * 1024, 20},      // 20 x 100KB = 2MB
+		{"large", 1024 * 1024, 10},      // 10 x 1MB = 10MB
+		{"xlarge", 10 * 1024 * 1024, 3}, // 3 x 10MB = 30MB
+		{"huge", 50 * 1024 * 1024, 1},   // 1 x 50MB = 50MB
 	}
 
 	mixedDir := filepath.Join(suite.TempDir, "mixed-sizes")

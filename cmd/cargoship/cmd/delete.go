@@ -22,12 +22,12 @@ import (
 // NewDeleteCmd creates the 'delete' command for removing uploads
 func NewDeleteCmd() *cobra.Command {
 	var (
-		bucket    string
-		prefix    string
-		uploadID  string
-		region    string
-		force     bool
-		dryRun    bool
+		bucket   string
+		prefix   string
+		uploadID string
+		region   string
+		force    bool
+		dryRun   bool
 	)
 
 	cmd := &cobra.Command{

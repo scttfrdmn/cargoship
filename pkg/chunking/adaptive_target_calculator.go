@@ -17,7 +17,7 @@ type AdaptiveTargetCalculator struct {
 	largeWorkloadChunkSizeMB  int // Default: 64MB (minimize API cost)
 
 	// Shard configuration for load balancing validation
-	shardCount int // Number of S3 prefixes/shards
+	shardCount        int // Number of S3 prefixes/shards
 	minChunksPerShard int // Minimum chunks per shard for good balance
 }
 
@@ -185,9 +185,9 @@ func (atc *AdaptiveTargetCalculator) CompareAPICosts(estimatedTotalCompressedSiz
 // GetConfig returns the current configuration
 func (atc *AdaptiveTargetCalculator) GetConfig() map[string]interface{} {
 	return map[string]interface{}{
-		"small_workload_threshold_gb":  float64(atc.smallWorkloadThreshold) / (1024 * 1024 * 1024),
-		"medium_workload_threshold_gb": float64(atc.mediumWorkloadThreshold) / (1024 * 1024 * 1024),
-		"small_workload_chunk_size_mb": atc.smallWorkloadChunkSizeMB,
+		"small_workload_threshold_gb":   float64(atc.smallWorkloadThreshold) / (1024 * 1024 * 1024),
+		"medium_workload_threshold_gb":  float64(atc.mediumWorkloadThreshold) / (1024 * 1024 * 1024),
+		"small_workload_chunk_size_mb":  atc.smallWorkloadChunkSizeMB,
 		"medium_workload_chunk_size_mb": atc.mediumWorkloadChunkSizeMB,
 		"large_workload_chunk_size_mb":  atc.largeWorkloadChunkSizeMB,
 		"shard_count":                   atc.shardCount,

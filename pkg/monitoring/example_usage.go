@@ -11,40 +11,40 @@ import (
 func ExamplePerformanceMonitor() {
 	// Create configuration with custom settings
 	config := &MonitoringConfig{
-		MetricsInterval:      time.Second * 5,
-		AlertCheckInterval:   time.Second * 2,
-		DashboardInterval:    time.Second * 1,
-		MetricsRetention:     time.Hour * 12,
-		AlertRetention:       time.Hour * 48,
-		MaxMetricsInMemory:   5000,
-		EnableRealTimeAlerts: true,
-		EnablePredictive:     true,
+		MetricsInterval:       time.Second * 5,
+		AlertCheckInterval:    time.Second * 2,
+		DashboardInterval:     time.Second * 1,
+		MetricsRetention:      time.Hour * 12,
+		AlertRetention:        time.Hour * 48,
+		MaxMetricsInMemory:    5000,
+		EnableRealTimeAlerts:  true,
+		EnablePredictive:      true,
 		EnableAutoRemediation: false, // Disable for safety in example
-		EnableCloudWatch:     false,
+		EnableCloudWatch:      false,
 		DefaultThresholds: &DefaultThresholds{
-			MinThroughputMBps:    2.0,
-			MaxTransferTime:      time.Minute * 30,
-			MaxErrorRate:         0.03,
-			MaxCPUUsage:          0.85,
-			MaxMemoryUsage:       0.90,
-			MaxDiskUsage:         0.95,
-			MaxLatencyMs:         800,
-			MinReliability:       0.96,
-			MaxPacketLoss:        0.005,
-			MaxS3Errors:          5,
-			MinS3Availability:    0.995,
+			MinThroughputMBps: 2.0,
+			MaxTransferTime:   time.Minute * 30,
+			MaxErrorRate:      0.03,
+			MaxCPUUsage:       0.85,
+			MaxMemoryUsage:    0.90,
+			MaxDiskUsage:      0.95,
+			MaxLatencyMs:      800,
+			MinReliability:    0.96,
+			MaxPacketLoss:     0.005,
+			MaxS3Errors:       5,
+			MinS3Availability: 0.995,
 		},
 	}
-	
+
 	// Create and start the performance monitor
 	monitor := NewPerformanceMonitor(config)
-	
+
 	if err := monitor.Start(); err != nil {
 		fmt.Printf("Failed to start performance monitor: %v\n", err)
 		return
 	}
 	defer func() { _ = monitor.Stop() }()
-	
+
 	// Register custom metrics
 	customMetric := &CustomMetric{
 		Name:        "custom_upload_count",
@@ -55,37 +55,37 @@ func ExamplePerformanceMonitor() {
 		Labels:      map[string]string{"service": "upload_processor"},
 		CreatedAt:   time.Now(),
 	}
-	
+
 	if err := monitor.RegisterMetric(customMetric); err != nil {
 		fmt.Printf("Failed to register custom metric: %v\n", err)
 	}
-	
+
 	// Simulate some activity and metric recording
 	for i := 0; i < 10; i++ {
 		// Record custom metric
 		monitor.RecordMetric("custom_upload_count", float64(i+1), map[string]string{
 			"batch": fmt.Sprintf("batch_%d", i/3),
 		})
-		
+
 		// Get current metrics
 		metrics := monitor.GetMetrics()
-		fmt.Printf("Iteration %d - Active transfers: %d, Throughput: %.2f MB/s\n", 
+		fmt.Printf("Iteration %d - Active transfers: %d, Throughput: %.2f MB/s\n",
 			i+1, metrics.TransferMetrics.ActiveTransfers, metrics.TransferMetrics.TotalThroughputMBps)
-		
+
 		// Check system health
 		health := monitor.GetSystemHealth()
 		fmt.Printf("System health: %s - %s\n", getHealthString(health.Status), health.Message)
-		
+
 		// Check for alerts
 		alerts := monitor.GetAlerts()
 		if len(alerts) > 0 {
 			fmt.Printf("Active alerts: %d\n", len(alerts))
 			for _, alert := range alerts {
-				fmt.Printf("  - %s: %s (Severity: %s)\n", 
+				fmt.Printf("  - %s: %s (Severity: %s)\n",
 					alert.Title, alert.Description, getSeverityString(alert.Severity))
 			}
 		}
-		
+
 		// Get predictions if available
 		if predictions := monitor.GetPredictions(); predictions != nil {
 			fmt.Printf("Performance predictions available (Confidence: %.2f)\n", predictions.Confidence)
@@ -96,13 +96,13 @@ func ExamplePerformanceMonitor() {
 				}
 			}
 		}
-		
+
 		time.Sleep(time.Second)
 	}
-	
+
 	// Demonstrate threshold management
 	fmt.Println("\nDemonstrating threshold management...")
-	
+
 	// Set custom threshold
 	customThreshold := &AlertThreshold{
 		Value:       5.0, // 5 MB/s minimum throughput
@@ -110,21 +110,21 @@ func ExamplePerformanceMonitor() {
 		LastUpdated: time.Now(),
 		Source:      "example",
 	}
-	
+
 	if err := monitor.SetThreshold("throughput", customThreshold); err != nil {
 		fmt.Printf("Failed to set custom threshold: %v\n", err)
 	} else {
 		fmt.Println("Custom throughput threshold set to 5.0 MB/s")
 	}
-	
+
 	// Wait a bit to see if the new threshold triggers any alerts
 	time.Sleep(time.Second * 5)
-	
+
 	// Final system status
 	fmt.Println("\nFinal system status:")
 	finalHealth := monitor.GetSystemHealth()
 	fmt.Printf("Overall health: %s - %s\n", getHealthString(finalHealth.Status), finalHealth.Message)
-	
+
 	if finalHealth.SubsystemHealth != nil {
 		fmt.Println("Subsystem health:")
 		for subsystem, health := range finalHealth.SubsystemHealth {
@@ -144,9 +144,9 @@ func ExampleCloudWatchIntegration() {
 		Namespace:     "CargoShip/Performance",
 		FlushInterval: time.Minute,
 	}
-	
+
 	_ = NewPerformanceMonitor(config)
-	
+
 	// Note: In a real implementation, you would need to provide actual CloudWatch credentials
 	// and client configuration
 	fmt.Println("CloudWatch integration configured (requires AWS credentials)")
@@ -165,9 +165,9 @@ func ExampleWebhookAlerts() {
 		Timeout:    time.Second * 10,
 		RetryCount: 3,
 	}
-	
+
 	_ = NewPerformanceMonitor(config)
-	
+
 	fmt.Println("Webhook alerts configured for URL:", config.WebhookConfig.URL)
 	fmt.Println("Alerts will be sent via HTTP POST with JSON payload")
 }
@@ -176,43 +176,43 @@ func ExampleWebhookAlerts() {
 func ExampleAdvancedConfiguration() {
 	config := &MonitoringConfig{
 		// Aggressive monitoring for high-throughput scenarios
-		MetricsInterval:      time.Millisecond * 500,
-		AlertCheckInterval:   time.Millisecond * 250,
-		DashboardInterval:    time.Millisecond * 100,
-		
+		MetricsInterval:    time.Millisecond * 500,
+		AlertCheckInterval: time.Millisecond * 250,
+		DashboardInterval:  time.Millisecond * 100,
+
 		// Extended retention for analysis
-		MetricsRetention:     time.Hour * 72,
-		AlertRetention:       time.Hour * 168, // 1 week
-		MaxMetricsInMemory:   50000,
-		
+		MetricsRetention:   time.Hour * 72,
+		AlertRetention:     time.Hour * 168, // 1 week
+		MaxMetricsInMemory: 50000,
+
 		// Enable all advanced features
 		EnableRealTimeAlerts:  true,
 		EnablePredictive:      true,
 		EnableAutoRemediation: true, // Enable for automatic issue resolution
 		EnableCloudWatch:      true,
-		
+
 		// Strict thresholds for production environment
 		DefaultThresholds: &DefaultThresholds{
-			MinThroughputMBps:    10.0, // Minimum 10 MB/s
-			MaxTransferTime:      time.Minute * 15,
-			MaxErrorRate:         0.01, // 1% max error rate
-			MaxCPUUsage:          0.75, // 75% max CPU
-			MaxMemoryUsage:       0.80, // 80% max memory
-			MaxDiskUsage:         0.85, // 85% max disk
-			MaxLatencyMs:         500,  // 500ms max latency
-			MinReliability:       0.98, // 98% min reliability
-			MaxPacketLoss:        0.001, // 0.1% max packet loss
-			MaxS3Errors:          3,    // Max 3 S3 errors
-			MinS3Availability:    0.999, // 99.9% S3 availability
+			MinThroughputMBps: 10.0, // Minimum 10 MB/s
+			MaxTransferTime:   time.Minute * 15,
+			MaxErrorRate:      0.01,  // 1% max error rate
+			MaxCPUUsage:       0.75,  // 75% max CPU
+			MaxMemoryUsage:    0.80,  // 80% max memory
+			MaxDiskUsage:      0.85,  // 85% max disk
+			MaxLatencyMs:      500,   // 500ms max latency
+			MinReliability:    0.98,  // 98% min reliability
+			MaxPacketLoss:     0.001, // 0.1% max packet loss
+			MaxS3Errors:       3,     // Max 3 S3 errors
+			MinS3Availability: 0.999, // 99.9% S3 availability
 		},
-		
+
 		CloudWatchConfig: &CloudWatchConfig{
 			Enabled:       true,
 			Region:        "us-east-1",
 			Namespace:     "Production/CargoShip",
 			FlushInterval: time.Second * 30,
 		},
-		
+
 		WebhookConfig: &WebhookConfig{
 			Enabled: true,
 			URL:     "https://monitoring.company.com/webhooks/cargoship",
@@ -224,12 +224,12 @@ func ExampleAdvancedConfiguration() {
 			RetryCount: 5,
 		},
 	}
-	
+
 	_ = NewPerformanceMonitor(config)
 	fmt.Println("Advanced monitoring configuration created for production environment")
-	fmt.Printf("Metrics interval: %v, Alert interval: %v\n", 
+	fmt.Printf("Metrics interval: %v, Alert interval: %v\n",
 		config.MetricsInterval, config.AlertCheckInterval)
-	fmt.Printf("Auto-remediation: %v, Predictive: %v\n", 
+	fmt.Printf("Auto-remediation: %v, Predictive: %v\n",
 		config.EnableAutoRemediation, config.EnablePredictive)
 }
 
@@ -264,32 +264,32 @@ func getSeverityString(severity AlertSeverity) string {
 func ExampleDashboardUsage() {
 	config := DefaultMonitoringConfig()
 	monitor := NewPerformanceMonitor(config)
-	
+
 	if err := monitor.Start(); err != nil {
 		fmt.Printf("Failed to start monitor: %v\n", err)
 		return
 	}
 	defer func() { _ = monitor.Stop() }()
-	
+
 	// Wait for some metrics to be collected
 	time.Sleep(time.Second * 2)
-	
+
 	// Get current metrics and alerts
 	metrics := monitor.GetMetrics()
 	alerts := monitor.GetAlerts()
-	
+
 	// Create dashboard renderer
 	renderer := NewDashboardRenderer(config)
 	_ = renderer.Start(context.Background())
 	defer renderer.Stop()
-	
+
 	// Render dashboard
 	dashboard := renderer.RenderDashboard(metrics, alerts)
-	
+
 	fmt.Println("Dashboard Title:", dashboard.Title)
 	fmt.Println("Generated at:", dashboard.GeneratedAt.Format(time.RFC3339))
 	fmt.Printf("Sections: %d\n", len(dashboard.Sections))
-	
+
 	for _, section := range dashboard.Sections {
 		fmt.Printf("\nSection: %s (%s)\n", section.Title, section.Type)
 		for _, widget := range section.Widgets {

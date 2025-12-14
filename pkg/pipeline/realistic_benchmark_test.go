@@ -212,12 +212,12 @@ func benchmarkRealisticWorkload(
 		// Create pipeline
 		ctx := context.Background()
 		config := &PipelineConfig{
-			S3Bucket:    bucket,
-			S3Prefix:    prefix,
-			S3Region:    region,
-			UseRealS3:   true,
-			S3Client:    s3Client,
-			ShardCount:  shardCount,
+			S3Bucket:          bucket,
+			S3Prefix:          prefix,
+			S3Region:          region,
+			UseRealS3:         true,
+			S3Client:          s3Client,
+			ShardCount:        shardCount,
 			EnableMultiPrefix: true,
 		}
 
@@ -424,9 +424,9 @@ func BenchmarkRealistic_MixedWorkload_10GB(b *testing.B) {
 		generator func(int64) []byte
 		count     int
 	}{
-		{"FASTQ", generateFASTQData, 30},           // 3GB
-		{"BAM", generateBAMData, 30},               // 3GB
-		{"TIFF", generateTIFFData, 20},             // 2GB
+		{"FASTQ", generateFASTQData, 30},                 // 3GB
+		{"BAM", generateBAMData, 30},                     // 3GB
+		{"TIFF", generateTIFFData, 20},                   // 2GB
 		{"PreCompressed", generatePreCompressedData, 20}, // 2GB
 	}
 
@@ -472,12 +472,12 @@ func BenchmarkRealistic_MixedWorkload_10GB(b *testing.B) {
 
 		ctx := context.Background()
 		config := &PipelineConfig{
-			S3Bucket:    bucket,
-			S3Prefix:    prefix,
-			S3Region:    region,
-			UseRealS3:   true,
-			S3Client:    s3Client,
-			ShardCount:  10, // Use 10 shards for 10GB workload
+			S3Bucket:          bucket,
+			S3Prefix:          prefix,
+			S3Region:          region,
+			UseRealS3:         true,
+			S3Client:          s3Client,
+			ShardCount:        10, // Use 10 shards for 10GB workload
 			EnableMultiPrefix: true,
 		}
 

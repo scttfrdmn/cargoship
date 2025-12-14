@@ -1039,10 +1039,10 @@ func TestGetProjectSummary(t *testing.T) {
 
 	// Verify summary fields
 	assert.Equal(t, projectID, summary.ProjectID)
-	assert.Equal(t, 45.0, summary.TotalCost)     // 10 + 20 + 15
-	assert.Equal(t, 10.0, summary.TotalSavings)  // 2 + 5 + 3
-	assert.Equal(t, 3, summary.TotalFiles)       // 3 cost records
-	assert.Equal(t, 22.5, summary.TotalSizeGB)   // 5 + 10 + 7.5
+	assert.Equal(t, 45.0, summary.TotalCost)    // 10 + 20 + 15
+	assert.Equal(t, 10.0, summary.TotalSavings) // 2 + 5 + 3
+	assert.Equal(t, 3, summary.TotalFiles)      // 3 cost records
+	assert.Equal(t, 22.5, summary.TotalSizeGB)  // 5 + 10 + 7.5
 	assert.Equal(t, "USD", summary.Currency)
 	assert.Equal(t, 2.0, summary.AverageCostPerGB) // 45.0 / 22.5
 

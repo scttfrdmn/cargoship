@@ -28,13 +28,13 @@ type S3Uploader interface {
 
 // DirectUploaderConfig configures the direct uploader stage
 type DirectUploaderConfig struct {
-	S3Client    S3Uploader      // AWS S3 client (interface for testability)
-	Bucket      string          // Target S3 bucket
-	Prefix      string          // S3 key prefix (optional)
-	Workers     int             // Number of concurrent upload workers
-	MaxRetries  int             // Maximum upload retry attempts
-	RetryDelay  time.Duration   // Delay between retries
-	WorkerPool  *AdaptiveWorkerPool // Optional: Use adaptive worker pool
+	S3Client   S3Uploader          // AWS S3 client (interface for testability)
+	Bucket     string              // Target S3 bucket
+	Prefix     string              // S3 key prefix (optional)
+	Workers    int                 // Number of concurrent upload workers
+	MaxRetries int                 // Maximum upload retry attempts
+	RetryDelay time.Duration       // Delay between retries
+	WorkerPool *AdaptiveWorkerPool // Optional: Use adaptive worker pool
 }
 
 // DirectUploaderStage uploads files directly to S3 without archiving or compression

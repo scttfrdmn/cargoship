@@ -25,12 +25,12 @@ func NewAlertManager(config *MonitoringConfig) *AlertManager {
 		alertHistory: make([]*Alert, 0),
 		notifiers:    make([]Notifier, 0),
 	}
-	
+
 	// Initialize notifiers based on config
 	if config.WebhookConfig != nil && config.WebhookConfig.Enabled {
 		am.notifiers = append(am.notifiers, NewWebhookNotifier(config.WebhookConfig))
 	}
-	
+
 	return am
 }
 
@@ -38,11 +38,11 @@ func NewAlertManager(config *MonitoringConfig) *AlertManager {
 func (am *AlertManager) Start(ctx context.Context) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	
+
 	if am.isRunning {
 		return nil
 	}
-	
+
 	am.isRunning = true
 	return nil
 }
@@ -58,7 +58,7 @@ func (am *AlertManager) Stop() {
 func (am *AlertManager) GetActiveAlerts() []*Alert {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
-	
+
 	// Return copies
 	alerts := make([]*Alert, len(am.activeAlerts))
 	for i, alert := range am.activeAlerts {
@@ -100,37 +100,37 @@ func (am *AlertManager) addAlertLocked(alert *Alert) {
 func (am *AlertManager) EvaluateMetrics(metrics *PerformanceMetrics, thresholds *DynamicThresholds) []*Alert {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	
+
 	var newAlerts []*Alert
-	
+
 	// Evaluate transfer metrics
 	if metrics.TransferMetrics != nil {
 		if alerts := am.evaluateTransferMetrics(metrics.TransferMetrics, thresholds); len(alerts) > 0 {
 			newAlerts = append(newAlerts, alerts...)
 		}
 	}
-	
+
 	// Evaluate system metrics
 	if metrics.SystemMetrics != nil {
 		if alerts := am.evaluateSystemMetrics(metrics.SystemMetrics, thresholds); len(alerts) > 0 {
 			newAlerts = append(newAlerts, alerts...)
 		}
 	}
-	
+
 	// Evaluate network metrics
 	if metrics.NetworkMetrics != nil {
 		if alerts := am.evaluateNetworkMetrics(metrics.NetworkMetrics, thresholds); len(alerts) > 0 {
 			newAlerts = append(newAlerts, alerts...)
 		}
 	}
-	
+
 	// Evaluate S3 metrics
 	if metrics.S3Metrics != nil {
 		if alerts := am.evaluateS3Metrics(metrics.S3Metrics, thresholds); len(alerts) > 0 {
 			newAlerts = append(newAlerts, alerts...)
 		}
 	}
-	
+
 	// Add all new alerts (using lock-free version since we already hold the lock)
 	for _, alert := range newAlerts {
 		am.addAlertLocked(alert)
@@ -142,17 +142,17 @@ func (am *AlertManager) EvaluateMetrics(metrics *PerformanceMetrics, thresholds 
 // evaluateTransferMetrics evaluates transfer metrics against thresholds.
 func (am *AlertManager) evaluateTransferMetrics(metrics *TransferMetrics, thresholds *DynamicThresholds) []*Alert {
 	var alerts []*Alert
-	
+
 	// Low throughput alert
 	if thresholds.MinThroughputMBps > 0 && metrics.TotalThroughputMBps < thresholds.MinThroughputMBps {
 		alerts = append(alerts, &Alert{
-			Type:        AlertTypeLowThroughput,
-			Severity:    am.calculateSeverity(metrics.TotalThroughputMBps, thresholds.MinThroughputMBps, false),
-			Title:       "Low Transfer Throughput",
-			Description: fmt.Sprintf("Transfer throughput %.2f MB/s is below threshold %.2f MB/s", 
+			Type:     AlertTypeLowThroughput,
+			Severity: am.calculateSeverity(metrics.TotalThroughputMBps, thresholds.MinThroughputMBps, false),
+			Title:    "Low Transfer Throughput",
+			Description: fmt.Sprintf("Transfer throughput %.2f MB/s is below threshold %.2f MB/s",
 				metrics.TotalThroughputMBps, thresholds.MinThroughputMBps),
-			Timestamp:   time.Now(),
-			Source:      "TransferMonitor",
+			Timestamp: time.Now(),
+			Source:    "TransferMonitor",
 			Metadata: map[string]interface{}{
 				"current_throughput": metrics.TotalThroughputMBps,
 				"threshold":          thresholds.MinThroughputMBps,
@@ -160,35 +160,35 @@ func (am *AlertManager) evaluateTransferMetrics(metrics *TransferMetrics, thresh
 			},
 		})
 	}
-	
+
 	// High latency alert
 	if thresholds.MaxLatencyMs > 0 && metrics.AverageLatencyMs > thresholds.MaxLatencyMs {
 		alerts = append(alerts, &Alert{
-			Type:        AlertTypeHighLatency,
-			Severity:    am.calculateSeverity(metrics.AverageLatencyMs, thresholds.MaxLatencyMs, true),
-			Title:       "High Transfer Latency",
-			Description: fmt.Sprintf("Average latency %.2f ms exceeds threshold %.2f ms", 
+			Type:     AlertTypeHighLatency,
+			Severity: am.calculateSeverity(metrics.AverageLatencyMs, thresholds.MaxLatencyMs, true),
+			Title:    "High Transfer Latency",
+			Description: fmt.Sprintf("Average latency %.2f ms exceeds threshold %.2f ms",
 				metrics.AverageLatencyMs, thresholds.MaxLatencyMs),
-			Timestamp:   time.Now(),
-			Source:      "TransferMonitor",
+			Timestamp: time.Now(),
+			Source:    "TransferMonitor",
 			Metadata: map[string]interface{}{
 				"current_latency": metrics.AverageLatencyMs,
 				"threshold":       thresholds.MaxLatencyMs,
 			},
 		})
 	}
-	
+
 	// High error rate alert
 	if thresholds.MaxErrorRate > 0 && (1.0-metrics.SuccessRate) > thresholds.MaxErrorRate {
 		errorRate := 1.0 - metrics.SuccessRate
 		alerts = append(alerts, &Alert{
-			Type:        AlertTypeHighErrorRate,
-			Severity:    am.calculateSeverity(errorRate, thresholds.MaxErrorRate, true),
-			Title:       "High Transfer Error Rate",
-			Description: fmt.Sprintf("Error rate %.2f%% exceeds threshold %.2f%%", 
+			Type:     AlertTypeHighErrorRate,
+			Severity: am.calculateSeverity(errorRate, thresholds.MaxErrorRate, true),
+			Title:    "High Transfer Error Rate",
+			Description: fmt.Sprintf("Error rate %.2f%% exceeds threshold %.2f%%",
 				errorRate*100, thresholds.MaxErrorRate*100),
-			Timestamp:   time.Now(),
-			Source:      "TransferMonitor",
+			Timestamp: time.Now(),
+			Source:    "TransferMonitor",
 			Metadata: map[string]interface{}{
 				"error_rate":   errorRate,
 				"threshold":    thresholds.MaxErrorRate,
@@ -197,41 +197,41 @@ func (am *AlertManager) evaluateTransferMetrics(metrics *TransferMetrics, thresh
 			},
 		})
 	}
-	
+
 	return alerts
 }
 
 // evaluateSystemMetrics evaluates system metrics against thresholds.
 func (am *AlertManager) evaluateSystemMetrics(metrics *SystemMetrics, thresholds *DynamicThresholds) []*Alert {
 	var alerts []*Alert
-	
+
 	// High CPU usage alert
 	if thresholds.MaxCPUUsage > 0 && metrics.CPUUsagePercent > thresholds.MaxCPUUsage*100 {
 		alerts = append(alerts, &Alert{
-			Type:        AlertTypeHighCPUUsage,
-			Severity:    am.calculateSeverity(metrics.CPUUsagePercent/100, thresholds.MaxCPUUsage, true),
-			Title:       "High CPU Usage",
-			Description: fmt.Sprintf("CPU usage %.1f%% exceeds threshold %.1f%%", 
+			Type:     AlertTypeHighCPUUsage,
+			Severity: am.calculateSeverity(metrics.CPUUsagePercent/100, thresholds.MaxCPUUsage, true),
+			Title:    "High CPU Usage",
+			Description: fmt.Sprintf("CPU usage %.1f%% exceeds threshold %.1f%%",
 				metrics.CPUUsagePercent, thresholds.MaxCPUUsage*100),
-			Timestamp:   time.Now(),
-			Source:      "SystemMonitor",
+			Timestamp: time.Now(),
+			Source:    "SystemMonitor",
 			Metadata: map[string]interface{}{
-				"cpu_usage":  metrics.CPUUsagePercent,
-				"threshold":  thresholds.MaxCPUUsage * 100,
+				"cpu_usage": metrics.CPUUsagePercent,
+				"threshold": thresholds.MaxCPUUsage * 100,
 			},
 		})
 	}
-	
+
 	// High memory usage alert
 	if thresholds.MaxMemoryUsage > 0 && metrics.MemoryUsagePercent > thresholds.MaxMemoryUsage*100 {
 		alerts = append(alerts, &Alert{
-			Type:        AlertTypeHighMemoryUsage,
-			Severity:    am.calculateSeverity(metrics.MemoryUsagePercent/100, thresholds.MaxMemoryUsage, true),
-			Title:       "High Memory Usage",
-			Description: fmt.Sprintf("Memory usage %.1f%% exceeds threshold %.1f%%", 
+			Type:     AlertTypeHighMemoryUsage,
+			Severity: am.calculateSeverity(metrics.MemoryUsagePercent/100, thresholds.MaxMemoryUsage, true),
+			Title:    "High Memory Usage",
+			Description: fmt.Sprintf("Memory usage %.1f%% exceeds threshold %.1f%%",
 				metrics.MemoryUsagePercent, thresholds.MaxMemoryUsage*100),
-			Timestamp:   time.Now(),
-			Source:      "SystemMonitor",
+			Timestamp: time.Now(),
+			Source:    "SystemMonitor",
 			Metadata: map[string]interface{}{
 				"memory_usage_percent": metrics.MemoryUsagePercent,
 				"memory_usage_mb":      metrics.MemoryUsageMB,
@@ -239,74 +239,74 @@ func (am *AlertManager) evaluateSystemMetrics(metrics *SystemMetrics, thresholds
 			},
 		})
 	}
-	
+
 	return alerts
 }
 
 // evaluateNetworkMetrics evaluates network metrics against thresholds.
 func (am *AlertManager) evaluateNetworkMetrics(metrics *NetworkMetrics, thresholds *DynamicThresholds) []*Alert {
 	var alerts []*Alert
-	
+
 	// High network latency
 	if thresholds.MaxLatencyMs > 0 && metrics.LatencyMs > thresholds.MaxLatencyMs {
 		alerts = append(alerts, &Alert{
-			Type:        AlertTypeHighLatency,
-			Severity:    am.calculateSeverity(metrics.LatencyMs, thresholds.MaxLatencyMs, true),
-			Title:       "High Network Latency",
-			Description: fmt.Sprintf("Network latency %.2f ms exceeds threshold %.2f ms", 
+			Type:     AlertTypeHighLatency,
+			Severity: am.calculateSeverity(metrics.LatencyMs, thresholds.MaxLatencyMs, true),
+			Title:    "High Network Latency",
+			Description: fmt.Sprintf("Network latency %.2f ms exceeds threshold %.2f ms",
 				metrics.LatencyMs, thresholds.MaxLatencyMs),
-			Timestamp:   time.Now(),
-			Source:      "NetworkMonitor",
+			Timestamp: time.Now(),
+			Source:    "NetworkMonitor",
 			Metadata: map[string]interface{}{
 				"latency":   metrics.LatencyMs,
 				"threshold": thresholds.MaxLatencyMs,
 			},
 		})
 	}
-	
+
 	// High packet loss
 	if thresholds.MaxPacketLoss > 0 && metrics.PacketLossPercent > thresholds.MaxPacketLoss {
 		alerts = append(alerts, &Alert{
-			Type:        AlertTypeHighPacketLoss,
-			Severity:    am.calculateSeverity(metrics.PacketLossPercent, thresholds.MaxPacketLoss, true),
-			Title:       "High Packet Loss",
-			Description: fmt.Sprintf("Packet loss %.2f%% exceeds threshold %.2f%%", 
+			Type:     AlertTypeHighPacketLoss,
+			Severity: am.calculateSeverity(metrics.PacketLossPercent, thresholds.MaxPacketLoss, true),
+			Title:    "High Packet Loss",
+			Description: fmt.Sprintf("Packet loss %.2f%% exceeds threshold %.2f%%",
 				metrics.PacketLossPercent*100, thresholds.MaxPacketLoss*100),
-			Timestamp:   time.Now(),
-			Source:      "NetworkMonitor",
+			Timestamp: time.Now(),
+			Source:    "NetworkMonitor",
 			Metadata: map[string]interface{}{
 				"packet_loss": metrics.PacketLossPercent,
 				"threshold":   thresholds.MaxPacketLoss,
 			},
 		})
 	}
-	
+
 	return alerts
 }
 
 // evaluateS3Metrics evaluates S3 metrics against thresholds.
 func (am *AlertManager) evaluateS3Metrics(metrics *S3Metrics, thresholds *DynamicThresholds) []*Alert {
 	var alerts []*Alert
-	
+
 	// High S3 error rate
 	if thresholds.MaxS3ErrorRate > 0 && metrics.ErrorRate > thresholds.MaxS3ErrorRate {
 		alerts = append(alerts, &Alert{
-			Type:        AlertTypeS3Errors,
-			Severity:    am.calculateSeverity(metrics.ErrorRate, thresholds.MaxS3ErrorRate, true),
-			Title:       "High S3 Error Rate",
-			Description: fmt.Sprintf("S3 error rate %.2f%% exceeds threshold %.2f%%", 
+			Type:     AlertTypeS3Errors,
+			Severity: am.calculateSeverity(metrics.ErrorRate, thresholds.MaxS3ErrorRate, true),
+			Title:    "High S3 Error Rate",
+			Description: fmt.Sprintf("S3 error rate %.2f%% exceeds threshold %.2f%%",
 				metrics.ErrorRate*100, thresholds.MaxS3ErrorRate*100),
-			Timestamp:   time.Now(),
-			Source:      "S3Monitor",
+			Timestamp: time.Now(),
+			Source:    "S3Monitor",
 			Metadata: map[string]interface{}{
-				"error_rate":         metrics.ErrorRate,
-				"threshold":          thresholds.MaxS3ErrorRate,
-				"failed_requests":    metrics.FailedRequests,
+				"error_rate":          metrics.ErrorRate,
+				"threshold":           thresholds.MaxS3ErrorRate,
+				"failed_requests":     metrics.FailedRequests,
 				"successful_requests": metrics.SuccessfulRequests,
 			},
 		})
 	}
-	
+
 	return alerts
 }
 
@@ -318,7 +318,7 @@ func (am *AlertManager) calculateSeverity(current, threshold float64, isHigher b
 	} else {
 		ratio = threshold / current
 	}
-	
+
 	if ratio >= 2.0 {
 		return SeverityCritical
 	} else if ratio >= 1.5 {
@@ -353,15 +353,15 @@ func (am *AlertManager) notifyAlert(alert *Alert) {
 // Alert represents a performance alert.
 type Alert struct {
 	ID          string                 `json:"id"`
-	Type        AlertType             `json:"type"`
-	Severity    AlertSeverity         `json:"severity"`
-	Title       string                `json:"title"`
-	Description string                `json:"description"`
-	Timestamp   time.Time             `json:"timestamp"`
-	LastSeen    time.Time             `json:"last_seen"`
-	Source      string                `json:"source"`
-	Count       int                   `json:"count"`
-	Resolved    bool                  `json:"resolved"`
+	Type        AlertType              `json:"type"`
+	Severity    AlertSeverity          `json:"severity"`
+	Title       string                 `json:"title"`
+	Description string                 `json:"description"`
+	Timestamp   time.Time              `json:"timestamp"`
+	LastSeen    time.Time              `json:"last_seen"`
+	Source      string                 `json:"source"`
+	Count       int                    `json:"count"`
+	Resolved    bool                   `json:"resolved"`
 	Metadata    map[string]interface{} `json:"metadata"`
 }
 

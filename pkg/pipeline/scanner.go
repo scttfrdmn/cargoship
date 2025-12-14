@@ -15,14 +15,14 @@ import (
 
 // ScannerStage discovers files and creates chunks
 type ScannerStage struct {
-	config  *ScannerConfig
-	output  chan<- *Job
-	pool    *WorkerPool
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-	mu      sync.RWMutex
-	stats   StageStats
+	config   *ScannerConfig
+	output   chan<- *Job
+	pool     *WorkerPool
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
+	mu       sync.RWMutex
+	stats    StageStats
 	strategy chunking.ChunkingStrategy
 
 	// Phase 3.3: Compressed-aware chunker for optimal chunk sizing
@@ -52,12 +52,12 @@ func NewScannerStage(config *ScannerConfig, output chan<- *Job, pipeline *Pipeli
 	if chunkingConfig == nil {
 		// Default configuration (Phase 5: file splitting disabled by default for backward compatibility)
 		chunkingConfig = &chunking.ChunkingConfig{
-			Workers:            8,
-			AvailableMemory:    4 * 1024 * 1024 * 1024, // 4GB
-			GroupingStrategy:   "mixed",
-			CostSavingsTarget:  1000,
-			EnableFileSplitting: false,                  // Disabled by default
-			MaxFileChunkSize:   200 * 1024 * 1024,      // 200MB chunks for split files
+			Workers:             8,
+			AvailableMemory:     4 * 1024 * 1024 * 1024, // 4GB
+			GroupingStrategy:    "mixed",
+			CostSavingsTarget:   1000,
+			EnableFileSplitting: false,             // Disabled by default
+			MaxFileChunkSize:    200 * 1024 * 1024, // 200MB chunks for split files
 		}
 	}
 	strategy := chunking.NewAdaptiveChunkingStrategy(chunkingConfig)
@@ -341,8 +341,8 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 						Size:    file.Size,
 						ModTime: file.ModTime,
 						ChunkID: chunk.ID,
-						ShardID: -1,      // Will be determined by archiver
-						S3Key:   "",      // Will be filled by uploader
+						ShardID: -1, // Will be determined by archiver
+						S3Key:   "", // Will be filled by uploader
 					})
 				}
 				s.pipeline.manifestMu.Unlock()
@@ -354,8 +354,8 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 			case s.output <- &Job{
 				ID:                   chunk.ID,
 				Chunk:                chunk,
-				TargetCompressedSize: targetCompressedSize,  // Phase 3.3
-				EstimatedCompressed:  estimatedCompressed,   // Phase 3.3
+				TargetCompressedSize: targetCompressedSize, // Phase 3.3
+				EstimatedCompressed:  estimatedCompressed,  // Phase 3.3
 				StartTime:            time.Now(),
 			}:
 				atomic.AddInt64(&s.jobsProcessed, 1)
@@ -390,8 +390,8 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 						Size:    file.Size,
 						ModTime: file.ModTime,
 						ChunkID: chunk.ID,
-						ShardID: -1,      // Will be determined by archiver
-						S3Key:   "",      // Will be filled by uploader
+						ShardID: -1, // Will be determined by archiver
+						S3Key:   "", // Will be filled by uploader
 					})
 				}
 				s.pipeline.manifestMu.Unlock()

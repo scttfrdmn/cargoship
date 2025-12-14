@@ -759,4 +759,3 @@ func (uh *UtilizationHistory) GetConfidenceBonus() float64 {
 	// More history = higher confidence (up to 0.2 bonus)
 	return math.Min(0.2, float64(historyCount)/100.0*0.2)
 }
-

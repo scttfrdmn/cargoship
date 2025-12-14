@@ -29,7 +29,7 @@ func TestPredictivePrefetcher_StartStop(t *testing.T) {
 	optimizer := createMockOptimizer(t)
 	config := DefaultPrefetchConfig()
 	config.MaxConcurrentPrefetch = 2 // Reduce for testing
-	
+
 	prefetcher, err := NewPredictivePrefetcher(optimizer, config, slog.Default())
 	require.NoError(t, err)
 
@@ -55,7 +55,7 @@ func TestPredictivePrefetcher_PredictAndPrefetch(t *testing.T) {
 	optimizer := createMockOptimizer(t)
 	config := DefaultPrefetchConfig()
 	config.MinPatternConfidence = 0.5
-	
+
 	prefetcher, err := NewPredictivePrefetcher(optimizer, config, slog.Default())
 	require.NoError(t, err)
 
@@ -89,14 +89,14 @@ func TestPredictivePrefetcher_PredictAndPrefetch(t *testing.T) {
 func TestPredictivePrefetcher_CacheOperations(t *testing.T) {
 	optimizer := createMockOptimizer(t)
 	config := DefaultPrefetchConfig()
-	
+
 	prefetcher, err := NewPredictivePrefetcher(optimizer, config, slog.Default())
 	require.NoError(t, err)
 
 	// Start the prefetcher to enable cache operations
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	err = prefetcher.Start(ctx)
 	require.NoError(t, err)
 	defer func() { _ = prefetcher.Stop() }()
@@ -123,7 +123,7 @@ func TestPredictivePrefetcher_CacheOperations(t *testing.T) {
 func TestPredictivePrefetcher_NetworkConditions(t *testing.T) {
 	optimizer := createMockOptimizer(t)
 	config := DefaultPrefetchConfig()
-	
+
 	prefetcher, err := NewPredictivePrefetcher(optimizer, config, slog.Default())
 	require.NoError(t, err)
 
@@ -145,7 +145,7 @@ func TestPredictivePrefetcher_NetworkConditions(t *testing.T) {
 func TestPredictivePrefetcher_Metrics(t *testing.T) {
 	optimizer := createMockOptimizer(t)
 	config := DefaultPrefetchConfig()
-	
+
 	prefetcher, err := NewPredictivePrefetcher(optimizer, config, slog.Default())
 	require.NoError(t, err)
 
@@ -277,7 +277,7 @@ func TestPrefetchCache_Operations(t *testing.T) {
 	_ = cache.Put("key1", []byte("data1"), nil)
 	_ = cache.Put("key2", []byte("data2"), nil)
 	cache.Clear()
-	
+
 	_, found = cache.Get("key1")
 	assert.False(t, found)
 	_, found = cache.Get("key2")
@@ -320,7 +320,7 @@ func TestAdaptiveScheduler_JobScheduling(t *testing.T) {
 	// Note: job might be nil if scheduling constraints prevent execution
 	if job != nil {
 		assert.NotEmpty(t, job.ID)
-		
+
 		// Test job completion
 		scheduler.CompleteJob(job, true, 1024, "")
 	}
@@ -372,7 +372,7 @@ func TestNetworkOptimizer_Optimization(t *testing.T) {
 func TestPrefetchWorker_Operations(t *testing.T) {
 	optimizer := createMockOptimizer(t)
 	config := DefaultPrefetchConfig()
-	
+
 	prefetcher, err := NewPredictivePrefetcher(optimizer, config, slog.Default())
 	require.NoError(t, err)
 
@@ -474,7 +474,7 @@ func BenchmarkPredictivePrefetcher_PredictAndPrefetch(b *testing.B) {
 		initialized: true,
 	}
 	config := DefaultPrefetchConfig()
-	
+
 	prefetcher, err := NewPredictivePrefetcher(optimizer, config, slog.Default())
 	if err != nil {
 		b.Fatal(err)

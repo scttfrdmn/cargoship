@@ -20,12 +20,12 @@ type ThresholdManager struct {
 // NewThresholdManager creates a new threshold manager.
 func NewThresholdManager(config *MonitoringConfig) *ThresholdManager {
 	tm := &ThresholdManager{
-		config:           config,
+		config:            config,
 		currentThresholds: NewDynamicThresholds(config.DefaultThresholds),
 		baselineMetrics:   NewBaselineMetrics(),
 		adaptationEngine:  NewThresholdAdaptationEngine(),
 	}
-	
+
 	return tm
 }
 
@@ -33,11 +33,11 @@ func NewThresholdManager(config *MonitoringConfig) *ThresholdManager {
 func (tm *ThresholdManager) Start(ctx context.Context) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	
+
 	if tm.isRunning {
 		return nil
 	}
-	
+
 	tm.isRunning = true
 	go tm.adaptationLoop(ctx)
 	return nil
@@ -54,7 +54,7 @@ func (tm *ThresholdManager) Stop() {
 func (tm *ThresholdManager) GetCurrentThresholds() *DynamicThresholds {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
-	
+
 	// Return a copy
 	thresholds := *tm.currentThresholds
 	return &thresholds
@@ -64,7 +64,7 @@ func (tm *ThresholdManager) GetCurrentThresholds() *DynamicThresholds {
 func (tm *ThresholdManager) SetThreshold(metric string, threshold *AlertThreshold) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	
+
 	switch metric {
 	case "throughput":
 		tm.currentThresholds.MinThroughputMBps = threshold.Value
@@ -81,7 +81,7 @@ func (tm *ThresholdManager) SetThreshold(metric string, threshold *AlertThreshol
 	case "s3_error_rate":
 		tm.currentThresholds.MaxS3ErrorRate = threshold.Value
 	}
-	
+
 	return nil
 }
 
@@ -89,9 +89,9 @@ func (tm *ThresholdManager) SetThreshold(metric string, threshold *AlertThreshol
 func (tm *ThresholdManager) UpdateBaseline(metrics *PerformanceMetrics) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	
+
 	tm.baselineMetrics.UpdateWithMetrics(metrics)
-	
+
 	// Trigger threshold adaptation based on new baseline
 	tm.adaptThresholds()
 }
@@ -100,7 +100,7 @@ func (tm *ThresholdManager) UpdateBaseline(metrics *PerformanceMetrics) {
 func (tm *ThresholdManager) adaptationLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute * 5) // Adapt every 5 minutes
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -118,28 +118,28 @@ func (tm *ThresholdManager) adaptThresholds() {
 	if !tm.baselineMetrics.HasSufficientData() {
 		return
 	}
-	
+
 	adaptation := tm.adaptationEngine.CalculateAdaptation(tm.baselineMetrics, tm.currentThresholds)
-	
+
 	// Apply adaptations with safety bounds
 	tm.currentThresholds.MinThroughputMBps = tm.applySafeBounds(
-		tm.currentThresholds.MinThroughputMBps * adaptation.ThroughputMultiplier,
-		tm.config.DefaultThresholds.MinThroughputMBps * 0.1, // 10% of default minimum
-		tm.config.DefaultThresholds.MinThroughputMBps * 2.0, // 200% of default maximum
+		tm.currentThresholds.MinThroughputMBps*adaptation.ThroughputMultiplier,
+		tm.config.DefaultThresholds.MinThroughputMBps*0.1, // 10% of default minimum
+		tm.config.DefaultThresholds.MinThroughputMBps*2.0, // 200% of default maximum
 	)
-	
+
 	tm.currentThresholds.MaxLatencyMs = tm.applySafeBounds(
-		tm.currentThresholds.MaxLatencyMs * adaptation.LatencyMultiplier,
-		tm.config.DefaultThresholds.MaxLatencyMs * 0.5, // 50% of default minimum
-		tm.config.DefaultThresholds.MaxLatencyMs * 3.0, // 300% of default maximum
+		tm.currentThresholds.MaxLatencyMs*adaptation.LatencyMultiplier,
+		tm.config.DefaultThresholds.MaxLatencyMs*0.5, // 50% of default minimum
+		tm.config.DefaultThresholds.MaxLatencyMs*3.0, // 300% of default maximum
 	)
-	
+
 	tm.currentThresholds.MaxErrorRate = tm.applySafeBounds(
-		tm.currentThresholds.MaxErrorRate * adaptation.ErrorRateMultiplier,
+		tm.currentThresholds.MaxErrorRate*adaptation.ErrorRateMultiplier,
 		0.001, // Minimum 0.1% error rate
 		0.2,   // Maximum 20% error rate
 	)
-	
+
 	tm.currentThresholds.LastAdaptation = time.Now()
 }
 
@@ -186,28 +186,28 @@ func NewDynamicThresholds(defaults *DefaultThresholds) *DynamicThresholds {
 
 // BaselineMetrics tracks baseline performance metrics for threshold adaptation.
 type BaselineMetrics struct {
-	ThroughputHistory    []float64  `json:"throughput_history"`
-	LatencyHistory       []float64  `json:"latency_history"`
-	ErrorRateHistory     []float64  `json:"error_rate_history"`
-	CPUUsageHistory      []float64  `json:"cpu_usage_history"`
-	MemoryUsageHistory   []float64  `json:"memory_usage_history"`
-	
+	ThroughputHistory  []float64 `json:"throughput_history"`
+	LatencyHistory     []float64 `json:"latency_history"`
+	ErrorRateHistory   []float64 `json:"error_rate_history"`
+	CPUUsageHistory    []float64 `json:"cpu_usage_history"`
+	MemoryUsageHistory []float64 `json:"memory_usage_history"`
+
 	// Statistical measures
-	AvgThroughput        float64    `json:"avg_throughput"`
-	AvgLatency           float64    `json:"avg_latency"`
-	AvgErrorRate         float64    `json:"avg_error_rate"`
-	AvgCPUUsage          float64    `json:"avg_cpu_usage"`
-	AvgMemoryUsage       float64    `json:"avg_memory_usage"`
-	
+	AvgThroughput  float64 `json:"avg_throughput"`
+	AvgLatency     float64 `json:"avg_latency"`
+	AvgErrorRate   float64 `json:"avg_error_rate"`
+	AvgCPUUsage    float64 `json:"avg_cpu_usage"`
+	AvgMemoryUsage float64 `json:"avg_memory_usage"`
+
 	// Variability measures
-	ThroughputStdDev     float64    `json:"throughput_std_dev"`
-	LatencyStdDev        float64    `json:"latency_std_dev"`
-	ErrorRateStdDev      float64    `json:"error_rate_std_dev"`
-	
-	LastUpdated          time.Time  `json:"last_updated"`
-	SampleCount          int        `json:"sample_count"`
-	
-	maxHistory           int
+	ThroughputStdDev float64 `json:"throughput_std_dev"`
+	LatencyStdDev    float64 `json:"latency_std_dev"`
+	ErrorRateStdDev  float64 `json:"error_rate_std_dev"`
+
+	LastUpdated time.Time `json:"last_updated"`
+	SampleCount int       `json:"sample_count"`
+
+	maxHistory int
 }
 
 // NewBaselineMetrics creates new baseline metrics tracker.
@@ -230,13 +230,13 @@ func (bm *BaselineMetrics) UpdateWithMetrics(metrics *PerformanceMetrics) {
 		bm.addToHistory(&bm.LatencyHistory, metrics.TransferMetrics.AverageLatencyMs)
 		bm.addToHistory(&bm.ErrorRateHistory, 1.0-metrics.TransferMetrics.SuccessRate)
 	}
-	
+
 	// Update system metrics
 	if metrics.SystemMetrics != nil {
 		bm.addToHistory(&bm.CPUUsageHistory, metrics.SystemMetrics.CPUUsagePercent/100.0)
 		bm.addToHistory(&bm.MemoryUsageHistory, metrics.SystemMetrics.MemoryUsagePercent/100.0)
 	}
-	
+
 	// Recalculate statistics
 	bm.calculateStatistics()
 	bm.LastUpdated = time.Now()
@@ -246,7 +246,7 @@ func (bm *BaselineMetrics) UpdateWithMetrics(metrics *PerformanceMetrics) {
 // addToHistory adds a value to a history slice with size management.
 func (bm *BaselineMetrics) addToHistory(history *[]float64, value float64) {
 	*history = append(*history, value)
-	
+
 	// Limit history size
 	if len(*history) > bm.maxHistory {
 		*history = (*history)[len(*history)-bm.maxHistory:]
@@ -260,7 +260,7 @@ func (bm *BaselineMetrics) calculateStatistics() {
 	bm.AvgErrorRate = bm.calculateMean(bm.ErrorRateHistory)
 	bm.AvgCPUUsage = bm.calculateMean(bm.CPUUsageHistory)
 	bm.AvgMemoryUsage = bm.calculateMean(bm.MemoryUsageHistory)
-	
+
 	bm.ThroughputStdDev = bm.calculateStdDev(bm.ThroughputHistory, bm.AvgThroughput)
 	bm.LatencyStdDev = bm.calculateStdDev(bm.LatencyHistory, bm.AvgLatency)
 	bm.ErrorRateStdDev = bm.calculateStdDev(bm.ErrorRateHistory, bm.AvgErrorRate)
@@ -271,7 +271,7 @@ func (bm *BaselineMetrics) calculateMean(values []float64) float64 {
 	if len(values) == 0 {
 		return 0
 	}
-	
+
 	sum := 0.0
 	for _, value := range values {
 		sum += value
@@ -284,22 +284,22 @@ func (bm *BaselineMetrics) calculateStdDev(values []float64, mean float64) float
 	if len(values) <= 1 {
 		return 0
 	}
-	
+
 	sumSquaredDiffs := 0.0
 	for _, value := range values {
 		diff := value - mean
 		sumSquaredDiffs += diff * diff
 	}
-	
+
 	variance := sumSquaredDiffs / float64(len(values)-1)
 	return math.Sqrt(variance)
 }
 
 // HasSufficientData checks if there's enough data for meaningful adaptation.
 func (bm *BaselineMetrics) HasSufficientData() bool {
-	return len(bm.ThroughputHistory) >= 10 && 
-		   len(bm.LatencyHistory) >= 10 && 
-		   bm.SampleCount >= 20
+	return len(bm.ThroughputHistory) >= 10 &&
+		len(bm.LatencyHistory) >= 10 &&
+		bm.SampleCount >= 20
 }
 
 // ThresholdAdaptationEngine calculates threshold adaptations.
@@ -311,9 +311,9 @@ type ThresholdAdaptationEngine struct {
 func NewThresholdAdaptationEngine() *ThresholdAdaptationEngine {
 	return &ThresholdAdaptationEngine{
 		adaptationRates: map[string]float64{
-			"throughput":  0.1, // 10% adaptation rate
-			"latency":     0.1,
-			"error_rate":  0.05, // 5% adaptation rate (more conservative)
+			"throughput": 0.1, // 10% adaptation rate
+			"latency":    0.1,
+			"error_rate": 0.05, // 5% adaptation rate (more conservative)
 		},
 	}
 }
@@ -326,7 +326,7 @@ func (tae *ThresholdAdaptationEngine) CalculateAdaptation(baseline *BaselineMetr
 		ErrorRateMultiplier:  1.0,
 		Timestamp:            time.Now(),
 	}
-	
+
 	// Adapt throughput threshold based on baseline performance
 	if baseline.AvgThroughput > 0 {
 		// If average throughput is much higher than current threshold, raise threshold
@@ -337,7 +337,7 @@ func (tae *ThresholdAdaptationEngine) CalculateAdaptation(baseline *BaselineMetr
 			adaptation.ThroughputMultiplier = 1.0 + (ratio-1.0)*tae.adaptationRates["throughput"]
 		}
 	}
-	
+
 	// Adapt latency threshold based on baseline + variability
 	if baseline.AvgLatency > 0 {
 		// Set threshold to mean + 2*stddev (95% of normal values)
@@ -347,7 +347,7 @@ func (tae *ThresholdAdaptationEngine) CalculateAdaptation(baseline *BaselineMetr
 			adaptation.LatencyMultiplier = 1.0 + (ratio-1.0)*tae.adaptationRates["latency"]
 		}
 	}
-	
+
 	// Adapt error rate threshold conservatively
 	if baseline.AvgErrorRate >= 0 {
 		// Set threshold to mean + 3*stddev (99.7% of normal values)
@@ -359,7 +359,7 @@ func (tae *ThresholdAdaptationEngine) CalculateAdaptation(baseline *BaselineMetr
 			}
 		}
 	}
-	
+
 	return adaptation
 }
 

@@ -291,9 +291,9 @@ func TestQualityLevelDetermination(t *testing.T) {
 		expectedQuality RealTimeQualityLevel
 	}{
 		{100.0, 10.0, 0.95, RealTimeQualityExcellent}, // score: 0.4+0.27+0.285 = 0.955
-		{80.0, 50.0, 0.90, RealTimeQualityGood},        // score: 0.32+0.15+0.27 = 0.74
-		{50.0, 70.0, 0.80, RealTimeQualityFair},        // score: 0.2+0.09+0.24 = 0.53 (>= 0.5)
-		{20.0, 500.0, 0.60, RealTimeQualityPoor},       // score: 0.08+0+0.18 = 0.26
+		{80.0, 50.0, 0.90, RealTimeQualityGood},       // score: 0.32+0.15+0.27 = 0.74
+		{50.0, 70.0, 0.80, RealTimeQualityFair},       // score: 0.2+0.09+0.24 = 0.53 (>= 0.5)
+		{20.0, 500.0, 0.60, RealTimeQualityPoor},      // score: 0.08+0+0.18 = 0.26
 	}
 
 	for _, tc := range testCases {

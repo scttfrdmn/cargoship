@@ -13,7 +13,7 @@ import (
 func TestHealthCheckImplementation(t *testing.T) {
 	// Create a test coordinator with health check enabled
 	config := &MultiRegionConfig{
-		Enabled: true,
+		Enabled:       true,
 		PrimaryRegion: "us-east-1",
 		Regions: []Region{
 			{
@@ -21,10 +21,10 @@ func TestHealthCheckImplementation(t *testing.T) {
 				DisplayName: "US East 1",
 				Status:      RegionStatusHealthy,
 				Priority:    1,
-			AWSConfig: aws.Config{
-				Region: "us-east-1",
-			},
-				Weight:      100,
+				AWSConfig: aws.Config{
+					Region: "us-east-1",
+				},
+				Weight: 100,
 				HealthCheck: HealthCheckConfig{
 					Enabled:          true,
 					Interval:         time.Second * 5,
@@ -34,27 +34,27 @@ func TestHealthCheckImplementation(t *testing.T) {
 				},
 				Capacity: RegionCapacity{
 					MaxConcurrentUploads: 100,
-					MaxBandwidthMbps:    1000,
-					MaxStorageGB:        10000,
-					CurrentUtilization:  25.0,
+					MaxBandwidthMbps:     1000,
+					MaxStorageGB:         10000,
+					CurrentUtilization:   25.0,
 				},
 				Metrics: RegionMetrics{
 					AverageLatencyMs:         50.0,
-					ThroughputMbps:          100.0,
-					ErrorRate:               0.5,
-					CPUUtilization:          60.0,
-					MemoryUtilization:       45.0,
-					ActiveUploads:           25,
+					ThroughputMbps:           100.0,
+					ErrorRate:                0.5,
+					CPUUtilization:           60.0,
+					MemoryUtilization:        45.0,
+					ActiveUploads:            25,
 					ConsecutiveHealthyChecks: 5,
 					ConsecutiveFailedChecks:  0,
-					HealthCheckSuccess:      true,
+					HealthCheckSuccess:       true,
 				},
 			},
 			{
-				Name:        "us-west-2",
-			AWSConfig: aws.Config{
-				Region: "us-west-2",
-			},
+				Name: "us-west-2",
+				AWSConfig: aws.Config{
+					Region: "us-west-2",
+				},
 				DisplayName: "US West 2",
 				Status:      RegionStatusHealthy,
 				Priority:    2,
@@ -68,20 +68,20 @@ func TestHealthCheckImplementation(t *testing.T) {
 				},
 				Capacity: RegionCapacity{
 					MaxConcurrentUploads: 80,
-					MaxBandwidthMbps:    800,
-					MaxStorageGB:        8000,
-					CurrentUtilization:  30.0,
+					MaxBandwidthMbps:     800,
+					MaxStorageGB:         8000,
+					CurrentUtilization:   30.0,
 				},
 				Metrics: RegionMetrics{
 					AverageLatencyMs:         75.0,
-					ThroughputMbps:          80.0,
-					ErrorRate:               1.0,
-					CPUUtilization:          55.0,
-					MemoryUtilization:       50.0,
-					ActiveUploads:           20,
+					ThroughputMbps:           80.0,
+					ErrorRate:                1.0,
+					CPUUtilization:           55.0,
+					MemoryUtilization:        50.0,
+					ActiveUploads:            20,
 					ConsecutiveHealthyChecks: 3,
 					ConsecutiveFailedChecks:  0,
-					HealthCheckSuccess:      true,
+					HealthCheckSuccess:       true,
 				},
 			},
 		},
@@ -119,7 +119,7 @@ func TestHealthCheckImplementation(t *testing.T) {
 		defer cancel()
 
 		region := defaultCoordinator.regions["us-east-1"]
-		
+
 		// Execute health checks
 		results := defaultCoordinator.executeHealthChecks(ctx, region)
 
@@ -136,7 +136,7 @@ func TestHealthCheckImplementation(t *testing.T) {
 
 		expectedTypes := []string{
 			"aws_connectivity",
-			"s3_service_health", 
+			"s3_service_health",
 			"region_latency",
 			"resource_capacity",
 		}
@@ -152,7 +152,7 @@ func TestHealthCheckImplementation(t *testing.T) {
 
 		// Test with normal capacity
 		result := defaultCoordinator.checkResourceCapacity(ctx, region)
-		
+
 		assert.Equal(t, "resource_capacity", result.CheckType)
 		assert.True(t, result.Success) // Should succeed with current metrics
 		assert.NotNil(t, result.Details)
@@ -183,7 +183,7 @@ func TestHealthCheckImplementation(t *testing.T) {
 		}
 
 		evaluated := defaultCoordinator.evaluateHealthResults(results)
-		
+
 		assert.True(t, evaluated.Healthy)
 		assert.Equal(t, 1.0, evaluated.SuccessRate)
 		assert.Greater(t, evaluated.AvgResponseTime, time.Duration(0))
@@ -194,7 +194,7 @@ func TestHealthCheckImplementation(t *testing.T) {
 		results.CheckResults[3].Success = false
 
 		evaluated = defaultCoordinator.evaluateHealthResults(results)
-		
+
 		assert.False(t, evaluated.Healthy) // Should be unhealthy because success rate < 75%
 		assert.Equal(t, 0.5, evaluated.SuccessRate)
 
@@ -202,7 +202,7 @@ func TestHealthCheckImplementation(t *testing.T) {
 		results.CheckResults[0].Success = false // AWS connectivity fails
 
 		evaluated = defaultCoordinator.evaluateHealthResults(results)
-		
+
 		assert.False(t, evaluated.Healthy) // Should be unhealthy due to critical check failure
 	})
 
@@ -266,31 +266,31 @@ func TestHealthCheckImplementation(t *testing.T) {
 
 func TestHealthCheckTypes(t *testing.T) {
 	config := &MultiRegionConfig{
-		Enabled: true,
+		Enabled:       true,
 		PrimaryRegion: "test-region",
 		Regions: []Region{
 			{
-				Name: "test-region",
+				Name:        "test-region",
 				DisplayName: "Test Region",
-				Status: RegionStatusHealthy,
-				Priority: 1,
-				Weight: 100,
+				Status:      RegionStatusHealthy,
+				Priority:    1,
+				Weight:      100,
 				HealthCheck: HealthCheckConfig{
-					Enabled: true,
-					Interval: time.Second * 30,
-					Timeout: time.Second * 2,
+					Enabled:          true,
+					Interval:         time.Second * 30,
+					Timeout:          time.Second * 2,
 					FailureThreshold: 3,
 					SuccessThreshold: 2,
 				},
 				Metrics: RegionMetrics{
-					CPUUtilization:    50.0,
-					MemoryUtilization: 40.0,
-					ActiveUploads:     10,
+					CPUUtilization:           50.0,
+					MemoryUtilization:        40.0,
+					ActiveUploads:            10,
 					ConsecutiveHealthyChecks: 5,
 				},
 				Capacity: RegionCapacity{
 					MaxConcurrentUploads: 100,
-					CurrentUtilization: 25.0,
+					CurrentUtilization:   25.0,
 				},
 			},
 		},
@@ -305,7 +305,7 @@ func TestHealthCheckTypes(t *testing.T) {
 
 	t.Run("TestCheckAWSConnectivity", func(t *testing.T) {
 		result := coordinator.checkAWSConnectivity(ctx, region)
-		
+
 		assert.Equal(t, "aws_connectivity", result.CheckType)
 		assert.NotNil(t, result.Details)
 		assert.Greater(t, result.ResponseTime, time.Duration(0))
@@ -315,7 +315,7 @@ func TestHealthCheckTypes(t *testing.T) {
 
 	t.Run("TestCheckS3ServiceHealth", func(t *testing.T) {
 		result := coordinator.checkS3ServiceHealth(ctx, region)
-		
+
 		assert.Equal(t, "s3_service_health", result.CheckType)
 		assert.NotNil(t, result.Details)
 		assert.True(t, result.Success) // Simulated success
@@ -324,7 +324,7 @@ func TestHealthCheckTypes(t *testing.T) {
 
 	t.Run("TestCheckRegionLatency", func(t *testing.T) {
 		result := coordinator.checkRegionLatency(ctx, region)
-		
+
 		assert.Equal(t, "region_latency", result.CheckType)
 		assert.True(t, result.Success) // Should succeed with fast execution
 		assert.Contains(t, result.Details, "latency_ms")
@@ -333,7 +333,7 @@ func TestHealthCheckTypes(t *testing.T) {
 
 	t.Run("TestCheckResourceCapacity", func(t *testing.T) {
 		result := coordinator.checkResourceCapacity(ctx, region)
-		
+
 		assert.Equal(t, "resource_capacity", result.CheckType)
 		assert.True(t, result.Success) // Should succeed with current test metrics
 		assert.Contains(t, result.Details, "cpu_utilization")

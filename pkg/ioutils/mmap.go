@@ -100,10 +100,10 @@ func NewMmapReader(file *os.File) (*MmapReader, error) {
 	// Use PROT_READ for read-only access, MAP_SHARED for shared mapping
 	data, err := syscall.Mmap(
 		int(file.Fd()),
-		0,                           // offset
-		int(size),                   // length
-		syscall.PROT_READ,           // protection
-		syscall.MAP_SHARED,          // flags
+		0,                  // offset
+		int(size),          // length
+		syscall.PROT_READ,  // protection
+		syscall.MAP_SHARED, // flags
 	)
 	if err != nil {
 		return nil, err

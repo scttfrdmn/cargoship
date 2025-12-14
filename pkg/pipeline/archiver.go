@@ -16,11 +16,10 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/ioutils"
 )
 
-
 // mmapCacheEntry represents a memory-mapped file in the cache
 type mmapCacheEntry struct {
-	reader  *ioutils.MmapReader
-	file    *os.File
+	reader   *ioutils.MmapReader
+	file     *os.File
 	refCount int32 // Reference count for cleanup
 }
 
@@ -86,15 +85,15 @@ func (p *EncoderPool) Close() error {
 
 // ArchiverStage creates streaming tar.zst archives
 type ArchiverStage struct {
-	config             *ArchiverConfig
-	input              <-chan *Job
-	output             chan<- *Job
-	pool               *WorkerPool
-	ctx                context.Context
-	cancel             context.CancelFunc
-	wg                 sync.WaitGroup
-	mu                 sync.RWMutex
-	stats              StageStats
+	config              *ArchiverConfig
+	input               <-chan *Job
+	output              chan<- *Job
+	pool                *WorkerPool
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	wg                  sync.WaitGroup
+	mu                  sync.RWMutex
+	stats               StageStats
 	compressionDetector *CompressionDetector
 
 	// Phase 5: Shared mmap cache for split files (one mmap per file, shared across all parts)
@@ -112,12 +111,12 @@ type ArchiverStage struct {
 	padder *chunking.ArchivePadder // Archive padder for adding zero-byte padding
 
 	// Atomic counters
-	jobsProcessed       int64
-	jobsFailed          int64
-	bytesProcessed      int64
-	filesSkipped        int64 // Files skipped due to pre-compression
+	jobsProcessed        int64
+	jobsFailed           int64
+	bytesProcessed       int64
+	filesSkipped         int64 // Files skipped due to pre-compression
 	compressionTimeSaved int64 // Estimated time saved (nanoseconds)
-	paddingBytesAdded   int64 // Total padding bytes added (Phase 3.3)
+	paddingBytesAdded    int64 // Total padding bytes added (Phase 3.3)
 }
 
 // NewArchiverStage creates a new archiver stage (single-output mode for Phase 2)
@@ -317,8 +316,8 @@ func (s *ArchiverStage) getMmapReader(path string) (*ioutils.MmapReader, bool, e
 
 	// Store in cache
 	entry := &mmapCacheEntry{
-		reader:  reader,
-		file:    file,
+		reader:   reader,
+		file:     file,
 		refCount: 1,
 	}
 	s.mmapCache.Store(path, entry)
@@ -594,11 +593,11 @@ func (s *ArchiverStage) worker(ctx context.Context) {
 
 // fileData represents a file that has been read into memory
 type fileData struct {
-	Path   string
-	Info   os.FileInfo
-	Data   []byte
-	Err    error
-	Done   chan struct{}
+	Path string
+	Info os.FileInfo
+	Data []byte
+	Err  error
+	Done chan struct{}
 
 	// Phase 5: Support for partial file reads
 	File chunking.File // Full file metadata including offset/length for splits
@@ -888,10 +887,10 @@ func (s *ArchiverStage) addFileToArchiveFromMemoryWithMetadata(tw *tar.Writer, f
 
 // StreamingArchiveReader wraps a pipe reader to track bytes read
 type StreamingArchiveReader struct {
-	reader      io.ReadCloser
-	bytesRead   int64
-	mu          sync.Mutex
-	onProgress  func(int64)
+	reader     io.ReadCloser
+	bytesRead  int64
+	mu         sync.Mutex
+	onProgress func(int64)
 }
 
 // NewStreamingArchiveReader creates a new streaming archive reader

@@ -473,7 +473,7 @@ func TestGetOptimalSettings(t *testing.T) {
 		settings := selector.getOptimalSettings(algorithm, contentProfile, networkCondition)
 		require.NotNil(t, settings)
 		assert.Equal(t, algorithm, settings.Algorithm)
-		
+
 		if algorithm != "none" {
 			assert.True(t, settings.Level >= 0)
 			assert.True(t, settings.WindowSize >= 0)

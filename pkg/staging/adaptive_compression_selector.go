@@ -9,13 +9,13 @@ import (
 // AdaptiveCompressionSelector provides intelligent compression algorithm selection
 // based on file types, content characteristics, network conditions, and performance history.
 type AdaptiveCompressionSelector struct {
-	compressionProfiles    map[string]*CompressionProfile    // Content type -> profile
-	algorithmPerformance   map[string]*AlgorithmPerformance  // Algorithm -> performance stats
-	fileTypeRules         map[string]*CompressionRule       // File extension -> rule
-	networkAdapters       map[string]*NetworkCompressionAdapter // Network type -> adapter
-	learningEngine        *CompressionLearningEngine
-	performancePredictor  *CompressionPerformancePredictor
-	contextualOptimizer   *ContextualCompressionOptimizer
+	compressionProfiles  map[string]*CompressionProfile        // Content type -> profile
+	algorithmPerformance map[string]*AlgorithmPerformance      // Algorithm -> performance stats
+	fileTypeRules        map[string]*CompressionRule           // File extension -> rule
+	networkAdapters      map[string]*NetworkCompressionAdapter // Network type -> adapter
+	learningEngine       *CompressionLearningEngine
+	performancePredictor *CompressionPerformancePredictor
+	contextualOptimizer  *ContextualCompressionOptimizer
 	realtimeMonitor      *RealtimeCompressionMonitor
 	config               *AdaptiveCompressionConfig
 	mu                   sync.RWMutex
@@ -24,61 +24,61 @@ type AdaptiveCompressionSelector struct {
 // AdaptiveCompressionConfig configures adaptive compression behavior.
 type AdaptiveCompressionConfig struct {
 	// Algorithm selection parameters
-	EnableLearning              bool          `yaml:"enable_learning" json:"enable_learning"`
-	EnableNetworkAdaptation     bool          `yaml:"enable_network_adaptation" json:"enable_network_adaptation"`
-	EnableContextualOptimization bool          `yaml:"enable_contextual_optimization" json:"enable_contextual_optimization"`
-	EnableRealtimeMonitoring    bool          `yaml:"enable_realtime_monitoring" json:"enable_realtime_monitoring"`
-	
+	EnableLearning               bool `yaml:"enable_learning" json:"enable_learning"`
+	EnableNetworkAdaptation      bool `yaml:"enable_network_adaptation" json:"enable_network_adaptation"`
+	EnableContextualOptimization bool `yaml:"enable_contextual_optimization" json:"enable_contextual_optimization"`
+	EnableRealtimeMonitoring     bool `yaml:"enable_realtime_monitoring" json:"enable_realtime_monitoring"`
+
 	// Performance thresholds
-	MinCompressionRatio         float64       `yaml:"min_compression_ratio" json:"min_compression_ratio"`
-	MaxCompressionTime          time.Duration `yaml:"max_compression_time" json:"max_compression_time"`
-	NetworkBandwidthThresholds  NetworkThresholds `yaml:"network_thresholds" json:"network_thresholds"`
-	
+	MinCompressionRatio        float64           `yaml:"min_compression_ratio" json:"min_compression_ratio"`
+	MaxCompressionTime         time.Duration     `yaml:"max_compression_time" json:"max_compression_time"`
+	NetworkBandwidthThresholds NetworkThresholds `yaml:"network_thresholds" json:"network_thresholds"`
+
 	// Learning parameters
-	LearningWindowSize          int           `yaml:"learning_window_size" json:"learning_window_size"`
-	MinSamplesForLearning       int           `yaml:"min_samples_for_learning" json:"min_samples_for_learning"`
-	PerformanceHistorySize      int           `yaml:"performance_history_size" json:"performance_history_size"`
-	
+	LearningWindowSize     int `yaml:"learning_window_size" json:"learning_window_size"`
+	MinSamplesForLearning  int `yaml:"min_samples_for_learning" json:"min_samples_for_learning"`
+	PerformanceHistorySize int `yaml:"performance_history_size" json:"performance_history_size"`
+
 	// Contextual optimization
-	EnableFileTypeSpecialization bool          `yaml:"enable_file_type_specialization" json:"enable_file_type_specialization"`
-	EnableSizeBasedOptimization bool          `yaml:"enable_size_based_optimization" json:"enable_size_based_optimization"`
-	EnableContentAnalysisOptimization bool    `yaml:"enable_content_analysis_optimization" json:"enable_content_analysis_optimization"`
+	EnableFileTypeSpecialization      bool `yaml:"enable_file_type_specialization" json:"enable_file_type_specialization"`
+	EnableSizeBasedOptimization       bool `yaml:"enable_size_based_optimization" json:"enable_size_based_optimization"`
+	EnableContentAnalysisOptimization bool `yaml:"enable_content_analysis_optimization" json:"enable_content_analysis_optimization"`
 }
 
 // DefaultAdaptiveCompressionConfig returns sensible defaults.
 func DefaultAdaptiveCompressionConfig() *AdaptiveCompressionConfig {
 	return &AdaptiveCompressionConfig{
-		EnableLearning:              true,
-		EnableNetworkAdaptation:     true,
+		EnableLearning:               true,
+		EnableNetworkAdaptation:      true,
 		EnableContextualOptimization: true,
-		EnableRealtimeMonitoring:    true,
-		MinCompressionRatio:         0.05,
-		MaxCompressionTime:          time.Second * 30,
+		EnableRealtimeMonitoring:     true,
+		MinCompressionRatio:          0.05,
+		MaxCompressionTime:           time.Second * 30,
 		NetworkBandwidthThresholds: NetworkThresholds{
-			LowBandwidth:    1.0,   // < 1 MB/s
-			MediumBandwidth: 10.0,  // 1-10 MB/s  
-			HighBandwidth:   50.0,  // > 10 MB/s
+			LowBandwidth:    1.0,  // < 1 MB/s
+			MediumBandwidth: 10.0, // 1-10 MB/s
+			HighBandwidth:   50.0, // > 10 MB/s
 		},
-		LearningWindowSize:         1000,
-		MinSamplesForLearning:      10,
-		PerformanceHistorySize:     5000,
-		EnableFileTypeSpecialization: true,
-		EnableSizeBasedOptimization: true,
+		LearningWindowSize:                1000,
+		MinSamplesForLearning:             10,
+		PerformanceHistorySize:            5000,
+		EnableFileTypeSpecialization:      true,
+		EnableSizeBasedOptimization:       true,
 		EnableContentAnalysisOptimization: true,
 	}
 }
 
 // CompressionProfile defines compression characteristics for a content type.
 type CompressionProfile struct {
-	ContentType              string
-	PreferredAlgorithms      []string                        // Ordered by preference
-	AlgorithmEffectiveness   map[string]*EffectivenessMetrics // Algorithm -> metrics
-	FileTypeRules            []*FileTypeRule                 // Specific rules for file types
-	ContentPatternRules      []*PatternRule                  // Rules based on content patterns
-	SizeThresholds           *SizeBasedRules                 // Size-based algorithm selection
-	NetworkOptimizations     *NetworkOptimizationRules       // Network-specific optimizations
-	LastUpdated              time.Time
-	SampleCount              int64
+	ContentType            string
+	PreferredAlgorithms    []string                         // Ordered by preference
+	AlgorithmEffectiveness map[string]*EffectivenessMetrics // Algorithm -> metrics
+	FileTypeRules          []*FileTypeRule                  // Specific rules for file types
+	ContentPatternRules    []*PatternRule                   // Rules based on content patterns
+	SizeThresholds         *SizeBasedRules                  // Size-based algorithm selection
+	NetworkOptimizations   *NetworkOptimizationRules        // Network-specific optimizations
+	LastUpdated            time.Time
+	SampleCount            int64
 }
 
 // AlgorithmPerformance tracks performance metrics for compression algorithms.
@@ -99,10 +99,10 @@ type AlgorithmPerformance struct {
 // CompressionRule defines rules for compression algorithm selection.
 type CompressionRule struct {
 	Name                    string
-	Priority                int                    // Higher priority rules take precedence
-	Conditions              []*RuleCondition       // Conditions that must be met
-	RecommendedAlgorithm    string                 // Algorithm to use when conditions met
-	FallbackAlgorithms      []string               // Fallback options
+	Priority                int              // Higher priority rules take precedence
+	Conditions              []*RuleCondition // Conditions that must be met
+	RecommendedAlgorithm    string           // Algorithm to use when conditions met
+	FallbackAlgorithms      []string         // Fallback options
 	PerformanceRequirements *PerformanceRequirements
 	ApplicableFileTypes     []string
 	ApplicableNetworkTypes  []string
@@ -111,14 +111,14 @@ type CompressionRule struct {
 
 // CompressionDecision represents the result of algorithm selection.
 type CompressionDecision struct {
-	SelectedAlgorithm       string
-	Confidence              float64
-	ReasoningChain          []string
-	PredictedPerformance    *PredictedPerformance
-	AlternativeOptions      []*AlgorithmOption
-	RecommendedSettings     *CompressionSettings
-	ContextualFactors       *ContextualFactors
-	DecisionMetadata        map[string]interface{}
+	SelectedAlgorithm    string
+	Confidence           float64
+	ReasoningChain       []string
+	PredictedPerformance *PredictedPerformance
+	AlternativeOptions   []*AlgorithmOption
+	RecommendedSettings  *CompressionSettings
+	ContextualFactors    *ContextualFactors
+	DecisionMetadata     map[string]interface{}
 }
 
 // NewAdaptiveCompressionSelector creates a new adaptive compression selector.
@@ -139,20 +139,20 @@ func NewAdaptiveCompressionSelector(config *AdaptiveCompressionConfig) *Adaptive
 	if config.EnableLearning {
 		selector.learningEngine = NewCompressionLearningEngine(config)
 	}
-	
+
 	selector.performancePredictor = NewCompressionPerformancePredictor(config)
-	
+
 	if config.EnableContextualOptimization {
 		selector.contextualOptimizer = NewContextualCompressionOptimizer(config)
 	}
-	
+
 	if config.EnableRealtimeMonitoring {
 		selector.realtimeMonitor = NewRealtimeCompressionMonitor(config)
 	}
 
 	// Initialize default compression profiles
 	selector.initializeDefaultProfiles()
-	
+
 	// Initialize default file type rules
 	selector.initializeFileTypeRules()
 
@@ -166,7 +166,7 @@ func (acs *AdaptiveCompressionSelector) SelectCompressionAlgorithm(
 	networkCondition *NetworkCondition,
 	context *CompressionContext,
 ) (*CompressionDecision, error) {
-	
+
 	acs.mu.RLock()
 	defer acs.mu.RUnlock()
 
@@ -178,7 +178,7 @@ func (acs *AdaptiveCompressionSelector) SelectCompressionAlgorithm(
 
 	// Step 1: Get content type-based profile
 	profile := acs.getCompressionProfile(contentProfile.ContentType)
-	decision.ReasoningChain = append(decision.ReasoningChain, 
+	decision.ReasoningChain = append(decision.ReasoningChain,
 		fmt.Sprintf("Retrieved compression profile for content type: %s", contentProfile.ContentType))
 
 	// Step 2: Apply file type specific rules
@@ -212,7 +212,7 @@ func (acs *AdaptiveCompressionSelector) SelectCompressionAlgorithm(
 
 	// Step 6: Combine all recommendations using weighted decision making
 	finalAlgorithm := acs.combineRecommendations(
-		profile, fileTypeAlgorithm, networkOptimization, 
+		profile, fileTypeAlgorithm, networkOptimization,
 		mlRecommendation, contextualRecommendation, context)
 
 	decision.SelectedAlgorithm = finalAlgorithm
@@ -229,14 +229,14 @@ func (acs *AdaptiveCompressionSelector) SelectCompressionAlgorithm(
 
 	// Capture contextual factors
 	decision.ContextualFactors = &ContextualFactors{
-		FileSize:          context.FileSize,
-		ContentEntropy:    contentProfile.Entropy,
-		NetworkLatency:    networkCondition.LatencyMs,
-		NetworkBandwidth:  networkCondition.BandwidthMBps,
+		FileSize:           context.FileSize,
+		ContentEntropy:     contentProfile.Entropy,
+		NetworkLatency:     networkCondition.LatencyMs,
+		NetworkBandwidth:   networkCondition.BandwidthMBps,
 		NetworkReliability: networkCondition.Reliability,
-		SystemLoad:        context.SystemLoad,
-		MemoryAvailable:   context.AvailableMemoryMB,
-		Priority:          context.Priority,
+		SystemLoad:         context.SystemLoad,
+		MemoryAvailable:    context.AvailableMemoryMB,
+		Priority:           context.Priority,
 	}
 
 	decision.ReasoningChain = append(decision.ReasoningChain,
@@ -344,7 +344,7 @@ func (acs *AdaptiveCompressionSelector) initializeFileTypeRules() {
 			Enabled:              true,
 		},
 		".xml": {
-			Name:                 "XML File Rule", 
+			Name:                 "XML File Rule",
 			Priority:             95,
 			RecommendedAlgorithm: "zstd-high",
 			FallbackAlgorithms:   []string{"zstd"},
@@ -414,11 +414,11 @@ func (acs *AdaptiveCompressionSelector) applyFileTypeRules(fileName, fileExtensi
 
 // analyzeNetworkOptimization analyzes network conditions for optimal compression.
 func (acs *AdaptiveCompressionSelector) analyzeNetworkOptimization(
-	networkCondition *NetworkCondition, 
+	networkCondition *NetworkCondition,
 	contentProfile *ContentProfile) *NetworkOptimization {
-	
+
 	optimization := &NetworkOptimization{}
-	
+
 	// High bandwidth - favor speed over compression ratio
 	if networkCondition.BandwidthMBps > acs.config.NetworkBandwidthThresholds.HighBandwidth {
 		optimization.Strategy = "speed-optimized"
@@ -455,7 +455,7 @@ func (acs *AdaptiveCompressionSelector) combineRecommendations(
 	contextualRecommendation *ContextualRecommendation,
 	context *CompressionContext,
 ) string {
-	
+
 	// Weight different recommendation sources
 	algorithmScores := make(map[string]float64)
 
@@ -516,7 +516,7 @@ func (acs *AdaptiveCompressionSelector) calculateConfidence(
 	networkCondition *NetworkCondition,
 ) float64 {
 	baseConfidence := 0.5
-	
+
 	// Higher confidence for well-known content types
 	if profile := acs.compressionProfiles[contentProfile.ContentType]; profile != nil {
 		if profile.SampleCount > 100 {
@@ -552,7 +552,7 @@ func (acs *AdaptiveCompressionSelector) generateAlternativeOptions(
 	networkCondition *NetworkCondition,
 	context *CompressionContext,
 ) []*AlgorithmOption {
-	
+
 	alternatives := make([]*AlgorithmOption, 0)
 	profile := acs.getCompressionProfile(contentProfile.ContentType)
 
@@ -560,7 +560,7 @@ func (acs *AdaptiveCompressionSelector) generateAlternativeOptions(
 		if algorithm != selectedAlgorithm {
 			predictedPerf := acs.performancePredictor.PredictPerformance(
 				algorithm, contentProfile, networkCondition)
-			
+
 			alternatives = append(alternatives, &AlgorithmOption{
 				Algorithm:   algorithm,
 				Confidence:  0.7, // Default confidence for alternatives
@@ -579,7 +579,7 @@ func (acs *AdaptiveCompressionSelector) getOptimalSettings(
 	contentProfile *ContentProfile,
 	networkCondition *NetworkCondition,
 ) *CompressionSettings {
-	
+
 	settings := &CompressionSettings{
 		Algorithm: algorithm,
 	}
@@ -629,11 +629,11 @@ func (acs *AdaptiveCompressionSelector) updateAlgorithmPerformance(result *Compr
 	perf, exists := acs.algorithmPerformance[result.Algorithm]
 	if !exists {
 		perf = &AlgorithmPerformance{
-			Algorithm:           result.Algorithm,
-			NetworkPerformance:  make(map[string]*NetworkPerformanceMetrics),
-			FileTypePerformance: make(map[string]*FileTypePerformanceMetrics),
+			Algorithm:            result.Algorithm,
+			NetworkPerformance:   make(map[string]*NetworkPerformanceMetrics),
+			FileTypePerformance:  make(map[string]*FileTypePerformanceMetrics),
 			SizeRangePerformance: make(map[string]*SizeRangePerformanceMetrics),
-			RecentPerformance:   make([]*PerformanceDataPoint, 0),
+			RecentPerformance:    make([]*PerformanceDataPoint, 0),
 		}
 		acs.algorithmPerformance[result.Algorithm] = perf
 	}
@@ -643,7 +643,7 @@ func (acs *AdaptiveCompressionSelector) updateAlgorithmPerformance(result *Compr
 	perf.AverageCompressionRatio = (perf.AverageCompressionRatio*count + result.CompressionRatio) / (count + 1)
 	perf.AverageSpeedMBps = (perf.AverageSpeedMBps*count + result.SpeedMBps) / (count + 1)
 	perf.AverageMemoryUsageMB = (perf.AverageMemoryUsageMB*count + result.MemoryUsageMB) / (count + 1)
-	
+
 	// Update success rate
 	if result.Success {
 		perf.SuccessRate = (perf.SuccessRate*count + 1.0) / (count + 1)
@@ -662,7 +662,7 @@ func (acs *AdaptiveCompressionSelector) updateAlgorithmPerformance(result *Compr
 		MemoryUsageMB:    result.MemoryUsageMB,
 		Success:          result.Success,
 	}
-	
+
 	perf.RecentPerformance = append(perf.RecentPerformance, dataPoint)
 	if len(perf.RecentPerformance) > 100 {
 		perf.RecentPerformance = perf.RecentPerformance[1:]
@@ -672,27 +672,27 @@ func (acs *AdaptiveCompressionSelector) updateAlgorithmPerformance(result *Compr
 // updateCompressionProfile updates the compression profile based on results.
 func (acs *AdaptiveCompressionSelector) updateCompressionProfile(result *CompressionResult) {
 	profile := acs.getCompressionProfile(result.ContentType)
-	
+
 	// Update algorithm effectiveness
 	if profile.AlgorithmEffectiveness == nil {
 		profile.AlgorithmEffectiveness = make(map[string]*EffectivenessMetrics)
 	}
-	
+
 	effectiveness, exists := profile.AlgorithmEffectiveness[result.Algorithm]
 	if !exists {
 		effectiveness = &EffectivenessMetrics{}
 		profile.AlgorithmEffectiveness[result.Algorithm] = effectiveness
 	}
-	
+
 	// Update metrics using exponential moving average
 	alpha := 0.1 // Learning rate
 	effectiveness.CompressionRatio = (1-alpha)*effectiveness.CompressionRatio + alpha*result.CompressionRatio
 	effectiveness.Speed = (1-alpha)*effectiveness.Speed + alpha*result.SpeedMBps
 	effectiveness.MemoryUsage = (1-alpha)*effectiveness.MemoryUsage + alpha*result.MemoryUsageMB
-	
+
 	profile.SampleCount++
 	profile.LastUpdated = time.Now()
-	
+
 	// Store back to map
 	acs.compressionProfiles[result.ContentType] = profile
 }
@@ -701,7 +701,7 @@ func (acs *AdaptiveCompressionSelector) updateCompressionProfile(result *Compres
 func (acs *AdaptiveCompressionSelector) GetAlgorithmPerformance(algorithm string) *AlgorithmPerformance {
 	acs.mu.RLock()
 	defer acs.mu.RUnlock()
-	
+
 	if perf, exists := acs.algorithmPerformance[algorithm]; exists {
 		return perf
 	}
@@ -712,7 +712,7 @@ func (acs *AdaptiveCompressionSelector) GetAlgorithmPerformance(algorithm string
 func (acs *AdaptiveCompressionSelector) GetCompressionProfile(contentType string) *CompressionProfile {
 	acs.mu.RLock()
 	defer acs.mu.RUnlock()
-	
+
 	return acs.getCompressionProfile(contentType)
 }
 
@@ -720,7 +720,7 @@ func (acs *AdaptiveCompressionSelector) GetCompressionProfile(contentType string
 func (acs *AdaptiveCompressionSelector) UpdateCompressionRule(extension string, rule *CompressionRule) {
 	acs.mu.Lock()
 	defer acs.mu.Unlock()
-	
+
 	acs.fileTypeRules[extension] = rule
 }
 
@@ -728,7 +728,7 @@ func (acs *AdaptiveCompressionSelector) UpdateCompressionRule(extension string, 
 func (acs *AdaptiveCompressionSelector) ClearPerformanceHistory() {
 	acs.mu.Lock()
 	defer acs.mu.Unlock()
-	
+
 	for _, perf := range acs.algorithmPerformance {
 		perf.RecentPerformance = make([]*PerformanceDataPoint, 0)
 	}
@@ -752,42 +752,42 @@ type EffectivenessMetrics struct {
 
 // Additional supporting types will be implemented in separate files for better organization
 type (
-	FileTypeRule                   struct{}
-	PatternRule                    struct{}
-	SizeBasedRules                 struct{}
-	NetworkOptimizationRules       struct{}
-	NetworkPerformanceMetrics      struct{}
-	FileTypePerformanceMetrics     struct{}
-	SizeRangePerformanceMetrics    struct{}
-	PerformanceDataPoint           struct {
+	FileTypeRule                struct{}
+	PatternRule                 struct{}
+	SizeBasedRules              struct{}
+	NetworkOptimizationRules    struct{}
+	NetworkPerformanceMetrics   struct{}
+	FileTypePerformanceMetrics  struct{}
+	SizeRangePerformanceMetrics struct{}
+	PerformanceDataPoint        struct {
 		Timestamp        time.Time
 		CompressionRatio float64
 		SpeedMBps        float64
 		MemoryUsageMB    float64
 		Success          bool
 	}
-	RuleCondition                  struct{}
-	PerformanceRequirements        struct{}
-	PredictedPerformance           struct {
+	RuleCondition           struct{}
+	PerformanceRequirements struct{}
+	PredictedPerformance    struct {
 		EstimatedCompressionRatio float64
 		EstimatedSpeedMBps        float64
 		EstimatedMemoryUsageMB    float64
 		EstimatedCompressionTime  time.Duration
 		Confidence                float64
 	}
-	AlgorithmOption                struct {
+	AlgorithmOption struct {
 		Algorithm   string
 		Confidence  float64
 		Performance *PredictedPerformance
 		Reasoning   string
 	}
-	CompressionSettings            struct {
+	CompressionSettings struct {
 		Algorithm   string
 		Level       int
 		WindowSize  int
 		ThreadCount int
 	}
-	ContextualFactors              struct {
+	ContextualFactors struct {
 		FileSize           int64
 		ContentEntropy     float64
 		NetworkLatency     float64
@@ -797,7 +797,7 @@ type (
 		MemoryAvailable    int64
 		Priority           int
 	}
-	CompressionContext             struct {
+	CompressionContext struct {
 		FileName          string
 		FileExtension     string
 		FileSize          int64
@@ -806,22 +806,22 @@ type (
 		Priority          int
 		Deadline          time.Time
 	}
-	NetworkOptimization            struct {
+	NetworkOptimization struct {
 		Strategy            string
 		PreferredAlgorithms []string
 		Reasoning           string
 	}
-	MLRecommendation               struct {
+	MLRecommendation struct {
 		Algorithm  string
 		Confidence float64
 		Reasoning  []string
 	}
-	ContextualRecommendation       struct {
+	ContextualRecommendation struct {
 		Algorithm string
 		Weight    float64
 		Factors   []string
 	}
-	CompressionResult              struct {
+	CompressionResult struct {
 		Algorithm        string
 		ContentType      string
 		FileSize         int64

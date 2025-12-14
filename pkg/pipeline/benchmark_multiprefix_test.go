@@ -21,9 +21,10 @@ import (
 // This benchmark REQUIRES real AWS S3 to accurately measure the partition-level parallelism effect.
 //
 // Run with:
-// CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1 CARGOSHIP_TEST_BUCKET=cargoship-pipeline-test \
-//   AWS_PROFILE=aws AWS_REGION=us-west-2 go test -tags=benchmark \
-//   -bench=BenchmarkPipeline_MultiPrefixComparison -benchtime=1x -timeout=30m ./pkg/pipeline
+//
+//	CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1 CARGOSHIP_TEST_BUCKET=cargoship-pipeline-test \
+//	  AWS_PROFILE=aws AWS_REGION=us-west-2 go test -tags=benchmark \
+//	  -bench=BenchmarkPipeline_MultiPrefixComparison -benchtime=1x -timeout=30m ./pkg/pipeline
 func BenchmarkPipeline_MultiPrefixComparison(b *testing.B) {
 	// CRITICAL: Ensure no other benchmarks are running concurrently
 	// Concurrent benchmarks will invalidate results
@@ -126,11 +127,11 @@ func BenchmarkPipeline_MultiPrefixComparison(b *testing.B) {
 
 	// Store results for comparison
 	type BenchmarkResult struct {
-		Name         string
-		Duration     time.Duration
-		ThroughputMB float64
+		Name          string
+		Duration      time.Duration
+		ThroughputMB  float64
 		ChunksCreated int
-		MemoryUsedMB float64
+		MemoryUsedMB  float64
 	}
 	var results []BenchmarkResult
 
@@ -191,11 +192,11 @@ func BenchmarkPipeline_MultiPrefixComparison(b *testing.B) {
 
 				// Store result
 				results = append(results, BenchmarkResult{
-					Name:         tc.name,
-					Duration:     duration,
-					ThroughputMB: throughputMBps,
+					Name:          tc.name,
+					Duration:      duration,
+					ThroughputMB:  throughputMBps,
 					ChunksCreated: result.ChunksCreated,
-					MemoryUsedMB: memUsedMB,
+					MemoryUsedMB:  memUsedMB,
 				})
 
 				// Report results

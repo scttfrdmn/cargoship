@@ -23,9 +23,10 @@ import (
 // was too small to show the expected 5-8x improvement.
 //
 // Run with (SINGLE TEST ONLY - DO NOT RUN MULTIPLE BENCHMARKS CONCURRENTLY):
-// CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1 CARGOSHIP_TEST_BUCKET=cargoship-pipeline-test \
-//   AWS_PROFILE=aws AWS_REGION=us-west-2 go test -v -tags=benchmark \
-//   -run='^$' -bench=BenchmarkPipeline_LargeScale_MultiPrefix -benchtime=1x -timeout=60m ./pkg/pipeline
+//
+//	CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1 CARGOSHIP_TEST_BUCKET=cargoship-pipeline-test \
+//	  AWS_PROFILE=aws AWS_REGION=us-west-2 go test -v -tags=benchmark \
+//	  -run='^$' -bench=BenchmarkPipeline_LargeScale_MultiPrefix -benchtime=1x -timeout=60m ./pkg/pipeline
 func BenchmarkPipeline_LargeScale_MultiPrefix(b *testing.B) {
 	// CRITICAL: Ensure no other benchmarks are running concurrently
 	// Concurrent benchmarks will invalidate results

@@ -169,8 +169,8 @@ KQ7wKp7Rq3F5X8vJYpvWxL2N5M3KqF6vQzL8X9Y4F2K5T6M1A3N8Z7Q==
 	// Error could occur at various stages depending on input
 	assert.True(t,
 		err.Error() == "public key is not RSA type" ||
-		err.Error() == "failed to decode PEM public key" ||
-		err.Error() == "signature verification failed: crypto/rsa: verification error",
+			err.Error() == "failed to decode PEM public key" ||
+			err.Error() == "signature verification failed: crypto/rsa: verification error",
 		"Should fail with appropriate error for non-RSA key")
 }
 

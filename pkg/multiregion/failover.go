@@ -416,7 +416,7 @@ func (f *DefaultFailoverManager) executeGracefulFailover(operation *FailoverOper
 	f.logger.Info("Starting graceful traffic drain",
 		"region", operation.FromRegion,
 		"drain_period", drainPeriod)
-	
+
 	if err := f.startGradualTrafficReduction(operation.FromRegion, drainPeriod); err != nil {
 		f.logger.Warn("Failed to start gradual traffic reduction",
 			"region", operation.FromRegion,
@@ -427,17 +427,17 @@ func (f *DefaultFailoverManager) executeGracefulFailover(operation *FailoverOper
 	// Step 2: Monitor and wait for active transfers to complete
 	completionTimeout := time.NewTicker(5 * time.Second)
 	defer completionTimeout.Stop()
-	
+
 	drainTimer := time.NewTimer(drainPeriod)
 	defer drainTimer.Stop()
-	
+
 	drainComplete := false
 	for !drainComplete {
 		select {
 		case <-operation.Context.Done():
 			f.logger.Info("Graceful failover cancelled", "operation_id", operation.ID)
 			return operation.Context.Err()
-			
+
 		case <-completionTimeout.C:
 			// Check if active transfers have completed
 			activeCount, err := f.getActiveTransferCount(operation.FromRegion)
@@ -447,17 +447,17 @@ func (f *DefaultFailoverManager) executeGracefulFailover(operation *FailoverOper
 					"error", err)
 				continue
 			}
-			
+
 			f.logger.Debug("Monitoring active transfers during drain",
 				"region", operation.FromRegion,
 				"active_transfers", activeCount)
-				
+
 			if activeCount == 0 {
 				f.logger.Info("All active transfers completed",
 					"region", operation.FromRegion)
 				drainComplete = true
 			}
-			
+
 		case <-drainTimer.C:
 			f.logger.Info("Drain period completed",
 				"region", operation.FromRegion,
@@ -466,7 +466,7 @@ func (f *DefaultFailoverManager) executeGracefulFailover(operation *FailoverOper
 		}
 	}
 
-	// Step 3: Complete traffic cutover to target region  
+	// Step 3: Complete traffic cutover to target region
 	if err := f.completeTrafficCutover(operation.FromRegion, operation.ToRegion); err != nil {
 		f.logger.Error("Failed to complete traffic cutover",
 			"from_region", operation.FromRegion,
@@ -564,7 +564,7 @@ executeFailover:
 	// Step 4: Execute the approved failover using graceful strategy
 	f.logger.Info("Executing approved manual failover",
 		"operation_id", operation.ID)
-	
+
 	// Use graceful failover for manual failovers to minimize disruption
 	if err := f.executeGracefulFailover(operation); err != nil {
 		f.logger.Error("Failed to execute manual failover",
@@ -576,7 +576,7 @@ executeFailover:
 
 	// Step 5: Send confirmation of successful failover
 	f.sendManualFailoverSuccess(operation)
-	
+
 	f.logger.Info("Manual failover completed successfully",
 		"operation_id", operation.ID,
 		"from_region", operation.FromRegion,
@@ -648,16 +648,16 @@ func (f *DefaultFailoverManager) IsRegionInFailover(regionName string) bool {
 // stopTrafficToRegion immediately stops routing traffic to the specified region
 func (f *DefaultFailoverManager) stopTrafficToRegion(regionName string) error {
 	f.logger.Info("Stopping traffic to region", "region", regionName)
-	
+
 	// In a production implementation, this would:
 	// 1. Update load balancer configurations
 	// 2. Update DNS records if applicable
 	// 3. Signal traffic routers to stop sending requests
 	// 4. Update internal routing tables
-	
+
 	// Simulate the operation
 	time.Sleep(10 * time.Millisecond)
-	
+
 	f.logger.Info("Successfully stopped traffic to region", "region", regionName)
 	return nil
 }
@@ -665,35 +665,35 @@ func (f *DefaultFailoverManager) stopTrafficToRegion(regionName string) error {
 // redirectTrafficToRegion redirects traffic to the specified target region
 func (f *DefaultFailoverManager) redirectTrafficToRegion(regionName string) error {
 	f.logger.Info("Redirecting traffic to region", "region", regionName)
-	
+
 	// In a production implementation, this would:
 	// 1. Update load balancer to route traffic to target region
 	// 2. Increase capacity allocation for target region
 	// 3. Update health check configurations
 	// 4. Signal traffic routers about new destination
-	
+
 	// Simulate the operation
 	time.Sleep(10 * time.Millisecond)
-	
+
 	f.logger.Info("Successfully redirected traffic to region", "region", regionName)
 	return nil
 }
 
 // updateRegionStatus updates the operational status of a region
 func (f *DefaultFailoverManager) updateRegionStatus(regionName, status string) error {
-	f.logger.Info("Updating region status", 
-		"region", regionName, 
+	f.logger.Info("Updating region status",
+		"region", regionName,
 		"status", status)
-	
+
 	// In a production implementation, this would:
 	// 1. Update internal state management systems
 	// 2. Send status updates to monitoring systems
 	// 3. Update health check configurations
 	// 4. Notify other services of status change
-	
+
 	// Simulate the operation
 	time.Sleep(5 * time.Millisecond)
-	
+
 	return nil
 }
 
@@ -702,16 +702,16 @@ func (f *DefaultFailoverManager) updateLoadBalancerWeights(fromRegion, toRegion 
 	f.logger.Info("Updating load balancer weights",
 		"from_region", fromRegion,
 		"to_region", toRegion)
-	
+
 	// In a production implementation, this would:
 	// 1. Set failed region weight to 0
 	// 2. Increase target region weight
 	// 3. Update load balancer configuration
 	// 4. Wait for configuration propagation
-	
+
 	// Simulate the operation
 	time.Sleep(5 * time.Millisecond)
-	
+
 	return nil
 }
 
@@ -720,16 +720,16 @@ func (f *DefaultFailoverManager) startGradualTrafficReduction(regionName string,
 	f.logger.Info("Starting gradual traffic reduction",
 		"region", regionName,
 		"drain_period", drainPeriod)
-	
+
 	// In a production implementation, this would:
 	// 1. Calculate gradual weight reduction steps
 	// 2. Set up periodic weight updates
 	// 3. Monitor traffic levels during reduction
 	// 4. Coordinate with load balancers for smooth transition
-	
+
 	// Simulate starting the gradual reduction
 	time.Sleep(5 * time.Millisecond)
-	
+
 	return nil
 }
 
@@ -740,7 +740,7 @@ func (f *DefaultFailoverManager) getActiveTransferCount(regionName string) (int,
 	// 2. Check connection pools for active connections
 	// 3. Monitor in-flight requests
 	// 4. Return accurate count of ongoing transfers
-	
+
 	// For testing/simulation purposes, return 0 to indicate no active transfers
 	// In a real implementation, this would query actual transfer tracking systems
 	return 0, nil
@@ -751,16 +751,16 @@ func (f *DefaultFailoverManager) completeTrafficCutover(fromRegion, toRegion str
 	f.logger.Info("Completing traffic cutover",
 		"from_region", fromRegion,
 		"to_region", toRegion)
-	
+
 	// In a production implementation, this would:
 	// 1. Finalize load balancer configurations
 	// 2. Update DNS if needed
 	// 3. Complete capacity allocation changes
 	// 4. Verify traffic is flowing to target region
-	
+
 	// Simulate the cutover completion
 	time.Sleep(5 * time.Millisecond)
-	
+
 	return nil
 }
 
@@ -771,14 +771,14 @@ func (f *DefaultFailoverManager) notifyFailoverComplete(operation *FailoverOpera
 		"type", failoverType,
 		"from_region", operation.FromRegion,
 		"to_region", operation.ToRegion)
-	
+
 	// In a production implementation, this would:
 	// 1. Send alerts to monitoring systems (PagerDuty, OpsGenie, etc.)
 	// 2. Update status dashboards
 	// 3. Send notifications to operations teams
 	// 4. Log to audit systems
 	// 5. Update incident tracking systems
-	
+
 	// Simulate notifications
 	go func() {
 		time.Sleep(5 * time.Millisecond)
@@ -793,16 +793,16 @@ func (f *DefaultFailoverManager) notifyFailoverComplete(operation *FailoverOpera
 func (f *DefaultFailoverManager) sendManualFailoverNotification(operation *FailoverOperation) error {
 	f.logger.Info("Sending manual failover notification to administrators",
 		"operation_id", operation.ID)
-	
+
 	// In a production implementation, this would:
 	// 1. Send email/SMS/Slack notifications to on-call engineers
 	// 2. Create incident tickets
 	// 3. Update operational dashboards
 	// 4. Send to notification services (PagerDuty, OpsGenie)
-	
+
 	// Simulate sending notifications
 	time.Sleep(10 * time.Millisecond)
-	
+
 	return nil
 }
 
@@ -813,7 +813,7 @@ func (f *DefaultFailoverManager) checkManualApproval(operationID string) (bool, 
 	// 2. Verify administrator approval
 	// 3. Check approval permissions and authorization
 	// 4. Return approval status
-	
+
 	// For simulation purposes, we'll return false to demonstrate the timeout behavior
 	// In real implementation, this would check an actual approval system
 	return false, nil
@@ -823,7 +823,7 @@ func (f *DefaultFailoverManager) checkManualApproval(operationID string) (bool, 
 func (f *DefaultFailoverManager) sendManualFailoverCancellation(operation *FailoverOperation) {
 	f.logger.Info("Sending manual failover cancellation notification",
 		"operation_id", operation.ID)
-	
+
 	// Send cancellation notifications to administrators
 }
 
@@ -831,7 +831,7 @@ func (f *DefaultFailoverManager) sendManualFailoverCancellation(operation *Failo
 func (f *DefaultFailoverManager) sendManualFailoverTimeout(operation *FailoverOperation) {
 	f.logger.Warn("Sending manual failover timeout notification",
 		"operation_id", operation.ID)
-	
+
 	// Send timeout notifications to administrators
 }
 
@@ -840,7 +840,7 @@ func (f *DefaultFailoverManager) sendManualFailoverFailure(operation *FailoverOp
 	f.logger.Error("Sending manual failover failure notification",
 		"operation_id", operation.ID,
 		"error", err)
-	
+
 	// Send failure notifications to administrators
 }
 
@@ -848,6 +848,6 @@ func (f *DefaultFailoverManager) sendManualFailoverFailure(operation *FailoverOp
 func (f *DefaultFailoverManager) sendManualFailoverSuccess(operation *FailoverOperation) {
 	f.logger.Info("Sending manual failover success notification",
 		"operation_id", operation.ID)
-	
+
 	// Send success notifications to administrators
 }

@@ -30,21 +30,21 @@ type BurnRateAnalysis struct {
 	CurrentMonthlyRate float64 `json:"current_monthly_rate"` // $/month
 
 	// Historical burn rate statistics
-	AverageDailyRate  float64 `json:"average_daily_rate"`
-	MinDailyRate      float64 `json:"min_daily_rate"`
-	MaxDailyRate      float64 `json:"max_daily_rate"`
-	StdDevDailyRate   float64 `json:"std_dev_daily_rate"`
-	Volatility        float64 `json:"volatility"` // Coefficient of variation (stddev/mean)
+	AverageDailyRate float64 `json:"average_daily_rate"`
+	MinDailyRate     float64 `json:"min_daily_rate"`
+	MaxDailyRate     float64 `json:"max_daily_rate"`
+	StdDevDailyRate  float64 `json:"std_dev_daily_rate"`
+	Volatility       float64 `json:"volatility"` // Coefficient of variation (stddev/mean)
 
 	// Burn rate trends
-	TrendDirection string  `json:"trend_direction"` // "increasing", "decreasing", "stable"
-	TrendStrength  float64 `json:"trend_strength"`  // 0.0 to 1.0
+	TrendDirection   string  `json:"trend_direction"`   // "increasing", "decreasing", "stable"
+	TrendStrength    float64 `json:"trend_strength"`    // 0.0 to 1.0
 	AccelerationRate float64 `json:"acceleration_rate"` // Change in burn rate per day
 
 	// Forecasted burn rates
-	PredictedDailyRate30Days  float64 `json:"predicted_daily_rate_30_days"`
-	PredictedDailyRate60Days  float64 `json:"predicted_daily_rate_60_days"`
-	PredictedDailyRate90Days  float64 `json:"predicted_daily_rate_90_days"`
+	PredictedDailyRate30Days float64 `json:"predicted_daily_rate_30_days"`
+	PredictedDailyRate60Days float64 `json:"predicted_daily_rate_60_days"`
+	PredictedDailyRate90Days float64 `json:"predicted_daily_rate_90_days"`
 
 	// Confidence intervals (90%, 95%, 99%)
 	ConfidenceIntervals map[int]*ConfidenceInterval `json:"confidence_intervals"`
@@ -60,12 +60,12 @@ type ConfidenceInterval struct {
 
 // CostForecast represents predicted future costs
 type CostForecast struct {
-	Model           ForecastModel `json:"model"`
-	GeneratedAt     time.Time     `json:"generated_at"`
-	ForecastDays    int           `json:"forecast_days"`
-	BaseCost        float64       `json:"base_cost"`        // Current total cost
-	BaseDate        time.Time     `json:"base_date"`        // Date from which forecast is calculated
-	HistoricalDays  int           `json:"historical_days"`  // Days of historical data used
+	Model          ForecastModel `json:"model"`
+	GeneratedAt    time.Time     `json:"generated_at"`
+	ForecastDays   int           `json:"forecast_days"`
+	BaseCost       float64       `json:"base_cost"`       // Current total cost
+	BaseDate       time.Time     `json:"base_date"`       // Date from which forecast is calculated
+	HistoricalDays int           `json:"historical_days"` // Days of historical data used
 
 	// Predicted costs at specific time points
 	Predicted7Days  float64 `json:"predicted_7_days"`
@@ -83,15 +83,15 @@ type CostForecast struct {
 	Confidence90Days *ConfidenceInterval `json:"confidence_90_days"`
 
 	// Model performance metrics
-	ModelAccuracy   float64 `json:"model_accuracy"`   // 0.0 to 1.0
-	MeanAbsoluteError float64 `json:"mean_absolute_error"` // MAE
+	ModelAccuracy        float64 `json:"model_accuracy"`          // 0.0 to 1.0
+	MeanAbsoluteError    float64 `json:"mean_absolute_error"`     // MAE
 	RootMeanSquaredError float64 `json:"root_mean_squared_error"` // RMSE
-	R2Score         float64 `json:"r2_score"`         // Coefficient of determination
+	R2Score              float64 `json:"r2_score"`                // Coefficient of determination
 
 	// Budget impact analysis
-	BudgetExhaustionDate *time.Time `json:"budget_exhaustion_date,omitempty"` // When budget will run out
-	DaysUntilExhaustion  int        `json:"days_until_exhaustion"`
-	ExhaustionProbability float64   `json:"exhaustion_probability"` // 0.0 to 1.0
+	BudgetExhaustionDate  *time.Time `json:"budget_exhaustion_date,omitempty"` // When budget will run out
+	DaysUntilExhaustion   int        `json:"days_until_exhaustion"`
+	ExhaustionProbability float64    `json:"exhaustion_probability"` // 0.0 to 1.0
 }
 
 // ForecastEngine generates cost forecasts using multiple models
@@ -227,15 +227,15 @@ func (fe *ForecastEngine) AnalyzeBurnRate(projectID string, days int) (*BurnRate
 	analysis.AccelerationRate = slope
 
 	// Determine trend direction and strength
-	if math.Abs(slope) < 0.01 * analysis.AverageDailyRate {
+	if math.Abs(slope) < 0.01*analysis.AverageDailyRate {
 		analysis.TrendDirection = "stable"
 		analysis.TrendStrength = 0.0
 	} else if slope > 0 {
 		analysis.TrendDirection = "increasing"
-		analysis.TrendStrength = math.Min(1.0, math.Abs(slope) / analysis.AverageDailyRate)
+		analysis.TrendStrength = math.Min(1.0, math.Abs(slope)/analysis.AverageDailyRate)
 	} else {
 		analysis.TrendDirection = "decreasing"
-		analysis.TrendStrength = math.Min(1.0, math.Abs(slope) / analysis.AverageDailyRate)
+		analysis.TrendStrength = math.Min(1.0, math.Abs(slope)/analysis.AverageDailyRate)
 	}
 
 	// Predict future burn rates using linear extrapolation
@@ -256,7 +256,7 @@ func (fe *ForecastEngine) AnalyzeBurnRate(projectID string, days int) (*BurnRate
 		margin := z * analysis.StdDevDailyRate
 		analysis.ConfidenceIntervals[level] = &ConfidenceInterval{
 			ConfidenceLevel: level,
-			LowerBound:      math.Max(0, analysis.AverageDailyRate - margin),
+			LowerBound:      math.Max(0, analysis.AverageDailyRate-margin),
 			UpperBound:      analysis.AverageDailyRate + margin,
 			Prediction:      analysis.AverageDailyRate,
 		}
@@ -408,7 +408,7 @@ func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays 
 	// Confidence intervals at key time points (95% confidence, z = 1.96)
 	z := 1.96
 	if forecastDays >= 7 {
-		margin := z * stdError * math.Sqrt(1 + 1/n + 7*7/(n*sumX2/n))
+		margin := z * stdError * math.Sqrt(1+1/n+7*7/(n*sumX2/n))
 		forecast.Confidence7Days = &ConfidenceInterval{
 			ConfidenceLevel: 95,
 			Prediction:      forecast.Predicted7Days,
@@ -417,7 +417,7 @@ func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays 
 		}
 	}
 	if forecastDays >= 30 {
-		margin := z * stdError * math.Sqrt(1 + 1/n + 30*30/(n*sumX2/n))
+		margin := z * stdError * math.Sqrt(1+1/n+30*30/(n*sumX2/n))
 		forecast.Confidence30Days = &ConfidenceInterval{
 			ConfidenceLevel: 95,
 			Prediction:      forecast.Predicted30Days,
@@ -426,7 +426,7 @@ func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays 
 		}
 	}
 	if forecastDays >= 90 {
-		margin := z * stdError * math.Sqrt(1 + 1/n + 90*90/(n*sumX2/n))
+		margin := z * stdError * math.Sqrt(1+1/n+90*90/(n*sumX2/n))
 		forecast.Confidence90Days = &ConfidenceInterval{
 			ConfidenceLevel: 95,
 			Prediction:      forecast.Predicted90Days,

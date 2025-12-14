@@ -20,11 +20,11 @@ func (gcc *GlobalCongestionController) Start(ctx context.Context) {
 	gcc.ctx = ctx
 	coordinator := gcc.coordinator // Get coordinator if it exists
 	gcc.mu.Unlock()
-	
+
 	go gcc.congestionControlLoop(ctx)
 	go gcc.bandwidthProbingLoop(ctx)
 	go gcc.adaptiveRecoveryLoop(ctx)
-	
+
 	// Start cross-prefix coordination if coordinator is available
 	if coordinator != nil {
 		go gcc.runCrossPrefixCoordination(ctx, coordinator)
@@ -814,7 +814,7 @@ func NewCrossPrefixCongestionCoordinator(gcc *GlobalCongestionController, commun
 // SetCommunicator integrates the congestion controller with cross-prefix communication.
 func (gcc *GlobalCongestionController) SetCommunicator(communicator *CrossPrefixCommunicator) {
 	gcc.mu.Lock()
-	
+
 	// Set the communicator
 	gcc.communicator = communicator
 
@@ -839,7 +839,7 @@ func (gcc *GlobalCongestionController) SetCommunicator(communicator *CrossPrefix
 
 	// Store the coordinator for later use when Start() is called
 	gcc.coordinator = NewCrossPrefixCongestionCoordinator(gcc, communicator)
-	
+
 	gcc.mu.Unlock()
 }
 

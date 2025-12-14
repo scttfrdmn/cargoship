@@ -25,8 +25,8 @@ import (
 func NewCostCmd() *cobra.Command {
 	var (
 		// Common flags
-		region       string
-		jsonOutput   bool
+		region     string
+		jsonOutput bool
 
 		// Estimate flags
 		size         string
@@ -34,8 +34,8 @@ func NewCostCmd() *cobra.Command {
 		operation    string
 
 		// Report flags
-		period       string
-		outputFile   string
+		period     string
+		outputFile string
 	)
 
 	cmd := &cobra.Command{
@@ -744,18 +744,18 @@ func runCostUpload(ctx context.Context, region, bucket, prefix, uploadID string,
 
 	if jsonOutput {
 		output := map[string]interface{}{
-			"upload_id":           m.UploadID,
-			"region":              m.Region,
-			"created_at":          m.CreatedAt,
-			"duration_days":       durationDays,
-			"uncompressed_size_gb": uncompressedSizeGB,
-			"compressed_size_gb":   compressedSizeGB,
-			"compression_ratio":    m.CompressionRatio,
-			"monthly_cost":         monthlyCost,
-			"total_spent":          totalSpent,
-			"uncompressed_cost":    uncompressedCost,
-			"savings_per_month":    savingsPerMonth,
-			"savings_percent":      savingsPercent,
+			"upload_id":             m.UploadID,
+			"region":                m.Region,
+			"created_at":            m.CreatedAt,
+			"duration_days":         durationDays,
+			"uncompressed_size_gb":  uncompressedSizeGB,
+			"compressed_size_gb":    compressedSizeGB,
+			"compression_ratio":     m.CompressionRatio,
+			"monthly_cost":          monthlyCost,
+			"total_spent":           totalSpent,
+			"uncompressed_cost":     uncompressedCost,
+			"savings_per_month":     savingsPerMonth,
+			"savings_percent":       savingsPercent,
 			"effective_cost_per_gb": effectiveCostPerGB,
 		}
 		jsonBytes, err := json.MarshalIndent(output, "", "  ")
@@ -883,18 +883,18 @@ func runProjectSummary(ctx context.Context, region, projectID, period string, js
 		if period != "all" {
 			// Create a modified output with period costs
 			outputMap := map[string]interface{}{
-				"project_id":         summary.ProjectID,
-				"period":             period,
-				"period_cost":        periodCost,
-				"total_cost":         summary.TotalCost,
-				"total_savings":      summary.TotalSavings,
-				"total_files":        summary.TotalFiles,
-				"total_size_gb":      summary.TotalSizeGB,
-				"currency":           summary.Currency,
-				"first_upload":       summary.FirstUpload,
-				"last_upload":        summary.LastUpload,
-				"by_region":          summary.ByRegion,
-				"by_storage_class":   summary.ByStorageClass,
+				"project_id":          summary.ProjectID,
+				"period":              period,
+				"period_cost":         periodCost,
+				"total_cost":          summary.TotalCost,
+				"total_savings":       summary.TotalSavings,
+				"total_files":         summary.TotalFiles,
+				"total_size_gb":       summary.TotalSizeGB,
+				"currency":            summary.Currency,
+				"first_upload":        summary.FirstUpload,
+				"last_upload":         summary.LastUpload,
+				"by_region":           summary.ByRegion,
+				"by_storage_class":    summary.ByStorageClass,
 				"average_cost_per_gb": summary.AverageCostPerGB,
 			}
 			encoder := json.NewEncoder(os.Stdout)

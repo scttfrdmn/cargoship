@@ -12,11 +12,11 @@ import (
 
 // MemoryManagerConfig configures the memory-aware task queueing system
 type MemoryManagerConfig struct {
-	MemoryBudgetPercent float64       // Percentage of available memory to use (default: 0.5 = 50%)
-	MinMemoryBuffer     int64         // Minimum free memory to maintain (default: 512MB)
-	ProactiveGCThreshold int64        // Chunk size threshold for proactive GC (default: 50MB)
-	PartSize            int64         // S3 multipart upload part size (default: 16MB)
-	MonitorInterval     time.Duration // Memory monitoring interval (default: 1s)
+	MemoryBudgetPercent  float64       // Percentage of available memory to use (default: 0.5 = 50%)
+	MinMemoryBuffer      int64         // Minimum free memory to maintain (default: 512MB)
+	ProactiveGCThreshold int64         // Chunk size threshold for proactive GC (default: 50MB)
+	PartSize             int64         // S3 multipart upload part size (default: 16MB)
+	MonitorInterval      time.Duration // Memory monitoring interval (default: 1s)
 }
 
 // MemoryManager provides memory-aware task queueing with proactive GC
@@ -32,13 +32,13 @@ type MemoryManager struct {
 	memoryBudget   int64 // Total memory budget (atomic)
 
 	// Task queue
-	waitingTasks   int32         // Number of tasks waiting for memory (atomic)
-	taskQueue      chan *Job     // Queue for tasks waiting for memory
-	releaseSignal  chan struct{} // Signal to wake up waiting tasks
+	waitingTasks  int32         // Number of tasks waiting for memory (atomic)
+	taskQueue     chan *Job     // Queue for tasks waiting for memory
+	releaseSignal chan struct{} // Signal to wake up waiting tasks
 
 	// Monitoring
-	monitorWg    sync.WaitGroup
-	stopMonitor  chan struct{}
+	monitorWg   sync.WaitGroup
+	stopMonitor chan struct{}
 
 	// Statistics
 	totalTasksQueued   int64

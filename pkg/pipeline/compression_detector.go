@@ -146,10 +146,10 @@ func buildSkipExtensionsMap() map[string]bool {
 		".lzma",
 
 		// Documents (may be compressed containers)
-		".pdf", // Uses internal compression
+		".pdf",                    // Uses internal compression
 		".docx", ".xlsx", ".pptx", // ZIP-based
-		".odt", ".ods", ".odp",    // ZIP-based
-		".epub",                   // ZIP-based
+		".odt", ".ods", ".odp", // ZIP-based
+		".epub", // ZIP-based
 
 		// Executables (may be compressed)
 		".apk", // ZIP-based

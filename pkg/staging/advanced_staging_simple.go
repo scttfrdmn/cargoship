@@ -10,14 +10,14 @@ import (
 
 // SimpleAdvancedStagingOptimizer provides a working implementation of advanced staging optimization.
 type SimpleAdvancedStagingOptimizer struct {
-	config        *AdvancedOptimizationConfig
+	config         *AdvancedOptimizationConfig
 	parallelEngine *SimpleParallelEngine
-	scheduler     *SimpleScheduler
-	memoryManager *SimpleMemoryManager
-	predictor     *SimplePredictor
-	active        int64
-	jobCount      int64
-	mu            sync.RWMutex
+	scheduler      *SimpleScheduler
+	memoryManager  *SimpleMemoryManager
+	predictor      *SimplePredictor
+	active         int64
+	jobCount       int64
+	mu             sync.RWMutex
 }
 
 // SimpleParallelEngine handles parallel job processing.
@@ -64,11 +64,11 @@ func NewSimpleAdvancedStagingOptimizer(config *AdvancedOptimizationConfig) *Simp
 	}
 
 	return &SimpleAdvancedStagingOptimizer{
-		config:        config,
+		config:         config,
 		parallelEngine: NewSimpleParallelEngine(config.WorkerPoolSize),
-		scheduler:     NewSimpleScheduler(),
-		memoryManager: NewSimpleMemoryManager(),
-		predictor:     NewSimplePredictor(),
+		scheduler:      NewSimpleScheduler(),
+		memoryManager:  NewSimpleMemoryManager(),
+		predictor:      NewSimplePredictor(),
 	}
 }
 
@@ -128,19 +128,19 @@ func (saso *SimpleAdvancedStagingOptimizer) SubmitStagingJob(job *AdvancedStagin
 // GetOptimizationState returns the optimization state.
 func (saso *SimpleAdvancedStagingOptimizer) GetOptimizationState() *OptimizationState {
 	return &OptimizationState{
-		TotalJobsProcessed: atomic.LoadInt64(&saso.jobCount),
-		OptimizationScore:  85.0, // Fixed good score
-		CPUUtilization:     0.7,
-		MemoryUtilization:  0.6,
-		SchedulingEfficiency: 0.9,
+		TotalJobsProcessed:    atomic.LoadInt64(&saso.jobCount),
+		OptimizationScore:     85.0, // Fixed good score
+		CPUUtilization:        0.7,
+		MemoryUtilization:     0.6,
+		SchedulingEfficiency:  0.9,
 		LoadBalanceEfficiency: 0.85,
-		MemoryEfficiency:     0.8,
-		PredictionAccuracy:   0.82,
-		CurrentConcurrency:   saso.config.WorkerPoolSize,
-		CurrentChunkSizeMB:   saso.config.MaxConcurrentJobs / 4,
-		CurrentBufferSizeMB:  256,
-		AdaptationCount:      1,
-		LastOptimization:     time.Now(),
+		MemoryEfficiency:      0.8,
+		PredictionAccuracy:    0.82,
+		CurrentConcurrency:    saso.config.WorkerPoolSize,
+		CurrentChunkSizeMB:    saso.config.MaxConcurrentJobs / 4,
+		CurrentBufferSizeMB:   256,
+		AdaptationCount:       1,
+		LastOptimization:      time.Now(),
 	}
 }
 
@@ -235,7 +235,7 @@ func (ss *SimpleScheduler) AddJob(job *AdvancedStagingJob) {
 func (ss *SimpleScheduler) GetSchedulingMetrics() *SchedulingMetrics {
 	ss.mu.RLock()
 	defer ss.mu.RUnlock()
-	
+
 	return &SchedulingMetrics{
 		Efficiency: 0.9, // Fixed efficiency
 	}
@@ -246,7 +246,7 @@ func (ss *SimpleScheduler) OptimizeSchedulingParameters() {
 	// Simple optimization - just clear old jobs
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
-	
+
 	if len(ss.jobQueue) > 1000 {
 		ss.jobQueue = ss.jobQueue[len(ss.jobQueue)/2:] // Keep recent half
 	}
@@ -274,7 +274,7 @@ func (smm *SimpleMemoryManager) GetBuffer(size int) []byte {
 	if _, exists := smm.buffers[roundedSize]; !exists {
 		smm.buffers[roundedSize] = make([]chan []byte, 1)
 		smm.buffers[roundedSize][0] = make(chan []byte, 10)
-		
+
 		// Pre-fill with some buffers
 		for i := 0; i < 5; i++ {
 			select {
@@ -301,11 +301,11 @@ func (smm *SimpleMemoryManager) ReturnBuffer(buffer []byte) {
 	}
 
 	size := cap(buffer)
-	
+
 	smm.mu.RLock()
 	pool, exists := smm.buffers[size]
 	smm.mu.RUnlock()
-	
+
 	if exists && len(pool) > 0 {
 		select {
 		case pool[0] <- buffer:
@@ -321,7 +321,7 @@ func (smm *SimpleMemoryManager) HandleMemoryPressure(utilization float64) {
 	if utilization > 0.8 {
 		smm.mu.Lock()
 		defer smm.mu.Unlock()
-		
+
 		for _, pools := range smm.buffers {
 			if len(pools) > 0 {
 				// Drain half the buffers
@@ -353,7 +353,7 @@ func (smm *SimpleMemoryManager) OptimizeMemoryAllocation() {
 	// Simple optimization - clean up unused buffer pools
 	smm.mu.Lock()
 	defer smm.mu.Unlock()
-	
+
 	for size, pools := range smm.buffers {
 		if len(pools) > 0 {
 			pool := pools[0]
@@ -418,7 +418,7 @@ func (sp *SimplePredictor) UpdateModels(data *ComprehensiveMetrics) {
 	// Simple model update - just record that we received data
 	sp.mu.Lock()
 	defer sp.mu.Unlock()
-	
+
 	// In a real implementation, this would update ML models
 	// For now, just clean up old predictions
 	if len(sp.predictions) > 100 {

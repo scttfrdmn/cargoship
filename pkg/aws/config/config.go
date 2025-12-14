@@ -494,7 +494,7 @@ func (bp *BudgetPeriod) GetPeriodBounds(referenceTime time.Time) (start time.Tim
 	case BudgetPeriodQuarterly:
 		// Calculate quarter (Q1: Jan-Mar, Q2: Apr-Jun, Q3: Jul-Sep, Q4: Oct-Dec)
 		month := int(referenceTime.Month())
-		quarterStartMonth := ((month - 1) / 3) * 3 + 1
+		quarterStartMonth := ((month-1)/3)*3 + 1
 		start = time.Date(referenceTime.Year(), time.Month(quarterStartMonth), 1, 0, 0, 0, 0, referenceTime.Location())
 		end = start.AddDate(0, 3, 0).Add(-time.Nanosecond)
 
@@ -682,33 +682,33 @@ func (bp *BudgetPeriod) GetBudgetStatus(currentSpend float64, referenceTime time
 
 	status := map[string]interface{}{
 		// Period information
-		"period_type":          bp.Type,
-		"period_start":         start.Format("2006-01-02"),
-		"period_end":           end.Format("2006-01-02"),
-		"days_elapsed":         daysElapsed,
-		"days_remaining":       daysRemaining,
-		"total_days":           totalDays,
+		"period_type":    bp.Type,
+		"period_start":   start.Format("2006-01-02"),
+		"period_end":     end.Format("2006-01-02"),
+		"days_elapsed":   daysElapsed,
+		"days_remaining": daysRemaining,
+		"total_days":     totalDays,
 
 		// Budget information
-		"max_budget":           bp.MaxBudget,
-		"current_spend":        currentSpend,
-		"budget_used":          budgetUsed,
-		"budget_remaining":     remaining,
-		"alert_threshold":      bp.AlertThreshold,
+		"max_budget":       bp.MaxBudget,
+		"current_spend":    currentSpend,
+		"budget_used":      budgetUsed,
+		"budget_remaining": remaining,
+		"alert_threshold":  bp.AlertThreshold,
 
 		// Burn rate and projections
-		"daily_burn_rate":      burnRate,
-		"projected_eop_spend":  projectedSpend,
-		"will_exceed_budget":   willExceed,
-		"target_daily_rate":    targetDailyRate,
+		"daily_burn_rate":     burnRate,
+		"projected_eop_spend": projectedSpend,
+		"will_exceed_budget":  willExceed,
+		"target_daily_rate":   targetDailyRate,
 
 		// Status flags
-		"over_budget":          budgetUsed > 1.0,
-		"alert_triggered":      budgetUsed > bp.AlertThreshold,
+		"over_budget":     budgetUsed > 1.0,
+		"alert_triggered": budgetUsed > bp.AlertThreshold,
 
 		// Grant-specific information
-		"grant_name":           bp.GrantName,
-		"enable_rollover":      bp.EnableRollover,
+		"grant_name":      bp.GrantName,
+		"enable_rollover": bp.EnableRollover,
 	}
 
 	// Add overage/savings information
@@ -803,4 +803,3 @@ func (bp *BudgetPeriod) String() string {
 		return string(bp.Type)
 	}
 }
-

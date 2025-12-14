@@ -661,39 +661,39 @@ func (c *DefaultCoordinator) performRegionHealthCheck(region *Region) {
 	defer cancel()
 
 	c.logger.Debug("Starting health check", "region", region.Name)
-	
+
 	// Perform multiple health check types
 	healthResults := c.executeHealthChecks(ctx, region)
-	
+
 	// Determine overall health status
 	overallHealth := c.evaluateHealthResults(healthResults)
-	
+
 	// Update region status based on health check results
 	c.updateRegionHealthStatus(region, overallHealth, healthResults)
 }
 
 // HealthCheckResult represents the result of a single health check
 type HealthCheckResult struct {
-	CheckType   string        `json:"check_type"`
-	Success     bool          `json:"success"`
-	ResponseTime time.Duration `json:"response_time"`
-	Error       error         `json:"error,omitempty"`
-	Details     map[string]interface{} `json:"details,omitempty"`
+	CheckType    string                 `json:"check_type"`
+	Success      bool                   `json:"success"`
+	ResponseTime time.Duration          `json:"response_time"`
+	Error        error                  `json:"error,omitempty"`
+	Details      map[string]interface{} `json:"details,omitempty"`
 }
 
 // OverallHealthStatus represents the combined health status
 type OverallHealthStatus struct {
-	Healthy         bool                    `json:"healthy"`
-	SuccessRate     float64                `json:"success_rate"`
-	AvgResponseTime time.Duration           `json:"avg_response_time"`
-	CheckResults    []HealthCheckResult     `json:"check_results"`
-	FailureReasons  []string               `json:"failure_reasons,omitempty"`
+	Healthy         bool                `json:"healthy"`
+	SuccessRate     float64             `json:"success_rate"`
+	AvgResponseTime time.Duration       `json:"avg_response_time"`
+	CheckResults    []HealthCheckResult `json:"check_results"`
+	FailureReasons  []string            `json:"failure_reasons,omitempty"`
 }
 
 // executeHealthChecks runs all configured health checks for a region
 func (c *DefaultCoordinator) executeHealthChecks(ctx context.Context, region *Region) *OverallHealthStatus {
 	results := &OverallHealthStatus{
-		CheckResults: make([]HealthCheckResult, 0),
+		CheckResults:   make([]HealthCheckResult, 0),
 		FailureReasons: make([]string, 0),
 	}
 
@@ -737,7 +737,7 @@ func (c *DefaultCoordinator) checkAWSConnectivity(ctx context.Context, region *R
 	// In a real implementation, you would use:
 	// stsClient := sts.NewFromConfig(region.AWSConfig)
 	// _, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
-	
+
 	result.Success = true
 	result.ResponseTime = time.Since(startTime)
 	result.Details["region"] = region.Name
@@ -759,7 +759,7 @@ func (c *DefaultCoordinator) checkS3ServiceHealth(ctx context.Context, region *R
 	// 1. List buckets or perform a HEAD operation on a known bucket
 	// 2. Check S3 service status endpoints
 	// 3. Verify that upload/download operations are working
-	
+
 	// For now, simulate a successful check with some randomness for realism
 	if time.Since(startTime) > region.HealthCheck.Timeout {
 		result.Success = false
@@ -787,12 +787,12 @@ func (c *DefaultCoordinator) checkRegionLatency(ctx context.Context, region *Reg
 	// 1. Make lightweight API calls to measure round-trip time
 	// 2. Use CloudWatch or CloudPing for latency metrics
 	// 3. Test from multiple availability zones if possible
-	
+
 	responseTime := time.Since(startTime)
 	result.Success = responseTime < 5*time.Second // Reasonable latency threshold
 	result.ResponseTime = responseTime
 	result.Details["latency_ms"] = responseTime.Milliseconds()
-	
+
 	if !result.Success {
 		result.Error = fmt.Errorf("high latency detected: %v", responseTime)
 	}
@@ -814,8 +814,8 @@ func (c *DefaultCoordinator) checkResourceCapacity(ctx context.Context, region *
 	activeUploads := region.Metrics.ActiveUploads
 
 	// Determine if region has sufficient capacity
-	capacityHealthy := cpuUtilization < 90.0 && 
-		memoryUtilization < 85.0 && 
+	capacityHealthy := cpuUtilization < 90.0 &&
+		memoryUtilization < 85.0 &&
 		activeUploads < int64(region.Capacity.MaxConcurrentUploads)
 
 	result.Success = capacityHealthy
@@ -826,7 +826,7 @@ func (c *DefaultCoordinator) checkResourceCapacity(ctx context.Context, region *
 	result.Details["capacity_limit"] = region.Capacity.MaxConcurrentUploads
 
 	if !result.Success {
-		result.Error = fmt.Errorf("region capacity exceeded: CPU=%.1f%%, Memory=%.1f%%, Uploads=%d", 
+		result.Error = fmt.Errorf("region capacity exceeded: CPU=%.1f%%, Memory=%.1f%%, Uploads=%d",
 			cpuUtilization, memoryUtilization, activeUploads)
 	}
 
@@ -843,13 +843,13 @@ func (c *DefaultCoordinator) evaluateHealthResults(results *OverallHealthStatus)
 
 	successCount := 0
 	totalResponseTime := time.Duration(0)
-	
+
 	for _, check := range results.CheckResults {
 		if check.Success {
 			successCount++
 		} else {
 			if check.Error != nil {
-				results.FailureReasons = append(results.FailureReasons, 
+				results.FailureReasons = append(results.FailureReasons,
 					fmt.Sprintf("%s: %v", check.CheckType, check.Error))
 			}
 		}
@@ -858,7 +858,7 @@ func (c *DefaultCoordinator) evaluateHealthResults(results *OverallHealthStatus)
 
 	results.SuccessRate = float64(successCount) / float64(len(results.CheckResults))
 	results.AvgResponseTime = totalResponseTime / time.Duration(len(results.CheckResults))
-	
+
 	// Region is considered healthy if:
 	// 1. At least 75% of checks pass
 	// 2. Critical checks (AWS connectivity and S3) must pass
@@ -871,7 +871,7 @@ func (c *DefaultCoordinator) evaluateHealthResults(results *OverallHealthStatus)
 // validateCriticalChecks ensures critical health checks pass
 func (c *DefaultCoordinator) validateCriticalChecks(checks []HealthCheckResult) bool {
 	criticalChecks := map[string]bool{
-		"aws_connectivity":   false,
+		"aws_connectivity":  false,
 		"s3_service_health": false,
 	}
 
@@ -910,12 +910,12 @@ func (c *DefaultCoordinator) updateRegionHealthStatus(region *Region, healthStat
 	region.Metrics.LastHealthCheck = region.LastChecked
 	region.Metrics.HealthCheckSuccess = healthStatus.Healthy
 	region.Metrics.HealthCheckLatency = healthStatus.AvgResponseTime.Milliseconds()
-	
+
 	// Implement failure/success threshold logic
 	if healthStatus.Healthy {
 		region.Metrics.ConsecutiveHealthyChecks++
 		region.Metrics.ConsecutiveFailedChecks = 0
-		
+
 		// Only mark as healthy after reaching success threshold
 		if region.Metrics.ConsecutiveHealthyChecks >= int64(region.HealthCheck.SuccessThreshold) {
 			region.Status = RegionStatusHealthy
@@ -923,7 +923,7 @@ func (c *DefaultCoordinator) updateRegionHealthStatus(region *Region, healthStat
 	} else {
 		region.Metrics.ConsecutiveFailedChecks++
 		region.Metrics.ConsecutiveHealthyChecks = 0
-		
+
 		// Mark as unhealthy after reaching failure threshold
 		if region.Metrics.ConsecutiveFailedChecks >= int64(region.HealthCheck.FailureThreshold) {
 			region.Status = RegionStatusUnhealthy
@@ -936,7 +936,7 @@ func (c *DefaultCoordinator) updateRegionHealthStatus(region *Region, healthStat
 
 	// Log status changes
 	if previousStatus != region.Status {
-		c.logger.Info("Region health status changed", 
+		c.logger.Info("Region health status changed",
 			"region", region.Name,
 			"previous_status", previousStatus,
 			"new_status", region.Status,
@@ -944,16 +944,16 @@ func (c *DefaultCoordinator) updateRegionHealthStatus(region *Region, healthStat
 			"avg_response_time", healthStatus.AvgResponseTime,
 			"failure_reasons", healthStatus.FailureReasons)
 	} else {
-		c.logger.Debug("Region health check completed", 
+		c.logger.Debug("Region health check completed",
 			"region", region.Name,
 			"status", region.Status,
 			"success_rate", healthStatus.SuccessRate,
 			"avg_response_time", healthStatus.AvgResponseTime)
 	}
-	
+
 	// Release lock before triggering failover to avoid deadlock
 	c.mu.Unlock()
-	
+
 	// Trigger failover if region becomes unhealthy (after releasing lock)
 	if shouldTriggerFailover {
 		c.triggerRegionFailover(region, failureReasons)
@@ -1023,7 +1023,7 @@ func (c *DefaultCoordinator) selectFailoverTarget(failedRegion string) string {
 			currentUtilization := region.Capacity.CurrentUtilization
 			if currentUtilization < 80.0 { // Don't failover to regions over 80% capacity
 				candidates = append(candidates, name)
-				
+
 				// Prefer regions with higher priority (lower priority number)
 				if region.Priority < highestPriority {
 					highestPriority = region.Priority
@@ -1042,7 +1042,7 @@ func (c *DefaultCoordinator) selectFailoverTarget(failedRegion string) string {
 	}
 
 	if bestCandidate != "" {
-		c.logger.Debug("Selected failover target", 
+		c.logger.Debug("Selected failover target",
 			"failed_region", failedRegion,
 			"target_region", bestCandidate,
 			"target_priority", highestPriority,
@@ -1099,29 +1099,29 @@ func (c *DefaultCoordinator) collectMetrics() {
 // collectRegionMetrics collects comprehensive metrics for a single region
 func (c *DefaultCoordinator) collectRegionMetrics(region *Region) {
 	startTime := time.Now()
-	
+
 	c.logger.Debug("Collecting region metrics", "region", region.Name)
 
 	// Update basic operational metrics
 	c.updateOperationalMetrics(region)
-	
+
 	// Update performance metrics
 	c.updatePerformanceMetrics(region)
-	
+
 	// Update resource utilization metrics
 	c.updateResourceUtilizationMetrics(region)
-	
+
 	// Update network and connectivity metrics
 	c.updateNetworkMetrics(region)
-	
+
 	// Update cost and efficiency metrics
 	c.updateCostMetrics(region)
 
 	// Record metrics collection metadata
 	region.Metrics.LastUpdated = time.Now()
-	
+
 	collectionDuration := time.Since(startTime)
-	c.logger.Debug("Region metrics collected", 
+	c.logger.Debug("Region metrics collected",
 		"region", region.Name,
 		"collection_duration", collectionDuration,
 		"cpu_utilization", region.Metrics.CPUUtilization,
@@ -1138,19 +1138,19 @@ func (c *DefaultCoordinator) updateOperationalMetrics(region *Region) {
 	// 1. CloudWatch metrics
 	// 2. Application-level counters
 	// 3. System monitoring tools
-	
+
 	// Update upload statistics (simulated)
 	previousUploads := region.Metrics.SuccessfulUploads
 	previousFailures := region.Metrics.FailedUploads
-	
+
 	// In real implementation, query actual metrics source
 	// For simulation, add some realistic incremental values
 	newSuccessfulUploads := c.simulateUploadMetrics(region, true)
 	newFailedUploads := c.simulateUploadMetrics(region, false)
-	
+
 	region.Metrics.SuccessfulUploads += newSuccessfulUploads
 	region.Metrics.FailedUploads += newFailedUploads
-	
+
 	// Calculate error rate based on totals (use previous values for rate calculation)
 	totalUploads := previousUploads + previousFailures + newSuccessfulUploads + newFailedUploads
 	if totalUploads > 0 {
@@ -1158,8 +1158,8 @@ func (c *DefaultCoordinator) updateOperationalMetrics(region *Region) {
 	} else {
 		region.Metrics.ErrorRate = 0.0
 	}
-	
-	c.logger.Debug("Updated operational metrics", 
+
+	c.logger.Debug("Updated operational metrics",
 		"region", region.Name,
 		"new_successful", newSuccessfulUploads,
 		"new_failed", newFailedUploads,
@@ -1175,15 +1175,15 @@ func (c *DefaultCoordinator) updatePerformanceMetrics(region *Region) {
 	// 1. S3 transfer statistics
 	// 2. Network monitoring
 	// 3. Application performance counters
-	
+
 	// Update throughput based on recent activity and region capacity
 	baselineThroughput := float64(region.Capacity.MaxBandwidthMbps) * 0.3 // 30% baseline
 	utilizationFactor := region.Capacity.CurrentUtilization / 100.0
-	
+
 	// Add some randomness for realistic simulation
 	variation := (rand.Float64() - 0.5) * 0.2 * baselineThroughput // ±10% variation
-	currentThroughput := baselineThroughput * (1.0 + utilizationFactor) + variation
-	
+	currentThroughput := baselineThroughput*(1.0+utilizationFactor) + variation
+
 	// Ensure throughput stays within reasonable bounds
 	if currentThroughput < 0 {
 		currentThroughput = 0
@@ -1191,21 +1191,21 @@ func (c *DefaultCoordinator) updatePerformanceMetrics(region *Region) {
 	if currentThroughput > float64(region.Capacity.MaxBandwidthMbps) {
 		currentThroughput = float64(region.Capacity.MaxBandwidthMbps)
 	}
-	
+
 	region.Metrics.ThroughputMbps = currentThroughput
-	
+
 	// Update latency based on region characteristics
 	baseLatency := 50.0 // Base 50ms
 	if region.Priority > 1 {
 		baseLatency += float64((region.Priority - 1) * 25) // Higher priority = higher latency
 	}
-	
+
 	// Add load-based latency increase
 	loadLatency := (region.Capacity.CurrentUtilization / 100.0) * 100.0 // Up to 100ms additional
-	latencyVariation := (rand.Float64() - 0.5) * 20.0 // ±10ms variation
-	
+	latencyVariation := (rand.Float64() - 0.5) * 20.0                   // ±10ms variation
+
 	region.Metrics.AverageLatencyMs = baseLatency + loadLatency + latencyVariation
-	
+
 	c.logger.Debug("Updated performance metrics",
 		"region", region.Name,
 		"throughput_mbps", region.Metrics.ThroughputMbps,
@@ -1220,12 +1220,12 @@ func (c *DefaultCoordinator) updateResourceUtilizationMetrics(region *Region) {
 	// 1. CloudWatch EC2/ECS metrics
 	// 2. System monitoring agents
 	// 3. Container orchestration platforms
-	
+
 	// Update CPU utilization based on current load and active uploads
 	baselineCPU := 20.0 // 20% baseline
 	uploadCPULoad := (float64(region.Metrics.ActiveUploads) / float64(region.Capacity.MaxConcurrentUploads)) * 60.0
 	cpuVariation := (rand.Float64() - 0.5) * 10.0 // ±5% variation
-	
+
 	newCPUUtilization := baselineCPU + uploadCPULoad + cpuVariation
 	if newCPUUtilization < 0 {
 		newCPUUtilization = 0
@@ -1233,14 +1233,14 @@ func (c *DefaultCoordinator) updateResourceUtilizationMetrics(region *Region) {
 	if newCPUUtilization > 100 {
 		newCPUUtilization = 100
 	}
-	
+
 	region.Metrics.CPUUtilization = newCPUUtilization
-	
+
 	// Update memory utilization (typically correlates with CPU but with different characteristics)
 	baselineMemory := 25.0 // 25% baseline
 	uploadMemoryLoad := (float64(region.Metrics.ActiveUploads) / float64(region.Capacity.MaxConcurrentUploads)) * 50.0
 	memoryVariation := (rand.Float64() - 0.5) * 8.0 // ±4% variation
-	
+
 	newMemoryUtilization := baselineMemory + uploadMemoryLoad + memoryVariation
 	if newMemoryUtilization < 0 {
 		newMemoryUtilization = 0
@@ -1248,15 +1248,15 @@ func (c *DefaultCoordinator) updateResourceUtilizationMetrics(region *Region) {
 	if newMemoryUtilization > 100 {
 		newMemoryUtilization = 100
 	}
-	
+
 	region.Metrics.MemoryUtilization = newMemoryUtilization
-	
+
 	// Update overall region capacity utilization
 	capacityFactor := (region.Metrics.CPUUtilization + region.Metrics.MemoryUtilization) / 2.0
 	uploadFactor := (float64(region.Metrics.ActiveUploads) / float64(region.Capacity.MaxConcurrentUploads)) * 100.0
-	
+
 	region.Capacity.CurrentUtilization = (capacityFactor + uploadFactor) / 2.0
-	
+
 	c.logger.Debug("Updated resource utilization metrics",
 		"region", region.Name,
 		"cpu_utilization", region.Metrics.CPUUtilization,
@@ -1272,11 +1272,11 @@ func (c *DefaultCoordinator) updateNetworkMetrics(region *Region) {
 	// 1. VPC Flow Logs
 	// 2. Network monitoring tools
 	// 3. AWS CloudWatch network metrics
-	
+
 	// Update active uploads based on current capacity and utilization
 	maxActiveUploads := int64(float64(region.Capacity.MaxConcurrentUploads) * (region.Capacity.CurrentUtilization / 100.0))
 	uploadVariation := int64((rand.Float64() - 0.5) * float64(region.Capacity.MaxConcurrentUploads) * 0.1)
-	
+
 	newActiveUploads := maxActiveUploads + uploadVariation
 	if newActiveUploads < 0 {
 		newActiveUploads = 0
@@ -1284,9 +1284,9 @@ func (c *DefaultCoordinator) updateNetworkMetrics(region *Region) {
 	if newActiveUploads > int64(region.Capacity.MaxConcurrentUploads) {
 		newActiveUploads = int64(region.Capacity.MaxConcurrentUploads)
 	}
-	
+
 	region.Metrics.ActiveUploads = newActiveUploads
-	
+
 	c.logger.Debug("Updated network metrics",
 		"region", region.Name,
 		"active_uploads", region.Metrics.ActiveUploads,
@@ -1299,7 +1299,7 @@ func (c *DefaultCoordinator) updateCostMetrics(region *Region) {
 	// 1. AWS Cost Explorer API
 	// 2. Billing and cost management services
 	// 3. Custom cost tracking systems
-	
+
 	c.logger.Debug("Updated cost metrics", "region", region.Name)
 }
 
@@ -1308,11 +1308,11 @@ func (c *DefaultCoordinator) simulateUploadMetrics(region *Region, success bool)
 	// Simulate metrics based on region utilization and capacity
 	utilizationFactor := region.Capacity.CurrentUtilization / 100.0
 	maxUploads := float64(region.Capacity.MaxConcurrentUploads) * utilizationFactor
-	
+
 	// Add randomness
 	variation := rand.Float64() * 0.3 // Up to 30% variation
 	simulatedUploads := maxUploads * variation
-	
+
 	if success {
 		// Success rate should be higher
 		return int64(simulatedUploads * 0.95) // 95% success rate simulation
@@ -1350,28 +1350,28 @@ func (c *DefaultCoordinator) calculateGlobalMetrics(regions []*Region) {
 		totalCPUUtilization += region.Metrics.CPUUtilization
 		totalMemoryUtilization += region.Metrics.MemoryUtilization
 		totalCapacityUtilization += region.Capacity.CurrentUtilization
-		
+
 		if region.Status == RegionStatusHealthy {
 			healthyRegionCount++
 		}
 	}
 
 	regionCount := float64(len(regions))
-	
+
 	// Calculate global averages and totals
 	globalMetrics := map[string]interface{}{
-		"total_regions":             len(regions),
-		"healthy_regions":           healthyRegionCount,
-		"region_availability":       float64(healthyRegionCount) / regionCount * 100.0,
-		"total_throughput_mbps":     totalThroughput,
-		"average_latency_ms":        totalLatency / regionCount,
-		"total_successful_uploads":  totalSuccessfulUploads,
-		"total_failed_uploads":      totalFailedUploads,
-		"total_active_uploads":      totalActiveUploads,
-		"average_cpu_utilization":   totalCPUUtilization / regionCount,
-		"average_memory_utilization": totalMemoryUtilization / regionCount,
+		"total_regions":                len(regions),
+		"healthy_regions":              healthyRegionCount,
+		"region_availability":          float64(healthyRegionCount) / regionCount * 100.0,
+		"total_throughput_mbps":        totalThroughput,
+		"average_latency_ms":           totalLatency / regionCount,
+		"total_successful_uploads":     totalSuccessfulUploads,
+		"total_failed_uploads":         totalFailedUploads,
+		"total_active_uploads":         totalActiveUploads,
+		"average_cpu_utilization":      totalCPUUtilization / regionCount,
+		"average_memory_utilization":   totalMemoryUtilization / regionCount,
 		"average_capacity_utilization": totalCapacityUtilization / regionCount,
-		"collection_timestamp":      time.Now(),
+		"collection_timestamp":         time.Now(),
 	}
 
 	// Calculate global error rate
@@ -1415,7 +1415,7 @@ func (c *DefaultCoordinator) calculateSystemHealthScore(regions []*Region, healt
 	// Performance score based on average error rates and utilization
 	var totalErrorRate float64
 	var totalUtilization float64
-	
+
 	for _, region := range regions {
 		if region.Status == RegionStatusHealthy {
 			totalErrorRate += region.Metrics.ErrorRate
@@ -1426,13 +1426,13 @@ func (c *DefaultCoordinator) calculateSystemHealthScore(regions []*Region, healt
 	if healthyCount > 0 {
 		avgErrorRate := totalErrorRate / float64(healthyCount)
 		avgUtilization := totalUtilization / float64(healthyCount)
-		
+
 		// Error rate score (lower is better, up to 30 points)
 		errorScore := 30.0 - (avgErrorRate * 3.0) // Subtract 3 points per 1% error rate
 		if errorScore < 0 {
 			errorScore = 0
 		}
-		
+
 		// Utilization score (50-80% utilization is optimal, up to 30 points)
 		var utilizationScore float64
 		if avgUtilization >= 50 && avgUtilization <= 80 {
@@ -1442,11 +1442,11 @@ func (c *DefaultCoordinator) calculateSystemHealthScore(regions []*Region, healt
 		} else {
 			utilizationScore = 30.0 - ((avgUtilization - 80.0) * 1.5) // Overutilized
 		}
-		
+
 		if utilizationScore < 0 {
 			utilizationScore = 0
 		}
-		
+
 		return availabilityScore + errorScore + utilizationScore
 	}
 
@@ -1460,7 +1460,7 @@ func (c *DefaultCoordinator) storeGlobalMetrics(metrics map[string]interface{}) 
 	// 2. Send to monitoring systems (DataDog, New Relic, etc.)
 	// 3. Publish to message queues
 	// 4. Update shared state for API endpoints
-	
+
 	c.logger.Debug("Global metrics stored", "metrics_count", len(metrics))
 }
 
@@ -1530,51 +1530,51 @@ func (c *DefaultCoordinator) shouldTriggerFailover(region *Region) bool {
 	if c.failoverManager != nil && c.failoverManager.IsRegionInFailover(region.Name) {
 		return false
 	}
-	
+
 	// Check if automatic failover is enabled
 	if !c.config.Failover.AutoFailover {
 		c.logger.Debug("Automatic failover is disabled", "region", region.Name)
 		return false
 	}
-	
+
 	// Check various failure conditions
 	failureReasons := make([]string, 0)
-	
+
 	// 1. Region is marked as unhealthy or offline
 	if region.Status == RegionStatusUnhealthy || region.Status == RegionStatusOffline {
 		failureReasons = append(failureReasons, fmt.Sprintf("region_status_%s", region.Status))
 	}
-	
+
 	// 2. Too many consecutive health check failures
 	failureThreshold := int64(3) // Default threshold
 	if region.HealthCheck.FailureThreshold > 0 {
 		failureThreshold = int64(region.HealthCheck.FailureThreshold)
 	}
-	
+
 	if region.Metrics.ConsecutiveFailedChecks >= failureThreshold {
-		failureReasons = append(failureReasons, 
+		failureReasons = append(failureReasons,
 			fmt.Sprintf("consecutive_failures_%d", region.Metrics.ConsecutiveFailedChecks))
 	}
-	
+
 	// 3. High error rate
 	errorRateThreshold := 25.0 // 25% error rate threshold
 	if region.Metrics.ErrorRate > errorRateThreshold {
-		failureReasons = append(failureReasons, 
+		failureReasons = append(failureReasons,
 			fmt.Sprintf("high_error_rate_%.1f", region.Metrics.ErrorRate))
 	}
-	
+
 	// 4. Very high resource utilization (indicating potential overload)
 	if region.Capacity.CurrentUtilization > 95.0 {
-		failureReasons = append(failureReasons, 
+		failureReasons = append(failureReasons,
 			fmt.Sprintf("overload_utilization_%.1f", region.Capacity.CurrentUtilization))
 	}
-	
+
 	// 5. Health check hasn't run recently (indicates potential connectivity issues)
 	healthCheckStale := time.Since(region.Metrics.LastHealthCheck) > 5*time.Minute
 	if !region.Metrics.LastHealthCheck.IsZero() && healthCheckStale {
 		failureReasons = append(failureReasons, "stale_health_check")
 	}
-	
+
 	// Trigger failover if we have failure reasons
 	if len(failureReasons) > 0 {
 		c.logger.Info("Failover conditions detected",
@@ -1582,7 +1582,7 @@ func (c *DefaultCoordinator) shouldTriggerFailover(region *Region) bool {
 			"reasons", failureReasons)
 		return true
 	}
-	
+
 	return false
 }
 
@@ -1632,7 +1632,7 @@ func (c *DefaultCoordinator) recordFailoverFailure(fromRegion, toRegion string, 
 		"from_region", fromRegion,
 		"to_region", toRegion,
 		"error", err)
-	
+
 	// In a production implementation, this would:
 	// 1. Send alerts to operations teams
 	// 2. Update monitoring dashboards
@@ -1646,7 +1646,7 @@ func (c *DefaultCoordinator) recordFailoverSuccess(fromRegion, toRegion string) 
 	c.logger.Info("Recording successful failover",
 		"from_region", fromRegion,
 		"to_region", toRegion)
-	
+
 	// In a production implementation, this would:
 	// 1. Send success notifications
 	// 2. Update monitoring dashboards

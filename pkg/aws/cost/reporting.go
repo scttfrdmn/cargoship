@@ -44,7 +44,7 @@ type CostRecord struct {
 	Currency        string            `json:"currency"`
 	FileName        string            `json:"file_name,omitempty"`
 	JobID           string            `json:"job_id,omitempty"`
-	ProjectID       string            `json:"project_id,omitempty"`       // Manifest UploadID (Issue #147 Phase 2)
+	ProjectID       string            `json:"project_id,omitempty"` // Manifest UploadID (Issue #147 Phase 2)
 	Tags            map[string]string `json:"tags,omitempty"`
 }
 
@@ -58,7 +58,7 @@ type CostSummary struct {
 	ByRegion        map[string]float64   `json:"by_region"`
 	ByStorageClass  map[string]float64   `json:"by_storage_class"`
 	ByOperation     map[string]float64   `json:"by_operation"`
-	ByProject       map[string]float64   `json:"by_project,omitempty"`       // Project-based cost tracking (Issue #147 Phase 2)
+	ByProject       map[string]float64   `json:"by_project,omitempty"` // Project-based cost tracking (Issue #147 Phase 2)
 	TopFiles        []CostRecord         `json:"top_files"`
 	DailyCosts      map[string]float64   `json:"daily_costs"`
 	Trends          CostTrends           `json:"trends"`

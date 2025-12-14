@@ -72,7 +72,7 @@ func TestS3Integration_RealUpload(t *testing.T) {
 		S3Bucket:        bucket,
 		S3Prefix:        testPrefix,
 		S3Region:        region,
-		UseRealS3:       true,  // Enable real S3 uploader
+		UseRealS3:       true, // Enable real S3 uploader
 		S3Client:        s3Client,
 		S3PartSize:      5 * 1024 * 1024, // 5MB parts (minimum for S3)
 	}

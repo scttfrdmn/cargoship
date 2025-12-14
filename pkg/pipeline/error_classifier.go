@@ -41,9 +41,9 @@ func (et ErrorType) String() string {
 
 // ClassifiedError contains error classification and troubleshooting information
 type ClassifiedError struct {
-	OriginalError error
-	Type          ErrorType
-	UserMessage   string
+	OriginalError       error
+	Type                ErrorType
+	UserMessage         string
 	TroubleshootingTips []string
 }
 

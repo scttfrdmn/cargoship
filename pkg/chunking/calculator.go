@@ -8,10 +8,10 @@ import (
 
 const (
 	// Default constraints
-	DefaultMinChunkSize = 10 * 1024 * 1024  // 10 MB
+	DefaultMinChunkSize = 10 * 1024 * 1024       // 10 MB
 	DefaultMaxChunkSize = 5 * 1024 * 1024 * 1024 // 5 GB (S3 limit)
-	DefaultBandwidth    = 100 * 1024 * 1024 // 100 MB/s
-	DefaultTargetTime   = 5 // 5 seconds per chunk
+	DefaultBandwidth    = 100 * 1024 * 1024      // 100 MB/s
+	DefaultTargetTime   = 5                      // 5 seconds per chunk
 
 	// S3 multipart minimum
 	S3MultipartMinimum = 5 * 1024 * 1024 // 5 MB

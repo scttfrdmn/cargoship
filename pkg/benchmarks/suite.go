@@ -337,9 +337,9 @@ func (tr *TextReporter) Write(w io.Writer, report *Report) error {
 // DefaultThresholds returns sensible default regression thresholds
 func DefaultThresholds() Thresholds {
 	return Thresholds{
-		ThroughputDelta: -0.05,  // -5% throughput loss acceptable
-		LatencyDelta:    0.10,   // +10% latency increase acceptable
-		MemoryDelta:     0.15,   // +15% memory increase acceptable
-		AllocationDelta: 0.20,   // +20% allocation increase acceptable
+		ThroughputDelta: -0.05, // -5% throughput loss acceptable
+		LatencyDelta:    0.10,  // +10% latency increase acceptable
+		MemoryDelta:     0.15,  // +15% memory increase acceptable
+		AllocationDelta: 0.20,  // +20% allocation increase acceptable
 	}
 }

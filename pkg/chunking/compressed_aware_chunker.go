@@ -56,9 +56,9 @@ func (cac *CompressedAwareChunker) CreateChunks(files []File) ([]Chunk, error) {
 		}
 
 		fileEstimates = append(fileEstimates, FileEstimate{
-			File:                 file,
-			EstimatedCompressed:  compressedSize,
-			CompressionRatio:     float64(compressedSize) / float64(file.Size),
+			File:                file,
+			EstimatedCompressed: compressedSize,
+			CompressionRatio:    float64(compressedSize) / float64(file.Size),
 		})
 
 		totalEstimatedCompressedSize += compressedSize
@@ -85,7 +85,7 @@ func (cac *CompressedAwareChunker) CreateChunks(files []File) ([]Chunk, error) {
 	for _, estimate := range fileEstimates {
 		// Check if adding this file would exceed target
 		if currentEstimatedCompressed > 0 &&
-		   (currentEstimatedCompressed + estimate.EstimatedCompressed) > targetChunkSizeBytes {
+			(currentEstimatedCompressed+estimate.EstimatedCompressed) > targetChunkSizeBytes {
 			// Finalize current chunk
 			chunks = append(chunks, currentChunk)
 
@@ -140,9 +140,9 @@ func (cac *CompressedAwareChunker) CreateChunksWithMetadata(files []File) (Chunk
 		}
 
 		fileEstimates = append(fileEstimates, FileEstimate{
-			File:                 file,
-			EstimatedCompressed:  compressedSize,
-			CompressionRatio:     float64(compressedSize) / float64(file.Size),
+			File:                file,
+			EstimatedCompressed: compressedSize,
+			CompressionRatio:    float64(compressedSize) / float64(file.Size),
 		})
 
 		totalRawSize += file.Size
@@ -172,15 +172,15 @@ func (cac *CompressedAwareChunker) CreateChunksWithMetadata(files []File) (Chunk
 	for _, estimate := range fileEstimates {
 		// Check if adding this file would exceed target
 		if currentEstimatedCompressed > 0 &&
-		   (currentEstimatedCompressed + estimate.EstimatedCompressed) > targetChunkSizeBytes {
+			(currentEstimatedCompressed+estimate.EstimatedCompressed) > targetChunkSizeBytes {
 			// Finalize current chunk
 			chunks = append(chunks, currentChunk)
 			chunkMetadata = append(chunkMetadata, ChunkMetadata{
-				ChunkID:                  currentChunk.ID,
-				FileCount:                currentChunk.FileCount,
-				TotalRawSize:             currentChunk.TotalSize,
-				EstimatedCompressedSize:  currentEstimatedCompressed,
-				CompressionRatio:         float64(currentEstimatedCompressed) / float64(currentChunk.TotalSize),
+				ChunkID:                 currentChunk.ID,
+				FileCount:               currentChunk.FileCount,
+				TotalRawSize:            currentChunk.TotalSize,
+				EstimatedCompressedSize: currentEstimatedCompressed,
+				CompressionRatio:        float64(currentEstimatedCompressed) / float64(currentChunk.TotalSize),
 			})
 
 			// Start new chunk
@@ -204,11 +204,11 @@ func (cac *CompressedAwareChunker) CreateChunksWithMetadata(files []File) (Chunk
 	if currentChunk.FileCount > 0 {
 		chunks = append(chunks, currentChunk)
 		chunkMetadata = append(chunkMetadata, ChunkMetadata{
-			ChunkID:                  currentChunk.ID,
-			FileCount:                currentChunk.FileCount,
-			TotalRawSize:             currentChunk.TotalSize,
-			EstimatedCompressedSize:  currentEstimatedCompressed,
-			CompressionRatio:         float64(currentEstimatedCompressed) / float64(currentChunk.TotalSize),
+			ChunkID:                 currentChunk.ID,
+			FileCount:               currentChunk.FileCount,
+			TotalRawSize:            currentChunk.TotalSize,
+			EstimatedCompressedSize: currentEstimatedCompressed,
+			CompressionRatio:        float64(currentEstimatedCompressed) / float64(currentChunk.TotalSize),
 		})
 	}
 

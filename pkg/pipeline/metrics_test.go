@@ -103,7 +103,7 @@ func TestRecordDistributionMetrics(t *testing.T) {
 		MedianSizeBytes: 98 * 1024 * 1024,  // 98 MB
 		StdDevBytes:     5.2,
 		VariancePercent: 5.2,
-		MinSizeBytes:    90 * 1024 * 1024, // 90 MB
+		MinSizeBytes:    90 * 1024 * 1024,  // 90 MB
 		MaxSizeBytes:    110 * 1024 * 1024, // 110 MB
 		BalanceScore:    94.5,
 		StrategyUsed:    "hash",
@@ -169,7 +169,7 @@ func TestCalculateShardDistribution(t *testing.T) {
 		distribution := CalculateShardDistribution(shards, "directory")
 
 		assert.Equal(t, 2, distribution.ShardCount)
-		assert.Less(t, distribution.BalanceScore, 50.0) // Very poor balance
+		assert.Less(t, distribution.BalanceScore, 50.0)       // Very poor balance
 		assert.Greater(t, distribution.VariancePercent, 50.0) // High variance
 	})
 }

@@ -272,7 +272,7 @@ func TestRealTimeLoadBalancerRealTimeMonitoring(t *testing.T) {
 	defer cancel()
 
 	rtlb := NewRealTimeLoadBalancer(LoadBalanceAdaptive)
-	rtlb.rebalanceInterval = time.Millisecond * 100 // Fast rebalancing for test
+	rtlb.rebalanceInterval = time.Millisecond * 100  // Fast rebalancing for test
 	rtlb.monitoringInterval = time.Millisecond * 200 // Fast monitoring for test
 
 	// Start real-time monitoring

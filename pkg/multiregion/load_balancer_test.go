@@ -499,10 +499,10 @@ func TestGenerateSessionKey_Priority(t *testing.T) {
 		}
 
 		sessionKey := balancer.generateSessionKey(request)
-		
+
 		// Should be a valid UUID format
 		assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, sessionKey)
-		
+
 		// Generate another one - should be different (random)
 		sessionKey2 := balancer.generateSessionKey(request)
 		assert.NotEqual(t, sessionKey, sessionKey2)
@@ -531,7 +531,7 @@ func TestGenerateSecureSessionID(t *testing.T) {
 
 	t.Run("generates valid UUID v4 format", func(t *testing.T) {
 		sessionID := balancer.generateSecureSessionID()
-		
+
 		// Should match UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
 		// where y is 8, 9, a, or b
 		assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`, sessionID)
@@ -550,11 +550,11 @@ func TestGenerateSecureSessionID(t *testing.T) {
 
 	t.Run("UUID version and variant bits are correct", func(t *testing.T) {
 		sessionID := balancer.generateSecureSessionID()
-		
+
 		// Parse UUID and check version/variant
 		// Version should be 4 (random)
 		assert.Equal(t, "4", string(sessionID[14]), "UUID version should be 4")
-		
+
 		// Variant should be 8, 9, a, or b (RFC 4122 variant)
 		variantChar := sessionID[19]
 		assert.Contains(t, "89ab", string(variantChar), "UUID variant should be 8, 9, a, or b")

@@ -157,11 +157,11 @@ func TestSizeBasedChunkingStrategy_GroupFiles(t *testing.T) {
 
 	// Create test files
 	files := []File{
-		{Path: "/file1.txt", Size: 10 * 1024 * 1024},  // 10 MB
-		{Path: "/file2.txt", Size: 15 * 1024 * 1024},  // 15 MB
-		{Path: "/file3.txt", Size: 20 * 1024 * 1024},  // 20 MB
-		{Path: "/file4.txt", Size: 30 * 1024 * 1024},  // 30 MB
-		{Path: "/file5.txt", Size: 5 * 1024 * 1024},   // 5 MB
+		{Path: "/file1.txt", Size: 10 * 1024 * 1024}, // 10 MB
+		{Path: "/file2.txt", Size: 15 * 1024 * 1024}, // 15 MB
+		{Path: "/file3.txt", Size: 20 * 1024 * 1024}, // 20 MB
+		{Path: "/file4.txt", Size: 30 * 1024 * 1024}, // 30 MB
+		{Path: "/file5.txt", Size: 5 * 1024 * 1024},  // 5 MB
 	}
 
 	chunkSize := int64(50 * 1024 * 1024) // 50 MB chunks
@@ -228,11 +228,11 @@ func TestAdaptiveChunkingStrategy_MixedStrategy(t *testing.T) {
 
 	// Create test files with mix of small and large
 	files := []File{
-		{Path: "/small1.txt", Directory: "/", Size: 1 * 1024 * 1024},    // 1 MB (small)
-		{Path: "/small2.txt", Directory: "/", Size: 2 * 1024 * 1024},    // 2 MB (small)
-		{Path: "/large1.txt", Directory: "/", Size: 200 * 1024 * 1024},  // 200 MB (large)
-		{Path: "/large2.txt", Directory: "/", Size: 500 * 1024 * 1024},  // 500 MB (large)
-		{Path: "/small3.txt", Directory: "/", Size: 5 * 1024 * 1024},    // 5 MB (small)
+		{Path: "/small1.txt", Directory: "/", Size: 1 * 1024 * 1024},   // 1 MB (small)
+		{Path: "/small2.txt", Directory: "/", Size: 2 * 1024 * 1024},   // 2 MB (small)
+		{Path: "/large1.txt", Directory: "/", Size: 200 * 1024 * 1024}, // 200 MB (large)
+		{Path: "/large2.txt", Directory: "/", Size: 500 * 1024 * 1024}, // 500 MB (large)
+		{Path: "/small3.txt", Directory: "/", Size: 5 * 1024 * 1024},   // 5 MB (small)
 	}
 
 	chunkSize := int64(100 * 1024 * 1024) // 100 MB chunks
@@ -329,10 +329,10 @@ func TestEstimateS3Operations(t *testing.T) {
 	strategy := NewAdaptiveChunkingStrategy(config)
 
 	tests := []struct {
-		name        string
-		size        int64
-		minOps      int
-		maxOps      int
+		name   string
+		size   int64
+		minOps int
+		maxOps int
 	}{
 		{
 			name:   "small_chunk",

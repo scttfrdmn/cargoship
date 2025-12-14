@@ -455,19 +455,19 @@ func runAlertsTest(ctx context.Context, channel, severity string) error {
 
 	// Create test alert
 	alert := &cost.BudgetAlert{
-		Type:               cost.AlertTypeCostThreshold,
-		Severity:           parseSeverity(severity),
-		Description:        "This is a test alert from CargoShip",
-		Timestamp:          time.Now(),
-		ProjectID:          "test-project",
-		IsGlobal:           false,
-		MaxBudget:          1000.00,
-		CurrentSpend:       850.00,
-		BudgetRemaining:    150.00,
-		BudgetUsedPercent:  85.0,
-		ThresholdPercent:   80.0,
-		ActionRequired:     true,
-		Recommendation:     "Consider reducing spending or increasing budget allocation",
+		Type:              cost.AlertTypeCostThreshold,
+		Severity:          parseSeverity(severity),
+		Description:       "This is a test alert from CargoShip",
+		Timestamp:         time.Now(),
+		ProjectID:         "test-project",
+		IsGlobal:          false,
+		MaxBudget:         1000.00,
+		CurrentSpend:      850.00,
+		BudgetRemaining:   150.00,
+		BudgetUsedPercent: 85.0,
+		ThresholdPercent:  80.0,
+		ActionRequired:    true,
+		Recommendation:    "Consider reducing spending or increasing budget allocation",
 	}
 
 	fmt.Println("Sending test alert...")

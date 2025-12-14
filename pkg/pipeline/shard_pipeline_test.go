@@ -587,45 +587,45 @@ func TestShardPipeline_AdaptiveWorkers(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name            string
-		partSize        int64
-		expectedMin     int
-		expectedMaxMin  int // Minimum expected max workers
-		expectedMaxMax  int // Maximum expected max workers
+		name           string
+		partSize       int64
+		expectedMin    int
+		expectedMaxMin int // Minimum expected max workers
+		expectedMaxMax int // Maximum expected max workers
 	}{
 		{
-			name:            "small files (< 10 MB parts) - CPU-bound",
-			partSize:        5 << 20, // 5 MB
-			expectedMin:     2,
-			expectedMaxMin:  16,
-			expectedMaxMax:  16,
+			name:           "small files (< 10 MB parts) - CPU-bound",
+			partSize:       5 << 20, // 5 MB
+			expectedMin:    2,
+			expectedMaxMin: 16,
+			expectedMaxMax: 16,
 		},
 		{
-			name:            "medium files (10-50 MB parts)",
-			partSize:        25 << 20, // 25 MB
-			expectedMin:     2,
-			expectedMaxMin:  64,
-			expectedMaxMax:  64,
+			name:           "medium files (10-50 MB parts)",
+			partSize:       25 << 20, // 25 MB
+			expectedMin:    2,
+			expectedMaxMin: 64,
+			expectedMaxMax: 64,
 		},
 		{
-			name:            "large files (>= 50 MB parts) - I/O-bound",
-			partSize:        50 << 20, // 50 MB
-			expectedMin:     2,
-			expectedMaxMin:  256,
-			expectedMaxMax:  256,
+			name:           "large files (>= 50 MB parts) - I/O-bound",
+			partSize:       50 << 20, // 50 MB
+			expectedMin:    2,
+			expectedMaxMin: 256,
+			expectedMaxMax: 256,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockClient := &mockS3ClientShard{}
-			
+
 			config := &ShardPipelineConfig{
-				ShardID:   0,
-				ShardName: "shard-00000",
-				S3Client:  mockClient,
-				Bucket:    "test-bucket",
-				PartSize:  tt.partSize,
+				ShardID:        0,
+				ShardName:      "shard-00000",
+				S3Client:       mockClient,
+				Bucket:         "test-bucket",
+				PartSize:       tt.partSize,
 				EnableAdaptive: true,
 			}
 
@@ -684,10 +684,10 @@ func TestShardPipeline_WorkerStats(t *testing.T) {
 	}
 
 	config := &ShardPipelineConfig{
-		ShardID:   0,
-		ShardName: "shard-00000",
-		S3Client:  mockClient,
-		Bucket:    "test-bucket",
+		ShardID:        0,
+		ShardName:      "shard-00000",
+		S3Client:       mockClient,
+		Bucket:         "test-bucket",
 		EnableAdaptive: true,
 	}
 

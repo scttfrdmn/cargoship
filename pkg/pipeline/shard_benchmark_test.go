@@ -88,8 +88,8 @@ func createBenchmarkFiles(b *testing.B, count int, sizeBytes int64) (string, []c
 // Benchmark 10k files (target: <3s, 20x improvement over 60s)
 func BenchmarkShardedUpload_10kFiles(b *testing.B) {
 	const (
-		fileCount = 10000
-		fileSize  = 1024 // 1KB per file
+		fileCount  = 10000
+		fileSize   = 1024 // 1KB per file
 		shardCount = 10
 	)
 
@@ -166,8 +166,8 @@ func BenchmarkShardedUpload_10kFiles(b *testing.B) {
 // Benchmark 100k files (target: <30s, 20x improvement over 10min)
 func BenchmarkShardedUpload_100kFiles(b *testing.B) {
 	const (
-		fileCount = 100000
-		fileSize  = 512 // 512 bytes per file
+		fileCount  = 100000
+		fileSize   = 512 // 512 bytes per file
 		shardCount = 10
 	)
 
@@ -237,8 +237,8 @@ func BenchmarkShardedUpload_100kFiles(b *testing.B) {
 // Benchmark 1M files (target: <2min, 10x improvement over 20min)
 func BenchmarkShardedUpload_1MFiles(b *testing.B) {
 	const (
-		fileCount = 1000000
-		fileSize  = 256 // 256 bytes per file
+		fileCount  = 1000000
+		fileSize   = 256 // 256 bytes per file
 		shardCount = 10
 	)
 
@@ -308,8 +308,8 @@ func BenchmarkShardedUpload_1MFiles(b *testing.B) {
 // Benchmark traditional single-shard upload (baseline comparison)
 func BenchmarkTraditionalUpload_10kFiles(b *testing.B) {
 	const (
-		fileCount = 10000
-		fileSize  = 1024
+		fileCount  = 10000
+		fileSize   = 1024
 		shardCount = 1 // Single shard = traditional approach
 	)
 
@@ -367,8 +367,8 @@ func BenchmarkTraditionalUpload_10kFiles(b *testing.B) {
 // Benchmark memory usage for large workloads
 func BenchmarkMemoryUsage_100kFiles(b *testing.B) {
 	const (
-		fileCount = 100000
-		fileSize  = 1024
+		fileCount  = 100000
+		fileSize   = 1024
 		shardCount = 10
 	)
 
@@ -456,7 +456,7 @@ func BenchmarkScaling_FileCounts(b *testing.B) {
 	for _, fileCount := range fileCounts {
 		b.Run(fmt.Sprintf("files=%d", fileCount), func(b *testing.B) {
 			const (
-				fileSize  = 1024
+				fileSize   = 1024
 				shardCount = 10
 			)
 

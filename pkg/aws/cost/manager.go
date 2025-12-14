@@ -265,34 +265,34 @@ func (m *Manager) GetBudgetStatus() map[string]interface{} {
 
 		status := map[string]interface{}{
 			// Period information
-			"period_type":          budgetPeriod.Type,
-			"period_start":         start.Format("2006-01-02"),
-			"period_end":           end.Format("2006-01-02"),
-			"days_elapsed":         daysElapsed,
-			"days_remaining":       daysRemaining,
-			"total_days":           totalDays,
+			"period_type":    budgetPeriod.Type,
+			"period_start":   start.Format("2006-01-02"),
+			"period_end":     end.Format("2006-01-02"),
+			"days_elapsed":   daysElapsed,
+			"days_remaining": daysRemaining,
+			"total_days":     totalDays,
 
 			// Budget information
-			"max_budget":           budgetPeriod.MaxBudget,
-			"current_spend":        currentSpend,
-			"budget_used":          budgetUsed,
-			"budget_remaining":     remaining,
-			"alert_threshold":      budgetPeriod.AlertThreshold,
-			"currency":             m.config.Pricing.Currency,
+			"max_budget":       budgetPeriod.MaxBudget,
+			"current_spend":    currentSpend,
+			"budget_used":      budgetUsed,
+			"budget_remaining": remaining,
+			"alert_threshold":  budgetPeriod.AlertThreshold,
+			"currency":         m.config.Pricing.Currency,
 
 			// Burn rate and projections
-			"daily_burn_rate":      burnRate,
-			"projected_eop_spend":  projectedSpend,
-			"will_exceed_budget":   willExceed,
-			"target_daily_rate":    targetDailyRate,
+			"daily_burn_rate":     burnRate,
+			"projected_eop_spend": projectedSpend,
+			"will_exceed_budget":  willExceed,
+			"target_daily_rate":   targetDailyRate,
 
 			// Status flags
-			"over_budget":          budgetUsed > 1.0,
-			"alert_triggered":      budgetUsed > budgetPeriod.AlertThreshold,
+			"over_budget":     budgetUsed > 1.0,
+			"alert_triggered": budgetUsed > budgetPeriod.AlertThreshold,
 
 			// Grant-specific information
-			"grant_name":           budgetPeriod.GrantName,
-			"enable_rollover":      budgetPeriod.EnableRollover,
+			"grant_name":      budgetPeriod.GrantName,
+			"enable_rollover": budgetPeriod.EnableRollover,
 		}
 
 		// Add overage/savings information

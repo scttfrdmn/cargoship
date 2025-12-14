@@ -71,10 +71,10 @@ func TestSendWebhookAlert(t *testing.T) {
 
 	// Create notifier with webhook enabled
 	cfg := &BudgetAlertConfig{
-		Enabled:           true,
-		WebhookEnabled:    true,
-		WebhookURL:        server.URL,
-		WebhookHeaders:    map[string]string{
+		Enabled:        true,
+		WebhookEnabled: true,
+		WebhookURL:     server.URL,
+		WebhookHeaders: map[string]string{
 			"X-Test-Header": "test-value",
 		},
 		WebhookTimeout:    10 * time.Second,
@@ -494,10 +494,10 @@ func TestSendCloudWatchAlert(t *testing.T) {
 
 	// Create notifier with CloudWatch enabled
 	cfg := &BudgetAlertConfig{
-		Enabled:              true,
-		CloudWatchEnabled:    true,
-		CloudWatchNamespace:  "CargoShip/Budgets",
-		SendProjectAlerts:    true,
+		Enabled:             true,
+		CloudWatchEnabled:   true,
+		CloudWatchNamespace: "CargoShip/Budgets",
+		SendProjectAlerts:   true,
 	}
 
 	// Note: In a real implementation, we would mock the CloudWatch service
@@ -535,23 +535,23 @@ func TestSendCloudWatchAlertVolumeType(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	cfg := &BudgetAlertConfig{
-		Enabled:              true,
-		CloudWatchEnabled:    true,
-		CloudWatchNamespace:  "CargoShip/Budgets",
-		SendProjectAlerts:    true,
+		Enabled:             true,
+		CloudWatchEnabled:   true,
+		CloudWatchNamespace: "CargoShip/Budgets",
+		SendProjectAlerts:   true,
 	}
 	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
 
 	// Create test alert for volume threshold
 	alert := &BudgetAlert{
-		ID:                 "test-alert-volume",
-		Timestamp:          time.Now(),
-		Type:               AlertTypeVolumeThreshold,
-		Severity:           SeverityWarning,
-		ProjectID:          "project1",
-		VolumeUsedPercent:  80.0,
-		MaxVolumeGB:        1000.0,
-		CurrentVolumeGB:    800.0,
+		ID:                "test-alert-volume",
+		Timestamp:         time.Now(),
+		Type:              AlertTypeVolumeThreshold,
+		Severity:          SeverityWarning,
+		ProjectID:         "project1",
+		VolumeUsedPercent: 80.0,
+		MaxVolumeGB:       1000.0,
+		CurrentVolumeGB:   800.0,
 	}
 
 	ctx := context.Background()
@@ -566,10 +566,10 @@ func TestSendCloudWatchAlertUnsupportedType(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
 
 	cfg := &BudgetAlertConfig{
-		Enabled:              true,
-		CloudWatchEnabled:    true,
-		CloudWatchNamespace:  "CargoShip/Budgets",
-		SendProjectAlerts:    true,
+		Enabled:             true,
+		CloudWatchEnabled:   true,
+		CloudWatchNamespace: "CargoShip/Budgets",
+		SendProjectAlerts:   true,
 	}
 	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
 
@@ -674,15 +674,15 @@ func TestSendEmailAlert(t *testing.T) {
 
 	// Create notifier with email enabled
 	cfg := &BudgetAlertConfig{
-		Enabled:         true,
-		EmailEnabled:    true,
-		EmailRecipients: []string{"test@example.com", "admin@example.com"},
-		SMTPHost:        "smtp.example.com",
-		SMTPPort:        587,
-		SMTPUsername:    "user@example.com",
-		SMTPPassword:    "password",
-		SMTPFrom:        "budget@cargoship.io",
-		SMTPUseTLS:      true,
+		Enabled:           true,
+		EmailEnabled:      true,
+		EmailRecipients:   []string{"test@example.com", "admin@example.com"},
+		SMTPHost:          "smtp.example.com",
+		SMTPPort:          587,
+		SMTPUsername:      "user@example.com",
+		SMTPPassword:      "password",
+		SMTPFrom:          "budget@cargoship.io",
+		SMTPUseTLS:        true,
 		SendProjectAlerts: true,
 	}
 	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
@@ -721,15 +721,15 @@ func TestSendEmailAlertNoRecipients(t *testing.T) {
 
 	// Create notifier with email enabled but no recipients
 	cfg := &BudgetAlertConfig{
-		Enabled:         true,
-		EmailEnabled:    true,
-		EmailRecipients: []string{}, // Empty recipients list
-		SMTPHost:        "smtp.example.com",
-		SMTPPort:        587,
-		SMTPUsername:    "user@example.com",
-		SMTPPassword:    "password",
-		SMTPFrom:        "budget@cargoship.io",
-		SMTPUseTLS:      true,
+		Enabled:           true,
+		EmailEnabled:      true,
+		EmailRecipients:   []string{}, // Empty recipients list
+		SMTPHost:          "smtp.example.com",
+		SMTPPort:          587,
+		SMTPUsername:      "user@example.com",
+		SMTPPassword:      "password",
+		SMTPFrom:          "budget@cargoship.io",
+		SMTPUseTLS:        true,
 		SendProjectAlerts: true,
 	}
 	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
@@ -756,15 +756,15 @@ func TestSendEmailAlertMissingSMTPHost(t *testing.T) {
 
 	// Create notifier with email enabled but no SMTP host
 	cfg := &BudgetAlertConfig{
-		Enabled:         true,
-		EmailEnabled:    true,
-		EmailRecipients: []string{"test@example.com"},
-		SMTPHost:        "", // Missing SMTP host
-		SMTPPort:        587,
-		SMTPUsername:    "user@example.com",
-		SMTPPassword:    "password",
-		SMTPFrom:        "budget@cargoship.io",
-		SMTPUseTLS:      true,
+		Enabled:           true,
+		EmailEnabled:      true,
+		EmailRecipients:   []string{"test@example.com"},
+		SMTPHost:          "", // Missing SMTP host
+		SMTPPort:          587,
+		SMTPUsername:      "user@example.com",
+		SMTPPassword:      "password",
+		SMTPFrom:          "budget@cargoship.io",
+		SMTPUseTLS:        true,
 		SendProjectAlerts: true,
 	}
 	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})
@@ -791,12 +791,12 @@ func TestEmailMessageFormatting(t *testing.T) {
 
 	// Create notifier (we won't send, just test config structure)
 	cfg := &BudgetAlertConfig{
-		Enabled:         true,
-		EmailEnabled:    true,
-		EmailRecipients: []string{"test@example.com"},
-		SMTPHost:        "smtp.example.com",
-		SMTPPort:        587,
-		SMTPFrom:        "budget@cargoship.io",
+		Enabled:           true,
+		EmailEnabled:      true,
+		EmailRecipients:   []string{"test@example.com"},
+		SMTPHost:          "smtp.example.com",
+		SMTPPort:          587,
+		SMTPFrom:          "budget@cargoship.io",
 		SendProjectAlerts: true,
 	}
 	notifier := NewBudgetAlertNotifier(cfg, aws.Config{})

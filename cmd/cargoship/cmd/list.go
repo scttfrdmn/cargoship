@@ -19,12 +19,12 @@ import (
 // NewListCmd creates the 'list' command for querying uploaded files
 func NewListCmd() *cobra.Command {
 	var (
-		bucket    string
-		prefix    string
-		uploadID  string
-		pattern   string
-		verbose   bool
-		region    string
+		bucket   string
+		prefix   string
+		uploadID string
+		pattern  string
+		verbose  bool
+		region   string
 	)
 
 	cmd := &cobra.Command{

@@ -10,11 +10,11 @@ import (
 
 // DashboardRenderer renders performance monitoring dashboards.
 type DashboardRenderer struct {
-	config       *MonitoringConfig
-	currentView  *DashboardView
-	templates    map[string]*DashboardTemplate
-	mu           sync.RWMutex
-	isRunning    bool
+	config      *MonitoringConfig
+	currentView *DashboardView
+	templates   map[string]*DashboardTemplate
+	mu          sync.RWMutex
+	isRunning   bool
 }
 
 // NewDashboardRenderer creates a new dashboard renderer.
@@ -23,7 +23,7 @@ func NewDashboardRenderer(config *MonitoringConfig) *DashboardRenderer {
 		config:    config,
 		templates: make(map[string]*DashboardTemplate),
 	}
-	
+
 	dr.initializeTemplates()
 	return dr
 }
@@ -32,11 +32,11 @@ func NewDashboardRenderer(config *MonitoringConfig) *DashboardRenderer {
 func (dr *DashboardRenderer) Start(ctx context.Context) error {
 	dr.mu.Lock()
 	defer dr.mu.Unlock()
-	
+
 	if dr.isRunning {
 		return nil
 	}
-	
+
 	dr.isRunning = true
 	go dr.renderingLoop(ctx)
 	return nil
@@ -53,46 +53,46 @@ func (dr *DashboardRenderer) Stop() {
 func (dr *DashboardRenderer) RenderDashboard(metrics *PerformanceMetrics, alerts []*Alert) *DashboardView {
 	dr.mu.Lock()
 	defer dr.mu.Unlock()
-	
+
 	view := &DashboardView{
 		Title:       "CargoShip Performance Monitor",
 		GeneratedAt: time.Now(),
 		Sections:    make([]*DashboardSection, 0),
 	}
-	
+
 	// Render overview section
 	view.Sections = append(view.Sections, dr.renderOverviewSection(metrics, alerts))
-	
+
 	// Render system resources section
 	if metrics.SystemMetrics != nil {
 		view.Sections = append(view.Sections, dr.renderSystemSection(metrics.SystemMetrics))
 	}
-	
+
 	// Render transfer performance section
 	if metrics.TransferMetrics != nil {
 		view.Sections = append(view.Sections, dr.renderTransferSection(metrics.TransferMetrics))
 	}
-	
+
 	// Render network performance section
 	if metrics.NetworkMetrics != nil {
 		view.Sections = append(view.Sections, dr.renderNetworkSection(metrics.NetworkMetrics))
 	}
-	
+
 	// Render S3 performance section
 	if metrics.S3Metrics != nil {
 		view.Sections = append(view.Sections, dr.renderS3Section(metrics.S3Metrics))
 	}
-	
+
 	// Render staging performance section
 	if metrics.StagingMetrics != nil {
 		view.Sections = append(view.Sections, dr.renderStagingSection(metrics.StagingMetrics))
 	}
-	
+
 	// Render alerts section
 	if len(alerts) > 0 {
 		view.Sections = append(view.Sections, dr.renderAlertsSection(alerts))
 	}
-	
+
 	dr.currentView = view
 	return view
 }
@@ -101,11 +101,11 @@ func (dr *DashboardRenderer) RenderDashboard(metrics *PerformanceMetrics, alerts
 func (dr *DashboardRenderer) GetCurrentView() *DashboardView {
 	dr.mu.RLock()
 	defer dr.mu.RUnlock()
-	
+
 	if dr.currentView == nil {
 		return nil
 	}
-	
+
 	// Return a copy
 	view := *dr.currentView
 	return &view
@@ -115,7 +115,7 @@ func (dr *DashboardRenderer) GetCurrentView() *DashboardView {
 func (dr *DashboardRenderer) renderingLoop(ctx context.Context) {
 	ticker := time.NewTicker(dr.config.DashboardInterval)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -134,19 +134,19 @@ func (dr *DashboardRenderer) initializeTemplates() {
 		Title:       "System Overview",
 		Description: "Overall system health and performance summary",
 	}
-	
+
 	dr.templates["system"] = &DashboardTemplate{
 		Name:        "system",
 		Title:       "System Resources",
 		Description: "CPU, memory, and disk usage",
 	}
-	
+
 	dr.templates["transfer"] = &DashboardTemplate{
 		Name:        "transfer",
 		Title:       "Transfer Performance",
 		Description: "Data transfer throughput and latency metrics",
 	}
-	
+
 	dr.templates["network"] = &DashboardTemplate{
 		Name:        "network",
 		Title:       "Network Performance",
@@ -161,7 +161,7 @@ func (dr *DashboardRenderer) renderOverviewSection(metrics *PerformanceMetrics, 
 		Type:    "overview",
 		Widgets: make([]*DashboardWidget, 0),
 	}
-	
+
 	// System health widget
 	healthWidget := &DashboardWidget{
 		Type:    "health_status",
@@ -169,7 +169,7 @@ func (dr *DashboardRenderer) renderOverviewSection(metrics *PerformanceMetrics, 
 		Content: dr.renderSystemHealth(metrics, alerts),
 	}
 	section.Widgets = append(section.Widgets, healthWidget)
-	
+
 	// Key metrics widget
 	metricsWidget := &DashboardWidget{
 		Type:    "key_metrics",
@@ -177,7 +177,7 @@ func (dr *DashboardRenderer) renderOverviewSection(metrics *PerformanceMetrics, 
 		Content: dr.renderKeyMetrics(metrics),
 	}
 	section.Widgets = append(section.Widgets, metricsWidget)
-	
+
 	// Active alerts widget
 	if len(alerts) > 0 {
 		alertsWidget := &DashboardWidget{
@@ -187,7 +187,7 @@ func (dr *DashboardRenderer) renderOverviewSection(metrics *PerformanceMetrics, 
 		}
 		section.Widgets = append(section.Widgets, alertsWidget)
 	}
-	
+
 	return section
 }
 
@@ -198,7 +198,7 @@ func (dr *DashboardRenderer) renderSystemSection(metrics *SystemMetrics) *Dashbo
 		Type:    "system",
 		Widgets: make([]*DashboardWidget, 0),
 	}
-	
+
 	// CPU usage widget
 	cpuWidget := &DashboardWidget{
 		Type:    "gauge",
@@ -206,7 +206,7 @@ func (dr *DashboardRenderer) renderSystemSection(metrics *SystemMetrics) *Dashbo
 		Content: dr.renderGauge("CPU", metrics.CPUUsagePercent, "%", 80, 90),
 	}
 	section.Widgets = append(section.Widgets, cpuWidget)
-	
+
 	// Memory usage widget
 	memoryWidget := &DashboardWidget{
 		Type:    "gauge",
@@ -214,7 +214,7 @@ func (dr *DashboardRenderer) renderSystemSection(metrics *SystemMetrics) *Dashbo
 		Content: dr.renderGauge("Memory", metrics.MemoryUsagePercent, "%", 85, 90),
 	}
 	section.Widgets = append(section.Widgets, memoryWidget)
-	
+
 	// Disk usage widget
 	diskWidget := &DashboardWidget{
 		Type:    "gauge",
@@ -222,7 +222,7 @@ func (dr *DashboardRenderer) renderSystemSection(metrics *SystemMetrics) *Dashbo
 		Content: dr.renderGauge("Disk", metrics.DiskUsagePercent, "%", 80, 90),
 	}
 	section.Widgets = append(section.Widgets, diskWidget)
-	
+
 	// Goroutines widget
 	goroutineWidget := &DashboardWidget{
 		Type:    "metric",
@@ -230,7 +230,7 @@ func (dr *DashboardRenderer) renderSystemSection(metrics *SystemMetrics) *Dashbo
 		Content: fmt.Sprintf("%d", metrics.ActiveGoroutines),
 	}
 	section.Widgets = append(section.Widgets, goroutineWidget)
-	
+
 	return section
 }
 
@@ -241,7 +241,7 @@ func (dr *DashboardRenderer) renderTransferSection(metrics *TransferMetrics) *Da
 		Type:    "transfer",
 		Widgets: make([]*DashboardWidget, 0),
 	}
-	
+
 	// Throughput widget
 	throughputWidget := &DashboardWidget{
 		Type:    "metric",
@@ -249,7 +249,7 @@ func (dr *DashboardRenderer) renderTransferSection(metrics *TransferMetrics) *Da
 		Content: fmt.Sprintf("%.2f MB/s", metrics.TotalThroughputMBps),
 	}
 	section.Widgets = append(section.Widgets, throughputWidget)
-	
+
 	// Active transfers widget
 	transfersWidget := &DashboardWidget{
 		Type:    "metric",
@@ -257,7 +257,7 @@ func (dr *DashboardRenderer) renderTransferSection(metrics *TransferMetrics) *Da
 		Content: fmt.Sprintf("%d", metrics.ActiveTransfers),
 	}
 	section.Widgets = append(section.Widgets, transfersWidget)
-	
+
 	// Success rate widget
 	successWidget := &DashboardWidget{
 		Type:    "gauge",
@@ -265,7 +265,7 @@ func (dr *DashboardRenderer) renderTransferSection(metrics *TransferMetrics) *Da
 		Content: dr.renderGauge("Success", metrics.SuccessRate*100, "%", 95, 98),
 	}
 	section.Widgets = append(section.Widgets, successWidget)
-	
+
 	// Average latency widget
 	latencyWidget := &DashboardWidget{
 		Type:    "metric",
@@ -273,7 +273,7 @@ func (dr *DashboardRenderer) renderTransferSection(metrics *TransferMetrics) *Da
 		Content: fmt.Sprintf("%.2f ms", metrics.AverageLatencyMs),
 	}
 	section.Widgets = append(section.Widgets, latencyWidget)
-	
+
 	return section
 }
 
@@ -284,7 +284,7 @@ func (dr *DashboardRenderer) renderNetworkSection(metrics *NetworkMetrics) *Dash
 		Type:    "network",
 		Widgets: make([]*DashboardWidget, 0),
 	}
-	
+
 	// Bandwidth widget
 	bandwidthWidget := &DashboardWidget{
 		Type:    "metric",
@@ -292,7 +292,7 @@ func (dr *DashboardRenderer) renderNetworkSection(metrics *NetworkMetrics) *Dash
 		Content: fmt.Sprintf("%.2f MB/s", metrics.BandwidthMBps),
 	}
 	section.Widgets = append(section.Widgets, bandwidthWidget)
-	
+
 	// Latency widget
 	latencyWidget := &DashboardWidget{
 		Type:    "metric",
@@ -300,7 +300,7 @@ func (dr *DashboardRenderer) renderNetworkSection(metrics *NetworkMetrics) *Dash
 		Content: fmt.Sprintf("%.2f ms", metrics.LatencyMs),
 	}
 	section.Widgets = append(section.Widgets, latencyWidget)
-	
+
 	// Packet loss widget
 	packetLossWidget := &DashboardWidget{
 		Type:    "gauge",
@@ -308,7 +308,7 @@ func (dr *DashboardRenderer) renderNetworkSection(metrics *NetworkMetrics) *Dash
 		Content: dr.renderGauge("Loss", metrics.PacketLossPercent*100, "%", 1, 5),
 	}
 	section.Widgets = append(section.Widgets, packetLossWidget)
-	
+
 	// Reliability widget
 	reliabilityWidget := &DashboardWidget{
 		Type:    "gauge",
@@ -316,7 +316,7 @@ func (dr *DashboardRenderer) renderNetworkSection(metrics *NetworkMetrics) *Dash
 		Content: dr.renderGauge("Reliability", metrics.ReliabilityScore*100, "%", 95, 98),
 	}
 	section.Widgets = append(section.Widgets, reliabilityWidget)
-	
+
 	return section
 }
 
@@ -327,7 +327,7 @@ func (dr *DashboardRenderer) renderS3Section(metrics *S3Metrics) *DashboardSecti
 		Type:    "s3",
 		Widgets: make([]*DashboardWidget, 0),
 	}
-	
+
 	// Request latency widget
 	latencyWidget := &DashboardWidget{
 		Type:    "metric",
@@ -335,7 +335,7 @@ func (dr *DashboardRenderer) renderS3Section(metrics *S3Metrics) *DashboardSecti
 		Content: fmt.Sprintf("%.2f ms", metrics.RequestLatencyMs),
 	}
 	section.Widgets = append(section.Widgets, latencyWidget)
-	
+
 	// Success rate widget
 	totalRequests := metrics.SuccessfulRequests + metrics.FailedRequests
 	successRate := 0.0
@@ -348,7 +348,7 @@ func (dr *DashboardRenderer) renderS3Section(metrics *S3Metrics) *DashboardSecti
 		Content: dr.renderGauge("Success", successRate, "%", 95, 98),
 	}
 	section.Widgets = append(section.Widgets, successWidget)
-	
+
 	// Throughput widget
 	throughputWidget := &DashboardWidget{
 		Type:    "metric",
@@ -356,7 +356,7 @@ func (dr *DashboardRenderer) renderS3Section(metrics *S3Metrics) *DashboardSecti
 		Content: fmt.Sprintf("%.2f MB/s", metrics.ThroughputMBps),
 	}
 	section.Widgets = append(section.Widgets, throughputWidget)
-	
+
 	// Error rate widget
 	errorWidget := &DashboardWidget{
 		Type:    "gauge",
@@ -364,7 +364,7 @@ func (dr *DashboardRenderer) renderS3Section(metrics *S3Metrics) *DashboardSecti
 		Content: dr.renderGauge("Errors", metrics.ErrorRate*100, "%", 5, 10),
 	}
 	section.Widgets = append(section.Widgets, errorWidget)
-	
+
 	return section
 }
 
@@ -375,7 +375,7 @@ func (dr *DashboardRenderer) renderStagingSection(metrics *StagingMetrics) *Dash
 		Type:    "staging",
 		Widgets: make([]*DashboardWidget, 0),
 	}
-	
+
 	// Active chunks widget
 	chunksWidget := &DashboardWidget{
 		Type:    "metric",
@@ -383,7 +383,7 @@ func (dr *DashboardRenderer) renderStagingSection(metrics *StagingMetrics) *Dash
 		Content: fmt.Sprintf("%d", metrics.ActiveChunks),
 	}
 	section.Widgets = append(section.Widgets, chunksWidget)
-	
+
 	// Deduplication rate widget
 	dedupeWidget := &DashboardWidget{
 		Type:    "gauge",
@@ -391,7 +391,7 @@ func (dr *DashboardRenderer) renderStagingSection(metrics *StagingMetrics) *Dash
 		Content: dr.renderGauge("Dedupe", metrics.ChunkDeduplicationRate*100, "%", 10, 20),
 	}
 	section.Widgets = append(section.Widgets, dedupeWidget)
-	
+
 	// Compression efficiency widget
 	compressionWidget := &DashboardWidget{
 		Type:    "gauge",
@@ -399,7 +399,7 @@ func (dr *DashboardRenderer) renderStagingSection(metrics *StagingMetrics) *Dash
 		Content: dr.renderGauge("Compression", (1.0-metrics.CompressionEfficiency)*100, "%", 30, 50),
 	}
 	section.Widgets = append(section.Widgets, compressionWidget)
-	
+
 	// Prediction accuracy widget
 	accuracyWidget := &DashboardWidget{
 		Type:    "gauge",
@@ -407,7 +407,7 @@ func (dr *DashboardRenderer) renderStagingSection(metrics *StagingMetrics) *Dash
 		Content: dr.renderGauge("Accuracy", metrics.PredictionAccuracy*100, "%", 80, 90),
 	}
 	section.Widgets = append(section.Widgets, accuracyWidget)
-	
+
 	return section
 }
 
@@ -418,12 +418,12 @@ func (dr *DashboardRenderer) renderAlertsSection(alerts []*Alert) *DashboardSect
 		Type:    "alerts",
 		Widgets: make([]*DashboardWidget, 0),
 	}
-	
+
 	// Group alerts by severity
 	critical := 0
 	warning := 0
 	info := 0
-	
+
 	for _, alert := range alerts {
 		switch alert.Severity {
 		case SeverityCritical:
@@ -434,7 +434,7 @@ func (dr *DashboardRenderer) renderAlertsSection(alerts []*Alert) *DashboardSect
 			info++
 		}
 	}
-	
+
 	// Alert counts widget
 	countsWidget := &DashboardWidget{
 		Type:    "alert_counts",
@@ -442,7 +442,7 @@ func (dr *DashboardRenderer) renderAlertsSection(alerts []*Alert) *DashboardSect
 		Content: fmt.Sprintf("Critical: %d, Warning: %d, Info: %d", critical, warning, info),
 	}
 	section.Widgets = append(section.Widgets, countsWidget)
-	
+
 	// Recent alerts widget
 	recentAlertsWidget := &DashboardWidget{
 		Type:    "alert_list",
@@ -450,17 +450,17 @@ func (dr *DashboardRenderer) renderAlertsSection(alerts []*Alert) *DashboardSect
 		Content: dr.renderRecentAlerts(alerts),
 	}
 	section.Widgets = append(section.Widgets, recentAlertsWidget)
-	
+
 	return section
 }
 
 // renderSystemHealth renders system health status.
 func (dr *DashboardRenderer) renderSystemHealth(metrics *PerformanceMetrics, alerts []*Alert) string {
 	healthScore := dr.calculateHealthScore(metrics, alerts)
-	
+
 	var status string
 	var color string
-	
+
 	if healthScore >= 90 {
 		status = "Healthy"
 		color = "green"
@@ -471,28 +471,28 @@ func (dr *DashboardRenderer) renderSystemHealth(metrics *PerformanceMetrics, ale
 		status = "Critical"
 		color = "red"
 	}
-	
+
 	return fmt.Sprintf("[%s] %s (Score: %.1f)", color, status, healthScore)
 }
 
 // renderKeyMetrics renders key system metrics.
 func (dr *DashboardRenderer) renderKeyMetrics(metrics *PerformanceMetrics) string {
 	var lines []string
-	
+
 	if metrics.TransferMetrics != nil {
 		lines = append(lines, fmt.Sprintf("Throughput: %.2f MB/s", metrics.TransferMetrics.TotalThroughputMBps))
 		lines = append(lines, fmt.Sprintf("Active Transfers: %d", metrics.TransferMetrics.ActiveTransfers))
 	}
-	
+
 	if metrics.SystemMetrics != nil {
 		lines = append(lines, fmt.Sprintf("CPU: %.1f%%", metrics.SystemMetrics.CPUUsagePercent))
 		lines = append(lines, fmt.Sprintf("Memory: %.1f%%", metrics.SystemMetrics.MemoryUsagePercent))
 	}
-	
+
 	if metrics.NetworkMetrics != nil {
 		lines = append(lines, fmt.Sprintf("Network Latency: %.2f ms", metrics.NetworkMetrics.LatencyMs))
 	}
-	
+
 	return strings.Join(lines, "\n")
 }
 
@@ -501,14 +501,14 @@ func (dr *DashboardRenderer) renderActiveAlertsWidget(alerts []*Alert) string {
 	if len(alerts) == 0 {
 		return "No active alerts"
 	}
-	
+
 	var lines []string
 	for i, alert := range alerts {
 		if i >= 5 { // Show only first 5 alerts
 			lines = append(lines, fmt.Sprintf("... and %d more", len(alerts)-5))
 			break
 		}
-		
+
 		severity := "INFO"
 		switch alert.Severity {
 		case SeverityCritical:
@@ -516,10 +516,10 @@ func (dr *DashboardRenderer) renderActiveAlertsWidget(alerts []*Alert) string {
 		case SeverityWarning:
 			severity = "WARN"
 		}
-		
+
 		lines = append(lines, fmt.Sprintf("[%s] %s", severity, alert.Title))
 	}
-	
+
 	return strings.Join(lines, "\n")
 }
 
@@ -527,7 +527,7 @@ func (dr *DashboardRenderer) renderActiveAlertsWidget(alerts []*Alert) string {
 func (dr *DashboardRenderer) renderGauge(name string, value float64, unit string, warningThreshold, criticalThreshold float64) string {
 	var status string
 	var bar string
-	
+
 	if value >= criticalThreshold {
 		status = "CRITICAL"
 		bar = "████████████████████" // Full red bar
@@ -542,7 +542,7 @@ func (dr *DashboardRenderer) renderGauge(name string, value float64, unit string
 		}
 		bar = strings.Repeat("█", barLength) + strings.Repeat("▒", 20-barLength)
 	}
-	
+
 	return fmt.Sprintf("%.1f%s [%s] %s", value, unit, bar, status)
 }
 
@@ -551,26 +551,26 @@ func (dr *DashboardRenderer) renderRecentAlerts(alerts []*Alert) string {
 	if len(alerts) == 0 {
 		return "No recent alerts"
 	}
-	
+
 	var lines []string
 	for i, alert := range alerts {
 		if i >= 10 { // Show only 10 most recent
 			break
 		}
-		
+
 		age := time.Since(alert.Timestamp)
 		ageStr := dr.formatDuration(age)
-		
+
 		lines = append(lines, fmt.Sprintf("%s - %s (%s ago)", alert.Title, alert.Source, ageStr))
 	}
-	
+
 	return strings.Join(lines, "\n")
 }
 
 // calculateHealthScore calculates overall system health score.
 func (dr *DashboardRenderer) calculateHealthScore(metrics *PerformanceMetrics, alerts []*Alert) float64 {
 	score := 100.0
-	
+
 	// Deduct points for active alerts
 	for _, alert := range alerts {
 		switch alert.Severity {
@@ -582,14 +582,14 @@ func (dr *DashboardRenderer) calculateHealthScore(metrics *PerformanceMetrics, a
 			score -= 1
 		}
 	}
-	
+
 	// Deduct points for poor performance
 	if metrics.TransferMetrics != nil {
 		if metrics.TransferMetrics.SuccessRate < 0.95 {
 			score -= (0.95 - metrics.TransferMetrics.SuccessRate) * 100
 		}
 	}
-	
+
 	if metrics.SystemMetrics != nil {
 		if metrics.SystemMetrics.CPUUsagePercent > 80 {
 			score -= (metrics.SystemMetrics.CPUUsagePercent - 80) / 2
@@ -598,11 +598,11 @@ func (dr *DashboardRenderer) calculateHealthScore(metrics *PerformanceMetrics, a
 			score -= (metrics.SystemMetrics.MemoryUsagePercent - 85) / 2
 		}
 	}
-	
+
 	if score < 0 {
 		score = 0
 	}
-	
+
 	return score
 }
 

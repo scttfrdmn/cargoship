@@ -100,7 +100,6 @@ func NewContentAnalyzer(config *StagingConfig) *ContentAnalyzer {
 	}
 }
 
-
 // AnalyzeContent analyzes content characteristics for boundary prediction.
 func (ca *ContentAnalyzer) AnalyzeContent(reader io.Reader, contentType string) (*ContentProfile, error) {
 	profile := &ContentProfile{
@@ -630,4 +629,3 @@ func (ctc *ContentTypeClassifier) ClassifyContent(data []byte) string {
 
 	return "binary"
 }
-

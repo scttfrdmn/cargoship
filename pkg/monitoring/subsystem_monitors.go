@@ -34,7 +34,7 @@ func (tpm *TransferPerformanceMonitor) Start(ctx context.Context) error {
 func (tpm *TransferPerformanceMonitor) GetMetrics() *TransferMetrics {
 	tpm.mu.RLock()
 	defer tpm.mu.RUnlock()
-	
+
 	metrics := *tpm.metrics
 	return &metrics
 }
@@ -42,10 +42,10 @@ func (tpm *TransferPerformanceMonitor) GetMetrics() *TransferMetrics {
 // GetHealth returns transfer subsystem health.
 func (tpm *TransferPerformanceMonitor) GetHealth() *HealthStatus {
 	metrics := tpm.GetMetrics()
-	
+
 	status := HealthHealthy
 	message := "Transfer performance is healthy"
-	
+
 	// Check for issues
 	if metrics.SuccessRate < 0.95 {
 		status = HealthWarning
@@ -58,7 +58,7 @@ func (tpm *TransferPerformanceMonitor) GetHealth() *HealthStatus {
 		status = HealthWarning
 		message = "Low transfer throughput"
 	}
-	
+
 	return &HealthStatus{
 		Status:    status,
 		Message:   message,
@@ -70,7 +70,7 @@ func (tpm *TransferPerformanceMonitor) GetHealth() *HealthStatus {
 func (tpm *TransferPerformanceMonitor) monitoringLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -85,7 +85,7 @@ func (tpm *TransferPerformanceMonitor) monitoringLoop(ctx context.Context) {
 func (tpm *TransferPerformanceMonitor) updateMetrics() {
 	tpm.mu.Lock()
 	defer tpm.mu.Unlock()
-	
+
 	// In a real implementation, this would collect actual transfer metrics
 	// For now, we'll simulate based on system state
 	tpm.metrics.ActiveTransfers = tpm.getActiveTransferCount()
@@ -150,7 +150,7 @@ func (srm *SystemResourceMonitor) Start(ctx context.Context) error {
 func (srm *SystemResourceMonitor) GetMetrics() *SystemMetrics {
 	srm.mu.RLock()
 	defer srm.mu.RUnlock()
-	
+
 	metrics := *srm.metrics
 	return &metrics
 }
@@ -158,10 +158,10 @@ func (srm *SystemResourceMonitor) GetMetrics() *SystemMetrics {
 // GetHealth returns system health status.
 func (srm *SystemResourceMonitor) GetHealth() *HealthStatus {
 	metrics := srm.GetMetrics()
-	
+
 	status := HealthHealthy
 	message := "System resources are healthy"
-	
+
 	// Check resource usage
 	if metrics.CPUUsagePercent > 90 {
 		status = HealthCritical
@@ -176,7 +176,7 @@ func (srm *SystemResourceMonitor) GetHealth() *HealthStatus {
 		status = HealthWarning
 		message = "High memory usage"
 	}
-	
+
 	return &HealthStatus{
 		Status:    status,
 		Message:   message,
@@ -195,7 +195,7 @@ func (srm *SystemResourceMonitor) TriggerMemoryCleanup() {
 func (srm *SystemResourceMonitor) monitoringLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 2)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -210,23 +210,23 @@ func (srm *SystemResourceMonitor) monitoringLoop(ctx context.Context) {
 func (srm *SystemResourceMonitor) updateMetrics() {
 	srm.mu.Lock()
 	defer srm.mu.Unlock()
-	
+
 	// Get runtime statistics
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	srm.metrics.ActiveGoroutines = runtime.NumGoroutine()
 	srm.metrics.HeapSizeMB = float64(memStats.HeapSys) / 1024 / 1024
 	srm.metrics.MemoryUsageMB = float64(memStats.Alloc) / 1024 / 1024
 	srm.metrics.GCPauseMs = float64(memStats.PauseNs[(memStats.NumGC+255)%256]) / 1000000
-	
+
 	// Simulate other metrics (would use system calls in real implementation)
 	srm.metrics.CPUUsagePercent = srm.simulateCPUUsage()
 	srm.metrics.MemoryUsagePercent = srm.simulateMemoryUsage()
 	srm.metrics.DiskUsagePercent = srm.simulateDiskUsage()
 	srm.metrics.NetworkIOBytesPerSec = srm.simulateNetworkIO()
 	srm.metrics.DiskIOBytesPerSec = srm.simulateDiskIO()
-	
+
 	srm.metrics.LastUpdated = time.Now()
 }
 
@@ -245,7 +245,7 @@ func (srm *SystemResourceMonitor) simulateCPUUsage() float64 {
 func (srm *SystemResourceMonitor) simulateMemoryUsage() float64 {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	// Estimate percentage based on heap size (simplified)
 	usagePercent := float64(memStats.Alloc) / float64(memStats.Sys) * 100
 	if usagePercent > 100 {
@@ -296,7 +296,7 @@ func (npm *NetworkPerformanceMonitor) Start(ctx context.Context) error {
 func (npm *NetworkPerformanceMonitor) GetMetrics() *NetworkMetrics {
 	npm.mu.RLock()
 	defer npm.mu.RUnlock()
-	
+
 	metrics := *npm.metrics
 	return &metrics
 }
@@ -304,10 +304,10 @@ func (npm *NetworkPerformanceMonitor) GetMetrics() *NetworkMetrics {
 // GetHealth returns network health status.
 func (npm *NetworkPerformanceMonitor) GetHealth() *HealthStatus {
 	metrics := npm.GetMetrics()
-	
+
 	status := HealthHealthy
 	message := "Network performance is healthy"
-	
+
 	if metrics.PacketLossPercent > 0.05 {
 		status = HealthCritical
 		message = "High packet loss detected"
@@ -318,7 +318,7 @@ func (npm *NetworkPerformanceMonitor) GetHealth() *HealthStatus {
 		status = HealthWarning
 		message = "Elevated packet loss"
 	}
-	
+
 	return &HealthStatus{
 		Status:    status,
 		Message:   message,
@@ -336,7 +336,7 @@ func (npm *NetworkPerformanceMonitor) OptimizeNetworkSettings() {
 func (npm *NetworkPerformanceMonitor) monitoringLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -351,7 +351,7 @@ func (npm *NetworkPerformanceMonitor) monitoringLoop(ctx context.Context) {
 func (npm *NetworkPerformanceMonitor) updateMetrics() {
 	npm.mu.Lock()
 	defer npm.mu.Unlock()
-	
+
 	// Simulate network metrics (would measure actual network in real implementation)
 	npm.metrics.BandwidthMBps = npm.simulateBandwidth()
 	npm.metrics.LatencyMs = npm.simulateLatency()
@@ -362,7 +362,7 @@ func (npm *NetworkPerformanceMonitor) updateMetrics() {
 	npm.metrics.ReliabilityScore = npm.calculateReliability()
 	npm.metrics.OptimalChunkSizeMB = npm.calculateOptimalChunkSize()
 	npm.metrics.OptimalConcurrency = npm.calculateOptimalConcurrency()
-	
+
 	npm.metrics.LastUpdated = time.Now()
 }
 
@@ -456,7 +456,7 @@ func (s3m *S3PerformanceMonitor) Start(ctx context.Context) error {
 func (s3m *S3PerformanceMonitor) GetMetrics() *S3Metrics {
 	s3m.mu.RLock()
 	defer s3m.mu.RUnlock()
-	
+
 	metrics := *s3m.metrics
 	// Deep copy the region latency map
 	metrics.RegionLatencyMs = make(map[string]float64)
@@ -469,10 +469,10 @@ func (s3m *S3PerformanceMonitor) GetMetrics() *S3Metrics {
 // GetHealth returns S3 health status.
 func (s3m *S3PerformanceMonitor) GetHealth() *HealthStatus {
 	metrics := s3m.GetMetrics()
-	
+
 	status := HealthHealthy
 	message := "S3 performance is healthy"
-	
+
 	if metrics.ErrorRate > 0.1 {
 		status = HealthCritical
 		message = "High S3 error rate"
@@ -483,7 +483,7 @@ func (s3m *S3PerformanceMonitor) GetHealth() *HealthStatus {
 		status = HealthWarning
 		message = "High S3 request latency"
 	}
-	
+
 	return &HealthStatus{
 		Status:    status,
 		Message:   message,
@@ -501,7 +501,7 @@ func (s3m *S3PerformanceMonitor) TriggerFailoverLogic() {
 func (s3m *S3PerformanceMonitor) monitoringLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 15)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -516,7 +516,7 @@ func (s3m *S3PerformanceMonitor) monitoringLoop(ctx context.Context) {
 func (s3m *S3PerformanceMonitor) updateMetrics() {
 	s3m.mu.Lock()
 	defer s3m.mu.Unlock()
-	
+
 	// Simulate S3 metrics
 	s3m.metrics.RequestLatencyMs = 100 + float64(time.Now().UnixNano()%100)
 	s3m.metrics.SuccessfulRequests += 10
@@ -526,13 +526,13 @@ func (s3m *S3PerformanceMonitor) updateMetrics() {
 	s3m.metrics.ActiveConnections = 15
 	s3m.metrics.RetryCount += 1
 	s3m.metrics.ThrottleCount += 0
-	
+
 	// Update region latencies
 	regions := []string{"us-east-1", "us-west-2", "eu-west-1"}
 	for _, region := range regions {
 		s3m.metrics.RegionLatencyMs[region] = 80 + float64(time.Now().UnixNano()%40)
 	}
-	
+
 	s3m.metrics.LastUpdated = time.Now()
 }
 
@@ -563,7 +563,7 @@ func (spm *StagingPerformanceMonitor) Start(ctx context.Context) error {
 func (spm *StagingPerformanceMonitor) GetMetrics() *StagingMetrics {
 	spm.mu.RLock()
 	defer spm.mu.RUnlock()
-	
+
 	metrics := *spm.metrics
 	return &metrics
 }
@@ -571,10 +571,10 @@ func (spm *StagingPerformanceMonitor) GetMetrics() *StagingMetrics {
 // GetHealth returns staging health status.
 func (spm *StagingPerformanceMonitor) GetHealth() *HealthStatus {
 	metrics := spm.GetMetrics()
-	
+
 	status := HealthHealthy
 	message := "Staging performance is healthy"
-	
+
 	if metrics.PredictionAccuracy < 0.7 {
 		status = HealthWarning
 		message = "Low staging prediction accuracy"
@@ -585,7 +585,7 @@ func (spm *StagingPerformanceMonitor) GetHealth() *HealthStatus {
 		status = HealthWarning
 		message = "High staging processing latency"
 	}
-	
+
 	return &HealthStatus{
 		Status:    status,
 		Message:   message,
@@ -597,7 +597,7 @@ func (spm *StagingPerformanceMonitor) GetHealth() *HealthStatus {
 func (spm *StagingPerformanceMonitor) monitoringLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -612,7 +612,7 @@ func (spm *StagingPerformanceMonitor) monitoringLoop(ctx context.Context) {
 func (spm *StagingPerformanceMonitor) updateMetrics() {
 	spm.mu.Lock()
 	defer spm.mu.Unlock()
-	
+
 	// Simulate staging metrics
 	spm.metrics.ActiveChunks = runtime.NumGoroutine() / 3
 	spm.metrics.StagingBufferUsageMB = 128.0
@@ -622,15 +622,15 @@ func (spm *StagingPerformanceMonitor) updateMetrics() {
 	spm.metrics.AdaptationRate = 0.1          // 10% adaptation rate
 	spm.metrics.QueueDepth = 25
 	spm.metrics.ProcessingLatencyMs = 150.0
-	
+
 	spm.metrics.LastUpdated = time.Now()
 }
 
 // HealthStatus represents the health status of a subsystem.
 type HealthStatus struct {
 	Status    HealthStatusType `json:"status"`
-	Message   string          `json:"message"`
-	Timestamp time.Time       `json:"timestamp"`
+	Message   string           `json:"message"`
+	Timestamp time.Time        `json:"timestamp"`
 }
 
 // HealthStatusType defines health status types.
@@ -645,11 +645,11 @@ const (
 
 // SystemHealthStatus represents overall system health.
 type SystemHealthStatus struct {
-	Status             HealthStatusType           `json:"status"`
-	Message            string                     `json:"message"`
-	Timestamp          time.Time                  `json:"timestamp"`
-	SubsystemHealth    map[string]*HealthStatus   `json:"subsystem_health"`
-	ActiveAlerts       []*Alert                   `json:"active_alerts"`
-	PerformanceMetrics *PerformanceMetrics        `json:"performance_metrics"`
-	Details            map[string]*HealthStatus   `json:"details"`
+	Status             HealthStatusType         `json:"status"`
+	Message            string                   `json:"message"`
+	Timestamp          time.Time                `json:"timestamp"`
+	SubsystemHealth    map[string]*HealthStatus `json:"subsystem_health"`
+	ActiveAlerts       []*Alert                 `json:"active_alerts"`
+	PerformanceMetrics *PerformanceMetrics      `json:"performance_metrics"`
+	Details            map[string]*HealthStatus `json:"details"`
 }

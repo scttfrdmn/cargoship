@@ -65,7 +65,7 @@ func run(bucket, key string, sizeKB int, profile, region string) error {
 		StorageClass:       cargoconfig.StorageClassIntelligentTiering,
 		MultipartThreshold: 5 * 1024 * 1024,  // 5MB - use multipart for files larger than this
 		MultipartChunkSize: 10 * 1024 * 1024, // 10MB chunks
-		Concurrency:        4,                 // 4 parallel uploads for multipart
+		Concurrency:        4,                // 4 parallel uploads for multipart
 	}
 	fmt.Printf("✓ CargoShip configured:\n")
 	fmt.Printf("  - Storage Class: %s\n", cargoConfig.StorageClass)

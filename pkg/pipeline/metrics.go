@@ -10,17 +10,17 @@ import (
 
 // ShardMetrics tracks performance metrics for individual shards
 type ShardMetrics struct {
-	ShardID            int           `json:"shard_id"`
-	UploadThroughput   float64       `json:"upload_throughput_mbps"`   // MB/s for this shard
-	UploadLatency      time.Duration `json:"upload_latency_ms"`        // Latency per upload
-	TotalBytes         int64         `json:"total_bytes"`              // Total bytes uploaded
-	ChunkCount         int           `json:"chunk_count"`              // Number of chunks
-	ErrorCount         int           `json:"error_count"`              // Errors encountered
-	SuccessCount       int           `json:"success_count"`            // Successful uploads
-	StartTime          time.Time     `json:"start_time"`               // When shard started
-	EndTime            time.Time     `json:"end_time"`                 // When shard completed
-	Region             string        `json:"region"`                   // AWS region
-	StorageClass       string        `json:"storage_class"`            // S3 storage class
+	ShardID          int           `json:"shard_id"`
+	UploadThroughput float64       `json:"upload_throughput_mbps"` // MB/s for this shard
+	UploadLatency    time.Duration `json:"upload_latency_ms"`      // Latency per upload
+	TotalBytes       int64         `json:"total_bytes"`            // Total bytes uploaded
+	ChunkCount       int           `json:"chunk_count"`            // Number of chunks
+	ErrorCount       int           `json:"error_count"`            // Errors encountered
+	SuccessCount     int           `json:"success_count"`          // Successful uploads
+	StartTime        time.Time     `json:"start_time"`             // When shard started
+	EndTime          time.Time     `json:"end_time"`               // When shard completed
+	Region           string        `json:"region"`                 // AWS region
+	StorageClass     string        `json:"storage_class"`          // S3 storage class
 }
 
 // ManifestMetrics tracks manifest generation performance
@@ -38,49 +38,49 @@ type ManifestMetrics struct {
 
 // ShardDistributionMetrics tracks shard distribution balance
 type ShardDistributionMetrics struct {
-	ShardCount        int       `json:"shard_count"`         // Total number of shards
-	MeanSizeBytes     int64     `json:"mean_size_bytes"`     // Average shard size
-	MedianSizeBytes   int64     `json:"median_size_bytes"`   // Median shard size
-	StdDevBytes       float64   `json:"std_dev_bytes"`       // Standard deviation
-	VariancePercent   float64   `json:"variance_percent"`    // Size variance as percentage
-	MinSizeBytes      int64     `json:"min_size_bytes"`      // Smallest shard
-	MaxSizeBytes      int64     `json:"max_size_bytes"`      // Largest shard
-	BalanceScore      float64   `json:"balance_score"`       // 0-100 score (100 = perfect balance)
-	StrategyUsed      string    `json:"strategy_used"`       // Sharding strategy (hash, size, etc.)
+	ShardCount      int     `json:"shard_count"`       // Total number of shards
+	MeanSizeBytes   int64   `json:"mean_size_bytes"`   // Average shard size
+	MedianSizeBytes int64   `json:"median_size_bytes"` // Median shard size
+	StdDevBytes     float64 `json:"std_dev_bytes"`     // Standard deviation
+	VariancePercent float64 `json:"variance_percent"`  // Size variance as percentage
+	MinSizeBytes    int64   `json:"min_size_bytes"`    // Smallest shard
+	MaxSizeBytes    int64   `json:"max_size_bytes"`    // Largest shard
+	BalanceScore    float64 `json:"balance_score"`     // 0-100 score (100 = perfect balance)
+	StrategyUsed    string  `json:"strategy_used"`     // Sharding strategy (hash, size, etc.)
 }
 
 // PipelineMetrics aggregates all CargoHold metrics
 type PipelineMetrics struct {
 	// Overall pipeline metrics
-	TotalDuration     time.Duration `json:"total_duration"`
-	TotalThroughput   float64       `json:"total_throughput_mbps"`
-	TotalBytes        int64         `json:"total_bytes"`
-	TotalFiles        int           `json:"total_files"`
-	TotalChunks       int           `json:"total_chunks"`
+	TotalDuration   time.Duration `json:"total_duration"`
+	TotalThroughput float64       `json:"total_throughput_mbps"`
+	TotalBytes      int64         `json:"total_bytes"`
+	TotalFiles      int           `json:"total_files"`
+	TotalChunks     int           `json:"total_chunks"`
 
 	// Shard-level metrics
-	ShardMetrics      []ShardMetrics            `json:"shard_metrics"`
-	Distribution      *ShardDistributionMetrics `json:"distribution"`
+	ShardMetrics []ShardMetrics            `json:"shard_metrics"`
+	Distribution *ShardDistributionMetrics `json:"distribution"`
 
 	// Manifest metrics
-	ManifestMetrics   *ManifestMetrics          `json:"manifest_metrics"`
+	ManifestMetrics *ManifestMetrics `json:"manifest_metrics"`
 
 	// Error tracking
-	TotalErrors       int                       `json:"total_errors"`
-	ErrorRate         float64                   `json:"error_rate"`
+	TotalErrors int     `json:"total_errors"`
+	ErrorRate   float64 `json:"error_rate"`
 
 	// Configuration
-	UploadID          string                    `json:"upload_id"`
-	Region            string                    `json:"region"`
-	StorageClass      string                    `json:"storage_class"`
+	UploadID     string `json:"upload_id"`
+	Region       string `json:"region"`
+	StorageClass string `json:"storage_class"`
 }
 
 // MetricsCollector collects and publishes CargoHold metrics
 type MetricsCollector struct {
-	publisher  *metrics.CloudWatchPublisher
-	metrics    *PipelineMetrics
-	startTime  time.Time
-	enabled    bool
+	publisher *metrics.CloudWatchPublisher
+	metrics   *PipelineMetrics
+	startTime time.Time
+	enabled   bool
 }
 
 // NewMetricsCollector creates a new metrics collector for the pipeline

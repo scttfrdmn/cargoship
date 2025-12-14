@@ -161,9 +161,9 @@ func TestComputeDelta_SkipsDirectories(t *testing.T) {
 
 	// Local filesystem includes directories (should be skipped)
 	localFiles := []FileInfo{
-		{Path: "dir1", Size: 0, ModTime: now, IsDir: true},    // Directory - skip
+		{Path: "dir1", Size: 0, ModTime: now, IsDir: true}, // Directory - skip
 		{Path: "file1.txt", Size: 100, ModTime: now, IsDir: false},
-		{Path: "dir2", Size: 0, ModTime: now, IsDir: true},    // Directory - skip
+		{Path: "dir2", Size: 0, ModTime: now, IsDir: true}, // Directory - skip
 	}
 
 	delta, err := ComputeDelta(localFiles, previousManifest, nil)

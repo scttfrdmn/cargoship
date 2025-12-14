@@ -14,7 +14,7 @@ func TestNewAdaptiveTargetCalculator(t *testing.T) {
 	require.NotNil(t, calc)
 
 	// Check default values
-	assert.Equal(t, int64(1*1024*1024*1024), calc.smallWorkloadThreshold) // 1GB
+	assert.Equal(t, int64(1*1024*1024*1024), calc.smallWorkloadThreshold)   // 1GB
 	assert.Equal(t, int64(10*1024*1024*1024), calc.mediumWorkloadThreshold) // 10GB
 	assert.Equal(t, 10, calc.smallWorkloadChunkSizeMB)
 	assert.Equal(t, 20, calc.mediumWorkloadChunkSizeMB)

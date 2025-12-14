@@ -46,10 +46,10 @@ func (f *ComponentFactory) CreateBasicTransporter(client *s3.Client, cfg config.
 func (f *ComponentFactory) CreateCongestionController(ctx context.Context) CongestionController {
 	config := DefaultCoordinationConfig()
 	controller := NewGlobalCongestionController(config)
-	
+
 	// Start the controller with the provided context
 	controller.Start(ctx)
-	
+
 	return controller
 }
 
@@ -57,7 +57,7 @@ func (f *ComponentFactory) CreateCongestionController(ctx context.Context) Conge
 func (f *ComponentFactory) CreateCommunicationService(ctx context.Context) CommunicationService {
 	config := DefaultCommunicationConfig()
 	service := NewCrossPrefixCommunicator(ctx, config)
-	
+
 	return service
 }
 
@@ -106,15 +106,15 @@ type Dependencies struct {
 // NewDependencies creates a new dependency container
 func NewDependencies(ctx context.Context) *Dependencies {
 	factory := NewComponentFactory()
-	
+
 	// Create shared dependencies
 	congestionController := factory.CreateCongestionController(ctx)
 	communicationService := factory.CreateCommunicationService(ctx)
-	
+
 	// Configure the factory with the shared dependencies
 	factory.SetCongestionController(congestionController).
 		SetCommunicationService(communicationService)
-	
+
 	return &Dependencies{
 		CongestionController: congestionController,
 		CommunicationService: communicationService,
@@ -138,7 +138,7 @@ type IntegratedTransporter struct {
 func (f *ComponentFactory) NewIntegratedTransporter(client *s3.Client, cfg config.S3Config) *IntegratedTransporter {
 	// Create the basic transporter
 	basicTransporter := f.CreateBasicTransporter(client, cfg)
-	
+
 	return &IntegratedTransporter{
 		BasicTransporter:     basicTransporter,
 		congestionController: f.congestionController,
@@ -162,11 +162,11 @@ func (it *IntegratedTransporter) RegisterForCoordination(prefixID string, capaci
 	if it.congestionController != nil {
 		it.congestionController.RegisterPrefix(prefixID, capacity)
 	}
-	
+
 	// Register with communication service
 	if it.communicationService != nil {
 		return it.communicationService.RegisterPrefix(prefixID)
 	}
-	
+
 	return nil
 }

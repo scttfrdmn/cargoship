@@ -138,7 +138,7 @@ func TestShardRouter_RouteBySize(t *testing.T) {
 	router, err := NewShardRouter(&ShardRouterConfig{
 		Strategy:                ShardBySize,
 		ShardCount:              10,
-		SmallFileSizeThreshold:  1 << 20,  // 1MB
+		SmallFileSizeThreshold:  1 << 20,   // 1MB
 		MediumFileSizeThreshold: 100 << 20, // 100MB
 	})
 	if err != nil {
@@ -322,10 +322,10 @@ func TestShardRouter_RouteByDirectory(t *testing.T) {
 
 func TestShardRouter_ParseShardStrategy(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		want     ShardStrategy
-		wantErr  bool
+		name    string
+		input   string
+		want    ShardStrategy
+		wantErr bool
 	}{
 		{
 			name:    "hash lowercase",

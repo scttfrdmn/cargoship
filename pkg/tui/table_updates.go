@@ -285,15 +285,15 @@ func (d *Dashboard) updateMultiRegionTables() {
 // updateRegionOverviewTable updates the region overview table
 func (d *Dashboard) updateRegionOverviewTable() {
 	var rows []table.Row
-	
+
 	// Use mock data for now - in production this would come from the multi-region coordinator
 	mockData := d.fetchMockRegionStatus()
-	
+
 	for _, region := range mockData {
 		healthScore := fmt.Sprintf("%.1f%%", region.Health.SuccessRate*100)
 		errorRate := fmt.Sprintf("%.2f%%", region.Metrics.ErrorRate)
 		lastCheck := region.LastChecked.Format("15:04:05")
-		
+
 		rows = append(rows, table.Row{
 			region.Name,
 			region.Status,
@@ -305,29 +305,29 @@ func (d *Dashboard) updateRegionOverviewTable() {
 			lastCheck,
 		})
 	}
-	
+
 	d.regionOverviewTable.SetRows(rows)
 }
 
 // updateRegionHealthTable updates the region health monitoring table
 func (d *Dashboard) updateRegionHealthTable() {
 	var rows []table.Row
-	
+
 	mockData := d.fetchMockRegionStatus()
-	
+
 	for _, region := range mockData {
 		healthStatus := "Healthy"
 		if !region.Health.OverallHealthy {
 			healthStatus = "Issues"
 		}
-		
+
 		successRate := fmt.Sprintf("%.1f%%", region.Health.SuccessRate*100)
 		latency := region.Health.HealthCheckLatency.String()
 		issues := ""
 		if len(region.Health.FailureReasons) > 0 {
 			issues = region.Health.FailureReasons[0] // Show first issue
 		}
-		
+
 		rows = append(rows, table.Row{
 			region.Name,
 			healthStatus,
@@ -338,22 +338,22 @@ func (d *Dashboard) updateRegionHealthTable() {
 			issues,
 		})
 	}
-	
+
 	d.regionHealthTable.SetRows(rows)
 }
 
 // updateRegionMetricsTable updates the region metrics table
 func (d *Dashboard) updateRegionMetricsTable() {
 	var rows []table.Row
-	
+
 	mockData := d.fetchMockRegionStatus()
-	
+
 	for _, region := range mockData {
 		avgLatency := region.Metrics.AverageLatency.String()
 		cpuUsage := fmt.Sprintf("%.1f%%", region.Metrics.CPUUtilization)
 		memUsage := fmt.Sprintf("%.1f%%", region.Metrics.MemoryUtilization)
 		storageUsage := fmt.Sprintf("%.1f%%", region.Metrics.StorageUtilization)
-		
+
 		rows = append(rows, table.Row{
 			region.Name,
 			avgLatency,
@@ -365,16 +365,16 @@ func (d *Dashboard) updateRegionMetricsTable() {
 			region.Metrics.BandwidthUsage,
 		})
 	}
-	
+
 	d.regionMetricsTable.SetRows(rows)
 }
 
 // updateFailoverStatusTable updates the failover operations table
 func (d *Dashboard) updateFailoverStatusTable() {
 	var rows []table.Row
-	
+
 	mockData := d.fetchMockFailoverOperations()
-	
+
 	for _, failover := range mockData {
 		duration := ""
 		if !failover.CompletedTime.IsZero() {
@@ -382,18 +382,18 @@ func (d *Dashboard) updateFailoverStatusTable() {
 		} else if failover.Status == "in_progress" {
 			duration = time.Since(failover.StartTime).String()
 		}
-		
+
 		// Truncate long operation IDs and reasons for display
 		opID := failover.ID
 		if len(opID) > 14 {
 			opID = opID[:14] + ".."
 		}
-		
+
 		reason := failover.Reason
 		if len(reason) > 18 {
 			reason = reason[:18] + ".."
 		}
-		
+
 		rows = append(rows, table.Row{
 			opID,
 			failover.FromRegion,
@@ -405,7 +405,7 @@ func (d *Dashboard) updateFailoverStatusTable() {
 			reason,
 		})
 	}
-	
+
 	d.failoverStatusTable.SetRows(rows)
 }
 
@@ -413,10 +413,10 @@ func (d *Dashboard) updateFailoverStatusTable() {
 func (d *Dashboard) fetchMockRegionStatus() []RegionStatusInfo {
 	return []RegionStatusInfo{
 		{
-			Name:     "us-east-1",
-			Status:   "healthy",
-			Priority: 1,
-			Weight:   80,
+			Name:        "us-east-1",
+			Status:      "healthy",
+			Priority:    1,
+			Weight:      80,
 			LastChecked: time.Now().Add(-30 * time.Second),
 			Health: RegionHealthInfo{
 				OverallHealthy:       true,
@@ -442,10 +442,10 @@ func (d *Dashboard) fetchMockRegionStatus() []RegionStatusInfo {
 			},
 		},
 		{
-			Name:     "us-west-2",
-			Status:   "healthy",
-			Priority: 2,
-			Weight:   70,
+			Name:        "us-west-2",
+			Status:      "healthy",
+			Priority:    2,
+			Weight:      70,
 			LastChecked: time.Now().Add(-45 * time.Second),
 			Health: RegionHealthInfo{
 				OverallHealthy:       true,
@@ -471,10 +471,10 @@ func (d *Dashboard) fetchMockRegionStatus() []RegionStatusInfo {
 			},
 		},
 		{
-			Name:     "eu-west-1",
-			Status:   "degraded",
-			Priority: 3,
-			Weight:   50,
+			Name:        "eu-west-1",
+			Status:      "degraded",
+			Priority:    3,
+			Weight:      50,
 			LastChecked: time.Now().Add(-60 * time.Second),
 			Health: RegionHealthInfo{
 				OverallHealthy:       false,
@@ -519,16 +519,16 @@ func (d *Dashboard) fetchMockFailoverOperations() []FailoverOperation {
 			Success:       true,
 		},
 		{
-			ID:            "failover-20240101-002",
-			FromRegion:    "us-west-2",
-			ToRegion:      "us-east-1", 
-			Strategy:      "immediate",
-			Status:        "in_progress",
-			StartTime:     time.Now().Add(-30 * time.Second),
-			Duration:      30 * time.Second,
-			Reason:        "Connection timeout",
-			TriggerType:   "automatic",
-			Success:       false,
+			ID:          "failover-20240101-002",
+			FromRegion:  "us-west-2",
+			ToRegion:    "us-east-1",
+			Strategy:    "immediate",
+			Status:      "in_progress",
+			StartTime:   time.Now().Add(-30 * time.Second),
+			Duration:    30 * time.Second,
+			Reason:      "Connection timeout",
+			TriggerType: "automatic",
+			Success:     false,
 		},
 	}
 }
@@ -539,7 +539,7 @@ func (d *Dashboard) fetchMockGlobalMetrics() GlobalMetricsInfo {
 	return GlobalMetricsInfo{
 		TotalRegions:         3,
 		HealthyRegions:       2,
-		RegionAvailability:   66.7, // 2 out of 3 regions healthy
+		RegionAvailability:   66.7,         // 2 out of 3 regions healthy
 		GlobalThroughput:     "269.2 MB/s", // Combined throughput
 		AverageLatency:       118 * time.Millisecond,
 		TotalUploads:         4262,

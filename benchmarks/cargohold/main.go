@@ -13,40 +13,40 @@ import (
 
 // BenchmarkConfig holds configuration for a benchmark run
 type BenchmarkConfig struct {
-	Scenario      string   // small, medium, large, xlarge
-	Tools         []string // cargohold, s5cmd, mc, tar
+	Scenario        string   // small, medium, large, xlarge
+	Tools           []string // cargohold, s5cmd, mc, tar
 	ShardStrategies []string // hash, size, type, adaptive (CargoHold only)
-	Bucket        string   // S3 bucket for testing
-	Prefix        string   // S3 prefix
-	DataDir       string   // Local data directory
-	ResultsDir    string   // Results output directory
-	Concurrency   int      // Parallel operations
-	Iterations    int      // Number of runs per test
+	Bucket          string   // S3 bucket for testing
+	Prefix          string   // S3 prefix
+	DataDir         string   // Local data directory
+	ResultsDir      string   // Results output directory
+	Concurrency     int      // Parallel operations
+	Iterations      int      // Number of runs per test
 }
 
 // BenchmarkResult stores results from a single benchmark run
 type BenchmarkResult struct {
-	Tool            string        `json:"tool"`
-	Strategy        string        `json:"strategy,omitempty"`
-	Scenario        string        `json:"scenario"`
-	FileCount       int           `json:"file_count"`
-	TotalSizeBytes  int64         `json:"total_size_bytes"`
-	UploadDuration  time.Duration `json:"upload_duration"`
-	DownloadDuration time.Duration `json:"download_duration,omitempty"`
-	UploadThroughputMBps float64  `json:"upload_throughput_mbps"`
-	DownloadThroughputMBps float64 `json:"download_throughput_mbps,omitempty"`
-	PeakMemoryMB    float64       `json:"peak_memory_mb"`
-	AvgCPUPercent   float64       `json:"avg_cpu_percent"`
-	RequestCount    int           `json:"request_count,omitempty"`
-	ErrorCount      int           `json:"error_count"`
-	Timestamp       time.Time     `json:"timestamp"`
+	Tool                   string        `json:"tool"`
+	Strategy               string        `json:"strategy,omitempty"`
+	Scenario               string        `json:"scenario"`
+	FileCount              int           `json:"file_count"`
+	TotalSizeBytes         int64         `json:"total_size_bytes"`
+	UploadDuration         time.Duration `json:"upload_duration"`
+	DownloadDuration       time.Duration `json:"download_duration,omitempty"`
+	UploadThroughputMBps   float64       `json:"upload_throughput_mbps"`
+	DownloadThroughputMBps float64       `json:"download_throughput_mbps,omitempty"`
+	PeakMemoryMB           float64       `json:"peak_memory_mb"`
+	AvgCPUPercent          float64       `json:"avg_cpu_percent"`
+	RequestCount           int           `json:"request_count,omitempty"`
+	ErrorCount             int           `json:"error_count"`
+	Timestamp              time.Time     `json:"timestamp"`
 }
 
 // ScenarioSpec defines a test scenario
 type ScenarioSpec struct {
-	Name       string
-	FileCount  int
-	TotalSize  int64
+	Name        string
+	FileCount   int
+	TotalSize   int64
 	MinFileSize int64
 	MaxFileSize int64
 }
@@ -56,29 +56,29 @@ var scenarios = map[string]ScenarioSpec{
 		Name:        "Small",
 		FileCount:   10000,
 		TotalSize:   1 * 1024 * 1024 * 1024, // 1 GB
-		MinFileSize: 10 * 1024,                // 10 KB
-		MaxFileSize: 200 * 1024,               // 200 KB
+		MinFileSize: 10 * 1024,              // 10 KB
+		MaxFileSize: 200 * 1024,             // 200 KB
 	},
 	"medium": {
 		Name:        "Medium",
 		FileCount:   100000,
 		TotalSize:   10 * 1024 * 1024 * 1024, // 10 GB
-		MinFileSize: 10 * 1024,                 // 10 KB
-		MaxFileSize: 200 * 1024,                // 200 KB
+		MinFileSize: 10 * 1024,               // 10 KB
+		MaxFileSize: 200 * 1024,              // 200 KB
 	},
 	"large": {
 		Name:        "Large",
 		FileCount:   1000000,
 		TotalSize:   100 * 1024 * 1024 * 1024, // 100 GB
-		MinFileSize: 10 * 1024,                  // 10 KB
-		MaxFileSize: 200 * 1024,                 // 200 KB
+		MinFileSize: 10 * 1024,                // 10 KB
+		MaxFileSize: 200 * 1024,               // 200 KB
 	},
 	"xlarge": {
 		Name:        "XLarge",
 		FileCount:   10000000,
 		TotalSize:   1024 * 1024 * 1024 * 1024, // 1 TB
-		MinFileSize: 10 * 1024,                   // 10 KB
-		MaxFileSize: 200 * 1024,                  // 200 KB
+		MinFileSize: 10 * 1024,                 // 10 KB
+		MaxFileSize: 200 * 1024,                // 200 KB
 	},
 }
 

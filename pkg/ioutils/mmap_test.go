@@ -148,8 +148,8 @@ func TestMmapReaderReadAt(t *testing.T) {
 		offset int64
 		size   int
 	}{
-		{0, 26},              // Beginning
-		{1024 * 1024, 26},    // Middle
+		{0, 26},                         // Beginning
+		{1024 * 1024, 26},               // Middle
 		{int64(len(testData)) - 26, 26}, // Near end
 	}
 

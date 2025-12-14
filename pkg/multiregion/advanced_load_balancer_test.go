@@ -31,12 +31,12 @@ func TestAdvancedLoadBalancingStrategies(t *testing.T) {
 					CurrentUtilization:   30.0,
 				},
 				Metrics: RegionMetrics{
-					ErrorRate:              2.5,
-					CPUUtilization:         25.0,
-					MemoryUtilization:      40.0,
-					ActiveUploads:          15,
-					HealthCheckLatency:     50,
-					HealthCheckSuccess:     true,
+					ErrorRate:                2.5,
+					CPUUtilization:           25.0,
+					MemoryUtilization:        40.0,
+					ActiveUploads:            15,
+					HealthCheckLatency:       50,
+					HealthCheckSuccess:       true,
 					ConsecutiveHealthyChecks: 10,
 				},
 			},
@@ -51,12 +51,12 @@ func TestAdvancedLoadBalancingStrategies(t *testing.T) {
 					CurrentUtilization:   60.0,
 				},
 				Metrics: RegionMetrics{
-					ErrorRate:              4.2,
-					CPUUtilization:         55.0,
-					MemoryUtilization:      65.0,
-					ActiveUploads:          25,
-					HealthCheckLatency:     75,
-					HealthCheckSuccess:     true,
+					ErrorRate:                4.2,
+					CPUUtilization:           55.0,
+					MemoryUtilization:        65.0,
+					ActiveUploads:            25,
+					HealthCheckLatency:       75,
+					HealthCheckSuccess:       true,
 					ConsecutiveHealthyChecks: 8,
 				},
 			},
@@ -71,12 +71,12 @@ func TestAdvancedLoadBalancingStrategies(t *testing.T) {
 					CurrentUtilization:   85.0,
 				},
 				Metrics: RegionMetrics{
-					ErrorRate:              8.7,
-					CPUUtilization:         80.0,
-					MemoryUtilization:      90.0,
-					ActiveUploads:          35,
-					HealthCheckLatency:     200,
-					HealthCheckSuccess:     false,
+					ErrorRate:               8.7,
+					CPUUtilization:          80.0,
+					MemoryUtilization:       90.0,
+					ActiveUploads:           35,
+					HealthCheckLatency:      200,
+					HealthCheckSuccess:      false,
 					ConsecutiveFailedChecks: 3,
 				},
 			},
@@ -313,10 +313,10 @@ func TestPerformanceScoring(t *testing.T) {
 					CurrentUtilization:   20.0,
 				},
 				Metrics: RegionMetrics{
-					ErrorRate:         1.0,
-					CPUUtilization:    15.0,
-					MemoryUtilization: 25.0,
-					ActiveUploads:     10,
+					ErrorRate:          1.0,
+					CPUUtilization:     15.0,
+					MemoryUtilization:  25.0,
+					ActiveUploads:      10,
 					HealthCheckLatency: 30,
 				},
 			},
@@ -328,10 +328,10 @@ func TestPerformanceScoring(t *testing.T) {
 					CurrentUtilization:   90.0,
 				},
 				Metrics: RegionMetrics{
-					ErrorRate:         15.0,
-					CPUUtilization:    85.0,
-					MemoryUtilization: 90.0,
-					ActiveUploads:     45,
+					ErrorRate:          15.0,
+					CPUUtilization:     85.0,
+					MemoryUtilization:  90.0,
+					ActiveUploads:      45,
 					HealthCheckLatency: 300,
 				},
 			},
@@ -414,10 +414,10 @@ func TestGeographicMapping(t *testing.T) {
 
 	t.Run("FindClosestRegionByName", func(t *testing.T) {
 		testCases := []struct {
-			location       string
+			location         string
 			availableRegions []*Region
-			expectedFound  bool
-			expectedRegion string
+			expectedFound    bool
+			expectedRegion   string
 		}{
 			{
 				location: "america",
@@ -476,22 +476,22 @@ func TestLoadBalancingIntegration(t *testing.T) {
 		PrimaryRegion: "us-east-1",
 		Regions: []Region{
 			{
-				Name:        "us-east-1",
-				Status:      RegionStatusHealthy,
-				Priority:    1,
-				Weight:      100,
+				Name:     "us-east-1",
+				Status:   RegionStatusHealthy,
+				Priority: 1,
+				Weight:   100,
 			},
 			{
-				Name:        "us-west-2",
-				Status:      RegionStatusHealthy,
-				Priority:    2,
-				Weight:      80,
+				Name:     "us-west-2",
+				Status:   RegionStatusHealthy,
+				Priority: 2,
+				Weight:   80,
 			},
 			{
-				Name:        "eu-west-1",
-				Status:      RegionStatusDegraded,
-				Priority:    3,
-				Weight:      60,
+				Name:     "eu-west-1",
+				Status:   RegionStatusDegraded,
+				Priority: 3,
+				Weight:   60,
 			},
 		},
 		LoadBalancing: LoadBalancingConfig{
@@ -585,23 +585,23 @@ func TestAdvancedLoadBalancingEdgeCases(t *testing.T) {
 		adaptiveRegion := lb.routeAdaptive(ctx, request, regions)
 		require.NotNil(t, adaptiveRegion)
 		assert.Equal(t, "single-region", adaptiveRegion.Name)
-		
+
 		leastConnRegion := lb.routeLeastConnections(regions)
 		require.NotNil(t, leastConnRegion)
 		assert.Equal(t, "single-region", leastConnRegion.Name)
-		
+
 		resourceRegion := lb.routeResourceAware(regions)
 		require.NotNil(t, resourceRegion)
 		assert.Equal(t, "single-region", resourceRegion.Name)
-		
+
 		throughputRegion := lb.routeThroughputOptimized(regions)
 		require.NotNil(t, throughputRegion)
 		assert.Equal(t, "single-region", throughputRegion.Name)
-		
+
 		latencyRegion := lb.routeByLatency(regions)
 		require.NotNil(t, latencyRegion)
 		assert.Equal(t, "single-region", latencyRegion.Name)
-		
+
 		geoRegion := lb.routeByGeography(request, regions)
 		require.NotNil(t, geoRegion)
 		assert.Equal(t, "single-region", geoRegion.Name)
@@ -613,12 +613,12 @@ func TestAdvancedLoadBalancingEdgeCases(t *testing.T) {
 				{
 					Name: "region-1", Status: RegionStatusHealthy, Priority: 1,
 					Capacity: RegionCapacity{CurrentUtilization: 50.0},
-					Metrics: RegionMetrics{ActiveUploads: 10, CPUUtilization: 50.0, MemoryUtilization: 50.0, ErrorRate: 5.0},
+					Metrics:  RegionMetrics{ActiveUploads: 10, CPUUtilization: 50.0, MemoryUtilization: 50.0, ErrorRate: 5.0},
 				},
 				{
 					Name: "region-2", Status: RegionStatusHealthy, Priority: 1,
 					Capacity: RegionCapacity{CurrentUtilization: 50.0},
-					Metrics: RegionMetrics{ActiveUploads: 10, CPUUtilization: 50.0, MemoryUtilization: 50.0, ErrorRate: 5.0},
+					Metrics:  RegionMetrics{ActiveUploads: 10, CPUUtilization: 50.0, MemoryUtilization: 50.0, ErrorRate: 5.0},
 				},
 			},
 		}

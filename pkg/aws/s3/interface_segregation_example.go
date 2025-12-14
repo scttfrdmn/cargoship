@@ -27,10 +27,10 @@ func (sum *SimpleUploadManager) ProcessUpload(upload *ScheduledUpload) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Simulate processing...
 	_ = allocation
-	
+
 	return nil
 }
 
@@ -52,7 +52,7 @@ func (cm *CongestionMonitor) GetCurrentMetrics() *CongestionMetrics {
 
 func (cm *CongestionMonitor) MonitorCongestion() {
 	metrics := cm.metricsProvider.GetMetrics()
-	
+
 	// Process metrics for monitoring
 	_ = metrics
 }
@@ -72,7 +72,7 @@ func (ato *AdaptiveTransferOptimizer) OptimizeTransfer(upload *ScheduledUpload) 
 	// Can use both basic and advanced methods
 	allocation, _ := ato.advancedController.AllocateResources(upload)
 	metrics := ato.advancedController.GetMetrics()
-	
+
 	// Use advanced capabilities for optimization
 	_ = allocation
 	_ = metrics
@@ -139,14 +139,14 @@ func (isf *InterfaceSegregatedFactory) CreateComponents(ctx context.Context) (*C
 	// Create the full implementation once
 	fullController := NewGlobalCongestionController(DefaultCoordinationConfig())
 	fullController.Start(ctx)
-	
+
 	// Create components with only the interfaces they need
 	return &ComponentCollection{
-		SimpleManager:              NewSimpleUploadManager(fullController),
-		Monitor:                   NewCongestionMonitor(fullController),
-		Optimizer:                 NewAdaptiveTransferOptimizer(fullController),
-		BandwidthOptimizer:        NewBandwidthOptimizer(fullController),
-		PrefixCoordinator:         NewPrefixCoordinator(fullController),
+		SimpleManager:                 NewSimpleUploadManager(fullController),
+		Monitor:                       NewCongestionMonitor(fullController),
+		Optimizer:                     NewAdaptiveTransferOptimizer(fullController),
+		BandwidthOptimizer:            NewBandwidthOptimizer(fullController),
+		PrefixCoordinator:             NewPrefixCoordinator(fullController),
 		CongestionPerformanceAnalyzer: NewCongestionPerformanceAnalyzer(fullController),
 	}, nil
 }
@@ -154,17 +154,17 @@ func (isf *InterfaceSegregatedFactory) CreateComponents(ctx context.Context) (*C
 // ComponentCollection groups all the segregated components
 type ComponentCollection struct {
 	SimpleManager                 *SimpleUploadManager
-	Monitor                      *CongestionMonitor
-	Optimizer                    *AdaptiveTransferOptimizer
-	BandwidthOptimizer           *BandwidthOptimizer
-	PrefixCoordinator            *PrefixCoordinator
+	Monitor                       *CongestionMonitor
+	Optimizer                     *AdaptiveTransferOptimizer
+	BandwidthOptimizer            *BandwidthOptimizer
+	PrefixCoordinator             *PrefixCoordinator
 	CongestionPerformanceAnalyzer *CongestionPerformanceAnalyzer
 }
 
 // ProcessTransfer demonstrates coordinated usage of segregated interfaces
 func (cc *ComponentCollection) ProcessTransfer(ctx context.Context, upload *ScheduledUpload) error {
 	// Each component uses only its needed interface methods
-	
+
 	// 0. Register prefix if needed (for demo purposes)
 	if upload.PrefixID != "" {
 		// Use any component that has basic controller access to register prefix
@@ -172,31 +172,31 @@ func (cc *ComponentCollection) ProcessTransfer(ctx context.Context, upload *Sche
 		// Here we simulate it for the test
 		_ = upload.PrefixID // Acknowledge we're checking it
 	}
-	
+
 	// 1. Simple manager handles basic upload (skipped to avoid prefix registration issues in test)
 	// In real usage, the prefix would already be registered
 	_ = cc.SimpleManager // Use the variable to avoid unused errors
-	
+
 	// 2. Monitor tracks metrics
 	go cc.Monitor.MonitorCongestion()
-	
+
 	// 3. Optimizer adapts parameters
 	cc.Optimizer.OptimizeTransfer(upload)
-	
+
 	// 4. Bandwidth optimizer rebalances
 	cc.BandwidthOptimizer.OptimizeBandwidthAllocation()
-	
+
 	// 5. Prefix coordinator manages cross-prefix operations
 	go cc.PrefixCoordinator.CoordinatePrefixes(ctx)
-	
+
 	// 6. Performance analyzer provides insights
 	stats := cc.CongestionPerformanceAnalyzer.AnalyzePerformance()
 	_ = stats
-	
+
 	return nil
 }
 
-// Benefit demonstration: 
+// Benefit demonstration:
 // Before interface segregation:
 //   - All components would depend on the 58-method FullCongestionController interface
 //   - Hard to understand what each component actually needs

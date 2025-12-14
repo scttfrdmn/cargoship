@@ -12,21 +12,21 @@ import (
 
 // RegressionReport compares current results against historical baseline
 type RegressionReport struct {
-	Timestamp time.Time `json:"timestamp"`
-	Scenario  string    `json:"scenario"`
-	Pass      bool      `json:"pass"`
+	Timestamp   time.Time              `json:"timestamp"`
+	Scenario    string                 `json:"scenario"`
+	Pass        bool                   `json:"pass"`
 	Comparisons []RegressionComparison `json:"comparisons"`
 }
 
 // RegressionComparison compares one tool's performance
 type RegressionComparison struct {
-	Tool            string  `json:"tool"`
-	Strategy        string  `json:"strategy,omitempty"`
-	BaselineTime    float64 `json:"baseline_time_seconds"`
-	CurrentTime     float64 `json:"current_time_seconds"`
-	ChangePercent   float64 `json:"change_percent"`
-	Pass            bool    `json:"pass"`
-	Threshold       float64 `json:"threshold"`
+	Tool          string  `json:"tool"`
+	Strategy      string  `json:"strategy,omitempty"`
+	BaselineTime  float64 `json:"baseline_time_seconds"`
+	CurrentTime   float64 `json:"current_time_seconds"`
+	ChangePercent float64 `json:"change_percent"`
+	Pass          bool    `json:"pass"`
+	Threshold     float64 `json:"threshold"`
 }
 
 const (

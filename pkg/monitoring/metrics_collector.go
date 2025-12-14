@@ -8,11 +8,11 @@ import (
 
 // MetricsCollector collects and aggregates performance metrics from various sources.
 type MetricsCollector struct {
-	config       *MonitoringConfig
+	config         *MonitoringConfig
 	currentMetrics *PerformanceMetrics
 	customMetrics  map[string]*CustomMetric
-	mu            sync.RWMutex
-	isRunning     bool
+	mu             sync.RWMutex
+	isRunning      bool
 }
 
 // NewMetricsCollector creates a new metrics collector.
@@ -28,11 +28,11 @@ func NewMetricsCollector(config *MonitoringConfig) *MetricsCollector {
 func (mc *MetricsCollector) Start(ctx context.Context) error {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
-	
+
 	if mc.isRunning {
 		return nil
 	}
-	
+
 	mc.isRunning = true
 	return nil
 }
@@ -48,7 +48,7 @@ func (mc *MetricsCollector) Stop() {
 func (mc *MetricsCollector) GetCurrentMetrics() *PerformanceMetrics {
 	mc.mu.RLock()
 	defer mc.mu.RUnlock()
-	
+
 	// Return a copy
 	metrics := *mc.currentMetrics
 	return &metrics
@@ -58,7 +58,7 @@ func (mc *MetricsCollector) GetCurrentMetrics() *PerformanceMetrics {
 func (mc *MetricsCollector) CollectFrom(monitor interface{}) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
-	
+
 	switch m := monitor.(type) {
 	case *TransferPerformanceMonitor:
 		transferMetrics := m.GetMetrics()
@@ -76,7 +76,7 @@ func (mc *MetricsCollector) CollectFrom(monitor interface{}) {
 		stagingMetrics := m.GetMetrics()
 		mc.currentMetrics.StagingMetrics = stagingMetrics
 	}
-	
+
 	mc.currentMetrics.LastUpdated = time.Now()
 }
 
@@ -84,7 +84,7 @@ func (mc *MetricsCollector) CollectFrom(monitor interface{}) {
 func (mc *MetricsCollector) RegisterMetric(metric *CustomMetric) error {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
-	
+
 	mc.customMetrics[metric.Name] = metric
 	return nil
 }
@@ -93,7 +93,7 @@ func (mc *MetricsCollector) RegisterMetric(metric *CustomMetric) error {
 func (mc *MetricsCollector) RecordMetric(name string, value float64, labels map[string]string, timestamp time.Time) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
-	
+
 	if metric, exists := mc.customMetrics[name]; exists {
 		dataPoint := &MetricDataPoint{
 			Value:     value,
@@ -101,7 +101,7 @@ func (mc *MetricsCollector) RecordMetric(name string, value float64, labels map[
 			Timestamp: timestamp,
 		}
 		metric.DataPoints = append(metric.DataPoints, dataPoint)
-		
+
 		// Keep only recent data points
 		maxPoints := 1000
 		if len(metric.DataPoints) > maxPoints {
@@ -112,68 +112,68 @@ func (mc *MetricsCollector) RecordMetric(name string, value float64, labels map[
 
 // PerformanceMetrics contains all performance metrics.
 type PerformanceMetrics struct {
-	TransferMetrics *TransferMetrics        `json:"transfer_metrics"`
-	SystemMetrics   *SystemMetrics          `json:"system_metrics"`
-	NetworkMetrics  *NetworkMetrics         `json:"network_metrics"`
-	S3Metrics      *S3Metrics              `json:"s3_metrics"`
-	StagingMetrics *StagingMetrics         `json:"staging_metrics"`
-	CustomMetrics  map[string]*CustomMetric `json:"custom_metrics"`
-	LastUpdated    time.Time               `json:"last_updated"`
+	TransferMetrics *TransferMetrics         `json:"transfer_metrics"`
+	SystemMetrics   *SystemMetrics           `json:"system_metrics"`
+	NetworkMetrics  *NetworkMetrics          `json:"network_metrics"`
+	S3Metrics       *S3Metrics               `json:"s3_metrics"`
+	StagingMetrics  *StagingMetrics          `json:"staging_metrics"`
+	CustomMetrics   map[string]*CustomMetric `json:"custom_metrics"`
+	LastUpdated     time.Time                `json:"last_updated"`
 }
 
 // TransferMetrics contains transfer performance metrics.
 type TransferMetrics struct {
-	ActiveTransfers     int           `json:"active_transfers"`
-	TotalThroughputMBps float64       `json:"total_throughput_mbps"`
-	AverageLatencyMs    float64       `json:"average_latency_ms"`
-	SuccessRate         float64       `json:"success_rate"`
-	ErrorCount          int64         `json:"error_count"`
-	TotalBytesProcessed int64         `json:"total_bytes_processed"`
-	AverageChunkSizeMB  float64       `json:"average_chunk_size_mb"`
-	CompressionRatio    float64       `json:"compression_ratio"`
-	LastUpdated         time.Time     `json:"last_updated"`
+	ActiveTransfers     int       `json:"active_transfers"`
+	TotalThroughputMBps float64   `json:"total_throughput_mbps"`
+	AverageLatencyMs    float64   `json:"average_latency_ms"`
+	SuccessRate         float64   `json:"success_rate"`
+	ErrorCount          int64     `json:"error_count"`
+	TotalBytesProcessed int64     `json:"total_bytes_processed"`
+	AverageChunkSizeMB  float64   `json:"average_chunk_size_mb"`
+	CompressionRatio    float64   `json:"compression_ratio"`
+	LastUpdated         time.Time `json:"last_updated"`
 }
 
 // SystemMetrics contains system resource metrics.
 type SystemMetrics struct {
-	CPUUsagePercent    float64   `json:"cpu_usage_percent"`
-	MemoryUsageMB      float64   `json:"memory_usage_mb"`
-	MemoryUsagePercent float64   `json:"memory_usage_percent"`
-	DiskUsagePercent   float64   `json:"disk_usage_percent"`
-	NetworkIOBytesPerSec float64 `json:"network_io_bytes_per_sec"`
-	DiskIOBytesPerSec  float64   `json:"disk_io_bytes_per_sec"`
-	ActiveGoroutines   int       `json:"active_goroutines"`
-	HeapSizeMB         float64   `json:"heap_size_mb"`
-	GCPauseMs          float64   `json:"gc_pause_ms"`
-	LastUpdated        time.Time `json:"last_updated"`
+	CPUUsagePercent      float64   `json:"cpu_usage_percent"`
+	MemoryUsageMB        float64   `json:"memory_usage_mb"`
+	MemoryUsagePercent   float64   `json:"memory_usage_percent"`
+	DiskUsagePercent     float64   `json:"disk_usage_percent"`
+	NetworkIOBytesPerSec float64   `json:"network_io_bytes_per_sec"`
+	DiskIOBytesPerSec    float64   `json:"disk_io_bytes_per_sec"`
+	ActiveGoroutines     int       `json:"active_goroutines"`
+	HeapSizeMB           float64   `json:"heap_size_mb"`
+	GCPauseMs            float64   `json:"gc_pause_ms"`
+	LastUpdated          time.Time `json:"last_updated"`
 }
 
 // NetworkMetrics contains network performance metrics.
 type NetworkMetrics struct {
-	BandwidthMBps       float64   `json:"bandwidth_mbps"`
-	LatencyMs           float64   `json:"latency_ms"`
-	PacketLossPercent   float64   `json:"packet_loss_percent"`
-	JitterMs            float64   `json:"jitter_ms"`
-	ConnectionCount     int       `json:"connection_count"`
-	ActiveConnections   int       `json:"active_connections"`
-	ReliabilityScore    float64   `json:"reliability_score"`
-	OptimalChunkSizeMB  int       `json:"optimal_chunk_size_mb"`
-	OptimalConcurrency  int       `json:"optimal_concurrency"`
-	LastUpdated         time.Time `json:"last_updated"`
+	BandwidthMBps      float64   `json:"bandwidth_mbps"`
+	LatencyMs          float64   `json:"latency_ms"`
+	PacketLossPercent  float64   `json:"packet_loss_percent"`
+	JitterMs           float64   `json:"jitter_ms"`
+	ConnectionCount    int       `json:"connection_count"`
+	ActiveConnections  int       `json:"active_connections"`
+	ReliabilityScore   float64   `json:"reliability_score"`
+	OptimalChunkSizeMB int       `json:"optimal_chunk_size_mb"`
+	OptimalConcurrency int       `json:"optimal_concurrency"`
+	LastUpdated        time.Time `json:"last_updated"`
 }
 
 // S3Metrics contains S3-specific performance metrics.
 type S3Metrics struct {
-	RequestLatencyMs    float64   `json:"request_latency_ms"`
-	SuccessfulRequests  int64     `json:"successful_requests"`
-	FailedRequests      int64     `json:"failed_requests"`
-	ErrorRate           float64   `json:"error_rate"`
-	ThroughputMBps      float64   `json:"throughput_mbps"`
-	ActiveConnections   int       `json:"active_connections"`
-	RegionLatencyMs     map[string]float64 `json:"region_latency_ms"`
-	RetryCount          int64     `json:"retry_count"`
-	ThrottleCount       int64     `json:"throttle_count"`
-	LastUpdated         time.Time `json:"last_updated"`
+	RequestLatencyMs   float64            `json:"request_latency_ms"`
+	SuccessfulRequests int64              `json:"successful_requests"`
+	FailedRequests     int64              `json:"failed_requests"`
+	ErrorRate          float64            `json:"error_rate"`
+	ThroughputMBps     float64            `json:"throughput_mbps"`
+	ActiveConnections  int                `json:"active_connections"`
+	RegionLatencyMs    map[string]float64 `json:"region_latency_ms"`
+	RetryCount         int64              `json:"retry_count"`
+	ThrottleCount      int64              `json:"throttle_count"`
+	LastUpdated        time.Time          `json:"last_updated"`
 }
 
 // StagingMetrics contains staging performance metrics.
@@ -223,7 +223,7 @@ func NewDefaultPerformanceMetrics() *PerformanceMetrics {
 		TransferMetrics: &TransferMetrics{LastUpdated: time.Now()},
 		SystemMetrics:   &SystemMetrics{LastUpdated: time.Now()},
 		NetworkMetrics:  &NetworkMetrics{LastUpdated: time.Now()},
-		S3Metrics:      &S3Metrics{
+		S3Metrics: &S3Metrics{
 			RegionLatencyMs: make(map[string]float64),
 			LastUpdated:     time.Now(),
 		},

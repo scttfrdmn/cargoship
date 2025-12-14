@@ -23,13 +23,13 @@ import (
 // NewDownloadCmd creates the 'download' command for selective extraction
 func NewDownloadCmd() *cobra.Command {
 	var (
-		pattern   string
-		files     []string
-		shardIDs  []int
-		region    string
-		verbose   bool
-		dryRun    bool
-		workers   int
+		pattern  string
+		files    []string
+		shardIDs []int
+		region   string
+		verbose  bool
+		dryRun   bool
+		workers  int
 	)
 
 	cmd := &cobra.Command{

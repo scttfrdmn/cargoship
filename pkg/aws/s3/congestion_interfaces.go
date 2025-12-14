@@ -16,7 +16,7 @@ import (
 type CongestionControlCore interface {
 	// Lifecycle management
 	Start(ctx context.Context)
-	
+
 	// Resource allocation
 	RegisterPrefix(prefixID string, capacity float64)
 	AllocateResources(upload *ScheduledUpload) (*PrefixAllocation, error)
@@ -39,7 +39,7 @@ type CongestionAlgorithmManager interface {
 	applyCongestionAvoidance(allocation *PrefixAllocation, metrics *PrefixPerformanceMetrics)
 	applyRecovery(allocation *PrefixAllocation, metrics *PrefixPerformanceMetrics)
 	applyFastRecovery(allocation *PrefixAllocation, metrics *PrefixPerformanceMetrics)
-	
+
 	// BBR algorithms
 	ApplyBBRCongestionControl(allocation *PrefixAllocation, metrics *PrefixPerformanceMetrics)
 	applyBBRStartup(allocation *PrefixAllocation, metrics *PrefixPerformanceMetrics)
@@ -95,13 +95,13 @@ type CrossPrefixCoordinator interface {
 	CoordinatedRegisterPrefix(prefixID string, capacity float64) error
 	runCrossPrefixCoordination(ctx context.Context, coordinator *CrossPrefixCongestionCoordinator)
 	performCrossPrefixOptimization(coordinator *CrossPrefixCongestionCoordinator)
-	
+
 	// Message handling
 	handleCongestionCoordinationMessage(coordinator *CrossPrefixCongestionCoordinator, msg *CongestionCoordinationMessage)
 	handleBandwidthRequest(coordinator *CrossPrefixCongestionCoordinator, msg *CongestionCoordinationMessage)
 	handleCongestionAlert(coordinator *CrossPrefixCongestionCoordinator, msg *CongestionCoordinationMessage)
 	handleLoadUpdate(coordinator *CrossPrefixCongestionCoordinator, msg *CongestionCoordinationMessage)
-	
+
 	// Message sending
 	sendCrossePrefixUpdates(coordinator *CrossPrefixCongestionCoordinator)
 	sendBandwidthReallocationMessage(coordinator *CrossPrefixCongestionCoordinator, fromPrefix, toPrefix string, amount float64)

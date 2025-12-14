@@ -21,24 +21,24 @@ type File struct {
 
 // Chunk represents a group of files to be archived together
 type Chunk struct {
-	ID          int      // Chunk identifier
-	Files       []File   // Files in this chunk
-	TotalSize   int64    // Total size of all files in bytes
-	FileCount   int      // Number of files
-	EstimatedOps int     // Estimated S3 operations (multipart uploads)
+	ID           int    // Chunk identifier
+	Files        []File // Files in this chunk
+	TotalSize    int64  // Total size of all files in bytes
+	FileCount    int    // Number of files
+	EstimatedOps int    // Estimated S3 operations (multipart uploads)
 }
 
 // ChunkStats provides statistics about chunking decisions
 type ChunkStats struct {
-	TotalFiles       int       // Total number of files
-	TotalSize        int64     // Total size in bytes
-	ChunkCount       int       // Number of chunks created
-	AverageChunkSize int64     // Average chunk size in bytes
-	MinChunkSize     int64     // Smallest chunk size in bytes
-	MaxChunkSize     int64     // Largest chunk size in bytes
-	EstimatedOps     int       // Total estimated S3 operations
-	CostSavings      float64   // Estimated cost savings ratio (e.g., 1000 = 1000x savings)
-	MemoryRequired   int64     // Peak memory required for processing
+	TotalFiles       int           // Total number of files
+	TotalSize        int64         // Total size in bytes
+	ChunkCount       int           // Number of chunks created
+	AverageChunkSize int64         // Average chunk size in bytes
+	MinChunkSize     int64         // Smallest chunk size in bytes
+	MaxChunkSize     int64         // Largest chunk size in bytes
+	EstimatedOps     int           // Total estimated S3 operations
+	CostSavings      float64       // Estimated cost savings ratio (e.g., 1000 = 1000x savings)
+	MemoryRequired   int64         // Peak memory required for processing
 	EstimatedTime    time.Duration // Estimated processing time
 }
 
@@ -106,15 +106,15 @@ type ChunkingStrategy interface {
 type ConstraintType int
 
 const (
-	ConstraintMemory ConstraintType = iota  // Memory-constrained optimization
-	ConstraintCost                           // Cost-optimization (minimize S3 operations)
-	ConstraintPerformance                    // Performance-optimization (maximize throughput)
-	ConstraintAdaptive                       // Adaptive (balance all constraints)
+	ConstraintMemory      ConstraintType = iota // Memory-constrained optimization
+	ConstraintCost                              // Cost-optimization (minimize S3 operations)
+	ConstraintPerformance                       // Performance-optimization (maximize throughput)
+	ConstraintAdaptive                          // Adaptive (balance all constraints)
 )
 
 // Constraint represents a single optimization constraint
 type Constraint struct {
 	Type   ConstraintType
-	Value  int64  // Constraint value (e.g., memory limit in bytes)
+	Value  int64   // Constraint value (e.g., memory limit in bytes)
 	Weight float64 // Weight for multi-objective optimization (0.0-1.0)
 }

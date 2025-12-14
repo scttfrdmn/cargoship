@@ -77,7 +77,7 @@ func TestManifestIntegration_Generation(t *testing.T) {
 		UseRealS3:         true,
 		S3Client:          s3Client,
 		S3PartSize:        5 * 1024 * 1024,
-		EnableManifest:    true,      // Enable manifest generation
+		EnableManifest:    true, // Enable manifest generation
 		SourcePath:        tmpDir,
 		UploadID:          uploadID,
 		EnableMultiPrefix: true,

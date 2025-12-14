@@ -403,7 +403,7 @@ func TestStagingBufferManager_ContextualCompressionOptimization(t *testing.T) {
 	// High priority should tend toward faster compression
 	assert.NotEmpty(t, chunk.SelectedAlgorithm)
 	assert.NotNil(t, chunk.CompressionDecision)
-	
+
 	// Decision should have reasoning chain
 	assert.True(t, len(chunk.CompressionDecision.ReasoningChain) > 0)
 }
@@ -453,7 +453,7 @@ func TestStagingBufferManager_NetworkConditionAdaptation(t *testing.T) {
 	// Test reliable, high-bandwidth network (can use higher compression)
 	reader2 := bytes.NewReader(testData)
 	networkCondition2 := &NetworkCondition{
-		BandwidthMBps: 1.0,  // Very low bandwidth
+		BandwidthMBps: 1.0, // Very low bandwidth
 		LatencyMs:     20.0,
 		Reliability:   0.99, // Excellent reliability
 	}

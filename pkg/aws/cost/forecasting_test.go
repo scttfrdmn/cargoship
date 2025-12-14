@@ -35,7 +35,7 @@ func createTestReporterWithHistoricalData(t *testing.T, days int, dailyCost floa
 			cost = dailyCost * (1.0 + float64(i)*0.10)
 		case "decreasing":
 			// Linear decrease: 5% decrease per day
-			cost = dailyCost * math.Max(0.1, 1.0 - float64(i)*0.05)
+			cost = dailyCost * math.Max(0.1, 1.0-float64(i)*0.05)
 		case "stable":
 			// Stable with small random variation (±5%)
 			variation := 0.95 + (float64(i%10) / 100.0) // Deterministic "random"

@@ -102,9 +102,9 @@ Examples:
 
 func newBudgetSetCmd() *cobra.Command {
 	var (
-		costBudget         float64
-		volumeQuota        float64
-		costAlertThreshold float64
+		costBudget           float64
+		volumeQuota          float64
+		costAlertThreshold   float64
 		volumeAlertThreshold float64
 	)
 

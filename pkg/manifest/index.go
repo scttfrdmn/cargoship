@@ -73,8 +73,8 @@ func NewManifestIndex(m *Manifest, opts *IndexOptions) (*ManifestIndex, error) {
 	startTime := time.Now()
 
 	idx := &ManifestIndex{
-		pathIndex:  make(map[string]*FileEntry, len(m.Files)),
-		manifest:   m,
+		pathIndex: make(map[string]*FileEntry, len(m.Files)),
+		manifest:  m,
 	}
 
 	// Build primary path index (always enabled - O(1) lookups)

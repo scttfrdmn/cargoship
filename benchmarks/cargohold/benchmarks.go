@@ -13,12 +13,12 @@ import (
 // runCargoHoldBenchmark runs a benchmark using CargoHold
 func runCargoHoldBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir, strategy string) (BenchmarkResult, error) {
 	result := BenchmarkResult{
-		Tool:      "cargohold",
-		Strategy:  strategy,
-		Scenario:  config.Scenario,
-		FileCount: spec.FileCount,
+		Tool:           "cargohold",
+		Strategy:       strategy,
+		Scenario:       config.Scenario,
+		FileCount:      spec.FileCount,
 		TotalSizeBytes: spec.TotalSize,
-		Timestamp: time.Now(),
+		Timestamp:      time.Now(),
 	}
 
 	// Prepare command
@@ -241,15 +241,15 @@ func runTarBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir string,
 
 // MetricsCollector tracks resource usage during benchmark
 type MetricsCollector struct {
-	ctx        context.Context
-	cancel     context.CancelFunc
-	pid        int
-	samples    []resourceSample
-	startTime  time.Time
+	ctx       context.Context
+	cancel    context.CancelFunc
+	pid       int
+	samples   []resourceSample
+	startTime time.Time
 }
 
 type resourceSample struct {
-	timestamp time.Time
+	timestamp  time.Time
 	cpuPercent float64
 	memoryMB   float64
 }

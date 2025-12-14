@@ -6,12 +6,12 @@ import "time"
 
 // AdvancedOptimizationConfig defines configuration for advanced staging optimization.
 type AdvancedOptimizationConfig struct {
-	WorkerPoolSize      int
-	MaxConcurrentJobs   int
-	MinConcurrency      int
-	MaxConcurrency      int
-	MinChunkSizeMB      int
-	MaxChunkSizeMB      int
+	WorkerPoolSize    int
+	MaxConcurrentJobs int
+	MinConcurrency    int
+	MaxConcurrency    int
+	MinChunkSizeMB    int
+	MaxChunkSizeMB    int
 }
 
 // DefaultAdvancedOptimizationConfig returns sensible defaults.
@@ -54,24 +54,24 @@ const (
 
 // OptimizationState tracks the current optimization state.
 type OptimizationState struct {
-	TotalJobsProcessed     int64
-	AverageLatencyMs       float64
-	ThroughputMBps         float64
-	ErrorRate              float64
-	OptimizationScore      float64
-	CPUUtilization         float64
-	MemoryUtilization      float64
-	NetworkUtilization     float64
-	IOUtilization          float64
-	SchedulingEfficiency   float64
-	LoadBalanceEfficiency  float64
-	MemoryEfficiency       float64
-	PredictionAccuracy     float64
-	CurrentConcurrency     int
-	CurrentChunkSizeMB     int
-	CurrentBufferSizeMB    int
-	AdaptationCount        int64
-	LastOptimization       time.Time
+	TotalJobsProcessed    int64
+	AverageLatencyMs      float64
+	ThroughputMBps        float64
+	ErrorRate             float64
+	OptimizationScore     float64
+	CPUUtilization        float64
+	MemoryUtilization     float64
+	NetworkUtilization    float64
+	IOUtilization         float64
+	SchedulingEfficiency  float64
+	LoadBalanceEfficiency float64
+	MemoryEfficiency      float64
+	PredictionAccuracy    float64
+	CurrentConcurrency    int
+	CurrentChunkSizeMB    int
+	CurrentBufferSizeMB   int
+	AdaptationCount       int64
+	LastOptimization      time.Time
 }
 
 // SchedulingMetrics represents scheduling performance metrics.
@@ -92,13 +92,13 @@ type JobProfile struct {
 
 // ComprehensiveMetrics represents comprehensive system metrics.
 type ComprehensiveMetrics struct {
-	ThroughputScore     float64
-	NormalizedLatency   float64
-	ResourceEfficiency  float64
-	CPUUtilization      float64
-	MemoryUtilization   float64
-	NetworkUtilization  float64
-	IOUtilization       float64
+	ThroughputScore    float64
+	NormalizedLatency  float64
+	ResourceEfficiency float64
+	CPUUtilization     float64
+	MemoryUtilization  float64
+	NetworkUtilization float64
+	IOUtilization      float64
 }
 
 // MemoryMetrics represents memory system metrics.

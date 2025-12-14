@@ -116,12 +116,12 @@ func (ap *ArchivePadder) CalculatePaddingSize(currentSize int64, targetSize int6
 
 // PaddingInfo contains information about padding operation
 type PaddingInfo struct {
-	OriginalSize     int64   // Size before padding
-	TargetSize       int64   // Desired size after padding
-	PaddingBytes     int64   // Bytes of padding added
-	FinalSize        int64   // Actual size after padding
-	PaddingRatio     float64 // Percentage of padding (0.0-1.0)
-	LowEntropyPadding bool   // Whether zero-byte padding was used
+	OriginalSize      int64   // Size before padding
+	TargetSize        int64   // Desired size after padding
+	PaddingBytes      int64   // Bytes of padding added
+	FinalSize         int64   // Actual size after padding
+	PaddingRatio      float64 // Percentage of padding (0.0-1.0)
+	LowEntropyPadding bool    // Whether zero-byte padding was used
 }
 
 // PadToTargetWithInfo pads to target and returns detailed information

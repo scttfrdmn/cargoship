@@ -127,7 +127,7 @@ func TestArchivePadder_CalculatePaddingSize(t *testing.T) {
 		{"No padding needed (at target)", 100, 100, 0},
 		{"No padding needed (above target)", 150, 100, 0},
 		{"Small padding", 50, 100, 50},
-		{"Large padding", 1024, 10*1024*1024, 10*1024*1024 - 1024},
+		{"Large padding", 1024, 10 * 1024 * 1024, 10*1024*1024 - 1024},
 	}
 
 	for _, tt := range tests {
@@ -159,11 +159,11 @@ func TestArchivePadder_PadToTargetWithInfo(t *testing.T) {
 
 func TestValidatePaddingRatio_Acceptable(t *testing.T) {
 	info := &PaddingInfo{
-		OriginalSize:     8000,
-		TargetSize:       10000,
-		PaddingBytes:     2000,
-		FinalSize:        10000,
-		PaddingRatio:     0.2, // 20% padding
+		OriginalSize:      8000,
+		TargetSize:        10000,
+		PaddingBytes:      2000,
+		FinalSize:         10000,
+		PaddingRatio:      0.2, // 20% padding
 		LowEntropyPadding: true,
 	}
 
@@ -194,7 +194,7 @@ func TestArchivePadder_PadToTarget_ChunkBoundary(t *testing.T) {
 	padder := NewArchivePadder()
 	var buf bytes.Buffer
 
-	currentSize := int64(512 * 1024)        // 512KB
+	currentSize := int64(512 * 1024)       // 512KB
 	targetSize := int64(2*1024*1024 + 100) // 2MB + 100 bytes
 
 	paddingWritten, err := padder.PadToTarget(&buf, currentSize, targetSize)

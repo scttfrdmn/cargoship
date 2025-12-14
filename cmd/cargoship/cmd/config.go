@@ -19,13 +19,13 @@ import (
 )
 
 var (
-	configFile           string
-	configGenerate       bool
-	configEdit           bool
-	configValidate       bool
+	configFile             string
+	configGenerate         bool
+	configEdit             bool
+	configValidate         bool
 	configValidateDetailed bool
-	configShow           bool
-	configFormat         string
+	configShow             bool
+	configFormat           string
 )
 
 // NewConfigCmd creates the config management command

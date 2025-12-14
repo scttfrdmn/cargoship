@@ -440,7 +440,7 @@ func (d *Dashboard) renderGlobalMetricsOverview() string {
 	// Mock data for now - in production this would come from the multi-region coordinator
 	metrics := []string{
 		fmt.Sprintf("Total Regions: %d", d.globalMetrics.TotalRegions),
-		fmt.Sprintf("Healthy Regions: %d", d.globalMetrics.HealthyRegions), 
+		fmt.Sprintf("Healthy Regions: %d", d.globalMetrics.HealthyRegions),
 		fmt.Sprintf("Availability: %.1f%%", d.globalMetrics.RegionAvailability),
 		fmt.Sprintf("Global Throughput: %s", d.globalMetrics.GlobalThroughput),
 		fmt.Sprintf("Avg Latency: %v", d.globalMetrics.AverageLatency),
@@ -448,7 +448,7 @@ func (d *Dashboard) renderGlobalMetricsOverview() string {
 	}
 
 	metricsText := strings.Join(metrics, " | ")
-	
+
 	return lipgloss.JoinVertical(lipgloss.Left,
 		sectionTitle,
 		d.baseStyle.Render(metricsText),

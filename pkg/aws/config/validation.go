@@ -8,9 +8,9 @@ import (
 
 // ValidationError represents a configuration validation error
 type ValidationError struct {
-	Field   string // Field that failed validation
+	Field   string      // Field that failed validation
 	Value   interface{} // Invalid value
-	Message string // Human-readable error message
+	Message string      // Human-readable error message
 }
 
 func (e *ValidationError) Error() string {

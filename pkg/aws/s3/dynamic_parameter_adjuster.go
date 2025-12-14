@@ -1270,11 +1270,11 @@ func (gtc *GracefulTransitionController) CreateTransitionPlan(
 		duration = time.Millisecond * 100
 		steps = 1
 	}
-	
+
 	// Use faster transition for connection-related parameters (especially for tests)
 	if request.ParameterName == "ConcurrentConnections" || request.ParameterName == "ChunkSizeMB" {
-		duration = time.Millisecond * 500  // 500ms total
-		steps = 2                          // 2 steps of 250ms each
+		duration = time.Millisecond * 500 // 500ms total
+		steps = 2                         // 2 steps of 250ms each
 	}
 
 	return &TransitionPlan{

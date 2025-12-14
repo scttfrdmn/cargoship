@@ -51,10 +51,10 @@ type ShardPipelineConfig struct {
 	PartSize           int64 // Part size for multipart upload (default: 50 MB, min: 5 MB)
 
 	// Adaptive worker pool (Issue #84)
-	WorkerPool       *AdaptiveWorkerPool // Optional: Use existing worker pool
-	MinWorkers       int                 // Minimum workers for adaptive scaling (default: 2)
-	MaxWorkers       int                 // Maximum workers for adaptive scaling (default: auto-calculated)
-	EnableAdaptive   bool                // Enable adaptive worker scaling (default: true)
+	WorkerPool     *AdaptiveWorkerPool // Optional: Use existing worker pool
+	MinWorkers     int                 // Minimum workers for adaptive scaling (default: 2)
+	MaxWorkers     int                 // Maximum workers for adaptive scaling (default: auto-calculated)
+	EnableAdaptive bool                // Enable adaptive worker scaling (default: true)
 }
 
 // ShardPipeline handles streaming tar → zstd → S3 for a single shard
@@ -209,8 +209,8 @@ func (sp *ShardPipeline) Start() error {
 
 	// Start goroutines
 	sp.wg.Add(2)
-	go sp.fileAdder()     // Adds files to tar archive
-	go sp.uploader()      // Uploads compressed archive to S3
+	go sp.fileAdder() // Adds files to tar archive
+	go sp.uploader()  // Uploads compressed archive to S3
 
 	return nil
 }

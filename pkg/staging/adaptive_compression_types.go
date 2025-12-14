@@ -42,16 +42,16 @@ const (
 
 // NetworkCondition describes current network conditions.
 type NetworkCondition struct {
-	Timestamp       time.Time `json:"timestamp"`
-	BandwidthMBps   float64   `json:"bandwidth_mbps"`
-	LatencyMs       float64   `json:"latency_ms"`
-	PacketLoss      float64   `json:"packet_loss"`
-	Jitter          float64   `json:"jitter"`
-	CongestionLevel float64   `json:"congestion_level"`
-	Reliability     float64   `json:"reliability"`
+	Timestamp       time.Time    `json:"timestamp"`
+	BandwidthMBps   float64      `json:"bandwidth_mbps"`
+	LatencyMs       float64      `json:"latency_ms"`
+	PacketLoss      float64      `json:"packet_loss"`
+	Jitter          float64      `json:"jitter"`
+	CongestionLevel float64      `json:"congestion_level"`
+	Reliability     float64      `json:"reliability"`
 	PredictedTrend  NetworkTrend `json:"predicted_trend"`
-	NetworkType     string    `json:"network_type"`
-	IsMetered       bool      `json:"is_metered"`
+	NetworkType     string       `json:"network_type"`
+	IsMetered       bool         `json:"is_metered"`
 }
 
 // NetworkTrend indicates predicted network performance direction.
@@ -67,10 +67,10 @@ const (
 
 // CompressionLearningEngine provides machine learning based compression recommendations.
 type CompressionLearningEngine struct {
-	trainingData      []*CompressionTrainingPoint
-	modelWeights      map[string]float64
-	featureExtractor  *FeatureExtractor
-	predictionCache   map[string]*CachedPrediction
+	trainingData     []*CompressionTrainingPoint
+	modelWeights     map[string]float64
+	featureExtractor *FeatureExtractor
+	predictionCache  map[string]*CachedPrediction
 	config           *AdaptiveCompressionConfig
 }
 
@@ -92,7 +92,7 @@ type CachedPrediction struct {
 }
 
 // FeatureExtractor extracts features for ML processing.
-type FeatureExtractor struct {}
+type FeatureExtractor struct{}
 
 // NewCompressionLearningEngine creates a new compression learning engine.
 func NewCompressionLearningEngine(config *AdaptiveCompressionConfig) *CompressionLearningEngine {
@@ -101,7 +101,7 @@ func NewCompressionLearningEngine(config *AdaptiveCompressionConfig) *Compressio
 		modelWeights:     make(map[string]float64),
 		featureExtractor: NewFeatureExtractor(),
 		predictionCache:  make(map[string]*CachedPrediction),
-		config:          config,
+		config:           config,
 	}
 }
 
@@ -116,14 +116,14 @@ func (cle *CompressionLearningEngine) PredictOptimalAlgorithm(
 	networkCondition *NetworkCondition,
 	context *CompressionContext,
 ) *MLRecommendation {
-	// Extract features  
+	// Extract features
 	_ = cle.featureExtractor.ExtractFeatures(contentProfile, networkCondition, context)
-	
+
 	// Simple rule-based prediction (would be replaced with actual ML model)
 	algorithm := "zstd"
 	confidence := 0.7
 	reasoning := []string{"Rule-based prediction"}
-	
+
 	// Adjust based on content type
 	if contentProfile.ContentType == "text" && contentProfile.Entropy < 4.0 {
 		algorithm = "zstd-high"
@@ -134,7 +134,7 @@ func (cle *CompressionLearningEngine) PredictOptimalAlgorithm(
 		confidence = 0.75
 		reasoning = append(reasoning, "Fast compression for high bandwidth")
 	}
-	
+
 	// Cache the prediction
 	cacheKey := cle.generateCacheKey(contentProfile, networkCondition, context)
 	cle.predictionCache[cacheKey] = &CachedPrediction{
@@ -143,7 +143,7 @@ func (cle *CompressionLearningEngine) PredictOptimalAlgorithm(
 		Reasoning:  reasoning,
 		Timestamp:  time.Now(),
 	}
-	
+
 	return &MLRecommendation{
 		Algorithm:  algorithm,
 		Confidence: confidence,
@@ -159,22 +159,22 @@ func (fe *FeatureExtractor) ExtractFeatures(
 ) map[string]float64 {
 	_ = fe // Mark as used
 	features := make(map[string]float64)
-	
+
 	// Content features
 	features["content_size"] = float64(contentProfile.Size)
 	features["content_entropy"] = contentProfile.Entropy
 	features["content_compressibility"] = contentProfile.Compressibility
-	
+
 	// Network features
 	features["network_bandwidth"] = networkCondition.BandwidthMBps
 	features["network_latency"] = networkCondition.LatencyMs
 	features["network_reliability"] = networkCondition.Reliability
-	
+
 	// Context features
 	features["system_load"] = context.SystemLoad
 	features["memory_available"] = float64(context.AvailableMemoryMB)
 	features["priority"] = float64(context.Priority)
-	
+
 	return features
 }
 
@@ -185,9 +185,9 @@ func (cle *CompressionLearningEngine) generateCacheKey(
 	context *CompressionContext,
 ) string {
 	// Simple concatenation-based key (would use better hashing in practice)
-	return contentProfile.ContentType + "_" + 
-		   string(rune(int(networkCondition.BandwidthMBps))) + "_" +
-		   string(rune(context.Priority))
+	return contentProfile.ContentType + "_" +
+		string(rune(int(networkCondition.BandwidthMBps))) + "_" +
+		string(rune(context.Priority))
 }
 
 // LearnFromResult learns from actual compression results.
@@ -199,14 +199,14 @@ func (cle *CompressionLearningEngine) LearnFromResult(result *CompressionResult)
 		ActualResult:     result,
 		Timestamp:        time.Now(),
 	}
-	
+
 	cle.trainingData = append(cle.trainingData, trainingPoint)
-	
+
 	// Keep only recent training data
 	if len(cle.trainingData) > cle.config.PerformanceHistorySize {
 		cle.trainingData = cle.trainingData[1:]
 	}
-	
+
 	// Update model weights (simplified)
 	cle.updateModelWeights(trainingPoint)
 }
@@ -244,7 +244,7 @@ func (cle *CompressionLearningEngine) GetConfidence(
 		}
 		return cached.Confidence * decay
 	}
-	
+
 	// Base confidence on training data size
 	baseConfidence := 0.5
 	if len(cle.trainingData) > 100 {
@@ -252,26 +252,26 @@ func (cle *CompressionLearningEngine) GetConfidence(
 	} else if len(cle.trainingData) > 20 {
 		baseConfidence = 0.6
 	}
-	
+
 	return baseConfidence
 }
 
 // CompressionPerformancePredictor predicts compression performance metrics.
 type CompressionPerformancePredictor struct {
-	historicalData    map[string][]*PerformanceDataPoint
-	regressionModels  map[string]*RegressionModel
+	historicalData   map[string][]*PerformanceDataPoint
+	regressionModels map[string]*RegressionModel
 	config           *AdaptiveCompressionConfig
 }
 
 // RegressionModel represents a simple regression model.
-type RegressionModel struct {}
+type RegressionModel struct{}
 
 // NewCompressionPerformancePredictor creates a new performance predictor.
 func NewCompressionPerformancePredictor(config *AdaptiveCompressionConfig) *CompressionPerformancePredictor {
 	return &CompressionPerformancePredictor{
 		historicalData:   make(map[string][]*PerformanceDataPoint),
 		regressionModels: make(map[string]*RegressionModel),
-		config:          config,
+		config:           config,
 	}
 }
 
@@ -285,7 +285,7 @@ func (cpp *CompressionPerformancePredictor) PredictPerformance(
 	baseRatio := cpp.getBaseCompressionRatio(algorithm, contentProfile.ContentType)
 	baseSpeed := cpp.getBaseSpeed(algorithm)
 	baseMemory := cpp.getBaseMemoryUsage(algorithm)
-	
+
 	// Adjust based on content characteristics
 	ratioMultiplier := 1.0
 	if contentProfile.Entropy < 2.0 {
@@ -293,15 +293,15 @@ func (cpp *CompressionPerformancePredictor) PredictPerformance(
 	} else if contentProfile.Entropy > 6.0 {
 		ratioMultiplier = 1.2 // Worse compression for high entropy
 	}
-	
+
 	// Adjust speed based on system load
 	speedMultiplier := 1.0
 	if networkCondition.BandwidthMBps < 10 {
 		speedMultiplier = 0.9 // Slower due to network constraints
 	}
-	
+
 	estimatedTime := time.Duration(float64(contentProfile.Size) / (baseSpeed * speedMultiplier * 1024 * 1024) * float64(time.Second))
-	
+
 	return &PredictedPerformance{
 		EstimatedCompressionRatio: baseRatio * ratioMultiplier,
 		EstimatedSpeedMBps:        baseSpeed * speedMultiplier,
@@ -319,13 +319,13 @@ func (cpp *CompressionPerformancePredictor) getBaseCompressionRatio(algorithm, c
 		"zstd-high": {"text": 0.25, "binary": 0.50, "image": 0.95, "json": 0.20},
 		"none":      {"text": 1.0, "binary": 1.0, "image": 1.0, "json": 1.0},
 	}
-	
+
 	if algoRatios, exists := ratios[algorithm]; exists {
 		if ratio, exists := algoRatios[contentType]; exists {
 			return ratio
 		}
 	}
-	
+
 	return 0.5 // Default ratio
 }
 
@@ -337,11 +337,11 @@ func (cpp *CompressionPerformancePredictor) getBaseSpeed(algorithm string) float
 		"zstd-high": 50,
 		"none":      1000,
 	}
-	
+
 	if speed, exists := speeds[algorithm]; exists {
 		return speed
 	}
-	
+
 	return 100 // Default speed MB/s
 }
 
@@ -353,11 +353,11 @@ func (cpp *CompressionPerformancePredictor) getBaseMemoryUsage(algorithm string)
 		"zstd-high": 64,
 		"none":      0,
 	}
-	
+
 	if mem, exists := memory[algorithm]; exists {
 		return mem
 	}
-	
+
 	return 32 // Default memory MB
 }
 
@@ -370,13 +370,13 @@ func (cpp *CompressionPerformancePredictor) UpdateWithResult(result *Compression
 		MemoryUsageMB:    result.MemoryUsageMB,
 		Success:          result.Success,
 	}
-	
+
 	if cpp.historicalData[result.Algorithm] == nil {
 		cpp.historicalData[result.Algorithm] = make([]*PerformanceDataPoint, 0)
 	}
-	
+
 	cpp.historicalData[result.Algorithm] = append(cpp.historicalData[result.Algorithm], dataPoint)
-	
+
 	// Keep only recent data
 	if len(cpp.historicalData[result.Algorithm]) > cpp.config.PerformanceHistorySize {
 		cpp.historicalData[result.Algorithm] = cpp.historicalData[result.Algorithm][1:]
@@ -385,9 +385,9 @@ func (cpp *CompressionPerformancePredictor) UpdateWithResult(result *Compression
 
 // ContextualCompressionOptimizer provides context-aware compression optimization.
 type ContextualCompressionOptimizer struct {
-	contextRules     []*ContextRule
+	contextRules      []*ContextRule
 	optimizationHints map[string]*OptimizationHint
-	config          *AdaptiveCompressionConfig
+	config            *AdaptiveCompressionConfig
 }
 
 // ContextRule defines context-based optimization rules.
@@ -401,10 +401,10 @@ type ContextRule struct {
 
 // OptimizationHint provides optimization hints for specific contexts.
 type OptimizationHint struct {
-	Algorithm   string
-	Settings    *CompressionSettings
-	Reasoning   string
-	Confidence  float64
+	Algorithm  string
+	Settings   *CompressionSettings
+	Reasoning  string
+	Confidence float64
 }
 
 // NewContextualCompressionOptimizer creates a new contextual optimizer.
@@ -412,9 +412,9 @@ func NewContextualCompressionOptimizer(config *AdaptiveCompressionConfig) *Conte
 	optimizer := &ContextualCompressionOptimizer{
 		contextRules:      make([]*ContextRule, 0),
 		optimizationHints: make(map[string]*OptimizationHint),
-		config:           config,
+		config:            config,
 	}
-	
+
 	optimizer.initializeDefaultRules()
 	return optimizer
 }
@@ -431,7 +431,7 @@ func (cco *ContextualCompressionOptimizer) initializeDefaultRules() {
 		Weight:      0.8,
 		Description: "Use high compression when memory is abundant and latency is low",
 	})
-	
+
 	// Low memory rule
 	cco.contextRules = append(cco.contextRules, &ContextRule{
 		Name: "LowMemory",
@@ -442,7 +442,7 @@ func (cco *ContextualCompressionOptimizer) initializeDefaultRules() {
 		Weight:      0.9,
 		Description: "Use fast compression when memory is limited",
 	})
-	
+
 	// High priority rule
 	cco.contextRules = append(cco.contextRules, &ContextRule{
 		Name: "HighPriority",
@@ -464,7 +464,7 @@ func (cco *ContextualCompressionOptimizer) OptimizeSelection(
 ) *ContextualRecommendation {
 	var bestRule *ContextRule
 	var bestWeight float64
-	
+
 	// Evaluate all rules
 	for _, rule := range cco.contextRules {
 		if rule.Condition(contentProfile, networkCondition, context) {
@@ -474,7 +474,7 @@ func (cco *ContextualCompressionOptimizer) OptimizeSelection(
 			}
 		}
 	}
-	
+
 	if bestRule != nil {
 		return &ContextualRecommendation{
 			Algorithm: bestRule.Algorithm,
@@ -482,7 +482,7 @@ func (cco *ContextualCompressionOptimizer) OptimizeSelection(
 			Factors:   []string{bestRule.Description},
 		}
 	}
-	
+
 	// No specific rule matched, return default
 	return &ContextualRecommendation{
 		Algorithm: "zstd",
@@ -493,31 +493,31 @@ func (cco *ContextualCompressionOptimizer) OptimizeSelection(
 
 // RealtimeCompressionMonitor monitors compression performance in real-time.
 type RealtimeCompressionMonitor struct {
-	metrics     map[string]*RealtimeMetrics
-	alerts      []*Alert
-	thresholds  *PerformanceThresholds
+	metrics    map[string]*RealtimeMetrics
+	alerts     []*Alert
+	thresholds *PerformanceThresholds
 	config     *AdaptiveCompressionConfig
 }
 
 // RealtimeMetrics tracks real-time compression metrics.
 type RealtimeMetrics struct {
-	Algorithm            string
-	ActiveCompressions   int
-	AverageLatency       time.Duration
-	ThroughputMBps       float64
-	ErrorRate            float64
-	ResourceUtilization  float64
-	LastUpdated          time.Time
+	Algorithm           string
+	ActiveCompressions  int
+	AverageLatency      time.Duration
+	ThroughputMBps      float64
+	ErrorRate           float64
+	ResourceUtilization float64
+	LastUpdated         time.Time
 }
 
 // Alert represents a performance alert.
 type Alert struct {
-	Type        AlertType
-	Algorithm   string
-	Message     string
-	Severity    AlertSeverity
-	Timestamp   time.Time
-	Resolved    bool
+	Type      AlertType
+	Algorithm string
+	Message   string
+	Severity  AlertSeverity
+	Timestamp time.Time
+	Resolved  bool
 }
 
 // AlertType defines types of alerts.
@@ -541,17 +541,17 @@ const (
 
 // PerformanceThresholds defines performance alert thresholds.
 type PerformanceThresholds struct {
-	MaxLatency          time.Duration
-	MinThroughput       float64
-	MaxErrorRate        float64
-	MaxResourceUsage    float64
+	MaxLatency       time.Duration
+	MinThroughput    float64
+	MaxErrorRate     float64
+	MaxResourceUsage float64
 }
 
 // NewRealtimeCompressionMonitor creates a new real-time monitor.
 func NewRealtimeCompressionMonitor(config *AdaptiveCompressionConfig) *RealtimeCompressionMonitor {
 	return &RealtimeCompressionMonitor{
-		metrics:    make(map[string]*RealtimeMetrics),
-		alerts:     make([]*Alert, 0),
+		metrics: make(map[string]*RealtimeMetrics),
+		alerts:  make([]*Alert, 0),
 		thresholds: &PerformanceThresholds{
 			MaxLatency:       time.Second * 30,
 			MinThroughput:    1.0,
@@ -564,17 +564,17 @@ func NewRealtimeCompressionMonitor(config *AdaptiveCompressionConfig) *RealtimeC
 
 // NetworkCompressionAdapter adapts compression for specific network types.
 type NetworkCompressionAdapter struct {
-	networkType    string
-	adaptations    map[string]*NetworkAdaptation
-	config        *AdaptiveCompressionConfig
+	networkType string
+	adaptations map[string]*NetworkAdaptation
+	config      *AdaptiveCompressionConfig
 }
 
 // NetworkAdaptation defines network-specific adaptations.
 type NetworkAdaptation struct {
 	PreferredAlgorithms []string
-	Settings           *CompressionSettings
-	BufferSize         int
-	ChunkSize          int
+	Settings            *CompressionSettings
+	BufferSize          int
+	ChunkSize           int
 }
 
 // NewNetworkCompressionAdapter creates a new network adapter.
@@ -582,7 +582,7 @@ func NewNetworkCompressionAdapter(networkType string, config *AdaptiveCompressio
 	return &NetworkCompressionAdapter{
 		networkType: networkType,
 		adaptations: make(map[string]*NetworkAdaptation),
-		config:     config,
+		config:      config,
 	}
 }
 

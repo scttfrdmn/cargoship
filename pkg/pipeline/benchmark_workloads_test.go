@@ -283,8 +283,8 @@ func BenchmarkPipeline_BurstyPattern(b *testing.B) {
 		S3Bucket:          testBucket,
 		S3Region:          os.Getenv("AWS_REGION"),
 		ChunkingConfig: &chunking.ChunkingConfig{
-			TargetChunkSize: 50 * 1024 * 1024, // 50MB chunks
-			MinChunkSize:    10 * 1024 * 1024, // 10MB min
+			TargetChunkSize: 50 * 1024 * 1024,  // 50MB chunks
+			MinChunkSize:    10 * 1024 * 1024,  // 10MB min
 			MaxChunkSize:    100 * 1024 * 1024, // 100MB max
 		},
 	}
@@ -330,4 +330,3 @@ func BenchmarkPipeline_BurstyPattern(b *testing.B) {
 		}
 	}
 }
-

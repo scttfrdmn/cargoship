@@ -16,8 +16,8 @@ import (
 // ShardCoordinatorConfig configures the shard coordinator
 type ShardCoordinatorConfig struct {
 	// Shard configuration
-	ShardCount        int  // Number of shards (0 = auto-calculate based on workload size)
-	EstimatedDataSize int64 // Estimated total data size for intelligent shard count (optional)
+	ShardCount        int    // Number of shards (0 = auto-calculate based on workload size)
+	EstimatedDataSize int64  // Estimated total data size for intelligent shard count (optional)
 	Bucket            string // Target S3 bucket
 	Prefix            string // S3 key prefix (optional)
 
@@ -135,11 +135,11 @@ func NewShardCoordinator(ctx context.Context, config *ShardCoordinatorConfig) (*
 		// Total memory budget: shard_count × 4 × partSize
 		// Use 50% of available memory by default, with proactive GC for large chunks
 		memConfig := &MemoryManagerConfig{
-			MemoryBudgetPercent:  0.5,                 // Use 50% of available memory
-			MinMemoryBuffer:      512 << 20,           // Keep 512MB free
-			ProactiveGCThreshold: 50 << 20,            // Proactive GC for >50MB chunks
-			PartSize:             partSize,            // Part size for estimation
-			MonitorInterval:      time.Second,         // Monitor every second
+			MemoryBudgetPercent:  0.5,         // Use 50% of available memory
+			MinMemoryBuffer:      512 << 20,   // Keep 512MB free
+			ProactiveGCThreshold: 50 << 20,    // Proactive GC for >50MB chunks
+			PartSize:             partSize,    // Part size for estimation
+			MonitorInterval:      time.Second, // Monitor every second
 		}
 		config.MemoryManager = NewMemoryManager(ctx, memConfig)
 		sc.ownsMemoryManager = true
@@ -314,17 +314,17 @@ func (sc *ShardCoordinator) GetStats() ShardCoordinatorStats {
 	}
 
 	return ShardCoordinatorStats{
-		ShardCount:       sc.config.ShardCount,
-		FilesAdded:       atomic.LoadInt64(&sc.filesAdded),
-		BytesProcessed:   atomic.LoadInt64(&sc.bytesProcessed),
-		TotalUploadSize:  totalUploadSize,
-		Duration:         duration,
-		CompletedShards:  completedShards,
-		FailedShards:     failedShards,
-		ShardStats:       shardStats,
-		ErrorCount:       errorCount,
-		FirstError:       firstError,
-		MemoryStats:      memStats,
+		ShardCount:      sc.config.ShardCount,
+		FilesAdded:      atomic.LoadInt64(&sc.filesAdded),
+		BytesProcessed:  atomic.LoadInt64(&sc.bytesProcessed),
+		TotalUploadSize: totalUploadSize,
+		Duration:        duration,
+		CompletedShards: completedShards,
+		FailedShards:    failedShards,
+		ShardStats:      shardStats,
+		ErrorCount:      errorCount,
+		FirstError:      firstError,
+		MemoryStats:     memStats,
 	}
 }
 
@@ -338,17 +338,17 @@ func (sc *ShardCoordinator) GetShardStats(shardID int) (ShardPipelineStats, erro
 
 // ShardCoordinatorStats contains aggregated statistics across all shards
 type ShardCoordinatorStats struct {
-	ShardCount      int                   // Total number of shards
-	FilesAdded      int64                 // Total files added across all shards
-	BytesProcessed  int64                 // Total bytes processed (uncompressed)
-	TotalUploadSize int64                 // Total uploaded size (compressed)
-	Duration        time.Duration         // Total processing time
-	CompletedShards int                   // Number of completed shards
-	FailedShards    int                   // Number of failed shards
-	ShardStats      []ShardPipelineStats  // Per-shard statistics
-	ErrorCount      int                   // Total number of errors
-	FirstError      error                 // First error encountered (if any)
-	MemoryStats     *MemoryManagerStats   // Memory manager statistics (Issue #83)
+	ShardCount      int                  // Total number of shards
+	FilesAdded      int64                // Total files added across all shards
+	BytesProcessed  int64                // Total bytes processed (uncompressed)
+	TotalUploadSize int64                // Total uploaded size (compressed)
+	Duration        time.Duration        // Total processing time
+	CompletedShards int                  // Number of completed shards
+	FailedShards    int                  // Number of failed shards
+	ShardStats      []ShardPipelineStats // Per-shard statistics
+	ErrorCount      int                  // Total number of errors
+	FirstError      error                // First error encountered (if any)
+	MemoryStats     *MemoryManagerStats  // Memory manager statistics (Issue #83)
 }
 
 // String returns a formatted string representation of coordinator stats

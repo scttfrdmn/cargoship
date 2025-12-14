@@ -11,18 +11,18 @@ import (
 // BudgetStatus represents the current status of a budget
 type BudgetStatus struct {
 	// Budget identification
-	ProjectID   string `json:"project_id,omitempty"`   // Empty for global budget
-	BudgetType  string `json:"budget_type"`            // "global" or "project"
-	PeriodType  string `json:"period_type"`            // e.g., "monthly", "quarterly", "grant"
-	PeriodStart string `json:"period_start"`           // ISO 8601 date
-	PeriodEnd   string `json:"period_end"`             // ISO 8601 date
+	ProjectID   string `json:"project_id,omitempty"` // Empty for global budget
+	BudgetType  string `json:"budget_type"`          // "global" or "project"
+	PeriodType  string `json:"period_type"`          // e.g., "monthly", "quarterly", "grant"
+	PeriodStart string `json:"period_start"`         // ISO 8601 date
+	PeriodEnd   string `json:"period_end"`           // ISO 8601 date
 
 	// Budget limits and usage
 	MaxBudget       float64 `json:"max_budget"`
 	CurrentSpend    float64 `json:"current_spend"`
 	BudgetRemaining float64 `json:"budget_remaining"`
-	BudgetUsed      float64 `json:"budget_used"`           // Percentage (0.0-1.0)
-	AlertThreshold  float64 `json:"alert_threshold"`       // Percentage (0.0-1.0)
+	BudgetUsed      float64 `json:"budget_used"`     // Percentage (0.0-1.0)
+	AlertThreshold  float64 `json:"alert_threshold"` // Percentage (0.0-1.0)
 
 	// Time tracking
 	DaysElapsed   int `json:"days_elapsed"`
@@ -30,24 +30,24 @@ type BudgetStatus struct {
 	TotalDays     int `json:"total_days"`
 
 	// Burn rate and projections
-	DailyBurnRate      float64 `json:"daily_burn_rate"`
-	ProjectedEOPSpend  float64 `json:"projected_eop_spend"`  // End of period
-	WillExceedBudget   bool    `json:"will_exceed_budget"`
-	TargetDailyRate    float64 `json:"target_daily_rate"`    // To stay within budget
+	DailyBurnRate     float64 `json:"daily_burn_rate"`
+	ProjectedEOPSpend float64 `json:"projected_eop_spend"` // End of period
+	WillExceedBudget  bool    `json:"will_exceed_budget"`
+	TargetDailyRate   float64 `json:"target_daily_rate"` // To stay within budget
 
 	// Status flags
-	OverBudget      bool   `json:"over_budget"`
-	AlertTriggered  bool   `json:"alert_triggered"`
-	Currency        string `json:"currency"`
+	OverBudget     bool   `json:"over_budget"`
+	AlertTriggered bool   `json:"alert_triggered"`
+	Currency       string `json:"currency"`
 
 	// Volume quota tracking (if enabled)
-	MaxVolumeGB          float64 `json:"max_volume_gb,omitempty"`           // 0 = unlimited
+	MaxVolumeGB          float64 `json:"max_volume_gb,omitempty"` // 0 = unlimited
 	CurrentVolumeGB      float64 `json:"current_volume_gb,omitempty"`
 	VolumeRemaining      float64 `json:"volume_remaining,omitempty"`
-	VolumeUsed           float64 `json:"volume_used,omitempty"`              // Percentage (0.0-1.0)
-	VolumeAlertThreshold float64 `json:"volume_alert_threshold,omitempty"`   // Percentage (0.0-1.0)
-	DailyVolumeBurnRate  float64 `json:"daily_volume_burn_rate,omitempty"`   // GB/day
-	ProjectedEOPVolume   float64 `json:"projected_eop_volume,omitempty"`     // GB
+	VolumeUsed           float64 `json:"volume_used,omitempty"`            // Percentage (0.0-1.0)
+	VolumeAlertThreshold float64 `json:"volume_alert_threshold,omitempty"` // Percentage (0.0-1.0)
+	DailyVolumeBurnRate  float64 `json:"daily_volume_burn_rate,omitempty"` // GB/day
+	ProjectedEOPVolume   float64 `json:"projected_eop_volume,omitempty"`   // GB
 	WillExceedVolume     bool    `json:"will_exceed_volume,omitempty"`
 	OverVolume           bool    `json:"over_volume,omitempty"`
 	VolumeAlertTriggered bool    `json:"volume_alert_triggered,omitempty"`
@@ -59,28 +59,28 @@ type BudgetStatus struct {
 
 // BudgetExceededError represents an error when budget would be exceeded
 type BudgetExceededError struct {
-	ProjectID       string
-	BudgetType      string  // "global" or "project"
-	MaxBudget       float64
-	CurrentSpend    float64
-	AdditionalCost  float64
-	ProjectedSpend  float64
-	Overage         float64
-	Currency        string
+	ProjectID      string
+	BudgetType     string // "global" or "project"
+	MaxBudget      float64
+	CurrentSpend   float64
+	AdditionalCost float64
+	ProjectedSpend float64
+	Overage        float64
+	Currency       string
 }
 
 func (e *BudgetExceededError) Error() string {
 	if e.ProjectID != "" {
 		return fmt.Sprintf(
 			"project budget exceeded: project=%s, max_budget=%.2f %s, current_spend=%.2f %s, "+
-			"additional_cost=%.2f %s, projected_spend=%.2f %s, overage=%.2f %s",
+				"additional_cost=%.2f %s, projected_spend=%.2f %s, overage=%.2f %s",
 			e.ProjectID, e.MaxBudget, e.Currency, e.CurrentSpend, e.Currency,
 			e.AdditionalCost, e.Currency, e.ProjectedSpend, e.Currency, e.Overage, e.Currency,
 		)
 	}
 	return fmt.Sprintf(
 		"global budget exceeded: max_budget=%.2f %s, current_spend=%.2f %s, "+
-		"additional_cost=%.2f %s, projected_spend=%.2f %s, overage=%.2f %s",
+			"additional_cost=%.2f %s, projected_spend=%.2f %s, overage=%.2f %s",
 		e.MaxBudget, e.Currency, e.CurrentSpend, e.Currency,
 		e.AdditionalCost, e.Currency, e.ProjectedSpend, e.Currency, e.Overage, e.Currency,
 	)
@@ -88,27 +88,27 @@ func (e *BudgetExceededError) Error() string {
 
 // VolumeQuotaExceededError represents an error when volume quota would be exceeded
 type VolumeQuotaExceededError struct {
-	ProjectID        string
-	QuotaType        string  // "global" or "project"
-	MaxVolumeGB      float64
-	CurrentVolumeGB  float64
-	AdditionalGB     float64
-	ProjectedVolume  float64
-	Overage          float64
+	ProjectID       string
+	QuotaType       string // "global" or "project"
+	MaxVolumeGB     float64
+	CurrentVolumeGB float64
+	AdditionalGB    float64
+	ProjectedVolume float64
+	Overage         float64
 }
 
 func (e *VolumeQuotaExceededError) Error() string {
 	if e.ProjectID != "" {
 		return fmt.Sprintf(
 			"project volume quota exceeded: project=%s, max_volume=%.2f GB, current_volume=%.2f GB, "+
-			"additional_volume=%.2f GB, projected_volume=%.2f GB, overage=%.2f GB",
+				"additional_volume=%.2f GB, projected_volume=%.2f GB, overage=%.2f GB",
 			e.ProjectID, e.MaxVolumeGB, e.CurrentVolumeGB,
 			e.AdditionalGB, e.ProjectedVolume, e.Overage,
 		)
 	}
 	return fmt.Sprintf(
 		"global volume quota exceeded: max_volume=%.2f GB, current_volume=%.2f GB, "+
-		"additional_volume=%.2f GB, projected_volume=%.2f GB, overage=%.2f GB",
+			"additional_volume=%.2f GB, projected_volume=%.2f GB, overage=%.2f GB",
 		e.MaxVolumeGB, e.CurrentVolumeGB,
 		e.AdditionalGB, e.ProjectedVolume, e.Overage,
 	)
@@ -410,15 +410,15 @@ func (m *Manager) GetProjectBudgetStatus(projectID string) (*BudgetStatus, error
 		AlertTriggered: budgetUsed > alertThreshold,
 
 		// Volume quota fields
-		MaxVolumeGB:           projectBudget.MaxVolumeGB,
-		CurrentVolumeGB:       currentVolumeGB,
-		VolumeRemaining:       volumeRemaining,
-		VolumeUsed:            volumeUsed,
-		DailyVolumeBurnRate:   dailyVolumeBurnRate,
-		ProjectedEOPVolume:    projectedEOPVolume,
-		OverVolume:            overVolume,
-		VolumeAlertTriggered:  volumeAlertTriggered,
-		WillExceedVolume:      willExceedVolume,
+		MaxVolumeGB:          projectBudget.MaxVolumeGB,
+		CurrentVolumeGB:      currentVolumeGB,
+		VolumeRemaining:      volumeRemaining,
+		VolumeUsed:           volumeUsed,
+		DailyVolumeBurnRate:  dailyVolumeBurnRate,
+		ProjectedEOPVolume:   projectedEOPVolume,
+		OverVolume:           overVolume,
+		VolumeAlertTriggered: volumeAlertTriggered,
+		WillExceedVolume:     willExceedVolume,
 
 		GrantName:      budgetPeriod.GrantName,
 		EnableRollover: budgetPeriod.EnableRollover,
@@ -532,11 +532,11 @@ func (m *Manager) SetProjectBudget(projectID string, maxBudget float64, maxVolum
 	}
 
 	m.config.ProjectBudgets[projectID] = config.ProjectBudget{
-		ProjectID:             projectID,
-		MaxBudget:             maxBudget,
-		MaxVolumeGB:           maxVolumeGB,
-		AlertThreshold:        costAlertThreshold,
-		VolumeAlertThreshold:  volumeAlertThreshold,
+		ProjectID:            projectID,
+		MaxBudget:            maxBudget,
+		MaxVolumeGB:          maxVolumeGB,
+		AlertThreshold:       costAlertThreshold,
+		VolumeAlertThreshold: volumeAlertThreshold,
 	}
 
 	m.logger.Info("Project budget updated",

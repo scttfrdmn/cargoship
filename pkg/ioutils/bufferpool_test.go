@@ -176,12 +176,12 @@ func TestStagedBufferPool_Selection(t *testing.T) {
 		requestSize  int
 		expectedSize int
 	}{
-		{512, 1024},      // Smaller than smallest pool
-		{1024, 1024},     // Exact match
-		{2000, 4096},     // Between sizes
-		{4096, 4096},     // Exact match
-		{10000, 16384},   // Between sizes
-		{100000, 65536},  // Larger than largest pool
+		{512, 1024},     // Smaller than smallest pool
+		{1024, 1024},    // Exact match
+		{2000, 4096},    // Between sizes
+		{4096, 4096},    // Exact match
+		{10000, 16384},  // Between sizes
+		{100000, 65536}, // Larger than largest pool
 	}
 
 	for _, tt := range tests {

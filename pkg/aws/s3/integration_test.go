@@ -25,10 +25,10 @@ const (
 )
 
 var (
-	useRealAWS      bool
-	realAWSProfile  string
-	realAWSRegion   string
-	realAWSBucket   string
+	useRealAWS     bool
+	realAWSProfile string
+	realAWSRegion  string
+	realAWSBucket  string
 )
 
 func TestMain(m *testing.M) {

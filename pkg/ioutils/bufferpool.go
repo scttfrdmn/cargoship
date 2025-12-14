@@ -168,9 +168,9 @@ var DefaultWriterPool = NewWriterPool(32 * 1024)
 // DefaultStagedPool is a pre-configured staged buffer pool with multiple sizes.
 // Sizes: 4KB, 32KB, 256KB, 1MB, 4MB
 var DefaultStagedPool = NewStagedBufferPool([]int{
-	4 * 1024,       // 4KB - Small files, metadata
-	32 * 1024,      // 32KB - Standard file operations
-	256 * 1024,     // 256KB - Medium transfers
-	1024 * 1024,    // 1MB - Large file chunks
+	4 * 1024,        // 4KB - Small files, metadata
+	32 * 1024,       // 32KB - Standard file operations
+	256 * 1024,      // 256KB - Medium transfers
+	1024 * 1024,     // 1MB - Large file chunks
 	4 * 1024 * 1024, // 4MB - Very large transfers
 })

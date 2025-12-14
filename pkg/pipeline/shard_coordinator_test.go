@@ -605,52 +605,52 @@ func TestShardCoordinatorStats_Metrics(t *testing.T) {
 
 func TestCalculateIntelligentShardCount(t *testing.T) {
 	tests := []struct {
-		name         string
-		dataSize     int64
+		name           string
+		dataSize       int64
 		expectedShards int
-		description  string
+		description    string
 	}{
 		{
-			name:         "Very small workload (100 MB)",
-			dataSize:     100 * 1024 * 1024,
+			name:           "Very small workload (100 MB)",
+			dataSize:       100 * 1024 * 1024,
 			expectedShards: 4,
-			description:  "Small workload (<1GB) should use 4 shards",
+			description:    "Small workload (<1GB) should use 4 shards",
 		},
 		{
-			name:         "Small workload (500 MB)",
-			dataSize:     500 * 1024 * 1024,
+			name:           "Small workload (500 MB)",
+			dataSize:       500 * 1024 * 1024,
 			expectedShards: 4,
-			description:  "Small workload (<1GB) should use 4 shards",
+			description:    "Small workload (<1GB) should use 4 shards",
 		},
 		{
-			name:         "Boundary: exactly 1 GB",
-			dataSize:     1 * 1024 * 1024 * 1024,
+			name:           "Boundary: exactly 1 GB",
+			dataSize:       1 * 1024 * 1024 * 1024,
 			expectedShards: 8,
-			description:  "Medium workload (1-10GB) should use 8 shards",
+			description:    "Medium workload (1-10GB) should use 8 shards",
 		},
 		{
-			name:         "Medium workload (5 GB)",
-			dataSize:     5 * 1024 * 1024 * 1024,
+			name:           "Medium workload (5 GB)",
+			dataSize:       5 * 1024 * 1024 * 1024,
 			expectedShards: 8,
-			description:  "Medium workload (1-10GB) should use 8 shards",
+			description:    "Medium workload (1-10GB) should use 8 shards",
 		},
 		{
-			name:         "Boundary: exactly 10 GB",
-			dataSize:     10 * 1024 * 1024 * 1024,
+			name:           "Boundary: exactly 10 GB",
+			dataSize:       10 * 1024 * 1024 * 1024,
 			expectedShards: 8,
-			description:  "Medium workload (1-10GB) should use 8 shards",
+			description:    "Medium workload (1-10GB) should use 8 shards",
 		},
 		{
-			name:         "Large workload (15 GB)",
-			dataSize:     15 * 1024 * 1024 * 1024,
+			name:           "Large workload (15 GB)",
+			dataSize:       15 * 1024 * 1024 * 1024,
 			expectedShards: 10,
-			description:  "Large workload (>10GB) should use 10 shards",
+			description:    "Large workload (>10GB) should use 10 shards",
 		},
 		{
-			name:         "Very large workload (1 TB)",
-			dataSize:     1024 * 1024 * 1024 * 1024,
+			name:           "Very large workload (1 TB)",
+			dataSize:       1024 * 1024 * 1024 * 1024,
 			expectedShards: 10,
-			description:  "Large workload (>10GB) should use 10 shards",
+			description:    "Large workload (>10GB) should use 10 shards",
 		},
 	}
 
@@ -1170,6 +1170,7 @@ func TestShardCoordinator_Integration_HashRouting(t *testing.T) {
 	t.Logf("  Compression ratio: %.1f%%", compressionRatio*100)
 	t.Logf("  Total uploads: %d", mockClient.putObjectCalls)
 }
+
 // TestShardCoordinator_Integration_Cancellation tests graceful shutdown (Issue #85)
 func TestShardCoordinator_Integration_Cancellation(t *testing.T) {
 	if testing.Short() {

@@ -75,7 +75,7 @@ type Dashboard struct {
 	inventoryItems []InventoryItem
 	// costData        CostAnalysis // TODO: Implement cost analysis integration
 	configurations []ConfigItem
-	
+
 	// Multi-region data
 	regionStatus         map[string]RegionStatusInfo
 	globalMetrics        GlobalMetricsInfo
@@ -205,20 +205,20 @@ type ConfigItem struct {
 
 // RegionStatusInfo represents real-time region status information
 type RegionStatusInfo struct {
-	Name              string
-	Status            string // healthy, degraded, unhealthy, offline
-	Priority          int
-	Weight            int
-	LastChecked       time.Time
-	Health            RegionHealthInfo
-	Metrics           RegionMetricsInfo
-	FailoverTarget    string
-	InFailover        bool
+	Name           string
+	Status         string // healthy, degraded, unhealthy, offline
+	Priority       int
+	Weight         int
+	LastChecked    time.Time
+	Health         RegionHealthInfo
+	Metrics        RegionMetricsInfo
+	FailoverTarget string
+	InFailover     bool
 }
 
-// RegionHealthInfo represents health check information for a region  
+// RegionHealthInfo represents health check information for a region
 type RegionHealthInfo struct {
-	OverallHealthy        bool
+	OverallHealthy       bool
 	SuccessRate          float64
 	ConsecutiveSuccesses int64
 	ConsecutiveFailures  int64
@@ -313,29 +313,29 @@ func NewDashboard(dashboardType DashboardType, logger *slog.Logger) *Dashboard {
 	jobsTable := createJobsTable()
 
 	return &Dashboard{
-		dashboardType:  dashboardType,
-		currentView:    DashboardOverview,
-		navigationTabs: navigationTabs,
-		selectedTab:    0,
-		contextManager: contextManager,
-		logger:         logger.With("component", "tui-dashboard"),
-		agentTable:     agentTable,
-		jobsTable:      jobsTable,
-		archivalQueue:  createArchivalTable(),
-		estimateTable:  createEstimateTable(),
-		surveyResults:  createSurveyTable(),
-		inventoryTree:  createInventoryTable(),
-		searchResults:  createSearchTable(),
-		restoreQueue:   createRestoreTable(),
-		costBreakdown:  createCostBreakdownTable(),
-		optimizations:  createOptimizationTable(),
-		budgetChart:    createBudgetTable(),
-		configTable:    createConfigTable(),
-		profilesList:   createProfilesTable(),
-		regionOverviewTable: createRegionOverviewTable(),
-		regionHealthTable:   createRegionHealthTable(),
-		regionMetricsTable:  createRegionMetricsTable(),
-		failoverStatusTable: createFailoverStatusTable(),
+		dashboardType:        dashboardType,
+		currentView:          DashboardOverview,
+		navigationTabs:       navigationTabs,
+		selectedTab:          0,
+		contextManager:       contextManager,
+		logger:               logger.With("component", "tui-dashboard"),
+		agentTable:           agentTable,
+		jobsTable:            jobsTable,
+		archivalQueue:        createArchivalTable(),
+		estimateTable:        createEstimateTable(),
+		surveyResults:        createSurveyTable(),
+		inventoryTree:        createInventoryTable(),
+		searchResults:        createSearchTable(),
+		restoreQueue:         createRestoreTable(),
+		costBreakdown:        createCostBreakdownTable(),
+		optimizations:        createOptimizationTable(),
+		budgetChart:          createBudgetTable(),
+		configTable:          createConfigTable(),
+		profilesList:         createProfilesTable(),
+		regionOverviewTable:  createRegionOverviewTable(),
+		regionHealthTable:    createRegionHealthTable(),
+		regionMetricsTable:   createRegionMetricsTable(),
+		failoverStatusTable:  createFailoverStatusTable(),
 		regionStatus:         make(map[string]RegionStatusInfo),
 		globalMetrics:        GlobalMetricsInfo{}, // Will be populated by fetchMockGlobalMetrics
 		updateInterval:       time.Second * 2,
