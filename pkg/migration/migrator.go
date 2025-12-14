@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -496,18 +495,9 @@ func ParseS3URL(s3url string) (*S3Location, error) {
 	return location, nil
 }
 
-// getAvailableDiskSpace returns the available disk space for a path
-func getAvailableDiskSpace(path string) (int64, error) {
-	var stat syscall.Statfs_t
-	err := syscall.Statfs(path, &stat)
-	if err != nil {
-		return 0, fmt.Errorf("failed to stat filesystem: %w", err)
-	}
-
-	// Available blocks * block size
-	available := int64(stat.Bavail) * int64(stat.Bsize)
-	return available, nil
-}
+// getAvailableDiskSpace is implemented in platform-specific files:
+// - disk_space_unix.go for Unix systems
+// - disk_space_windows.go for Windows
 
 // extractionStats contains statistics from the extraction phase
 type extractionStats struct {
