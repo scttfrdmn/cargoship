@@ -17,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 )
 
 const (
@@ -94,12 +93,16 @@ func GetNumaInfo() NumaInfo {
 
 // getCurrentCPU returns the CPU the current goroutine is running on
 func getCurrentCPU() (int, error) {
-	// Use sched_getcpu() syscall to get current CPU
-	cpu, _, err := syscall.Syscall(syscall.SYS_GETCPU, 0, 0, 0)
-	if err != 0 {
-		return -1, err
-	}
-	return int(cpu), nil
+	// NOTE: syscall.SYS_GETCPU is not available on all Linux systems/kernels
+	// Returning error to fall back to /proc/self/stat or other methods
+	return -1, fmt.Errorf("SYS_GETCPU not available on this system")
+
+	// Original implementation (disabled due to portability issues):
+	// cpu, _, err := syscall.Syscall(syscall.SYS_GETCPU, 0, 0, 0)
+	// if err != 0 {
+	// 	return -1, err
+	// }
+	// return int(cpu), nil
 }
 
 // getCPUNode returns the NUMA node for a given CPU
