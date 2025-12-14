@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
 
@@ -316,6 +317,13 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				s3Config.PartSize = 64 * 1024 * 1024
 			}
 
+			// v0.6.2: Add transporter if configured
+			if p.config.Transporter != nil {
+				if transporter, ok := p.config.Transporter.(s3transport.BasicTransporter); ok {
+					s3Config.Transporter = transporter
+				}
+			}
+
 			p.multiPrefixUploader, err = NewS3MultiPrefixUploaderStage(
 				s3Config,
 				uploaderInputs,
@@ -371,6 +379,13 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				s3Config.PartSize = 64 * 1024 * 1024 // 64MB default
 			}
 
+			// v0.6.2: Add transporter if configured
+			if p.config.Transporter != nil {
+				if transporter, ok := p.config.Transporter.(s3transport.BasicTransporter); ok {
+					s3Config.Transporter = transporter
+				}
+			}
+
 			p.multiPrefixUploader, err = NewS3MultiPrefixUploaderStage(
 				s3Config,
 				uploaderInputs,
@@ -402,6 +417,13 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 
 			if p.config.S3PartSize == 0 {
 				s3Config.PartSize = 64 * 1024 * 1024 // 64MB default
+			}
+
+			// v0.6.2: Add transporter if configured
+			if p.config.Transporter != nil {
+				if transporter, ok := p.config.Transporter.(s3transport.BasicTransporter); ok {
+					s3Config.Transporter = transporter
+				}
 			}
 
 			p.s3Uploader, err = NewS3UploaderStage(s3Config, p.archiveChan, p.resultChan, p)

@@ -131,13 +131,13 @@ func CaptureResourceSnapshot() ResourceSnapshot {
 
 // ResourceDelta calculates the difference between two snapshots
 type ResourceDelta struct {
-	Duration     time.Duration
-	GoroutineDiff int
-	AllocDiff    int64
+	Duration       time.Duration
+	GoroutineDiff  int
+	AllocDiff      int64
 	TotalAllocDiff uint64
-	SysDiff      int64
-	NumGCDiff    uint32
-	PauseDiff    uint64
+	SysDiff        int64
+	NumGCDiff      uint32
+	PauseDiff      uint64
 }
 
 // Delta computes the delta between two resource snapshots

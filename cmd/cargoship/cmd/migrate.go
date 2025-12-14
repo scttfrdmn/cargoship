@@ -8,8 +8,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/dustin/go-humanize"
-	"github.com/spf13/cobra"
 	"github.com/scttfrdmn/cargoship/pkg/migration"
+	"github.com/spf13/cobra"
 )
 
 // NewMigrateCmd creates the migrate command

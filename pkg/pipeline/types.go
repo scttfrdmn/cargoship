@@ -129,6 +129,11 @@ type PipelineConfig struct {
 	S3StorageClass string      // S3 storage class (STANDARD, INTELLIGENT_TIERING, etc.)
 	S3SSEKMSKeyId  string      // Optional KMS key ID for encryption
 
+	// Advanced transporter configuration (v0.6.2)
+	// If set, uses advanced S3 transporters (staging, adaptive, optimized) instead of basic manager.Uploader
+	// Set via NewPipelineTransporter() factory
+	Transporter interface{} // s3transport.BasicTransporter for advanced uploads (type: github.com/scttfrdmn/cargoship/pkg/aws/s3.BasicTransporter)
+
 	// Multi-prefix optimization (Phase 3)
 	EnableMultiPrefix bool   // If true, use multi-prefix parallel uploads (default: true)
 	WorkersPerPrefix  int    // Workers per S3 prefix (default: 2)

@@ -4,6 +4,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
 
@@ -47,6 +49,10 @@ type S3MultiPrefixUploaderStage struct {
 
 	// S3 uploader (shared across all workers)
 	uploader *manager.Uploader
+
+	// v0.6.2: Advanced transporter (optional, shared across all shards)
+	// Future enhancement: Create per-shard transporter instances for independent BBR/CUBIC state
+	transporter s3transport.BasicTransporter
 
 	// Manifest tracking (Issue #97)
 	pipeline *Pipeline // Reference to parent pipeline for manifest tracking
@@ -92,7 +98,7 @@ func NewS3MultiPrefixUploaderStage(
 		config.RetryDelay = time.Second
 	}
 
-	// Create AWS S3 uploader with optimized settings
+	// Create AWS S3 uploader with optimized settings (backward compatibility)
 	uploader := manager.NewUploader(config.S3Client, func(u *manager.Uploader) {
 		u.PartSize = config.PartSize
 		u.Concurrency = 4 // Internal concurrency per upload
@@ -110,7 +116,7 @@ func NewS3MultiPrefixUploaderStage(
 		}
 	}
 
-	return &S3MultiPrefixUploaderStage{
+	stage := &S3MultiPrefixUploaderStage{
 		config:           config,
 		inputs:           inputs,
 		output:           output,
@@ -123,7 +129,14 @@ func NewS3MultiPrefixUploaderStage(
 			Name: "s3_multiprefix_uploader",
 		},
 		pipeline: pipeline, // Store reference for manifest tracking
-	}, nil
+	}
+
+	// v0.6.2: Use transporter if configured (shared across all shards)
+	if config.Transporter != nil {
+		stage.transporter = config.Transporter
+	}
+
+	return stage, nil
 }
 
 // Name returns the stage name
@@ -347,7 +360,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 	return fmt.Errorf("upload failed after %d attempts: %w", s.config.MaxRetries, lastErr)
 }
 
-// uploadToS3 performs the actual S3 upload using AWS SDK
+// uploadToS3 performs the actual S3 upload using transporter or AWS SDK
 func (s *S3MultiPrefixUploaderStage) uploadToS3(ctx context.Context, job *Job) error {
 	// Build S3 key with prefix
 	s3Key := job.S3Key
@@ -355,19 +368,55 @@ func (s *S3MultiPrefixUploaderStage) uploadToS3(ctx context.Context, job *Job) e
 		s3Key = s.config.Prefix + "/" + job.S3Key
 	}
 
+	// Prepare metadata
+	metadata := map[string]string{
+		"cargoship-chunk-id":    fmt.Sprintf("%d", job.ID),
+		"cargoship-file-count":  fmt.Sprintf("%d", len(job.Chunk.Files)),
+		"cargoship-chunk-size":  fmt.Sprintf("%d", job.Chunk.TotalSize),
+		"cargoship-compression": "zstd",
+		"cargoship-archive":     "tar",
+	}
+
+	// Choose upload path: transporter (advanced) or manager.Uploader (basic)
+	if s.transporter != nil {
+		return s.uploadViaTransporter(ctx, s3Key, job, metadata)
+	}
+	return s.uploadViaManager(ctx, s3Key, job, metadata)
+}
+
+// uploadViaTransporter uploads using advanced S3 transporter
+func (s *S3MultiPrefixUploaderStage) uploadViaTransporter(ctx context.Context, s3Key string, job *Job, metadata map[string]string) error {
+	// Create transporter Archive struct
+	archive := s3transport.Archive{
+		Key:      s3Key,
+		Reader:   job.Archive,
+		Size:     job.ArchiveSize,
+		Metadata: metadata,
+	}
+
+	// Upload via transporter
+	result, err := s.transporter.Upload(ctx, archive)
+	if err != nil {
+		return fmt.Errorf("transporter upload failed for %s: %w", job.S3Key, err)
+	}
+
+	// Store result
+	if result.Location != "" {
+		job.S3Key = result.Location
+	}
+
+	return nil
+}
+
+// uploadViaManager uploads using basic AWS SDK manager.Uploader (backward compatibility)
+func (s *S3MultiPrefixUploaderStage) uploadViaManager(ctx context.Context, s3Key string, job *Job, metadata map[string]string) error {
 	// Prepare upload input
 	input := &s3.PutObjectInput{
 		Bucket:       aws.String(s.config.Bucket),
 		Key:          aws.String(s3Key),
 		Body:         job.Archive,
 		StorageClass: s.config.StorageClass,
-		Metadata: map[string]string{
-			"cargoship-chunk-id":    fmt.Sprintf("%d", job.ID),
-			"cargoship-file-count":  fmt.Sprintf("%d", len(job.Chunk.Files)),
-			"cargoship-chunk-size":  fmt.Sprintf("%d", job.Chunk.TotalSize),
-			"cargoship-compression": "zstd",
-			"cargoship-archive":     "tar",
-		},
+		Metadata:     metadata,
 	}
 
 	// Add server-side encryption if configured
@@ -378,6 +427,12 @@ func (s *S3MultiPrefixUploaderStage) uploadToS3(ctx context.Context, job *Job) e
 		}
 	}
 
+	// Ensure job.Archive implements io.Reader for manager.Uploader
+	var reader io.Reader = job.Archive
+
+	// Replace Body with reader to ensure interface satisfaction
+	input.Body = reader
+
 	// Upload using AWS SDK manager (handles multipart automatically)
 	result, err := s.uploader.Upload(ctx, input)
 	if err != nil {
@@ -387,10 +442,6 @@ func (s *S3MultiPrefixUploaderStage) uploadToS3(ctx context.Context, job *Job) e
 	// Store upload result in job
 	if result.Location != "" {
 		job.S3Key = result.Location
-	}
-	if result.ETag != nil {
-		// ETag indicates successful upload
-		_ = result.ETag
 	}
 
 	return nil

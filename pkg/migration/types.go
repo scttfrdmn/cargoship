@@ -152,12 +152,12 @@ type S3Location struct {
 type MigrationPhase string
 
 const (
-	PhaseValidation  MigrationPhase = "validation"
-	PhaseDryRun      MigrationPhase = "dry_run"
-	PhaseExtraction  MigrationPhase = "extraction"
-	PhaseUpload      MigrationPhase = "upload"
-	PhaseCleanup     MigrationPhase = "cleanup"
-	PhaseComplete    MigrationPhase = "complete"
+	PhaseValidation MigrationPhase = "validation"
+	PhaseDryRun     MigrationPhase = "dry_run"
+	PhaseExtraction MigrationPhase = "extraction"
+	PhaseUpload     MigrationPhase = "upload"
+	PhaseCleanup    MigrationPhase = "cleanup"
+	PhaseComplete   MigrationPhase = "complete"
 )
 
 // ProgressUpdate represents progress during migration

@@ -4,6 +4,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
 
@@ -27,6 +29,10 @@ type S3UploaderConfig struct {
 	StorageClass         types.StorageClass
 	ServerSideEncryption types.ServerSideEncryption
 	SSEKMSKeyId          string // Optional KMS key ID
+
+	// Advanced transporter (v0.6.2)
+	// If set, uses advanced S3 transporter instead of basic manager.Uploader
+	Transporter s3transport.BasicTransporter // Optional advanced transporter
 }
 
 // S3UploaderStage uploads streaming archives to real AWS S3
@@ -251,7 +257,7 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 	return fmt.Errorf("upload failed after %d attempts: %w", s.config.MaxRetries, lastErr)
 }
 
-// uploadToS3 performs the actual S3 upload using AWS SDK
+// uploadToS3 performs the actual S3 upload using transporter or AWS SDK
 func (s *S3UploaderStage) uploadToS3(ctx context.Context, job *Job) error {
 	// Build S3 key with prefix
 	s3Key := job.S3Key
@@ -259,19 +265,58 @@ func (s *S3UploaderStage) uploadToS3(ctx context.Context, job *Job) error {
 		s3Key = s.config.Prefix + "/" + job.S3Key
 	}
 
+	// Prepare metadata
+	metadata := map[string]string{
+		"cargoship-chunk-id":    fmt.Sprintf("%d", job.ID),
+		"cargoship-file-count":  fmt.Sprintf("%d", len(job.Chunk.Files)),
+		"cargoship-chunk-size":  fmt.Sprintf("%d", job.Chunk.TotalSize),
+		"cargoship-compression": "zstd",
+		"cargoship-archive":     "tar",
+	}
+
+	// Choose upload path: transporter (advanced) or manager.Uploader (basic)
+	if s.config.Transporter != nil {
+		// Use advanced transporter (staging, adaptive, optimized)
+		return s.uploadViaTransporter(ctx, s3Key, job, metadata)
+	}
+
+	// Fallback to basic manager.Uploader (backward compatibility)
+	return s.uploadViaManager(ctx, s3Key, job, metadata)
+}
+
+// uploadViaTransporter uploads using advanced S3 transporter
+func (s *S3UploaderStage) uploadViaTransporter(ctx context.Context, s3Key string, job *Job, metadata map[string]string) error {
+	// Create transporter Archive struct
+	archive := s3transport.Archive{
+		Key:      s3Key,
+		Reader:   job.Archive, // io.ReadCloser
+		Size:     job.ArchiveSize,
+		Metadata: metadata,
+	}
+
+	// Upload via transporter
+	result, err := s.config.Transporter.Upload(ctx, archive)
+	if err != nil {
+		return fmt.Errorf("transporter upload failed for %s: %w", job.S3Key, err)
+	}
+
+	// Store result
+	if result.Location != "" {
+		job.S3Key = result.Location
+	}
+
+	return nil
+}
+
+// uploadViaManager uploads using basic AWS SDK manager.Uploader (backward compatibility)
+func (s *S3UploaderStage) uploadViaManager(ctx context.Context, s3Key string, job *Job, metadata map[string]string) error {
 	// Prepare upload input
 	input := &s3.PutObjectInput{
 		Bucket:       aws.String(s.config.Bucket),
 		Key:          aws.String(s3Key),
 		Body:         job.Archive,
 		StorageClass: s.config.StorageClass,
-		Metadata: map[string]string{
-			"cargoship-chunk-id":    fmt.Sprintf("%d", job.ID),
-			"cargoship-file-count":  fmt.Sprintf("%d", len(job.Chunk.Files)),
-			"cargoship-chunk-size":  fmt.Sprintf("%d", job.Chunk.TotalSize),
-			"cargoship-compression": "zstd",
-			"cargoship-archive":     "tar",
-		},
+		Metadata:     metadata,
 	}
 
 	// Add server-side encryption if configured
@@ -282,6 +327,12 @@ func (s *S3UploaderStage) uploadToS3(ctx context.Context, job *Job) error {
 		}
 	}
 
+	// Ensure job.Archive implements io.Reader for manager.Uploader
+	var reader io.Reader = job.Archive
+
+	// Replace Body with reader to ensure interface satisfaction
+	input.Body = reader
+
 	// Upload using AWS SDK manager (handles multipart automatically)
 	result, err := s.uploader.Upload(ctx, input)
 	if err != nil {
@@ -289,13 +340,8 @@ func (s *S3UploaderStage) uploadToS3(ctx context.Context, job *Job) error {
 	}
 
 	// Store upload result in job
-	// Note: UploadOutput doesn't have UploadedParts, archive size is already set from archiver
 	if result.Location != "" {
 		job.S3Key = result.Location
-	}
-	if result.ETag != nil {
-		// ETag indicates successful upload
-		_ = result.ETag
 	}
 
 	return nil

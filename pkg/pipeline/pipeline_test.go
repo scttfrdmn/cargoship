@@ -21,6 +21,21 @@ func TestMain(m *testing.M) {
 		// These are properly cleaned up when coordinator.Close() is called,
 		// but tests that only check configuration don't need to call Close()
 		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/pipeline.(*MemoryManager).monitorMemory"),
+		// Ignore known persistent goroutines from staging transporter (v0.6.2)
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/staging.(*StagingBufferManager).stagingWorker"),
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/staging.(*StagingBufferManager).cleanupLoop"),
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/staging.(*PerformancePredictor).modelUpdateLoop"),
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/staging.(*PerformancePredictor).cacheCleanupLoop"),
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/staging.(*PredictiveStager).stagingLoop"),
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/staging.(*NetworkConditionMonitor).Start"),
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/staging.(*NetworkAdaptationEngine).adaptationLoop"),
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/staging.(*AdaptiveTransferController).adaptationLoop"),
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/staging.(*AdaptiveTransferController).performanceMonitoringLoop"),
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/staging.(*BandwidthOptimizer).optimizationLoop"),
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/staging.(*BandwidthOptimizer).bdpUpdateLoop"),
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/staging.(*BandwidthEstimator).Start"),
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/staging.(*CongestionController).Start"),
+		goleak.IgnoreTopFunction("github.com/scttfrdmn/cargoship/pkg/staging.(*MemoryMonitor).Start"),
 	)
 }
 

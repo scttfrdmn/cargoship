@@ -412,8 +412,8 @@ func (m *Migrator) EstimateMigration(ctx context.Context, req *MigrateRequest, s
 	availableDisk, _ := getAvailableDiskSpace(tempDirBase)
 
 	// Estimate costs (rough approximations)
-	downloadCost := float64(archiveSize) * 0.09 / (1024 * 1024 * 1024)       // $0.09/GB out
-	uploadCost := float64(req.ShardCount) * 0.005                             // $0.005/1000 PUT requests
+	downloadCost := float64(archiveSize) * 0.09 / (1024 * 1024 * 1024)           // $0.09/GB out
+	uploadCost := float64(req.ShardCount) * 0.005                                // $0.005/1000 PUT requests
 	storageCost := float64(estimatedUncompressed) * 0.023 / (1024 * 1024 * 1024) // $0.023/GB/month
 
 	// Estimate duration (assume 10 MB/s download, 20 MB/s upload per shard)

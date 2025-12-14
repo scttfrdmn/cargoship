@@ -25,6 +25,12 @@ func NewUploadCmd() *cobra.Command {
 		shardStrategy    string
 		compressionLevel int
 		quiet            bool
+
+		// v0.6.2: Advanced transporter configuration
+		transporterType    string
+		enableOptimization bool
+		congestionControl  string
+		disableStaging     bool
 	)
 
 	cmd := &cobra.Command{
@@ -124,6 +130,45 @@ Examples:
 				return fmt.Errorf("failed to resolve path %s: %w", sourceDir, err)
 			}
 
+			// v0.6.2: Create advanced transporter if requested
+			var transporter interface{} // s3transport.BasicTransporter
+			if transporterType != "" && transporterType != "none" {
+				// Create S3 config for transporter
+				s3Config := cargoconfig.S3Config{
+					Bucket:             bucket,
+					MultipartChunkSize: 64 * 1024 * 1024, // 64MB
+					Concurrency:        4,
+				}
+
+				// Create transporter config
+				transporterConfig := pipeline.TransporterConfig{
+					Type:               pipeline.TransporterType(transporterType),
+					S3Client:           s3Client,
+					S3Config:           s3Config,
+					EnableOptimization: enableOptimization,
+					CongestionControl:  congestionControl,
+					DisableStaging:     disableStaging,
+					Logger:             nil, // Use default logger
+				}
+
+				// Create transporter
+				transporter, err = pipeline.NewPipelineTransporter(transporterConfig)
+				if err != nil {
+					return fmt.Errorf("failed to create transporter: %w", err)
+				}
+
+				if !quiet {
+					fmt.Printf("🚀 Advanced Transporter: %s\n", transporterType)
+					if enableOptimization {
+						fmt.Printf("   Optimization:      enabled (%s)\n", congestionControl)
+					}
+					if !disableStaging && (transporterType == "staging" || transporterType == "adaptive") {
+						fmt.Printf("   Adaptive Staging:  enabled\n")
+					}
+					fmt.Printf("\n")
+				}
+			}
+
 			// Create pipeline config with CargoHold settings
 			pipelineConfig := &pipeline.PipelineConfig{
 				ScannerWorkers:  4,
@@ -136,6 +181,9 @@ Examples:
 				S3Client:        s3Client,
 				S3StorageClass:  storageClass,
 				S3PartSize:      64 * 1024 * 1024, // 64MB parts
+
+				// v0.6.2: Advanced transporter
+				Transporter: transporter,
 
 				// CargoHold sharding configuration (Issue #95)
 				EnableMultiPrefix: true,
@@ -259,6 +307,12 @@ Examples:
 	cmd.Flags().StringVar(&shardStrategy, "shard-strategy", "hash", "Shard distribution strategy (hash, size, type, directory)")
 	cmd.Flags().IntVar(&compressionLevel, "compression-level", 3, "Zstd compression level (1-22, recommended 1-19)")
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "Disable progress display")
+
+	// v0.6.2: Advanced transporter flags
+	cmd.Flags().StringVar(&transporterType, "transporter", "staging", "S3 transporter type: basic, staging, adaptive, optimized, none")
+	cmd.Flags().BoolVar(&enableOptimization, "optimization", true, "Enable optimization features (BBR/CUBIC, adaptive staging, BDP)")
+	cmd.Flags().StringVar(&congestionControl, "congestion-control", "auto", "Congestion control algorithm: bbr, cubic, auto")
+	cmd.Flags().BoolVar(&disableStaging, "disable-staging", false, "Disable adaptive staging (reduces memory usage)")
 
 	return cmd
 }
