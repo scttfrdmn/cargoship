@@ -2,9 +2,26 @@
 
 ## Quick Install
 
-### Using Go Install (Recommended)
+### Using Homebrew (macOS/Linux)
 
-If you have Go installed, this is the fastest way to get CargoShip:
+The easiest way to install CargoShip on macOS or Linux:
+
+```bash
+brew install scttfrdmn/tap/cargoship
+```
+
+### Using Scoop (Windows)
+
+The easiest way to install CargoShip on Windows:
+
+```bash
+scoop bucket add scttfrdmn https://github.com/scttfrdmn/scoop-bucket
+scoop install cargoship
+```
+
+### Using Go Install
+
+If you have Go installed:
 
 ```bash
 go install github.com/scttfrdmn/cargoship/cmd/cargoship@latest

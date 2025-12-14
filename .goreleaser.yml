@@ -1,0 +1,178 @@
+# GoReleaser configuration for CargoShip
+# https://goreleaser.com
+
+version: 2
+
+before:
+  hooks:
+    # Ensure dependencies are up to date
+    - go mod tidy
+    # Tests are run in GitHub Actions before this workflow is triggered
+    # - go test -short ./...
+
+builds:
+  - id: cargoship
+    main: ./cmd/cargoship
+    binary: cargoship
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Exclude invalid combinations
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+      - -X main.builtBy=goreleaser
+    flags:
+      - -trimpath
+
+archives:
+  - id: cargoship
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - README.md
+      - LICENSE
+      - docs/*.md
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: 'New Features'
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: 'Bug Fixes'
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: 'Performance Improvements'
+      regexp: '^.*?perf(\(.+\))??!?:.+$'
+      order: 2
+    - title: 'Refactoring'
+      regexp: '^.*?refactor(\(.+\))??!?:.+$'
+      order: 3
+    - title: 'Documentation'
+      regexp: '^.*?docs(\(.+\))??!?:.+$'
+      order: 4
+    - title: 'Other'
+      order: 999
+
+release:
+  github:
+    owner: scttfrdmn
+    name: cargoship
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## CargoShip {{ .Tag }}
+
+    **Release Date:** {{ .Date }}
+
+    High-performance S3 upload tool with intelligent sharding, compression, and cost management.
+
+    ### Installation
+
+    **Homebrew (macOS/Linux):**
+    ```bash
+    brew install scttfrdmn/tap/cargoship
+    ```
+
+    **Scoop (Windows):**
+    ```bash
+    scoop bucket add scttfrdmn https://github.com/scttfrdmn/scoop-bucket
+    scoop install cargoship
+    ```
+
+    **Go Install:**
+    ```bash
+    go install github.com/scttfrdmn/cargoship/cmd/cargoship@{{ .Tag }}
+    ```
+
+    **Direct Download:**
+    Download the appropriate binary for your platform below.
+
+  footer: |
+    ---
+
+    **Full Changelog**: https://github.com/scttfrdmn/cargoship/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+    **Documentation**: https://github.com/scttfrdmn/cargoship/tree/{{ .Tag }}/docs
+
+    ---
+
+    _Built with ❤️ using [GoReleaser](https://goreleaser.com)_
+
+# Homebrew tap
+brews:
+  - repository:
+      owner: scttfrdmn
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/scttfrdmn/cargoship
+    description: High-performance S3 upload tool with intelligent sharding and compression
+    license: MIT
+    skip_upload: auto
+    test: |
+      system "#{bin}/cargoship", "--version"
+    install: |
+      bin.install "cargoship"
+
+# Scoop bucket
+scoops:
+  - repository:
+      owner: scttfrdmn
+      name: scoop-bucket
+      token: "{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}"
+    homepage: https://github.com/scttfrdmn/cargoship
+    description: High-performance S3 upload tool with intelligent sharding and compression
+    license: MIT
+    skip_upload: auto
+
+# Docker images (optional - can be added later)
+# dockers:
+#   - image_templates:
+#       - "scttfrdmn/cargoship:{{ .Version }}"
+#       - "scttfrdmn/cargoship:latest"
+#     dockerfile: Dockerfile
+#     build_flag_templates:
+#       - "--pull"
+#       - "--label=org.opencontainers.image.created={{.Date}}"
+#       - "--label=org.opencontainers.image.title={{.ProjectName}}"
+#       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+#       - "--label=org.opencontainers.image.version={{.Version}}"
+
+announce:
+  skip: true

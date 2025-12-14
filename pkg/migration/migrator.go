@@ -261,7 +261,9 @@ func (m *Migrator) extractArchive(ctx context.Context, req *MigrateRequest, sour
 
 	extractor, err := extraction.NewExtractor(extractorConfig)
 	if err != nil {
-		os.RemoveAll(tempDir)
+		if cleanupErr := os.RemoveAll(tempDir); cleanupErr != nil {
+			slog.Warn("failed to cleanup temp directory", "path", tempDir, "error", cleanupErr)
+		}
 		return "", nil, fmt.Errorf("failed to create extractor: %w", err)
 	}
 
@@ -269,7 +271,9 @@ func (m *Migrator) extractArchive(ctx context.Context, req *MigrateRequest, sour
 	stats, err := extractor.Extract(ctx)
 	if err != nil {
 		// Cleanup temp directory on failure
-		os.RemoveAll(tempDir)
+		if cleanupErr := os.RemoveAll(tempDir); cleanupErr != nil {
+			slog.Warn("failed to cleanup temp directory", "path", tempDir, "error", cleanupErr)
+		}
 		return "", nil, fmt.Errorf("extraction failed: %w", err)
 	}
 

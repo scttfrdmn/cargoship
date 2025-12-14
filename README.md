@@ -34,12 +34,18 @@ CargoShip is a next-generation data archiving tool optimized for AWS infrastruct
 ### Installation
 
 ```bash
-# Install CargoShip
-go install github.com/scttfrdmn/cargoship/cmd/cargoship@latest
+# Homebrew (macOS/Linux)
+brew install scttfrdmn/tap/cargoship
 
-# Or download pre-built binary
-curl -sSL https://get.cargoship.dev/install.sh | sh
+# Scoop (Windows)
+scoop bucket add scttfrdmn https://github.com/scttfrdmn/scoop-bucket
+scoop install cargoship
+
+# Go Install
+go install github.com/scttfrdmn/cargoship/cmd/cargoship@latest
 ```
+
+See the [Installation Guide](docs/install.md) for more options.
 
 ### Basic Workflow
 
