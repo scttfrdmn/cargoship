@@ -1,4 +1,8 @@
-//go:build linux && (amd64 || arm64)
+//go:build disabled_for_now
+
+// NOTE: NUMA support is temporarily disabled due to syscall portability issues
+// across different Linux kernels and architectures during GoReleaser builds.
+// Re-enable by changing build constraint to: linux && (amd64 || arm64)
 
 /*
 Package ioutils provides NUMA-aware buffer allocation for Linux systems.

@@ -1,11 +1,10 @@
-//go:build !linux || (!amd64 && !arm64)
+//go:build !disabled_for_now
 
 /*
-Package ioutils provides fallback NUMA implementations for non-Linux platforms
-and Linux architectures without SYS_GETCPU support.
+Package ioutils provides fallback NUMA implementations for all platforms.
 
-On non-Linux platforms (Darwin/macOS, Windows, etc.) or Linux architectures
-without NUMA syscall support, we provide graceful fallback to standard buffer allocation.
+NUMA support is currently disabled due to syscall portability issues.
+This provides graceful fallback to standard buffer allocation.
 */
 package ioutils
 
