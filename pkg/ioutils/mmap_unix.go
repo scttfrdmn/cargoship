@@ -1,3 +1,5 @@
+//go:build (linux || darwin || freebsd) && !js && !wasm
+
 /*
 Package ioutils provides memory-mapped file I/O optimizations for large file operations.
 
