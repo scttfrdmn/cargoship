@@ -49,3 +49,5 @@ profiles/benchmarks/*.out
 profiles/reports/*.txt
 profiles/reports/*.svg
 profiles/baselines/*.json
+profiles/baselines/*.txt
+benchmark-current.txt

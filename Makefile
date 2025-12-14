@@ -60,6 +60,19 @@ benchmark-profile: ## Run benchmarks with CPU and memory profiling
 	go test -bench=. -benchmem -cpuprofile=profiles/benchmarks/cpu.prof -memprofile=profiles/benchmarks/mem.prof ./...
 	@echo "✅ Profiles saved to profiles/benchmarks/"
 
+benchmark-baseline: ## Capture current benchmarks as baseline for regression detection
+	@echo "📊 Capturing benchmark baseline..."
+	@mkdir -p profiles/baselines
+	go test -bench=. -benchmem -count=10 ./... | tee profiles/baselines/current.txt
+	@echo "✅ Baseline saved to profiles/baselines/current.txt"
+
+benchmark-compare: ## Run benchmarks and compare against baseline
+	@echo "📊 Running benchmarks and comparing against baseline..."
+	go test -bench=. -benchmem -count=10 ./... > benchmark-current.txt
+	@echo ""
+	./scripts/detect-regressions.sh
+	@rm -f benchmark-current.txt
+
 analyze-performance: ## Analyze performance profiles and generate bottleneck report
 	@echo "🔍 Analyzing performance profiles..."
 	./scripts/analyze-profiles.sh
