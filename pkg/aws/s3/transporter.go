@@ -15,6 +15,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	awsconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
+	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Transporter implements S3-based transport for CargoShip
@@ -22,6 +24,7 @@ type Transporter struct {
 	client   *s3.Client
 	uploader *manager.Uploader
 	config   awsconfig.S3Config
+	tracer   *tracing.S3Tracer // Optional: S3 operation tracer (Issue #155)
 }
 
 // Archive represents a CargoShip archive for upload
@@ -64,12 +67,28 @@ func NewTransporter(client *s3.Client, config awsconfig.S3Config) *Transporter {
 	}
 }
 
+// SetTracer sets the S3 tracer for distributed tracing (Issue #155)
+func (t *Transporter) SetTracer(tracer *tracing.S3Tracer) {
+	t.tracer = tracer
+}
+
 // Upload uploads an archive to S3 with intelligent storage class selection
 func (t *Transporter) Upload(ctx context.Context, archive Archive) (*UploadResult, error) {
 	startTime := time.Now()
 
 	// Optimize storage class based on archive characteristics
 	storageClass := t.optimizeStorageClass(archive)
+
+	// Create S3 operation span if tracing enabled (Issue #155)
+	var span trace.Span
+	if t.tracer != nil {
+		ctx, span = t.tracer.StartUploadSpan(ctx, t.config.Bucket, archive.Key, archive.Size)
+		defer span.End()
+
+		// Add transporter info and storage class
+		t.tracer.AddTransporterInfo(span, "basic", t.config.Concurrency)
+		t.tracer.AddStorageClass(span, string(storageClass))
+	}
 
 	// Prepare upload input
 	input := &s3.PutObjectInput{
@@ -89,12 +108,22 @@ func (t *Transporter) Upload(ctx context.Context, archive Archive) (*UploadResul
 	// Perform upload
 	result, err := t.uploader.Upload(ctx, input)
 	if err != nil {
+		// Record error in span
+		if span != nil && t.tracer != nil {
+			t.tracer.RecordError(span, err)
+		}
 		return nil, fmt.Errorf("failed to upload archive to s3://%s/%s (size: %d bytes, storage class: %s): %w",
 			t.config.Bucket, archive.Key, archive.Size, storageClass, err)
 	}
 
 	duration := time.Since(startTime)
 	throughput := float64(archive.Size) / duration.Seconds() / (1024 * 1024) // MB/s
+
+	// Record success and metrics in span
+	if span != nil && t.tracer != nil {
+		t.tracer.RecordSuccess(span)
+		t.tracer.AddUploadMetrics(span, archive.Size, duration.Milliseconds(), throughput)
+	}
 
 	return &UploadResult{
 		Location:     result.Location,
