@@ -12,6 +12,8 @@ import (
 	"golang.org/x/term"
 
 	cargoconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
+	"github.com/scttfrdmn/cargoship/pkg/observability/metrics"
+	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 )
 
@@ -31,6 +33,13 @@ func NewUploadCmd() *cobra.Command {
 		enableOptimization bool
 		congestionControl  string
 		disableStaging     bool
+
+		// Issue #155: Observability configuration
+		enableTracing      bool
+		tracingExporter    string
+		tracingEndpoint    string
+		tracingSampleRate  float64
+		prometheusAddr     string
 	)
 
 	cmd := &cobra.Command{
@@ -169,6 +178,72 @@ Examples:
 				}
 			}
 
+			// Issue #155: Initialize observability (tracing and metrics)
+			var metricsCollector *metrics.PrometheusCollector
+
+			// Initialize distributed tracing if enabled
+			if enableTracing {
+				tracingConfig := tracing.Config{
+					Enabled:        true,
+					ExporterType:   tracingExporter,
+					Endpoint:       tracingEndpoint,
+					SampleRate:     tracingSampleRate,
+					ServiceName:    "cargoship",
+					ServiceVersion: "v0.6.2",
+				}
+
+				tracerProvider, err := tracing.NewTracerProvider(ctx, tracingConfig)
+				if err != nil {
+					return fmt.Errorf("failed to initialize tracing: %w", err)
+				}
+				if tracerProvider != nil {
+					defer func() {
+						shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancel()
+						if err := tracerProvider.Shutdown(shutdownCtx); err != nil {
+							_, _ = fmt.Fprintf(cmd.OutOrStderr(), "Warning: failed to shutdown tracer: %v\n", err)
+						}
+					}()
+				}
+
+				if !quiet {
+					fmt.Printf("🔍 Distributed Tracing: enabled\n")
+					fmt.Printf("   Exporter:          %s\n", tracingExporter)
+					if tracingEndpoint != "" {
+						fmt.Printf("   Endpoint:          %s\n", tracingEndpoint)
+					}
+					fmt.Printf("   Sample Rate:       %.0f%%\n\n", tracingSampleRate*100)
+				}
+			}
+
+			// Initialize Prometheus metrics if enabled
+			if prometheusAddr != "" {
+				metricsCollector = metrics.NewPrometheusCollector()
+
+				// Start metrics HTTP server in background
+				go func() {
+					if err := metricsCollector.ServeMetrics(prometheusAddr); err != nil {
+						_, _ = fmt.Fprintf(cmd.OutOrStderr(), "Warning: metrics server failed: %v\n", err)
+					}
+				}()
+
+				defer func() {
+					shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					if err := metricsCollector.Shutdown(shutdownCtx); err != nil {
+						_, _ = fmt.Fprintf(cmd.OutOrStderr(), "Warning: failed to shutdown metrics server: %v\n", err)
+					}
+				}()
+
+				if !quiet {
+					fmt.Printf("📊 Prometheus Metrics: enabled\n")
+					fmt.Printf("   Endpoint:          %s\n\n", metricsCollector.GetMetricsURL())
+				}
+
+				// Record upload start
+				metricsCollector.RecordUploadStart()
+			}
+
 			// Create pipeline config with CargoHold settings
 			pipelineConfig := &pipeline.PipelineConfig{
 				ScannerWorkers:  4,
@@ -256,10 +331,19 @@ Examples:
 			// Run pipeline
 			result, err := pipe.Run(ctx, absPath)
 			if err != nil {
+				// Record error metrics if enabled
+				if metricsCollector != nil {
+					metricsCollector.RecordUploadError(ctx, result.UploadID, "pipeline_error", "pipeline")
+				}
 				return fmt.Errorf("pipeline failed: %w", err)
 			}
 
 			if !result.Success {
+				// Record error metrics if enabled
+				if metricsCollector != nil {
+					metricsCollector.RecordUploadError(ctx, result.UploadID, "upload_failed", "pipeline")
+				}
+
 				_, _ = fmt.Fprintf(cmd.OutOrStderr(), "\n❌ Upload failed\n")
 				_, _ = fmt.Fprintf(cmd.OutOrStderr(), "   Errors: %d\n", len(result.Errors))
 				for i, err := range result.Errors {
@@ -271,6 +355,22 @@ Examples:
 					_, _ = fmt.Fprintf(cmd.OutOrStderr(), "   ... and %d more errors\n", len(result.Errors)-5)
 				}
 				return fmt.Errorf("pipeline completed with %d errors", len(result.Errors))
+			}
+
+			// Record success metrics if enabled
+			if metricsCollector != nil {
+				transporterName := "basic"
+				if transporterType != "" && transporterType != "none" {
+					transporterName = transporterType
+				}
+				metricsCollector.RecordUploadComplete(
+					ctx,
+					result.UploadID,
+					result.TotalBytes,
+					result.TotalTime,
+					storageClass,
+					transporterName,
+				)
 			}
 
 			// Print newline after progress display (if TUI mode was active)
@@ -313,6 +413,13 @@ Examples:
 	cmd.Flags().BoolVar(&enableOptimization, "optimization", true, "Enable optimization features (BBR/CUBIC, adaptive staging, BDP)")
 	cmd.Flags().StringVar(&congestionControl, "congestion-control", "auto", "Congestion control algorithm: bbr, cubic, auto")
 	cmd.Flags().BoolVar(&disableStaging, "disable-staging", false, "Disable adaptive staging (reduces memory usage)")
+
+	// Issue #155: Observability flags
+	cmd.Flags().BoolVar(&enableTracing, "tracing", false, "Enable distributed tracing")
+	cmd.Flags().StringVar(&tracingExporter, "tracing-exporter", "stdout", "Tracing exporter: stdout, jaeger, otlp, none")
+	cmd.Flags().StringVar(&tracingEndpoint, "tracing-endpoint", "", "Tracing endpoint URL (required for jaeger/otlp exporters)")
+	cmd.Flags().Float64Var(&tracingSampleRate, "tracing-sample-rate", 1.0, "Trace sampling rate (0.0-1.0, default: 1.0 = 100%)")
+	cmd.Flags().StringVar(&prometheusAddr, "prometheus-addr", "", "Prometheus metrics HTTP address (e.g., :9090)")
 
 	return cmd
 }
