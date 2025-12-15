@@ -13,6 +13,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+
+	"github.com/scttfrdmn/cargoship/pkg/encryption"
 )
 
 const (
@@ -315,6 +317,80 @@ func (m *Manifest) UploadToS3(ctx context.Context, s3Client *s3.Client, compress
 	return nil
 }
 
+// UploadToS3WithEncryption uploads the manifest to S3 with optional KMS encryption (Issue #163)
+func (m *Manifest) UploadToS3WithEncryption(ctx context.Context, s3Client *s3.Client, kmsClient encryption.KMSClient, compress bool) error {
+	// Check if manifest encryption is enabled
+	if m.Encryption == nil || !m.Encryption.ManifestEncrypted || m.Encryption.ManifestKMSKeyID == "" {
+		// No encryption - use regular upload
+		return m.UploadToS3(ctx, s3Client, compress)
+	}
+
+	// Serialize manifest to JSON
+	var manifestJSON []byte
+	var err error
+	if compress {
+		manifestJSON, err = m.ToJSONCompressed()
+	} else {
+		manifestJSON, err = m.ToJSON()
+	}
+	if err != nil {
+		return fmt.Errorf("failed to serialize manifest: %w", err)
+	}
+
+	// Encrypt the manifest using KMS envelope encryption
+	encryptor := encryption.NewKMSEncryptor(kmsClient, m.Encryption.ManifestKMSKeyID)
+	encrypted, err := encryptor.EncryptManifest(ctx, manifestJSON)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt manifest: %w", err)
+	}
+
+	// Store encryption metadata in manifest
+	m.Encryption.Algorithm = encrypted.Algorithm
+	m.Encryption.EncryptedDEK = encrypted.EncryptedDEK
+
+	// Serialize the encrypted manifest wrapper
+	encryptedJSON, err := json.MarshalIndent(encrypted, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal encrypted manifest: %w", err)
+	}
+
+	// Determine S3 key for encrypted manifest
+	key := fmt.Sprintf("%s/uploads/%s/manifest.encrypted.json", m.Prefix, m.UploadID)
+	if compress {
+		key = fmt.Sprintf("%s/uploads/%s/manifest.encrypted.json.gz", m.Prefix, m.UploadID)
+
+		// Compress the encrypted JSON
+		var buf bytes.Buffer
+		gzipWriter := gzip.NewWriter(&buf)
+		if _, err := gzipWriter.Write(encryptedJSON); err != nil {
+			return fmt.Errorf("failed to compress encrypted manifest: %w", err)
+		}
+		if err := gzipWriter.Close(); err != nil {
+			return fmt.Errorf("failed to close gzip writer: %w", err)
+		}
+		encryptedJSON = buf.Bytes()
+	}
+
+	// Upload encrypted manifest to S3
+	input := &s3.PutObjectInput{
+		Bucket:      aws.String(m.Bucket),
+		Key:         aws.String(key),
+		Body:        bytes.NewReader(encryptedJSON),
+		ContentType: aws.String("application/json"),
+	}
+
+	if compress {
+		input.ContentEncoding = aws.String("gzip")
+	}
+
+	_, err = s3Client.PutObject(ctx, input)
+	if err != nil {
+		return fmt.Errorf("failed to upload encrypted manifest to S3: %w", err)
+	}
+
+	return nil
+}
+
 // DownloadFromS3 downloads a manifest from S3
 func DownloadFromS3(ctx context.Context, s3Client *s3.Client, bucket, prefix, uploadID string) (*Manifest, error) {
 	// Try compressed version first
@@ -335,6 +411,47 @@ func DownloadFromS3(ctx context.Context, s3Client *s3.Client, bucket, prefix, up
 	}
 
 	return FromJSON(data)
+}
+
+// DownloadFromS3WithDecryption downloads a manifest from S3 with optional KMS decryption (Issue #163)
+func DownloadFromS3WithDecryption(ctx context.Context, s3Client *s3.Client, kmsClient encryption.KMSClient, bucket, prefix, uploadID string) (*Manifest, error) {
+	// Try encrypted compressed version first
+	key := fmt.Sprintf("%s/uploads/%s/manifest.encrypted.json.gz", prefix, uploadID)
+	data, err := downloadS3Object(ctx, s3Client, bucket, key)
+	if err == nil {
+		// Decompress
+		gzipReader, err := gzip.NewReader(bytes.NewReader(data))
+		if err == nil {
+			defer func() { _ = gzipReader.Close() }()
+			decompressed, err := io.ReadAll(gzipReader)
+			if err == nil {
+				// Decrypt
+				var encryptedManifest encryption.EncryptedManifest
+				if err := json.Unmarshal(decompressed, &encryptedManifest); err == nil {
+					manifestJSON, err := encryption.DecryptManifestBytes(ctx, kmsClient, &encryptedManifest)
+					if err == nil {
+						return FromJSON(manifestJSON)
+					}
+				}
+			}
+		}
+	}
+
+	// Try encrypted uncompressed version
+	key = fmt.Sprintf("%s/uploads/%s/manifest.encrypted.json", prefix, uploadID)
+	data, err = downloadS3Object(ctx, s3Client, bucket, key)
+	if err == nil {
+		var encryptedManifest encryption.EncryptedManifest
+		if err := json.Unmarshal(data, &encryptedManifest); err == nil {
+			manifestJSON, err := encryption.DecryptManifestBytes(ctx, kmsClient, &encryptedManifest)
+			if err == nil {
+				return FromJSON(manifestJSON)
+			}
+		}
+	}
+
+	// Fall back to regular (non-encrypted) manifest download
+	return DownloadFromS3(ctx, s3Client, bucket, prefix, uploadID)
 }
 
 // DownloadPartialManifestFromS3 downloads a partial manifest from S3 (Issue #157: Resume capability)

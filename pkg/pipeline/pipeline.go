@@ -13,6 +13,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
@@ -600,44 +601,40 @@ func (p *Pipeline) uploadManifest(ctx context.Context) error {
 
 	// Finalize the manifest
 	p.manifestMu.Lock()
-	manifestData := builder.Build()
+	manifestData := builder.Finalize()
 	p.manifestMu.Unlock()
 
-	// Serialize to JSON and compress with gzip
-	manifestBytes, err := manifestData.ToJSONCompressed()
-	if err != nil {
-		return fmt.Errorf("failed to serialize manifest: %w", err)
-	}
-
-	// Construct S3 key: prefix/uploads/{uploadID}/manifest.json.gz
-	s3Key := fmt.Sprintf("%s/uploads/%s/manifest.json.gz", p.config.S3Prefix, p.config.UploadID)
-
-	// Upload to S3 using the same S3 client
+	// Get S3 client
 	s3Client := p.config.S3Client.(*s3.Client)
-	uploader := manager.NewUploader(s3Client, func(u *manager.Uploader) {
-		u.PartSize = 5 * 1024 * 1024 // 5MB parts (manifest should be <1MB)
-	})
 
-	input := &s3.PutObjectInput{
-		Bucket:      aws.String(p.config.S3Bucket),
-		Key:         aws.String(s3Key),
-		Body:        bytes.NewReader(manifestBytes),
-		ContentType: aws.String("application/gzip"),
-		Metadata: map[string]string{
-			"cargoship-manifest-version": "1.0",
-			"cargoship-upload-id":        p.config.UploadID,
-			"cargoship-file-count":       fmt.Sprintf("%d", len(manifestData.Files)),
-			"cargoship-chunk-count":      fmt.Sprintf("%d", len(manifestData.Chunks)),
-		},
+	// Check if manifest encryption is enabled (Issue #163)
+	if p.config.EncryptManifest && p.config.KMSKeyID != "" && p.config.KMSClient != nil {
+		// Get KMS client from config (implements encryption.KMSClient interface)
+		kmsClient := p.config.KMSClient.(*kms.Client)
+
+		// Update manifest encryption metadata with KMS key ID for manifest
+		if manifestData.Encryption != nil {
+			manifestData.Encryption.ManifestKMSKeyID = p.config.KMSKeyID
+		}
+
+		// Upload with encryption
+		err := manifestData.UploadToS3WithEncryption(ctx, s3Client, kmsClient, true)
+		if err != nil {
+			return fmt.Errorf("failed to upload encrypted manifest: %w", err)
+		}
+
+		fmt.Printf("✅ Encrypted manifest uploaded: s3://%s/%s/uploads/%s/manifest.encrypted.json.gz (%d files, %d chunks)\n",
+			p.config.S3Bucket, p.config.S3Prefix, p.config.UploadID, len(manifestData.Files), len(manifestData.Chunks))
+	} else {
+		// Regular upload without encryption
+		err := manifestData.UploadToS3(ctx, s3Client, true)
+		if err != nil {
+			return fmt.Errorf("failed to upload manifest: %w", err)
+		}
+
+		fmt.Printf("✅ Manifest uploaded: s3://%s/%s/uploads/%s/manifest.json.gz (%d files, %d chunks)\n",
+			p.config.S3Bucket, p.config.S3Prefix, p.config.UploadID, len(manifestData.Files), len(manifestData.Chunks))
 	}
-
-	_, err = uploader.Upload(ctx, input)
-	if err != nil {
-		return fmt.Errorf("failed to upload manifest to S3: %w", err)
-	}
-
-	fmt.Printf("✅ Manifest uploaded: s3://%s/%s (%d files, %d chunks)\n",
-		p.config.S3Bucket, s3Key, len(manifestData.Files), len(manifestData.Chunks))
 
 	// Delete partial manifest after successful upload (Issue #157)
 	p.deletePartialManifest(ctx)

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -254,6 +256,17 @@ Examples:
 				metricsCollector.RecordUploadStart()
 			}
 
+			// Create KMS client if encryption is enabled (Issue #163)
+			var kmsClient *kms.Client
+			if encryptManifest && kmsKeyID != "" {
+				// Use same config as S3 client for consistency
+				cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+				if err != nil {
+					return fmt.Errorf("failed to load AWS config for KMS: %w", err)
+				}
+				kmsClient = kms.NewFromConfig(cfg)
+			}
+
 			// Create pipeline config with CargoHold settings
 			pipelineConfig := &pipeline.PipelineConfig{
 				ScannerWorkers:  4,
@@ -270,6 +283,7 @@ Examples:
 				// Issue #163: KMS encryption configuration
 				KMSKeyID:        kmsKeyID,
 				EncryptManifest: encryptManifest,
+				KMSClient:       kmsClient,
 
 				// v0.6.2: Advanced transporter
 				Transporter: transporter,
