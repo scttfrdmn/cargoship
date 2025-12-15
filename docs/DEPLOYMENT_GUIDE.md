@@ -61,19 +61,52 @@
 
 ```json
 {
-  "Effect": "Allow",
-  "Action": [
-    "kms:Decrypt",
-    "kms:Encrypt",
-    "kms:GenerateDataKey",
-    "cloudwatch:PutMetricData",
-    "cloudwatch:GetMetricData",
-    "s3:PutLifecycleConfiguration",
-    "s3:GetLifecycleConfiguration"
-  ],
-  "Resource": "*"
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "KMSEncryption",
+      "Effect": "Allow",
+      "Action": [
+        "kms:GenerateDataKey",
+        "kms:Decrypt",
+        "kms:DescribeKey"
+      ],
+      "Resource": "arn:aws:kms:*:*:key/*",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": [
+            "s3.us-west-2.amazonaws.com"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "CloudWatchMetrics",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutMetricData",
+        "cloudwatch:GetMetricData"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "S3Lifecycle",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutLifecycleConfiguration",
+        "s3:GetLifecycleConfiguration"
+      ],
+      "Resource": "arn:aws:s3:::your-bucket-name"
+    }
+  ]
 }
 ```
+
+**KMS Permissions Breakdown**:
+- `kms:GenerateDataKey`: Required for uploads with `--kms-key-id`
+- `kms:Decrypt`: Required for downloads of encrypted data
+- `kms:DescribeKey`: Required for key validation
+- See [docs/SECURITY.md](./SECURITY.md) for detailed KMS setup
 
 ### System Requirements
 
@@ -613,15 +646,40 @@ aws cloudwatch put-metric-alarm \
 
 ### 2. S3 Bucket Security
 
-**Enable Encryption** (server-side):
-```bash
-# SSE-S3 (default, automatic)
-cargoship create upload ./data --bucket my-bucket
+**Enable Encryption**:
 
-# SSE-KMS (customer-managed keys)
-cargoship create upload ./data --bucket my-bucket \
+CargoShip supports two levels of encryption (Issue #163):
+
+```bash
+# SSE-S3 (default, automatic - basic encryption)
+cargoship upload ./data s3://my-bucket/uploads
+
+# SSE-KMS (data chunks encrypted with customer-managed keys)
+cargoship upload ./data s3://my-bucket/uploads \
   --kms-key-id arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012
+
+# Full encryption (data chunks + manifest with envelope encryption)
+# RECOMMENDED for production
+cargoship upload ./data s3://my-bucket/uploads \
+  --kms-key-id arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012 \
+  --encrypt-manifest
+
+# Using KMS key alias (recommended for easier key rotation)
+cargoship upload ./data s3://my-bucket/uploads \
+  --kms-key-id alias/cargoship-prod \
+  --encrypt-manifest
 ```
+
+**Encryption Levels**:
+- **SSE-KMS** (`--kms-key-id`): Encrypts data chunks at rest in S3
+- **Manifest Encryption** (`--encrypt-manifest`): Client-side envelope encryption of metadata files
+- **Combined**: Use both flags together for end-to-end encryption (recommended)
+
+**Setup Guide**: See [docs/SECURITY.md](./SECURITY.md) for:
+- KMS key creation and configuration
+- IAM permissions setup
+- Encryption architecture details
+- Best practices and troubleshooting
 
 **Bucket Policy** (restrict access):
 ```json
