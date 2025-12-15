@@ -89,7 +89,7 @@ func TestTraceContextPropagation(t *testing.T) {
 	parentSpanID := parentSpan.SpanContext().SpanID().String()
 
 	// Create child span
-	ctx, childSpan := tracer.Start(ctx, "child")
+	_, childSpan := tracer.Start(ctx, "child")
 	childTraceID := childSpan.SpanContext().TraceID().String()
 	childSpanID := childSpan.SpanContext().SpanID().String()
 

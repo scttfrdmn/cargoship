@@ -70,9 +70,15 @@ measure_time() {
     log_info "Running: $tool"
     log_info "Command: $command"
 
-    local start=$(date +%s%3N)
+    # Use gdate on macOS for millisecond precision, fall back to date
+    local date_cmd="date"
+    if command -v gdate > /dev/null 2>&1; then
+        date_cmd="gdate"
+    fi
+
+    local start=$($date_cmd +%s%3N)
     eval "$command" 2>&1 | tee "$RESULTS_DIR/$tool.log"
-    local end=$(date +%s%3N)
+    local end=$($date_cmd +%s%3N)
 
     local duration=$((end - start))
     echo "$tool,$duration" >> "$RESULTS_DIR/results.csv"
@@ -90,7 +96,7 @@ log_info "========================"
 log_info "Benchmark 1/4: s5cmd"
 log_info "========================"
 cleanup_s3_prefix "s5cmd-test"
-measure_time "s5cmd" "s5cmd --profile $AWS_PROFILE cp '$TEST_DATA_DIR/*' s3://$BENCHMARK_BUCKET/s5cmd-test/"
+measure_time "s5cmd" "AWS_PROFILE=$AWS_PROFILE s5cmd cp '$TEST_DATA_DIR/*' s3://$BENCHMARK_BUCKET/s5cmd-test/"
 sleep 5
 
 #
