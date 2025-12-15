@@ -101,6 +101,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 		NewVerifyCmd(),   // Issue #99: Verify command for integrity checks
 		NewDeleteCmd(),   // Delete specific upload
 		NewScuttleCmd(),  // Nuclear option: delete everything
+		NewResumeCmd(),   // Issue #119: Resume interrupted uploads with local state
 		NewCostCmd(),     // Issue #145: Cost management and budget tracking
 		NewBudgetCmd(),   // Issue #147: Budget management and volume quotas
 		NewAlertsCmd(),   // Issue #147 Phase 4: Budget alerts and notifications
