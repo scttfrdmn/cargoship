@@ -191,6 +191,11 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 			if config.SyncType != "" {
 				builder.SetSyncInfo(config.SyncType, config.PreviousUploadID)
 			}
+
+			// Set encryption info (Issue #163)
+			if config.KMSKeyID != "" || config.EncryptManifest {
+				builder.SetEncryption(config.KMSKeyID, config.EncryptManifest)
+			}
 		}
 
 		p.manifestBuilder = builder

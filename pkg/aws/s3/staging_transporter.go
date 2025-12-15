@@ -213,12 +213,20 @@ func (st *StagingTransporter) uploadLargeFileWithStaging(ctx context.Context, up
 	st.logger.Debug("uploading large file with staging", "size", uploadCtx.TotalSize)
 
 	// Create multipart upload
-	createResp, err := st.client.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{
+	createInput := &s3.CreateMultipartUploadInput{
 		Bucket:       aws.String(st.Transporter.config.Bucket),
 		Key:          aws.String(uploadCtx.Archive.Key),
 		StorageClass: storageClass,
 		Metadata:     st.buildMetadata(uploadCtx.Archive),
-	})
+	}
+
+	// Add KMS encryption if configured
+	if st.Transporter.config.KMSKeyID != "" {
+		createInput.ServerSideEncryption = types.ServerSideEncryptionAwsKms
+		createInput.SSEKMSKeyId = aws.String(st.Transporter.config.KMSKeyID)
+	}
+
+	createResp, err := st.client.CreateMultipartUpload(ctx, createInput)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create multipart upload: %w", err)
 	}

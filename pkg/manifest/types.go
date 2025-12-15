@@ -39,6 +39,9 @@ type Manifest struct {
 	CompressionLevel int     `json:"compression_level"` // Compression level used
 	CompressionRatio float64 `json:"compression_ratio"` // Actual compression ratio achieved
 
+	// Encryption (Issue #163)
+	Encryption *EncryptionMetadata `json:"encryption,omitempty"` // Encryption configuration if enabled
+
 	// Files - array of all files with their locations
 	Files []FileEntry `json:"files"`
 
@@ -47,6 +50,21 @@ type Manifest struct {
 
 	// Shards - array of shard information
 	Shards []ShardEntry `json:"shards"`
+}
+
+// EncryptionMetadata represents encryption configuration for the manifest and data (Issue #163)
+type EncryptionMetadata struct {
+	// Enabled indicates if encryption is active
+	Enabled bool `json:"enabled"`
+
+	// Data encryption (S3 server-side encryption)
+	DataKMSKeyID string `json:"data_kms_key_id,omitempty"` // KMS key ID/ARN for data chunks
+
+	// Manifest encryption (envelope encryption)
+	ManifestEncrypted bool   `json:"manifest_encrypted"`           // Whether manifest itself is encrypted
+	ManifestKMSKeyID  string `json:"manifest_kms_key_id,omitempty"` // KMS key ID/ARN for manifest
+	Algorithm         string `json:"algorithm,omitempty"`            // Encryption algorithm (e.g., "AES-256-GCM")
+	EncryptedDEK      string `json:"encrypted_dek,omitempty"`        // Base64-encoded encrypted data encryption key
 }
 
 // FileEntry represents a single file in the manifest

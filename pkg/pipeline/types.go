@@ -132,6 +132,10 @@ type PipelineConfig struct {
 	S3StorageClass string      // S3 storage class (STANDARD, INTELLIGENT_TIERING, etc.)
 	S3SSEKMSKeyId  string      // Optional KMS key ID for encryption
 
+	// Encryption configuration (Issue #163)
+	KMSKeyID        string // KMS key ID or ARN for data chunk encryption
+	EncryptManifest bool   // Enable KMS envelope encryption for manifest
+
 	// Advanced transporter configuration (v0.6.2)
 	// If set, uses advanced S3 transporters (staging, adaptive, optimized) instead of basic manager.Uploader
 	// Set via NewPipelineTransporter() factory

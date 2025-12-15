@@ -152,6 +152,23 @@ func (b *Builder) SetSyncInfo(syncType string, previousUploadID string) {
 	b.manifest.PreviousManifestID = previousUploadID
 }
 
+// SetEncryption sets encryption metadata (Issue #163, thread-safe)
+func (b *Builder) SetEncryption(kmsKeyID string, manifestEncrypted bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if kmsKeyID == "" && !manifestEncrypted {
+		b.manifest.Encryption = nil
+		return
+	}
+
+	b.manifest.Encryption = &EncryptionMetadata{
+		Enabled:           kmsKeyID != "",
+		DataKMSKeyID:      kmsKeyID,
+		ManifestEncrypted: manifestEncrypted,
+	}
+}
+
 // UpdateShardStats updates statistics for a shard (thread-safe)
 func (b *Builder) UpdateShardStats(shardID int, chunkKey string, fileCount int64, uncompressed, compressed int64) {
 	b.mu.Lock()

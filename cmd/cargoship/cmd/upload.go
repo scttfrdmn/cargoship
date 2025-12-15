@@ -40,6 +40,10 @@ func NewUploadCmd() *cobra.Command {
 		tracingEndpoint    string
 		tracingSampleRate  float64
 		prometheusAddr     string
+
+		// Issue #163: Encryption configuration
+		kmsKeyID         string
+		encryptManifest  bool
 	)
 
 	cmd := &cobra.Command{
@@ -118,6 +122,11 @@ Examples:
 				return fmt.Errorf("shard-count must be between 1 and 100")
 			}
 
+			// Validate encryption flags (Issue #163)
+			if encryptManifest && kmsKeyID == "" {
+				return fmt.Errorf("--encrypt-manifest requires --kms-key-id to be set")
+			}
+
 			// Create S3 client with optimized HTTP transport
 			httpConfig := cargoconfig.DefaultHTTPTransportConfig()
 			s3Client, err := cargoconfig.GetOrCreateS3Client(ctx, bucket, region, "", httpConfig)
@@ -147,6 +156,7 @@ Examples:
 					Bucket:             bucket,
 					MultipartChunkSize: 64 * 1024 * 1024, // 64MB
 					Concurrency:        4,
+					KMSKeyID:           kmsKeyID, // Issue #163: KMS encryption
 				}
 
 				// Create transporter config
@@ -256,6 +266,10 @@ Examples:
 				S3Client:        s3Client,
 				S3StorageClass:  storageClass,
 				S3PartSize:      64 * 1024 * 1024, // 64MB parts
+
+				// Issue #163: KMS encryption configuration
+				KMSKeyID:        kmsKeyID,
+				EncryptManifest: encryptManifest,
 
 				// v0.6.2: Advanced transporter
 				Transporter: transporter,
@@ -420,6 +434,10 @@ Examples:
 	cmd.Flags().StringVar(&tracingEndpoint, "tracing-endpoint", "", "Tracing endpoint URL (required for jaeger/otlp exporters)")
 	cmd.Flags().Float64Var(&tracingSampleRate, "tracing-sample-rate", 1.0, "Trace sampling rate (0.0-1.0, default: 1.0 = 100%)")
 	cmd.Flags().StringVar(&prometheusAddr, "prometheus-addr", "", "Prometheus metrics HTTP address (e.g., :9090)")
+
+	// Issue #163: Encryption flags
+	cmd.Flags().StringVar(&kmsKeyID, "kms-key-id", "", "AWS KMS key ID or ARN for encryption (data chunks encrypted with SSE-KMS)")
+	cmd.Flags().BoolVar(&encryptManifest, "encrypt-manifest", false, "Encrypt manifest with KMS envelope encryption (requires --kms-key-id)")
 
 	return cmd
 }
