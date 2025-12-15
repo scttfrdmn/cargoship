@@ -8,10 +8,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/dustin/go-humanize"
 	"github.com/klauspost/compress/zstd"
@@ -95,43 +97,27 @@ Examples:
 
 			s3Client := s3.NewFromConfig(cfg)
 
-			// Step 1: Download manifest from S3 (try .json first, then .json.gz for backwards compatibility)
-			manifestKey := filepath.Join(prefix, "manifest.json")
-			fmt.Printf("📥 Downloading manifest: s3://%s/%s\n", bucket, manifestKey)
+			// Create KMS client for encrypted manifest support (Issue #163)
+			kmsClient := kms.NewFromConfig(cfg)
 
-			result, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
-				Bucket: aws.String(bucket),
-				Key:    aws.String(manifestKey),
-			})
-
-			// If .json not found, try .json.gz for backwards compatibility
-			if err != nil {
-				manifestKey = filepath.Join(prefix, "manifest.json.gz")
-				fmt.Printf("📥 Trying compressed manifest: s3://%s/%s\n", bucket, manifestKey)
-				result, err = s3Client.GetObject(ctx, &s3.GetObjectInput{
-					Bucket: aws.String(bucket),
-					Key:    aws.String(manifestKey),
-				})
-				if err != nil {
-					return fmt.Errorf("failed to download manifest from S3: %w", err)
-				}
-			}
-			defer func() {
-				if closeErr := result.Body.Close(); closeErr != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to close S3 response body: %v\n", closeErr)
-				}
-			}()
-
-			// Read manifest bytes
-			manifestBytes, err := io.ReadAll(result.Body)
-			if err != nil {
-				return fmt.Errorf("failed to read manifest from S3: %w", err)
+			// Step 1: Parse prefix to extract uploadID
+			// Expected format: {prefix}/uploads/{uploadID}
+			var actualPrefix, uploadID string
+			if idx := strings.Index(prefix, "/uploads/"); idx != -1 {
+				actualPrefix = prefix[:idx]
+				uploadID = prefix[idx+9:] // Skip "/uploads/"
+			} else {
+				// Fallback: assume entire prefix is the uploadID (backward compatibility)
+				actualPrefix = ""
+				uploadID = prefix
 			}
 
-			// Deserialize with automatic compression detection (Issue #92)
-			m, err := manifest.FromJSONAuto(manifestBytes)
+			fmt.Printf("📥 Downloading manifest: s3://%s/%s/uploads/%s/\n", bucket, actualPrefix, uploadID)
+
+			// Download manifest (supports both encrypted and regular manifests)
+			m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
 			if err != nil {
-				return fmt.Errorf("failed to deserialize manifest: %w", err)
+				return fmt.Errorf("failed to download manifest from S3: %w", err)
 			}
 
 			fmt.Printf("✅ Manifest loaded: %d files, %d chunks, %d shards\n\n",

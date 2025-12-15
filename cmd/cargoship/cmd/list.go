@@ -3,12 +3,10 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"io"
-	"os"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
@@ -64,35 +62,15 @@ Examples:
 
 			s3Client := s3.NewFromConfig(cfg)
 
-			// Download manifest from S3
-			manifestKey := fmt.Sprintf("%s/uploads/%s/manifest.json.gz", prefix, uploadID)
-			fmt.Printf("Downloading manifest: s3://%s/%s\n", bucket, manifestKey)
+			// Create KMS client for encrypted manifest support (Issue #163)
+			kmsClient := kms.NewFromConfig(cfg)
 
-			getObjectInput := &s3.GetObjectInput{
-				Bucket: aws.String(bucket),
-				Key:    aws.String(manifestKey),
-			}
+			// Download manifest from S3 (supports both encrypted and regular manifests)
+			fmt.Printf("Downloading manifest: s3://%s/%s/uploads/%s/\n", bucket, prefix, uploadID)
 
-			result, err := s3Client.GetObject(ctx, getObjectInput)
+			m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, prefix, uploadID)
 			if err != nil {
 				return fmt.Errorf("failed to download manifest from S3: %w", err)
-			}
-			defer func() {
-				if closeErr := result.Body.Close(); closeErr != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to close S3 response body: %v\n", closeErr)
-				}
-			}()
-
-			// Read all bytes from S3 response
-			manifestBytes, err := io.ReadAll(result.Body)
-			if err != nil {
-				return fmt.Errorf("failed to read manifest from S3: %w", err)
-			}
-
-			// Decompress and deserialize manifest
-			m, err := manifest.FromJSONCompressed(manifestBytes)
-			if err != nil {
-				return fmt.Errorf("failed to deserialize manifest: %w", err)
 			}
 
 			// Create query interface
