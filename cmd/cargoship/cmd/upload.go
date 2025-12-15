@@ -17,6 +17,7 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/observability/metrics"
 	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
+	"github.com/scttfrdmn/cargoship/pkg/resume"
 )
 
 // NewUploadCmd creates the 'upload' command for CargoHold uploads with sharding (Issue #95)
@@ -46,6 +47,9 @@ func NewUploadCmd() *cobra.Command {
 		// Issue #163: Encryption configuration
 		kmsKeyID         string
 		encryptManifest  bool
+
+		// Issue #119: Resume configuration
+		forceRestart bool
 	)
 
 	cmd := &cobra.Command{
@@ -148,6 +152,24 @@ Examples:
 			absPath, err := filepath.Abs(sourceDir)
 			if err != nil {
 				return fmt.Errorf("failed to resolve path %s: %w", sourceDir, err)
+			}
+
+			// Issue #119: Auto-detect interrupted uploads
+			if !forceRestart {
+				detectedState, err := resume.DetectInterruptedUpload(absPath, bucket, prefix)
+				if err != nil {
+					fmt.Printf("⚠️  Warning: Failed to check for interrupted uploads: %v\n", err)
+				} else if detectedState != nil && resume.ShouldPromptForResume(detectedState) {
+					// Found an interrupted upload - prompt user
+					if promptForResume(detectedState) {
+						fmt.Println("\n⚠️  Direct resume via upload command not yet fully implemented")
+						fmt.Printf("💡 Use: cargoship resume %s\n", detectedState.UploadID)
+						fmt.Println("    Or use --force-restart to ignore saved state and start fresh")
+						return fmt.Errorf("resume via upload command pending implementation")
+					}
+					// User chose not to resume - continue with fresh upload
+					fmt.Println("Starting fresh upload...")
+				}
 			}
 
 			// v0.6.2: Create advanced transporter if requested
@@ -453,6 +475,9 @@ Examples:
 	cmd.Flags().StringVar(&kmsKeyID, "kms-key-id", "", "AWS KMS key ID or ARN for encryption (data chunks encrypted with SSE-KMS)")
 	cmd.Flags().BoolVar(&encryptManifest, "encrypt-manifest", false, "Encrypt manifest with KMS envelope encryption (requires --kms-key-id)")
 
+	// Issue #119: Resume configuration
+	cmd.Flags().BoolVar(&forceRestart, "force-restart", false, "Ignore saved state and start fresh upload (bypasses resume detection)")
+
 	return cmd
 }
 
@@ -485,4 +510,50 @@ func parseS3Destination(dest string) (bucket, prefix string, err error) {
 	}
 
 	return bucket, prefix, nil
+}
+
+// promptForResume displays upload information and prompts user to resume
+// Returns true if user wants to resume, false to start fresh
+func promptForResume(state *resume.UploadState) bool {
+	// Display upload information
+	fmt.Println("\n📦 Detected interrupted upload:")
+	fmt.Printf("   Upload ID:       %s\n", state.UploadID)
+	fmt.Printf("   Source:          %s\n", state.SourceDir)
+	fmt.Printf("   Destination:     s3://%s/%s\n", state.Bucket, state.Prefix)
+	fmt.Printf("   Progress:        %.1f%% complete\n", state.Progress())
+	fmt.Printf("   Started:         %s ago\n", formatDuration(state.Age()))
+
+	if state.TotalFiles > 0 {
+		fmt.Printf("   Files:           %d / %d completed\n", state.CompletedFiles, state.TotalFiles)
+	}
+
+	// Check if terminal is interactive
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		// Non-interactive mode - don't resume by default
+		fmt.Println("\n⚠️  Non-interactive terminal detected - skipping resume prompt")
+		fmt.Println("   Use --force-restart to explicitly start fresh")
+		return false
+	}
+
+	// Prompt user
+	fmt.Print("\nResume this upload? [Y/n]: ")
+	var response string
+	fmt.Scanln(&response)
+
+	// Empty or "y" means yes
+	return response == "" || response == "y" || response == "Y"
+}
+
+// formatDuration formats a duration in a human-readable way
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%.0f seconds", d.Seconds())
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%.0f minutes", d.Minutes())
+	}
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%.1f hours", d.Hours())
+	}
+	return fmt.Sprintf("%.1f days", d.Hours()/24)
 }
