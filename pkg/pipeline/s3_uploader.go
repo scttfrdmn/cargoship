@@ -15,6 +15,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
+	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // S3UploaderConfig configures the real S3 uploader stage
@@ -197,9 +199,25 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 		}
 	}()
 
+	// Create job span if tracing enabled (Issue #155)
+	var jobSpan trace.Span
+	if s.pipeline != nil && s.pipeline.tracer != nil {
+		tracer := s.pipeline.tracer.(*tracing.PipelineTracer)
+		ctx, jobSpan = tracer.StartJobSpan(ctx, job.ID, job.ShardID)
+		defer jobSpan.End()
+
+		// Add file and S3 attributes
+		tracer.AddFileAttributes(jobSpan, "", job.ArchiveSize, len(job.Chunk.Files))
+		tracer.AddS3Attributes(jobSpan, s.config.Bucket, job.S3Key, "")
+	}
+
 	// Issue #157: Check if chunk should be skipped (resume mode)
 	skip, err := s.shouldSkipUpload(ctx, job)
 	if err != nil {
+		if jobSpan != nil && s.pipeline != nil && s.pipeline.tracer != nil {
+			tracer := s.pipeline.tracer.(*tracing.PipelineTracer)
+			tracer.RecordError(jobSpan, err)
+		}
 		return fmt.Errorf("failed to check if upload should be skipped: %w", err)
 	}
 
@@ -211,6 +229,12 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 		atomic.AddInt64(&s.jobsProcessed, 1)
 
 		fmt.Printf("⏭️  Skipped chunk %d (already uploaded)\n", job.Chunk.ID)
+
+		// Record success in span
+		if jobSpan != nil && s.pipeline != nil && s.pipeline.tracer != nil {
+			tracer := s.pipeline.tracer.(*tracing.PipelineTracer)
+			tracer.RecordSuccess(jobSpan)
+		}
 		return nil
 	}
 
@@ -220,6 +244,15 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 		// Issue #103: Track attempt number for error reporting
 		job.AttemptNumber = attempt + 1
 
+		// Create retry span if this is a retry (Issue #155)
+		var retrySpan trace.Span
+		var retryCtx context.Context = ctx
+		if attempt > 0 && s.pipeline != nil && s.pipeline.tracer != nil {
+			tracer := s.pipeline.tracer.(*tracing.PipelineTracer)
+			retryCtx, retrySpan = tracer.StartRetrySpan(ctx, attempt+1)
+			defer retrySpan.End()
+		}
+
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
@@ -228,13 +261,19 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 			}
 		}
 
-		if err := s.uploadToS3(ctx, job); err != nil {
+		if err := s.uploadToS3(retryCtx, job); err != nil {
 			lastErr = err
 			// Issue #103: Track error history for detailed reporting
 			if job.ErrorHistory == nil {
 				job.ErrorHistory = make([]error, 0, s.config.MaxRetries)
 			}
 			job.ErrorHistory = append(job.ErrorHistory, fmt.Errorf("attempt %d: %w", attempt+1, err))
+
+			// Record error in retry span
+			if retrySpan != nil && s.pipeline != nil && s.pipeline.tracer != nil {
+				tracer := s.pipeline.tracer.(*tracing.PipelineTracer)
+				tracer.RecordError(retrySpan, err)
+			}
 			continue
 		}
 
@@ -257,7 +296,24 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 			s.pipeline.trackUploadedKey(job.S3Key)
 		}
 
+		// Record success in spans
+		if s.pipeline != nil && s.pipeline.tracer != nil {
+			tracer := s.pipeline.tracer.(*tracing.PipelineTracer)
+			if jobSpan != nil {
+				tracer.RecordSuccess(jobSpan)
+			}
+			if retrySpan != nil {
+				tracer.RecordSuccess(retrySpan)
+			}
+		}
+
 		return nil
+	}
+
+	// Record final error in job span
+	if jobSpan != nil && s.pipeline != nil && s.pipeline.tracer != nil {
+		tracer := s.pipeline.tracer.(*tracing.PipelineTracer)
+		tracer.RecordError(jobSpan, lastErr)
 	}
 
 	return fmt.Errorf("upload failed after %d attempts: %w", s.config.MaxRetries, lastErr)
