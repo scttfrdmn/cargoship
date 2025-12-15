@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
@@ -18,6 +20,7 @@ import (
 // OptimizedTransporter provides backward-compatible CargoShip transport using new optimization modules
 type OptimizedTransporter struct {
 	optimizer *s3optimization.S3Optimizer
+	uploader  *manager.Uploader
 	config    awsconfig.S3Config
 	logger    *slog.Logger
 }
@@ -57,8 +60,17 @@ func NewOptimizedTransporter(ctx context.Context, s3Client *s3.Client, config aw
 		return nil, fmt.Errorf("failed to create S3 optimizer: %w", err)
 	}
 
+	// Create AWS SDK uploader for reliable Content-Length handling
+	uploader := manager.NewUploader(s3Client, func(u *manager.Uploader) {
+		u.PartSize = config.MultipartChunkSize
+		u.Concurrency = int(config.Concurrency)
+		u.LeavePartsOnError = false
+		u.MaxUploadParts = 10000
+	})
+
 	transporter := &OptimizedTransporter{
 		optimizer: optimizer,
+		uploader:  uploader,
 		config:    config,
 		logger:    logger,
 	}
@@ -73,7 +85,7 @@ func NewOptimizedTransporter(ctx context.Context, s3Client *s3.Client, config aw
 	return transporter, nil
 }
 
-// Upload performs an optimized CargoShip archive upload
+// Upload performs an optimized CargoShip archive upload using manager.Uploader
 func (t *OptimizedTransporter) Upload(ctx context.Context, archive *Archive) (*UploadResult, error) {
 	if archive == nil {
 		return nil, fmt.Errorf("archive cannot be nil")
@@ -81,28 +93,30 @@ func (t *OptimizedTransporter) Upload(ctx context.Context, archive *Archive) (*U
 
 	startTime := time.Now()
 
-	// Convert CargoShip archive to S3 input
+	// Apply network optimizations before upload (best-effort, ignore errors)
+	_ = t.optimizer.UpdateNetworkConditions(&s3optimization.NetworkConditions{
+		Bandwidth:   100.0, // Mbps - will be auto-detected by BBR/CUBIC
+		RTT:         time.Millisecond * 50,
+		LastUpdated: time.Now(),
+	})
+
+	// Convert CargoShip archive to S3 input for manager.Uploader
 	input := &s3.PutObjectInput{
-		Bucket:       &t.config.Bucket,
-		Key:          &archive.Key,
+		Bucket:       aws.String(t.config.Bucket),
+		Key:          aws.String(archive.Key),
 		Body:         archive.Reader,
 		StorageClass: types.StorageClass(archive.StorageClass),
 		Metadata:     archive.Metadata,
 	}
 
-	// Add content length if available
-	if archive.Size > 0 {
-		input.ContentLength = &archive.Size
-	}
-
 	// Add KMS encryption if configured
 	if t.config.KMSKeyID != "" {
 		input.ServerSideEncryption = types.ServerSideEncryptionAwsKms
-		input.SSEKMSKeyId = &t.config.KMSKeyID
+		input.SSEKMSKeyId = aws.String(t.config.KMSKeyID)
 	}
 
-	// Use optimized S3 client for upload
-	result, err := t.optimizer.PutObjectOptimized(ctx, input)
+	// Use manager.Uploader which handles Content-Length automatically
+	result, err := t.uploader.Upload(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("optimized upload failed: %w", err)
 	}
@@ -118,16 +132,14 @@ func (t *OptimizedTransporter) Upload(ctx context.Context, archive *Archive) (*U
 
 	// Convert result back to CargoShip format
 	uploadResult := &UploadResult{
-		Location:     fmt.Sprintf("s3://%s/%s", t.config.Bucket, archive.Key),
+		Location:     result.Location,
 		Key:          archive.Key,
-		ETag:         *result.ETag,
+		ETag:         aws.ToString(result.ETag),
+		UploadID:     result.UploadID,
 		Duration:     duration,
 		Throughput:   throughput,
 		StorageClass: types.StorageClass(archive.StorageClass),
 	}
-
-	// Note: Upload ID is not available in PutObjectOutput for single uploads
-	// For multipart uploads, this would need to be tracked separately
 
 	t.logger.Info("optimized upload completed",
 		"key", archive.Key,
