@@ -19,6 +19,7 @@ import (
 	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
+	"github.com/scttfrdmn/cargoship/pkg/resume"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -78,6 +79,15 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 	}
 	if config.ProgressInterval == 0 {
 		config.ProgressInterval = time.Second
+	}
+
+	// Local state persistence defaults (Issue #119)
+	if config.LocalStateSaveInterval == 0 {
+		config.LocalStateSaveInterval = 30 * time.Second
+	}
+	// EnableLocalState defaults to true if using real S3
+	if config.UseRealS3 && !config.ResumeMode {
+		config.EnableLocalState = true
 	}
 
 	// Multi-prefix optimization defaults (Phase 3)
@@ -202,6 +212,34 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 		p.manifestBuilder = builder
 	}
 
+	// Initialize local upload state if enabled (Issue #119: Enhanced resume)
+	if config.EnableLocalState && config.UseRealS3 {
+		uploadState := &resume.UploadState{
+			UploadID:        config.UploadID,
+			StartTime:       time.Now(),
+			LastSave:        time.Now(),
+			SourceDir:       config.SourcePath,
+			Bucket:          config.S3Bucket,
+			Prefix:          config.S3Prefix,
+			Region:          config.S3Region,
+			StorageClass:    config.S3StorageClass,
+			KMSKeyID:        config.KMSKeyID,
+			EncryptManifest: config.EncryptManifest,
+			ChunkSizeMB:     config.ForceChunkSizeMB,
+			ShardCount:      config.ShardCount,
+			Shards:          make([]resume.ShardState, config.ShardCount),
+		}
+
+		// Initialize shard states
+		for i := 0; i < config.ShardCount; i++ {
+			uploadState.Shards[i] = resume.ShardState{
+				ShardID: i,
+			}
+		}
+
+		p.uploadState = uploadState
+	}
+
 	return p, nil
 }
 
@@ -236,6 +274,11 @@ func (p *Pipeline) Run(ctx context.Context, rootPath string) (*Result, error) {
 	// Start partial manifest saving if enabled (Issue #157: Resume capability)
 	if p.config.EnablePartialManifest && p.manifestBuilder != nil && p.config.UseRealS3 {
 		go p.savePartialManifestPeriodically(ctx)
+	}
+
+	// Start local state saving if enabled (Issue #119: Enhanced resume)
+	if p.config.EnableLocalState && p.uploadState != nil {
+		go p.saveLocalStatePeriodically(ctx)
 	}
 
 	// Start all stages
@@ -639,6 +682,9 @@ func (p *Pipeline) uploadManifest(ctx context.Context) error {
 	// Delete partial manifest after successful upload (Issue #157)
 	p.deletePartialManifest(ctx)
 
+	// Delete local state after successful upload (Issue #119)
+	p.deleteLocalState()
+
 	return nil
 }
 
@@ -718,6 +764,74 @@ func (p *Pipeline) savePartialManifest(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// saveLocalStatePeriodically saves upload state to local disk periodically (Issue #119)
+func (p *Pipeline) saveLocalStatePeriodically(ctx context.Context) {
+	interval := p.config.LocalStateSaveInterval
+	if interval == 0 {
+		interval = 30 * time.Second // Default: 30s
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := p.saveLocalState(); err != nil {
+				// Log warning but don't fail the upload
+				fmt.Printf("Warning: Failed to save local state: %v\n", err)
+			}
+		}
+	}
+}
+
+// saveLocalState saves the current upload state to local disk (Issue #119)
+func (p *Pipeline) saveLocalState() error {
+	if p.uploadState == nil {
+		return fmt.Errorf("upload state not initialized")
+	}
+
+	p.uploadStateMu.Lock()
+	state := p.uploadState.(*resume.UploadState)
+
+	// Update progress from pipeline tracker
+	p.progress.mu.RLock()
+	state.TotalFiles = p.progress.progress.TotalFiles
+	state.TotalBytes = p.progress.progress.TotalBytes
+	state.CompletedFiles = p.progress.progress.FilesProcessed
+	state.CompletedBytes = p.progress.progress.BytesProcessed
+	p.progress.mu.RUnlock()
+
+	// Save to disk with atomic write
+	err := resume.SaveState(state)
+	p.uploadStateMu.Unlock()
+
+	if err != nil {
+		return fmt.Errorf("failed to save state to disk: %w", err)
+	}
+
+	return nil
+}
+
+// deleteLocalState removes the local state file after successful completion (Issue #119)
+func (p *Pipeline) deleteLocalState() {
+	if p.uploadState == nil {
+		return
+	}
+
+	p.uploadStateMu.Lock()
+	state := p.uploadState.(*resume.UploadState)
+	uploadID := state.UploadID
+	p.uploadStateMu.Unlock()
+
+	if err := resume.DeleteState(uploadID); err != nil {
+		// Log but don't fail - state cleanup is not critical
+		fmt.Printf("Warning: Failed to delete local state for %s: %v\n", uploadID, err)
+	}
 }
 
 // deletePartialManifest removes the partial manifest from S3 after successful completion (Issue #157)

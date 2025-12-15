@@ -103,6 +103,10 @@ type Pipeline struct {
 	manifestBuilder interface{} // *manifest.Builder for tracking files/chunks (type: *github.com/scttfrdmn/cargoship/pkg/manifest.Builder)
 	manifestMu      sync.Mutex  // Protects manifest updates
 
+	// Local state tracking (Issue #119: Enhanced resume)
+	uploadState   interface{} // *resume.UploadState for local state persistence (type: *github.com/scttfrdmn/cargoship/pkg/resume.UploadState)
+	uploadStateMu sync.Mutex  // Protects uploadState updates
+
 	// Cleanup tracking (Issue #158)
 	uploadedKeys   []string   // All uploaded S3 keys for cleanup on failure
 	uploadedKeysMu sync.Mutex // Protects uploadedKeys list
@@ -184,6 +188,11 @@ type PipelineConfig struct {
 	// Partial manifest saving (Issue #157: Resume capability)
 	EnablePartialManifest       bool          // Enable periodic manifest saves (default: true for real S3)
 	PartialManifestSaveInterval time.Duration // How often to save partial manifest (default: 30s)
+
+	// Local state persistence (Issue #119: Enhanced resume with local state)
+	EnableLocalState       bool          // Enable local state file persistence (default: true)
+	LocalStateSaveInterval time.Duration // How often to save local state (default: 30s)
+	DisableFileHashing     bool          // Skip file hashing for change detection (faster but less safe)
 
 	// Cleanup configuration (Issue #158: Automatic cleanup on failure)
 	CleanupOnFailure bool // Automatically delete partial uploads on error (default: true)
