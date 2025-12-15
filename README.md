@@ -219,15 +219,26 @@ CargoShip excels at large-scale data archiving:
 
 ### Getting Started
 - **[Installation Guide](docs/install.md)** - Get CargoShip running in your environment
-- **[User Guide](docs/USER_GUIDE.md)** - Complete feature walkthrough
+- **[S3 Direct Upload Guide](docs/S3_DIRECT_UPLOAD.md)** - Complete guide to CargoShip's streaming pipeline
+- **[CLI Reference](docs/CLI_REFERENCE.md)** - Comprehensive command-line reference
 - **[Quick Start Wizard](docs/wizard.md)** - Interactive setup guide
 - **[Complete Documentation](https://cargoship.app)** - Full documentation site
 
-### Key Features
-- **[Storage Format Documentation](docs/STORAGE_FORMAT.md)** - Open S3 storage format for data portability
-- **[Manifest System](pkg/manifest/README.md)** - File indexing and fast query API
-- **[Advanced Flow Control](docs/TASK_4_ADVANCED_FLOW_CONTROL.md)** - v0.4.0 network optimization algorithms
+### Performance & Optimization
+- **[Performance Benchmarks](docs/PERFORMANCE_BENCHMARKS.md)** - **7x faster than s5cmd**, 40x faster than rclone
+- **[Optimization Guide](docs/OPTIMIZATION_GUIDE.md)** - Tuning for maximum performance
+- **[Advanced Flow Control](docs/TASK_4_ADVANCED_FLOW_CONTROL.md)** - Network optimization algorithms
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+
+### Migration & Integration
+- **[Migration from rclone](docs/MIGRATION_FROM_RCLONE.md)** - Switch from rclone to CargoShip
 - **[AWS Integration Guide](docs/AWS_INTEGRATION_REPORT.md)** - Complete AWS setup and configuration
+- **[User Guide](docs/USER_GUIDE.md)** - Complete feature walkthrough
+
+### Architecture & Features
+- **[Storage Format Documentation](docs/STORAGE_FORMAT.md)** - Open S3 storage format for data portability
+- **[Session Affinity](docs/SESSION_AFFINITY.md)** - Multi-region load balancing
+- **[Manifest System](pkg/manifest/README.md)** - File indexing and fast query API
 - **[Cost Management](docs/cost-management.md)** - Intelligent cost optimization features
 
 ### Deployment & Operations
