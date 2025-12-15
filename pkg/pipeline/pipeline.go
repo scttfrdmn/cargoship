@@ -373,6 +373,7 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				p.resultChan,
 				p.config.WorkersPerPrefix,
 				p, // Pass pipeline reference for manifest tracking
+				nil, // Use default logger
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create multi-prefix S3 uploader: %w", err)
@@ -435,6 +436,7 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				p.resultChan,
 				p.config.WorkersPerPrefix,
 				p, // Pass pipeline reference for manifest tracking
+				nil, // Use default logger
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create multi-prefix S3 uploader: %w", err)
@@ -469,7 +471,7 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				}
 			}
 
-			p.s3Uploader, err = NewS3UploaderStage(s3Config, p.archiveChan, p.resultChan, p)
+			p.s3Uploader, err = NewS3UploaderStage(s3Config, p.archiveChan, p.resultChan, p, nil)
 			if err != nil {
 				return fmt.Errorf("failed to create S3 uploader: %w", err)
 			}

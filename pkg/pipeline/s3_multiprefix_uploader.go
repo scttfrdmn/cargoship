@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,6 +59,9 @@ type S3MultiPrefixUploaderStage struct {
 
 	// Manifest tracking (Issue #97)
 	pipeline *Pipeline // Reference to parent pipeline for manifest tracking
+
+	// Logging (Issue #155)
+	logger *slog.Logger
 }
 
 // PrefixStats tracks statistics for a specific S3 prefix
@@ -74,6 +78,7 @@ func NewS3MultiPrefixUploaderStage(
 	output chan<- *Job,
 	workersPerPrefix int,
 	pipeline *Pipeline,
+	logger *slog.Logger,
 ) (*S3MultiPrefixUploaderStage, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
@@ -100,6 +105,11 @@ func NewS3MultiPrefixUploaderStage(
 		config.RetryDelay = time.Second
 	}
 
+	// Use default logger if none provided
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	// Create AWS S3 uploader with optimized settings (backward compatibility)
 	uploader := manager.NewUploader(config.S3Client, func(u *manager.Uploader) {
 		u.PartSize = config.PartSize
@@ -123,6 +133,7 @@ func NewS3MultiPrefixUploaderStage(
 		workersPerPrefix: workersPerPrefix,
 		uploader:         uploader,
 		perPrefixStats:   perPrefixStats,
+		logger:           logger, // Issue #155: Structured logging with trace context
 		stats: StageStats{
 			Name: "s3_multiprefix_uploader",
 		},
@@ -301,7 +312,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 	for attempt := 0; attempt < s.config.MaxRetries; attempt++ {
 		// Create retry span if this is a retry (Issue #155)
 		var retrySpan trace.Span
-		var retryCtx context.Context = ctx
+		retryCtx := ctx
 		if attempt > 0 && s.pipeline != nil && s.pipeline.tracer != nil {
 			tracer := s.pipeline.tracer.(*tracing.PipelineTracer)
 			retryCtx, retrySpan = tracer.StartRetrySpan(ctx, attempt+1)

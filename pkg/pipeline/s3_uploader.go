@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -58,10 +59,13 @@ type S3UploaderStage struct {
 
 	// Manifest tracking (Issue #157)
 	pipeline *Pipeline // Reference to parent pipeline for resume capability
+
+	// Logging (Issue #155)
+	logger *slog.Logger
 }
 
 // NewS3UploaderStage creates a new real S3 uploader stage
-func NewS3UploaderStage(config *S3UploaderConfig, input <-chan *Job, output chan<- *Job, pipeline *Pipeline) (*S3UploaderStage, error) {
+func NewS3UploaderStage(config *S3UploaderConfig, input <-chan *Job, output chan<- *Job, pipeline *Pipeline, logger *slog.Logger) (*S3UploaderStage, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
@@ -84,6 +88,11 @@ func NewS3UploaderStage(config *S3UploaderConfig, input <-chan *Job, output chan
 		config.RetryDelay = time.Second
 	}
 
+	// Use default logger if none provided
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	// Create AWS S3 uploader with optimized settings
 	uploader := manager.NewUploader(config.S3Client, func(u *manager.Uploader) {
 		u.PartSize = config.PartSize
@@ -98,6 +107,7 @@ func NewS3UploaderStage(config *S3UploaderConfig, input <-chan *Job, output chan
 		output:   output,
 		uploader: uploader,
 		pipeline: pipeline, // Issue #157: Reference for resume capability
+		logger:   logger,   // Issue #155: Structured logging with trace context
 		stats: StageStats{
 			Name: "s3_uploader",
 		},
@@ -228,7 +238,11 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 		// Update statistics (but not bytes processed since we didn't actually upload)
 		atomic.AddInt64(&s.jobsProcessed, 1)
 
-		fmt.Printf("⏭️  Skipped chunk %d (already uploaded)\n", job.Chunk.ID)
+		// Log with trace context (Issue #155)
+		tracing.InfoWithTrace(ctx, s.logger, "skipped chunk (already uploaded)",
+			slog.Int("chunk_id", job.Chunk.ID),
+			slog.String("s3_key", job.S3Key),
+		)
 
 		// Record success in span
 		if jobSpan != nil && s.pipeline != nil && s.pipeline.tracer != nil {
@@ -246,7 +260,7 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 
 		// Create retry span if this is a retry (Issue #155)
 		var retrySpan trace.Span
-		var retryCtx context.Context = ctx
+		retryCtx := ctx
 		if attempt > 0 && s.pipeline != nil && s.pipeline.tracer != nil {
 			tracer := s.pipeline.tracer.(*tracing.PipelineTracer)
 			retryCtx, retrySpan = tracer.StartRetrySpan(ctx, attempt+1)
