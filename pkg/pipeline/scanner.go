@@ -11,6 +11,7 @@ import (
 
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
+	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
 )
 
 // ScannerStage discovers files and creates chunks
@@ -142,6 +143,18 @@ func (s *ScannerStage) Stats() StageStats {
 func (s *ScannerStage) run(ctx context.Context) error {
 	startTime := time.Now()
 	defer close(s.output) // Close output when done
+
+	// Create stage span if tracing enabled (Issue #155)
+	if s.pipeline != nil && s.pipeline.tracer != nil {
+		tracer := s.pipeline.tracer.(*tracing.PipelineTracer)
+		var stageSpan interface{} // trace.Span
+		ctx, stageSpan = tracer.StartStageSpan(ctx, "scanner")
+		defer func() {
+			if span, ok := stageSpan.(interface{ End() }); ok {
+				span.End()
+			}
+		}()
+	}
 
 	// Stream files instead of loading all at once
 	fileChan, errChan := s.streamFiles(ctx, s.config.RootPath)

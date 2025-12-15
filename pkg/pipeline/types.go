@@ -82,6 +82,9 @@ type Pipeline struct {
 	router              *PrefixRouter               // Routes jobs to per-prefix channels
 	multiPrefixUploader *S3MultiPrefixUploaderStage // Per-prefix worker pools
 
+	// Observability (Issue #155)
+	tracer interface{} // *tracing.PipelineTracer for distributed tracing (type: *github.com/scttfrdmn/cargoship/pkg/observability/tracing.PipelineTracer)
+
 	// Channels for communication between stages
 	chunkChan   chan *Job
 	archiveChan chan *Job
@@ -179,6 +182,10 @@ type PipelineConfig struct {
 
 	// Cleanup configuration (Issue #158: Automatic cleanup on failure)
 	CleanupOnFailure bool // Automatically delete partial uploads on error (default: true)
+
+	// Observability configuration (Issue #155: Distributed tracing)
+	EnableTracing bool        // Enable distributed tracing with OpenTelemetry (default: false)
+	Tracer        interface{} // Optional: Pre-configured tracer (type: *github.com/scttfrdmn/cargoship/pkg/observability/tracing.PipelineTracer)
 }
 
 // Progress represents current pipeline progress

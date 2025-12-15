@@ -17,6 +17,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
+	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func init() {
@@ -127,6 +129,15 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 		errors: []error{},
 	}
 
+	// Initialize tracer if enabled (Issue #155)
+	if config.EnableTracing {
+		if config.Tracer != nil {
+			p.tracer = config.Tracer
+		} else {
+			p.tracer = tracing.NewPipelineTracer()
+		}
+	}
+
 	// Initialize manifest builder if enabled and using real S3
 	if config.EnableManifest && config.UseRealS3 {
 		var builder *manifest.Builder
@@ -190,6 +201,23 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 
 // Run executes the pipeline
 func (p *Pipeline) Run(ctx context.Context, rootPath string) (*Result, error) {
+	// Create root upload span if tracing enabled (Issue #155)
+	var uploadSpan trace.Span
+	if p.tracer != nil {
+		tracer := p.tracer.(*tracing.PipelineTracer)
+		ctx, uploadSpan = tracer.StartUploadSpan(ctx, p.config.UploadID)
+		defer func() {
+			if uploadSpan != nil {
+				if result := recover(); result != nil {
+					tracer.RecordError(uploadSpan, fmt.Errorf("panic: %v", result))
+					uploadSpan.End()
+					panic(result) // Re-panic after recording
+				}
+				uploadSpan.End()
+			}
+		}()
+	}
+
 	// Merge contexts
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -206,6 +234,10 @@ func (p *Pipeline) Run(ctx context.Context, rootPath string) (*Result, error) {
 
 	// Start all stages
 	if err := p.startStages(ctx, rootPath); err != nil {
+		if uploadSpan != nil && p.tracer != nil {
+			tracer := p.tracer.(*tracing.PipelineTracer)
+			tracer.RecordError(uploadSpan, err)
+		}
 		return nil, fmt.Errorf("failed to start stages: %w", err)
 	}
 
@@ -236,6 +268,17 @@ func (p *Pipeline) Run(ctx context.Context, rootPath string) (*Result, error) {
 	if !result.Success {
 		if err := p.cleanupPartialUpload(ctx); err != nil {
 			fmt.Printf("Warning: Cleanup failed: %v\n", err)
+		}
+	}
+
+	// Record final span status (Issue #155)
+	if uploadSpan != nil && p.tracer != nil {
+		tracer := p.tracer.(*tracing.PipelineTracer)
+		if result.Success {
+			tracer.RecordSuccess(uploadSpan)
+			tracer.AddFileAttributes(uploadSpan, "", result.TotalBytes, int(result.TotalFiles))
+		} else if len(result.Errors) > 0 {
+			tracer.RecordError(uploadSpan, result.Errors[0])
 		}
 	}
 

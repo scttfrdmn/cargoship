@@ -26,8 +26,8 @@ const (
 	AttrS3Prefix       = attribute.Key("aws.s3.prefix")
 
 	// Network attributes
-	AttrBandwidth    = attribute.Key("network.bandwidth")
-	AttrRTT          = attribute.Key("network.rtt")
-	AttrTransporter  = attribute.Key("cargoship.transporter")
+	AttrBandwidth     = attribute.Key("network.bandwidth")
+	AttrRTT           = attribute.Key("network.rtt")
+	AttrTransporter   = attribute.Key("cargoship.transporter")
 	AttrCongestionWin = attribute.Key("cargoship.congestion_window")
 )
