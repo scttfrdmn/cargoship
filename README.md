@@ -27,6 +27,7 @@ CargoShip is a next-generation data archiving tool optimized for AWS infrastruct
 - 💰 **Cost Optimization** - Intelligent storage class selection and lifecycle policies
 - 🎯 **Advanced S3 Features** - Multi-region support, predictive prefetching
 - 📈 **Performance Monitoring** - Comprehensive metrics and analytics
+- 💵 **Budget Tracking** - Project-based cost and volume quota management with burn rate forecasting
 - 🛡️ **Security first** - KMS encryption and compliance-ready audit trails
 
 ## 🚀 Quick Start
@@ -100,7 +101,45 @@ Total annual savings: $3,170/year with 8x upload performance
 ✅ Available Now:
 • `cargoship create upload` - High-performance streaming uploads
 • `cargoship lifecycle` - Automated lifecycle policy management
+• `cargoship budget` - Project-based cost and volume quota tracking
 • Real-time progress tracking with TUI
+```
+
+### Budget Tracking and Cost Control
+
+CargoShip includes enterprise-grade budget management to prevent cost overruns:
+
+```bash
+# Set project budget with cost and volume limits
+$ cargoship budget set genomics-2025 --cost 5000 --volume 2000
+
+# Monitor budget status with burn rate forecasting
+$ cargoship budget status genomics-2025
+
+📊 Budget Status: genomics-2025
+Cost Budget:
+├─ Maximum:     $5,000.00
+├─ Current:     $1,234.56 (24.7%)
+├─ Remaining:   $3,765.44
+├─ Daily Burn:  $41.23
+└─ Projected:   $4,123.00 (within budget ✅)
+
+Volume Quota:
+├─ Maximum:     2,000 GB
+├─ Current:     487 GB (24.4%)
+├─ Remaining:   1,513 GB
+└─ Projected:   1,948 GB (within quota ✅)
+```
+
+**Features**:
+- **Dual Controls**: Cost budgets (USD) and volume quotas (GB)
+- **Project-Based**: Track spending per project, grant, or department
+- **Burn Rate Forecasting**: ML-powered end-of-period projections
+- **Automatic Blocking**: Prevents uploads that exceed budgets
+- **Multi-Channel Alerts**: Email, Slack, CloudWatch notifications
+
+See the [Budget Management Guide](docs/BUDGET.md) for complete documentation.
+
 ```
 
 ## 🏗️ Modern Streaming Architecture
@@ -240,6 +279,7 @@ CargoShip excels at large-scale data archiving:
 - **[Session Affinity](docs/SESSION_AFFINITY.md)** - Multi-region load balancing
 - **[Manifest System](pkg/manifest/README.md)** - File indexing and fast query API
 - **[Cost Management](docs/cost-management.md)** - Intelligent cost optimization features
+- **[Budget Management](docs/BUDGET.md)** - Project-based cost and volume quota tracking
 
 ### Deployment & Operations
 - **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)** - Production deployment strategies
