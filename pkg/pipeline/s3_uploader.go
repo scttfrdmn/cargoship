@@ -90,15 +90,10 @@ func NewS3UploaderStage(config *S3UploaderConfig, input <-chan *Job, output chan
 		u.BufferProvider = manager.NewBufferedReadSeekerWriteToPool(25 * 1024 * 1024)
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	return &S3UploaderStage{
 		config:   config,
 		input:    input,
 		output:   output,
-		pool:     NewWorkerPool(ctx, config.Workers),
-		ctx:      ctx,
-		cancel:   cancel,
 		uploader: uploader,
 		pipeline: pipeline, // Issue #157: Reference for resume capability
 		stats: StageStats{
@@ -114,10 +109,16 @@ func (s *S3UploaderStage) Name() string {
 
 // Start starts the S3 uploader stage
 func (s *S3UploaderStage) Start(ctx context.Context) error {
+	// Create child context from parent (inherits trace context for Issue #155)
+	s.ctx, s.cancel = context.WithCancel(ctx)
+
+	// Initialize worker pool with inherited context
+	s.pool = NewWorkerPool(s.ctx, s.config.Workers)
+
 	// Start worker goroutines
 	for i := 0; i < s.config.Workers; i++ {
 		s.wg.Add(1)
-		go s.worker(ctx)
+		go s.worker(s.ctx)
 	}
 
 	// Close output when all workers done
@@ -131,7 +132,12 @@ func (s *S3UploaderStage) Start(ctx context.Context) error {
 
 // Stop stops the S3 uploader stage
 func (s *S3UploaderStage) Stop() error {
-	s.cancel()
+	if s.cancel != nil {
+		s.cancel()
+	}
+	if s.pool != nil {
+		s.pool.Stop()
+	}
 	s.wg.Wait()
 	return nil
 }

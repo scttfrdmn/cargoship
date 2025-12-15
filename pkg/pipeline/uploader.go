@@ -49,15 +49,12 @@ func NewUploaderStage(config *UploaderConfig, input <-chan *Job, output chan<- *
 		config.RetryDelay = time.Second
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+
 
 	return &UploaderStage{
 		config: config,
 		input:  input,
 		output: output,
-		pool:   NewWorkerPool(ctx, config.Workers),
-		ctx:    ctx,
-		cancel: cancel,
 		stats: StageStats{
 			Name: "uploader",
 		},
@@ -71,10 +68,16 @@ func (s *UploaderStage) Name() string {
 
 // Start starts the uploader stage
 func (s *UploaderStage) Start(ctx context.Context) error {
+	// Create child context from parent (inherits trace context for Issue #155)
+	s.ctx, s.cancel = context.WithCancel(ctx)
+
+	// Initialize worker pool with inherited context
+	s.pool = NewWorkerPool(s.ctx, s.config.Workers)
+
 	// Start worker goroutines
 	for i := 0; i < s.config.Workers; i++ {
 		s.wg.Add(1)
-		go s.worker(ctx)
+		go s.worker(s.ctx)
 	}
 
 	// Goroutine to close output when all workers done
@@ -88,8 +91,12 @@ func (s *UploaderStage) Start(ctx context.Context) error {
 
 // Stop stops the uploader stage
 func (s *UploaderStage) Stop() error {
-	s.cancel()
-	s.pool.Stop()
+	if s.cancel != nil {
+		s.cancel()
+	}
+	if s.pool != nil {
+		s.pool.Stop()
+	}
 	s.wg.Wait()
 	return nil
 }

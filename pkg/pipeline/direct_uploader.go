@@ -79,30 +79,19 @@ func NewDirectUploaderStage(config *DirectUploaderConfig, input <-chan *Job, out
 		config.RetryDelay = time.Second
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+
 
 	stage := &DirectUploaderStage{
 		config: config,
 		input:  input,
 		output: output,
-		ctx:    ctx,
-		cancel: cancel,
 		stats: StageStats{
 			Name: "direct_uploader",
 		},
 	}
 
-	// Create or use provided worker pool
-	if config.WorkerPool != nil {
-		stage.pool = config.WorkerPool
-	} else {
-		// Create adaptive worker pool with defaults
-		poolConfig := &AdaptiveWorkerPoolConfig{
-			MaxWorkers:     config.Workers,
-			EnableAdaptive: true,
-		}
-		stage.pool = NewAdaptiveWorkerPool(ctx, poolConfig)
-	}
+	// Store optional pool reference
+	stage.pool = config.WorkerPool
 
 	return stage, nil
 }
@@ -114,18 +103,34 @@ func (s *DirectUploaderStage) Name() string {
 
 // Start starts the direct uploader stage
 func (s *DirectUploaderStage) Start(ctx context.Context) error {
+	// Create child context from parent (inherits trace context for Issue #155)
+	s.ctx, s.cancel = context.WithCancel(ctx)
+
+	// Create adaptive worker pool if not provided
+	if s.pool == nil {
+		poolConfig := &AdaptiveWorkerPoolConfig{
+			MaxWorkers:     s.config.Workers,
+			EnableAdaptive: true,
+		}
+		s.pool = NewAdaptiveWorkerPool(s.ctx, poolConfig)
+	}
+
 	// Start main dispatcher goroutine
 	s.wg.Add(1)
-	go s.dispatcher(ctx)
+	go s.dispatcher(s.ctx)
 
 	return nil
 }
 
 // Stop stops the direct uploader stage
 func (s *DirectUploaderStage) Stop() error {
-	s.cancel()
+	if s.cancel != nil {
+		s.cancel()
+	}
 	s.wg.Wait()
-	s.pool.Stop()
+	if s.pool != nil {
+		s.pool.Stop()
+	}
 	return nil
 }
 

@@ -45,8 +45,6 @@ func NewScannerStage(config *ScannerConfig, output chan<- *Job, pipeline *Pipeli
 		return nil, fmt.Errorf("scanner config cannot be nil")
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	// Create chunking strategy - use provided config or fall back to defaults
 	chunkingConfig := config.ChunkingConfig
 	if chunkingConfig == nil {
@@ -67,7 +65,6 @@ func NewScannerStage(config *ScannerConfig, output chan<- *Job, pipeline *Pipeli
 	if config.UseCompressedAwareChunking {
 		chunker, err := chunking.NewCompressedAwareChunker()
 		if err != nil {
-			cancel()
 			return nil, fmt.Errorf("failed to create compressed-aware chunker: %w", err)
 		}
 		compressedChunker = chunker
@@ -76,9 +73,6 @@ func NewScannerStage(config *ScannerConfig, output chan<- *Job, pipeline *Pipeli
 	return &ScannerStage{
 		config:            config,
 		output:            output,
-		pool:              NewWorkerPool(ctx, config.Workers),
-		ctx:               ctx,
-		cancel:            cancel,
 		strategy:          strategy,
 		compressedChunker: compressedChunker,
 		stats: StageStats{
@@ -95,10 +89,16 @@ func (s *ScannerStage) Name() string {
 
 // Start starts the scanner stage
 func (s *ScannerStage) Start(ctx context.Context) error {
+	// Create child context from parent (inherits trace context for Issue #155)
+	s.ctx, s.cancel = context.WithCancel(ctx)
+
+	// Initialize worker pool with inherited context
+	s.pool = NewWorkerPool(s.ctx, s.config.Workers)
+
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		if err := s.run(ctx); err != nil {
+		if err := s.run(s.ctx); err != nil {
 			// Store error for pipeline to check
 			s.mu.Lock()
 			s.runError = err
@@ -110,8 +110,12 @@ func (s *ScannerStage) Start(ctx context.Context) error {
 
 // Stop stops the scanner stage
 func (s *ScannerStage) Stop() error {
-	s.cancel()
-	s.pool.Stop()
+	if s.cancel != nil {
+		s.cancel()
+	}
+	if s.pool != nil {
+		s.pool.Stop()
+	}
 	s.wg.Wait()
 	return nil
 }

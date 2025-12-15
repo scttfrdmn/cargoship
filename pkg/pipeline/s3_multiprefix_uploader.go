@@ -106,8 +106,6 @@ func NewS3MultiPrefixUploaderStage(
 		u.BufferProvider = manager.NewBufferedReadSeekerWriteToPool(25 * 1024 * 1024)
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	// Initialize per-prefix stats
 	perPrefixStats := make(map[string]*PrefixStats)
 	for prefix := range inputs {
@@ -120,8 +118,6 @@ func NewS3MultiPrefixUploaderStage(
 		config:           config,
 		inputs:           inputs,
 		output:           output,
-		ctx:              ctx,
-		cancel:           cancel,
 		workersPerPrefix: workersPerPrefix,
 		uploader:         uploader,
 		perPrefixStats:   perPrefixStats,
@@ -146,12 +142,15 @@ func (s *S3MultiPrefixUploaderStage) Name() string {
 
 // Start starts the multi-prefix S3 uploader stage
 func (s *S3MultiPrefixUploaderStage) Start(ctx context.Context) error {
+	// Create child context from parent (inherits trace context for Issue #155)
+	s.ctx, s.cancel = context.WithCancel(ctx)
+
 	// Start worker pools for each prefix
 	for prefix, inputChan := range s.inputs {
 		// Launch workers for this prefix
 		for i := 0; i < s.workersPerPrefix; i++ {
 			s.wg.Add(1)
-			go s.prefixWorker(ctx, prefix, inputChan)
+			go s.prefixWorker(s.ctx, prefix, inputChan)
 		}
 	}
 
@@ -166,7 +165,9 @@ func (s *S3MultiPrefixUploaderStage) Start(ctx context.Context) error {
 
 // Stop stops the multi-prefix S3 uploader stage
 func (s *S3MultiPrefixUploaderStage) Stop() error {
-	s.cancel()
+	if s.cancel != nil {
+		s.cancel()
+	}
 	s.wg.Wait()
 	return nil
 }

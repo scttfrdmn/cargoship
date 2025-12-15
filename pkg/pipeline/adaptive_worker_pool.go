@@ -37,6 +37,7 @@ type AdaptiveWorkerPool struct {
 	// Adaptive scaling control
 	enableAdaptive bool          // Enable adaptive scaling
 	stopMonitor    chan struct{} // Signal to stop monitoring
+	stopOnce       sync.Once     // Ensure stopMonitor is closed only once
 	monitorWg      sync.WaitGroup
 }
 
@@ -178,7 +179,7 @@ func (p *AdaptiveWorkerPool) checkAndScale() {
 		// Stop scaling after 2 consecutive plateaus (match mc behavior)
 		if p.plateauRetries > 2 {
 			// Throughput plateaued, stop adaptive scaling
-			close(p.stopMonitor)
+			p.stopOnce.Do(func() { close(p.stopMonitor) })
 			return
 		}
 	} else {
@@ -191,7 +192,7 @@ func (p *AdaptiveWorkerPool) checkAndScale() {
 	currentWorkers := atomic.LoadInt32(&p.workers)
 	if int(currentWorkers) >= p.maxWorkers {
 		// Already at maximum, stop monitoring
-		close(p.stopMonitor)
+		p.stopOnce.Do(func() { close(p.stopMonitor) })
 		return
 	}
 
@@ -231,13 +232,8 @@ func (p *AdaptiveWorkerPool) Wait() {
 func (p *AdaptiveWorkerPool) Stop() {
 	p.cancel()
 
-	// Stop monitoring if still running
-	select {
-	case <-p.stopMonitor:
-		// Already stopped
-	default:
-		close(p.stopMonitor)
-	}
+	// Stop monitoring if still running (safe to call multiple times)
+	p.stopOnce.Do(func() { close(p.stopMonitor) })
 
 	p.monitorWg.Wait() // Wait for monitor to stop
 	p.wg.Wait()        // Wait for all workers to finish

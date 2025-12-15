@@ -125,13 +125,10 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 		return nil, fmt.Errorf("archiver config cannot be nil")
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	// Phase 5 Redux: Create encoder pool with same number of encoders as workers
 	// This eliminates expensive encoder creation during job processing
 	encoderPool, err := NewEncoderPool(config.Workers)
 	if err != nil {
-		cancel()
 		return nil, fmt.Errorf("failed to create encoder pool: %w", err)
 	}
 
@@ -145,9 +142,6 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 		config:              config,
 		input:               input,
 		output:              output,
-		pool:                NewWorkerPool(ctx, config.Workers),
-		ctx:                 ctx,
-		cancel:              cancel,
 		compressionDetector: NewCompressionDetector(),
 		encoderPool:         encoderPool,
 		padder:              padder,
@@ -170,12 +164,9 @@ func NewArchiverStageWithSharding(config *ArchiverConfig, input <-chan *Job, out
 		return nil, fmt.Errorf("shard count must be positive, got %d", shardCount)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	// Phase 5 Redux: Create encoder pool with same number of encoders as workers
 	encoderPool, err := NewEncoderPool(config.Workers)
 	if err != nil {
-		cancel()
 		return nil, fmt.Errorf("failed to create encoder pool: %w", err)
 	}
 
@@ -198,9 +189,6 @@ func NewArchiverStageWithSharding(config *ArchiverConfig, input <-chan *Job, out
 		outputs:             outputs,
 		shardCount:          shardCount,
 		shardDistribution:   shardDist,
-		pool:                NewWorkerPool(ctx, config.Workers),
-		ctx:                 ctx,
-		cancel:              cancel,
 		compressionDetector: NewCompressionDetector(),
 		encoderPool:         encoderPool,
 		padder:              padder,
@@ -237,10 +225,16 @@ func (s *ArchiverStage) selectOutput(job *Job) chan<- *Job {
 
 // Start starts the archiver stage
 func (s *ArchiverStage) Start(ctx context.Context) error {
+	// Create child context from parent (inherits trace context for Issue #155)
+	s.ctx, s.cancel = context.WithCancel(ctx)
+
+	// Initialize worker pool with inherited context
+	s.pool = NewWorkerPool(s.ctx, s.config.Workers)
+
 	// Start worker goroutines
 	for i := 0; i < s.config.Workers; i++ {
 		s.wg.Add(1)
-		go s.worker(ctx)
+		go s.worker(s.ctx)
 	}
 
 	// Goroutine to close output when all workers done
@@ -264,8 +258,12 @@ func (s *ArchiverStage) Start(ctx context.Context) error {
 
 // Stop stops the archiver stage
 func (s *ArchiverStage) Stop() error {
-	s.cancel()
-	s.pool.Stop()
+	if s.cancel != nil {
+		s.cancel()
+	}
+	if s.pool != nil {
+		s.pool.Stop()
+	}
 	s.wg.Wait()
 
 	// Phase 5: Clean up mmap cache

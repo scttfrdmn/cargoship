@@ -39,13 +39,9 @@ var shardIDRegex = regexp.MustCompile(`shard-(\d+)`)
 
 // NewPrefixRouter creates a new prefix router stage
 func NewPrefixRouter(input <-chan *Job, outputs map[string]chan<- *Job) *PrefixRouter {
-	ctx, cancel := context.WithCancel(context.Background())
-
 	return &PrefixRouter{
 		input:           input,
 		outputs:         outputs,
-		ctx:             ctx,
-		cancel:          cancel,
 		perPrefixCounts: make(map[string]int64),
 		stats: StageStats{
 			Name: "prefix_router",
@@ -60,16 +56,25 @@ func (r *PrefixRouter) Name() string {
 
 // Start starts the prefix router stage
 func (r *PrefixRouter) Start(ctx context.Context) error {
+	// Create child context from parent (inherits trace context for Issue #155)
+	r.ctx, r.cancel = context.WithCancel(ctx)
+
 	r.wg.Add(1)
-	go r.route(ctx)
+	go r.route(r.ctx)
 	return nil
 }
 
 // Stop stops the prefix router stage
 func (r *PrefixRouter) Stop() error {
-	r.cancel()
+	// Wait for route() to finish gracefully (happens when input channel closes)
+	// Don't cancel context - let router drain all buffered jobs first
 	r.wg.Wait()
 	// Output channels are closed by route() via deferred closeOutputChannels()
+
+	// Clean up context if still active
+	if r.cancel != nil {
+		r.cancel()
+	}
 	return nil
 }
 
@@ -86,42 +91,39 @@ func (r *PrefixRouter) route(ctx context.Context) {
 	defer r.closeOutputChannels()
 
 	for {
+		// Prioritize draining input channel over context cancellation
+		job, ok := <-r.input
+		if !ok {
+			// Input channel closed - finish gracefully
+			return
+		}
+
+		// Extract prefix from S3 key
+		prefix, err := r.extractPrefix(job.S3Key)
+		if err != nil {
+			// Routing error - try fallback to round-robin
+			atomic.AddInt64(&r.routingErrors, 1)
+			prefix = r.fallbackPrefix()
+		}
+
+		// Route to appropriate output channel
+		output, exists := r.outputs[prefix]
+		if !exists {
+			// Unknown prefix - use fallback
+			atomic.AddInt64(&r.routingErrors, 1)
+			prefix = r.fallbackPrefix()
+			output = r.outputs[prefix]
+		}
+
+		// Send to output channel (check context to avoid blocking forever)
 		select {
 		case <-ctx.Done():
 			return
-		case job, ok := <-r.input:
-			if !ok {
-				// Input channel closed
-				return
-			}
-
-			// Extract prefix from S3 key
-			prefix, err := r.extractPrefix(job.S3Key)
-			if err != nil {
-				// Routing error - try fallback to round-robin
-				atomic.AddInt64(&r.routingErrors, 1)
-				prefix = r.fallbackPrefix()
-			}
-
-			// Route to appropriate output channel
-			output, exists := r.outputs[prefix]
-			if !exists {
-				// Unknown prefix - use fallback
-				atomic.AddInt64(&r.routingErrors, 1)
-				prefix = r.fallbackPrefix()
-				output = r.outputs[prefix]
-			}
-
-			// Send to output channel (blocks if channel full - natural backpressure)
-			select {
-			case <-ctx.Done():
-				return
-			case output <- job:
-				atomic.AddInt64(&r.jobsRouted, 1)
-				r.mu.Lock()
-				r.perPrefixCounts[prefix]++
-				r.mu.Unlock()
-			}
+		case output <- job:
+			atomic.AddInt64(&r.jobsRouted, 1)
+			r.mu.Lock()
+			r.perPrefixCounts[prefix]++
+			r.mu.Unlock()
 		}
 	}
 }
