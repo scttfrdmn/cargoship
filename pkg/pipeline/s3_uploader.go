@@ -369,21 +369,27 @@ func (s *S3UploaderStage) uploadViaTransporter(ctx context.Context, s3Key string
 	// Determine storage class: use TierSelector if configured, otherwise use default
 	storageClass := awsconfig.StorageClass(s.config.StorageClass)
 	if s.config.TierSelector != nil && s.config.TierSelector.Enabled {
-		// Extract atime from first file in chunk for tier selection
+		// Find youngest (most recently accessed) file in chunk for tier selection
+		// Conservative approach: if ANY file is hot, keep entire chunk in hot tier
 		if len(job.Chunk.Files) > 0 {
-			firstFile := job.Chunk.Files[0]
+			var youngestAtime time.Time
+			var youngestMtime time.Time
 
-			// Parse atime from metadata (stored as RFC3339 string)
-			var atime time.Time
-			if atimeStr, ok := firstFile.Metadata["atime"]; ok {
-				parsedTime, err := time.Parse(time.RFC3339, atimeStr)
-				if err == nil {
-					atime = parsedTime
+			// Scan all files to find the most recently accessed
+			for _, file := range job.Chunk.Files {
+				// Parse atime from metadata (stored as RFC3339 string)
+				if atimeStr, ok := file.Metadata["atime"]; ok {
+					if parsedTime, err := time.Parse(time.RFC3339, atimeStr); err == nil {
+						if youngestAtime.IsZero() || parsedTime.After(youngestAtime) {
+							youngestAtime = parsedTime
+							youngestMtime = file.ModTime
+						}
+					}
 				}
 			}
 
-			// Use TierSelector to determine optimal storage class
-			selectedClass := s.config.TierSelector.SelectTier(atime, firstFile.ModTime)
+			// Use TierSelector with youngest file's access time
+			selectedClass := s.config.TierSelector.SelectTier(youngestAtime, youngestMtime)
 			storageClass = awsconfig.StorageClass(selectedClass)
 		}
 	}
@@ -416,21 +422,27 @@ func (s *S3UploaderStage) uploadViaManager(ctx context.Context, s3Key string, jo
 	// Determine storage class: use TierSelector if configured, otherwise use default
 	storageClass := s.config.StorageClass
 	if s.config.TierSelector != nil && s.config.TierSelector.Enabled {
-		// Extract atime from first file in chunk for tier selection
+		// Find youngest (most recently accessed) file in chunk for tier selection
+		// Conservative approach: if ANY file is hot, keep entire chunk in hot tier
 		if len(job.Chunk.Files) > 0 {
-			firstFile := job.Chunk.Files[0]
+			var youngestAtime time.Time
+			var youngestMtime time.Time
 
-			// Parse atime from metadata (stored as RFC3339 string)
-			var atime time.Time
-			if atimeStr, ok := firstFile.Metadata["atime"]; ok {
-				parsedTime, err := time.Parse(time.RFC3339, atimeStr)
-				if err == nil {
-					atime = parsedTime
+			// Scan all files to find the most recently accessed
+			for _, file := range job.Chunk.Files {
+				// Parse atime from metadata (stored as RFC3339 string)
+				if atimeStr, ok := file.Metadata["atime"]; ok {
+					if parsedTime, err := time.Parse(time.RFC3339, atimeStr); err == nil {
+						if youngestAtime.IsZero() || parsedTime.After(youngestAtime) {
+							youngestAtime = parsedTime
+							youngestMtime = file.ModTime
+						}
+					}
 				}
 			}
 
-			// Use TierSelector to determine optimal storage class
-			storageClass = s.config.TierSelector.SelectTier(atime, firstFile.ModTime)
+			// Use TierSelector with youngest file's access time
+			storageClass = s.config.TierSelector.SelectTier(youngestAtime, youngestMtime)
 		}
 	}
 
