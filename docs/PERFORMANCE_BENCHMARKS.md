@@ -303,9 +303,57 @@ Impact on upload performance:
 
 ---
 
-## Benchmark Reproducibility
+## Comprehensive Benchmark Suite (Issue #34)
 
-### Run Your Own Benchmark
+CargoShip includes a comprehensive competitive benchmark suite that tests 7 real-world scenarios across 5 leading S3 tools.
+
+### 7 Benchmark Scenarios
+
+The `scripts/competitive-benchmark.sh` script runs the following scenarios:
+
+1. **Small Files (10,000 files, 1KB-100KB)**
+   - Tests many-small-file performance (the scenario shown above)
+   - Demonstrates CargoShip's archiving advantage
+
+2. **Large Files (100 files, 100MB-1GB)**
+   - Tests large file upload performance
+   - Evaluates multipart upload efficiency
+
+3. **Mixed Workload (1,000 files, varied sizes)**
+   - 500 tiny files (1-10KB)
+   - 300 small files (100KB-1MB)
+   - 150 medium files (1MB-10MB)
+   - 50 large files (10MB-100MB)
+
+4. **Compression Benefit (10GB compressible text)**
+   - Highly compressible JSON logs
+   - Demonstrates CargoShip's compression advantage
+   - Other tools upload uncompressed
+
+5. **Deduplication Benefit (10GB with 50% duplicates)**
+   - Tests content-aware deduplication
+   - CargoShip eliminates duplicate chunks
+   - Other tools upload all data
+
+6. **Resume/Retry (1GB interrupted transfer)**
+   - Tests resume capability after interruption
+   - CargoShip supports manifest-based resume
+   - Other tools lack native resume support
+
+7. **Multi-Region Failover**
+   - Tests automatic failover to secondary region
+   - CargoShip supports weighted round-robin
+   - Other tools lack multi-region capabilities
+
+### Tools Compared
+
+- **aws-cli** - Official AWS CLI (v2)
+- **s5cmd** - High-performance parallel S3 tool
+- **rclone** - Universal cloud storage sync tool
+- **mc** - MinIO client for S3-compatible storage
+- **cargoship** - This project (with advanced features)
+
+### Running the Benchmark Suite
 
 ```bash
 # Clone repository
@@ -315,16 +363,98 @@ cd cargoship
 # Build CargoShip
 go build -o cargoship ./cmd/cargoship
 
-# Run competitive benchmark
+# Run comprehensive 7-scenario benchmark (takes several hours)
 bash scripts/competitive-benchmark.sh
 ```
 
 **Prerequisites**:
-- s5cmd, mc, aws-cli installed
-- AWS credentials configured
-- Test data or script will generate it
+- aws-cli, s5cmd, rclone, mc installed
+- AWS credentials configured (AWS_PROFILE environment variable)
+- Sufficient disk space for test data (~60GB)
+- Test data auto-generated if not present
+
+**Configuration**:
+
+The benchmark script supports both command-line arguments and environment variables:
+
+```bash
+# Method 1: Command-line arguments (recommended)
+./scripts/competitive-benchmark.sh \
+  --profile my-aws-profile \
+  --region us-east-1 \
+  --test-data-dir /Volumes/External/benchmark-data \
+  --results-dir /path/to/results
+
+# Method 2: Environment variables
+export AWS_PROFILE=my-aws-profile
+export AWS_REGION=us-east-1
+export TEST_DATA_DIR=/Volumes/External/benchmark-data
+export RESULTS_DIR=/path/to/results
+./scripts/competitive-benchmark.sh
+
+# Method 3: Inline environment variables
+AWS_PROFILE=my-profile AWS_REGION=us-west-2 ./scripts/competitive-benchmark.sh
+
+# Show help and usage
+./scripts/competitive-benchmark.sh --help
+```
+
+**Configuration Options**:
+- `--profile` / `AWS_PROFILE` - AWS profile to use (default: `aws`)
+- `--region` / `AWS_REGION` - Primary AWS region (default: `us-west-2`)
+- `--test-data-dir` / `TEST_DATA_DIR` - Test data directory (default: `/tmp/benchmark-data`)
+- `--results-dir` / `RESULTS_DIR` - Results directory (default: `/tmp/competitive-benchmark-results-<timestamp>`)
+- `AWS_REGION_SECONDARY` - Secondary region for failover tests (default: `us-east-1`)
+
+**Disk Space Requirements**:
+- **Scenario 1** (Small files): ~500MB
+- **Scenario 2** (Large files): ~50GB
+- **Scenario 3** (Mixed): ~2GB
+- **Scenario 4** (Compression): ~10GB
+- **Scenario 5** (Deduplication): ~10GB
+- **Scenario 6** (Resume): ~1GB
+- **Scenario 7** (Multi-region): ~100MB
+- **Total**: ~74GB recommended
+
+💡 **Tip**: Use `--test-data-dir` to specify an external drive for test data to avoid filling up system disk.
+
+### Benchmark Output
 
 Results saved to: `/tmp/competitive-benchmark-results-<timestamp>/`
+
+- `results.csv` - Raw timing data and metrics
+- `report.md` - Comprehensive comparison report
+- `*.log` - Tool execution logs
+- `compression.txt` - Compression analysis (Scenario 4)
+- `dedup.txt` - Deduplication analysis (Scenario 5)
+
+### Expected Runtime
+
+- **Scenario 1** (Small files): ~5 minutes
+- **Scenario 2** (Large files): ~2-4 hours (data generation + upload)
+- **Scenario 3** (Mixed): ~15 minutes
+- **Scenario 4** (Compression): ~30 minutes
+- **Scenario 5** (Deduplication): ~1-2 hours
+- **Scenario 6** (Resume): ~15 minutes
+- **Scenario 7** (Multi-region): ~10 minutes
+
+**Total**: ~4-8 hours depending on network speed and hardware
+
+### Quick Test (Scenario 1 Only)
+
+To test just the small files scenario (shown in results above):
+
+```bash
+# Edit script to run only Scenario 1
+# Comment out Scenarios 2-7 in scripts/competitive-benchmark.sh
+
+# Run quick test (~5 minutes)
+bash scripts/competitive-benchmark.sh
+```
+
+## Benchmark Reproducibility
+
+See the [Comprehensive Benchmark Suite](#comprehensive-benchmark-suite-issue-34) section above for full instructions.
 
 ---
 
