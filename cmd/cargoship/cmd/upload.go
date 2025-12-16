@@ -124,9 +124,9 @@ Examples:
 				return fmt.Errorf("compression-level must be between 1 and 22 (zstd range)")
 			}
 
-			// Validate shard count
-			if shardCount < 1 || shardCount > 100 {
-				return fmt.Errorf("shard-count must be between 1 and 100")
+			// Validate shard count (0 = auto, 4-32 = manual)
+			if shardCount < 0 || shardCount > 32 {
+				return fmt.Errorf("shard-count must be between 0 (auto) and 32")
 			}
 
 			// Validate encryption flags (Issue #163)
@@ -159,6 +159,36 @@ Examples:
 			absPath, err := filepath.Abs(sourceDir)
 			if err != nil {
 				return fmt.Errorf("failed to resolve path %s: %w", sourceDir, err)
+			}
+
+			// Issue #106: Auto-detect optimal shard count if not specified
+			if shardCount == 0 {
+				if !quiet {
+					fmt.Println("🔍 Analyzing workload for optimal shard count...")
+				}
+
+				calculator := pipeline.NewAdaptiveShardCalculator()
+				result, err := calculator.CalculateOptimalShardCount(ctx, absPath)
+				if err != nil {
+					// Non-fatal: Fall back to default
+					if !quiet {
+						fmt.Printf("⚠️  Auto-detection failed (%v), using default: 8 shards\n\n", err)
+					}
+					shardCount = 8
+				} else {
+					shardCount = result.ShardCount
+
+					if !quiet {
+						fmt.Printf("\n📊 Auto-selected shard count: %d\n\n", shardCount)
+						fmt.Println(result.Rationale)
+
+						// Print warnings if any
+						for _, warning := range result.Warnings {
+							fmt.Printf("⚠️  %s\n", warning)
+						}
+						fmt.Println()
+					}
+				}
 			}
 
 			// Issue #119: Auto-detect interrupted uploads
@@ -373,7 +403,12 @@ Examples:
 				fmt.Printf("🚢 CargoHold Upload Configuration:\n")
 				fmt.Printf("   Source:            %s\n", absPath)
 				fmt.Printf("   Destination:       s3://%s/%s\n", bucket, prefix)
-				fmt.Printf("   Shard Count:       %d\n", shardCount)
+				// Show whether shard count was auto-selected or manual
+				if cmd.Flags().Changed("shard-count") {
+					fmt.Printf("   Shard Count:       %d (manual)\n", shardCount)
+				} else {
+					fmt.Printf("   Shard Count:       %d (auto-selected)\n", shardCount)
+				}
 				fmt.Printf("   Shard Strategy:    %s\n", shardStrategy)
 				fmt.Printf("   Compression Level: %d (zstd)\n", compressionLevel)
 				fmt.Printf("   Storage Class:     %s\n\n", storageClass)
@@ -492,7 +527,7 @@ Examples:
 	cmd.Flags().Int("tier-cold-days", 90, "Days since access to consider 'cold' (GLACIER)")
 	cmd.Flags().Int("tier-archive-days", 180, "Days since access to consider 'archive' (DEEP_ARCHIVE)")
 
-	cmd.Flags().IntVar(&shardCount, "shard-count", 10, "Number of shards for parallel uploads (1-100)")
+	cmd.Flags().IntVar(&shardCount, "shard-count", 0, "Number of shards for parallel uploads (0=auto, 4-32=manual, default: 0)")
 	cmd.Flags().StringVar(&shardStrategy, "shard-strategy", "hash", "Shard distribution strategy (hash, size, type, directory)")
 	cmd.Flags().IntVar(&compressionLevel, "compression-level", 3, "Zstd compression level (1-22, recommended 1-19)")
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "Disable progress display")

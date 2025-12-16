@@ -35,7 +35,7 @@ func TestNewUploadCmd_Structure(t *testing.T) {
 	// Verify default values
 	assert.Equal(t, "us-west-2", cmd.Flags().Lookup("region").DefValue)
 	assert.Equal(t, "STANDARD", cmd.Flags().Lookup("storage-class").DefValue)
-	assert.Equal(t, "10", cmd.Flags().Lookup("shard-count").DefValue)
+	assert.Equal(t, "0", cmd.Flags().Lookup("shard-count").DefValue) // Issue #106: Auto-select by default
 	assert.Equal(t, "hash", cmd.Flags().Lookup("shard-strategy").DefValue)
 	assert.Equal(t, "3", cmd.Flags().Lookup("compression-level").DefValue)
 	assert.Equal(t, "false", cmd.Flags().Lookup("quiet").DefValue)
@@ -202,15 +202,18 @@ func TestUploadCmd_CompressionLevelRange(t *testing.T) {
 		"Flag usage should mention zstd or Zstd")
 }
 
-// TestUploadCmd_ShardCountRange tests shard count range (Issue #95)
+// TestUploadCmd_ShardCountRange tests shard count range (Issue #95, updated for Issue #106)
 func TestUploadCmd_ShardCountRange(t *testing.T) {
-	// Verify default is within valid range
+	// Verify default is 0 (auto-select)
 	cmd := NewUploadCmd()
 	defaultCount := cmd.Flags().Lookup("shard-count").DefValue
-	assert.Equal(t, "10", defaultCount, "Default shard count should be 10")
+	assert.Equal(t, "0", defaultCount, "Default shard count should be 0 (auto)")
 
-	// Verify help text mentions valid range
-	assert.Contains(t, cmd.Flags().Lookup("shard-count").Usage, "1-100",
+	// Verify help text mentions valid range and auto mode
+	usage := cmd.Flags().Lookup("shard-count").Usage
+	assert.Contains(t, usage, "0=auto",
+		"Flag usage should document auto mode")
+	assert.Contains(t, usage, "4-32",
 		"Flag usage should document valid range")
 }
 

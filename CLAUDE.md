@@ -98,6 +98,7 @@ Streaming architecture: Scanner → Chunker → Archiver → S3 Uploader
 - Zero local disk usage (io.Pipe streaming)
 - Bounded memory: O(chunk_size × workers)
 - Multi-prefix S3 sharding (8× request rate capacity)
+- Adaptive shard count: Automatically optimizes S3 prefix count based on workload size, file count, and system resources (Issue #106)
 
 ### Budget & Cost Management (pkg/aws/cost/)
 - Dual budget controls: Cost budgets (USD) + volume quotas (GB)
@@ -115,8 +116,32 @@ Advanced load balancing, health checking, and automatic failover for S3 uploads.
 
 ### Core Operations
 ```bash
-cargoship create upload <path> --bucket <name> --region <region>
+# Upload with automatic shard count (default behavior)
+cargoship upload <path> s3://<bucket>/<prefix>
+
+# Upload with manual shard count (override auto-detection)
+cargoship upload <path> s3://<bucket>/<prefix> --shard-count 16
+
+# Estimate costs
 cargoship estimate <path> --storage-class GLACIER_IR
+```
+
+### Shard Count Optimization (v0.7.0, Issue #106)
+Shard count is now automatically optimized by default based on:
+- File count (1 shard per 10k files)
+- Total compressed size (1 shard per 10 GB)
+- Available CPU cores (1 shard per 2 cores)
+- Available memory constraints
+- Load balancing (minimum 6 chunks per shard)
+
+**Range**: 4-32 shards (enforces minimum parallelism, caps maximum overhead)
+
+```bash
+# Auto mode (default, shard-count=0)
+cargoship upload ./mydata s3://mybucket/backup
+
+# Manual override
+cargoship upload ./mydata s3://mybucket/backup --shard-count 20
 ```
 
 ### Budget Management (v0.6.0)
