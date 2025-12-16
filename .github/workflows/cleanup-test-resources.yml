@@ -1,0 +1,106 @@
+name: Cleanup Test Resources
+
+on:
+  schedule:
+    - cron: '0 1 * * *'  # 1 AM UTC daily
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (show what would be deleted without deleting)'
+        required: false
+        type: boolean
+        default: false
+      max_age_hours:
+        description: 'Maximum age in hours for resources to keep'
+        required: false
+        type: number
+        default: 24
+
+env:
+  AWS_REGION: us-west-2
+
+jobs:
+  cleanup:
+    name: Clean up old test resources
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Only run if AWS credentials are configured
+    if: vars.AWS_ROLE_ARN != '' || secrets.AWS_ACCESS_KEY_ID != ''
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        if: vars.AWS_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS Credentials (Access Keys)
+        if: vars.AWS_ROLE_ARN == '' && secrets.AWS_ACCESS_KEY_ID != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Make cleanup script executable
+        run: chmod +x ./scripts/ci/cleanup-test-resources.sh
+
+      - name: Run Cleanup Script
+        id: cleanup
+        env:
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          MAX_AGE_HOURS: ${{ inputs.max_age_hours || '24' }}
+        run: |
+          echo "Running cleanup script..."
+          echo "Dry run: ${DRY_RUN}"
+          echo "Max age: ${MAX_AGE_HOURS} hours"
+
+          ./scripts/ci/cleanup-test-resources.sh \
+            ${DRY_RUN:+--dry-run} \
+            --max-age-hours "${MAX_AGE_HOURS}"
+
+      - name: Generate Summary
+        if: always()
+        run: |
+          echo "## 🧹 Test Resource Cleanup" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ inputs.dry_run }}" == "true" ]; then
+            echo "**Mode**: Dry run (no resources deleted)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Mode**: Live cleanup" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "**Max age**: ${{ inputs.max_age_hours || '24' }} hours" >> $GITHUB_STEP_SUMMARY
+          echo "**Region**: ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Cleanup completed successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Cleanup encountered errors" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Notify on Failure
+        if: failure() && vars.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook-url: ${{ vars.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "⚠️ Test resource cleanup failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "Test resource cleanup workflow failed\n*Workflow:* ${{ github.workflow }}\n*Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View>"
+                  }
+                }
+              ]
+            }

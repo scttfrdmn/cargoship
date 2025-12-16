@@ -1,0 +1,185 @@
+name: Integration Tests (LocalStack)
+
+on:
+  push:
+    branches: [main, 'release/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.23'
+
+jobs:
+  integration-localstack:
+    name: Integration Tests with LocalStack
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      localstack:
+        image: localstack/localstack:latest
+        ports:
+          - 4566:4566
+        env:
+          SERVICES: s3,cloudwatch,logs
+          DEBUG: 1
+          AWS_DEFAULT_REGION: us-east-1
+        options: >-
+          --health-cmd "curl -f http://localhost:4566/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 20s
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Wait for LocalStack readiness
+        run: |
+          echo "Waiting for LocalStack to be fully ready..."
+          timeout 60 bash -c '
+            until curl -sf http://localhost:4566/_localstack/health | grep -q "\"s3\": \"running\""; do
+              echo "Waiting for LocalStack S3 service..."
+              sleep 2
+            done
+          '
+          echo "LocalStack is ready!"
+
+      - name: Verify LocalStack S3
+        run: |
+          curl -s http://localhost:4566/_localstack/health | jq .
+
+      - name: Run Integration Tests
+        env:
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ENDPOINT_URL: http://localhost:4566
+        run: |
+          echo "Running integration tests against LocalStack..."
+          go test -tags=integration \
+            -v \
+            -timeout=20m \
+            -json \
+            ./pkg/aws/s3 \
+            ./pkg/pipeline \
+            ./pkg/manifest \
+            ./pkg/s3optimization \
+            ./cmd/cargoship/cmd \
+            2>&1 | tee test-output.json
+
+          echo "Integration tests completed"
+
+      - name: Parse Test Results
+        if: always()
+        id: test_results
+        run: |
+          # Count test results from JSON output
+          if [ -f test-output.json ]; then
+            PASSED=$(jq -r 'select(.Action=="pass" and .Test != null) | .Test' test-output.json | sort -u | wc -l)
+            FAILED=$(jq -r 'select(.Action=="fail" and .Test != null) | .Test' test-output.json | sort -u | wc -l)
+            echo "passed=${PASSED}" >> $GITHUB_OUTPUT
+            echo "failed=${FAILED}" >> $GITHUB_OUTPUT
+          else
+            echo "passed=0" >> $GITHUB_OUTPUT
+            echo "failed=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload Test Artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-artifacts-localstack
+          path: |
+            test-output.json
+            /tmp/cargoship-*
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Generate Test Summary
+        if: always()
+        run: |
+          echo "## 🧪 Integration Test Results (LocalStack)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ **All integration tests passed**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Some integration tests failed**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Statistics" >> $GITHUB_STEP_SUMMARY
+          echo "- **Passed**: ${{ steps.test_results.outputs.passed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Failed**: ${{ steps.test_results.outputs.failed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Duration**: ${{ steps.run_tests.outputs.duration || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ job.status }}" != "success" ]; then
+            echo "### Troubleshooting" >> $GITHUB_STEP_SUMMARY
+            echo "- Check the [test artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for detailed logs" >> $GITHUB_STEP_SUMMARY
+            echo "- View LocalStack health status in the logs above" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const passed = '${{ steps.test_results.outputs.passed }}';
+            const failed = '${{ steps.test_results.outputs.failed }}';
+            const status = '${{ job.status }}';
+            const runUrl = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}';
+
+            const statusIcon = status === 'success' ? '✅' : '❌';
+            const statusText = status === 'success' ? 'All tests passed' : 'Some tests failed';
+
+            const body = `## ${statusIcon} Integration Tests (LocalStack)
+
+            **Status**: ${statusText}
+
+            ### Results
+            - **Passed**: ${passed}
+            - **Failed**: ${failed}
+
+            [View detailed results →](${runUrl})`;
+
+            // Find existing comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+
+            const botComment = comments.data.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('Integration Tests (LocalStack)')
+            );
+
+            // Update or create comment
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
