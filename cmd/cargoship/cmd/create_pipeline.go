@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
@@ -191,11 +192,41 @@ func createPipelineRunE(cmd *cobra.Command, args []string) error {
 		sourceDirs = append(sourceDirs, absPath)
 	}
 
+	// Apply adaptive worker scaling if --workers not explicitly set
+	scannerWorkers := workers
+	archiverWorkers := workers
+	uploaderWorkers := workers
+
+	if !cmd.Flags().Changed("workers") {
+		// --workers flag NOT provided, use adaptive scaling
+		fmt.Println("🔍 Analyzing workload for optimal worker configuration...")
+
+		fileCount, totalSize, err := pipeline.EstimateWorkload(cmd.Context(), sourceDirs[0])
+		if err != nil {
+			// Non-fatal: fall back to defaults if estimation fails
+			fmt.Printf("Warning: Workload estimation failed, using default workers: %v\n", err)
+		} else {
+			optimal := pipeline.CalculateOptimalWorkers(fileCount, totalSize)
+			scannerWorkers = optimal.Scanner
+			archiverWorkers = optimal.Archiver
+			uploaderWorkers = optimal.Uploader
+
+			fmt.Printf("📊 Workload: %s files, %s total\n",
+				humanize.Comma(fileCount),
+				humanize.Bytes(uint64(totalSize)))
+			fmt.Printf("⚙️  Optimal workers: Scanner=%d, Archiver=%d, Uploader=%d\n",
+				scannerWorkers, archiverWorkers, uploaderWorkers)
+		}
+	} else {
+		// --workers flag WAS provided, respect user's choice
+		fmt.Printf("⚙️  Using explicit worker configuration: %d\n", workers)
+	}
+
 	// Create pipeline config
 	pipelineConfig := &pipeline.PipelineConfig{
-		ScannerWorkers:  workers,
-		ArchiverWorkers: workers,
-		UploaderWorkers: workers,
+		ScannerWorkers:  scannerWorkers,
+		ArchiverWorkers: archiverWorkers,
+		UploaderWorkers: uploaderWorkers,
 		S3Bucket:        bucket,
 		S3Prefix:        prefix,
 		S3Region:        region,

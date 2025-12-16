@@ -58,7 +58,9 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 		return nil, fmt.Errorf("pipeline config cannot be nil")
 	}
 
-	// Apply defaults
+	// Apply defaults if not specified
+	// Note: CLI now uses adaptive scaling to set these values explicitly
+	// These defaults only apply when using the library directly
 	if config.ScannerWorkers == 0 {
 		config.ScannerWorkers = 4
 	}
@@ -421,7 +423,7 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				uploaderInputs,
 				p.resultChan,
 				p.config.WorkersPerPrefix,
-				p, // Pass pipeline reference for manifest tracking
+				p,   // Pass pipeline reference for manifest tracking
 				nil, // Use default logger
 			)
 			if err != nil {
@@ -484,7 +486,7 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				uploaderInputs,
 				p.resultChan,
 				p.config.WorkersPerPrefix,
-				p, // Pass pipeline reference for manifest tracking
+				p,   // Pass pipeline reference for manifest tracking
 				nil, // Use default logger
 			)
 			if err != nil {
