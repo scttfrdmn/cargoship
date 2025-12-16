@@ -291,6 +291,26 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 				return nil
 			}
 
+			// Extract extended file times (atime, ctime) if available
+			// Non-fatal: if extraction fails, continue with zero values
+			atime, mtime, ctime, err := GetFileTimes(info)
+			if err != nil {
+				atime = time.Time{} // Zero value
+				mtime = info.ModTime()
+				ctime = time.Time{}
+			}
+
+			// Initialize metadata map
+			metadata := make(map[string]string)
+
+			// Store extended times in metadata (if available)
+			if !atime.IsZero() {
+				metadata["atime"] = atime.Format(time.RFC3339)
+			}
+			if !ctime.IsZero() {
+				metadata["ctime"] = ctime.Format(time.RFC3339)
+			}
+
 			// Stream file to channel (no slice accumulation!)
 			select {
 			case <-ctx.Done():
@@ -298,8 +318,9 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 			case fileChan <- chunking.File{
 				Path:      path,
 				Size:      info.Size(),
-				ModTime:   info.ModTime(),
+				ModTime:   mtime,
 				Directory: filepath.Dir(path),
+				Metadata:  metadata,
 			}:
 			}
 

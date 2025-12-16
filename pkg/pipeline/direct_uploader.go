@@ -79,8 +79,6 @@ func NewDirectUploaderStage(config *DirectUploaderConfig, input <-chan *Job, out
 		config.RetryDelay = time.Second
 	}
 
-
-
 	stage := &DirectUploaderStage{
 		config: config,
 		input:  input,

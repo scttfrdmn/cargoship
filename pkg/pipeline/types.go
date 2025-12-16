@@ -130,11 +130,12 @@ type PipelineConfig struct {
 	S3Region string
 
 	// Real S3 uploader configuration (optional)
-	UseRealS3      bool        // If true, use real AWS S3 uploader instead of simulated
-	S3Client       interface{} // *s3.Client for real uploads (type: *github.com/aws/aws-sdk-go-v2/service/s3.Client)
-	S3PartSize     int64       // S3 multipart part size (default: 64MB)
-	S3StorageClass string      // S3 storage class (STANDARD, INTELLIGENT_TIERING, etc.)
-	S3SSEKMSKeyId  string      // Optional KMS key ID for encryption
+	UseRealS3      bool                 // If true, use real AWS S3 uploader instead of simulated
+	S3Client       interface{}          // *s3.Client for real uploads (type: *github.com/aws/aws-sdk-go-v2/service/s3.Client)
+	S3PartSize     int64                // S3 multipart part size (default: 64MB)
+	S3StorageClass string               // S3 storage class (STANDARD, INTELLIGENT_TIERING, etc.)
+	TierSelector   *StorageTierSelector // Issue #32: Automatic storage tier selection (nil = disabled, uses S3StorageClass)
+	S3SSEKMSKeyId  string               // Optional KMS key ID for encryption
 
 	// Encryption configuration (Issue #163)
 	KMSKeyID        string      // KMS key ID or ARN for data chunk encryption

@@ -399,12 +399,14 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 
 			// Create S3MultiPrefixUploader (same as Phase 3.1)
 			s3Config := &S3UploaderConfig{
-				PartSize:   p.config.S3PartSize,
-				MaxRetries: 3,
-				RetryDelay: time.Second,
-				S3Client:   p.config.S3Client.(*s3.Client),
-				Bucket:     p.config.S3Bucket,
-				Prefix:     p.config.S3Prefix,
+				PartSize:     p.config.S3PartSize,
+				MaxRetries:   3,
+				RetryDelay:   time.Second,
+				S3Client:     p.config.S3Client.(*s3.Client),
+				Bucket:       p.config.S3Bucket,
+				Prefix:       p.config.S3Prefix,
+				StorageClass: types.StorageClass(p.config.S3StorageClass),
+				TierSelector: p.config.TierSelector,
 			}
 
 			if p.config.S3PartSize == 0 {
@@ -462,12 +464,14 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 
 			// Create S3MultiPrefixUploader with per-prefix worker pools
 			s3Config := &S3UploaderConfig{
-				PartSize:   p.config.S3PartSize,
-				MaxRetries: 3,
-				RetryDelay: time.Second,
-				S3Client:   p.config.S3Client.(*s3.Client),
-				Bucket:     p.config.S3Bucket,
-				Prefix:     p.config.S3Prefix,
+				PartSize:     p.config.S3PartSize,
+				MaxRetries:   3,
+				RetryDelay:   time.Second,
+				S3Client:     p.config.S3Client.(*s3.Client),
+				Bucket:       p.config.S3Bucket,
+				Prefix:       p.config.S3Prefix,
+				StorageClass: types.StorageClass(p.config.S3StorageClass),
+				TierSelector: p.config.TierSelector,
 			}
 
 			if p.config.S3PartSize == 0 {
@@ -502,13 +506,15 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 			}
 
 			s3Config := &S3UploaderConfig{
-				Workers:    p.config.UploaderWorkers,
-				PartSize:   p.config.S3PartSize,
-				MaxRetries: 3,
-				RetryDelay: time.Second,
-				S3Client:   p.config.S3Client.(*s3.Client),
-				Bucket:     p.config.S3Bucket,
-				Prefix:     p.config.S3Prefix,
+				Workers:      p.config.UploaderWorkers,
+				PartSize:     p.config.S3PartSize,
+				MaxRetries:   3,
+				RetryDelay:   time.Second,
+				S3Client:     p.config.S3Client.(*s3.Client),
+				Bucket:       p.config.S3Bucket,
+				Prefix:       p.config.S3Prefix,
+				StorageClass: types.StorageClass(p.config.S3StorageClass),
+				TierSelector: p.config.TierSelector,
 			}
 
 			if p.config.S3PartSize == 0 {

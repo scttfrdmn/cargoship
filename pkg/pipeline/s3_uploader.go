@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	awsconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
@@ -32,6 +33,9 @@ type S3UploaderConfig struct {
 	StorageClass         types.StorageClass
 	ServerSideEncryption types.ServerSideEncryption
 	SSEKMSKeyId          string // Optional KMS key ID
+
+	// Issue #32: Automatic storage tier selection based on file access time
+	TierSelector *StorageTierSelector // If nil, uses StorageClass for all uploads
 
 	// Advanced transporter (v0.6.2)
 	// If set, uses advanced S3 transporter instead of basic manager.Uploader
@@ -362,12 +366,35 @@ func (s *S3UploaderStage) uploadToS3(ctx context.Context, job *Job) error {
 
 // uploadViaTransporter uploads using advanced S3 transporter
 func (s *S3UploaderStage) uploadViaTransporter(ctx context.Context, s3Key string, job *Job, metadata map[string]string) error {
+	// Determine storage class: use TierSelector if configured, otherwise use default
+	storageClass := awsconfig.StorageClass(s.config.StorageClass)
+	if s.config.TierSelector != nil && s.config.TierSelector.Enabled {
+		// Extract atime from first file in chunk for tier selection
+		if len(job.Chunk.Files) > 0 {
+			firstFile := job.Chunk.Files[0]
+
+			// Parse atime from metadata (stored as RFC3339 string)
+			var atime time.Time
+			if atimeStr, ok := firstFile.Metadata["atime"]; ok {
+				parsedTime, err := time.Parse(time.RFC3339, atimeStr)
+				if err == nil {
+					atime = parsedTime
+				}
+			}
+
+			// Use TierSelector to determine optimal storage class
+			selectedClass := s.config.TierSelector.SelectTier(atime, firstFile.ModTime)
+			storageClass = awsconfig.StorageClass(selectedClass)
+		}
+	}
+
 	// Create transporter Archive struct
 	archive := s3transport.Archive{
-		Key:      s3Key,
-		Reader:   job.Archive, // io.ReadCloser
-		Size:     job.ArchiveSize,
-		Metadata: metadata,
+		Key:          s3Key,
+		Reader:       job.Archive, // io.ReadCloser
+		Size:         job.ArchiveSize,
+		StorageClass: storageClass,
+		Metadata:     metadata,
 	}
 
 	// Upload via transporter
@@ -386,12 +413,33 @@ func (s *S3UploaderStage) uploadViaTransporter(ctx context.Context, s3Key string
 
 // uploadViaManager uploads using basic AWS SDK manager.Uploader (backward compatibility)
 func (s *S3UploaderStage) uploadViaManager(ctx context.Context, s3Key string, job *Job, metadata map[string]string) error {
+	// Determine storage class: use TierSelector if configured, otherwise use default
+	storageClass := s.config.StorageClass
+	if s.config.TierSelector != nil && s.config.TierSelector.Enabled {
+		// Extract atime from first file in chunk for tier selection
+		if len(job.Chunk.Files) > 0 {
+			firstFile := job.Chunk.Files[0]
+
+			// Parse atime from metadata (stored as RFC3339 string)
+			var atime time.Time
+			if atimeStr, ok := firstFile.Metadata["atime"]; ok {
+				parsedTime, err := time.Parse(time.RFC3339, atimeStr)
+				if err == nil {
+					atime = parsedTime
+				}
+			}
+
+			// Use TierSelector to determine optimal storage class
+			storageClass = s.config.TierSelector.SelectTier(atime, firstFile.ModTime)
+		}
+	}
+
 	// Prepare upload input
 	input := &s3.PutObjectInput{
 		Bucket:       aws.String(s.config.Bucket),
 		Key:          aws.String(s3Key),
 		Body:         job.Archive,
-		StorageClass: s.config.StorageClass,
+		StorageClass: storageClass,
 		Metadata:     metadata,
 	}
 

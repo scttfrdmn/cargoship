@@ -49,8 +49,6 @@ func NewUploaderStage(config *UploaderConfig, input <-chan *Job, output chan<- *
 		config.RetryDelay = time.Second
 	}
 
-
-
 	return &UploaderStage{
 		config: config,
 		input:  input,

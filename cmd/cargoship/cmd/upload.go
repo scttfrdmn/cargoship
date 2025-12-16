@@ -10,6 +10,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
@@ -38,15 +39,15 @@ func NewUploadCmd() *cobra.Command {
 		disableStaging     bool
 
 		// Issue #155: Observability configuration
-		enableTracing      bool
-		tracingExporter    string
-		tracingEndpoint    string
-		tracingSampleRate  float64
-		prometheusAddr     string
+		enableTracing     bool
+		tracingExporter   string
+		tracingEndpoint   string
+		tracingSampleRate float64
+		prometheusAddr    string
 
 		// Issue #163: Encryption configuration
-		kmsKeyID         string
-		encryptManifest  bool
+		kmsKeyID        string
+		encryptManifest bool
 
 		// Issue #119: Resume configuration
 		forceRestart bool
@@ -131,6 +132,12 @@ Examples:
 			// Validate encryption flags (Issue #163)
 			if encryptManifest && kmsKeyID == "" {
 				return fmt.Errorf("--encrypt-manifest requires --kms-key-id to be set")
+			}
+
+			// Validate auto-tier flag (Issue #32)
+			autoTier, _ := cmd.Flags().GetBool("auto-tier")
+			if autoTier && cmd.Flags().Changed("storage-class") {
+				return fmt.Errorf("cannot use both --auto-tier and --storage-class (they are mutually exclusive)")
 			}
 
 			// Create S3 client with optimized HTTP transport
@@ -289,6 +296,30 @@ Examples:
 				kmsClient = kms.NewFromConfig(cfg)
 			}
 
+			// Issue #32: Build TierSelector if --auto-tier is enabled
+			var tierSelector *pipeline.StorageTierSelector
+			if autoTier {
+				hotDays, _ := cmd.Flags().GetInt("tier-hot-days")
+				coldDays, _ := cmd.Flags().GetInt("tier-cold-days")
+				archiveDays, _ := cmd.Flags().GetInt("tier-archive-days")
+
+				tierSelector = &pipeline.StorageTierSelector{
+					Enabled:         true,
+					DefaultClass:    types.StorageClassStandard,
+					HotDays:         hotDays,
+					ColdDays:        coldDays,
+					ArchiveDays:     archiveDays,
+					FallbackToMtime: true,
+				}
+
+				if !quiet {
+					fmt.Println("📊 Automatic storage tier selection enabled")
+					fmt.Printf("   Hot threshold:     %d days (STANDARD)\n", hotDays)
+					fmt.Printf("   Cold threshold:    %d days (GLACIER)\n", coldDays)
+					fmt.Printf("   Archive threshold: %d days (DEEP_ARCHIVE)\n\n", archiveDays)
+				}
+			}
+
 			// Create pipeline config with CargoHold settings
 			pipelineConfig := &pipeline.PipelineConfig{
 				ScannerWorkers:  4,
@@ -300,6 +331,7 @@ Examples:
 				UseRealS3:       true,
 				S3Client:        s3Client,
 				S3StorageClass:  storageClass,
+				TierSelector:    tierSelector,     // Issue #32: Automatic tier selection
 				S3PartSize:      64 * 1024 * 1024, // 64MB parts
 
 				// Issue #163: KMS encryption configuration
@@ -453,6 +485,13 @@ Examples:
 	cmd.Flags().StringVarP(&bucket, "bucket", "b", "", "S3 bucket name (or use s3:// URL in DESTINATION)")
 	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region")
 	cmd.Flags().StringVar(&storageClass, "storage-class", "STANDARD", "S3 storage class (STANDARD, INTELLIGENT_TIERING, GLACIER, etc.)")
+
+	// Issue #32: Automatic storage tier selection based on file access time
+	cmd.Flags().Bool("auto-tier", false, "Enable automatic storage tier selection based on file access time")
+	cmd.Flags().Int("tier-hot-days", 30, "Days since access to consider 'hot' (STANDARD)")
+	cmd.Flags().Int("tier-cold-days", 90, "Days since access to consider 'cold' (GLACIER)")
+	cmd.Flags().Int("tier-archive-days", 180, "Days since access to consider 'archive' (DEEP_ARCHIVE)")
+
 	cmd.Flags().IntVar(&shardCount, "shard-count", 10, "Number of shards for parallel uploads (1-100)")
 	cmd.Flags().StringVar(&shardStrategy, "shard-strategy", "hash", "Shard distribution strategy (hash, size, type, directory)")
 	cmd.Flags().IntVar(&compressionLevel, "compression-level", 3, "Zstd compression level (1-22, recommended 1-19)")

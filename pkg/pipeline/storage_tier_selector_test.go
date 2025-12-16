@@ -203,10 +203,10 @@ func TestStorageTierSelector_CustomThresholds(t *testing.T) {
 		daysOld      int
 		expectedTier types.StorageClass
 	}{
-		{10, types.StorageClassStandard},      // <14 days
-		{20, types.StorageClassStandardIa},    // 14-45 days
-		{50, types.StorageClassGlacier},       // 45-180 days
-		{200, types.StorageClassDeepArchive},  // >180 days
+		{10, types.StorageClassStandard},     // <14 days
+		{20, types.StorageClassStandardIa},   // 14-45 days
+		{50, types.StorageClassGlacier},      // 45-180 days
+		{200, types.StorageClassDeepArchive}, // >180 days
 	}
 
 	for _, tt := range tests {
