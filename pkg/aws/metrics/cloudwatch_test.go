@@ -550,12 +550,23 @@ func TestCloudWatchPublisher_StartFlushTimer_Error(t *testing.T) {
 		t.Errorf("PublishOperationalMetrics() error = %v", err)
 	}
 
-	// Wait for the timer to trigger and handle the error
-	time.Sleep(100 * time.Millisecond)
+	// Wait for the timer to trigger with retry logic
+	// Use 3x the flush interval to account for timing variability
+	maxWait := 3 * config.FlushInterval
+	deadline := time.Now().Add(maxWait)
+	flushed := false
+
+	for time.Now().Before(deadline) {
+		if len(mockClient.putMetricDataCalls) > 0 {
+			flushed = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond) // Check every 10ms
+	}
 
 	// Verify timer attempted to flush (error should be logged but not returned)
-	if len(mockClient.putMetricDataCalls) == 0 {
-		t.Error("Expected timer to attempt flush even with error")
+	if !flushed {
+		t.Errorf("Expected timer to attempt flush within %v, but no flush occurred", maxWait)
 	}
 
 	// Add more metrics after the timer flush to ensure buffer has content for final flush

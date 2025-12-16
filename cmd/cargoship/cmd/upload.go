@@ -538,7 +538,11 @@ func promptForResume(state *resume.UploadState) bool {
 	// Prompt user
 	fmt.Print("\nResume this upload? [Y/n]: ")
 	var response string
-	fmt.Scanln(&response)
+	_, err := fmt.Scanln(&response)
+	if err != nil {
+		// On input error, default to not resuming
+		return false
+	}
 
 	// Empty or "y" means yes
 	return response == "" || response == "y" || response == "Y"
