@@ -20,6 +20,7 @@ type Config struct {
 	Logging   LoggingConfig   `yaml:"logging" mapstructure:"logging"`
 	Security  SecurityConfig  `yaml:"security" mapstructure:"security"`
 	CargoHold CargoHoldConfig `yaml:"cargohold" mapstructure:"cargohold"`
+	Magika    MagikaConfig    `yaml:"magika" mapstructure:"magika"`
 }
 
 // AWSConfig contains AWS-specific configuration
@@ -95,6 +96,17 @@ type CargoHoldConfig struct {
 	CompressionLevel int    `yaml:"compression_level" mapstructure:"compression_level"`
 }
 
+// MagikaConfig contains Magika AI file type detection settings (Issue #30)
+type MagikaConfig struct {
+	Enabled       bool   `yaml:"enabled" mapstructure:"enabled"`
+	BinaryPath    string `yaml:"binary_path,omitempty" mapstructure:"binary_path"`
+	BatchSize     int    `yaml:"batch_size" mapstructure:"batch_size"`
+	Timeout       string `yaml:"timeout" mapstructure:"timeout"`
+	EnableCache   bool   `yaml:"enable_cache" mapstructure:"enable_cache"`
+	UseMimeType   bool   `yaml:"use_mime_type" mapstructure:"use_mime_type"`
+	IncludeScores bool   `yaml:"include_scores" mapstructure:"include_scores"`
+}
+
 // DefaultConfig returns a configuration with sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
@@ -148,6 +160,15 @@ func DefaultConfig() *Config {
 			ShardCount:       10,
 			ShardStrategy:    "hash",
 			CompressionLevel: 3,
+		},
+		Magika: MagikaConfig{
+			Enabled:       false, // Opt-in for backward compatibility
+			BinaryPath:    "",    // Auto-discover via PATH
+			BatchSize:     100,
+			Timeout:       "30s",
+			EnableCache:   true,
+			UseMimeType:   false, // Use content type label
+			IncludeScores: false,
 		},
 	}
 }
@@ -260,6 +281,15 @@ func (m *Manager) setDefaults() {
 	m.viper.SetDefault("cargohold.shard_count", defaults.CargoHold.ShardCount)
 	m.viper.SetDefault("cargohold.shard_strategy", defaults.CargoHold.ShardStrategy)
 	m.viper.SetDefault("cargohold.compression_level", defaults.CargoHold.CompressionLevel)
+
+	// Magika defaults (Issue #30)
+	m.viper.SetDefault("magika.enabled", defaults.Magika.Enabled)
+	m.viper.SetDefault("magika.binary_path", defaults.Magika.BinaryPath)
+	m.viper.SetDefault("magika.batch_size", defaults.Magika.BatchSize)
+	m.viper.SetDefault("magika.timeout", defaults.Magika.Timeout)
+	m.viper.SetDefault("magika.enable_cache", defaults.Magika.EnableCache)
+	m.viper.SetDefault("magika.use_mime_type", defaults.Magika.UseMimeType)
+	m.viper.SetDefault("magika.include_scores", defaults.Magika.IncludeScores)
 }
 
 // validateConfig validates the loaded configuration
@@ -323,6 +353,17 @@ func (m *Manager) validateConfig() error {
 
 	if m.config.CargoHold.CompressionLevel < 1 || m.config.CargoHold.CompressionLevel > 22 {
 		return fmt.Errorf("cargohold.compression_level must be between 1 and 22 (zstd range)")
+	}
+
+	// Validate Magika settings if enabled (Issue #30)
+	if m.config.Magika.Enabled {
+		if m.config.Magika.BatchSize < 1 || m.config.Magika.BatchSize > 10000 {
+			return fmt.Errorf("magika.batch_size must be between 1 and 10000")
+		}
+
+		if _, err := time.ParseDuration(m.config.Magika.Timeout); err != nil {
+			return fmt.Errorf("invalid magika.timeout: %w", err)
+		}
 	}
 
 	return nil

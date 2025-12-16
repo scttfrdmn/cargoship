@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
+	"github.com/scttfrdmn/cargoship/pkg/config"
 )
 
 // Job represents a unit of work flowing through the pipeline
@@ -278,6 +279,9 @@ type ScannerConfig struct {
 
 	// Phase 5: Chunking configuration (optional, will use defaults if nil)
 	ChunkingConfig *chunking.ChunkingConfig
+
+	// Issue #30: Magika configuration for AI file type detection (optional)
+	MagikaConfig *config.MagikaConfig
 }
 
 // ArchiverConfig configures the archiver stage

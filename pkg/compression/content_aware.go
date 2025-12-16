@@ -95,6 +95,15 @@ func (cac *ContentAwareCompressor) GetOptimalSettings(filename string) (Algorith
 	return cac.GetSettingsForContentType(contentType)
 }
 
+// GetOptimalSettingsWithMetadata returns optimal compression with Magika metadata support (Issue #30)
+func (cac *ContentAwareCompressor) GetOptimalSettingsWithMetadata(
+	filename string,
+	metadata map[string]string,
+) (Algorithm, Level) {
+	contentType := DetectContentTypeWithMetadata(filename, metadata)
+	return cac.GetSettingsForContentType(contentType)
+}
+
 // GetSettingsForContentType returns compression settings for a content type
 func (cac *ContentAwareCompressor) GetSettingsForContentType(contentType ContentType) (Algorithm, Level) {
 	switch contentType {
@@ -117,6 +126,21 @@ func (cac *ContentAwareCompressor) GetSettingsForContentType(contentType Content
 	default:
 		return cac.config.DefaultAlgorithm, cac.config.DefaultLevel
 	}
+}
+
+// DetectContentTypeWithMetadata detects content type using Magika metadata if available,
+// falling back to extension-based detection (Issue #30)
+func DetectContentTypeWithMetadata(filename string, metadata map[string]string) ContentType {
+	// Priority 1: Use Magika detection if available
+	if magikaType, ok := metadata["magika_type"]; ok && magikaType != "" {
+		contentType := mapMagikaInline(magikaType)
+		if contentType != ContentTypeUnknown {
+			return contentType
+		}
+	}
+
+	// Priority 2: Fall back to extension-based detection
+	return DetectContentType(filename)
 }
 
 // DetectContentType detects the content type from filename/extension
@@ -205,6 +229,48 @@ func isCodeExtension(ext string) bool {
 		".html": true, ".css": true, ".sql": true, ".sh": true,
 	}
 	return codeExtensions[ext]
+}
+
+// mapMagikaInline provides inline Magika mapping to avoid import cycle (Issue #30)
+// Full mapping lives in pkg/detection/magika_mapping.go
+func mapMagikaInline(magikaLabel string) ContentType {
+	// Common mappings (subset for inline use)
+	switch magikaLabel {
+	case "python", "javascript", "typescript", "go", "rust", "c", "cpp", "java",
+		"kotlin", "swift", "ruby", "php", "perl", "shell", "bash", "powershell",
+		"sql", "json", "xml", "yaml", "html", "css", "scss", "sass", "less",
+		"jsx", "tsx", "vue", "svelte":
+		return ContentTypeCode
+	case "txt", "markdown", "csv", "tsv", "log", "ini", "conf", "toml":
+		return ContentTypeText
+	case "jpeg", "jpg", "png", "gif", "webp", "svg", "bmp", "tiff", "ico",
+		"heic", "heif", "avif", "jxl", "raw", "cr2", "nef", "arw":
+		return ContentTypeImage
+	case "mp4", "avi", "mkv", "mov", "webm", "flv", "wmv", "m4v",
+		"mpg", "mpeg", "3gp", "ogv":
+		return ContentTypeVideo
+	case "mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "opus", "ape", "aiff":
+		return ContentTypeAudio
+	case "pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt",
+		"odt", "ods", "odp", "rtf", "epub":
+		return ContentTypeDocument
+	case "zip", "gzip", "tar", "7zip", "7z", "rar", "zstd", "bzip2",
+		"xz", "lz4", "lzma", "cab", "iso", "dmg", "woff", "woff2":
+		return ContentTypeArchive
+	case "elf", "pe", "macho", "java_class", "pyc", "wasm", "dll",
+		"so", "dylib", "exe", "app", "obj", "o", "a", "lib",
+		"firmware", "rom", "bootloader", "kernel_module", "sqlite", "db",
+		"mdb", "accdb", "dbf", "ldf", "mdf", "postgres", "mysql",
+		"ttf", "otf", "eot", "dwg", "blend", "fbx", "stl", "3ds",
+		"max", "skp", "revit", "keystore", "pkcs12", "gpg", "pgp",
+		"msg", "pst", "ost", "binary", "data":
+		return ContentTypeBinary
+	case "dxf", "obj_3d", "certificate", "private_key", "public_key",
+		"eml", "mbox":
+		return ContentTypeText // Text-based formats
+	default:
+		return ContentTypeUnknown
+	}
 }
 
 // EstimateCompressionBenefit estimates compression benefit for a content type

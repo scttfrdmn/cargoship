@@ -443,3 +443,319 @@ func TestContentType_String(t *testing.T) {
 		})
 	}
 }
+
+// TestDetectContentTypeWithMetadata tests Magika metadata integration (Issue #30)
+func TestDetectContentTypeWithMetadata(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		metadata map[string]string
+		want     ContentType
+	}{
+		{
+			name:     "Magika type takes priority over extension",
+			filename: "file.txt",
+			metadata: map[string]string{
+				"magika_type": "python",
+			},
+			want: ContentTypeCode,
+		},
+		{
+			name:     "Magika detects JSON",
+			filename: "data.bin",
+			metadata: map[string]string{
+				"magika_type": "json",
+			},
+			want: ContentTypeCode,
+		},
+		{
+			name:     "Magika detects image",
+			filename: "unknown",
+			metadata: map[string]string{
+				"magika_type": "jpeg",
+			},
+			want: ContentTypeImage,
+		},
+		{
+			name:     "Magika detects PDF document",
+			filename: "file.dat",
+			metadata: map[string]string{
+				"magika_type": "pdf",
+			},
+			want: ContentTypeDocument,
+		},
+		{
+			name:     "Magika detects archive",
+			filename: "file.data",
+			metadata: map[string]string{
+				"magika_type": "zip",
+			},
+			want: ContentTypeArchive,
+		},
+		{
+			name:     "Magika detects binary",
+			filename: "file.unknown",
+			metadata: map[string]string{
+				"magika_type": "elf",
+			},
+			want: ContentTypeBinary,
+		},
+		{
+			name:     "Falls back to extension when no metadata",
+			filename: "script.py",
+			metadata: map[string]string{},
+			want:     ContentTypeCode,
+		},
+		{
+			name:     "Falls back to extension when metadata empty",
+			filename: "photo.jpg",
+			metadata: map[string]string{
+				"magika_type": "",
+			},
+			want: ContentTypeImage,
+		},
+		{
+			name:     "Falls back to extension when unknown Magika type",
+			filename: "config.yaml",
+			metadata: map[string]string{
+				"magika_type": "unknown_type_xyz",
+			},
+			want: ContentTypeCode, // YAML is code
+		},
+		{
+			name:     "Nil metadata map falls back to extension",
+			filename: "README.md",
+			metadata: nil,
+			want:     ContentTypeText,
+		},
+		{
+			name:     "Magika text type",
+			filename: "file.bin",
+			metadata: map[string]string{
+				"magika_type": "txt",
+			},
+			want: ContentTypeText,
+		},
+		{
+			name:     "Magika markdown",
+			filename: "file.bin",
+			metadata: map[string]string{
+				"magika_type": "markdown",
+			},
+			want: ContentTypeText,
+		},
+		{
+			name:     "Magika video type",
+			filename: "file.bin",
+			metadata: map[string]string{
+				"magika_type": "mp4",
+			},
+			want: ContentTypeVideo,
+		},
+		{
+			name:     "Magika audio type",
+			filename: "file.bin",
+			metadata: map[string]string{
+				"magika_type": "mp3",
+			},
+			want: ContentTypeAudio,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := DetectContentTypeWithMetadata(tt.filename, tt.metadata)
+			assert.Equal(t, tt.want, got, "Expected %v but got %v for file %s with metadata %v",
+				tt.want, got, tt.filename, tt.metadata)
+		})
+	}
+}
+
+// TestGetOptimalSettingsWithMetadata tests compression settings with Magika metadata (Issue #30)
+func TestGetOptimalSettingsWithMetadata(t *testing.T) {
+	compressor := NewContentAwareCompressor(nil)
+
+	tests := []struct {
+		name          string
+		filename      string
+		metadata      map[string]string
+		wantAlgorithm Algorithm
+		wantLevel     Level
+	}{
+		{
+			name:     "Magika detects Python - high compression",
+			filename: "unknown.bin",
+			metadata: map[string]string{
+				"magika_type": "python",
+			},
+			wantAlgorithm: AlgorithmZstd,
+			wantLevel:     LevelBest, // Code gets best compression
+		},
+		{
+			name:     "Magika detects JPEG - minimal compression",
+			filename: "file.data",
+			metadata: map[string]string{
+				"magika_type": "jpeg",
+			},
+			wantAlgorithm: AlgorithmZstd,
+			wantLevel:     LevelFastest, // Images get minimal compression
+		},
+		{
+			name:     "Magika detects MP4 - no compression",
+			filename: "video.bin",
+			metadata: map[string]string{
+				"magika_type": "mp4",
+			},
+			wantAlgorithm: AlgorithmNone,
+			wantLevel:     LevelFastest, // Video skips compression
+		},
+		{
+			name:     "Magika detects PDF - good compression",
+			filename: "doc.bin",
+			metadata: map[string]string{
+				"magika_type": "pdf",
+			},
+			wantAlgorithm: AlgorithmZstd,
+			wantLevel:     Level(6), // Documents get good compression
+		},
+		{
+			name:     "Magika detects ZIP - no compression",
+			filename: "archive.bin",
+			metadata: map[string]string{
+				"magika_type": "zip",
+			},
+			wantAlgorithm: AlgorithmNone,
+			wantLevel:     LevelFastest, // Archives skip compression
+		},
+		{
+			name:     "Magika detects ELF - fast compression",
+			filename: "program.bin",
+			metadata: map[string]string{
+				"magika_type": "elf",
+			},
+			wantAlgorithm: AlgorithmZstd,
+			wantLevel:     LevelFast, // Binary gets fast compression
+		},
+		{
+			name:     "Magika detects text - good compression",
+			filename: "file.bin",
+			metadata: map[string]string{
+				"magika_type": "txt",
+			},
+			wantAlgorithm: AlgorithmZstd,
+			wantLevel:     Level(6), // Text gets good compression
+		},
+		{
+			name:          "No metadata - falls back to extension",
+			filename:      "main.go",
+			metadata:      map[string]string{},
+			wantAlgorithm: AlgorithmZstd,
+			wantLevel:     LevelBest, // Go files get best compression
+		},
+		{
+			name:          "Empty metadata - falls back to extension",
+			filename:      "photo.jpg",
+			metadata:      map[string]string{"magika_type": ""},
+			wantAlgorithm: AlgorithmZstd,
+			wantLevel:     LevelFastest, // JPEG gets minimal compression
+		},
+		{
+			name:          "Nil metadata - falls back to extension",
+			filename:      "script.py",
+			metadata:      nil,
+			wantAlgorithm: AlgorithmZstd,
+			wantLevel:     LevelBest, // Python gets best compression
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			algorithm, level := compressor.GetOptimalSettingsWithMetadata(tt.filename, tt.metadata)
+			assert.Equal(t, tt.wantAlgorithm, algorithm, "Algorithm mismatch for %s", tt.name)
+			assert.Equal(t, tt.wantLevel, level, "Level mismatch for %s", tt.name)
+		})
+	}
+}
+
+// TestDetectContentTypeWithMetadata_PriorityOrder tests that Magika metadata takes priority
+func TestDetectContentTypeWithMetadata_PriorityOrder(t *testing.T) {
+	t.Run("Magika overrides extension", func(t *testing.T) {
+		// File has .jpg extension but Magika detects it as Python code
+		// This can happen if someone renamed a file
+		result := DetectContentTypeWithMetadata("photo.jpg", map[string]string{
+			"magika_type": "python",
+		})
+		assert.Equal(t, ContentTypeCode, result, "Magika detection should override extension")
+	})
+
+	t.Run("Extension used when Magika returns unknown", func(t *testing.T) {
+		result := DetectContentTypeWithMetadata("script.py", map[string]string{
+			"magika_type": "unknown",
+		})
+		assert.Equal(t, ContentTypeCode, result, "Should fall back to extension when Magika returns unknown")
+	})
+
+	t.Run("Extension used when Magika missing", func(t *testing.T) {
+		result := DetectContentTypeWithMetadata("config.json", map[string]string{
+			"other_key": "other_value",
+		})
+		assert.Equal(t, ContentTypeCode, result, "Should use extension when Magika metadata missing")
+	})
+}
+
+// TestMapMagikaInline tests the inline Magika mapping function
+func TestMapMagikaInline(t *testing.T) {
+	tests := []struct {
+		name        string
+		magikaLabel string
+		want        ContentType
+	}{
+		// Code types
+		{"Python code", "python", ContentTypeCode},
+		{"JavaScript code", "javascript", ContentTypeCode},
+		{"Go code", "go", ContentTypeCode},
+		{"JSON data", "json", ContentTypeCode},
+		{"YAML config", "yaml", ContentTypeCode},
+
+		// Text types
+		{"Plain text", "txt", ContentTypeText},
+		{"Markdown", "markdown", ContentTypeText},
+		{"CSV data", "csv", ContentTypeText},
+
+		// Image types
+		{"JPEG image", "jpeg", ContentTypeImage},
+		{"PNG image", "png", ContentTypeImage},
+		{"GIF image", "gif", ContentTypeImage},
+
+		// Video types
+		{"MP4 video", "mp4", ContentTypeVideo},
+		{"MKV video", "mkv", ContentTypeVideo},
+
+		// Audio types
+		{"MP3 audio", "mp3", ContentTypeAudio},
+		{"FLAC audio", "flac", ContentTypeAudio},
+
+		// Document types
+		{"PDF document", "pdf", ContentTypeDocument},
+		{"Word document", "docx", ContentTypeDocument},
+
+		// Archive types
+		{"ZIP archive", "zip", ContentTypeArchive},
+		{"GZIP archive", "gzip", ContentTypeArchive},
+
+		// Binary types
+		{"ELF binary", "elf", ContentTypeBinary},
+		{"PE binary", "pe", ContentTypeBinary},
+		{"Mach-O binary", "macho", ContentTypeBinary},
+
+		// Unknown type
+		{"Unknown type", "unknown_type", ContentTypeUnknown},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mapMagikaInline(tt.magikaLabel)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

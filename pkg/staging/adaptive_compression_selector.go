@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/scttfrdmn/cargoship/pkg/compression"
+	"github.com/scttfrdmn/cargoship/pkg/detection"
 )
 
 // AdaptiveCompressionSelector provides intelligent compression algorithm selection
@@ -176,10 +179,20 @@ func (acs *AdaptiveCompressionSelector) SelectCompressionAlgorithm(
 		DecisionMetadata:   make(map[string]interface{}),
 	}
 
-	// Step 1: Get content type-based profile
-	profile := acs.getCompressionProfile(contentProfile.ContentType)
+	// Step 1: Get content type-based profile (with Magika metadata support - Issue #30)
+	effectiveContentType := acs.getContentTypeWithMagikaMetadata(contentProfile)
+	profile := acs.getCompressionProfile(effectiveContentType)
+
+	// Log Magika detection if used
+	if contentProfile.Metadata != nil {
+		if magikaType, ok := contentProfile.Metadata["magika_type"].(string); ok && magikaType != "" {
+			decision.ReasoningChain = append(decision.ReasoningChain,
+				fmt.Sprintf("Magika AI detected type: %s → %s", magikaType, effectiveContentType))
+		}
+	}
+
 	decision.ReasoningChain = append(decision.ReasoningChain,
-		fmt.Sprintf("Retrieved compression profile for content type: %s", contentProfile.ContentType))
+		fmt.Sprintf("Retrieved compression profile for content type: %s", effectiveContentType))
 
 	// Step 2: Apply file type specific rules
 	fileTypeAlgorithm := acs.applyFileTypeRules(context.FileName, context.FileExtension)
@@ -243,6 +256,51 @@ func (acs *AdaptiveCompressionSelector) SelectCompressionAlgorithm(
 		fmt.Sprintf("Final selection: %s with %.2f confidence", finalAlgorithm, decision.Confidence))
 
 	return decision, nil
+}
+
+// getContentTypeWithMagikaMetadata determines the best content type to use for compression
+// selection, prioritizing Magika AI detection if available (Issue #30)
+func (acs *AdaptiveCompressionSelector) getContentTypeWithMagikaMetadata(contentProfile *ContentProfile) string {
+	// Priority 1: Check for Magika metadata
+	if contentProfile.Metadata != nil {
+		if magikaType, ok := contentProfile.Metadata["magika_type"].(string); ok && magikaType != "" {
+			// Map Magika label to compression content type
+			compressionType := detection.MapMagikaToCompression(magikaType)
+
+			// Convert compression.ContentType to string for profile lookup
+			mappedType := acs.mapCompressionTypeToProfileKey(compressionType)
+			if mappedType != "" {
+				return mappedType
+			}
+		}
+	}
+
+	// Priority 2: Fall back to provided content type
+	return contentProfile.ContentType
+}
+
+// mapCompressionTypeToProfileKey maps compression.ContentType to profile keys
+func (acs *AdaptiveCompressionSelector) mapCompressionTypeToProfileKey(ct compression.ContentType) string {
+	switch ct {
+	case compression.ContentTypeText:
+		return "text"
+	case compression.ContentTypeCode:
+		return "json" // Code files compress similarly to JSON
+	case compression.ContentTypeDocument:
+		return "text" // Documents compress like text
+	case compression.ContentTypeImage:
+		return "image"
+	case compression.ContentTypeVideo:
+		return "compressed" // Already compressed
+	case compression.ContentTypeAudio:
+		return "compressed" // Already compressed
+	case compression.ContentTypeArchive:
+		return "compressed" // Already compressed
+	case compression.ContentTypeBinary:
+		return "binary"
+	default:
+		return "" // Unknown, use provided content type
+	}
 }
 
 // LearnFromCompressionResult learns from actual compression performance.

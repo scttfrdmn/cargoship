@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
+	"github.com/scttfrdmn/cargoship/pkg/detection"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
 )
@@ -28,6 +29,9 @@ type ScannerStage struct {
 
 	// Phase 3.3: Compressed-aware chunker for optimal chunk sizing
 	compressedChunker *chunking.CompressedAwareChunker
+
+	// Magika detector for AI file type detection (Issue #30)
+	magikaDetector *detection.MagikaDetector
 
 	// Atomic counters
 	jobsProcessed  int64
@@ -71,11 +75,25 @@ func NewScannerStage(config *ScannerConfig, output chan<- *Job, pipeline *Pipeli
 		compressedChunker = chunker
 	}
 
+	// Issue #30: Initialize Magika detector if enabled
+	var magikaDetector *detection.MagikaDetector
+	if config.MagikaConfig != nil && config.MagikaConfig.Enabled {
+		detector, err := detection.NewMagikaDetector(*config.MagikaConfig)
+		if err != nil {
+			// Log warning but don't fail - graceful degradation
+			fmt.Fprintf(os.Stderr, "⚠️  Magika initialization failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Falling back to extension-based detection\n")
+		} else {
+			magikaDetector = detector
+		}
+	}
+
 	return &ScannerStage{
 		config:            config,
 		output:            output,
 		strategy:          strategy,
 		compressedChunker: compressedChunker,
+		magikaDetector:    magikaDetector,
 		stats: StageStats{
 			Name: "scanner",
 		},
@@ -337,6 +355,11 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 
 // processBatch processes a batch of files into chunks
 func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, totalSize int64) error {
+	// Issue #30: Run Magika batch detection if enabled
+	if s.magikaDetector != nil {
+		files = s.enrichWithMagika(ctx, files)
+	}
+
 	var chunks []chunking.Chunk
 	var err error
 
@@ -450,6 +473,53 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 	}
 
 	return nil
+}
+
+// enrichWithMagika enriches file metadata with Magika AI detections (Issue #30)
+func (s *ScannerStage) enrichWithMagika(ctx context.Context, files []chunking.File) []chunking.File {
+	if s.magikaDetector == nil || !s.magikaDetector.IsAvailable() {
+		return files
+	}
+
+	// Extract paths for batch processing
+	paths := make([]string, len(files))
+	for i, file := range files {
+		paths[i] = file.Path
+	}
+
+	// Run Magika batch detection
+	results, err := s.magikaDetector.DetectBatch(ctx, paths)
+	if err != nil {
+		// Log error but continue - non-fatal
+		fmt.Fprintf(os.Stderr, "⚠️  Magika detection failed: %v\n", err)
+		return files
+	}
+
+	// Enrich file metadata with detection results
+	for i := range files {
+		if result, ok := results[files[i].Path]; ok &&
+			result.Result.Status == "ok" &&
+			result.Result.Value.Output.CTLabel != "" {
+			if files[i].Metadata == nil {
+				files[i].Metadata = make(map[string]string)
+			}
+
+			// Store Magika content type label
+			files[i].Metadata["magika_type"] = result.Result.Value.Output.CTLabel
+
+			// Optionally store MIME type
+			if result.Result.Value.Output.MimeType != "" {
+				files[i].Metadata["magika_mime"] = result.Result.Value.Output.MimeType
+			}
+
+			// Optionally store confidence score
+			if s.magikaDetector != nil && s.config.MagikaConfig != nil && s.config.MagikaConfig.IncludeScores {
+				files[i].Metadata["magika_score"] = fmt.Sprintf("%.2f", result.Result.Value.Output.Score)
+			}
+		}
+	}
+
+	return files
 }
 
 // Error returns any error that occurred during scanning

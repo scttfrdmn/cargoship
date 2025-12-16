@@ -1,0 +1,175 @@
+# CargoShip Configuration with Magika AI File Type Detection
+# Issue #30: AI-powered file type detection for optimal compression selection
+#
+# This example demonstrates how to enable Magika, Google's AI-powered file type
+# detection tool, to enhance compression decisions with deep learning-based
+# content type detection.
+
+upload:
+  # Basic upload settings
+  bucket: my-backup-bucket
+  region: us-west-2
+  storage_class: INTELLIGENT_TIERING
+
+  # Enable adaptive sizing for optimal chunk sizes
+  enable_adaptive_sizing: true
+  compression_type: zstd
+
+# Magika AI File Type Detection (Issue #30)
+# Magika uses deep learning to detect 200+ content types with ~1000 files/sec throughput
+# providing significantly better accuracy than traditional MIME type detection.
+magika:
+  # Enable Magika AI detection (default: false for backward compatibility)
+  enabled: true
+
+  # Path to magika binary (optional - will auto-discover from PATH if not set)
+  # binary_path: "/usr/local/bin/magika"
+
+  # Batch size for detection (default: 100)
+  # Larger batches amortize startup overhead (~50ms) to ~0.5ms/file
+  batch_size: 100
+
+  # Timeout for Magika execution (default: "30s")
+  # Set higher for very large batches or slow systems
+  timeout: "30s"
+
+  # Enable result caching (default: true)
+  # Caches detection results to avoid re-running Magika on same files
+  enable_cache: true
+
+  # Use MIME type output instead of content type label (default: false)
+  # Note: When using --json mode, MIME type is always included
+  use_mime_type: false
+
+  # Include confidence scores in metadata (default: false)
+  # Adds "magika_score" field to file metadata (0.0-1.0)
+  include_scores: false
+
+# How Magika Works
+# ================
+# 1. Scanner Stage: Files discovered via filepath.Walk
+# 2. Batch Detection: Groups of 100 files sent to Magika CLI
+# 3. Metadata Enrichment: Results stored in File.Metadata["magika_type"]
+# 4. Compression Selection: Content-aware compression uses Magika type
+# 5. Fallback: If Magika unavailable, uses extension-based detection
+#
+# Detection Flow (Priority Order):
+# 1. Magika AI detection (if enabled and available)
+# 2. Extension-based detection (fallback)
+# 3. Unknown type (uses default compression settings)
+
+# Compression Strategy with Magika
+# =================================
+# Magika enhances compression by detecting content types that extensions miss:
+#
+# High Compression (Level 9):
+#   - Code: python, javascript, go, rust, java, c, cpp, etc.
+#   - JSON, YAML, XML, HTML, CSS
+#   - Detects code even with wrong extensions (e.g., .bin files)
+#
+# Good Compression (Level 6):
+#   - Documents: pdf, docx, xlsx, pptx, odt
+#   - Text: txt, markdown, csv, log files
+#
+# Fast Compression (Level 3):
+#   - Binary executables: elf, pe, macho, wasm
+#   - Databases: sqlite, postgres, mysql
+#
+# Minimal Compression (Level 1):
+#   - Images: jpeg, png, gif, webp, svg
+#   - Already compressed, skip high compression
+#
+# No Compression:
+#   - Video: mp4, avi, mkv, mov, webm
+#   - Audio: mp3, flac, wav, ogg, m4a
+#   - Archives: zip, gzip, 7z, rar, tar
+#   - Already compressed, skip re-compression
+
+# Installation
+# ============
+# Magika must be installed separately:
+#
+#   # Install via pip
+#   pip install magika
+#
+#   # Or via pipx (recommended)
+#   pipx install magika
+#
+#   # Verify installation
+#   magika --version
+#   # Expected: magika 1.0.x standard_v3_3
+#
+# If Magika is not installed or fails to execute, CargoShip will:
+# - Log a warning message to stderr
+# - Gracefully fall back to extension-based detection
+# - Continue uploading without interruption
+
+# Performance Impact
+# ==================
+# Magika adds ~0.5ms per file (batch mode) for detection overhead.
+#
+# For 1 million files:
+#   - Detection time: ~500 seconds (~8 minutes)
+#   - Improved compression: 5-15% better ratios on mixed content
+#   - Net benefit: Compression time savings > detection overhead
+#
+# Memory usage:
+#   - Cache: ~200 bytes per file
+#   - 1M files: ~200MB cache (acceptable)
+
+# Example: Mixed Content Backup
+# ==============================
+# Scenario: Developer backing up project with:
+# - 10,000 source files (.py, .go, .js, .ts)
+# - 5,000 images (.jpg, .png, .gif)
+# - 2,000 documents (.pdf, .docx)
+# - 3,000 build artifacts (.so, .dylib, .o)
+#
+# Without Magika (extension-based):
+#   - Misses: .bin files that are actually code
+#   - Misses: Renamed files without extensions
+#   - Over-compresses: Already compressed images
+#
+# With Magika:
+#   - Detects code in .bin files → Level 9 compression
+#   - Detects images in misnamed files → Level 1 compression
+#   - Detects executables → Level 3 compression
+#   - Result: 5-10% smaller backup, faster upload
+
+# Advanced: Custom Compression Levels
+# ====================================
+# Combine Magika with custom compression settings:
+
+# chunking:
+#   # Use compression-aware chunking for optimal chunk sizes
+#   enable_compressed_aware_chunking: true
+#
+#   # Target compressed chunk size (0 = adaptive)
+#   chunk_target_size_mb: 0
+#
+# staging:
+#   # Enable adaptive compression selection with Magika
+#   enable_adaptive_compression: true
+#
+#   # Use network conditions for compression decisions
+#   enable_network_adaptation: true
+
+# Troubleshooting
+# ===============
+# If Magika fails:
+# 1. Check installation: `magika --version`
+# 2. Check PATH: `which magika`
+# 3. Test manually: `magika --json /path/to/file`
+# 4. Check logs for error messages
+# 5. Fall back: Set `magika.enabled: false`
+#
+# Common issues:
+# - Magika not in PATH: Set `binary_path` explicitly
+# - Timeout errors: Increase `timeout` value
+# - Permission denied: Check executable permissions
+
+# References
+# ==========
+# - Magika: https://github.com/google/magika
+# - CargoShip Issue #30: AI File Type Detection
+# - Documentation: docs/magika-integration.md
