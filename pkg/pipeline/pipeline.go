@@ -24,21 +24,32 @@ import (
 )
 
 func init() {
+	// Issue #34 Phase 4.2: Optimized GC tuning for reduced pause times
 	// Configure GC for optimal pipeline performance
 	// Default: GOGC=100 (GC runs when heap grows 100% from previous GC)
 	//
 	// For CargoShip pipeline:
 	// - Memory is dominated by AWS SDK (256MB), zstd (226MB), I/O (320MB) = 92% unavoidable
-	// - Setting GOGC=150 trades ~50-100MB more memory for 10-15% better throughput
-	// - Users can override with GOGC environment variable
+	// - Setting GOGC=200 (was 150) reduces GC frequency, improving throughput with minimal memory increase
+	// - GOMEMLIMIT provides soft memory ceiling for more predictable behavior
+	// - Users can override with GOGC/GOMEMLIMIT environment variables
 	//
 	// Override priority:
 	// 1. GOGC env var (user control)
 	// 2. GOMEMLIMIT env var (Go 1.19+, soft memory target)
-	// 3. Default: 150 (optimized for throughput)
-	if os.Getenv("GOGC") == "" && os.Getenv("GOMEMLIMIT") == "" {
-		// Only set if user hasn't specified their own tuning
-		debug.SetGCPercent(150)
+	// 3. Default: GOGC=200, GOMEMLIMIT=6GB (optimized for throughput)
+
+	// Set GOMEMLIMIT if not already set (Go 1.19+)
+	// Default to 6GB soft limit (suitable for systems with 8GB+ RAM)
+	if os.Getenv("GOMEMLIMIT") == "" {
+		const defaultMemLimit = 6 * 1024 * 1024 * 1024 // 6GB
+		debug.SetMemoryLimit(defaultMemLimit)
+	}
+
+	// Set GOGC if not already set
+	if os.Getenv("GOGC") == "" {
+		// Issue #34 Phase 4.2: Increased from 150 to 200 for better throughput
+		debug.SetGCPercent(200)
 	}
 
 	// Respect user's GOGC setting if explicitly set to "off"
