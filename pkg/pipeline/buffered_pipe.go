@@ -6,6 +6,119 @@ import (
 	"sync"
 )
 
+// BufferedPipePool manages a pool of BufferedPipe instances to avoid
+// allocating 64MB per chunk (Issue #34 Phase 1.1)
+//
+// Problem: Creating new BufferedPipe per archive job allocates:
+//   - 1000 chunks × 64MB = 64GB total memory
+//
+// Solution: Pool of 32 reusable pipes (64MB × 32 = 2GB total)
+type BufferedPipePool struct {
+	pool      chan *BufferedPipe // Buffered channel acts as free list
+	bufSize   int64              // Buffer size for each pipe
+	chunkSize int                // Chunk size for each pipe
+	mu        sync.Mutex         // Protects metrics
+	waitCount int64              // Number of times pool was exhausted
+}
+
+// NewBufferedPipePool creates a pool of BufferedPipe instances
+//
+// poolSize: Number of pipes to pre-allocate (typically 32)
+// bufSize: Buffer size per pipe (typically 64MB)
+// chunkSize: Chunk size per pipe (typically 32KB)
+func NewBufferedPipePool(poolSize int, bufSize int64, chunkSize int) *BufferedPipePool {
+	pool := &BufferedPipePool{
+		pool:      make(chan *BufferedPipe, poolSize),
+		bufSize:   bufSize,
+		chunkSize: chunkSize,
+	}
+
+	// Pre-allocate all pipes
+	for i := 0; i < poolSize; i++ {
+		numChunks := int(bufSize) / chunkSize
+		if numChunks == 0 {
+			numChunks = 1
+		}
+
+		pipe := &BufferedPipe{
+			buffer:    make(chan []byte, numChunks),
+			size:      int(bufSize),
+			chunkSize: chunkSize,
+			done:      make(chan struct{}),
+			chunkPool: &sync.Pool{
+				New: func() interface{} {
+					chunk := make([]byte, chunkSize)
+					return &chunk
+				},
+			},
+		}
+		pool.pool <- pipe
+	}
+
+	return pool
+}
+
+// Get retrieves a BufferedPipe from the pool
+// Blocks if pool is exhausted (natural backpressure)
+func (p *BufferedPipePool) Get() (*BufferedPipeReader, *BufferedPipeWriter) {
+	select {
+	case pipe := <-p.pool:
+		return &BufferedPipeReader{pipe: pipe}, &BufferedPipeWriter{pipe: pipe}
+	default:
+		// Pool exhausted - increment wait counter
+		p.mu.Lock()
+		p.waitCount++
+		p.mu.Unlock()
+
+		// Block until pipe available
+		pipe := <-p.pool
+		return &BufferedPipeReader{pipe: pipe}, &BufferedPipeWriter{pipe: pipe}
+	}
+}
+
+// Put returns a BufferedPipe to the pool after resetting its state
+func (p *BufferedPipePool) Put(reader *BufferedPipeReader, writer *BufferedPipeWriter) {
+	if reader == nil || writer == nil {
+		return
+	}
+
+	pipe := reader.pipe
+
+	// Reset pipe state for reuse
+	pipe.mu.Lock()
+	pipe.writerErr = nil
+	pipe.closing = false
+	pipe.mu.Unlock()
+
+	// Recreate channels (can't reuse closed channels)
+	numChunks := int(p.bufSize) / p.chunkSize
+	if numChunks == 0 {
+		numChunks = 1
+	}
+	pipe.buffer = make(chan []byte, numChunks)
+	pipe.done = make(chan struct{})
+	pipe.once = sync.Once{}
+
+	// Reset reader state
+	reader.closed = false
+	reader.current = nil
+	reader.currentPos = 0
+
+	// Reset writer state
+	writer.closed = false
+
+	// Return to pool
+	p.pool <- pipe
+}
+
+// WaitCount returns the number of times the pool was exhausted
+// Useful for monitoring pool sizing
+func (p *BufferedPipePool) WaitCount() int64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.waitCount
+}
+
 // BufferedPipe provides a pipe-like interface with a large internal buffer.
 // Unlike io.Pipe's 4KB buffer, BufferedPipe allows the writer to work ahead
 // by up to bufferSize bytes before blocking, enabling true concurrency between

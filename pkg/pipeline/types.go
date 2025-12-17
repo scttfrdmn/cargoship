@@ -31,6 +31,11 @@ type Job struct {
 	ShardPrefix   string  // Shard prefix (e.g., "shard-0", "shard-1", ...)
 	AttemptNumber int     // Current retry attempt (1 = first attempt, 2+ = retries)
 	ErrorHistory  []error // History of errors from retry attempts
+
+	// Issue #34 Phase 1.1: BufferedPipe tracking for pool return
+	pipeReader *BufferedPipeReader // Reader side of pipe (for pool cleanup)
+	pipeWriter *BufferedPipeWriter // Writer side of pipe (for pool cleanup)
+	pipePool   *BufferedPipePool   // Pool to return pipe to after upload
 }
 
 // Stage represents a pipeline stage

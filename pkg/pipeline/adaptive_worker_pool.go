@@ -114,15 +114,19 @@ func NewAdaptiveWorkerPool(ctx context.Context, config *AdaptiveWorkerPoolConfig
 	return pool
 }
 
-// Submit submits work to the pool (non-blocking, spawns goroutine immediately)
+// Submit submits work to the pool (blocks if pool is at max workers)
+// Issue #34 Phase 1.3: Now uses semaphore to limit concurrent goroutines
 func (p *AdaptiveWorkerPool) Submit(fn func(context.Context) error) error {
 	select {
 	case <-p.ctx.Done():
 		return p.ctx.Err()
-	default:
+	case p.semaphore <- struct{}{}: // ACQUIRE - blocks at maxWorkers
 		p.wg.Add(1)
 		go func() {
-			defer p.wg.Done()
+			defer func() {
+				p.wg.Done()
+				<-p.semaphore // RELEASE
+			}()
 			_ = fn(p.ctx)
 		}()
 		return nil

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"testing"
+	"time"
 )
 
 func TestBufferedPipe_BasicReadWrite(t *testing.T) {
@@ -275,4 +276,194 @@ func BenchmarkBufferedPipe_vs_IOPipe(b *testing.B) {
 			_ = pr.Close()
 		}
 	})
+}
+
+// TestBufferedPipePool tests the pool's basic Get/Put operations (Issue #34 Phase 1.1)
+func TestBufferedPipePool(t *testing.T) {
+	poolSize := 4
+	bufSize := int64(1024 * 1024) // 1MB
+	chunkSize := 32 * 1024        // 32KB
+
+	pool := NewBufferedPipePool(poolSize, bufSize, chunkSize)
+
+	// Get a pipe from the pool
+	r, w := pool.Get()
+	if r == nil || w == nil {
+		t.Fatal("Expected non-nil reader and writer")
+	}
+
+	// Write some data
+	testData := []byte("hello world")
+	n, err := w.Write(testData)
+	if err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+	if n != len(testData) {
+		t.Errorf("Expected to write %d bytes, wrote %d", len(testData), n)
+	}
+
+	// Close writer
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close writer failed: %v", err)
+	}
+
+	// Read the data
+	readBuf := make([]byte, len(testData))
+	n, err = io.ReadFull(r, readBuf)
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+	if !bytes.Equal(readBuf, testData) {
+		t.Errorf("Expected %q, got %q", testData, readBuf)
+	}
+
+	// Close reader
+	if err := r.Close(); err != nil {
+		t.Fatalf("Close reader failed: %v", err)
+	}
+
+	// Return to pool
+	pool.Put(r, w)
+
+	// Get it again and verify it's reusable
+	r2, w2 := pool.Get()
+	if r2 == nil || w2 == nil {
+		t.Fatal("Expected non-nil reader and writer on second get")
+	}
+
+	// Write and read again
+	n, err = w2.Write(testData)
+	if err != nil {
+		t.Fatalf("Second write failed: %v", err)
+	}
+	if err := w2.Close(); err != nil {
+		t.Fatalf("Second close writer failed: %v", err)
+	}
+
+	readBuf2 := make([]byte, len(testData))
+	n, err = io.ReadFull(r2, readBuf2)
+	if err != nil {
+		t.Fatalf("Second read failed: %v", err)
+	}
+	if !bytes.Equal(readBuf2, testData) {
+		t.Errorf("Second read: expected %q, got %q", testData, readBuf2)
+	}
+
+	if err := r2.Close(); err != nil {
+		t.Fatalf("Second close reader failed: %v", err)
+	}
+
+	pool.Put(r2, w2)
+}
+
+// TestBufferedPipePoolPutNil tests that Put handles nil inputs gracefully (Issue #34 Phase 1.1)
+func TestBufferedPipePoolPutNil(t *testing.T) {
+	pool := NewBufferedPipePool(2, 64*1024, 32*1024)
+
+	// Should not panic
+	pool.Put(nil, nil)
+
+	r, w := pool.Get()
+	pool.Put(r, nil)
+	pool.Put(nil, w)
+}
+
+// TestBufferedPipePoolReset tests that pipes are properly reset on return (Issue #34 Phase 1.1)
+func TestBufferedPipePoolReset(t *testing.T) {
+	pool := NewBufferedPipePool(1, 64*1024, 32*1024)
+
+	// First use
+	r1, w1 := pool.Get()
+	_, err := w1.Write([]byte("first"))
+	if err != nil {
+		t.Fatalf("First write failed: %v", err)
+	}
+	_ = w1.Close()
+	_ = r1.Close()
+	pool.Put(r1, w1)
+
+	// Second use - should be clean
+	r2, w2 := pool.Get()
+
+	// Write new data
+	testData := []byte("second")
+	_, err = w2.Write(testData)
+	if err != nil {
+		t.Fatalf("Second write failed: %v", err)
+	}
+	_ = w2.Close()
+
+	// Read should only get "second", not "first"
+	readBuf := make([]byte, 10)
+	n, err := r2.Read(readBuf)
+	if err != nil && err != io.EOF {
+		t.Fatalf("Second read failed: %v", err)
+	}
+
+	if n != len(testData) {
+		t.Errorf("Expected to read %d bytes, got %d", len(testData), n)
+	}
+
+	if !bytes.Equal(readBuf[:n], testData) {
+		t.Errorf("Expected %q, got %q", testData, readBuf[:n])
+	}
+
+	_ = r2.Close()
+	pool.Put(r2, w2)
+}
+
+// TestBufferedPipePoolExhaustion tests pool behavior when exhausted (Issue #34 Phase 1.1)
+func TestBufferedPipePoolExhaustion(t *testing.T) {
+	poolSize := 2
+	bufSize := int64(64 * 1024) // 64KB
+	chunkSize := 32 * 1024      // 32KB
+
+	pool := NewBufferedPipePool(poolSize, bufSize, chunkSize)
+
+	// Get all pipes from pool
+	pipes := make([]*BufferedPipeReader, poolSize)
+	writers := make([]*BufferedPipeWriter, poolSize)
+	for i := 0; i < poolSize; i++ {
+		r, w := pool.Get()
+		pipes[i] = r
+		writers[i] = w
+	}
+
+	// Verify wait count is 0
+	if pool.WaitCount() != 0 {
+		t.Errorf("Expected wait count 0, got %d", pool.WaitCount())
+	}
+
+	// Try to get one more - should block until one is returned
+	done := make(chan bool)
+	go func() {
+		r, w := pool.Get()
+		// Return immediately
+		pool.Put(r, w)
+		done <- true
+	}()
+
+	// Wait a bit to ensure goroutine is blocked
+	time.Sleep(10 * time.Millisecond)
+
+	// Return one pipe to unblock
+	pool.Put(pipes[0], writers[0])
+
+	// Wait for goroutine to complete
+	select {
+	case <-done:
+		// Success
+	case <-time.After(1 * time.Second):
+		t.Fatal("Goroutine did not unblock after returning pipe")
+	}
+
+	// Verify wait count increased
+	if pool.WaitCount() == 0 {
+		t.Error("Expected wait count > 0 after exhaustion")
+	}
+
+	// Clean up remaining pipes
+	for i := 1; i < poolSize; i++ {
+		pool.Put(pipes[i], writers[i])
+	}
 }

@@ -102,6 +102,10 @@ type ArchiverStage struct {
 	// Phase 5 Redux: Encoder pool for reusing zstd encoders (eliminates expensive encoder creation)
 	encoderPool *EncoderPool
 
+	// Issue #34 Phase 1.1: BufferedPipe pool for memory leak fix
+	// Reduces memory from 64GB (1000 × 64MB) to 2GB (32 × 64MB)
+	pipePool *BufferedPipePool
+
 	// Phase 3.2: Multi-output support for eliminating router bottleneck
 	outputs           map[string]chan<- *Job // nil = single-output mode (Phase 2)
 	shardCount        int                    // Number of shards (0 = single-output)
@@ -125,12 +129,17 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 		return nil, fmt.Errorf("archiver config cannot be nil")
 	}
 
-	// Phase 5 Redux: Create encoder pool with same number of encoders as workers
-	// This eliminates expensive encoder creation during job processing
-	encoderPool, err := NewEncoderPool(config.Workers)
+	// Phase 5 Redux + Issue #34 Phase 1.2: Create encoder pool with 2× workers
+	// This eliminates encoder wait time by ensuring surplus encoders available
+	// (8 workers × 2 = 16 encoders prevents blocking when all workers active)
+	encoderPool, err := NewEncoderPool(config.Workers * 2)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create encoder pool: %w", err)
 	}
+
+	// Issue #34 Phase 1.1: Create BufferedPipe pool (32 pipes, 64MB each = 2GB total)
+	// This prevents 64GB memory leak when processing 1000 chunks
+	pipePool := NewBufferedPipePool(32, 64*1024*1024, 32*1024)
 
 	// Phase 3.3: Initialize archive padder if enabled
 	var padder *chunking.ArchivePadder
@@ -144,6 +153,7 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 		output:              output,
 		compressionDetector: NewCompressionDetector(),
 		encoderPool:         encoderPool,
+		pipePool:            pipePool,
 		padder:              padder,
 		stats: StageStats{
 			Name: "archiver",
@@ -164,11 +174,15 @@ func NewArchiverStageWithSharding(config *ArchiverConfig, input <-chan *Job, out
 		return nil, fmt.Errorf("shard count must be positive, got %d", shardCount)
 	}
 
-	// Phase 5 Redux: Create encoder pool with same number of encoders as workers
-	encoderPool, err := NewEncoderPool(config.Workers)
+	// Phase 5 Redux + Issue #34 Phase 1.2: Create encoder pool with 2× workers
+	// This eliminates encoder wait time (16 encoders for 8 workers)
+	encoderPool, err := NewEncoderPool(config.Workers * 2)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create encoder pool: %w", err)
 	}
+
+	// Issue #34 Phase 1.1: Create BufferedPipe pool (32 pipes, 64MB each = 2GB total)
+	pipePool := NewBufferedPipePool(32, 64*1024*1024, 32*1024)
 
 	// Initialize shard distribution tracking
 	shardDist := make(map[string]*int64)
@@ -191,6 +205,7 @@ func NewArchiverStageWithSharding(config *ArchiverConfig, input <-chan *Job, out
 		shardDistribution:   shardDist,
 		compressionDetector: NewCompressionDetector(),
 		encoderPool:         encoderPool,
+		pipePool:            pipePool,
 		padder:              padder,
 		stats: StageStats{
 			Name: "archiver",
@@ -369,9 +384,9 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 	job.Metadata["compressible_files"] = fmt.Sprintf("%d", compressibleCount)
 	job.Metadata["precompressed_files"] = fmt.Sprintf("%d", preCompressedCount)
 
-	// Phase 2: Create streaming archive using BufferedPipe with 64MB buffer
-	// This replaces io.Pipe's 4KB buffer to eliminate 751% serialization overhead
-	pr, pw := NewBufferedPipe(64*1024*1024, 32*1024) // 64MB buffer, 32KB chunks
+	// Issue #34 Phase 1.1: Get BufferedPipe from pool (blocks if pool exhausted)
+	// This prevents 64GB memory leak (reuses 32 pipes instead of creating 1000+)
+	pr, pw := s.pipePool.Get()
 
 	// Phase 5 Redux: Get encoder from pool BEFORE spawning goroutine
 	// This naturally limits concurrency to pool size (8) and prevents deadlock
@@ -479,6 +494,11 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 
 	// Store the reader in the job
 	job.Archive = pr
+
+	// Issue #34 Phase 1.1: Store pipe tracking info for pool return after upload
+	job.pipeReader = pr
+	job.pipeWriter = pw
+	job.pipePool = s.pipePool
 
 	// Generate S3 key with upload-ID/shard structure for multi-prefix optimization (Phase 3)
 	// Format: uploads/{upload-id}/shard-{shard_id}/chunk-{chunk_id}.tar.zst
