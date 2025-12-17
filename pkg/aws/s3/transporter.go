@@ -56,8 +56,11 @@ func NewTransporter(client *s3.Client, config awsconfig.S3Config) *Transporter {
 	uploader := manager.NewUploader(client, func(u *manager.Uploader) {
 		u.PartSize = config.MultipartChunkSize
 		u.Concurrency = config.Concurrency
-		u.LeavePartsOnError = false                                                   // Clean up failed uploads
-		u.BufferProvider = manager.NewBufferedReadSeekerWriteToPool(25 * 1024 * 1024) // 25MB buffer pool
+		u.LeavePartsOnError = false // Clean up failed uploads
+		// Issue #34 Phase 2.2: Increased from 25MB to 64MB buffers
+		// Better matches typical chunk sizes, reduces buffer allocation overhead
+		// Pool size automatically managed by AWS SDK (typically 16 buffers = 1GB total)
+		u.BufferProvider = manager.NewBufferedReadSeekerWriteToPool(64 * 1024 * 1024)
 	})
 
 	return &Transporter{
