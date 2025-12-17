@@ -132,6 +132,82 @@ func TestBuilder_AddFile(t *testing.T) {
 	assert.Equal(t, "file3.txt", m.Files[2].Path)
 }
 
+// TestBuilder_AddFileBatch tests adding multiple files in a single batch (Issue #34 Phase 1.4)
+func TestBuilder_AddFileBatch(t *testing.T) {
+	builder, err := NewBuilder("test-123", "/data", "bucket", "prefix", "us-west-2")
+	require.NoError(t, err)
+
+	// Add files in batch
+	entries := []FileEntry{
+		{Path: "file1.txt", Size: 100, ChunkID: 0},
+		{Path: "file2.txt", Size: 200, ChunkID: 0},
+		{Path: "file3.txt", Size: 300, ChunkID: 1},
+	}
+
+	builder.AddFileBatch(entries)
+
+	m := builder.Build()
+	assert.Len(t, m.Files, 3)
+	assert.Equal(t, int64(3), m.TotalFiles)
+	assert.Equal(t, int64(600), m.TotalBytes)
+
+	// Verify files in order
+	assert.Equal(t, "file1.txt", m.Files[0].Path)
+	assert.Equal(t, "file2.txt", m.Files[1].Path)
+	assert.Equal(t, "file3.txt", m.Files[2].Path)
+}
+
+// TestBuilder_AddFileBatch_Empty tests that adding empty batch is safe (Issue #34 Phase 1.4)
+func TestBuilder_AddFileBatch_Empty(t *testing.T) {
+	builder, err := NewBuilder("test-123", "/data", "bucket", "prefix", "us-west-2")
+	require.NoError(t, err)
+
+	// Add empty batch - should not error
+	builder.AddFileBatch([]FileEntry{})
+
+	m := builder.Build()
+	assert.Len(t, m.Files, 0)
+	assert.Equal(t, int64(0), m.TotalFiles)
+	assert.Equal(t, int64(0), m.TotalBytes)
+}
+
+// TestBuilder_AddFileBatch_Concurrent tests concurrent batch additions (Issue #34 Phase 1.4)
+func TestBuilder_AddFileBatch_Concurrent(t *testing.T) {
+	builder, err := NewBuilder("test-123", "/data", "bucket", "prefix", "us-west-2")
+	require.NoError(t, err)
+
+	// Add files concurrently from multiple goroutines
+	numGoroutines := 10
+	filesPerBatch := 10
+
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func(batchID int) {
+			defer wg.Done()
+
+			entries := make([]FileEntry, filesPerBatch)
+			for j := 0; j < filesPerBatch; j++ {
+				entries[j] = FileEntry{
+					Path:    fmt.Sprintf("batch%d-file%d.txt", batchID, j),
+					Size:    100,
+					ChunkID: batchID,
+				}
+			}
+
+			builder.AddFileBatch(entries)
+		}(i)
+	}
+
+	wg.Wait()
+
+	m := builder.Build()
+	assert.Len(t, m.Files, numGoroutines*filesPerBatch)
+	assert.Equal(t, int64(numGoroutines*filesPerBatch), m.TotalFiles)
+	assert.Equal(t, int64(numGoroutines*filesPerBatch*100), m.TotalBytes)
+}
+
 // TestBuilder_AddChunk tests adding chunks to manifest
 func TestBuilder_AddChunk(t *testing.T) {
 	builder, err := NewBuilder("test-123", "/data", "bucket", "prefix", "us-west-2")

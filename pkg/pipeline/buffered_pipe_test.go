@@ -309,7 +309,7 @@ func TestBufferedPipePool(t *testing.T) {
 
 	// Read the data
 	readBuf := make([]byte, len(testData))
-	n, err = io.ReadFull(r, readBuf)
+	_, err = io.ReadFull(r, readBuf)
 	if err != nil {
 		t.Fatalf("Read failed: %v", err)
 	}
@@ -332,7 +332,7 @@ func TestBufferedPipePool(t *testing.T) {
 	}
 
 	// Write and read again
-	n, err = w2.Write(testData)
+	_, err = w2.Write(testData)
 	if err != nil {
 		t.Fatalf("Second write failed: %v", err)
 	}
@@ -341,7 +341,7 @@ func TestBufferedPipePool(t *testing.T) {
 	}
 
 	readBuf2 := make([]byte, len(testData))
-	n, err = io.ReadFull(r2, readBuf2)
+	_, err = io.ReadFull(r2, readBuf2)
 	if err != nil {
 		t.Fatalf("Second read failed: %v", err)
 	}

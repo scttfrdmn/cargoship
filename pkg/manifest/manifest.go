@@ -109,6 +109,26 @@ func (b *Builder) AddFile(entry FileEntry) {
 	b.manifest.TotalBytes += entry.Size
 }
 
+// AddFileBatch adds multiple files to the manifest in a single lock (Issue #34 Phase 1.4)
+// More efficient than calling AddFile repeatedly when adding many files at once
+func (b *Builder) AddFileBatch(entries []FileEntry) {
+	if len(entries) == 0 {
+		return
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	// Append all entries at once
+	b.manifest.Files = append(b.manifest.Files, entries...)
+
+	// Update totals
+	for _, entry := range entries {
+		b.manifest.TotalFiles++
+		b.manifest.TotalBytes += entry.Size
+	}
+}
+
 // AddChunk adds a chunk to the manifest (thread-safe)
 func (b *Builder) AddChunk(entry ChunkEntry) {
 	b.mu.Lock()

@@ -393,11 +393,14 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 			}
 
 			// Track files in manifest (Issue #97)
+			// Issue #34 Phase 1.4: Use AddFileBatch to eliminate double-locking
 			if s.pipeline != nil && s.pipeline.manifestBuilder != nil {
 				builder := s.pipeline.manifestBuilder.(*manifest.Builder)
-				s.pipeline.manifestMu.Lock()
+
+				// Build entries array without holding any locks
+				entries := make([]manifest.FileEntry, 0, len(chunk.Files))
 				for _, file := range chunk.Files {
-					builder.AddFile(manifest.FileEntry{
+					entries = append(entries, manifest.FileEntry{
 						Path:    file.Path,
 						Size:    file.Size,
 						ModTime: file.ModTime,
@@ -406,7 +409,9 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 						S3Key:   "", // Will be filled by uploader
 					})
 				}
-				s.pipeline.manifestMu.Unlock()
+
+				// Add all entries at once (Builder.AddFileBatch handles locking internally)
+				builder.AddFileBatch(entries)
 			}
 
 			select {
@@ -442,11 +447,14 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 			chunk := chunks[i]
 
 			// Track files in manifest (Issue #97)
+			// Issue #34 Phase 1.4: Use AddFileBatch to eliminate double-locking
 			if s.pipeline != nil && s.pipeline.manifestBuilder != nil {
 				builder := s.pipeline.manifestBuilder.(*manifest.Builder)
-				s.pipeline.manifestMu.Lock()
+
+				// Build entries array without holding any locks
+				entries := make([]manifest.FileEntry, 0, len(chunk.Files))
 				for _, file := range chunk.Files {
-					builder.AddFile(manifest.FileEntry{
+					entries = append(entries, manifest.FileEntry{
 						Path:    file.Path,
 						Size:    file.Size,
 						ModTime: file.ModTime,
@@ -455,7 +463,9 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 						S3Key:   "", // Will be filled by uploader
 					})
 				}
-				s.pipeline.manifestMu.Unlock()
+
+				// Add all entries at once (Builder.AddFileBatch handles locking internally)
+				builder.AddFileBatch(entries)
 			}
 
 			select {
