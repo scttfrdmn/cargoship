@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // CompressionDetector determines if a file is already compressed
@@ -14,6 +15,10 @@ type CompressionDetector struct {
 	skipExtensions   map[string]bool
 	skipMagicBytes   []magicBytePattern
 	entropyThreshold float64
+
+	// Issue #34 Phase 3.3: Cache for compression decisions to avoid re-analyzing same extensions
+	// Maps extension (e.g., ".txt") to compression decision (shouldCompress, reason)
+	decisionCache sync.Map // map[string]*compressionDecision
 }
 
 // magicBytePattern represents a magic byte signature
@@ -21,6 +26,13 @@ type magicBytePattern struct {
 	offset int
 	bytes  []byte
 	desc   string
+}
+
+// compressionDecision caches the result of a compression check
+// Issue #34 Phase 3.3: Avoids re-analyzing files with same extension
+type compressionDecision struct {
+	shouldCompress bool
+	reason         string
 }
 
 // NewCompressionDetector creates a new compression detector
@@ -33,21 +45,49 @@ func NewCompressionDetector() *CompressionDetector {
 }
 
 // ShouldCompress returns true if the file should be compressed
+// Issue #34 Phase 3.3: Now uses cache to avoid re-analyzing files with same extension
 func (d *CompressionDetector) ShouldCompress(path string) (bool, string) {
-	// Check file extension first (fastest)
 	ext := strings.ToLower(filepath.Ext(path))
-	if ext != "" && d.skipExtensions[ext] {
-		return false, "already_compressed_extension:" + ext
-	}
 
-	// For small files or unknown extensions, check magic bytes
-	if shouldCheckMagicBytes(path) {
-		if compressed, desc := d.checkMagicBytes(path); compressed {
-			return false, "already_compressed_magic:" + desc
+	// Issue #34 Phase 3.3: Check cache first (80-95% hit rate expected)
+	if ext != "" {
+		if cached, ok := d.decisionCache.Load(ext); ok {
+			decision := cached.(*compressionDecision)
+			return decision.shouldCompress, decision.reason
 		}
 	}
 
-	return true, "compressible"
+	// Cache miss - compute decision
+	var shouldCompress bool
+	var reason string
+
+	// Check file extension against known compressed formats
+	if ext != "" && d.skipExtensions[ext] {
+		shouldCompress = false
+		reason = "already_compressed_extension:" + ext
+	} else if shouldCheckMagicBytes(path) {
+		// For ambiguous files, check magic bytes
+		if compressed, desc := d.checkMagicBytes(path); compressed {
+			shouldCompress = false
+			reason = "already_compressed_magic:" + desc
+		} else {
+			shouldCompress = true
+			reason = "compressible"
+		}
+	} else {
+		shouldCompress = true
+		reason = "compressible"
+	}
+
+	// Store in cache for future lookups (only cache by extension for consistency)
+	if ext != "" {
+		d.decisionCache.Store(ext, &compressionDecision{
+			shouldCompress: shouldCompress,
+			reason:         reason,
+		})
+	}
+
+	return shouldCompress, reason
 }
 
 // checkMagicBytes reads file header and checks for compression signatures

@@ -546,15 +546,13 @@ func (s *ScannerStage) enrichWithMagika(ctx context.Context, files []chunking.Fi
 
 	// Issue #34 Phase 3.1: Pre-filter - only run Magika on files with unknown/ambiguous types
 	var needsDetection []chunking.File
-	var needsDetectionIndices []int
 
-	for i, file := range files {
+	for _, file := range files {
 		if isObviousFileType(file.Path) {
 			// Skip Magika for obvious types (60-70% of files typically)
 			continue
 		}
 		needsDetection = append(needsDetection, file)
-		needsDetectionIndices = append(needsDetectionIndices, i)
 	}
 
 	// If no files need detection, return early
