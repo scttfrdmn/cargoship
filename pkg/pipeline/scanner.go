@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -485,19 +486,89 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 	return nil
 }
 
+// isObviousFileType checks if a file has an obvious type based on extension
+// Issue #34 Phase 3.1: Pre-filter to skip expensive Magika detection for common types
+func isObviousFileType(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+
+	// Common obvious types that don't need AI detection (60-70% of typical files)
+	obviousExtensions := map[string]bool{
+		// Archives (always obvious)
+		".zip": true, ".tar": true, ".gz": true, ".bz2": true, ".xz": true,
+		".7z": true, ".rar": true, ".tgz": true, ".tbz2": true,
+
+		// Images (obvious formats)
+		".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".bmp": true,
+		".svg": true, ".webp": true, ".ico": true, ".tiff": true, ".tif": true,
+
+		// Video (obvious formats)
+		".mp4": true, ".avi": true, ".mov": true, ".mkv": true, ".webm": true,
+		".flv": true, ".wmv": true, ".m4v": true, ".mpg": true, ".mpeg": true,
+
+		// Audio (obvious formats)
+		".mp3": true, ".wav": true, ".flac": true, ".aac": true, ".ogg": true,
+		".m4a": true, ".wma": true, ".opus": true,
+
+		// Documents (common formats)
+		".pdf": true, ".doc": true, ".docx": true, ".xls": true, ".xlsx": true,
+		".ppt": true, ".pptx": true, ".odt": true, ".ods": true, ".odp": true,
+
+		// Code/Text (obvious types)
+		".txt": true, ".md": true, ".json": true, ".xml": true, ".yaml": true,
+		".yml": true, ".csv": true, ".tsv": true, ".log": true, ".ini": true,
+		".conf": true, ".cfg": true, ".properties": true,
+
+		// Source code (programming languages)
+		".go": true, ".py": true, ".js": true, ".ts": true, ".java": true,
+		".c": true, ".cpp": true, ".h": true, ".hpp": true, ".rs": true,
+		".rb": true, ".php": true, ".sh": true, ".bash": true, ".zsh": true,
+		".pl": true, ".r": true, ".sql": true, ".html": true, ".css": true,
+		".scss": true, ".sass": true, ".less": true, ".vue": true, ".jsx": true,
+		".tsx": true, ".swift": true, ".kt": true, ".scala": true, ".clj": true,
+
+		// Binaries/Executables (obvious)
+		".exe": true, ".dll": true, ".so": true, ".dylib": true, ".app": true,
+		".deb": true, ".rpm": true, ".dmg": true, ".pkg": true, ".msi": true,
+
+		// Database files
+		".db": true, ".sqlite": true, ".sqlite3": true, ".mdb": true,
+	}
+
+	return obviousExtensions[ext]
+}
+
 // enrichWithMagika enriches file metadata with Magika AI detections (Issue #30)
+// Issue #34 Phase 3.1: Lazy detection - skip Magika for files with obvious types
 func (s *ScannerStage) enrichWithMagika(ctx context.Context, files []chunking.File) []chunking.File {
 	if s.magikaDetector == nil || !s.magikaDetector.IsAvailable() {
 		return files
 	}
 
-	// Extract paths for batch processing
-	paths := make([]string, len(files))
+	// Issue #34 Phase 3.1: Pre-filter - only run Magika on files with unknown/ambiguous types
+	var needsDetection []chunking.File
+	var needsDetectionIndices []int
+
 	for i, file := range files {
+		if isObviousFileType(file.Path) {
+			// Skip Magika for obvious types (60-70% of files typically)
+			continue
+		}
+		needsDetection = append(needsDetection, file)
+		needsDetectionIndices = append(needsDetectionIndices, i)
+	}
+
+	// If no files need detection, return early
+	if len(needsDetection) == 0 {
+		return files
+	}
+
+	// Extract paths for batch processing (only for files needing detection)
+	paths := make([]string, len(needsDetection))
+	for i, file := range needsDetection {
 		paths[i] = file.Path
 	}
 
-	// Run Magika batch detection
+	// Run Magika batch detection (only on subset)
 	results, err := s.magikaDetector.DetectBatch(ctx, paths)
 	if err != nil {
 		// Log error but continue - non-fatal
