@@ -16,13 +16,6 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/ioutils"
 )
 
-// mmapCacheEntry represents a memory-mapped file in the cache
-type mmapCacheEntry struct {
-	reader   *ioutils.MmapReader
-	file     *os.File
-	refCount int32 // Reference count for cleanup
-}
-
 // EncoderPool manages a pool of reusable zstd encoders
 // Phase 5 Redux: Eliminates expensive encoder creation overhead
 type EncoderPool struct {
@@ -97,7 +90,8 @@ type ArchiverStage struct {
 	compressionDetector *CompressionDetector
 
 	// Phase 5: Shared mmap cache for split files (one mmap per file, shared across all parts)
-	mmapCache sync.Map // map[string]*mmapCacheEntry (path -> cached mmap reader)
+	// Issue #34 Phase 2.1: LRU cache with 1000 FD limit to prevent file descriptor exhaustion
+	mmapCache *mmapLRUCache
 
 	// Phase 5 Redux: Encoder pool for reusing zstd encoders (eliminates expensive encoder creation)
 	encoderPool *EncoderPool
@@ -141,6 +135,10 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 	// This prevents 64GB memory leak when processing 1000 chunks
 	pipePool := NewBufferedPipePool(32, 64*1024*1024, 32*1024)
 
+	// Issue #34 Phase 2.1: Create mmap LRU cache with 1000 FD limit
+	// Prevents file descriptor exhaustion on large datasets (100k+ files)
+	mmapCache := newMmapLRUCache(1000)
+
 	// Phase 3.3: Initialize archive padder if enabled
 	var padder *chunking.ArchivePadder
 	if config.EnablePadding {
@@ -154,6 +152,7 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 		compressionDetector: NewCompressionDetector(),
 		encoderPool:         encoderPool,
 		pipePool:            pipePool,
+		mmapCache:           mmapCache,
 		padder:              padder,
 		stats: StageStats{
 			Name: "archiver",
@@ -184,6 +183,9 @@ func NewArchiverStageWithSharding(config *ArchiverConfig, input <-chan *Job, out
 	// Issue #34 Phase 1.1: Create BufferedPipe pool (32 pipes, 64MB each = 2GB total)
 	pipePool := NewBufferedPipePool(32, 64*1024*1024, 32*1024)
 
+	// Issue #34 Phase 2.1: Create mmap LRU cache with 1000 FD limit
+	mmapCache := newMmapLRUCache(1000)
+
 	// Initialize shard distribution tracking
 	shardDist := make(map[string]*int64)
 	for shardName := range outputs {
@@ -206,6 +208,7 @@ func NewArchiverStageWithSharding(config *ArchiverConfig, input <-chan *Job, out
 		compressionDetector: NewCompressionDetector(),
 		encoderPool:         encoderPool,
 		pipePool:            pipePool,
+		mmapCache:           mmapCache,
 		padder:              padder,
 		stats: StageStats{
 			Name: "archiver",
@@ -282,13 +285,8 @@ func (s *ArchiverStage) Stop() error {
 	s.wg.Wait()
 
 	// Phase 5: Clean up mmap cache
-	s.mmapCache.Range(func(key, value interface{}) bool {
-		if entry, ok := value.(*mmapCacheEntry); ok {
-			_ = entry.reader.Close()
-			_ = entry.file.Close()
-		}
-		return true
-	})
+	// Issue #34 Phase 2.1: Clear LRU cache (closes all file descriptors)
+	s.mmapCache.Clear()
 
 	// Phase 5 Redux: Cleanup encoder pool
 	if s.encoderPool != nil {
@@ -300,12 +298,11 @@ func (s *ArchiverStage) Stop() error {
 
 // getMmapReader gets or creates a memory-mapped reader for a file (Phase 5)
 // Returns the reader and true if mmap was used, nil and false if file is too small
+// Issue #34 Phase 2.1: Now uses LRU cache with automatic eviction
 func (s *ArchiverStage) getMmapReader(path string) (*ioutils.MmapReader, bool, error) {
 	// Try to load from cache first
-	if cached, ok := s.mmapCache.Load(path); ok {
-		entry := cached.(*mmapCacheEntry)
-		atomic.AddInt32(&entry.refCount, 1)
-		return entry.reader, true, nil
+	if reader, _, ok := s.mmapCache.Get(path); ok {
+		return reader, true, nil
 	}
 
 	// Open file
@@ -327,27 +324,16 @@ func (s *ArchiverStage) getMmapReader(path string) (*ioutils.MmapReader, bool, e
 		return nil, false, err
 	}
 
-	// Store in cache
-	entry := &mmapCacheEntry{
-		reader:   reader,
-		file:     file,
-		refCount: 1,
-	}
-	s.mmapCache.Store(path, entry)
+	// Store in cache (handles LRU eviction if needed)
+	s.mmapCache.Put(path, reader, file)
 
 	return reader, true, nil
 }
 
 // releaseMmapReader decrements reference count (Phase 5)
+// Issue #34 Phase 2.1: Now uses LRU cache Release method
 func (s *ArchiverStage) releaseMmapReader(path string) {
-	if cached, ok := s.mmapCache.Load(path); ok {
-		entry := cached.(*mmapCacheEntry)
-		newCount := atomic.AddInt32(&entry.refCount, -1)
-
-		// If no more references, clean up (optional - could also keep cached)
-		// For now, keep cached until Stop() to maximize reuse
-		_ = newCount
-	}
+	s.mmapCache.Release(path)
 }
 
 // Process processes a single job (called by workers)
