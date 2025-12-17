@@ -98,7 +98,9 @@ func (c *HTTPTransportConfig) BuildTransport() *http.Transport {
 			KeepAlive: c.TCPKeepAlive,
 		}).DialContext,
 		ForceAttemptHTTP2:     c.EnableHTTP2,
-		MaxIdleConns:          c.MaxIdleConnsPerHost * 2,
+		// Issue #34 Phase 2.3: Increased MaxIdleConns from 200 to 1024 for better connection reuse
+		// Allows more idle connections to be cached across multiple hosts/regions
+		MaxIdleConns:          1024,
 		MaxIdleConnsPerHost:   c.MaxIdleConnsPerHost,
 		MaxConnsPerHost:       c.MaxConnsPerHost,
 		IdleConnTimeout:       c.IdleConnTimeout,

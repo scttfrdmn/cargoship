@@ -112,8 +112,9 @@ func TestBuildTransport(t *testing.T) {
 	if transport.MaxConnsPerHost != 100 {
 		t.Errorf("Expected 100 max conns per host, got %d", transport.MaxConnsPerHost)
 	}
-	if transport.MaxIdleConns != 200 {
-		t.Errorf("Expected 200 max idle conns (2x per host), got %d", transport.MaxIdleConns)
+	// Issue #34 Phase 2.3: Increased from 200 to 1024 for better connection reuse
+	if transport.MaxIdleConns != 1024 {
+		t.Errorf("Expected 1024 max idle conns, got %d", transport.MaxIdleConns)
 	}
 	if !transport.ForceAttemptHTTP2 {
 		t.Error("Expected ForceAttemptHTTP2 enabled")
