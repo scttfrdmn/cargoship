@@ -34,6 +34,9 @@ type ScannerStage struct {
 	// Magika detector for AI file type detection (Issue #30)
 	magikaDetector *detection.MagikaDetector
 
+	// Issue #34 Phase 4.1: Worker pool for parallel batch processing (4 workers)
+	batchWorkerPool *WorkerPool
+
 	// Atomic counters
 	jobsProcessed  int64
 	bytesProcessed int64
@@ -115,6 +118,9 @@ func (s *ScannerStage) Start(ctx context.Context) error {
 	// Initialize worker pool with inherited context
 	s.pool = NewWorkerPool(s.ctx, s.config.Workers)
 
+	// Issue #34 Phase 4.1: Initialize batch processing pool (4 workers for parallel batching)
+	s.batchWorkerPool = NewWorkerPool(s.ctx, 4)
+
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -194,8 +200,15 @@ func (s *ScannerStage) run(ctx context.Context) error {
 		case file, ok := <-fileChan:
 			if !ok {
 				// Channel closed, process final batch
+				// Issue #34 Phase 4.1: Submit final batch to pool
 				if len(batch) > 0 {
-					if err := s.processBatch(ctx, batch, totalSize); err != nil {
+					batchCopy := make([]chunking.File, len(batch))
+					copy(batchCopy, batch)
+					batchSizeCopy := totalSize
+
+					if err := s.batchWorkerPool.Submit(func(ctx context.Context) error {
+						return s.processBatch(ctx, batchCopy, batchSizeCopy)
+					}); err != nil {
 						return err
 					}
 				}
@@ -205,17 +218,30 @@ func (s *ScannerStage) run(ctx context.Context) error {
 			batch = append(batch, file)
 			totalSize += file.Size
 
-			// Process batch when full
+			// Issue #34 Phase 4.1: Process batch when full (parallel submission)
 			if len(batch) >= batchSize {
-				if err := s.processBatch(ctx, batch, totalSize); err != nil {
+				// Create a copy of the batch for async processing
+				batchCopy := make([]chunking.File, len(batch))
+				copy(batchCopy, batch)
+				batchSizeCopy := totalSize
+
+				// Submit to batch worker pool (non-blocking)
+				if err := s.batchWorkerPool.Submit(func(ctx context.Context) error {
+					return s.processBatch(ctx, batchCopy, batchSizeCopy)
+				}); err != nil {
 					return err
 				}
+
 				batch = batch[:0] // Clear batch but keep capacity
+				totalSize = 0
 			}
 		}
 	}
 
 done:
+	// Issue #34 Phase 4.1: Wait for all batch processing jobs to complete
+	s.batchWorkerPool.Wait()
+
 	s.mu.Lock()
 	s.stats.TotalTime = time.Since(startTime)
 	if s.stats.JobsProcessed > 0 {
