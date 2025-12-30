@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,11 +12,15 @@ import (
 
 // MockCloudWatchClient is a mock implementation of CloudWatch client for testing
 type MockCloudWatchClient struct {
+	mu                 sync.Mutex
 	putMetricDataCalls []cloudwatch.PutMetricDataInput
 	returnError        error
 }
 
 func (m *MockCloudWatchClient) PutMetricData(ctx context.Context, params *cloudwatch.PutMetricDataInput, optFns ...func(*cloudwatch.Options)) (*cloudwatch.PutMetricDataOutput, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if m.putMetricDataCalls == nil {
 		m.putMetricDataCalls = make([]cloudwatch.PutMetricDataInput, 0)
 	}
@@ -26,6 +31,22 @@ func (m *MockCloudWatchClient) PutMetricData(ctx context.Context, params *cloudw
 	}
 
 	return &cloudwatch.PutMetricDataOutput{}, nil
+}
+
+// GetCallCount returns the number of PutMetricData calls made (thread-safe)
+func (m *MockCloudWatchClient) GetCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.putMetricDataCalls)
+}
+
+// GetCalls returns a copy of all PutMetricData calls made (thread-safe)
+func (m *MockCloudWatchClient) GetCalls() []cloudwatch.PutMetricDataInput {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	calls := make([]cloudwatch.PutMetricDataInput, len(m.putMetricDataCalls))
+	copy(calls, m.putMetricDataCalls)
+	return calls
 }
 
 func TestNewCloudWatchPublisher(t *testing.T) {
@@ -141,8 +162,8 @@ func TestCloudWatchPublisher_PublishUploadMetrics(t *testing.T) {
 	}
 
 	// Verify metrics were buffered (not yet sent)
-	if len(mockClient.putMetricDataCalls) != 0 {
-		t.Errorf("Expected metrics to be buffered, but %d calls were made", len(mockClient.putMetricDataCalls))
+	if mockClient.GetCallCount() != 0 {
+		t.Errorf("Expected metrics to be buffered, but %d calls were made", mockClient.GetCallCount())
 	}
 
 	// Flush and verify
@@ -151,11 +172,11 @@ func TestCloudWatchPublisher_PublishUploadMetrics(t *testing.T) {
 		t.Errorf("Flush() error = %v", err)
 	}
 
-	if len(mockClient.putMetricDataCalls) == 0 {
+	if mockClient.GetCallCount() == 0 {
 		t.Fatalf("Expected metrics to be sent after flush")
 	}
 
-	call := mockClient.putMetricDataCalls[0]
+	call := mockClient.GetCalls()[0]
 	if *call.Namespace != "TestNamespace" {
 		t.Errorf("namespace = %v, want TestNamespace", *call.Namespace)
 	}
@@ -215,7 +236,7 @@ func TestCloudWatchPublisher_PublishUploadMetrics_NoErrors(t *testing.T) {
 
 	// Should have core metrics plus success metric, but no error metrics
 	expectedMetricCount := 6 // Duration, Throughput, Size, ChunkCount, Concurrency, Success
-	call := mockClient.putMetricDataCalls[0]
+	call := mockClient.GetCalls()[0]
 	if len(call.MetricData) != expectedMetricCount {
 		t.Errorf("metric count = %d, want %d", len(call.MetricData), expectedMetricCount)
 	}
@@ -248,7 +269,7 @@ func TestCloudWatchPublisher_PublishCostMetrics(t *testing.T) {
 		t.Errorf("Flush() error = %v", err)
 	}
 
-	call := mockClient.putMetricDataCalls[0]
+	call := mockClient.GetCalls()[0]
 	expectedMetricCount := 5 // EstimatedMonthlyCost, EstimatedAnnualCost, ActualMonthlyCost, DataSizeGB, PotentialSavingsPercent
 	if len(call.MetricData) != expectedMetricCount {
 		t.Errorf("metric count = %d, want %d", len(call.MetricData), expectedMetricCount)
@@ -280,7 +301,7 @@ func TestCloudWatchPublisher_PublishNetworkMetrics(t *testing.T) {
 		t.Errorf("Flush() error = %v", err)
 	}
 
-	call := mockClient.putMetricDataCalls[0]
+	call := mockClient.GetCalls()[0]
 	expectedMetricCount := 5 // Bandwidth, Latency, OptimalChunkSize, OptimalConcurrency, PacketLoss
 	if len(call.MetricData) != expectedMetricCount {
 		t.Errorf("metric count = %d, want %d", len(call.MetricData), expectedMetricCount)
@@ -312,7 +333,7 @@ func TestCloudWatchPublisher_PublishNetworkMetrics_NoPacketLoss(t *testing.T) {
 		t.Errorf("Flush() error = %v", err)
 	}
 
-	call := mockClient.putMetricDataCalls[0]
+	call := mockClient.GetCalls()[0]
 	expectedMetricCount := 4 // Should not include PacketLoss
 	if len(call.MetricData) != expectedMetricCount {
 		t.Errorf("metric count = %d, want %d", len(call.MetricData), expectedMetricCount)
@@ -344,7 +365,7 @@ func TestCloudWatchPublisher_PublishOperationalMetrics(t *testing.T) {
 		t.Errorf("Flush() error = %v", err)
 	}
 
-	call := mockClient.putMetricDataCalls[0]
+	call := mockClient.GetCalls()[0]
 	expectedMetricCount := 6 // All operational metrics
 	if len(call.MetricData) != expectedMetricCount {
 		t.Errorf("metric count = %d, want %d", len(call.MetricData), expectedMetricCount)
@@ -375,7 +396,7 @@ func TestCloudWatchPublisher_PublishLifecycleMetrics(t *testing.T) {
 		t.Errorf("Flush() error = %v", err)
 	}
 
-	call := mockClient.putMetricDataCalls[0]
+	call := mockClient.GetCalls()[0]
 	expectedMetricCount := 3 // ActivePolicies, EstimatedSavingsPercent, ObjectsTransitioned
 	if len(call.MetricData) != expectedMetricCount {
 		t.Errorf("metric count = %d, want %d", len(call.MetricData), expectedMetricCount)
@@ -399,8 +420,8 @@ func TestCloudWatchPublisher_BufferManagement(t *testing.T) {
 		t.Errorf("PublishOperationalMetrics() error = %v", err)
 	}
 
-	if len(mockClient.putMetricDataCalls) != 0 {
-		t.Errorf("Expected no calls yet, got %d", len(mockClient.putMetricDataCalls))
+	if mockClient.GetCallCount() != 0 {
+		t.Errorf("Expected no calls yet, got %d", mockClient.GetCallCount())
 	}
 
 	// Publish second metric - should still be buffered (total 12 metrics, batch size 10)
@@ -410,7 +431,7 @@ func TestCloudWatchPublisher_BufferManagement(t *testing.T) {
 		t.Errorf("PublishOperationalMetrics() error = %v", err)
 	}
 
-	if len(mockClient.putMetricDataCalls) == 0 {
+	if mockClient.GetCallCount() == 0 {
 		t.Errorf("Expected metrics to be flushed when buffer exceeds batch size")
 	}
 }
@@ -496,7 +517,7 @@ func TestCloudWatchPublisher_Stop(t *testing.T) {
 	}
 
 	// Verify metrics were flushed
-	if len(mockClient.putMetricDataCalls) == 0 {
+	if mockClient.GetCallCount() == 0 {
 		t.Errorf("Expected metrics to be flushed on Stop()")
 	}
 }
@@ -521,7 +542,7 @@ func TestCloudWatchPublisher_StartFlushTimer(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Verify timer triggered and flushed metrics
-	if len(mockClient.putMetricDataCalls) == 0 {
+	if mockClient.GetCallCount() == 0 {
 		t.Error("Expected timer to trigger and flush metrics")
 	}
 
@@ -557,7 +578,7 @@ func TestCloudWatchPublisher_StartFlushTimer_Error(t *testing.T) {
 	flushed := false
 
 	for time.Now().Before(deadline) {
-		if len(mockClient.putMetricDataCalls) > 0 {
+		if mockClient.GetCallCount() > 0 {
 			flushed = true
 			break
 		}

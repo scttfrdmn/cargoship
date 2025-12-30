@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 
 // MockPricingClient implements the PricingClient interface for testing
 type MockPricingClient struct {
+	mu              sync.Mutex
 	getProductsFunc func(ctx context.Context, params *pricing.GetProductsInput, optFns ...func(*pricing.Options)) (*pricing.GetProductsOutput, error)
 	returnError     error
 	callHistory     []MockCall
@@ -29,12 +31,14 @@ type MockCall struct {
 }
 
 func (m *MockPricingClient) GetProducts(ctx context.Context, params *pricing.GetProductsInput, optFns ...func(*pricing.Options)) (*pricing.GetProductsOutput, error) {
+	m.mu.Lock()
 	call := MockCall{
 		Method:      "GetProducts",
 		ServiceCode: aws.ToString(params.ServiceCode),
 		Filters:     params.Filters,
 	}
 	m.callHistory = append(m.callHistory, call)
+	m.mu.Unlock()
 
 	if m.returnError != nil {
 		return nil, m.returnError
@@ -53,6 +57,22 @@ func (m *MockPricingClient) GetProducts(ctx context.Context, params *pricing.Get
 			createMockRequestProduct("PUT", "General Purpose", "0.0005"),
 		},
 	}, nil
+}
+
+// GetCallCount returns the number of GetProducts calls made (thread-safe)
+func (m *MockPricingClient) GetCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.callHistory)
+}
+
+// GetCallHistory returns a copy of all calls made (thread-safe)
+func (m *MockPricingClient) GetCallHistory() []MockCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	history := make([]MockCall, len(m.callHistory))
+	copy(history, m.callHistory)
+	return history
 }
 
 // createMockS3StorageProduct creates a realistic mock S3 storage product JSON
@@ -188,7 +208,7 @@ func TestService_GetPricing_CacheHit(t *testing.T) {
 	}
 
 	// Verify no API calls were made
-	if len(mockClient.callHistory) > 0 {
+	if mockClient.GetCallCount() > 0 {
 		t.Error("GetPricing() should not call API when cache is fresh")
 	}
 }
@@ -219,7 +239,7 @@ func TestService_GetPricing_CacheExpired(t *testing.T) {
 	}
 
 	// Verify API calls were made
-	if len(mockClient.callHistory) == 0 {
+	if mockClient.GetCallCount() == 0 {
 		t.Error("GetPricing() should call API when cache is expired")
 	}
 }
@@ -284,13 +304,13 @@ func TestService_fetchPricingData_Success(t *testing.T) {
 	}
 
 	// Should have called API for storage, transfer, and request pricing
-	if len(mockClient.callHistory) < 3 {
-		t.Errorf("fetchPricingData() should make 3 API calls, got %d", len(mockClient.callHistory))
+	if mockClient.GetCallCount() < 3 {
+		t.Errorf("fetchPricingData() should make 3 API calls, got %d", mockClient.GetCallCount())
 	}
 
 	// Verify service codes
 	serviceCodes := make(map[string]int)
-	for _, call := range mockClient.callHistory {
+	for _, call := range mockClient.GetCallHistory() {
 		serviceCodes[call.ServiceCode]++
 	}
 
