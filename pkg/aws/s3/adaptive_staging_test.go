@@ -110,7 +110,7 @@ func TestAdaptiveStagingAdaptStagingStrategy(t *testing.T) {
 	assert.LessOrEqual(t, result.Confidence, 1.0)
 
 	// Verify adaptation was recorded
-	assert.Greater(t, len(as.adaptationHistory), 0)
+	assert.Greater(t, as.GetAdaptationHistoryCount(), 0)
 }
 
 func TestAdaptiveStagingStagingStrategies(t *testing.T) {
@@ -127,11 +127,14 @@ func TestAdaptiveStagingStagingStrategies(t *testing.T) {
 
 	for _, strategy := range strategies {
 		t.Run(string(strategy), func(t *testing.T) {
+			as.mu.Lock()
 			as.stagingStrategy = strategy
 			as.updateComponentConfigurations(strategy)
+			currentStrategy := as.stagingStrategy
+			as.mu.Unlock()
 
 			// Verify strategy was applied
-			assert.Equal(t, strategy, as.stagingStrategy)
+			assert.Equal(t, strategy, currentStrategy)
 
 			// Test staging with this strategy
 			testData := "Test data for strategy testing"
@@ -550,7 +553,7 @@ func TestAdaptiveStagingEdgeCases(t *testing.T) {
 	}
 
 	// Should have recorded multiple adaptations
-	assert.GreaterOrEqual(t, len(as.adaptationHistory), 3)
+	assert.GreaterOrEqual(t, as.GetAdaptationHistoryCount(), 3)
 }
 
 func TestAdaptiveStagingBackgroundWorkers(t *testing.T) {

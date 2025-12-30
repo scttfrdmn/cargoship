@@ -300,6 +300,7 @@ type StagingResult struct {
 }
 
 type StagingMetrics struct {
+	mu                 sync.Mutex
 	TotalChunksStaged  int64
 	TotalBytesStaged   int64
 	StagingThroughput  float64
@@ -537,19 +538,32 @@ func (as *AdaptiveStaging) GetStagingStatus() *StagingStatus {
 	as.mu.RLock()
 	defer as.mu.RUnlock()
 
+	as.stagingMetrics.mu.Lock()
+	stagedChunks := as.stagingMetrics.TotalChunksStaged
+	stagedBytes := as.stagingMetrics.TotalBytesStaged
+	errorRate := as.stagingMetrics.ErrorRate
+	as.stagingMetrics.mu.Unlock()
+
 	return &StagingStatus{
 		Strategy:           as.stagingStrategy,
 		AdaptationEnabled:  as.adaptationEnabled,
 		CurrentPerformance: as.performanceAnalyzer.GetCurrentMetrics(),
 		BufferUtilization:  as.stagingBuffer.GetUtilization(),
 		ThroughputMBps:     as.progressTracker.GetCurrentThroughput(),
-		StagedChunks:       as.stagingMetrics.TotalChunksStaged,
-		StagedBytes:        as.stagingMetrics.TotalBytesStaged,
-		ErrorRate:          as.stagingMetrics.ErrorRate,
+		StagedChunks:       stagedChunks,
+		StagedBytes:        stagedBytes,
+		ErrorRate:          errorRate,
 		AdaptationCount:    int64(len(as.adaptationHistory)),
 		LastAdaptation:     as.getLastAdaptationTime(),
 		ResourceUsage:      as.resourceAllocator.GetUsageSummary(),
 	}
+}
+
+// GetAdaptationHistoryCount returns the number of adaptations that have occurred (thread-safe).
+func (as *AdaptiveStaging) GetAdaptationHistoryCount() int {
+	as.mu.RLock()
+	defer as.mu.RUnlock()
+	return len(as.adaptationHistory)
 }
 
 // Internal methods
@@ -759,14 +773,19 @@ func (as *AdaptiveStaging) checkAndTriggerAdaptation() {
 
 func (as *AdaptiveStaging) collectAndUpdateMetrics() {
 	// Update staging metrics
+	as.stagingMetrics.mu.Lock()
 	as.stagingMetrics.BufferUtilization = as.stagingBuffer.GetUtilization()
 	as.stagingMetrics.LastUpdate = time.Now()
+	as.stagingMetrics.mu.Unlock()
 
 	// Update progress tracking
 	as.progressTracker.UpdateCurrentMetrics()
 }
 
 func (as *AdaptiveStaging) updateStagingMetrics(result *StagingResult) {
+	as.stagingMetrics.mu.Lock()
+	defer as.stagingMetrics.mu.Unlock()
+
 	as.stagingMetrics.TotalChunksStaged++
 	as.stagingMetrics.TotalBytesStaged += result.StagedSize
 
@@ -778,10 +797,14 @@ func (as *AdaptiveStaging) updateStagingMetrics(result *StagingResult) {
 }
 
 func (as *AdaptiveStaging) capturePerformanceSnapshot() *StagingPerformanceSnapshot {
+	as.stagingMetrics.mu.Lock()
+	avgStagingTime := as.stagingMetrics.AverageStagingTime
+	as.stagingMetrics.mu.Unlock()
+
 	return &StagingPerformanceSnapshot{
 		Timestamp:         time.Now(),
 		ThroughputMBps:    as.progressTracker.GetCurrentThroughput(),
-		LatencyMs:         float64(as.stagingMetrics.AverageStagingTime.Milliseconds()),
+		LatencyMs:         float64(avgStagingTime.Milliseconds()),
 		BufferUtilization: as.stagingBuffer.GetUtilization(),
 		ResourceUsage:     as.resourceAllocator.GetCurrentUsage().CPUUsage,
 	}
