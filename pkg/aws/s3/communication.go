@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -424,7 +425,7 @@ func (cpc *CrossPrefixCommunicator) ReceiveMessage(prefixID string, timeout time
 
 	select {
 	case message := <-channel.Channel:
-		channel.Statistics.MessagesReceived++
+		atomic.AddInt64(&channel.Statistics.MessagesReceived, 1)
 		channel.LastActivity = time.Now()
 		return message, nil
 	case <-time.After(timeout):
@@ -499,10 +500,10 @@ func (cpc *CrossPrefixCommunicator) sendMessageDirect(message *CoordinationMessa
 
 	select {
 	case channel.Channel <- message:
-		channel.Statistics.MessagesSent++
+		atomic.AddInt64(&channel.Statistics.MessagesSent, 1)
 		return nil
 	case <-time.After(cpc.config.MessageTimeout):
-		channel.Statistics.MessagesDropped++
+		atomic.AddInt64(&channel.Statistics.MessagesDropped, 1)
 		return fmt.Errorf("send timeout")
 	case <-cpc.ctx.Done():
 		return fmt.Errorf("communicator shutting down")
@@ -582,14 +583,14 @@ func (cpc *CrossPrefixCommunicator) processPriorityQueue(channel *PrefixChannel)
 
 		// Check if message has expired
 		if time.Now().After(message.ExpiresAt) {
-			channel.Statistics.MessagesDropped++
+			atomic.AddInt64(&channel.Statistics.MessagesDropped, 1)
 			continue
 		}
 
 		// Send message
 		select {
 		case channel.Channel <- message:
-			channel.Statistics.MessagesSent++
+			atomic.AddInt64(&channel.Statistics.MessagesSent, 1)
 		default:
 			// Channel full, put back in priority queue
 			channel.PriorityQueue.Push(message)
@@ -605,8 +606,8 @@ func (cpc *CrossPrefixCommunicator) updateMetrics() {
 	channelCount := 0
 
 	for _, channel := range cpc.channels {
-		totalMessages += channel.Statistics.MessagesReceived + channel.Statistics.MessagesSent
-		totalDropped += channel.Statistics.MessagesDropped
+		totalMessages += atomic.LoadInt64(&channel.Statistics.MessagesReceived) + atomic.LoadInt64(&channel.Statistics.MessagesSent)
+		totalDropped += atomic.LoadInt64(&channel.Statistics.MessagesDropped)
 		totalLatency += channel.Statistics.AverageLatency
 		channelCount++
 	}
