@@ -630,8 +630,11 @@ func TestMemoryAwareBufferBackgroundOperations(t *testing.T) {
 	// Wait for background operations to run (monitoring interval is 5 seconds)
 	time.Sleep(time.Millisecond * 5100)
 
-	// Verify monitoring is working
-	assert.Greater(t, len(mab.memoryMonitor.usageHistory), 0)
+	// Verify monitoring is working (with lock)
+	mab.memoryMonitor.mu.RLock()
+	historyLen := len(mab.memoryMonitor.usageHistory)
+	mab.memoryMonitor.mu.RUnlock()
+	assert.Greater(t, historyLen, 0)
 
 	// The context will be cancelled, which should stop background operations
 	mab.cancel()

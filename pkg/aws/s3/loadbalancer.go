@@ -732,10 +732,9 @@ func (rtlb *RealTimeLoadBalancer) applyOptimizedWeights(solution *LoadBalanceSol
 	}
 }
 
+// updateSystemLoadMetrics updates system load metrics.
+// Must be called with rtlb.mu held.
 func (rtlb *RealTimeLoadBalancer) updateSystemLoadMetrics() {
-	rtlb.mu.Lock()
-	defer rtlb.mu.Unlock()
-
 	totalThroughput := 0.0
 	totalCapacity := 0.0
 	loadDistribution := make(map[string]float64)

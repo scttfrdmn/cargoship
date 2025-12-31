@@ -187,7 +187,14 @@ func (cc *ComponentCollection) ProcessTransfer(ctx context.Context, upload *Sche
 	cc.BandwidthOptimizer.OptimizeBandwidthAllocation()
 
 	// 5. Prefix coordinator manages cross-prefix operations
-	go cc.PrefixCoordinator.CoordinatePrefixes(ctx)
+	done := make(chan struct{})
+	go func() {
+		cc.PrefixCoordinator.CoordinatePrefixes(ctx)
+		close(done)
+	}()
+
+	// Wait for prefix coordination to complete before analyzing performance
+	<-done
 
 	// 6. Performance analyzer provides insights
 	stats := cc.CongestionPerformanceAnalyzer.AnalyzePerformance()

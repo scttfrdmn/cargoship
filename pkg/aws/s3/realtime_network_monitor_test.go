@@ -142,12 +142,15 @@ func TestRealTimeNetworkMonitorWithRealMonitoring(t *testing.T) {
 	assert.NotZero(t, conditions.Timestamp)
 
 	// Check worker statistics - workers should have executed at least once
-	nm.mu.RLock()
 	for i := range nm.monitoringWorkers {
-		assert.GreaterOrEqual(t, nm.monitoringWorkers[i].ExecutionCount, int64(1), "worker %d should have executed", i)
-		assert.NotZero(t, nm.monitoringWorkers[i].LastExecution, "worker %d should have LastExecution set", i)
+		worker := &nm.monitoringWorkers[i]
+		worker.mu.Lock()
+		execCount := worker.ExecutionCount
+		lastExec := worker.LastExecution
+		worker.mu.Unlock()
+		assert.GreaterOrEqual(t, execCount, int64(1), "worker %d should have executed", i)
+		assert.NotZero(t, lastExec, "worker %d should have LastExecution set", i)
 	}
-	nm.mu.RUnlock()
 
 	// Stop monitoring
 	err = nm.StopMonitoring()

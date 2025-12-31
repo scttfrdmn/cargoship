@@ -294,9 +294,14 @@ func TestRealTimeLoadBalancerRealTimeMonitoring(t *testing.T) {
 	// Wait for monitoring loop to run (with configurable interval)
 	time.Sleep(rtlb.monitoringInterval * 3)
 
-	// Verify system load metrics were updated
-	assert.Greater(t, rtlb.systemLoad.TotalCapacity, 0.0)
-	assert.NotZero(t, rtlb.systemLoad.LastUpdate)
+	// Verify system load metrics were updated (with lock)
+	rtlb.mu.RLock()
+	totalCapacity := rtlb.systemLoad.TotalCapacity
+	lastUpdate := rtlb.systemLoad.LastUpdate
+	rtlb.mu.RUnlock()
+
+	assert.Greater(t, totalCapacity, 0.0)
+	assert.NotZero(t, lastUpdate)
 }
 
 func TestPerformanceHistoryManagement(t *testing.T) {

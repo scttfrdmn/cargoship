@@ -230,7 +230,11 @@ func (nm *RealTimeNetworkMonitor) executeWorkerTask(worker *RealTimeMonitoringWo
 	case RealTimeWorkerStabilityMonitor:
 		_ = nm.stabilityAnalyzer.AnalyzeStability()
 	case RealTimeWorkerQualityAssessor:
-		_ = nm.qualityAssessor.AssessQuality(nm.currentConditions)
+		// Get snapshot of current conditions under lock
+		nm.mu.RLock()
+		conditionsCopy := *nm.currentConditions
+		nm.mu.RUnlock()
+		_ = nm.qualityAssessor.AssessQuality(&conditionsCopy)
 	case RealTimeWorkerPathDetector:
 		_, err = nm.pathDetector.DetectPaths()
 	}
