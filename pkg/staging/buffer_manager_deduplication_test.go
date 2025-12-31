@@ -3,6 +3,7 @@ package staging
 import (
 	"bytes"
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -53,20 +54,30 @@ func TestStagingBufferManager_DeduplicateIdenticalChunks(t *testing.T) {
 
 	var chunk1 *StagedChunk
 	var err1 error
+	var mu1 sync.Mutex
+	var wg1 sync.WaitGroup
+	wg1.Add(1)
+
 	req1.Callback = func(chunk *StagedChunk, err error) {
+		mu1.Lock()
+		defer mu1.Unlock()
 		chunk1 = chunk
 		err1 = err
+		wg1.Done()
 	}
 
 	err := manager.StageChunk(req1, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100) // Wait for processing
 
+	wg1.Wait() // Wait for callback to complete
+
+	mu1.Lock()
 	require.NoError(t, err1)
 	require.NotNil(t, chunk1)
 	assert.False(t, chunk1.IsDuplicate)
 	assert.Equal(t, ActionStore, chunk1.DeduplicationAction)
 	assert.NotNil(t, chunk1.Data)
+	mu1.Unlock()
 
 	// Stage second identical chunk
 	req2 := &StagingRequest{
@@ -78,22 +89,34 @@ func TestStagingBufferManager_DeduplicateIdenticalChunks(t *testing.T) {
 
 	var chunk2 *StagedChunk
 	var err2 error
+	var mu2 sync.Mutex
+	var wg2 sync.WaitGroup
+	wg2.Add(1)
+
 	req2.Callback = func(chunk *StagedChunk, err error) {
+		mu2.Lock()
+		defer mu2.Unlock()
 		chunk2 = chunk
 		err2 = err
+		wg2.Done()
 	}
 
 	err = manager.StageChunk(req2, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100) // Wait for processing
 
+	wg2.Wait() // Wait for callback to complete
+
+	mu2.Lock()
 	require.NoError(t, err2)
 	require.NotNil(t, chunk2)
 	assert.True(t, chunk2.IsDuplicate)
 	assert.Equal(t, ActionDuplicate, chunk2.DeduplicationAction)
 	assert.Nil(t, chunk2.Data) // Duplicate should not store data
+	mu1.Lock()
 	assert.Equal(t, chunk1.Hash, chunk2.Hash)
+	mu1.Unlock()
 	assert.Equal(t, int64(len(testData)), chunk2.BytesSaved)
+	mu2.Unlock()
 
 	// Verify duplicate reference tracking
 	refCount := manager.GetDuplicateReferenceCount(chunk1.Hash)
@@ -133,16 +156,26 @@ func TestStagingBufferManager_SimilarityDetection(t *testing.T) {
 	}
 
 	var chunk1 *StagedChunk
+	var mu1 sync.Mutex
+	var wg1 sync.WaitGroup
+	wg1.Add(1)
+
 	req1.Callback = func(chunk *StagedChunk, err error) {
+		mu1.Lock()
+		defer mu1.Unlock()
 		chunk1 = chunk
+		wg1.Done()
 	}
 
 	err := manager.StageChunk(req1, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
 
+	wg1.Wait()
+
+	mu1.Lock()
 	require.NotNil(t, chunk1)
 	assert.Equal(t, ActionStore, chunk1.DeduplicationAction)
+	mu1.Unlock()
 
 	// Stage similar chunk
 	req2 := &StagingRequest{
@@ -153,18 +186,28 @@ func TestStagingBufferManager_SimilarityDetection(t *testing.T) {
 	}
 
 	var chunk2 *StagedChunk
+	var mu2 sync.Mutex
+	var wg2 sync.WaitGroup
+	wg2.Add(1)
+
 	req2.Callback = func(chunk *StagedChunk, err error) {
+		mu2.Lock()
+		defer mu2.Unlock()
 		chunk2 = chunk
+		wg2.Done()
 	}
 
 	err = manager.StageChunk(req2, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
 
+	wg2.Wait()
+
+	mu2.Lock()
 	require.NotNil(t, chunk2)
 	// Should detect similarity if threshold is met
 	assert.True(t, chunk2.SimilarityScore > 0)
 	assert.True(t, chunk2.BytesSaved >= 0)
+	mu2.Unlock()
 }
 
 func TestStagingBufferManager_SmallChunksSkipDeduplication(t *testing.T) {
@@ -188,17 +231,27 @@ func TestStagingBufferManager_SmallChunksSkipDeduplication(t *testing.T) {
 	}
 
 	var chunk *StagedChunk
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	req.Callback = func(c *StagedChunk, err error) {
+		mu.Lock()
+		defer mu.Unlock()
 		chunk = c
+		wg.Done()
 	}
 
 	err := manager.StageChunk(req, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
 
+	wg.Wait()
+
+	mu.Lock()
 	require.NotNil(t, chunk)
 	assert.Equal(t, ActionStore, chunk.DeduplicationAction)
 	assert.NotNil(t, chunk.Data)
+	mu.Unlock()
 }
 
 func TestStagingBufferManager_DeduplicationStats(t *testing.T) {
@@ -283,14 +336,28 @@ func TestStagingBufferManager_ReleaseChunkWithDeduplication(t *testing.T) {
 	}
 
 	var chunk1 *StagedChunk
+	var err1 error
+	var mu1 sync.Mutex
+	var wg1 sync.WaitGroup
+	wg1.Add(1)
+
 	req1.Callback = func(chunk *StagedChunk, err error) {
+		mu1.Lock()
+		defer mu1.Unlock()
 		chunk1 = chunk
+		err1 = err
+		wg1.Done()
 	}
 
 	err := manager.StageChunk(req1, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
+
+	wg1.Wait()
+
+	mu1.Lock()
+	require.NoError(t, err1)
 	require.NotNil(t, chunk1)
+	mu1.Unlock()
 
 	// Stage duplicate chunk
 	req2 := &StagingRequest{
@@ -301,30 +368,53 @@ func TestStagingBufferManager_ReleaseChunkWithDeduplication(t *testing.T) {
 	}
 
 	var chunk2 *StagedChunk
+	var err2 error
+	var mu2 sync.Mutex
+	var wg2 sync.WaitGroup
+	wg2.Add(1)
+
 	req2.Callback = func(chunk *StagedChunk, err error) {
+		mu2.Lock()
+		defer mu2.Unlock()
 		chunk2 = chunk
+		err2 = err
+		wg2.Done()
 	}
 
 	err = manager.StageChunk(req2, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
+
+	wg2.Wait()
+
+	mu2.Lock()
+	require.NoError(t, err2)
 	require.NotNil(t, chunk2)
+	mu2.Unlock()
 
 	// Verify duplicate reference exists
-	refCount := manager.GetDuplicateReferenceCount(chunk1.Hash)
+	mu1.Lock()
+	hash := chunk1.Hash
+	mu1.Unlock()
+	refCount := manager.GetDuplicateReferenceCount(hash)
 	assert.Equal(t, 1, refCount)
 
 	// Release duplicate chunk
-	manager.ReleaseStagedChunk(chunk2.ID)
+	mu2.Lock()
+	chunkID2 := chunk2.ID
+	mu2.Unlock()
+	manager.ReleaseStagedChunk(chunkID2)
 
 	// Verify reference was cleaned up
-	refCount = manager.GetDuplicateReferenceCount(chunk1.Hash)
+	refCount = manager.GetDuplicateReferenceCount(hash)
 	assert.Equal(t, 0, refCount)
 
 	// Verify original chunk still exists
-	retrieved, err := manager.GetStagedChunk(chunk1.ID)
+	mu1.Lock()
+	chunkID1 := chunk1.ID
+	mu1.Unlock()
+	retrieved, err := manager.GetStagedChunk(chunkID1)
 	require.NoError(t, err)
-	assert.Equal(t, chunk1.ID, retrieved.ID)
+	assert.Equal(t, chunkID1, retrieved.ID)
 }
 
 func TestStagingBufferManager_CleanupExpiredWithDeduplication(t *testing.T) {
@@ -348,17 +438,31 @@ func TestStagingBufferManager_CleanupExpiredWithDeduplication(t *testing.T) {
 	}
 
 	var chunk *StagedChunk
+	var callbackErr error
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	req.Callback = func(c *StagedChunk, err error) {
+		mu.Lock()
+		defer mu.Unlock()
 		chunk = c
+		callbackErr = err
+		wg.Done()
 	}
 
 	err := manager.StageChunk(req, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
+
+	wg.Wait()
+
+	mu.Lock()
+	require.NoError(t, callbackErr)
 	require.NotNil(t, chunk)
 
 	// Manually set old timestamp to trigger expiration
 	chunk.StagedAt = time.Now().Add(-time.Hour)
+	mu.Unlock()
 
 	initialCount := manager.GetActiveCount()
 	assert.True(t, initialCount > 0)
@@ -432,14 +536,28 @@ func TestStagingBufferManager_ContentTypeAwareness(t *testing.T) {
 	}
 
 	var chunk1 *StagedChunk
+	var err1 error
+	var mu1 sync.Mutex
+	var wg1 sync.WaitGroup
+	wg1.Add(1)
+
 	req1.Callback = func(chunk *StagedChunk, err error) {
+		mu1.Lock()
+		defer mu1.Unlock()
 		chunk1 = chunk
+		err1 = err
+		wg1.Done()
 	}
 
 	err := manager.StageChunk(req1, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
+
+	wg1.Wait()
+
+	mu1.Lock()
+	require.NoError(t, err1)
 	require.NotNil(t, chunk1)
+	mu1.Unlock()
 
 	// Stage same data as JSON
 	req2 := &StagingRequest{
@@ -450,18 +568,34 @@ func TestStagingBufferManager_ContentTypeAwareness(t *testing.T) {
 	}
 
 	var chunk2 *StagedChunk
+	var err2 error
+	var mu2 sync.Mutex
+	var wg2 sync.WaitGroup
+	wg2.Add(1)
+
 	req2.Callback = func(chunk *StagedChunk, err error) {
+		mu2.Lock()
+		defer mu2.Unlock()
 		chunk2 = chunk
+		err2 = err
+		wg2.Done()
 	}
 
 	err = manager.StageChunk(req2, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
+
+	wg2.Wait()
+
+	mu2.Lock()
+	require.NoError(t, err2)
 	require.NotNil(t, chunk2)
 
 	// Should still detect as duplicate despite different content types
 	assert.True(t, chunk2.IsDuplicate)
+	mu1.Lock()
 	assert.Equal(t, chunk1.Hash, chunk2.Hash)
+	mu1.Unlock()
+	mu2.Unlock()
 }
 
 func BenchmarkStagingBufferManager_DeduplicationProcessing(b *testing.B) {
