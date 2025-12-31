@@ -3,6 +3,7 @@ package staging
 import (
 	"bytes"
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -60,17 +61,26 @@ The quick brown fox jumps over the lazy dog. This sentence is repeated to create
 	}
 
 	var chunk *StagedChunk
-	var err error
+	var callbackErr error
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	req.Callback = func(c *StagedChunk, e error) {
+		mu.Lock()
+		defer mu.Unlock()
 		chunk = c
-		err = e
+		callbackErr = e
+		wg.Done()
 	}
 
-	err = manager.StageChunk(req, ChunkBoundary{})
+	err := manager.StageChunk(req, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
 
-	require.NoError(t, err)
+	wg.Wait() // Wait for callback to complete
+
+	mu.Lock()
+	require.NoError(t, callbackErr)
 	require.NotNil(t, chunk)
 
 	// Should recommend high compression for text with low bandwidth
@@ -78,6 +88,7 @@ The quick brown fox jumps over the lazy dog. This sentence is repeated to create
 	assert.NotNil(t, chunk.CompressionSettings)
 	assert.NotNil(t, chunk.CompressionDecision)
 	assert.True(t, chunk.CompressionDecision.Confidence > 0.5)
+	mu.Unlock()
 }
 
 func TestStagingBufferManager_AdaptiveCompressionForImages(t *testing.T) {
@@ -114,22 +125,32 @@ func TestStagingBufferManager_AdaptiveCompressionForImages(t *testing.T) {
 	}
 
 	var chunk *StagedChunk
-	var err error
+	var callbackErr error
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	req.Callback = func(c *StagedChunk, e error) {
+		mu.Lock()
+		defer mu.Unlock()
 		chunk = c
-		err = e
+		callbackErr = e
+		wg.Done()
 	}
 
-	err = manager.StageChunk(req, ChunkBoundary{})
+	err := manager.StageChunk(req, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
 
-	require.NoError(t, err)
+	wg.Wait() // Wait for callback to complete
+
+	mu.Lock()
+	require.NoError(t, callbackErr)
 	require.NotNil(t, chunk)
 
 	// Should recommend no compression or fast compression for images with high bandwidth
 	assert.Contains(t, []string{"none", "zstd-fast"}, chunk.SelectedAlgorithm)
 	assert.NotNil(t, chunk.CompressionDecision)
+	mu.Unlock()
 }
 
 func TestStagingBufferManager_AdaptiveCompressionLearning(t *testing.T) {
