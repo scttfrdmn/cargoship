@@ -19,6 +19,9 @@
 #   --region REGION         AWS region to use (default: us-west-2)
 #   --test-data-dir DIR     Directory for test data (default: /tmp/benchmark-data)
 #   --results-dir DIR       Directory for results (default: /tmp/competitive-benchmark-results-TIMESTAMP)
+#   --use-realistic-data    Use realistic domain-specific test data (Issue #166)
+#   --use-aws-open-data     Use AWS Open Data Registry datasets (Issue #166)
+#   --storage-source TYPE   Storage source type: nvme, sata, hdd, nas (default: nvme)
 #   --help                  Show this help message
 #
 # Environment Variables (overridden by command-line options):
@@ -44,6 +47,10 @@
 set -e
 
 # Parse command-line arguments
+USE_REALISTIC_DATA=false
+USE_AWS_OPEN_DATA=false
+STORAGE_SOURCE="nvme"
+
 while [[ $# -gt 0 ]]; do
     case $1 in
         --profile)
@@ -60,6 +67,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --results-dir)
             CLI_RESULTS_DIR="$2"
+            shift 2
+            ;;
+        --use-realistic-data)
+            USE_REALISTIC_DATA=true
+            shift
+            ;;
+        --use-aws-open-data)
+            USE_AWS_OPEN_DATA=true
+            shift
+            ;;
+        --storage-source)
+            STORAGE_SOURCE="$2"
             shift 2
             ;;
         --help|-h)
@@ -81,6 +100,36 @@ AWS_REGION_SECONDARY="${AWS_REGION_SECONDARY:-us-east-1}"
 BENCHMARK_BUCKET="cargoship-competitive-benchmark-$(date +%s)"
 TEST_DATA_DIR="${CLI_TEST_DATA_DIR:-${TEST_DATA_DIR:-/tmp/benchmark-data}}"
 RESULTS_DIR="${CLI_RESULTS_DIR:-${RESULTS_DIR:-/tmp/competitive-benchmark-results-$(date +%Y%m%d-%H%M%S)}}"
+
+# Validate storage source
+case $STORAGE_SOURCE in
+    nvme|sata|hdd|nas) ;;
+    *)
+        log_error "Invalid storage source: $STORAGE_SOURCE"
+        log_info "Valid options: nvme, sata, hdd, nas"
+        exit 1
+        ;;
+esac
+
+# Storage source characteristics (Issue #166)
+case $STORAGE_SOURCE in
+    nvme)
+        STORAGE_READ_SPEED=3500  # MB/s
+        STORAGE_DESC="NVMe SSD (3500 MB/s)"
+        ;;
+    sata)
+        STORAGE_READ_SPEED=550   # MB/s
+        STORAGE_DESC="SATA SSD (550 MB/s)"
+        ;;
+    hdd)
+        STORAGE_READ_SPEED=150   # MB/s
+        STORAGE_DESC="HDD (150 MB/s)"
+        ;;
+    nas)
+        STORAGE_READ_SPEED=125   # MB/s (1Gbps network)
+        STORAGE_DESC="NAS (1Gbps network, 125 MB/s)"
+        ;;
+esac
 
 # Pricing (approximate, us-west-2)
 COST_PUT_REQUEST=0.000005  # $0.005 per 1,000 PUT requests
@@ -196,8 +245,47 @@ mkdir -p "$TEST_DATA_DIR"
 log_info "Competitive Benchmark - Issue #34"
 log_info "Results will be saved to: $RESULTS_DIR"
 log_info "Test data directory: $TEST_DATA_DIR"
+log_info "Storage source: $STORAGE_DESC"
+if [ "$USE_REALISTIC_DATA" = true ]; then
+    log_info "Using realistic domain-specific test data (Issue #166)"
+fi
+if [ "$USE_AWS_OPEN_DATA" = true ]; then
+    log_info "Using AWS Open Data Registry datasets (Issue #166)"
+fi
 
 verify_tools
+
+# Check for realistic data or AWS Open Data
+check_test_data() {
+    if [ "$USE_AWS_OPEN_DATA" = true ]; then
+        # Check if AWS Open Data has been downloaded
+        if [ ! -d "$TEST_DATA_DIR/landsat-8" ] && \
+           [ ! -d "$TEST_DATA_DIR/1000-genomes" ] && \
+           [ ! -d "$TEST_DATA_DIR/noaa-nexrad" ]; then
+            log_warn "AWS Open Data not found in $TEST_DATA_DIR"
+            log_info "Download datasets first:"
+            log_info "  ./scripts/download-aws-open-data.sh --dataset landsat,genomes --output-dir $TEST_DATA_DIR"
+            exit 1
+        fi
+        log_success "Found AWS Open Data in $TEST_DATA_DIR"
+    elif [ "$USE_REALISTIC_DATA" = true ]; then
+        # Check if realistic data has been generated
+        if [ ! -d "$TEST_DATA_DIR/software-engineering" ] && \
+           [ ! -d "$TEST_DATA_DIR/media-production" ] && \
+           [ ! -d "$TEST_DATA_DIR/database-backup" ] && \
+           [ ! -d "$TEST_DATA_DIR/scientific-computing" ]; then
+            log_warn "Realistic test data not found in $TEST_DATA_DIR"
+            log_info "Generate datasets first:"
+            log_info "  ./scripts/generate-realistic-test-data.sh --domain all --size small --output-dir $TEST_DATA_DIR"
+            exit 1
+        fi
+        log_success "Found realistic test data in $TEST_DATA_DIR"
+    else
+        log_info "Using synthetic test data (original behavior)"
+    fi
+}
+
+check_test_data
 
 # Initialize results CSV
 echo "scenario,tool,duration_ms,throughput_mbps,file_count,total_size_mb,put_requests,estimated_cost_usd" > "$RESULTS_DIR/results.csv"
@@ -980,6 +1068,8 @@ cat >> "$RESULTS_DIR/report.md" <<EOF
 - **AWS Region**: $AWS_REGION
 - **Secondary Region**: $AWS_REGION_SECONDARY
 - **Test Data**: $TEST_DATA_DIR
+- **Storage Source**: $STORAGE_DESC (Issue #166)
+- **Data Type**: $(if [ "$USE_AWS_OPEN_DATA" = true ]; then echo "AWS Open Data Registry"; elif [ "$USE_REALISTIC_DATA" = true ]; then echo "Realistic domain-specific"; else echo "Synthetic"; fi)
 - **Results**: $RESULTS_DIR
 
 ## Raw Data
