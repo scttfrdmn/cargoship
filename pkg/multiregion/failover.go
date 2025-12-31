@@ -120,9 +120,9 @@ func (f *DefaultFailoverManager) DetectFailure(ctx context.Context, regionName s
 	}
 
 	f.mu.RLock()
-	history, exists := f.failureHistory[regionName]
-	f.mu.RUnlock()
+	defer f.mu.RUnlock()
 
+	history, exists := f.failureHistory[regionName]
 	if !exists {
 		// No failure history means no failure detected
 		return false, nil
@@ -324,7 +324,9 @@ func (f *DefaultFailoverManager) RecordSuccess(regionName string) {
 
 // executeFailoverStrategy executes failover based on configured strategy
 func (f *DefaultFailoverManager) executeFailoverStrategy(operation *FailoverOperation) error {
+	f.failoverMutex.Lock()
 	operation.Status = FailoverStatusInProgress
+	f.failoverMutex.Unlock()
 
 	switch f.config.Failover.Strategy {
 	case FailoverImmediate:

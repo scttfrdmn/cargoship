@@ -282,7 +282,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 		defer jobSpan.End()
 
 		// Add file and S3 attributes
-		tracer.AddFileAttributes(jobSpan, "", job.ArchiveSize, len(job.Chunk.Files))
+		tracer.AddFileAttributes(jobSpan, "", atomic.LoadInt64(&job.ArchiveSize), len(job.Chunk.Files))
 		tracer.AddS3Attributes(jobSpan, s.config.Bucket, job.S3Key, "")
 	}
 
@@ -347,18 +347,18 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 		// Success - update statistics
 		job.EndTime = time.Now()
 		atomic.AddInt64(&s.jobsProcessed, 1)
-		atomic.AddInt64(&s.bytesProcessed, job.ArchiveSize)
+		atomic.AddInt64(&s.bytesProcessed, atomic.LoadInt64(&job.ArchiveSize))
 
 		// Update per-prefix stats
 		if prefixStats, exists := s.perPrefixStats[prefix]; exists {
 			atomic.AddInt64(&prefixStats.jobsProcessed, 1)
-			atomic.AddInt64(&prefixStats.bytesProcessed, job.ArchiveSize)
+			atomic.AddInt64(&prefixStats.bytesProcessed, atomic.LoadInt64(&job.ArchiveSize))
 		}
 
 		// Update global stats
 		s.mu.Lock()
 		s.stats.JobsProcessed++
-		s.stats.BytesProcessed += job.ArchiveSize
+		s.stats.BytesProcessed += atomic.LoadInt64(&job.ArchiveSize)
 		s.stats.TotalTime += time.Since(startTime)
 		if s.stats.JobsProcessed > 0 {
 			s.stats.AverageTime = s.stats.TotalTime / time.Duration(s.stats.JobsProcessed)
@@ -391,7 +391,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 				FileCount:        len(job.Chunk.Files),
 				FilePaths:        filePaths,
 				UncompressedSize: job.Chunk.TotalSize,
-				CompressedSize:   job.ArchiveSize,
+				CompressedSize:   atomic.LoadInt64(&job.ArchiveSize),
 				CreatedAt:        job.StartTime,
 				UploadedAt:       job.EndTime,
 			})
@@ -402,7 +402,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 				job.S3Key,
 				int64(len(job.Chunk.Files)),
 				job.Chunk.TotalSize,
-				job.ArchiveSize,
+				atomic.LoadInt64(&job.ArchiveSize),
 			)
 
 			s.pipeline.manifestMu.Unlock()
@@ -464,7 +464,7 @@ func (s *S3MultiPrefixUploaderStage) uploadViaTransporter(ctx context.Context, s
 	archive := s3transport.Archive{
 		Key:      s3Key,
 		Reader:   job.Archive,
-		Size:     job.ArchiveSize,
+		Size:     atomic.LoadInt64(&job.ArchiveSize),
 		Metadata: metadata,
 	}
 

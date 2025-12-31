@@ -475,7 +475,7 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 
 		// Update job with archive size (compressed)
 		// Note: This is an estimate since we're streaming
-		job.ArchiveSize = totalSize
+		atomic.StoreInt64(&job.ArchiveSize, totalSize)
 	}()
 
 	// Store the reader in the job
@@ -517,7 +517,7 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 		return ctx.Err()
 	case s.selectOutput(job) <- job:
 		atomic.AddInt64(&s.jobsProcessed, 1)
-		atomic.AddInt64(&s.bytesProcessed, job.ArchiveSize)
+		atomic.AddInt64(&s.bytesProcessed, atomic.LoadInt64(&job.ArchiveSize))
 
 		s.mu.Lock()
 		s.stats.TotalTime += time.Since(startTime)

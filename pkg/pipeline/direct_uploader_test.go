@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,13 +14,18 @@ import (
 
 // Mock S3 client for testing
 type mockS3Client struct {
+	mu             sync.Mutex
 	putObjectCalls int
 	failAfter      int // Fail after N calls (for retry testing)
 }
 
 func (m *mockS3Client) PutObject(ctx context.Context, input *s3.PutObjectInput, opts ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	m.mu.Lock()
 	m.putObjectCalls++
-	if m.failAfter > 0 && m.putObjectCalls <= m.failAfter {
+	calls := m.putObjectCalls
+	m.mu.Unlock()
+
+	if m.failAfter > 0 && calls <= m.failAfter {
 		return nil, &mockError{message: "simulated upload failure"}
 	}
 	return &s3.PutObjectOutput{}, nil
@@ -40,6 +46,12 @@ func (m *mockS3Client) CompleteMultipartUpload(ctx context.Context, input *s3.Co
 
 func (m *mockS3Client) AbortMultipartUpload(ctx context.Context, input *s3.AbortMultipartUploadInput, opts ...func(*s3.Options)) (*s3.AbortMultipartUploadOutput, error) {
 	return &s3.AbortMultipartUploadOutput{}, nil
+}
+
+func (m *mockS3Client) GetPutObjectCalls() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.putObjectCalls
 }
 
 type mockError struct {
@@ -119,8 +131,8 @@ func TestDirectUploaderStage_BasicUpload(t *testing.T) {
 	_ = uploader.Stop()
 
 	// Verify upload was called
-	if mockClient.putObjectCalls != 1 {
-		t.Errorf("Expected 1 PutObject call, got %d", mockClient.putObjectCalls)
+	if mockClient.GetPutObjectCalls() != 1 {
+		t.Errorf("Expected 1 PutObject call, got %d", mockClient.GetPutObjectCalls())
 	}
 
 	// Verify stats
@@ -216,8 +228,8 @@ func TestDirectUploaderStage_MultipleFiles(t *testing.T) {
 	_ = uploader.Stop()
 
 	// Verify all files were uploaded
-	if mockClient.putObjectCalls != numFiles {
-		t.Errorf("Expected %d PutObject calls, got %d", numFiles, mockClient.putObjectCalls)
+	if mockClient.GetPutObjectCalls() != numFiles {
+		t.Errorf("Expected %d PutObject calls, got %d", numFiles, mockClient.GetPutObjectCalls())
 	}
 
 	if uploader.GetUploadedFiles() != numFiles {
@@ -298,8 +310,8 @@ func TestDirectUploaderStage_RetryLogic(t *testing.T) {
 	_ = uploader.Stop()
 
 	// Verify upload succeeded after retries
-	if mockClient.putObjectCalls != 3 {
-		t.Errorf("Expected 3 PutObject calls (2 failures + 1 success), got %d", mockClient.putObjectCalls)
+	if mockClient.GetPutObjectCalls() != 3 {
+		t.Errorf("Expected 3 PutObject calls (2 failures + 1 success), got %d", mockClient.GetPutObjectCalls())
 	}
 
 	if uploader.GetUploadedFiles() != 1 {

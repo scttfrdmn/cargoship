@@ -100,12 +100,16 @@ func (p *BufferedPipePool) Put(reader *BufferedPipeReader, writer *BufferedPipeW
 	pipe.once = sync.Once{}
 
 	// Reset reader state
+	reader.mu.Lock()
 	reader.closed = false
+	reader.mu.Unlock()
 	reader.current = nil
 	reader.currentPos = 0
 
 	// Reset writer state
+	writer.mu.Lock()
 	writer.closed = false
+	writer.mu.Unlock()
 
 	// Return to pool
 	p.pool <- pipe
@@ -151,12 +155,14 @@ type BufferedPipeReader struct {
 	current    []byte // Current chunk being read
 	currentPos int    // Position in current chunk
 	closed     bool
+	mu         sync.Mutex // Protects closed field
 }
 
 // BufferedPipeWriter is the writing side of a BufferedPipe
 type BufferedPipeWriter struct {
 	pipe   *BufferedPipe
 	closed bool
+	mu     sync.Mutex // Protects closed field
 }
 
 // NewBufferedPipe creates a new buffered pipe with the specified buffer size.
@@ -191,7 +197,11 @@ func NewBufferedPipe(bufferSize, chunkSize int) (*BufferedPipeReader, *BufferedP
 
 // Read implements io.Reader for BufferedPipeReader
 func (r *BufferedPipeReader) Read(p []byte) (n int, err error) {
-	if r.closed {
+	r.mu.Lock()
+	closed := r.closed
+	r.mu.Unlock()
+
+	if closed {
 		return 0, io.EOF
 	}
 
@@ -247,11 +257,15 @@ func (r *BufferedPipeReader) Read(p []byte) (n int, err error) {
 
 // Close implements io.Closer for BufferedPipeReader
 func (r *BufferedPipeReader) Close() error {
+	r.mu.Lock()
 	if r.closed {
+		r.mu.Unlock()
 		return nil
 	}
 
 	r.closed = true
+	r.mu.Unlock()
+
 	r.pipe.once.Do(func() {
 		close(r.pipe.done)
 	})
@@ -276,7 +290,11 @@ func (r *BufferedPipeReader) Close() error {
 
 // Write implements io.Writer for BufferedPipeWriter
 func (w *BufferedPipeWriter) Write(p []byte) (n int, err error) {
-	if w.closed {
+	w.mu.Lock()
+	closed := w.closed
+	w.mu.Unlock()
+
+	if closed {
 		return 0, errors.New("write on closed pipe")
 	}
 
@@ -337,11 +355,14 @@ func (w *BufferedPipeWriter) Close() error {
 // CloseWithError closes the writer with an error.
 // The error will be returned to the reader.
 func (w *BufferedPipeWriter) CloseWithError(err error) error {
+	w.mu.Lock()
 	if w.closed {
+		w.mu.Unlock()
 		return nil
 	}
 
 	w.closed = true
+	w.mu.Unlock()
 
 	// Store error for reader
 	if err != nil {

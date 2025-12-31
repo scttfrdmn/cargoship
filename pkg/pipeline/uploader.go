@@ -127,7 +127,7 @@ func (s *UploaderStage) Process(ctx context.Context, job *Job) error {
 
 		// Success
 		atomic.AddInt64(&s.jobsProcessed, 1)
-		atomic.AddInt64(&s.bytesProcessed, job.ArchiveSize)
+		atomic.AddInt64(&s.bytesProcessed, atomic.LoadInt64(&job.ArchiveSize))
 
 		s.mu.Lock()
 		s.stats.TotalTime += time.Since(startTime)
@@ -187,7 +187,7 @@ func (s *UploaderStage) worker(ctx context.Context) {
 // uploadToS3 uploads the archive to S3 using multipart upload
 func (s *UploaderStage) uploadToS3(ctx context.Context, job *Job) error {
 	// Check if we should use multipart upload
-	useMultipart := job.ArchiveSize > s.config.PartSize
+	useMultipart := atomic.LoadInt64(&job.ArchiveSize) > s.config.PartSize
 
 	if useMultipart {
 		return s.multipartUpload(ctx, job)
@@ -227,7 +227,7 @@ func (s *UploaderStage) simpleUpload(ctx context.Context, job *Job) error {
 	}
 
 	// Update actual size
-	job.ArchiveSize = totalBytes
+	atomic.StoreInt64(&job.ArchiveSize, totalBytes)
 
 	return nil
 }
@@ -279,7 +279,7 @@ func (s *UploaderStage) multipartUpload(ctx context.Context, job *Job) error {
 	// In real implementation: CompleteMultipartUpload with collected ETags
 
 	// Update actual size
-	job.ArchiveSize = totalBytes
+	atomic.StoreInt64(&job.ArchiveSize, totalBytes)
 
 	return nil
 }

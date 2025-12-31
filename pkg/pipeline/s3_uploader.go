@@ -221,7 +221,7 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 		defer jobSpan.End()
 
 		// Add file and S3 attributes
-		tracer.AddFileAttributes(jobSpan, "", job.ArchiveSize, len(job.Chunk.Files))
+		tracer.AddFileAttributes(jobSpan, "", atomic.LoadInt64(&job.ArchiveSize), len(job.Chunk.Files))
 		tracer.AddS3Attributes(jobSpan, s.config.Bucket, job.S3Key, "")
 	}
 
@@ -298,11 +298,11 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 		// Success
 		job.EndTime = time.Now()
 		atomic.AddInt64(&s.jobsProcessed, 1)
-		atomic.AddInt64(&s.bytesProcessed, job.ArchiveSize)
+		atomic.AddInt64(&s.bytesProcessed, atomic.LoadInt64(&job.ArchiveSize))
 
 		s.mu.Lock()
 		s.stats.JobsProcessed++
-		s.stats.BytesProcessed += job.ArchiveSize
+		s.stats.BytesProcessed += atomic.LoadInt64(&job.ArchiveSize)
 		s.stats.TotalTime += time.Since(startTime)
 		if s.stats.JobsProcessed > 0 {
 			s.stats.AverageTime = s.stats.TotalTime / time.Duration(s.stats.JobsProcessed)
@@ -398,7 +398,7 @@ func (s *S3UploaderStage) uploadViaTransporter(ctx context.Context, s3Key string
 	archive := s3transport.Archive{
 		Key:          s3Key,
 		Reader:       job.Archive, // io.ReadCloser
-		Size:         job.ArchiveSize,
+		Size:         atomic.LoadInt64(&job.ArchiveSize),
 		StorageClass: storageClass,
 		Metadata:     metadata,
 	}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime/debug"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -631,7 +632,7 @@ func (p *Pipeline) waitForCompletion(ctx context.Context) *Result {
 		// Update progress
 		p.progress.mu.Lock()
 		p.progress.progress.ChunksCompleted++
-		p.progress.progress.BytesProcessed += job.ArchiveSize
+		p.progress.progress.BytesProcessed += atomic.LoadInt64(&job.ArchiveSize)
 		p.progress.progress.FilesProcessed += int64(job.Chunk.FileCount)
 		p.progress.mu.Unlock()
 	}
