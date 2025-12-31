@@ -74,7 +74,9 @@ func (gcc *GlobalCongestionController) AllocateResources(upload *ScheduledUpload
 		backoffDelay := gcc.calculateBackoffDelay(allocation)
 		upload.BackoffDelay = backoffDelay
 
-		return allocation, &CoordinationError{
+		// Return a snapshot to avoid races
+		snapshot := *allocation
+		return &snapshot, &CoordinationError{
 			Type:     "congestion_window_full",
 			Message:  "congestion window full, applying backoff",
 			PrefixID: upload.PrefixID,
@@ -93,7 +95,9 @@ func (gcc *GlobalCongestionController) AllocateResources(upload *ScheduledUpload
 	priorityMultiplier := gcc.calculatePriorityMultiplier(upload.Priority)
 	allocation.AllocatedBandwidthMBps *= priorityMultiplier
 
-	return allocation, nil
+	// Return a snapshot to avoid races when caller accesses fields outside lock
+	snapshot := *allocation
+	return &snapshot, nil
 }
 
 // UpdatePrefixPerformance updates performance metrics for congestion control decisions.
@@ -577,10 +581,9 @@ func (gcc *GlobalCongestionController) findLeastUtilizedPrefix() *PrefixAllocati
 	return leastUtilized
 }
 
+// calculateAverageUtilization calculates average utilization across all prefixes.
+// Must be called with gcc.mu held (either RLock or Lock).
 func (gcc *GlobalCongestionController) calculateAverageUtilization() float64 {
-	gcc.mu.RLock()
-	defer gcc.mu.RUnlock()
-
 	if len(gcc.prefixAllocation) == 0 {
 		return 0
 	}

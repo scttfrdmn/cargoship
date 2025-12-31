@@ -75,14 +75,15 @@ func TestInterfaceSegregation(t *testing.T) {
 		// Verify that we can treat it as just a statistics analyzer
 		var statsAnalyzer StatisticsAnalyzer = fullController
 
-		// Test statistics methods
+		// Test statistics methods - must hold lock when calling these
+		fullController.mu.RLock()
 		utilization := statsAnalyzer.calculateAverageUtilization()
-		assert.GreaterOrEqual(t, utilization, 0.0)
-
 		totalUtilization := statsAnalyzer.calculateTotalUtilization()
-		assert.GreaterOrEqual(t, totalUtilization, 0.0)
-
 		fairnessIndex := statsAnalyzer.calculateFairnessIndex()
+		fullController.mu.RUnlock()
+
+		assert.GreaterOrEqual(t, utilization, 0.0)
+		assert.GreaterOrEqual(t, totalUtilization, 0.0)
 		assert.GreaterOrEqual(t, fairnessIndex, 0.0)
 		assert.LessOrEqual(t, fairnessIndex, 1.0)
 	})

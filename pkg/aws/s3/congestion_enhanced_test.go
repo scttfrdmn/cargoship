@@ -21,12 +21,12 @@ func TestEnhancedCongestionControlWithCommunication(t *testing.T) {
 
 	testutil.WithLeakCheck(t, testutil.DefaultLeakCheckOptions(), func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel() // Ensure context is cancelled for cleanup
 
 		config := DefaultCoordinationConfig()
 
 		// Create global congestion controller
 		gcc := NewGlobalCongestionController(config)
+		gcc.Start(ctx) // Start background goroutines
 
 		// Create communication system
 		commConfig := DefaultCommunicationConfig()
@@ -34,11 +34,6 @@ func TestEnhancedCongestionControlWithCommunication(t *testing.T) {
 
 		err := communicator.Start()
 		require.NoError(t, err)
-		defer func() {
-			if err := communicator.Stop(); err != nil {
-				t.Logf("Warning: communicator stop error: %v", err)
-			}
-		}()
 
 		// Integrate congestion controller with communicator
 		gcc.SetCommunicator(communicator)
@@ -59,9 +54,17 @@ func TestEnhancedCongestionControlWithCommunication(t *testing.T) {
 		assert.True(t, metrics.CrossPrefixActive)
 		assert.Equal(t, 3, len(gcc.prefixAllocation))
 
-		// Explicit cleanup before defer calls
+		// Explicit cleanup - cancel context first
 		cancel()
-		time.Sleep(100 * time.Millisecond) // Allow goroutines to cleanup (increased from 50ms)
+		time.Sleep(200 * time.Millisecond) // Allow goroutines to detect cancellation and cleanup
+
+		// Stop components
+		if err := communicator.Stop(); err != nil {
+			t.Logf("Warning: communicator stop error: %v", err)
+		}
+
+		// Give extra time for full cleanup
+		time.Sleep(100 * time.Millisecond)
 	})
 }
 

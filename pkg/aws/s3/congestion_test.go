@@ -627,12 +627,12 @@ func TestGlobalCongestionController_CalculateAverageUtilization(t *testing.T) {
 	gcc.RegisterPrefix("prefix-1", 100.0)
 	gcc.RegisterPrefix("prefix-2", 100.0)
 
-	// Set different utilization levels
+	// Set different utilization levels and calculate average under lock
+	gcc.mu.Lock()
 	gcc.prefixAllocation["prefix-1"].Utilization = 0.8
 	gcc.prefixAllocation["prefix-2"].Utilization = 0.4
-
-	// Test that the function exists and can be called
 	avgUtilization := gcc.calculateAverageUtilization()
+	gcc.mu.Unlock()
 
 	// Should return the average (0.8 + 0.4) / 2 = 0.6
 	assert.InDelta(t, 0.6, avgUtilization, 0.0001)

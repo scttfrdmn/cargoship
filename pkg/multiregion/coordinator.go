@@ -737,6 +737,7 @@ func (c *DefaultCoordinator) checkAWSConnectivity(ctx context.Context, region *R
 	// In a real implementation, you would use:
 	// stsClient := sts.NewFromConfig(region.AWSConfig)
 	// _, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	time.Sleep(time.Millisecond) // Simulate API call latency
 
 	result.Success = true
 	result.ResponseTime = time.Since(startTime)
@@ -759,6 +760,7 @@ func (c *DefaultCoordinator) checkS3ServiceHealth(ctx context.Context, region *R
 	// 1. List buckets or perform a HEAD operation on a known bucket
 	// 2. Check S3 service status endpoints
 	// 3. Verify that upload/download operations are working
+	time.Sleep(time.Millisecond) // Simulate API call latency
 
 	// For now, simulate a successful check with some randomness for realism
 	if time.Since(startTime) > region.HealthCheck.Timeout {
@@ -787,6 +789,7 @@ func (c *DefaultCoordinator) checkRegionLatency(ctx context.Context, region *Reg
 	// 1. Make lightweight API calls to measure round-trip time
 	// 2. Use CloudWatch or CloudPing for latency metrics
 	// 3. Test from multiple availability zones if possible
+	time.Sleep(time.Millisecond) // Simulate API call latency
 
 	responseTime := time.Since(startTime)
 	result.Success = responseTime < 5*time.Second // Reasonable latency threshold
