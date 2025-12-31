@@ -568,7 +568,14 @@ func (cpc *CrossPrefixCommunicator) networkMonitoringLoop() {
 
 func (cpc *CrossPrefixCommunicator) processMessageQueues() {
 	// Process priority queues for each channel
+	cpc.mu.RLock()
+	channels := make([]*PrefixChannel, 0, len(cpc.channels))
 	for _, channel := range cpc.channels {
+		channels = append(channels, channel)
+	}
+	cpc.mu.RUnlock()
+
+	for _, channel := range channels {
 		cpc.processPriorityQueue(channel)
 	}
 }
