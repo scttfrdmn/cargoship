@@ -462,6 +462,12 @@ func (rtlb *RealTimeLoadBalancer) OptimizeWeights() *LoadBalanceSolution {
 	rtlb.mu.Lock()
 	defer rtlb.mu.Unlock()
 
+	return rtlb.optimizeWeightsInternal()
+}
+
+// optimizeWeightsInternal performs weight optimization without acquiring lock.
+// Must be called with rtlb.mu held (either RLock or Lock).
+func (rtlb *RealTimeLoadBalancer) optimizeWeightsInternal() *LoadBalanceSolution {
 	// Prepare optimization problem
 	currentWeights := make(map[string]float64)
 	for prefixID, weight := range rtlb.prefixWeights {
@@ -831,8 +837,8 @@ func (rtlb *RealTimeLoadBalancer) shouldRebalanceRealTime() bool {
 }
 
 func (rtlb *RealTimeLoadBalancer) performRealTimeRebalance() {
-	// Trigger optimization
-	rtlb.OptimizeWeights()
+	// Trigger optimization (called with lock already held by performRealTimeMonitoring)
+	rtlb.optimizeWeightsInternal()
 	rtlb.lastRebalance = time.Now()
 }
 
