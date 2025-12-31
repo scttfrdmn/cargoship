@@ -102,7 +102,9 @@ run_tests() {
     # Run tests with timeout, EXCLUDING LocalStack integration tests for speed
     # Skip integration tests requiring Docker/LocalStack for fast pre-commit validation
     # Integration tests should run in CI where Docker is guaranteed available
-    if ! timeout 90s go test -short -timeout=75s -cover ./... > test_output.tmp 2>&1; then
+    # Use -p=4 to limit parallel packages and -parallel=4 to limit concurrent tests per package
+    # This reduces memory pressure while still maintaining reasonable speed
+    if ! timeout 120s go test -short -timeout=100s -p=4 -parallel=4 -cover ./... > test_output.tmp 2>&1; then
         log_error "Tests failed:"
         cat test_output.tmp
         rm -f test_output.tmp
@@ -127,7 +129,8 @@ run_tests() {
     done < test_output.tmp
     
     # Calculate overall project coverage using go tool cover (skip integration tests)
-    timeout 90s go test -short -timeout=75s -coverprofile=coverage.out ./... > /dev/null 2>&1
+    # Use same parallelism settings to avoid memory issues
+    timeout 120s go test -short -timeout=100s -p=4 -parallel=4 -coverprofile=coverage.out ./... > /dev/null 2>&1
     local project_coverage=0
     if [ -f coverage.out ]; then
         project_coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
