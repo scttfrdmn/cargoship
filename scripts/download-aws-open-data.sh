@@ -6,7 +6,7 @@
 #   ./scripts/download-aws-open-data.sh [OPTIONS]
 #
 # Options:
-#   --dataset DATASET       Dataset to download: landsat, genomes, noaa, nasa, crawl, brain, spacenet, all
+#   --dataset DATASET       Dataset to download: sentinel, genomes, goes16, goes17, nasa, spacenet, all
 #   --sample-size SIZE      Sample size: small (1GB), medium (10GB), large (100GB) (default: small)
 #   --output-dir DIR        Output directory (default: /tmp/aws-open-data)
 #   --region REGION         AWS region (default: us-west-2)
@@ -14,14 +14,14 @@
 #   --help                  Show this help message
 #
 # Examples:
-#   # Download small Landsat sample
-#   ./scripts/download-aws-open-data.sh --dataset landsat --sample-size small
+#   # Download small Sentinel-2 sample
+#   ./scripts/download-aws-open-data.sh --dataset sentinel --sample-size small
 #
 #   # Download multiple datasets
-#   ./scripts/download-aws-open-data.sh --dataset landsat,genomes --sample-size medium
+#   ./scripts/download-aws-open-data.sh --dataset sentinel,genomes --sample-size medium
 #
 #   # Custom output directory
-#   ./scripts/download-aws-open-data.sh --dataset noaa --output-dir /Volumes/External/datasets
+#   ./scripts/download-aws-open-data.sh --dataset goes16 --output-dir /Volumes/External/datasets
 #
 # Note: All datasets use free AWS egress within the same region (no-sign-on buckets)
 #
@@ -30,7 +30,7 @@
 set -e
 
 # Parse command-line arguments
-DATASET="landsat"
+DATASET="sentinel"
 SAMPLE_SIZE="small"
 OUTPUT_DIR="/tmp/aws-open-data"
 AWS_REGION="us-west-2"
@@ -143,42 +143,44 @@ log_info "Output: $OUTPUT_DIR"
 log_info "Region: $AWS_REGION"
 
 #
-# DATASET 1: Landsat 8 - Satellite Imagery (GeoTIFF)
-# Bucket: s3://landsat-pds (no-sign-request)
-# https://registry.opendata.aws/landsat-8/
+# DATASET 1: Sentinel-2 - Satellite Imagery (JPEG2000)
+# Bucket: s3://sentinel-s2-l2a (no-sign-request)
+# https://registry.opendata.aws/sentinel-2/
 #
-download_landsat() {
-    log_section "Downloading Landsat 8 Satellite Imagery"
-    local dataset_dir="$OUTPUT_DIR/landsat-8"
+download_sentinel() {
+    log_section "Downloading Sentinel-2 Satellite Imagery"
+    local dataset_dir="$OUTPUT_DIR/sentinel-2"
     mkdir -p "$dataset_dir"
 
-    log_info "Downloading sample Landsat 8 scenes (GeoTIFF format)..."
-    log_info "Source: s3://landsat-pds (public bucket, no credentials required)"
+    log_info "Downloading sample Sentinel-2 scenes (JPEG2000 format)..."
+    log_info "Source: s3://sentinel-s2-l2a (public bucket, no credentials required)"
 
-    # Download from a specific scene (WRS path/row)
-    # Example: LC08_L1TP_042033_20170616_20170629_01_T1 (San Francisco area)
-    local scene_path="c1/L8/042/033/LC08_L1TP_042033_20170616_20170629_01_T1"
+    # Download from recent tiles (Europe - tile 32TPS, Paris area)
+    # Path format: tiles/{UTM_ZONE}/{LATITUDE_BAND}/{GRID_SQUARE}/
+    local tile_path="tiles/32/T/PS/2024/12"
 
-    # Download up to FILE_LIMIT files from this scene
-    log_info "Downloading scene: $scene_path"
+    log_info "Sampling files from tile: $tile_path"
 
-    aws s3 ls "s3://landsat-pds/$scene_path/" --no-sign-request --region us-west-2 | \
+    # List and download sample files (limit to prevent excessive downloads)
+    aws s3 ls "s3://sentinel-s2-l2a/$tile_path/" --no-sign-request --region eu-central-1 --recursive | \
+        grep -E '\.(jp2|TIF)$' | \
         head -n $FILE_LIMIT | \
         awk '{print $4}' | \
         while read -r file; do
             if [ -n "$file" ]; then
-                log_info "  Downloading: $file"
-                aws s3 cp "s3://landsat-pds/$scene_path/$file" \
-                    "$dataset_dir/$file" \
+                local basename=$(basename "$file")
+                log_info "  Downloading: $basename"
+                aws s3 cp "s3://sentinel-s2-l2a/$file" \
+                    "$dataset_dir/$basename" \
                     --no-sign-request \
-                    --region us-west-2 \
-                    --quiet || log_warn "Failed to download $file"
+                    --region eu-central-1 \
+                    --quiet || log_warn "Failed to download $basename"
             fi
         done
 
-    local actual_size=$(du -sh "$dataset_dir" | cut -f1)
-    local file_count=$(find "$dataset_dir" -type f | wc -l | tr -d ' ')
-    log_success "Landsat 8 dataset complete: $file_count files, $actual_size"
+    local actual_size=$(du -sh "$dataset_dir" 2>/dev/null | cut -f1)
+    local file_count=$(find "$dataset_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+    log_success "Sentinel-2 dataset complete: $file_count files, $actual_size"
 }
 
 #
@@ -222,34 +224,33 @@ download_genomes() {
 }
 
 #
-# DATASET 3: NOAA NEXRAD - Weather Radar Data (binary)
-# Bucket: s3://noaa-nexrad-level2 (no-sign-request)
-# https://registry.opendata.aws/noaa-nexrad/
+# DATASET 3: NOAA GOES-16 - Weather Satellite Imagery
+# Bucket: s3://noaa-goes16 (no-sign-request)
+# https://registry.opendata.aws/noaa-goes/
 #
-download_noaa() {
-    log_section "Downloading NOAA NEXRAD Weather Radar Data"
-    local dataset_dir="$OUTPUT_DIR/noaa-nexrad"
+download_goes16() {
+    log_section "Downloading NOAA GOES-16 Weather Satellite Data"
+    local dataset_dir="$OUTPUT_DIR/noaa-goes16"
     mkdir -p "$dataset_dir"
 
-    log_info "Downloading sample weather radar data (Level 2 format)..."
-    log_info "Source: s3://noaa-nexrad-level2 (public bucket, no credentials required)"
+    log_info "Downloading sample GOES-16 satellite imagery..."
+    log_info "Source: s3://noaa-goes16 (public bucket, no credentials required)"
 
-    # Download recent data from a specific station (e.g., KDLH - Duluth, MN)
+    # Download from ABI-L1b-RadC (CONUS radiance data)
     local year=$(date +%Y)
-    local month=$(date +%m)
-    local day=$(date +%d)
-    local station="KDLH"
-    local data_path="$year/$month/$day/$station"
+    local day=$(date +%j)  # Day of year
+    local hour=$(date +%H)
+    local data_path="ABI-L1b-RadC/$year/$day/$hour"
 
-    log_info "Downloading station $station data from $data_path..."
+    log_info "Sampling files from $data_path..."
 
-    aws s3 ls "s3://noaa-nexrad-level2/$data_path/" --no-sign-request --region us-east-1 | \
+    aws s3 ls "s3://noaa-goes16/$data_path/" --no-sign-request --region us-east-1 | \
         head -n $FILE_LIMIT | \
         awk '{print $4}' | \
         while read -r file; do
             if [ -n "$file" ]; then
                 log_info "  Downloading: $file"
-                aws s3 cp "s3://noaa-nexrad-level2/$data_path/$file" \
+                aws s3 cp "s3://noaa-goes16/$data_path/$file" \
                     "$dataset_dir/$file" \
                     --no-sign-request \
                     --region us-east-1 \
@@ -257,9 +258,49 @@ download_noaa() {
             fi
         done
 
-    local actual_size=$(du -sh "$dataset_dir" | cut -f1)
-    local file_count=$(find "$dataset_dir" -type f | wc -l | tr -d ' ')
-    log_success "NOAA NEXRAD dataset complete: $file_count files, $actual_size"
+    local actual_size=$(du -sh "$dataset_dir" 2>/dev/null | cut -f1)
+    local file_count=$(find "$dataset_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+    log_success "NOAA GOES-16 dataset complete: $file_count files, $actual_size"
+}
+
+#
+# DATASET 3B: NOAA GOES-17 - Weather Satellite Imagery
+# Bucket: s3://noaa-goes17 (no-sign-request)
+# https://registry.opendata.aws/noaa-goes/
+#
+download_goes17() {
+    log_section "Downloading NOAA GOES-17 Weather Satellite Data"
+    local dataset_dir="$OUTPUT_DIR/noaa-goes17"
+    mkdir -p "$dataset_dir"
+
+    log_info "Downloading sample GOES-17 satellite imagery..."
+    log_info "Source: s3://noaa-goes17 (public bucket, no credentials required)"
+
+    # Download from ABI-L1b-RadC (CONUS radiance data)
+    local year=$(date +%Y)
+    local day=$(date +%j)  # Day of year
+    local hour=$(date +%H)
+    local data_path="ABI-L1b-RadC/$year/$day/$hour"
+
+    log_info "Sampling files from $data_path..."
+
+    aws s3 ls "s3://noaa-goes17/$data_path/" --no-sign-request --region us-east-1 | \
+        head -n $FILE_LIMIT | \
+        awk '{print $4}' | \
+        while read -r file; do
+            if [ -n "$file" ]; then
+                log_info "  Downloading: $file"
+                aws s3 cp "s3://noaa-goes17/$data_path/$file" \
+                    "$dataset_dir/$file" \
+                    --no-sign-request \
+                    --region us-east-1 \
+                    --quiet || log_warn "Failed to download $file"
+            fi
+        done
+
+    local actual_size=$(du -sh "$dataset_dir" 2>/dev/null | cut -f1)
+    local file_count=$(find "$dataset_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+    log_success "NOAA GOES-17 dataset complete: $file_count files, $actual_size"
 }
 
 #
@@ -302,83 +343,7 @@ download_nasa() {
 }
 
 #
-# DATASET 5: Common Crawl - Web Archive Data (WARC)
-# Bucket: s3://commoncrawl (no-sign-request)
-# https://registry.opendata.aws/commoncrawl/
-#
-download_crawl() {
-    log_section "Downloading Common Crawl Web Archive Data"
-    local dataset_dir="$OUTPUT_DIR/common-crawl"
-    mkdir -p "$dataset_dir"
-
-    log_info "Downloading sample web archive data (WARC format)..."
-    log_info "Source: s3://commoncrawl (public bucket, no credentials required)"
-
-    # Download from recent crawl
-    local crawl_id="CC-MAIN-2024-10"
-    local data_path="crawl-data/$crawl_id/segments"
-
-    log_info "Sampling WARC files from $crawl_id..."
-
-    aws s3 ls "s3://commoncrawl/$data_path/" --no-sign-request --region us-east-1 --recursive | \
-        grep '\.warc\.gz$' | \
-        head -n $FILE_LIMIT | \
-        awk '{print $4}' | \
-        while read -r file; do
-            if [ -n "$file" ]; then
-                local basename=$(basename "$file")
-                log_info "  Downloading: $basename"
-                aws s3 cp "s3://commoncrawl/$file" \
-                    "$dataset_dir/$basename" \
-                    --no-sign-request \
-                    --region us-east-1 \
-                    --quiet || log_warn "Failed to download $basename"
-            fi
-        done
-
-    local actual_size=$(du -sh "$dataset_dir" | cut -f1)
-    local file_count=$(find "$dataset_dir" -type f | wc -l | tr -d ' ')
-    log_success "Common Crawl dataset complete: $file_count files, $actual_size"
-}
-
-#
-# DATASET 6: Allen Brain Atlas - Neuroscience Data (NWB/HDF5)
-# Bucket: s3://allen-brain-observatory (no-sign-request)
-# https://registry.opendata.aws/allen-brain-observatory/
-#
-download_brain() {
-    log_section "Downloading Allen Brain Observatory Data"
-    local dataset_dir="$OUTPUT_DIR/allen-brain"
-    mkdir -p "$dataset_dir"
-
-    log_info "Downloading sample neuroscience data (NWB format)..."
-    log_info "Source: s3://allen-brain-observatory (public bucket, no credentials required)"
-
-    log_info "Sampling NWB files from visual-coding-2p..."
-
-    aws s3 ls "s3://allen-brain-observatory/visual-coding-2p/" --no-sign-request --region us-west-2 --recursive | \
-        grep '\.nwb$' | \
-        head -n $FILE_LIMIT | \
-        awk '{print $4}' | \
-        while read -r file; do
-            if [ -n "$file" ]; then
-                local basename=$(basename "$file")
-                log_info "  Downloading: $basename"
-                aws s3 cp "s3://allen-brain-observatory/$file" \
-                    "$dataset_dir/$basename" \
-                    --no-sign-request \
-                    --region us-west-2 \
-                    --quiet || log_warn "Failed to download $basename"
-            fi
-        done
-
-    local actual_size=$(du -sh "$dataset_dir" | cut -f1)
-    local file_count=$(find "$dataset_dir" -type f | wc -l | tr -d ' ')
-    log_success "Allen Brain dataset complete: $file_count files, $actual_size"
-}
-
-#
-# DATASET 7: SpaceNet - Satellite Imagery (GeoJSON)
+# DATASET 5: SpaceNet - Satellite Imagery (GeoTIFF)
 # Bucket: s3://spacenet-dataset (no-sign-request)
 # https://registry.opendata.aws/spacenet/
 #
@@ -423,39 +388,35 @@ IFS=',' read -ra DATASETS <<< "$DATASET"
 for ds in "${DATASETS[@]}"; do
     ds=$(echo "$ds" | tr -d ' ')  # Trim whitespace
     case $ds in
-        landsat)
-            download_landsat
+        sentinel)
+            download_sentinel
             ;;
         genomes)
             download_genomes
             ;;
-        noaa)
-            download_noaa
+        goes16)
+            download_goes16
+            ;;
+        goes17)
+            download_goes17
             ;;
         nasa)
             download_nasa
-            ;;
-        crawl)
-            download_crawl
-            ;;
-        brain)
-            download_brain
             ;;
         spacenet)
             download_spacenet
             ;;
         all)
-            download_landsat
+            download_sentinel
             download_genomes
-            download_noaa
+            download_goes16
+            download_goes17
             download_nasa
-            download_crawl
-            download_brain
             download_spacenet
             ;;
         *)
             log_error "Unknown dataset: $ds"
-            log_info "Valid datasets: landsat, genomes, noaa, nasa, crawl, brain, spacenet, all"
+            log_info "Valid datasets: sentinel, genomes, goes16, goes17, nasa, spacenet, all"
             exit 1
             ;;
     esac
