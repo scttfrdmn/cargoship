@@ -438,7 +438,8 @@ func TestFailoverResourceUsage(t *testing.T) {
 		// Create and use multiple managers
 		for i := 0; i < 10; i++ {
 			manager := NewFailoverManager(config, logger)
-			ctx := context.Background()
+			// Use context with timeout to prevent test hanging
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 
 			// Perform operations that might create goroutines
 			for j := 0; j < 3; j++ {
@@ -446,6 +447,7 @@ func TestFailoverResourceUsage(t *testing.T) {
 				toRegion := fmt.Sprintf("to-%d-%d", i, j)
 				_ = manager.ExecuteFailover(ctx, fromRegion, toRegion)
 			}
+			cancel()
 		}
 
 		// Wait for any async operations to complete
