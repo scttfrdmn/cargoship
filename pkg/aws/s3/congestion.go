@@ -578,6 +578,9 @@ func (gcc *GlobalCongestionController) findLeastUtilizedPrefix() *PrefixAllocati
 }
 
 func (gcc *GlobalCongestionController) calculateAverageUtilization() float64 {
+	gcc.mu.RLock()
+	defer gcc.mu.RUnlock()
+
 	if len(gcc.prefixAllocation) == 0 {
 		return 0
 	}
