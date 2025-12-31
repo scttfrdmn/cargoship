@@ -176,7 +176,10 @@ func (bo *BandwidthOptimizer) updateUtilizationMetrics() {
 	// Get congestion information
 	congestionLevel := bo.congestionController.GetCongestionLevel()
 
-	// Update utilization state
+	// Update utilization state under lock
+	bo.mu.Lock()
+	defer bo.mu.Unlock()
+
 	bo.currentUtilization.Timestamp = time.Now()
 	bo.currentUtilization.AvailableBandwidthMBps = availableBW
 	bo.currentUtilization.UtilizedBandwidthMBps = utilizedBW
@@ -203,10 +206,13 @@ func (bo *BandwidthOptimizer) updateUtilizationMetrics() {
 
 // generateOptimizationRecommendation generates optimization recommendations.
 func (bo *BandwidthOptimizer) generateOptimizationRecommendation() *OptimizationRecommendation {
-	utilization := bo.currentUtilization
+	// Read current utilization under lock
+	bo.mu.RLock()
+	utilization := *bo.currentUtilization
+	bo.mu.RUnlock()
 
 	// Check if optimization is needed
-	optimizationNeeded, reason, priority := bo.isOptimizationNeeded(utilization)
+	optimizationNeeded, reason, priority := bo.isOptimizationNeeded(&utilization)
 	if !optimizationNeeded {
 		return nil
 	}
@@ -220,20 +226,20 @@ func (bo *BandwidthOptimizer) generateOptimizationRecommendation() *Optimization
 	// Generate specific recommendations based on current state
 	switch reason {
 	case "underutilization":
-		recommendation = bo.recommendForUnderutilization(recommendation, utilization)
+		recommendation = bo.recommendForUnderutilization(recommendation, &utilization)
 	case "congestion":
-		recommendation = bo.recommendForCongestion(recommendation, utilization)
+		recommendation = bo.recommendForCongestion(recommendation, &utilization)
 	case "poor_efficiency":
-		recommendation = bo.recommendForPoorEfficiency(recommendation, utilization)
+		recommendation = bo.recommendForPoorEfficiency(recommendation, &utilization)
 	case "network_degradation":
-		recommendation = bo.recommendForNetworkDegradation(recommendation, utilization)
+		recommendation = bo.recommendForNetworkDegradation(recommendation, &utilization)
 	default:
-		recommendation = bo.recommendGeneral(recommendation, utilization)
+		recommendation = bo.recommendGeneral(recommendation, &utilization)
 	}
 
 	// Calculate confidence and predicted improvement
-	recommendation.Confidence = bo.calculateRecommendationConfidence(recommendation, utilization)
-	recommendation.PredictedImprovement = bo.predictImprovement(recommendation, utilization)
+	recommendation.Confidence = bo.calculateRecommendationConfidence(recommendation, &utilization)
+	recommendation.PredictedImprovement = bo.predictImprovement(recommendation, &utilization)
 
 	return recommendation
 }

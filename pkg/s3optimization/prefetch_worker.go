@@ -16,6 +16,7 @@ type PrefetchWorker struct {
 	prefetcher *PredictivePrefetcher
 	logger     *slog.Logger
 	isRunning  bool
+	mu         sync.Mutex
 	stopChan   chan struct{}
 	jobChan    chan *PrefetchJob
 	wg         sync.WaitGroup
@@ -109,7 +110,10 @@ func NewPrefetchWorker(id int, prefetcher *PredictivePrefetcher, logger *slog.Lo
 
 // Start starts the prefetch worker.
 func (pw *PrefetchWorker) Start(ctx context.Context) {
+	pw.mu.Lock()
 	pw.isRunning = true
+	pw.mu.Unlock()
+
 	pw.wg.Add(1)
 
 	go func() {
@@ -122,20 +126,30 @@ func (pw *PrefetchWorker) Start(ctx context.Context) {
 
 // Stop stops the prefetch worker.
 func (pw *PrefetchWorker) Stop() {
+	pw.mu.Lock()
 	if !pw.isRunning {
+		pw.mu.Unlock()
 		return
 	}
+	pw.mu.Unlock()
 
 	close(pw.stopChan)
 	pw.wg.Wait()
+
+	pw.mu.Lock()
 	pw.isRunning = false
+	pw.mu.Unlock()
 
 	pw.logger.Debug("prefetch worker stopped")
 }
 
 // SubmitJob submits a job to the worker.
 func (pw *PrefetchWorker) SubmitJob(job *PrefetchJob) bool {
-	if !pw.isRunning {
+	pw.mu.Lock()
+	running := pw.isRunning
+	pw.mu.Unlock()
+
+	if !running {
 		return false
 	}
 
