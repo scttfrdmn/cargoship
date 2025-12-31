@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -55,7 +56,7 @@ type LossDetectionRecoverySystem struct {
 	// Context and synchronization
 	ctx      context.Context
 	cancel   context.CancelFunc
-	isActive bool
+	isActive atomic.Bool
 	mu       sync.RWMutex
 	eventMu  sync.Mutex
 }
@@ -282,9 +283,9 @@ func NewLossDetectionRecoverySystem(ctx context.Context, config *LossDetectionCo
 		acknowledgedPackets: make(map[uint64]*AcknowledgedPacketInfo),
 		lostPackets:         make(map[uint64]*LostPacketInfo),
 
-		ctx:      systemCtx,
-		cancel:   cancel,
-		isActive: false,
+		ctx:    systemCtx,
+		cancel: cancel,
+		// isActive initializes to false by default
 	}
 
 	return system
@@ -295,11 +296,11 @@ func (lds *LossDetectionRecoverySystem) StartSystem() error {
 	lds.mu.Lock()
 	defer lds.mu.Unlock()
 
-	if lds.isActive {
+	if lds.isActive.Load() {
 		return fmt.Errorf("loss detection recovery system already active")
 	}
 
-	lds.isActive = true
+	lds.isActive.Store(true)
 
 	// Start the main detection and recovery loop
 	go lds.runDetectionLoop()
@@ -312,11 +313,11 @@ func (lds *LossDetectionRecoverySystem) StopSystem() error {
 	lds.mu.Lock()
 	defer lds.mu.Unlock()
 
-	if !lds.isActive {
+	if !lds.isActive.Load() {
 		return fmt.Errorf("loss detection recovery system not active")
 	}
 
-	lds.isActive = false
+	lds.isActive.Store(false)
 	lds.cancel()
 
 	return nil
@@ -395,7 +396,7 @@ func (lds *LossDetectionRecoverySystem) runDetectionLoop() {
 		case <-lds.ctx.Done():
 			return
 		case <-ticker.C:
-			if lds.isActive {
+			if lds.isActive.Load() {
 				lds.performLossDetection()
 			}
 		}
@@ -495,7 +496,7 @@ func (lds *LossDetectionRecoverySystem) runRecoveryLoop() {
 		case <-lds.ctx.Done():
 			return
 		case <-ticker.C:
-			if lds.isActive {
+			if lds.isActive.Load() {
 				lds.updateActiveRecoveries()
 			}
 		}
@@ -529,9 +530,15 @@ func (lds *LossDetectionRecoverySystem) initiateRecovery(lossEvent LossDetection
 func (lds *LossDetectionRecoverySystem) updateActiveRecoveries() {
 	currentTime := time.Now()
 
-	// Update recovery events
-	for i := range lds.recoveryEvents {
-		recoveryEvent := &lds.recoveryEvents[i]
+	// Get snapshot of recovery events under lock
+	lds.eventMu.Lock()
+	recoveryEventsCopy := make([]RecoveryEvent, len(lds.recoveryEvents))
+	copy(recoveryEventsCopy, lds.recoveryEvents)
+	lds.eventMu.Unlock()
+
+	// Update recovery events from snapshot
+	for i := range recoveryEventsCopy {
+		recoveryEvent := &recoveryEventsCopy[i]
 
 		if !recoveryEvent.Success && recoveryEvent.RecoveryDuration > 0 {
 			switch recoveryEvent.RecoveryType {

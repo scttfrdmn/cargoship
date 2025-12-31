@@ -52,7 +52,7 @@ func TestLossDetectionSystemStartStop(t *testing.T) {
 		t.Fatalf("Failed to start loss detection system: %v", err)
 	}
 
-	if !system.isActive {
+	if !system.isActive.Load() {
 		t.Error("Expected system to be active after start")
 	}
 
@@ -68,7 +68,7 @@ func TestLossDetectionSystemStartStop(t *testing.T) {
 		t.Fatalf("Failed to stop loss detection system: %v", err)
 	}
 
-	if system.isActive {
+	if system.isActive.Load() {
 		t.Error("Expected system to be inactive after stop")
 	}
 
@@ -210,7 +210,7 @@ func TestTimeoutDetection(t *testing.T) {
 	// Send packet - timeout will be calculated based on RTT (100ms * 4.0 = 400ms)
 	system.OnPacketSent(packetID, sendTime, 1500, 100)
 
-	originalLossEvents := len(system.lossEvents)
+	originalLossEvents := len(system.GetLossEvents(0))
 
 	// Wait for timeout (actual timeout is 400ms based on RTT)
 	time.Sleep(time.Millisecond * 450)
@@ -219,13 +219,14 @@ func TestTimeoutDetection(t *testing.T) {
 	time.Sleep(time.Millisecond * 50)
 
 	// Should have detected timeout loss
-	if len(system.lossEvents) <= originalLossEvents {
-		t.Errorf("Expected timeout loss detection. Loss events: %d -> %d", originalLossEvents, len(system.lossEvents))
+	currentLossEvents := system.GetLossEvents(0)
+	if len(currentLossEvents) <= originalLossEvents {
+		t.Errorf("Expected timeout loss detection. Loss events: %d -> %d", originalLossEvents, len(currentLossEvents))
 	}
 
 	// Check loss event details
-	if len(system.lossEvents) > 0 {
-		lossEvent := system.lossEvents[len(system.lossEvents)-1]
+	if len(currentLossEvents) > 0 {
+		lossEvent := currentLossEvents[len(currentLossEvents)-1]
 		if lossEvent.LossType != LossTypeTimeout {
 			t.Errorf("Expected timeout loss type, got %v", lossEvent.LossType)
 		}

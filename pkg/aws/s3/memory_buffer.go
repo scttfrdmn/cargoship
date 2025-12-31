@@ -730,27 +730,33 @@ func (mab *MemoryAwareBuffer) enablePreallocation() error {
 
 func (mab *MemoryAwareBuffer) updateAllocationMetrics(buffer *ChunkBuffer) {
 	metrics := mab.bufferMetrics
-	metrics.TotalAllocations++
+	totalAllocs := atomic.AddInt64(&metrics.TotalAllocations, 1)
 
+	// Peak memory and average need mutex for complex updates
+	mab.mu.Lock()
 	if buffer.Capacity > metrics.PeakMemoryUsage {
 		metrics.PeakMemoryUsage = buffer.Capacity
 	}
 
 	// Update average buffer size
-	if metrics.TotalAllocations > 0 {
-		metrics.AverageBufferSize = (metrics.AverageBufferSize*(metrics.TotalAllocations-1) + buffer.Capacity) / metrics.TotalAllocations
+	if totalAllocs > 0 {
+		metrics.AverageBufferSize = (metrics.AverageBufferSize*(totalAllocs-1) + buffer.Capacity) / totalAllocs
 	}
+	mab.mu.Unlock()
 }
 
 func (mab *MemoryAwareBuffer) updateDeallocationMetrics(buffer *ChunkBuffer) {
 	metrics := mab.bufferMetrics
-	metrics.TotalDeallocations++
+	totalDeallocs := atomic.AddInt64(&metrics.TotalDeallocations, 1)
 
 	// Update reuse rate
 	if buffer.PoolAllocated {
-		totalOps := metrics.TotalAllocations
+		totalOps := atomic.LoadInt64(&metrics.TotalAllocations)
 		if totalOps > 0 {
-			metrics.BufferReuseRate = float64(metrics.TotalDeallocations) / float64(totalOps)
+			// Float64 writes aren't atomic, so use mutex for this
+			mab.mu.Lock()
+			metrics.BufferReuseRate = float64(totalDeallocs) / float64(totalOps)
+			mab.mu.Unlock()
 		}
 	}
 }
