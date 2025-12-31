@@ -112,9 +112,8 @@ func NewPrefetchWorker(id int, prefetcher *PredictivePrefetcher, logger *slog.Lo
 func (pw *PrefetchWorker) Start(ctx context.Context) {
 	pw.mu.Lock()
 	pw.isRunning = true
+	pw.wg.Add(1) // Must be called before releasing lock to avoid race with Stop()
 	pw.mu.Unlock()
-
-	pw.wg.Add(1)
 
 	go func() {
 		defer pw.wg.Done()

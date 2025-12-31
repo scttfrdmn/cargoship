@@ -163,8 +163,14 @@ func (bo *BandwidthOptimizer) performOptimization() {
 	// Record utilization in history
 	bo.utilizationHistory.RecordUtilization(bo.currentUtilization)
 
-	// Notify callbacks
-	bo.notifyOptimizationCallbacks(bo.currentUtilization, recommendation)
+	// Make copies for async callbacks to avoid races
+	utilCopy := *bo.currentUtilization
+	recCopy := *recommendation
+
+	// Notify callbacks (must be called after lock is released to avoid races)
+	bo.mu.Unlock()
+	bo.notifyOptimizationCallbacks(&utilCopy, &recCopy)
+	bo.mu.Lock() // Re-lock for defer to work correctly
 }
 
 // updateUtilizationMetrics updates current bandwidth utilization metrics.
