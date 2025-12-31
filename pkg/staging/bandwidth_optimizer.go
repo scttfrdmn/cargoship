@@ -168,6 +168,7 @@ func (bo *BandwidthOptimizer) performOptimization() {
 }
 
 // updateUtilizationMetrics updates current bandwidth utilization metrics.
+// Must be called with bo.mu held.
 func (bo *BandwidthOptimizer) updateUtilizationMetrics() {
 	// Get bandwidth estimation
 	availableBW := bo.bandwidthEstimator.GetEstimatedBandwidth()
@@ -176,10 +177,7 @@ func (bo *BandwidthOptimizer) updateUtilizationMetrics() {
 	// Get congestion information
 	congestionLevel := bo.congestionController.GetCongestionLevel()
 
-	// Update utilization state under lock
-	bo.mu.Lock()
-	defer bo.mu.Unlock()
-
+	// Update utilization state
 	bo.currentUtilization.Timestamp = time.Now()
 	bo.currentUtilization.AvailableBandwidthMBps = availableBW
 	bo.currentUtilization.UtilizedBandwidthMBps = utilizedBW
@@ -205,11 +203,10 @@ func (bo *BandwidthOptimizer) updateUtilizationMetrics() {
 }
 
 // generateOptimizationRecommendation generates optimization recommendations.
+// Must be called with bo.mu held.
 func (bo *BandwidthOptimizer) generateOptimizationRecommendation() *OptimizationRecommendation {
-	// Read current utilization under lock
-	bo.mu.RLock()
+	// Make a copy of current utilization for processing
 	utilization := *bo.currentUtilization
-	bo.mu.RUnlock()
 
 	// Check if optimization is needed
 	optimizationNeeded, reason, priority := bo.isOptimizationNeeded(&utilization)
