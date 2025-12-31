@@ -251,19 +251,29 @@ func TestStagingBufferManager_CompressionRuleManagement(t *testing.T) {
 	}
 
 	var chunk *StagedChunk
-	var err error
+	var callbackErr error
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	req.Callback = func(c *StagedChunk, e error) {
+		mu.Lock()
+		defer mu.Unlock()
 		chunk = c
-		err = e
+		callbackErr = e
+		wg.Done()
 	}
 
-	err = manager.StageChunk(req, ChunkBoundary{})
+	err := manager.StageChunk(req, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
 
-	require.NoError(t, err)
+	wg.Wait() // Wait for callback to complete
+
+	mu.Lock()
+	require.NoError(t, callbackErr)
 	require.NotNil(t, chunk)
 	assert.NotEmpty(t, chunk.SelectedAlgorithm)
+	mu.Unlock()
 }
 
 func TestStagingBufferManager_CompressionWithDeduplication(t *testing.T) {
@@ -295,19 +305,29 @@ func TestStagingBufferManager_CompressionWithDeduplication(t *testing.T) {
 
 	var chunk1 *StagedChunk
 	var err1 error
+	var mu1 sync.Mutex
+	var wg1 sync.WaitGroup
+	wg1.Add(1)
+
 	req1.Callback = func(c *StagedChunk, e error) {
+		mu1.Lock()
+		defer mu1.Unlock()
 		chunk1 = c
 		err1 = e
+		wg1.Done()
 	}
 
 	err := manager.StageChunk(req1, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
 
+	wg1.Wait() // Wait for callback to complete
+
+	mu1.Lock()
 	require.NoError(t, err1)
 	require.NotNil(t, chunk1)
 	assert.False(t, chunk1.IsDuplicate)
 	assert.NotEmpty(t, chunk1.SelectedAlgorithm)
+	mu1.Unlock()
 
 	// Stage duplicate chunk
 	req2 := &StagingRequest{
@@ -320,20 +340,30 @@ func TestStagingBufferManager_CompressionWithDeduplication(t *testing.T) {
 
 	var chunk2 *StagedChunk
 	var err2 error
+	var mu2 sync.Mutex
+	var wg2 sync.WaitGroup
+	wg2.Add(1)
+
 	req2.Callback = func(c *StagedChunk, e error) {
+		mu2.Lock()
+		defer mu2.Unlock()
 		chunk2 = c
 		err2 = e
+		wg2.Done()
 	}
 
 	err = manager.StageChunk(req2, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
 
+	wg2.Wait() // Wait for callback to complete
+
+	mu2.Lock()
 	require.NoError(t, err2)
 	require.NotNil(t, chunk2)
 	assert.True(t, chunk2.IsDuplicate)
 	// Duplicate chunks should still have compression algorithm selected
 	assert.NotEmpty(t, chunk2.SelectedAlgorithm)
+	mu2.Unlock()
 }
 
 func TestStagingBufferManager_CompressionHistoryManagement(t *testing.T) {
@@ -408,22 +438,32 @@ func TestStagingBufferManager_ContextualCompressionOptimization(t *testing.T) {
 	}
 
 	var chunk *StagedChunk
-	var err error
+	var callbackErr error
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	req.Callback = func(c *StagedChunk, e error) {
+		mu.Lock()
+		defer mu.Unlock()
 		chunk = c
-		err = e
+		callbackErr = e
+		wg.Done()
 	}
 
-	err = manager.StageChunk(req, ChunkBoundary{})
+	err := manager.StageChunk(req, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
 
-	require.NoError(t, err)
+	wg.Wait() // Wait for callback to complete
+
+	mu.Lock()
+	require.NoError(t, callbackErr)
 	require.NotNil(t, chunk)
 
 	// High priority should tend toward faster compression
 	assert.NotEmpty(t, chunk.SelectedAlgorithm)
 	assert.NotNil(t, chunk.CompressionDecision)
+	mu.Unlock()
 
 	// Decision should have reasoning chain
 	assert.True(t, len(chunk.CompressionDecision.ReasoningChain) > 0)
@@ -459,17 +499,27 @@ func TestStagingBufferManager_NetworkConditionAdaptation(t *testing.T) {
 
 	var chunk1 *StagedChunk
 	var err1 error
+	var mu1 sync.Mutex
+	var wg1 sync.WaitGroup
+	wg1.Add(1)
+
 	req1.Callback = func(c *StagedChunk, e error) {
+		mu1.Lock()
+		defer mu1.Unlock()
 		chunk1 = c
 		err1 = e
+		wg1.Done()
 	}
 
 	err := manager.StageChunk(req1, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
 
+	wg1.Wait() // Wait for callback to complete
+
+	mu1.Lock()
 	require.NoError(t, err1)
 	require.NotNil(t, chunk1)
+	mu1.Unlock()
 
 	// Test reliable, high-bandwidth network (can use higher compression)
 	reader2 := bytes.NewReader(testData)
@@ -490,17 +540,27 @@ func TestStagingBufferManager_NetworkConditionAdaptation(t *testing.T) {
 
 	var chunk2 *StagedChunk
 	var err2 error
+	var mu2 sync.Mutex
+	var wg2 sync.WaitGroup
+	wg2.Add(1)
+
 	req2.Callback = func(c *StagedChunk, e error) {
+		mu2.Lock()
+		defer mu2.Unlock()
 		chunk2 = c
 		err2 = e
+		wg2.Done()
 	}
 
 	err = manager.StageChunk(req2, ChunkBoundary{})
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 100)
 
+	wg2.Wait() // Wait for callback to complete
+
+	mu2.Lock()
 	require.NoError(t, err2)
 	require.NotNil(t, chunk2)
+	mu2.Unlock()
 
 	// Both should have valid compression decisions
 	assert.NotEmpty(t, chunk1.SelectedAlgorithm)
