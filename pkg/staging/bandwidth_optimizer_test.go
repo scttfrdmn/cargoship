@@ -2,6 +2,7 @@ package staging
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )
@@ -135,14 +136,20 @@ func TestBandwidthOptimizer_RegisterOptimizationCallback(t *testing.T) {
 	config := DefaultAdaptationConfig()
 	optimizer := NewBandwidthOptimizer(config)
 
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 	callbackCalled := false
 	var capturedUtilization *BandwidthUtilization
 	var capturedRecommendation *OptimizationRecommendation
 
+	wg.Add(1)
 	callback := func(util *BandwidthUtilization, rec *OptimizationRecommendation) error {
+		mu.Lock()
+		defer mu.Unlock()
 		callbackCalled = true
 		capturedUtilization = util
 		capturedRecommendation = rec
+		wg.Done()
 		return nil
 	}
 
@@ -159,8 +166,11 @@ func TestBandwidthOptimizer_RegisterOptimizationCallback(t *testing.T) {
 	// Force optimization to trigger callback
 	optimizer.ForceOptimization()
 
-	// Allow time for callback to be called
-	time.Sleep(100 * time.Millisecond)
+	// Wait for callback to complete
+	wg.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
 
 	if !callbackCalled {
 		t.Error("Expected callback to be called")

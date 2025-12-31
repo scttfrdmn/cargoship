@@ -2,6 +2,7 @@ package staging
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )
@@ -288,15 +289,21 @@ func TestAdaptiveTransferController_RegisterTransferCallback(t *testing.T) {
 	config := DefaultAdaptationConfig()
 	controller := NewAdaptiveTransferController(config)
 
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 	callbackCalled := false
 	var capturedSessionID string
 	var capturedOldParams, capturedNewParams *TransferParameters
 
+	wg.Add(1)
 	callback := func(sessionID string, oldParams, newParams *TransferParameters) error {
+		mu.Lock()
+		defer mu.Unlock()
 		callbackCalled = true
 		capturedSessionID = sessionID
 		capturedOldParams = oldParams
 		capturedNewParams = newParams
+		wg.Done()
 		return nil
 	}
 
@@ -325,8 +332,11 @@ func TestAdaptiveTransferController_RegisterTransferCallback(t *testing.T) {
 		t.Fatalf("Failed to apply adaptation: %v", err)
 	}
 
-	// Allow time for callback to be called
-	time.Sleep(50 * time.Millisecond)
+	// Wait for callback to complete
+	wg.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
 
 	if !callbackCalled {
 		t.Error("Expected callback to be called")
