@@ -13,37 +13,59 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
+	"github.com/scttfrdmn/cargoship/pkg/compression"
 	"github.com/scttfrdmn/cargoship/pkg/ioutils"
 )
 
 // EncoderPool manages a pool of reusable zstd encoders
 // Phase 5 Redux: Eliminates expensive encoder creation overhead
+// Issue #105: Supports multiple compression levels for content-aware compression
 type EncoderPool struct {
 	encoders chan *zstd.Encoder
 	size     int
+	level    compression.Level // Issue #105: Track compression level for this pool
 }
 
-// NewEncoderPool creates a new encoder pool with pre-created encoders
-func NewEncoderPool(size int) (*EncoderPool, error) {
+// NewEncoderPool creates a new encoder pool with pre-created encoders at specified level
+func NewEncoderPool(size int, level compression.Level) (*EncoderPool, error) {
 	pool := &EncoderPool{
 		encoders: make(chan *zstd.Encoder, size),
 		size:     size,
+		level:    level,
 	}
 
-	// Pre-create all encoders
+	// Convert compression.Level to zstd.EncoderLevel
+	zstdLevel := convertToZstdLevel(level)
+
+	// Pre-create all encoders at specified level
 	for i := 0; i < size; i++ {
-		// Create encoder with same settings as before
 		encoder, err := zstd.NewWriter(nil,
-			zstd.WithEncoderLevel(zstd.SpeedDefault),
+			zstd.WithEncoderLevel(zstdLevel),
 			zstd.WithEncoderConcurrency(runtime.NumCPU()),
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create encoder %d: %w", i, err)
+			return nil, fmt.Errorf("failed to create encoder %d at level %d: %w", i, level, err)
 		}
 		pool.encoders <- encoder
 	}
 
 	return pool, nil
+}
+
+// convertToZstdLevel converts compression.Level to zstd.EncoderLevel (Issue #105)
+func convertToZstdLevel(level compression.Level) zstd.EncoderLevel {
+	switch level {
+	case 1: // LevelFastest - images, video, audio, archives
+		return zstd.SpeedFastest
+	case 3: // LevelFast - binary executables
+		return zstd.SpeedDefault
+	case 6: // Custom - documents, text
+		return zstd.SpeedBetterCompression
+	case 9: // LevelBest - source code
+		return zstd.SpeedBestCompression
+	default:
+		return zstd.SpeedDefault // Fallback to level 3
+	}
 }
 
 // Get retrieves an encoder from the pool (blocks if none available)
@@ -93,8 +115,12 @@ type ArchiverStage struct {
 	// Issue #34 Phase 2.1: LRU cache with 1000 FD limit to prevent file descriptor exhaustion
 	mmapCache *mmapLRUCache
 
-	// Phase 5 Redux: Encoder pool for reusing zstd encoders (eliminates expensive encoder creation)
-	encoderPool *EncoderPool
+	// Phase 5 Redux + Issue #105: Multi-level encoder pools for content-aware compression
+	// Map of compression level → encoder pool (e.g., level 1, 3, 6, 9)
+	encoderPools map[compression.Level]*EncoderPool
+
+	// Issue #105: Content-aware compressor for determining optimal compression per chunk
+	contentAwareCompressor *compression.ContentAwareCompressor
 
 	// Issue #34 Phase 1.1: BufferedPipe pool for memory leak fix
 	// Reduces memory from 64GB (1000 × 64MB) to 2GB (32 × 64MB)
@@ -117,18 +143,33 @@ type ArchiverStage struct {
 	paddingBytesAdded    int64 // Total padding bytes added (Phase 3.3)
 }
 
+// createEncoderPools creates encoder pools for common compression levels (Issue #105)
+func createEncoderPools(poolSize int) (map[compression.Level]*EncoderPool, error) {
+	encoderPools := make(map[compression.Level]*EncoderPool)
+	levels := []compression.Level{1, 3, 6, 9} // LevelFastest, LevelFast, documents, LevelBest
+
+	for _, level := range levels {
+		pool, err := NewEncoderPool(poolSize, level)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create encoder pool for level %d: %w", level, err)
+		}
+		encoderPools[level] = pool
+	}
+
+	return encoderPools, nil
+}
+
 // NewArchiverStage creates a new archiver stage (single-output mode for Phase 2)
 func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *Job) (*ArchiverStage, error) {
 	if config == nil {
 		return nil, fmt.Errorf("archiver config cannot be nil")
 	}
 
-	// Phase 5 Redux + Issue #34 Phase 1.2: Create encoder pool with 2× workers
-	// This eliminates encoder wait time by ensuring surplus encoders available
-	// (8 workers × 2 = 16 encoders prevents blocking when all workers active)
-	encoderPool, err := NewEncoderPool(config.Workers * 2)
+	// Issue #105: Create multi-level encoder pools for content-aware compression
+	// Pool size = 2× workers to prevent blocking (8 workers × 2 = 16 encoders per level)
+	encoderPools, err := createEncoderPools(config.Workers * 2)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create encoder pool: %w", err)
+		return nil, fmt.Errorf("failed to create encoder pools: %w", err)
 	}
 
 	// Issue #34 Phase 1.1: Create BufferedPipe pool (32 pipes, 64MB each = 2GB total)
@@ -145,15 +186,19 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 		padder = chunking.NewArchivePadderWithConfig(config.UseLowEntropyPadding)
 	}
 
+	// Issue #105: Initialize content-aware compressor
+	contentAwareCompressor := compression.NewContentAwareCompressor(nil) // Uses default config
+
 	return &ArchiverStage{
-		config:              config,
-		input:               input,
-		output:              output,
-		compressionDetector: NewCompressionDetector(),
-		encoderPool:         encoderPool,
-		pipePool:            pipePool,
-		mmapCache:           mmapCache,
-		padder:              padder,
+		config:                 config,
+		input:                  input,
+		output:                 output,
+		compressionDetector:    NewCompressionDetector(),
+		encoderPools:           encoderPools,
+		contentAwareCompressor: contentAwareCompressor,
+		pipePool:               pipePool,
+		mmapCache:              mmapCache,
+		padder:                 padder,
 		stats: StageStats{
 			Name: "archiver",
 		},
@@ -173,11 +218,11 @@ func NewArchiverStageWithSharding(config *ArchiverConfig, input <-chan *Job, out
 		return nil, fmt.Errorf("shard count must be positive, got %d", shardCount)
 	}
 
-	// Phase 5 Redux + Issue #34 Phase 1.2: Create encoder pool with 2× workers
-	// This eliminates encoder wait time (16 encoders for 8 workers)
-	encoderPool, err := NewEncoderPool(config.Workers * 2)
+	// Issue #105: Create multi-level encoder pools for content-aware compression
+	// Pool size = 2× workers to prevent blocking (8 workers × 2 = 16 encoders per level)
+	encoderPools, err := createEncoderPools(config.Workers * 2)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create encoder pool: %w", err)
+		return nil, fmt.Errorf("failed to create encoder pools: %w", err)
 	}
 
 	// Issue #34 Phase 1.1: Create BufferedPipe pool (32 pipes, 64MB each = 2GB total)
@@ -199,17 +244,21 @@ func NewArchiverStageWithSharding(config *ArchiverConfig, input <-chan *Job, out
 		padder = chunking.NewArchivePadderWithConfig(config.UseLowEntropyPadding)
 	}
 
+	// Issue #105: Initialize content-aware compressor
+	contentAwareCompressor := compression.NewContentAwareCompressor(nil) // Uses default config
+
 	return &ArchiverStage{
-		config:              config,
-		input:               input,
-		outputs:             outputs,
-		shardCount:          shardCount,
-		shardDistribution:   shardDist,
-		compressionDetector: NewCompressionDetector(),
-		encoderPool:         encoderPool,
-		pipePool:            pipePool,
-		mmapCache:           mmapCache,
-		padder:              padder,
+		config:                 config,
+		input:                  input,
+		outputs:                outputs,
+		shardCount:             shardCount,
+		shardDistribution:      shardDist,
+		compressionDetector:    NewCompressionDetector(),
+		encoderPools:           encoderPools,
+		contentAwareCompressor: contentAwareCompressor,
+		pipePool:               pipePool,
+		mmapCache:              mmapCache,
+		padder:                 padder,
 		stats: StageStats{
 			Name: "archiver",
 		},
@@ -288,9 +337,11 @@ func (s *ArchiverStage) Stop() error {
 	// Issue #34 Phase 2.1: Clear LRU cache (closes all file descriptors)
 	s.mmapCache.Clear()
 
-	// Phase 5 Redux: Cleanup encoder pool
-	if s.encoderPool != nil {
-		_ = s.encoderPool.Close()
+	// Issue #105: Cleanup all encoder pools
+	for _, pool := range s.encoderPools {
+		if pool != nil {
+			_ = pool.Close()
+		}
 	}
 
 	return nil
@@ -336,6 +387,35 @@ func (s *ArchiverStage) releaseMmapReader(path string) {
 	s.mmapCache.Release(path)
 }
 
+// analyzeChunkContentTypes determines optimal compression level for a chunk (Issue #105)
+// Analyzes content types of all files (weighted by size) and returns the compression level
+// for the predominant content type. Uses Magika metadata if available (Issue #30).
+func (s *ArchiverStage) analyzeChunkContentTypes(files []chunking.File) compression.Level {
+	// Count content types weighted by file size
+	contentTypeCounts := make(map[compression.ContentType]int64)
+
+	for _, file := range files {
+		// Priority 1: Use Magika metadata if available (Issue #30)
+		// Priority 2: Fall back to extension-based detection
+		contentType := compression.DetectContentTypeWithMetadata(file.Path, file.Metadata)
+		contentTypeCounts[contentType] += file.Size
+	}
+
+	// Find predominant content type by total size
+	var predominantType compression.ContentType
+	var maxSize int64
+	for contentType, size := range contentTypeCounts {
+		if size > maxSize {
+			maxSize = size
+			predominantType = contentType
+		}
+	}
+
+	// Get optimal compression level for predominant type
+	_, level := s.contentAwareCompressor.GetSettingsForContentType(predominantType)
+	return level
+}
+
 // Process processes a single job (called by workers)
 func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 	startTime := time.Now()
@@ -374,22 +454,38 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 	// This prevents 64GB memory leak (reuses 32 pipes instead of creating 1000+)
 	pr, pw := s.pipePool.Get()
 
-	// Phase 5 Redux: Get encoder from pool BEFORE spawning goroutine
-	// This naturally limits concurrency to pool size (8) and prevents deadlock
+	// Issue #105: Analyze chunk content types to determine optimal compression level
 	var encoder *zstd.Encoder
+	var encoderPool *EncoderPool
+	var compressionLevel compression.Level
 	if useCompression {
-		encoder = s.encoderPool.Get() // Blocks if all encoders in use - natural backpressure
+		compressionLevel = s.analyzeChunkContentTypes(job.Chunk.Files)
+
+		// Select encoder pool based on content-aware compression level
+		// Fallback to level 3 (default) if specific pool doesn't exist
+		pool, exists := s.encoderPools[compressionLevel]
+		if !exists {
+			compressionLevel = 3 // LevelDefault fallback
+			pool = s.encoderPools[compressionLevel]
+		}
+		encoderPool = pool
+
+		// Get encoder from pool - blocks if all encoders in use (natural backpressure)
+		encoder = encoderPool.Get()
+
+		// Store compression level in metadata for analysis
+		job.Metadata["compression_level"] = fmt.Sprintf("%d", compressionLevel)
 	}
 
 	// Archive creation goroutine
 	go func() {
 		defer func() {
 			_ = pw.Close()
-			// Return encoder to pool after work is done
-			if encoder != nil {
+			// Issue #105: Return encoder to correct pool after work is done
+			if encoder != nil && encoderPool != nil {
 				// Close encoder to flush data, then return to pool
 				_ = encoder.Close()
-				s.encoderPool.Put(encoder)
+				encoderPool.Put(encoder)
 			}
 		}()
 

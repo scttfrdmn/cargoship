@@ -775,3 +775,71 @@ func TestNewPipeline_DirectUploadCustomConfig(t *testing.T) {
 	assert.Equal(t, 512, pipeline.config.DirectUploadWorkers)
 	assert.True(t, pipeline.config.EnableDirectUpload)
 }
+
+// TestPipeline_GetProgress tests progress retrieval
+func TestPipeline_GetProgress(t *testing.T) {
+	config := &PipelineConfig{
+		S3Bucket: "test-bucket",
+	}
+
+	pipeline, err := NewPipeline(config)
+	require.NoError(t, err)
+
+	// Update some progress
+	pipeline.progress.mu.Lock()
+	pipeline.progress.progress.TotalFiles = 100
+	pipeline.progress.progress.FilesProcessed = 50
+	pipeline.progress.mu.Unlock()
+
+	// Get progress
+	progress := pipeline.GetProgress()
+	assert.Equal(t, int64(100), progress.TotalFiles)
+	assert.Equal(t, int64(50), progress.FilesProcessed)
+}
+
+// TestPipeline_GetErrors tests error retrieval
+func TestPipeline_GetErrors(t *testing.T) {
+	config := &PipelineConfig{
+		S3Bucket: "test-bucket",
+	}
+
+	pipeline, err := NewPipeline(config)
+	require.NoError(t, err)
+
+	// Initially no errors
+	errors := pipeline.GetErrors()
+	assert.Empty(t, errors)
+
+	// Add some errors
+	pipeline.mu.Lock()
+	pipeline.errors = []error{
+		assert.AnError,
+		io.EOF,
+	}
+	pipeline.mu.Unlock()
+
+	// Get errors
+	errors = pipeline.GetErrors()
+	assert.Len(t, errors, 2)
+}
+
+// TestPipeline_TrackUploadedKey tests uploaded key tracking
+func TestPipeline_TrackUploadedKey(t *testing.T) {
+	config := &PipelineConfig{
+		S3Bucket: "test-bucket",
+	}
+
+	pipeline, err := NewPipeline(config)
+	require.NoError(t, err)
+
+	// Track some keys
+	pipeline.trackUploadedKey("key1")
+	pipeline.trackUploadedKey("key2")
+	pipeline.trackUploadedKey("key3")
+
+	// Verify keys were tracked
+	assert.Len(t, pipeline.uploadedKeys, 3)
+	assert.Contains(t, pipeline.uploadedKeys, "key1")
+	assert.Contains(t, pipeline.uploadedKeys, "key2")
+	assert.Contains(t, pipeline.uploadedKeys, "key3")
+}

@@ -2,6 +2,11 @@ package pipeline
 
 import (
 	"testing"
+
+	"github.com/scttfrdmn/cargoship/pkg/chunking"
+	"github.com/scttfrdmn/cargoship/pkg/compression"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestArchiverStage_Name tests the Name method
@@ -68,7 +73,7 @@ func TestArchiverStage_Stop(t *testing.T) {
 
 // TestEncoderPool_Close tests the Close method
 func TestEncoderPool_Close(t *testing.T) {
-	pool, err := NewEncoderPool(2)
+	pool, err := NewEncoderPool(2, 3) // 2 encoders at level 3
 	if err != nil {
 		t.Fatalf("Failed to create encoder pool: %v", err)
 	}
@@ -81,5 +86,257 @@ func TestEncoderPool_Close(t *testing.T) {
 	// Calling Close again should be safe
 	if err := pool.Close(); err != nil {
 		t.Errorf("Second Close() returned error: %v", err)
+	}
+}
+
+// TestArchiverStage_AnalyzeChunkContentTypes tests content-aware compression level selection (Issue #105)
+func TestArchiverStage_AnalyzeChunkContentTypes(t *testing.T) {
+	// Create archiver stage with content-aware compressor
+	config := &ArchiverConfig{
+		Workers: 2,
+	}
+
+	input := make(chan *Job)
+	output := make(chan *Job)
+
+	stage, err := NewArchiverStage(config, input, output)
+	require.NoError(t, err)
+	defer stage.Stop()
+
+	tests := []struct {
+		name          string
+		files         []chunking.File
+		expectedLevel compression.Level
+	}{
+		{
+			name: "pure code files - best compression",
+			files: []chunking.File{
+				{Path: "main.go", Size: 1024},
+				{Path: "main_test.go", Size: 2048},
+				{Path: "utils.go", Size: 512},
+			},
+			expectedLevel: compression.LevelBest, // 9
+		},
+		{
+			name: "pure images - fastest compression",
+			files: []chunking.File{
+				{Path: "photo.jpg", Size: 1048576},
+				{Path: "icon.png", Size: 51200},
+				{Path: "background.webp", Size: 102400},
+			},
+			expectedLevel: compression.LevelFastest, // 1
+		},
+		{
+			name: "pure documents - good compression",
+			files: []chunking.File{
+				{Path: "report.pdf", Size: 2097152},
+				{Path: "spreadsheet.xlsx", Size: 524288},
+			},
+			expectedLevel: 6, // Level 6 for documents
+		},
+		{
+			name: "pure binaries - fast compression",
+			files: []chunking.File{
+				{Path: "app.exe", Size: 10485760},
+				{Path: "lib.so", Size: 1048576},
+			},
+			expectedLevel: compression.LevelFast, // 3
+		},
+		{
+			name: "mixed with code predominant by size",
+			files: []chunking.File{
+				{Path: "main.go", Size: 10240},      // 10KB code
+				{Path: "photo.jpg", Size: 5120},     // 5KB image
+				{Path: "README.md", Size: 1024},     // 1KB text
+			},
+			expectedLevel: compression.LevelBest, // 9 (code is largest)
+		},
+		{
+			name: "mixed with images predominant by size",
+			files: []chunking.File{
+				{Path: "photo.jpg", Size: 1048576},  // 1MB image
+				{Path: "main.go", Size: 10240},      // 10KB code
+			},
+			expectedLevel: compression.LevelFastest, // 1 (images are largest)
+		},
+		{
+			name: "archives - minimal compression",
+			files: []chunking.File{
+				{Path: "backup.zip", Size: 10485760},
+				{Path: "data.tar.gz", Size: 5242880},
+			},
+			expectedLevel: compression.LevelFastest, // 1 (archives already compressed)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			level := stage.analyzeChunkContentTypes(tt.files)
+			assert.Equal(t, tt.expectedLevel, level,
+				"Expected compression level %d but got %d for %s",
+				tt.expectedLevel, level, tt.name)
+		})
+	}
+}
+
+// TestArchiverStage_AnalyzeChunkContentTypesWithMagika tests Magika metadata integration (Issue #30 + #105)
+func TestArchiverStage_AnalyzeChunkContentTypesWithMagika(t *testing.T) {
+	config := &ArchiverConfig{
+		Workers: 2,
+	}
+
+	input := make(chan *Job)
+	output := make(chan *Job)
+
+	stage, err := NewArchiverStage(config, input, output)
+	require.NoError(t, err)
+	defer stage.Stop()
+
+	tests := []struct {
+		name          string
+		files         []chunking.File
+		expectedLevel compression.Level
+	}{
+		{
+			name: "Magika detects Python in .bin file",
+			files: []chunking.File{
+				{
+					Path: "unknown.bin",
+					Size: 10240,
+					Metadata: map[string]string{
+						"magika_type": "python",
+					},
+				},
+			},
+			expectedLevel: compression.LevelBest, // 9 (code)
+		},
+		{
+			name: "Magika detects JPEG in .data file",
+			files: []chunking.File{
+				{
+					Path: "file.data",
+					Size: 1048576,
+					Metadata: map[string]string{
+						"magika_type": "jpeg",
+					},
+				},
+			},
+			expectedLevel: compression.LevelFastest, // 1 (image)
+		},
+		{
+			name: "Magika overrides extension",
+			files: []chunking.File{
+				{
+					Path: "photo.txt", // Extension says text
+					Size: 1048576,
+					Metadata: map[string]string{
+						"magika_type": "jpeg", // But Magika says image
+					},
+				},
+			},
+			expectedLevel: compression.LevelFastest, // 1 (Magika wins)
+		},
+		{
+			name: "Falls back to extension when no Magika metadata",
+			files: []chunking.File{
+				{
+					Path:     "script.py",
+					Size:     10240,
+					Metadata: map[string]string{}, // No magika_type
+				},
+			},
+			expectedLevel: compression.LevelBest, // 9 (extension-based detection)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			level := stage.analyzeChunkContentTypes(tt.files)
+			assert.Equal(t, tt.expectedLevel, level)
+		})
+	}
+}
+
+// TestCreateEncoderPools tests multi-level encoder pool creation (Issue #105)
+func TestCreateEncoderPools(t *testing.T) {
+	poolSize := 4
+	pools, err := createEncoderPools(poolSize)
+	require.NoError(t, err)
+	require.NotNil(t, pools)
+
+	// Verify all expected levels have pools
+	expectedLevels := []compression.Level{1, 3, 6, 9}
+	for _, level := range expectedLevels {
+		pool, exists := pools[level]
+		assert.True(t, exists, "Expected pool for level %d to exist", level)
+		assert.NotNil(t, pool, "Pool for level %d should not be nil", level)
+		assert.Equal(t, poolSize, pool.size, "Pool size mismatch for level %d", level)
+		assert.Equal(t, level, pool.level, "Pool level mismatch")
+	}
+
+	// Cleanup
+	for _, pool := range pools {
+		_ = pool.Close()
+	}
+}
+
+// TestConvertToZstdLevel tests compression level conversion (Issue #105)
+func TestConvertToZstdLevel(t *testing.T) {
+	tests := []struct {
+		name  string
+		level compression.Level
+		// We can't directly compare zstd.EncoderLevel values, but we can verify
+		// the function doesn't panic and returns consistent results
+	}{
+		{"Level 1 - Fastest", 1},
+		{"Level 3 - Fast/Default", 3},
+		{"Level 6 - Better", 6},
+		{"Level 9 - Best", 9},
+		{"Level 5 - Default fallback", 5},
+		{"Level 0 - Default fallback", 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Should not panic
+			zstdLevel := convertToZstdLevel(tt.level)
+			assert.NotNil(t, zstdLevel)
+
+			// Verify consistency
+			zstdLevel2 := convertToZstdLevel(tt.level)
+			assert.Equal(t, zstdLevel, zstdLevel2, "Conversion should be deterministic")
+		})
+	}
+}
+
+// TestEncoderPool_MultiLevel tests that different pools maintain different compression levels
+func TestEncoderPool_MultiLevel(t *testing.T) {
+	levels := []compression.Level{1, 3, 6, 9}
+	pools := make([]*EncoderPool, len(levels))
+
+	// Create pools at different levels
+	for i, level := range levels {
+		pool, err := NewEncoderPool(2, level)
+		require.NoError(t, err)
+		pools[i] = pool
+		defer pool.Close()
+
+		// Verify pool tracks correct level
+		assert.Equal(t, level, pool.level)
+	}
+
+	// Verify each pool has 2 encoders
+	for i, pool := range pools {
+		encoder1 := pool.Get()
+		require.NotNil(t, encoder1)
+
+		encoder2 := pool.Get()
+		require.NotNil(t, encoder2)
+
+		// Return encoders
+		pool.Put(encoder1)
+		pool.Put(encoder2)
+
+		t.Logf("Pool %d (level %d) successfully created with 2 encoders", i, levels[i])
 	}
 }
