@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -51,6 +52,9 @@ func NewUploadCmd() *cobra.Command {
 
 		// Issue #119: Resume configuration
 		forceRestart bool
+
+		// Issue #168: Skip confirmation prompts
+		skipConfirmation bool
 	)
 
 	cmd := &cobra.Command{
@@ -359,6 +363,46 @@ Examples:
 				return fmt.Errorf("--tier-strategy=tier-aware requires --auto-tier to be enabled")
 			}
 
+			// Issue #168: Show cost warning and prompt for confirmation when using tier-aware
+			if tierStrategy == "tier-aware" && !skipConfirmation && !quiet {
+				fmt.Println("\n⚠️  TIER-AWARE CHUNKING: COST IMPLICATIONS WARNING")
+				fmt.Println("══════════════════════════════════════════════════")
+				fmt.Println("\nTier-aware chunking will assign files to cost-optimized storage tiers:")
+				fmt.Println("\n📦 STANDARD:")
+				fmt.Println("   • No minimum duration")
+				fmt.Println("   • Free retrieval")
+				fmt.Println("   • Immediate access")
+				fmt.Println("\n📦 STANDARD_IA (Infrequent Access):")
+				fmt.Println("   • 30-day minimum storage duration")
+				fmt.Println("   • $0.01/GB retrieval fee")
+				fmt.Println("   • Immediate access")
+				fmt.Println("\n🧊 GLACIER:")
+				fmt.Println("   • 90-day minimum storage duration (early deletion penalty applies)")
+				fmt.Println("   • $0.01/GB retrieval fee")
+				fmt.Println("   • 3-5 hour retrieval time (standard)")
+				fmt.Println("   • Best for: Data accessed <1x per year")
+				fmt.Println("\n❄️  DEEP_ARCHIVE:")
+				fmt.Println("   • 180-day minimum storage duration (early deletion penalty applies)")
+				fmt.Println("   • $0.02/GB retrieval fee")
+				fmt.Println("   • 12 hour retrieval time (standard)")
+				fmt.Println("   • Best for: Compliance/long-term archives accessed <1x per 5 years")
+				fmt.Println("\n💡 Important:")
+				fmt.Println("   • Frequent access can negate storage savings due to retrieval fees")
+				fmt.Println("   • Ensure 6+ month retention to avoid early deletion penalties")
+				fmt.Println("   • Total cost = storage + retrieval + data transfer")
+				fmt.Println("\n📚 More info: https://github.com/scttfrdmn/cargoship/issues/168")
+				fmt.Println("\nDo you understand these cost implications and wish to proceed? [y/N]: ")
+
+				var response string
+				_, _ = fmt.Scanln(&response) // Ignore error - empty input treated as "no"
+				response = strings.ToLower(strings.TrimSpace(response))
+
+				if response != "y" && response != "yes" {
+					return fmt.Errorf("tier-aware chunking cancelled by user (use --yes to skip this prompt)")
+				}
+				fmt.Println("✓ Proceeding with tier-aware chunking")
+			}
+
 			// Create pipeline config with CargoHold settings
 			pipelineConfig := &pipeline.PipelineConfig{
 				ScannerWorkers:       4,
@@ -543,7 +587,17 @@ Examples:
 	cmd.Flags().Int("tier-archive-days", 180, "Days since access to consider 'archive' (DEEP_ARCHIVE)")
 
 	// Issue #164: Tier chunking strategy (opt-in tier-aware chunking)
-	cmd.Flags().String("tier-strategy", "youngest-file", "Tier chunking strategy: 'youngest-file' (v1, default) or 'tier-aware' (v2, optimal cost)")
+	cmd.Flags().String("tier-strategy", "youngest-file", `Tier chunking strategy (requires --auto-tier):
+  youngest-file: Conservative strategy - assigns tier based on youngest file per chunk (default)
+  tier-aware:    Optimal cost - groups files by tier before chunking (30-60% savings)
+
+⚠️  WARNING: tier-aware uses GLACIER/DEEP_ARCHIVE with cost implications:
+  • GLACIER: 90-day minimum storage ($0.004/GB-month, $0.01/GB retrieval, 3-5hr access)
+  • DEEP_ARCHIVE: 180-day minimum ($0.00099/GB-month, $0.02/GB retrieval, 12hr access)
+  • Early deletion penalties apply if removed before minimum duration
+  • Best for long-term archives accessed <1x per year
+
+  See: https://github.com/scttfrdmn/cargoship/issues/168`)
 
 	cmd.Flags().IntVar(&shardCount, "shard-count", 0, "Number of shards for parallel uploads (0=auto, 4-32=manual, default: 0)")
 	cmd.Flags().StringVar(&shardStrategy, "shard-strategy", "hash", "Shard distribution strategy (hash, size, type, directory)")
@@ -569,6 +623,9 @@ Examples:
 
 	// Issue #119: Resume configuration
 	cmd.Flags().BoolVar(&forceRestart, "force-restart", false, "Ignore saved state and start fresh upload (bypasses resume detection)")
+
+	// Issue #168: Skip confirmation prompts (for automation)
+	cmd.Flags().BoolVarP(&skipConfirmation, "yes", "y", false, "Skip confirmation prompts (auto-accept warnings)")
 
 	// Issue #166: Direct upload optimization (fast path for small files)
 	cmd.Flags().Bool("direct-upload", false, "Enable direct upload mode (bypasses archiving/compression for small files)")
