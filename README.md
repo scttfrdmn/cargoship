@@ -105,6 +105,121 @@ Total annual savings: $3,170/year with 8x upload performance
 • Real-time progress tracking with TUI
 ```
 
+### Storage Tier Cost Implications ⚠️
+
+When using `--tier-strategy tier-aware` with `--auto-tier`, CargoShip assigns files to cost-optimized storage tiers. **Understanding the full cost implications is critical** to avoid unexpected charges.
+
+#### Hidden Costs: Minimum Storage Duration & Retrieval Fees
+
+AWS charges for minimum storage duration **even if you delete data early**:
+
+| Tier | Storage Cost | Minimum Duration | Retrieval Cost | Retrieval Time | Best For |
+|------|--------------|------------------|----------------|----------------|----------|
+| **STANDARD** | $0.023/GB-month | None | Free | Immediate | Active data, frequent access |
+| **STANDARD_IA** | $0.0125/GB-month | 30 days | $0.01/GB | Immediate | Infrequent access (< 1x/month) |
+| **GLACIER** | $0.004/GB-month | **90 days** ⚠️ | $0.01/GB | 3-5 hours | Rarely accessed (<1x/year) |
+| **DEEP_ARCHIVE** | $0.00099/GB-month | **180 days** ⚠️ | $0.02/GB | 12 hours | Compliance (<1x/5 years) |
+
+**Example: Early Deletion Penalty**
+```
+Upload 100GB to DEEP_ARCHIVE, delete after 30 days:
+├─ Storage (30 days):        $0.10
+├─ Early deletion penalty:   $0.50 (charged for remaining 150 days)
+└─ Total:                    $0.60 (6x more than expected!)
+```
+
+**Example: Retrieval Costs**
+```
+Retrieve 1TB from GLACIER:
+├─ Retrieval fee:   1024GB × $0.01/GB  = $10.24
+├─ Data transfer:   1024GB × $0.09/GB  = $92.16
+└─ Total:                               = $102.40
+```
+
+#### Cost Scenarios: When to Use Each Strategy
+
+**Scenario 1: Long-term Archive (No Retrieval) - ✅ Use tier-aware**
+```
+100GB mixed-age dataset, stored 1 year, no retrievals:
+
+V1 (youngest-file):
+└─ 100GB STANDARD:          $27.60/year
+
+V2 (tier-aware):
+├─ 25GB STANDARD:           $6.90/year
+├─ 25GB STANDARD_IA:        $3.75/year
+├─ 25GB GLACIER:            $1.20/year
+└─ 25GB DEEP_ARCHIVE:       $0.30/year
+   Total:                   $12.15/year
+
+Savings: $15.45/year (56% reduction) ✅
+```
+
+**Scenario 2: Frequent Retrieval (10x/year) - ❌ Use youngest-file instead**
+```
+100GB dataset, 10 retrievals per year:
+
+V1 (youngest-file):
+└─ Storage + retrieval:     $27.60/year (no retrieval fees)
+
+V2 (tier-aware):
+├─ Storage:                 $12.15/year
+├─ Retrieval fees:          $7.50/year
+└─ Data transfer:           $22.50/year
+   Total:                   $42.15/year
+
+Loss: -$14.55/year (53% increase) ❌
+```
+
+#### Interactive Confirmation
+
+CargoShip prompts for confirmation when using tier-aware strategy:
+
+```bash
+$ cargoship upload --auto-tier --tier-strategy tier-aware ./data s3://bucket
+
+⚠️  TIER-AWARE CHUNKING: COST IMPLICATIONS WARNING
+══════════════════════════════════════════════════
+
+🧊 GLACIER:
+   • 90-day minimum storage duration (early deletion penalty applies)
+   • $0.01/GB retrieval fee
+   • 3-5 hour retrieval time (standard)
+   • Best for: Data accessed <1x per year
+
+❄️  DEEP_ARCHIVE:
+   • 180-day minimum storage duration (early deletion penalty applies)
+   • $0.02/GB retrieval fee
+   • 12 hour retrieval time (standard)
+   • Best for: Compliance/long-term archives accessed <1x per 5 years
+
+Do you understand these cost implications and wish to proceed? [y/N]:
+```
+
+Skip prompt with `--yes` flag for automation:
+```bash
+cargoship upload --auto-tier --tier-strategy tier-aware --yes ./data s3://bucket
+```
+
+#### Decision Matrix: Which Strategy to Use?
+
+| Access Pattern | Retention | Recommended Strategy | Why |
+|----------------|-----------|---------------------|-----|
+| >1x per month | Any | `youngest-file` (v1) | Retrieval costs exceed savings |
+| <1x per month | <6 months | `youngest-file` (v1) | Early deletion penalties |
+| <1x per year | >6 months | `tier-aware` (v2) | Storage savings outweigh retrieval |
+| <1x per 5 years | >1 year | `tier-aware` (v2) | Maximum savings from DEEP_ARCHIVE |
+| Compliance/backup | >1 year | `tier-aware` (v2) | Designed for long-term storage |
+
+**Best Practices:**
+1. **Estimate costs first**: Use `cargoship estimate` before uploading
+2. **Know your access patterns**: Track how often you retrieve data
+3. **Ensure 6+ month retention**: Avoid early deletion penalties
+4. **Use youngest-file for active data**: Frequent access makes v1 cheaper
+5. **Use tier-aware for cold data**: Backups, compliance, long-term archives
+
+See [Issue #168](https://github.com/scttfrdmn/cargoship/issues/168) for complete documentation.
+
 ### Budget Tracking and Cost Control
 
 CargoShip includes enterprise-grade budget management to prevent cost overruns:
