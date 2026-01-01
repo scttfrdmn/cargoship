@@ -661,3 +661,605 @@ func TestBudgetPeriod_GetDaysElapsed(t *testing.T) {
 		})
 	}
 }
+
+// TestBudgetPeriod_GetDaysRemaining tests the GetDaysRemaining method
+func TestBudgetPeriod_GetDaysRemaining(t *testing.T) {
+	tests := []struct {
+		name    string
+		period  BudgetPeriod
+		refTime time.Time
+		want    int
+		wantErr bool
+	}{
+		{
+			name:    "Beginning of daily period",
+			period:  BudgetPeriod{Type: BudgetPeriodDaily},
+			refTime: time.Date(2024, 6, 15, 0, 30, 0, 0, time.UTC),
+			want:    0, // 23.5 hours = 0 days (floor division)
+		},
+		{
+			name:    "End of daily period",
+			period:  BudgetPeriod{Type: BudgetPeriodDaily},
+			refTime: time.Date(2024, 6, 15, 23, 30, 0, 0, time.UTC),
+			want:    0, // Less than 1 hour remaining
+		},
+		{
+			name:    "Middle of monthly period",
+			period:  BudgetPeriod{Type: BudgetPeriodMonthly},
+			refTime: time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC),
+			want:    15, // 15 days remaining (15th to 30th)
+		},
+		{
+			name: "Invalid period type",
+			period: BudgetPeriod{
+				Type:                 BudgetPeriodFiscalYear,
+				FiscalYearStartMonth: 13,
+			},
+			refTime: time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.period.GetDaysRemaining(tt.refTime)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("GetDaysRemaining() expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("GetDaysRemaining() unexpected error = %v", err)
+				return
+			}
+
+			if got != tt.want {
+				t.Errorf("GetDaysRemaining() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestBudgetPeriod_GetTotalDays tests the GetTotalDays method
+func TestBudgetPeriod_GetTotalDays(t *testing.T) {
+	refTime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name    string
+		period  BudgetPeriod
+		want    int
+		wantErr bool
+	}{
+		{
+			name:   "Daily period",
+			period: BudgetPeriod{Type: BudgetPeriodDaily},
+			want:   1,
+		},
+		{
+			name:   "Weekly period",
+			period: BudgetPeriod{Type: BudgetPeriodWeekly},
+			want:   7,
+		},
+		{
+			name:   "Monthly period - June",
+			period: BudgetPeriod{Type: BudgetPeriodMonthly},
+			want:   30,
+		},
+		{
+			name:   "Quarterly period",
+			period: BudgetPeriod{Type: BudgetPeriodQuarterly},
+			want:   91, // Apr-Jun = 30+31+30 = 91 days
+		},
+		{
+			name:   "Yearly period",
+			period: BudgetPeriod{Type: BudgetPeriodYearly},
+			want:   367, // 366 days in 2024 (leap year) + 1
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.period.GetTotalDays(refTime)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("GetTotalDays() expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("GetTotalDays() unexpected error = %v", err)
+				return
+			}
+
+			if got != tt.want {
+				t.Errorf("GetTotalDays() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestBudgetPeriod_CalculateBurnRate tests the CalculateBurnRate method
+func TestBudgetPeriod_CalculateBurnRate(t *testing.T) {
+	tests := []struct {
+		name         string
+		period       BudgetPeriod
+		currentSpend float64
+		refTime      time.Time
+		want         float64
+		wantErr      bool
+	}{
+		{
+			name:         "Daily period - $100 spent in first day",
+			period:       BudgetPeriod{Type: BudgetPeriodDaily},
+			currentSpend: 100.0,
+			refTime:      time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC),
+			want:         100.0, // $100/1 day
+		},
+		{
+			name:         "Monthly period - $500 spent in 9 days",
+			period:       BudgetPeriod{Type: BudgetPeriodMonthly},
+			currentSpend: 500.0,
+			refTime:      time.Date(2024, 6, 10, 12, 0, 0, 0, time.UTC),
+			want:         55.56, // $500/9 days (June 1-9 full days) = $55.56/day
+		},
+		{
+			name:         "Yearly period - start of year",
+			period:       BudgetPeriod{Type: BudgetPeriodYearly},
+			currentSpend: 50.0,
+			refTime:      time.Date(2024, 1, 1, 6, 0, 0, 0, time.UTC),
+			want:         50.0, // $50/1 day (minimum 1 day)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.period.CalculateBurnRate(tt.currentSpend, tt.refTime)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("CalculateBurnRate() expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("CalculateBurnRate() unexpected error = %v", err)
+				return
+			}
+
+			// Allow small tolerance for floating point arithmetic
+			tolerance := 0.01
+			if got < tt.want-tolerance || got > tt.want+tolerance {
+				t.Errorf("CalculateBurnRate() = %v, want %v (±%.2f)", got, tt.want, tolerance)
+			}
+		})
+	}
+}
+
+// TestBudgetPeriod_ProjectEndOfPeriodSpend tests the ProjectEndOfPeriodSpend method
+func TestBudgetPeriod_ProjectEndOfPeriodSpend(t *testing.T) {
+	tests := []struct {
+		name         string
+		period       BudgetPeriod
+		currentSpend float64
+		refTime      time.Time
+		want         float64
+		wantErr      bool
+	}{
+		{
+			name:         "Monthly period - mid-month projection",
+			period:       BudgetPeriod{Type: BudgetPeriodMonthly},
+			currentSpend: 500.0, // $500 spent by June 10
+			refTime:      time.Date(2024, 6, 10, 12, 0, 0, 0, time.UTC),
+			// Burn rate: $500 / 9 days = $55.56/day
+			// Days remaining: ~20 days
+			// Projected: $500 + ($55.56 * 20) = ~$1611
+			want: 1611.11, // Approximate
+		},
+		{
+			name:         "Daily period - end of day",
+			period:       BudgetPeriod{Type: BudgetPeriodDaily},
+			currentSpend: 100.0,
+			refTime:      time.Date(2024, 6, 15, 23, 0, 0, 0, time.UTC),
+			// Burn rate: $100 / 1 day
+			// Days remaining: 0
+			// Projected: $100 + ($100 * 0) = $100
+			want: 100.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.period.ProjectEndOfPeriodSpend(tt.currentSpend, tt.refTime)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("ProjectEndOfPeriodSpend() expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("ProjectEndOfPeriodSpend() unexpected error = %v", err)
+				return
+			}
+
+			// Allow 1% tolerance for floating point arithmetic
+			tolerance := tt.want * 0.01
+			if got < tt.want-tolerance || got > tt.want+tolerance {
+				t.Errorf("ProjectEndOfPeriodSpend() = %v, want %v (±1%%)", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestBudgetPeriod_WillExceedBudget tests the WillExceedBudget method
+func TestBudgetPeriod_WillExceedBudget(t *testing.T) {
+	tests := []struct {
+		name         string
+		period       BudgetPeriod
+		currentSpend float64
+		refTime      time.Time
+		wantExceed   bool
+		wantErr      bool
+	}{
+		{
+			name: "Will exceed - high burn rate",
+			period: BudgetPeriod{
+				Type:      BudgetPeriodMonthly,
+				MaxBudget: 1000.0,
+			},
+			currentSpend: 800.0, // $800 spent by June 10
+			refTime:      time.Date(2024, 6, 10, 12, 0, 0, 0, time.UTC),
+			// Burn rate: $800 / 9 days = $88.89/day
+			// Projected: $800 + ($88.89 * 20) ≈ $1578 > $1000
+			wantExceed: true,
+		},
+		{
+			name: "Won't exceed - low burn rate",
+			period: BudgetPeriod{
+				Type:      BudgetPeriodMonthly,
+				MaxBudget: 1000.0,
+			},
+			currentSpend: 200.0, // $200 spent by June 10
+			refTime:      time.Date(2024, 6, 10, 12, 0, 0, 0, time.UTC),
+			// Burn rate: $200 / 9 days = $22.22/day
+			// Projected: $200 + ($22.22 * 20) ≈ $644 < $1000
+			wantExceed: false,
+		},
+		{
+			name: "Already over budget",
+			period: BudgetPeriod{
+				Type:      BudgetPeriodDaily,
+				MaxBudget: 50.0,
+			},
+			currentSpend: 150.0,
+			refTime:      time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC),
+			wantExceed:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotExceed, gotProjected, err := tt.period.WillExceedBudget(tt.currentSpend, tt.refTime)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("WillExceedBudget() expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("WillExceedBudget() unexpected error = %v", err)
+				return
+			}
+
+			if gotExceed != tt.wantExceed {
+				t.Errorf("WillExceedBudget() exceed = %v, want %v (projected: %v, budget: %v)",
+					gotExceed, tt.wantExceed, gotProjected, tt.period.MaxBudget)
+			}
+		})
+	}
+}
+
+// TestBudgetPeriod_GetBudgetStatus tests the GetBudgetStatus method
+func TestBudgetPeriod_GetBudgetStatus(t *testing.T) {
+	period := BudgetPeriod{
+		Type:           BudgetPeriodMonthly,
+		MaxBudget:      1000.0,
+		AlertThreshold: 0.8,
+	}
+
+	refTime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
+	currentSpend := 600.0
+
+	status, err := period.GetBudgetStatus(currentSpend, refTime)
+	if err != nil {
+		t.Fatalf("GetBudgetStatus() unexpected error = %v", err)
+	}
+
+	// Verify expected keys exist
+	expectedKeys := []string{
+		"period_type", "period_start", "period_end",
+		"days_elapsed", "days_remaining", "total_days",
+		"max_budget", "current_spend", "budget_used", "budget_remaining",
+		"daily_burn_rate", "projected_eop_spend", "will_exceed_budget",
+		"target_daily_rate", "over_budget", "alert_triggered",
+	}
+
+	for _, key := range expectedKeys {
+		if _, exists := status[key]; !exists {
+			t.Errorf("GetBudgetStatus() missing key: %s", key)
+		}
+	}
+
+	// Verify some values
+	if status["period_type"] != BudgetPeriodMonthly {
+		t.Errorf("period_type = %v, want %v", status["period_type"], BudgetPeriodMonthly)
+	}
+
+	if status["max_budget"] != 1000.0 {
+		t.Errorf("max_budget = %v, want 1000.0", status["max_budget"])
+	}
+
+	if status["current_spend"] != 600.0 {
+		t.Errorf("current_spend = %v, want 600.0", status["current_spend"])
+	}
+
+	// Verify alert triggered (60% > 80% threshold = false)
+	alertTriggered, ok := status["alert_triggered"].(bool)
+	if !ok {
+		t.Errorf("alert_triggered is not bool")
+	}
+	if alertTriggered {
+		t.Errorf("alert_triggered = true, want false (60%% < 80%% threshold)")
+	}
+}
+
+// TestBudgetPeriod_Validate tests the Validate method
+func TestBudgetPeriod_Validate(t *testing.T) {
+	validStart := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	validEnd := time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name    string
+		period  BudgetPeriod
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "Valid daily period",
+			period: BudgetPeriod{
+				Type:           BudgetPeriodDaily,
+				MaxBudget:      100.0,
+				AlertThreshold: 0.8,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Invalid - zero max budget",
+			period: BudgetPeriod{
+				Type:           BudgetPeriodMonthly,
+				MaxBudget:      0,
+				AlertThreshold: 0.8,
+			},
+			wantErr: true,
+			errMsg:  "max_budget must be greater than 0",
+		},
+		{
+			name: "Invalid - negative max budget",
+			period: BudgetPeriod{
+				Type:           BudgetPeriodMonthly,
+				MaxBudget:      -100,
+				AlertThreshold: 0.8,
+			},
+			wantErr: true,
+			errMsg:  "max_budget must be greater than 0",
+		},
+		{
+			name: "Invalid - alert threshold > 1",
+			period: BudgetPeriod{
+				Type:           BudgetPeriodMonthly,
+				MaxBudget:      100.0,
+				AlertThreshold: 1.5,
+			},
+			wantErr: true,
+			errMsg:  "alert_threshold must be between 0.0 and 1.0",
+		},
+		{
+			name: "Invalid - alert threshold < 0",
+			period: BudgetPeriod{
+				Type:           BudgetPeriodMonthly,
+				MaxBudget:      100.0,
+				AlertThreshold: -0.1,
+			},
+			wantErr: true,
+			errMsg:  "alert_threshold must be between 0.0 and 1.0",
+		},
+		{
+			name: "Invalid - custom period missing dates",
+			period: BudgetPeriod{
+				Type:           BudgetPeriodCustom,
+				MaxBudget:      100.0,
+				AlertThreshold: 0.8,
+			},
+			wantErr: true,
+			errMsg:  "custom budget period requires both start_date and end_date",
+		},
+		{
+			name: "Invalid - custom period end before start",
+			period: BudgetPeriod{
+				Type:           BudgetPeriodCustom,
+				MaxBudget:      100.0,
+				AlertThreshold: 0.8,
+				StartDate:      &validEnd,
+				EndDate:        &validStart,
+			},
+			wantErr: true,
+			errMsg:  "end_date must be after start_date",
+		},
+		{
+			name: "Valid custom period",
+			period: BudgetPeriod{
+				Type:           BudgetPeriodCustom,
+				MaxBudget:      100.0,
+				AlertThreshold: 0.8,
+				StartDate:      &validStart,
+				EndDate:        &validEnd,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Invalid - grant period missing grant name",
+			period: BudgetPeriod{
+				Type:           BudgetPeriodGrant,
+				MaxBudget:      100.0,
+				AlertThreshold: 0.8,
+				StartDate:      &validStart,
+				EndDate:        &validEnd,
+			},
+			wantErr: true,
+			errMsg:  "grant budget period requires grant_name",
+		},
+		{
+			name: "Valid grant period",
+			period: BudgetPeriod{
+				Type:           BudgetPeriodGrant,
+				MaxBudget:      100.0,
+				AlertThreshold: 0.8,
+				StartDate:      &validStart,
+				EndDate:        &validEnd,
+				GrantName:      "Research Grant 2024",
+			},
+			wantErr: false,
+		},
+		{
+			name: "Invalid - fiscal year invalid month",
+			period: BudgetPeriod{
+				Type:                 BudgetPeriodFiscalYear,
+				MaxBudget:            100.0,
+				AlertThreshold:       0.8,
+				FiscalYearStartMonth: 13,
+			},
+			wantErr: true,
+			errMsg:  "fiscal_year_start_month must be between 1 and 12",
+		},
+		{
+			name: "Valid fiscal year",
+			period: BudgetPeriod{
+				Type:                 BudgetPeriodFiscalYear,
+				MaxBudget:            100.0,
+				AlertThreshold:       0.8,
+				FiscalYearStartMonth: 4,
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.period.Validate()
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Validate() expected error, got nil")
+				} else if tt.errMsg != "" && err.Error() != tt.errMsg {
+					t.Errorf("Validate() error = %v, want %v", err.Error(), tt.errMsg)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("Validate() unexpected error = %v", err)
+			}
+		})
+	}
+}
+
+// TestBudgetPeriod_String tests the String method
+func TestBudgetPeriod_String(t *testing.T) {
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name   string
+		period BudgetPeriod
+		want   string
+	}{
+		{
+			name:   "Daily",
+			period: BudgetPeriod{Type: BudgetPeriodDaily},
+			want:   "Daily Budget",
+		},
+		{
+			name:   "Weekly",
+			period: BudgetPeriod{Type: BudgetPeriodWeekly},
+			want:   "Weekly Budget",
+		},
+		{
+			name:   "Monthly",
+			period: BudgetPeriod{Type: BudgetPeriodMonthly},
+			want:   "Monthly Budget",
+		},
+		{
+			name:   "Quarterly",
+			period: BudgetPeriod{Type: BudgetPeriodQuarterly},
+			want:   "Quarterly Budget",
+		},
+		{
+			name:   "Yearly",
+			period: BudgetPeriod{Type: BudgetPeriodYearly},
+			want:   "Yearly Budget",
+		},
+		{
+			name: "Fiscal Year",
+			period: BudgetPeriod{
+				Type:                 BudgetPeriodFiscalYear,
+				FiscalYearStartMonth: 4,
+			},
+			want: "Fiscal Year Budget (starts April)",
+		},
+		{
+			name: "Custom with dates",
+			period: BudgetPeriod{
+				Type:      BudgetPeriodCustom,
+				StartDate: &startDate,
+				EndDate:   &endDate,
+			},
+			want: "Custom Budget (2024-01-01 to 2024-12-31)",
+		},
+		{
+			name:   "Custom without dates",
+			period: BudgetPeriod{Type: BudgetPeriodCustom},
+			want:   "Custom Budget",
+		},
+		{
+			name: "Grant with name",
+			period: BudgetPeriod{
+				Type:      BudgetPeriodGrant,
+				GrantName: "NSF Research Grant",
+			},
+			want: "Grant Budget: NSF Research Grant",
+		},
+		{
+			name:   "Grant without name",
+			period: BudgetPeriod{Type: BudgetPeriodGrant},
+			want:   "Grant Budget",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.period.String()
+			if got != tt.want {
+				t.Errorf("String() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
