@@ -1,0 +1,5 @@
+Using config file: /Users/scttfrdmn/.cargoship.yaml
+🔍 Analyzing workload for optimal worker configuration...
+📊 Workload: 100 files, 56 GB total
+⚙️  Optimal workers: Scanner=2, Archiver=4, Uploader=2
+✅ Manifest uploaded: s3://cargoship-competitive-benchmark-1767219132/scenario2/cargoship/uploads/20251231-d344e139/manifest.json.gz (100 files, 97 chunks)

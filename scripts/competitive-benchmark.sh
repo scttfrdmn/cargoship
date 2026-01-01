@@ -624,10 +624,10 @@ measure_upload "scenario4" "aws-cli" \
     "$SCENARIO4_FILES" "$SCENARIO4_SIZE_MB"
 sleep 2
 
-# cargoship (WITH compression - this is where CargoShip shines!)
+# cargoship (Note: compression flag not yet implemented)
 cleanup_s3_prefix "scenario4/cargoship"
 measure_upload "scenario4" "cargoship" \
-    "AWS_PROFILE=$AWS_PROFILE ./cargoship create upload '$SCENARIO4_DIR' --bucket $BENCHMARK_BUCKET --prefix scenario4/cargoship --region $AWS_REGION --compression-type zstd --quiet" \
+    "AWS_PROFILE=$AWS_PROFILE ./cargoship create upload '$SCENARIO4_DIR' --bucket $BENCHMARK_BUCKET --prefix scenario4/cargoship --region $AWS_REGION --quiet" \
     "$SCENARIO4_FILES" "$SCENARIO4_SIZE_MB"
 
 log_info "Measuring compression savings..."
