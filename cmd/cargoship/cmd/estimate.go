@@ -31,6 +31,7 @@ var (
 	estimateMaxPrefixes      int
 	showUploadOptimization   bool
 	estimateBandwidth        float64
+	showComparison           bool // Issue #169: Show chunking benefits comparison
 )
 
 // NewEstimateCmd creates the estimate command for cost calculation
@@ -60,6 +61,7 @@ Examples:
 	cmd.Flags().IntVar(&estimateMaxPrefixes, "max-prefixes", 0, "Maximum prefixes for parallel upload analysis (0 = auto)")
 	cmd.Flags().BoolVar(&showUploadOptimization, "show-upload-optimization", true, "Show intelligent upload sizing recommendations")
 	cmd.Flags().Float64Var(&estimateBandwidth, "bandwidth", 0, "Network bandwidth in MB/s for optimization (0 = auto-detect)")
+	cmd.Flags().BoolVar(&showComparison, "show-comparison", false, "Show cost comparison: naive upload vs CargoShip chunking (Issue #169)")
 
 	return cmd
 }
@@ -73,7 +75,7 @@ func runEstimate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create a mock inventory for cost estimation
-	archives, err := createMockArchives(sourcePath)
+	archives, fileCount, err := createMockArchives(sourcePath)
 	if err != nil {
 		return fmt.Errorf("failed to analyze directory: %w", err)
 	}
@@ -93,6 +95,24 @@ func runEstimate(cmd *cobra.Command, args []string) error {
 
 	// Calculate costs
 	ctx := context.Background()
+
+	// Issue #169: Show comparison if requested
+	var comparison *costs.ComparisonEstimate
+	if showComparison {
+		// Determine storage class for comparison
+		storageClass := config.StorageClassIntelligentTiering
+		if estimateStorageClass != "" {
+			storageClass = config.StorageClass(strings.ToUpper(estimateStorageClass))
+		}
+
+		// Calculate comparison
+		totalSizeGB := float64(archives[0].Size) / (1024 * 1024 * 1024)
+		comparison, err = calculator.EstimateWithComparison(ctx, fileCount, totalSizeGB, storageClass)
+		if err != nil {
+			return fmt.Errorf("failed to calculate comparison: %w", err)
+		}
+	}
+
 	estimate, err := calculator.EstimateArchives(ctx, archives)
 	if err != nil {
 		return fmt.Errorf("failed to calculate costs: %w", err)
@@ -113,32 +133,34 @@ func runEstimate(cmd *cobra.Command, args []string) error {
 	// Output results
 	switch estimateFormat {
 	case "json":
-		return outputJSON(estimate, parallelOpt, uploadOpt)
+		return outputJSON(estimate, parallelOpt, uploadOpt, comparison)
 	case "table":
-		return outputTable(estimate, parallelOpt, uploadOpt, sourcePath)
+		return outputTable(estimate, parallelOpt, uploadOpt, comparison, sourcePath)
 	default:
 		return fmt.Errorf("unsupported format: %s", estimateFormat)
 	}
 }
 
 // createMockArchives creates mock archives for cost estimation based on directory analysis
-func createMockArchives(sourcePath string) ([]s3.Archive, error) {
+func createMockArchives(sourcePath string) ([]s3.Archive, int, error) {
 	var archives []s3.Archive
 	var totalSize int64
+	var fileCount int
 
-	// Walk directory to calculate total size
+	// Walk directory to calculate total size and file count
 	err := filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if !info.IsDir() {
 			totalSize += info.Size()
+			fileCount++
 		}
 		return nil
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Create mock archive (simplified - in reality we'd use the inventory system)
@@ -158,7 +180,7 @@ func createMockArchives(sourcePath string) ([]s3.Archive, error) {
 	}
 
 	archives = append(archives, archive)
-	return archives, nil
+	return archives, fileCount, nil
 }
 
 // createCalculatorWithRealTimePricing creates a calculator with AWS Pricing API integration
@@ -228,7 +250,7 @@ func generateUploadOptimization(archives []s3.Archive) *s3.UploadRecommendations
 	return adaptiveUploader.GetRecommendations(archive.Size, "application/octet-stream")
 }
 
-func outputJSON(estimate *costs.CostEstimate, parallelOpt *s3.PrefixOptimization, uploadOpt *s3.UploadRecommendations) error {
+func outputJSON(estimate *costs.CostEstimate, parallelOpt *s3.PrefixOptimization, uploadOpt *s3.UploadRecommendations, comparison *costs.ComparisonEstimate) error {
 	output := map[string]interface{}{
 		"cost_estimate": estimate,
 	}
@@ -241,12 +263,17 @@ func outputJSON(estimate *costs.CostEstimate, parallelOpt *s3.PrefixOptimization
 		output["upload_optimization"] = uploadOpt
 	}
 
+	// Issue #169: Include comparison if available
+	if comparison != nil {
+		output["cost_comparison"] = comparison
+	}
+
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(output)
 }
 
-func outputTable(estimate *costs.CostEstimate, parallelOpt *s3.PrefixOptimization, uploadOpt *s3.UploadRecommendations, sourcePath string) error {
+func outputTable(estimate *costs.CostEstimate, parallelOpt *s3.PrefixOptimization, uploadOpt *s3.UploadRecommendations, comparison *costs.ComparisonEstimate, sourcePath string) error {
 	// Header
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
@@ -358,6 +385,59 @@ func outputTable(estimate *costs.CostEstimate, parallelOpt *s3.PrefixOptimizatio
 	fmt.Printf("   Total Size: %s\n", humanize.Bytes(uint64(estimate.TotalSizeGB*1024*1024*1024)))
 	fmt.Printf("   Archives: %d\n", estimate.ArchiveCount)
 	fmt.Printf("   Calculated: %s\n", estimate.CalculatedAt.Format("2006-01-02 15:04:05 MST"))
+
+	// Issue #169: Show cost comparison if available
+	if comparison != nil {
+		fmt.Println("\n═══════════════════════════════════════════════════════════")
+		fmt.Println("💰 COST COMPARISON: Naive Upload vs CargoShip Chunking")
+		fmt.Println("═══════════════════════════════════════════════════════════")
+
+		// File statistics
+		fmt.Printf("\n📊 File Statistics:\n")
+		fmt.Printf("   Total Files:        %s\n", humanize.Comma(int64(comparison.FileStats.TotalFiles)))
+		fmt.Printf("   Total Size:         %.2f GB\n", comparison.FileStats.TotalSizeGB)
+		fmt.Printf("   Average File Size:  %.2f KB\n", comparison.FileStats.AverageFileSizeKB)
+		fmt.Printf("   Estimated Chunks:   %d\n", comparison.FileStats.EstimatedChunks)
+
+		// Naive upload costs
+		fmt.Println("\n📤 Naive Upload (Individual Files):")
+		fmt.Printf("   Storage Cost:       $%.2f/month\n", comparison.NaiveUploadCost.TotalMonthlyCost)
+		fmt.Printf("   Request Cost:       $%.2f (one-time)\n", comparison.NaiveUploadCost.TotalUploadCost)
+		fmt.Printf("   Total Cost:         $%.2f/month\n", comparison.NaiveUploadCost.TotalMonthlyCost+comparison.NaiveUploadCost.TotalUploadCost)
+
+		// CargoShip chunked costs
+		fmt.Println("\n📦 CargoShip (Chunked Archives):")
+		fmt.Printf("   Storage Cost:       $%.2f/month\n", comparison.ChunkedUploadCost.TotalMonthlyCost)
+		fmt.Printf("   Request Cost:       $%.2f (one-time)\n", comparison.ChunkedUploadCost.TotalUploadCost)
+		fmt.Printf("   Total Cost:         $%.2f/month\n", comparison.ChunkedUploadCost.TotalMonthlyCost+comparison.ChunkedUploadCost.TotalUploadCost)
+
+		// Savings breakdown
+		fmt.Println("\n💵 Savings Breakdown:")
+		if comparison.SavingsBreakdown.MinimumSizePenaltySaved > 0 {
+			fmt.Printf("   Minimum Size Penalty Eliminated: $%.2f/month\n", comparison.SavingsBreakdown.MinimumSizePenaltySaved)
+		}
+		if comparison.SavingsBreakdown.RequestCostSaved > 0 {
+			fmt.Printf("   Request Cost Savings:             $%.2f (one-time)\n", comparison.SavingsBreakdown.RequestCostSaved)
+		}
+		if comparison.SavingsBreakdown.MonitoringCostSaved > 0 {
+			fmt.Printf("   Monitoring Cost Savings:          $%.2f/month\n", comparison.SavingsBreakdown.MonitoringCostSaved)
+		}
+
+		fmt.Printf("\n🎯 Total Monthly Savings:  $%.2f (%.1f%% reduction)\n",
+			comparison.SavingsBreakdown.TotalMonthlySavings,
+			comparison.SavingsBreakdown.SavingsPercentage)
+		fmt.Printf("📅 Annual Savings:         $%.2f\n", comparison.SavingsBreakdown.AnnualSavings)
+
+		// Recommendations
+		if len(comparison.Recommendations) > 0 {
+			fmt.Println("\n💡 Key Benefits:")
+			for _, rec := range comparison.Recommendations {
+				fmt.Printf("   %s\n", rec)
+			}
+		}
+
+		fmt.Println("═══════════════════════════════════════════════════════════")
+	}
 
 	return nil
 }

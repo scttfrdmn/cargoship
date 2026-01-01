@@ -246,10 +246,11 @@ func TestCreateMockArchives(t *testing.T) {
 	err = os.WriteFile(testFile2, []byte(largeData), 0644)
 	require.NoError(t, err)
 
-	archives, err := createMockArchives(tempDir)
+	archives, fileCount, err := createMockArchives(tempDir)
 	assert.NoError(t, err)
 	// createMockArchives always creates exactly 1 archive with total size
 	assert.Len(t, archives, 1)
+	assert.Equal(t, 2, fileCount) // 2 files created
 
 	// Verify archive has proper structure
 	archive := archives[0]
@@ -265,18 +266,20 @@ func TestCreateMockArchives_EmptyDirectory(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = os.RemoveAll(tempDir) }()
 
-	archives, err := createMockArchives(tempDir)
+	archives, fileCount, err := createMockArchives(tempDir)
 	assert.NoError(t, err)
 	// createMockArchives always creates 1 archive even for empty directory
 	assert.Len(t, archives, 1)
+	assert.Equal(t, 0, fileCount) // No files in empty directory
 	// The archive should have 0 size for empty directory
 	assert.Equal(t, int64(0), archives[0].Size)
 }
 
 func TestCreateMockArchives_NonexistentPath(t *testing.T) {
-	archives, err := createMockArchives("/nonexistent/path")
+	archives, fileCount, err := createMockArchives("/nonexistent/path")
 	assert.Error(t, err)
 	assert.Nil(t, archives)
+	assert.Equal(t, 0, fileCount)
 }
 
 func TestCreateCalculatorWithRealTimePricing(t *testing.T) {
@@ -355,7 +358,7 @@ func TestOutputJSON(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := outputJSON(estimate, parallelOpt, uploadOpt)
+	err := outputJSON(estimate, parallelOpt, uploadOpt, nil) // nil comparison for test
 
 	// Restore stdout
 	_ = w.Close()
@@ -404,7 +407,7 @@ func TestOutputTable(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := outputTable(estimate, parallelOpt, uploadOpt, "/test/path")
+	err := outputTable(estimate, parallelOpt, uploadOpt, nil, "/test/path") // nil comparison for test
 
 	// Restore stdout
 	_ = w.Close()
@@ -539,7 +542,7 @@ func BenchmarkCreateMockArchives(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = createMockArchives(tempDir)
+		_, _, _ = createMockArchives(tempDir)
 	}
 }
 

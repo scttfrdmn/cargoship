@@ -307,3 +307,251 @@ func (c *Calculator) generateRecommendations(archives []s3.Archive, estimate *Co
 
 	return recommendations
 }
+
+// ComparisonEstimate represents naive vs CargoShip chunking cost comparison
+// Issue #169: Show chunking benefits in cost estimates
+type ComparisonEstimate struct {
+	NaiveUploadCost   *CostEstimate      `json:"naive_upload_cost"`
+	ChunkedUploadCost *CostEstimate      `json:"chunked_upload_cost"`
+	SavingsBreakdown  SavingsBreakdown   `json:"savings_breakdown"`
+	Recommendations   []string           `json:"recommendations"`
+	FileStats         FileStatistics     `json:"file_stats"`
+}
+
+// SavingsBreakdown shows cost savings from chunking
+type SavingsBreakdown struct {
+	MinimumSizePenaltySaved   float64 `json:"minimum_size_penalty_saved"`
+	RequestCostSaved          float64 `json:"request_cost_saved"`
+	MonitoringCostSaved       float64 `json:"monitoring_cost_saved"`
+	TotalMonthlySavings       float64 `json:"total_monthly_savings"`
+	SavingsPercentage         float64 `json:"savings_percentage"`
+	AnnualSavings             float64 `json:"annual_savings"`
+}
+
+// FileStatistics provides file count and size information
+type FileStatistics struct {
+	TotalFiles        int     `json:"total_files"`
+	TotalSizeGB       float64 `json:"total_size_gb"`
+	AverageFileSizeKB float64 `json:"average_file_size_kb"`
+	EstimatedChunks   int     `json:"estimated_chunks"`
+}
+
+// Minimum object size requirements per storage tier (in bytes)
+// Issue #169: Minimum object size penalties
+const (
+	MinObjectSizeStandardIA  = 128 * 1024 // 128 KB
+	MinObjectSizeGlacier     = 40 * 1024  // 40 KB
+	MinObjectSizeDeepArchive = 40 * 1024  // 40 KB
+)
+
+// INTELLIGENT_TIERING monitoring fee (per 1000 objects per month)
+// Issue #169: INTELLIGENT_TIERING monitoring costs
+const IntelligentTieringMonitoringFee = 0.0025
+
+// EstimateWithComparison calculates naive vs chunking cost comparison
+// Issue #169: Show chunking benefits in cost estimates
+func (c *Calculator) EstimateWithComparison(
+	ctx context.Context,
+	fileCount int,
+	totalSizeGB float64,
+	storageClass config.StorageClass,
+) (*ComparisonEstimate, error) {
+	// Calculate file statistics
+	avgFileSizeKB := (totalSizeGB * 1024 * 1024) / float64(fileCount)
+
+	// Estimate chunk count (assume 100 files per chunk or 10MB per chunk, whichever is smaller)
+	filesPerChunk := 100
+	chunkCount := (fileCount + filesPerChunk - 1) / filesPerChunk
+	if chunkCount < 1 {
+		chunkCount = 1
+	}
+
+	fileStats := FileStatistics{
+		TotalFiles:        fileCount,
+		TotalSizeGB:       totalSizeGB,
+		AverageFileSizeKB: avgFileSizeKB,
+		EstimatedChunks:   chunkCount,
+	}
+
+	// Calculate naive upload cost (individual files without chunking)
+	naiveCost, err := c.estimateNaiveUploadCost(ctx, fileCount, totalSizeGB, storageClass, avgFileSizeKB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to estimate naive upload cost: %w", err)
+	}
+
+	// Calculate chunked upload cost (with CargoShip chunking)
+	chunkedCost, err := c.estimateChunkedUploadCost(ctx, chunkCount, totalSizeGB, storageClass)
+	if err != nil {
+		return nil, fmt.Errorf("failed to estimate chunked upload cost: %w", err)
+	}
+
+	// Calculate savings breakdown
+	naiveTotal := naiveCost.TotalMonthlyCost + naiveCost.TotalUploadCost
+	chunkedTotal := chunkedCost.TotalMonthlyCost + chunkedCost.TotalUploadCost
+
+	savings := SavingsBreakdown{
+		MinimumSizePenaltySaved: naiveCost.TotalMonthlyCost - chunkedCost.TotalMonthlyCost,
+		RequestCostSaved:        naiveCost.TotalUploadCost - chunkedCost.TotalUploadCost,
+		MonitoringCostSaved:     0, // Calculated separately for INTELLIGENT_TIERING
+		TotalMonthlySavings:     naiveTotal - chunkedTotal,
+	}
+
+	if naiveTotal > 0 {
+		savings.SavingsPercentage = (savings.TotalMonthlySavings / naiveTotal) * 100
+	}
+	savings.AnnualSavings = savings.TotalMonthlySavings * 12
+
+	// Generate recommendations
+	recommendations := c.generateChunkingRecommendations(fileStats, storageClass, savings)
+
+	comparison := &ComparisonEstimate{
+		NaiveUploadCost:   naiveCost,
+		ChunkedUploadCost: chunkedCost,
+		SavingsBreakdown:  savings,
+		Recommendations:   recommendations,
+		FileStats:         fileStats,
+	}
+
+	return comparison, nil
+}
+
+// estimateNaiveUploadCost calculates cost for uploading individual files without chunking
+func (c *Calculator) estimateNaiveUploadCost(
+	ctx context.Context,
+	fileCount int,
+	totalSizeGB float64,
+	storageClass config.StorageClass,
+	avgFileSizeKB float64,
+) (*CostEstimate, error) {
+	estimate := &CostEstimate{
+		Region:       c.region,
+		CalculatedAt: time.Now(),
+		ArchiveCount: fileCount,
+		TotalSizeGB:  totalSizeGB,
+	}
+
+	// Calculate storage cost with minimum object size penalty
+	chargedSizeGB := c.calculateChargedSize(fileCount, totalSizeGB, storageClass, avgFileSizeKB)
+	storageCost := c.calculateStorageCost(ctx, chargedSizeGB, storageClass)
+
+	// Calculate request cost (one PUT per file)
+	requestCost := c.calculateRequestCost(ctx, fileCount, storageClass)
+
+	// Calculate INTELLIGENT_TIERING monitoring fee if applicable
+	monitoringCost := 0.0
+	if storageClass == config.StorageClassIntelligentTiering {
+		monitoringCost = (float64(fileCount) / 1000) * IntelligentTieringMonitoringFee
+	}
+
+	// Assign costs to estimate
+	estimate.TotalMonthlyCost = storageCost + monitoringCost
+	estimate.TotalUploadCost = requestCost
+	estimate.TotalAnnualCost = estimate.TotalMonthlyCost * 12
+
+	return estimate, nil
+}
+
+// estimateChunkedUploadCost calculates cost for uploading with CargoShip chunking
+func (c *Calculator) estimateChunkedUploadCost(
+	ctx context.Context,
+	chunkCount int,
+	totalSizeGB float64,
+	storageClass config.StorageClass,
+) (*CostEstimate, error) {
+	estimate := &CostEstimate{
+		Region:       c.region,
+		CalculatedAt: time.Now(),
+		ArchiveCount: chunkCount,
+		TotalSizeGB:  totalSizeGB,
+	}
+
+	// Calculate storage cost (no minimum size penalty for large chunks)
+	storageCost := c.calculateStorageCost(ctx, totalSizeGB, storageClass)
+
+	// Calculate request cost (one PUT per chunk)
+	requestCost := c.calculateRequestCost(ctx, chunkCount, storageClass)
+
+	// Calculate INTELLIGENT_TIERING monitoring fee if applicable (for chunks, not files)
+	monitoringCost := 0.0
+	if storageClass == config.StorageClassIntelligentTiering {
+		monitoringCost = (float64(chunkCount) / 1000) * IntelligentTieringMonitoringFee
+	}
+
+	// Assign costs to estimate
+	estimate.TotalMonthlyCost = storageCost + monitoringCost
+	estimate.TotalUploadCost = requestCost
+	estimate.TotalAnnualCost = estimate.TotalMonthlyCost * 12
+
+	return estimate, nil
+}
+
+// calculateChargedSize calculates actual charged size considering minimum object size
+func (c *Calculator) calculateChargedSize(fileCount int, totalSizeGB float64, storageClass config.StorageClass, avgFileSizeKB float64) float64 {
+	// Get minimum object size for storage tier
+	var minSizeBytes int64
+	switch storageClass {
+	case config.StorageClassStandardIA:
+		minSizeBytes = MinObjectSizeStandardIA
+	case config.StorageClassGlacier:
+		minSizeBytes = MinObjectSizeGlacier
+	case config.StorageClassDeepArchive:
+		minSizeBytes = MinObjectSizeDeepArchive
+	default:
+		// STANDARD, ONEZONE_IA, and INTELLIGENT_TIERING have no minimum
+		return totalSizeGB
+	}
+
+	minSizeKB := float64(minSizeBytes) / 1024
+
+	// If average file size is smaller than minimum, calculate penalty
+	if avgFileSizeKB < minSizeKB {
+		// Each file is charged for minimum size
+		chargedSizeKB := float64(fileCount) * minSizeKB
+		return chargedSizeKB / (1024 * 1024) // Convert to GB
+	}
+
+	// No penalty if files are larger than minimum
+	return totalSizeGB
+}
+
+// generateChunkingRecommendations generates cost optimization recommendations for chunking
+func (c *Calculator) generateChunkingRecommendations(stats FileStatistics, storageClass config.StorageClass, savings SavingsBreakdown) []string {
+	var recommendations []string
+
+	// Savings percentage recommendations
+	if savings.SavingsPercentage > 75 {
+		recommendations = append(recommendations, "🎉 Excellent! CargoShip chunking provides >75% cost savings for this workload")
+	} else if savings.SavingsPercentage > 50 {
+		recommendations = append(recommendations, "✅ Great! CargoShip chunking provides >50% cost savings for this workload")
+	} else if savings.SavingsPercentage > 25 {
+		recommendations = append(recommendations, "👍 Good! CargoShip chunking provides >25% cost savings for this workload")
+	}
+
+	// File size recommendations
+	if stats.AverageFileSizeKB < 40 {
+		recommendations = append(recommendations, "💡 Small files (<40 KB average) - chunking eliminates 4x minimum size penalty on archive tiers")
+	} else if stats.AverageFileSizeKB < 128 {
+		recommendations = append(recommendations, "💡 Small files (<128 KB average) - chunking eliminates 2-4x minimum size penalty on some tiers")
+	}
+
+	// Request cost recommendations
+	if stats.TotalFiles > 10000 {
+		recommendations = append(recommendations, "💡 High file count - chunking reduces PUT requests by 99%, saving on request costs")
+	}
+
+	// INTELLIGENT_TIERING recommendations
+	if storageClass == config.StorageClassIntelligentTiering {
+		if stats.TotalFiles > 100000 {
+			recommendations = append(recommendations, "💡 INTELLIGENT_TIERING with 100k+ files - chunking reduces monitoring fees by 99.9%")
+		}
+	}
+
+	// Annual savings recommendations
+	if savings.AnnualSavings > 1000 {
+		recommendations = append(recommendations, fmt.Sprintf("💰 Annual savings: $%.2f - significant cost reduction!", savings.AnnualSavings))
+	} else if savings.AnnualSavings > 100 {
+		recommendations = append(recommendations, fmt.Sprintf("💰 Annual savings: $%.2f - meaningful cost reduction", savings.AnnualSavings))
+	}
+
+	return recommendations
+}
