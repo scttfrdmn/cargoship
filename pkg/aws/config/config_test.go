@@ -2,7 +2,9 @@ package config
 
 import (
 	"context"
+	"os"
 	"testing"
+	"time"
 )
 
 func TestDefaultAWSConfig(t *testing.T) {
@@ -363,4 +365,299 @@ func TestLoadAWSConfig_Contexts(t *testing.T) {
 	}
 
 	// Test with timeout context would be more complex and may not be reliable in tests
+}
+
+// TestGetLocalStackEndpoint tests the getLocalStackEndpoint function
+func TestGetLocalStackEndpoint(t *testing.T) {
+	// Save original env vars
+	origAWSEndpoint := os.Getenv("AWS_ENDPOINT_URL")
+	origLocalStackEndpoint := os.Getenv("LOCALSTACK_ENDPOINT")
+	defer func() {
+		os.Setenv("AWS_ENDPOINT_URL", origAWSEndpoint)
+		os.Setenv("LOCALSTACK_ENDPOINT", origLocalStackEndpoint)
+	}()
+
+	tests := []struct {
+		name               string
+		awsEndpointURL     string
+		localStackEndpoint string
+		want               string
+	}{
+		{
+			name:               "AWS_ENDPOINT_URL set",
+			awsEndpointURL:     "http://custom:4566",
+			localStackEndpoint: "",
+			want:               "http://custom:4566",
+		},
+		{
+			name:               "LOCALSTACK_ENDPOINT set",
+			awsEndpointURL:     "",
+			localStackEndpoint: "http://localstack:4566",
+			want:               "http://localstack:4566",
+		},
+		{
+			name:               "Both set - AWS_ENDPOINT_URL takes precedence",
+			awsEndpointURL:     "http://aws:4566",
+			localStackEndpoint: "http://local:4566",
+			want:               "http://aws:4566",
+		},
+		{
+			name:               "Neither set - default",
+			awsEndpointURL:     "",
+			localStackEndpoint: "",
+			want:               "http://localhost:4566",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Setenv("AWS_ENDPOINT_URL", tt.awsEndpointURL)
+			os.Setenv("LOCALSTACK_ENDPOINT", tt.localStackEndpoint)
+
+			got := getLocalStackEndpoint()
+			if got != tt.want {
+				t.Errorf("getLocalStackEndpoint() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestIsLocalStackConfig tests the IsLocalStackConfig function
+func TestIsLocalStackConfig(t *testing.T) {
+	// Save original env var
+	origEndpoint := os.Getenv("AWS_ENDPOINT_URL")
+	defer func() {
+		os.Setenv("AWS_ENDPOINT_URL", origEndpoint)
+	}()
+
+	tests := []struct {
+		name     string
+		endpoint string
+		want     bool
+	}{
+		{
+			name:     "localhost endpoint",
+			endpoint: "http://localhost:4566",
+			want:     true,
+		},
+		{
+			name:     "127.0.0.1 endpoint",
+			endpoint: "http://127.0.0.1:4566",
+			want:     true,
+		},
+		{
+			name:     "non-local endpoint",
+			endpoint: "https://s3.amazonaws.com",
+			want:     false,
+		},
+		{
+			name:     "empty endpoint",
+			endpoint: "",
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Setenv("AWS_ENDPOINT_URL", tt.endpoint)
+
+			got := IsLocalStackConfig()
+			if got != tt.want {
+				t.Errorf("IsLocalStackConfig() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestBudgetPeriod_GetPeriodBounds tests the GetPeriodBounds method
+func TestBudgetPeriod_GetPeriodBounds(t *testing.T) {
+	refTime := time.Date(2024, 6, 15, 12, 30, 0, 0, time.UTC) // June 15, 2024, Saturday
+
+	tests := []struct {
+		name       string
+		period     BudgetPeriod
+		wantStart  time.Time
+		wantEnd    time.Time
+		wantErr    bool
+		errMessage string
+	}{
+		{
+			name:      "Daily period",
+			period:    BudgetPeriod{Type: BudgetPeriodDaily},
+			wantStart: time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC),
+			wantEnd:   time.Date(2024, 6, 15, 23, 59, 59, 999999999, time.UTC),
+		},
+		{
+			name:      "Weekly period",
+			period:    BudgetPeriod{Type: BudgetPeriodWeekly},
+			wantStart: time.Date(2024, 6, 9, 0, 0, 0, 0, time.UTC), // Sunday June 9
+			wantEnd:   time.Date(2024, 6, 15, 23, 59, 59, 999999999, time.UTC),
+		},
+		{
+			name:      "Monthly period",
+			period:    BudgetPeriod{Type: BudgetPeriodMonthly},
+			wantStart: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+			wantEnd:   time.Date(2024, 6, 30, 23, 59, 59, 999999999, time.UTC),
+		},
+		{
+			name:      "Quarterly period - Q2",
+			period:    BudgetPeriod{Type: BudgetPeriodQuarterly},
+			wantStart: time.Date(2024, 4, 1, 0, 0, 0, 0, time.UTC), // April 1
+			wantEnd:   time.Date(2024, 6, 30, 23, 59, 59, 999999999, time.UTC),
+		},
+		{
+			name:      "Yearly period",
+			period:    BudgetPeriod{Type: BudgetPeriodYearly},
+			wantStart: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			wantEnd:   time.Date(2024, 12, 31, 23, 59, 59, 999999999, time.UTC),
+		},
+		{
+			name: "Fiscal year - April start",
+			period: BudgetPeriod{
+				Type:                  BudgetPeriodFiscalYear,
+				FiscalYearStartMonth:  4,
+			},
+			wantStart: time.Date(2024, 4, 1, 0, 0, 0, 0, time.UTC),
+			wantEnd:   time.Date(2025, 3, 31, 23, 59, 59, 999999999, time.UTC),
+		},
+		{
+			name: "Fiscal year - invalid month",
+			period: BudgetPeriod{
+				Type:                  BudgetPeriodFiscalYear,
+				FiscalYearStartMonth:  13,
+			},
+			wantErr:    true,
+			errMessage: "fiscal_year_start_month must be between 1 and 12",
+		},
+		{
+			name: "Custom period",
+			period: BudgetPeriod{
+				Type:      BudgetPeriodCustom,
+				StartDate: &time.Time{},
+				EndDate:   &time.Time{},
+			},
+			wantStart: time.Time{},
+			wantEnd:   time.Time{},
+		},
+		{
+			name: "Custom period - missing dates",
+			period: BudgetPeriod{
+				Type: BudgetPeriodCustom,
+			},
+			wantErr:    true,
+			errMessage: "custom budget period requires both start_date and end_date",
+		},
+		{
+			name: "Grant period",
+			period: BudgetPeriod{
+				Type:      BudgetPeriodGrant,
+				StartDate: &time.Time{},
+				EndDate:   &time.Time{},
+			},
+			wantStart: time.Time{},
+			wantEnd:   time.Time{},
+		},
+		{
+			name: "Grant period - missing dates",
+			period: BudgetPeriod{
+				Type: BudgetPeriodGrant,
+			},
+			wantErr:    true,
+			errMessage: "grant budget period requires both start_date and end_date",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start, end, err := tt.period.GetPeriodBounds(refTime)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("GetPeriodBounds() expected error, got nil")
+				} else if tt.errMessage != "" && err.Error() != tt.errMessage {
+					t.Errorf("GetPeriodBounds() error = %v, want %v", err.Error(), tt.errMessage)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("GetPeriodBounds() unexpected error = %v", err)
+				return
+			}
+
+			if !start.Equal(tt.wantStart) {
+				t.Errorf("GetPeriodBounds() start = %v, want %v", start, tt.wantStart)
+			}
+			if !end.Equal(tt.wantEnd) {
+				t.Errorf("GetPeriodBounds() end = %v, want %v", end, tt.wantEnd)
+			}
+		})
+	}
+}
+
+// TestBudgetPeriod_GetDaysElapsed tests the GetDaysElapsed method
+func TestBudgetPeriod_GetDaysElapsed(t *testing.T) {
+	tests := []struct {
+		name      string
+		period    BudgetPeriod
+		refTime   time.Time
+		want      int
+		wantErr   bool
+	}{
+		{
+			name:    "Beginning of daily period",
+			period:  BudgetPeriod{Type: BudgetPeriodDaily},
+			refTime: time.Date(2024, 6, 15, 0, 30, 0, 0, time.UTC),
+			want:    1, // Always at least 1 day
+		},
+		{
+			name:    "End of daily period",
+			period:  BudgetPeriod{Type: BudgetPeriodDaily},
+			refTime: time.Date(2024, 6, 15, 23, 30, 0, 0, time.UTC),
+			want:    1,
+		},
+		{
+			name:    "Middle of monthly period",
+			period:  BudgetPeriod{Type: BudgetPeriodMonthly},
+			refTime: time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC), // 15th day
+			want:    14, // 14 full days elapsed (1st = day 0)
+		},
+		{
+			name:    "Start of yearly period",
+			period:  BudgetPeriod{Type: BudgetPeriodYearly},
+			refTime: time.Date(2024, 1, 1, 6, 0, 0, 0, time.UTC),
+			want:    1, // At least 1 day
+		},
+		{
+			name: "Invalid period type",
+			period: BudgetPeriod{
+				Type:                  BudgetPeriodFiscalYear,
+				FiscalYearStartMonth:  13,
+			},
+			refTime: time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.period.GetDaysElapsed(tt.refTime)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("GetDaysElapsed() expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("GetDaysElapsed() unexpected error = %v", err)
+				return
+			}
+
+			if got != tt.want {
+				t.Errorf("GetDaysElapsed() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

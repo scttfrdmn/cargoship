@@ -1,6 +1,8 @@
 package pipeline
 
 import (
+	"context"
+	"fmt"
 	"testing"
 
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
@@ -339,4 +341,205 @@ func TestEncoderPool_MultiLevel(t *testing.T) {
 
 		t.Logf("Pool %d (level %d) successfully created with 2 encoders", i, levels[i])
 	}
+}
+
+// TestNewArchiverStageWithSharding tests the sharding constructor
+func TestNewArchiverStageWithSharding(t *testing.T) {
+	config := &ArchiverConfig{
+		Workers: 2,
+	}
+
+	input := make(chan *Job)
+	outputs := map[string]chan<- *Job{
+		"shard-0": make(chan *Job),
+		"shard-1": make(chan *Job),
+		"shard-2": make(chan *Job),
+	}
+	shardCount := 3
+
+	stage, err := NewArchiverStageWithSharding(config, input, outputs, shardCount)
+	require.NoError(t, err)
+	require.NotNil(t, stage)
+	defer stage.Stop()
+
+	// Verify configuration
+	assert.Equal(t, shardCount, stage.shardCount)
+	assert.NotNil(t, stage.outputs)
+	assert.Len(t, stage.shardDistribution, 3)
+	assert.NotNil(t, stage.encoderPools)
+	assert.NotNil(t, stage.contentAwareCompressor)
+}
+
+// TestNewArchiverStageWithSharding_Errors tests error handling
+func TestNewArchiverStageWithSharding_Errors(t *testing.T) {
+	tests := []struct {
+		name       string
+		config     *ArchiverConfig
+		input      <-chan *Job
+		outputs    map[string]chan<- *Job
+		shardCount int
+		wantErr    string
+	}{
+		{
+			name:       "nil config",
+			config:     nil,
+			input:      make(chan *Job),
+			outputs:    map[string]chan<- *Job{"shard-0": make(chan *Job)},
+			shardCount: 1,
+			wantErr:    "archiver config cannot be nil",
+		},
+		{
+			name:       "empty outputs",
+			config:     &ArchiverConfig{Workers: 2},
+			input:      make(chan *Job),
+			outputs:    map[string]chan<- *Job{},
+			shardCount: 1,
+			wantErr:    "outputs map cannot be empty",
+		},
+		{
+			name:       "zero shard count",
+			config:     &ArchiverConfig{Workers: 2},
+			input:      make(chan *Job),
+			outputs:    map[string]chan<- *Job{"shard-0": make(chan *Job)},
+			shardCount: 0,
+			wantErr:    "shard count must be positive",
+		},
+		{
+			name:       "negative shard count",
+			config:     &ArchiverConfig{Workers: 2},
+			input:      make(chan *Job),
+			outputs:    map[string]chan<- *Job{"shard-0": make(chan *Job)},
+			shardCount: -1,
+			wantErr:    "shard count must be positive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stage, err := NewArchiverStageWithSharding(tt.config, tt.input, tt.outputs, tt.shardCount)
+			assert.Error(t, err)
+			assert.Nil(t, stage)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+// TestArchiverStage_SelectOutput tests output selection logic
+func TestArchiverStage_SelectOutput(t *testing.T) {
+	t.Run("single output mode", func(t *testing.T) {
+		config := &ArchiverConfig{Workers: 2}
+		input := make(chan *Job)
+		output := make(chan *Job)
+
+		stage, err := NewArchiverStage(config, input, output)
+		require.NoError(t, err)
+		defer stage.Stop()
+
+		// Create a test job
+		job := &Job{
+			Chunk: chunking.Chunk{ID: 5},
+		}
+
+		// Should always return single output
+		selectedOutput := stage.selectOutput(job)
+		// Cast to chan<- *Job for comparison (selectOutput returns send-only channel)
+		assert.Equal(t, chan<- *Job(output), selectedOutput)
+	})
+
+	t.Run("multi output sharding mode", func(t *testing.T) {
+		config := &ArchiverConfig{Workers: 2}
+		input := make(chan *Job)
+		outputs := map[string]chan<- *Job{
+			"shard-0": make(chan *Job, 10),
+			"shard-1": make(chan *Job, 10),
+			"shard-2": make(chan *Job, 10),
+		}
+
+		stage, err := NewArchiverStageWithSharding(config, input, outputs, 3)
+		require.NoError(t, err)
+		defer stage.Stop()
+
+		// Test sharding distribution
+		jobs := []*Job{
+			{Chunk: chunking.Chunk{ID: 0}}, // 0 % 3 = 0 -> shard-0
+			{Chunk: chunking.Chunk{ID: 1}}, // 1 % 3 = 1 -> shard-1
+			{Chunk: chunking.Chunk{ID: 2}}, // 2 % 3 = 2 -> shard-2
+			{Chunk: chunking.Chunk{ID: 3}}, // 3 % 3 = 0 -> shard-0
+			{Chunk: chunking.Chunk{ID: 4}}, // 4 % 3 = 1 -> shard-1
+		}
+
+		for _, job := range jobs {
+			output := stage.selectOutput(job)
+			expectedShard := job.Chunk.ID % 3
+			expectedOutput := outputs[fmt.Sprintf("shard-%d", expectedShard)]
+			assert.Equal(t, expectedOutput, output)
+		}
+
+		// Verify shard distribution tracking
+		assert.Equal(t, int64(2), *stage.shardDistribution["shard-0"]) // jobs 0, 3
+		assert.Equal(t, int64(2), *stage.shardDistribution["shard-1"]) // jobs 1, 4
+		assert.Equal(t, int64(1), *stage.shardDistribution["shard-2"]) // job 2
+	})
+}
+
+// TestArchiverStage_Worker tests worker goroutine behavior
+func TestArchiverStage_Worker(t *testing.T) {
+	t.Run("worker processes jobs successfully", func(t *testing.T) {
+		config := &ArchiverConfig{Workers: 1}
+		input := make(chan *Job, 10)
+		output := make(chan *Job, 10)
+
+		stage, err := NewArchiverStage(config, input, output)
+		require.NoError(t, err)
+
+		// Create test context
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Start the stage
+		err = stage.Start(ctx)
+		require.NoError(t, err)
+
+		// Send a job that will fail (no actual files)
+		job := &Job{
+			Chunk: chunking.Chunk{
+				ID:    1,
+				Files: []chunking.File{},
+			},
+		}
+
+		input <- job
+		close(input)
+
+		// Wait for job to be processed
+		processedJob := <-output
+		assert.NotNil(t, processedJob)
+
+		// Stop stage
+		err = stage.Stop()
+		assert.NoError(t, err)
+	})
+
+	t.Run("worker handles context cancellation", func(t *testing.T) {
+		config := &ArchiverConfig{Workers: 1}
+		input := make(chan *Job, 10)
+		output := make(chan *Job, 10)
+
+		stage, err := NewArchiverStage(config, input, output)
+		require.NoError(t, err)
+
+		// Create test context
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// Start the stage
+		err = stage.Start(ctx)
+		require.NoError(t, err)
+
+		// Cancel context immediately
+		cancel()
+
+		// Stop stage (should not hang)
+		err = stage.Stop()
+		assert.NoError(t, err)
+	})
 }
