@@ -449,6 +449,50 @@ func outputTable(estimate *costs.CostEstimate, parallelOpt *s3.PrefixOptimizatio
 			}
 		}
 
+		// Issue #169 Phase 3: Show TCO scenarios for archive tiers
+		if len(comparison.TCOScenarios) > 0 {
+			fmt.Println("\n═══════════════════════════════════════════════════════════")
+			fmt.Println("📊 TOTAL COST OF OWNERSHIP (TCO) SCENARIOS")
+			fmt.Println("═══════════════════════════════════════════════════════════")
+			fmt.Println("\nArchive tiers (Glacier, Deep Archive) have restore costs and access patterns")
+			fmt.Println("that affect Total Cost of Ownership. Here are common usage scenarios:")
+			fmt.Println()
+
+			for i, scenario := range comparison.TCOScenarios {
+				fmt.Printf("%d. %s\n", i+1, scenario.Name)
+				fmt.Printf("   Description:   %s\n", scenario.Description)
+				fmt.Printf("   Retrievals:    %dx/year (%.0f%% of data each time)\n",
+					scenario.RetrievalsPerYear, scenario.RetrievalPercentage*100)
+				if scenario.RestoreTier != "N/A" {
+					fmt.Printf("   Restore Tier:  %s\n", scenario.RestoreTier)
+				}
+				fmt.Println("\n   Cost Breakdown:")
+				fmt.Printf("      Storage:    $%.2f/year\n", scenario.StorageCost)
+				fmt.Printf("      Upload:     $%.2f (one-time)\n", scenario.UploadCost)
+				if scenario.RetrievalCost > 0 {
+					fmt.Printf("      Retrieval:  $%.2f/year\n", scenario.RetrievalCost)
+				}
+				if scenario.MonitoringCost > 0 {
+					fmt.Printf("      Monitoring: $%.2f/year\n", scenario.MonitoringCost)
+				}
+				fmt.Printf("      ────────────────────────\n")
+				fmt.Printf("      Total TCO:  $%.2f/year\n", scenario.AnnualCost)
+
+				// Add visual indicator for recommended vs not recommended scenarios
+				if strings.Contains(scenario.Name, "⚠️") {
+					fmt.Printf("\n      ⚠️  This retrieval pattern is NOT RECOMMENDED for archive tiers.\n")
+					fmt.Printf("          Consider STANDARD or INTELLIGENT_TIERING for frequent access.\n")
+				}
+				fmt.Println()
+			}
+
+			fmt.Println("💡 TCO Analysis:")
+			fmt.Println("   • Archive tiers (Glacier, Deep Archive) are cost-effective for infrequent access")
+			fmt.Println("   • Retrieval costs can exceed storage savings if accessed frequently")
+			fmt.Println("   • Use INTELLIGENT_TIERING if access pattern is unpredictable")
+			fmt.Println("   • Early deletion penalties apply (30-180 days minimum storage)")
+		}
+
 		fmt.Println("═══════════════════════════════════════════════════════════")
 	}
 

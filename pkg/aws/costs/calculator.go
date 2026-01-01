@@ -311,21 +311,22 @@ func (c *Calculator) generateRecommendations(archives []s3.Archive, estimate *Co
 // ComparisonEstimate represents naive vs CargoShip chunking cost comparison
 // Issue #169: Show chunking benefits in cost estimates
 type ComparisonEstimate struct {
-	NaiveUploadCost   *CostEstimate      `json:"naive_upload_cost"`
-	ChunkedUploadCost *CostEstimate      `json:"chunked_upload_cost"`
-	SavingsBreakdown  SavingsBreakdown   `json:"savings_breakdown"`
-	Recommendations   []string           `json:"recommendations"`
-	FileStats         FileStatistics     `json:"file_stats"`
+	NaiveUploadCost   *CostEstimate    `json:"naive_upload_cost"`
+	ChunkedUploadCost *CostEstimate    `json:"chunked_upload_cost"`
+	SavingsBreakdown  SavingsBreakdown `json:"savings_breakdown"`
+	Recommendations   []string         `json:"recommendations"`
+	FileStats         FileStatistics   `json:"file_stats"`
+	TCOScenarios      []TCOScenario    `json:"tco_scenarios,omitempty"` // Issue #169 Phase 3: Archive tier TCO scenarios
 }
 
 // SavingsBreakdown shows cost savings from chunking
 type SavingsBreakdown struct {
-	MinimumSizePenaltySaved   float64 `json:"minimum_size_penalty_saved"`
-	RequestCostSaved          float64 `json:"request_cost_saved"`
-	MonitoringCostSaved       float64 `json:"monitoring_cost_saved"`
-	TotalMonthlySavings       float64 `json:"total_monthly_savings"`
-	SavingsPercentage         float64 `json:"savings_percentage"`
-	AnnualSavings             float64 `json:"annual_savings"`
+	MinimumSizePenaltySaved float64 `json:"minimum_size_penalty_saved"`
+	RequestCostSaved        float64 `json:"request_cost_saved"`
+	MonitoringCostSaved     float64 `json:"monitoring_cost_saved"`
+	TotalMonthlySavings     float64 `json:"total_monthly_savings"`
+	SavingsPercentage       float64 `json:"savings_percentage"`
+	AnnualSavings           float64 `json:"annual_savings"`
 
 	// Issue #169 Phase 2: Detailed request cost savings
 	PutRequestsSaved     int     `json:"put_requests_saved"`
@@ -347,26 +348,104 @@ type FileStatistics struct {
 // Issue #169 Phase 2: Comprehensive request tracking
 type RequestCostBreakdown struct {
 	// Upload costs
-	PutRequests     int     `json:"put_requests"`
-	PutRequestCost  float64 `json:"put_request_cost"`
+	PutRequests    int     `json:"put_requests"`
+	PutRequestCost float64 `json:"put_request_cost"`
 
 	// Retrieval costs (for TCO analysis)
-	GetRequests     int     `json:"get_requests"`
-	GetRequestCost  float64 `json:"get_request_cost"`
+	GetRequests    int     `json:"get_requests"`
+	GetRequestCost float64 `json:"get_request_cost"`
 
 	// Listing costs
-	ListRequests     int     `json:"list_requests"`
-	ListRequestCost  float64 `json:"list_request_cost"`
+	ListRequests    int     `json:"list_requests"`
+	ListRequestCost float64 `json:"list_request_cost"`
 
 	// Lifecycle costs
-	LifecycleTransitions     int     `json:"lifecycle_transitions"`
-	LifecycleTransitionCost  float64 `json:"lifecycle_transition_cost"`
+	LifecycleTransitions    int     `json:"lifecycle_transitions"`
+	LifecycleTransitionCost float64 `json:"lifecycle_transition_cost"`
 
 	// Deletion tracking (free, but informative)
-	DeleteRequests int     `json:"delete_requests"`
+	DeleteRequests int `json:"delete_requests"`
 
 	// Total request cost
 	TotalRequestCost float64 `json:"total_request_cost"`
+}
+
+// RestoreCostBreakdown shows Glacier/Deep Archive restore costs
+// Issue #169 Phase 3: Archive tier cost modeling
+type RestoreCostBreakdown struct {
+	// Restore tier (Expedited, Standard, Bulk)
+	RestoreTier string `json:"restore_tier"`
+
+	// Number of restore requests
+	RestoreRequests int `json:"restore_requests"`
+
+	// Restore request cost (per-request fee)
+	RestoreRequestCost float64 `json:"restore_request_cost"`
+
+	// Data size being restored (GB)
+	RestoreSizeGB float64 `json:"restore_size_gb"`
+
+	// Restore per-GB cost
+	RestorePerGBCost float64 `json:"restore_per_gb_cost"`
+
+	// Days the restored copy is kept
+	RestoreDays int `json:"restore_days"`
+
+	// Cost of temporary storage for restored data
+	TemporaryStorageCost float64 `json:"temporary_storage_cost"`
+
+	// Total restore cost
+	TotalRestoreCost float64 `json:"total_restore_cost"`
+}
+
+// EarlyDeletionPenalty calculates costs for deleting before minimum duration
+// Issue #169 Phase 3: Early deletion penalties
+type EarlyDeletionPenalty struct {
+	// Storage class being deleted from
+	StorageClass config.StorageClass `json:"storage_class"`
+
+	// Minimum storage duration (days)
+	MinimumDays int `json:"minimum_days"`
+
+	// Actual days stored before deletion
+	ActualDays int `json:"actual_days"`
+
+	// Remaining days (charged as penalty)
+	RemainingDays int `json:"remaining_days"`
+
+	// Data size (GB)
+	SizeGB float64 `json:"size_gb"`
+
+	// Penalty cost (prorated for remaining days)
+	PenaltyCost float64 `json:"penalty_cost"`
+}
+
+// TCOScenario represents a Total Cost of Ownership scenario with different retrieval patterns
+// Issue #169 Phase 3: Archive tier cost modeling
+type TCOScenario struct {
+	// Scenario name
+	Name string `json:"name"`
+
+	// Scenario description
+	Description string `json:"description"`
+
+	// Number of retrievals per year
+	RetrievalsPerYear int `json:"retrievals_per_year"`
+
+	// Percentage of data retrieved each time (0.0-1.0)
+	RetrievalPercentage float64 `json:"retrieval_percentage"`
+
+	// Restore tier to use (Expedited, Standard, Bulk)
+	RestoreTier string `json:"restore_tier"`
+
+	// Total annual cost (storage + all operations)
+	AnnualCost float64 `json:"annual_cost"`
+
+	// Cost breakdown
+	StorageCost    float64 `json:"storage_cost"`    // Monthly storage
+	UploadCost     float64 `json:"upload_cost"`     // One-time upload
+	RetrievalCost  float64 `json:"retrieval_cost"`  // Annual retrieval
+	MonitoringCost float64 `json:"monitoring_cost"` // Monthly monitoring (if applicable)
 }
 
 // Minimum object size requirements per storage tier (in bytes)
@@ -385,12 +464,12 @@ const IntelligentTieringMonitoringFee = 0.0025
 // Issue #169 Phase 2: Comprehensive request tracking
 const (
 	// GET/SELECT request costs per 1000 requests
-	GetRequestCostStandard          = 0.0004
-	GetRequestCostStandardIA        = 0.001
-	GetRequestCostOneZoneIA         = 0.001
+	GetRequestCostStandard           = 0.0004
+	GetRequestCostStandardIA         = 0.001
+	GetRequestCostOneZoneIA          = 0.001
 	GetRequestCostIntelligentTiering = 0.0004
-	GetRequestCostGlacier           = 0.0004 // After restore
-	GetRequestCostDeepArchive       = 0.0002 // After restore
+	GetRequestCostGlacier            = 0.0004 // After restore
+	GetRequestCostDeepArchive        = 0.0002 // After restore
 
 	// LIST request cost per 1000 requests (same across all tiers)
 	ListRequestCost = 0.005
@@ -400,6 +479,38 @@ const (
 
 	// DELETE request cost (free, but we track count for completeness)
 	DeleteRequestCost = 0.0
+)
+
+// Glacier restore costs (Issue #169 Phase 3)
+const (
+	// Glacier restore request costs (per 1000 requests)
+	GlacierRestoreRequestExpedited = 10.0  // $10 per 1000 requests
+	GlacierRestoreRequestStandard  = 0.05  // $0.05 per 1000 requests
+	GlacierRestoreRequestBulk      = 0.025 // $0.025 per 1000 requests
+
+	// Glacier restore per-GB costs (for temporary copy)
+	GlacierRestorePerGBExpedited = 0.03   // $0.03 per GB
+	GlacierRestorePerGBStandard  = 0.01   // $0.01 per GB
+	GlacierRestorePerGBBulk      = 0.0025 // $0.0025 per GB
+
+	// Deep Archive restore request costs (per 1000 requests)
+	DeepArchiveRestoreRequestStandard = 0.025  // $0.025 per 1000 requests
+	DeepArchiveRestoreRequestBulk     = 0.0025 // $0.0025 per 1000 requests
+
+	// Deep Archive restore per-GB costs
+	DeepArchiveRestorePerGBStandard = 0.02   // $0.02 per GB
+	DeepArchiveRestorePerGBBulk     = 0.0025 // $0.0025 per GB
+)
+
+// Minimum storage duration requirements (in days)
+// Early deletion incurs prorated charges for remaining days
+// Issue #169 Phase 3: Early deletion penalties
+const (
+	MinStorageDurationStandardIA  = 30  // 30 days
+	MinStorageDurationOneZoneIA   = 30  // 30 days
+	MinStorageDurationGlacierIR   = 90  // 90 days
+	MinStorageDurationGlacier     = 90  // 90 days
+	MinStorageDurationDeepArchive = 180 // 180 days
 )
 
 // EstimateWithComparison calculates naive vs chunking cost comparison
@@ -487,12 +598,19 @@ func (c *Calculator) EstimateWithComparison(
 	// Generate recommendations
 	recommendations := c.generateChunkingRecommendations(fileStats, storageClass, savings)
 
+	// Issue #169 Phase 3: Generate TCO scenarios for archive tiers
+	var tcoScenarios []TCOScenario
+	if storageClass == config.StorageClassGlacier || storageClass == config.StorageClassDeepArchive {
+		tcoScenarios = c.generateTCOScenarios(ctx, storageClass, totalSizeGB, fileCount, naiveCost.TotalUploadCost)
+	}
+
 	comparison := &ComparisonEstimate{
 		NaiveUploadCost:   naiveCost,
 		ChunkedUploadCost: chunkedCost,
 		SavingsBreakdown:  savings,
 		Recommendations:   recommendations,
 		FileStats:         fileStats,
+		TCOScenarios:      tcoScenarios,
 	}
 
 	return comparison, nil
@@ -625,6 +743,10 @@ func (c *Calculator) calculateListRequestCost(numRequests int) float64 {
 
 // calculateLifecycleTransitionCost calculates lifecycle transition request costs
 // Issue #169 Phase 2: Comprehensive request tracking
+// This is a utility method exported for external use by applications that need
+// to calculate lifecycle transition costs independently.
+//
+//nolint:unused // Exported utility method for external callers
 func (c *Calculator) calculateLifecycleTransitionCost(numTransitions int) float64 {
 	return (float64(numTransitions) / 1000.0) * LifecycleTransitionCost
 }
@@ -669,4 +791,224 @@ func (c *Calculator) generateChunkingRecommendations(stats FileStatistics, stora
 	}
 
 	return recommendations
+}
+
+// calculateRestoreCost calculates Glacier or Deep Archive restore costs
+// Issue #169 Phase 3: Archive tier cost modeling
+func (c *Calculator) calculateRestoreCost(
+	ctx context.Context,
+	storageClass config.StorageClass,
+	restoreTier string,
+	numObjects int,
+	sizeGB float64,
+	restoreDays int,
+) *RestoreCostBreakdown {
+	breakdown := &RestoreCostBreakdown{
+		RestoreTier:     restoreTier,
+		RestoreRequests: numObjects,
+		RestoreSizeGB:   sizeGB,
+	}
+
+	// Calculate request costs and per-GB costs based on storage class and tier
+	switch storageClass {
+	case config.StorageClassGlacier:
+		switch restoreTier {
+		case "Expedited":
+			breakdown.RestoreRequestCost = (float64(numObjects) / 1000) * GlacierRestoreRequestExpedited
+			breakdown.RestorePerGBCost = sizeGB * GlacierRestorePerGBExpedited
+		case "Standard":
+			breakdown.RestoreRequestCost = (float64(numObjects) / 1000) * GlacierRestoreRequestStandard
+			breakdown.RestorePerGBCost = sizeGB * GlacierRestorePerGBStandard
+		case "Bulk":
+			breakdown.RestoreRequestCost = (float64(numObjects) / 1000) * GlacierRestoreRequestBulk
+			breakdown.RestorePerGBCost = sizeGB * GlacierRestorePerGBBulk
+		default:
+			// Default to Standard
+			breakdown.RestoreRequestCost = (float64(numObjects) / 1000) * GlacierRestoreRequestStandard
+			breakdown.RestorePerGBCost = sizeGB * GlacierRestorePerGBStandard
+		}
+
+	case config.StorageClassDeepArchive:
+		switch restoreTier {
+		case "Standard":
+			breakdown.RestoreRequestCost = (float64(numObjects) / 1000) * DeepArchiveRestoreRequestStandard
+			breakdown.RestorePerGBCost = sizeGB * DeepArchiveRestorePerGBStandard
+		case "Bulk":
+			breakdown.RestoreRequestCost = (float64(numObjects) / 1000) * DeepArchiveRestoreRequestBulk
+			breakdown.RestorePerGBCost = sizeGB * DeepArchiveRestorePerGBBulk
+		default:
+			// Default to Standard
+			breakdown.RestoreRequestCost = (float64(numObjects) / 1000) * DeepArchiveRestoreRequestStandard
+			breakdown.RestorePerGBCost = sizeGB * DeepArchiveRestorePerGBStandard
+		}
+
+	default:
+		// Non-archive tiers don't have restore costs
+		return breakdown
+	}
+
+	// Calculate temporary storage cost (restored objects stored in STANDARD for access)
+	// Assume restored data is kept for specified number of days
+	breakdown.RestoreDays = restoreDays
+	if restoreDays > 0 {
+		standardStorageCost := c.calculateStorageCost(ctx, sizeGB, config.StorageClassStandard)
+		breakdown.TemporaryStorageCost = standardStorageCost * (float64(restoreDays) / 30.0)
+	}
+
+	// Total restore cost
+	breakdown.TotalRestoreCost = breakdown.RestoreRequestCost +
+		breakdown.RestorePerGBCost +
+		breakdown.TemporaryStorageCost
+
+	return breakdown
+}
+
+// calculateEarlyDeletionPenalty calculates prorated charges for deleting before minimum storage duration
+// Issue #169 Phase 3: Archive tier cost modeling
+// This is a utility method exported for external use by applications that need
+// to calculate early deletion penalties for archive tiers independently.
+//
+//nolint:unused // Exported utility method for external callers
+func (c *Calculator) calculateEarlyDeletionPenalty(
+	ctx context.Context,
+	storageClass config.StorageClass,
+	actualDays int,
+	sizeGB float64,
+) *EarlyDeletionPenalty {
+	penalty := &EarlyDeletionPenalty{
+		StorageClass: storageClass,
+		ActualDays:   actualDays,
+		SizeGB:       sizeGB,
+	}
+
+	// Get minimum storage duration for this storage class
+	switch storageClass {
+	case config.StorageClassStandardIA:
+		penalty.MinimumDays = MinStorageDurationStandardIA
+	case config.StorageClassOneZoneIA:
+		penalty.MinimumDays = MinStorageDurationOneZoneIA
+	case config.StorageClassGlacier:
+		penalty.MinimumDays = MinStorageDurationGlacier
+	case config.StorageClassDeepArchive:
+		penalty.MinimumDays = MinStorageDurationDeepArchive
+	default:
+		// No minimum storage duration for STANDARD or INTELLIGENT_TIERING
+		return penalty
+	}
+
+	// If deleted before minimum duration, calculate penalty
+	if actualDays < penalty.MinimumDays {
+		penalty.RemainingDays = penalty.MinimumDays - actualDays
+
+		// Calculate monthly storage cost for this tier
+		monthlyStorageCost := c.calculateStorageCost(ctx, sizeGB, storageClass)
+
+		// Prorated penalty for remaining days
+		penalty.PenaltyCost = monthlyStorageCost * (float64(penalty.RemainingDays) / 30.0)
+	}
+
+	return penalty
+}
+
+// generateTCOScenarios generates Total Cost of Ownership scenarios with different retrieval patterns
+// Issue #169 Phase 3: Archive tier cost modeling
+func (c *Calculator) generateTCOScenarios(
+	ctx context.Context,
+	storageClass config.StorageClass,
+	sizeGB float64,
+	numObjects int,
+	uploadCost float64,
+) []TCOScenario {
+	var scenarios []TCOScenario
+
+	// Only generate scenarios for archive tiers
+	if storageClass != config.StorageClassGlacier && storageClass != config.StorageClassDeepArchive {
+		return scenarios
+	}
+
+	// Base storage cost (monthly)
+	monthlyStorageCost := c.calculateStorageCost(ctx, sizeGB, storageClass)
+
+	// Monitoring fees (if INTELLIGENT_TIERING)
+	monthlyMonitoringCost := 0.0
+	if storageClass == config.StorageClassIntelligentTiering {
+		monthlyMonitoringCost = (float64(numObjects) / 1000) * IntelligentTieringMonitoringFee
+	}
+
+	// Scenario 1: Zero retrievals (pure archival)
+	scenarios = append(scenarios, TCOScenario{
+		Name:                "Zero Retrievals (Pure Archival)",
+		Description:         "Data stored long-term with no retrievals",
+		RetrievalsPerYear:   0,
+		RetrievalPercentage: 0.0,
+		RestoreTier:         "N/A",
+		AnnualCost:          (monthlyStorageCost+monthlyMonitoringCost)*12 + uploadCost,
+		StorageCost:         monthlyStorageCost * 12,
+		UploadCost:          uploadCost,
+		RetrievalCost:       0.0,
+		MonitoringCost:      monthlyMonitoringCost * 12,
+	})
+
+	// Scenario 2: Occasional retrievals (2x/year, 10% of data, Standard restore)
+	switch storageClass {
+	case config.StorageClassGlacier:
+		retrievalSize := sizeGB * 0.1
+		retrievalObjects := int(float64(numObjects) * 0.1)
+		restoreCost := c.calculateRestoreCost(ctx, storageClass, "Standard", retrievalObjects, retrievalSize, 7)
+		annualRetrievalCost := restoreCost.TotalRestoreCost * 2
+
+		scenarios = append(scenarios, TCOScenario{
+			Name:                "Occasional Retrievals (2x/year)",
+			Description:         "Retrieve 10% of data twice yearly (Standard restore, 7-day access)",
+			RetrievalsPerYear:   2,
+			RetrievalPercentage: 0.1,
+			RestoreTier:         "Standard",
+			AnnualCost:          (monthlyStorageCost+monthlyMonitoringCost)*12 + uploadCost + annualRetrievalCost,
+			StorageCost:         monthlyStorageCost * 12,
+			UploadCost:          uploadCost,
+			RetrievalCost:       annualRetrievalCost,
+			MonitoringCost:      monthlyMonitoringCost * 12,
+		})
+	case config.StorageClassDeepArchive:
+		retrievalSize := sizeGB * 0.05
+		retrievalObjects := int(float64(numObjects) * 0.05)
+		restoreCost := c.calculateRestoreCost(ctx, storageClass, "Standard", retrievalObjects, retrievalSize, 7)
+		annualRetrievalCost := restoreCost.TotalRestoreCost * 1
+
+		scenarios = append(scenarios, TCOScenario{
+			Name:                "Rare Retrievals (1x/year)",
+			Description:         "Retrieve 5% of data once yearly (Standard restore, 7-day access)",
+			RetrievalsPerYear:   1,
+			RetrievalPercentage: 0.05,
+			RestoreTier:         "Standard",
+			AnnualCost:          (monthlyStorageCost+monthlyMonitoringCost)*12 + uploadCost + annualRetrievalCost,
+			StorageCost:         monthlyStorageCost * 12,
+			UploadCost:          uploadCost,
+			RetrievalCost:       annualRetrievalCost,
+			MonitoringCost:      monthlyMonitoringCost * 12,
+		})
+	}
+
+	// Scenario 3: Frequent retrievals (warning: archive tiers not suitable)
+	if storageClass == config.StorageClassGlacier {
+		retrievalSize := sizeGB * 0.2
+		retrievalObjects := int(float64(numObjects) * 0.2)
+		restoreCost := c.calculateRestoreCost(ctx, storageClass, "Bulk", retrievalObjects, retrievalSize, 3)
+		annualRetrievalCost := restoreCost.TotalRestoreCost * 10
+
+		scenarios = append(scenarios, TCOScenario{
+			Name:                "Frequent Retrievals (10x/year) ⚠️",
+			Description:         "Retrieve 20% of data 10x yearly (Bulk restore, 3-day access) - NOT RECOMMENDED",
+			RetrievalsPerYear:   10,
+			RetrievalPercentage: 0.2,
+			RestoreTier:         "Bulk",
+			AnnualCost:          (monthlyStorageCost+monthlyMonitoringCost)*12 + uploadCost + annualRetrievalCost,
+			StorageCost:         monthlyStorageCost * 12,
+			UploadCost:          uploadCost,
+			RetrievalCost:       annualRetrievalCost,
+			MonitoringCost:      monthlyMonitoringCost * 12,
+		})
+	}
+
+	return scenarios
 }
