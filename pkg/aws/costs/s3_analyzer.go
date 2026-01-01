@@ -29,11 +29,11 @@ func NewS3Analyzer(calculator *Calculator, scanner *s3.BucketScanner, region str
 // S3AnalysisResult contains the analysis results for an existing S3 bucket
 type S3AnalysisResult struct {
 	// Bucket information
-	BucketName string          `json:"bucket_name"`
-	Prefix     string          `json:"prefix"`
-	Region     string          `json:"region"`
-	ScanTime   time.Time       `json:"scan_time"`
-	IsSampled  bool            `json:"is_sampled"`
+	BucketName string    `json:"bucket_name"`
+	Prefix     string    `json:"prefix"`
+	Region     string    `json:"region"`
+	ScanTime   time.Time `json:"scan_time"`
+	IsSampled  bool      `json:"is_sampled"`
 
 	// Current bucket statistics
 	BucketStats *s3.BucketStats `json:"bucket_stats"`
@@ -108,9 +108,9 @@ type SavingsAnalysis struct {
 	SavingsPercentage float64 `json:"savings_percentage"`
 
 	// Savings breakdown
-	MinimumSizeSavings float64 `json:"minimum_size_savings"`
+	MinimumSizeSavings   float64 `json:"minimum_size_savings"`
 	MonitoringFeeSavings float64 `json:"monitoring_fee_savings"`
-	RequestCostSavings float64 `json:"request_cost_savings"`
+	RequestCostSavings   float64 `json:"request_cost_savings"`
 
 	// Payback period in days
 	PaybackPeriodDays float64 `json:"payback_period_days"`
@@ -365,17 +365,39 @@ func (a *S3Analyzer) generateRecommendations(stats *s3.BucketStats, savings *Sav
 			"📦 PRIMARY SAVINGS: Minimum object size penalty elimination (small files costing 2-4x more)")
 	}
 
-	// File distribution recommendations
+	// File distribution recommendations (Issue #170 Phase 2: More detailed workload analysis)
 	avgFileSize := stats.AverageSize / (1024 * 1024) // MB
+	smallFilePct := float64(stats.SmallFiles) / float64(stats.ObjectCount) * 100
+	mediumFilePct := float64(stats.MediumFiles) / float64(stats.ObjectCount) * 100
+	largeFilePct := float64(stats.LargeFiles) / float64(stats.ObjectCount) * 100
+	hugeFilePct := float64(stats.HugeFiles) / float64(stats.ObjectCount) * 100
+
 	if avgFileSize < 1.0 {
 		recommendations = append(recommendations,
 			fmt.Sprintf("🔍 IDEAL CANDIDATE: Small average file size (%.1f KB) benefits most from chunking", avgFileSize*1024))
 	}
 
+	// Workload-specific recommendations based on file size distribution
+	if smallFilePct > 80 {
+		recommendations = append(recommendations,
+			fmt.Sprintf("📦 SMALL FILES WORKLOAD: %.0f%% of files <1MB - chunking eliminates minimum size penalties", smallFilePct))
+	} else if mediumFilePct > 50 {
+		recommendations = append(recommendations,
+			fmt.Sprintf("📦 MEDIUM FILES WORKLOAD: %.0f%% of files 1-100MB - good chunking candidate", mediumFilePct))
+	} else if largeFilePct+hugeFilePct > 50 {
+		recommendations = append(recommendations,
+			fmt.Sprintf("📦 LARGE FILES WORKLOAD: %.0f%% of files >100MB - chunking still reduces monitoring fees", largeFilePct+hugeFilePct))
+	}
+
 	// Object count recommendations
 	if stats.ObjectCount > 1000000 {
 		recommendations = append(recommendations,
-			fmt.Sprintf("🎯 PERFECT FIT: Large object count (%d objects) = massive monitoring fee savings", stats.ObjectCount))
+			fmt.Sprintf("🎯 PERFECT FIT: Large object count (%s objects) = massive monitoring fee savings",
+				humanizeNumber(stats.ObjectCount)))
+	} else if stats.ObjectCount > 100000 {
+		recommendations = append(recommendations,
+			fmt.Sprintf("🎯 GREAT FIT: %s objects = significant monitoring fee savings",
+				humanizeNumber(stats.ObjectCount)))
 	}
 
 	// Migration strategy
@@ -392,4 +414,15 @@ func (a *S3Analyzer) generateRecommendations(stats *s3.BucketStats, savings *Sav
 		"🔒 ZERO DOWNTIME: Create new bucket, re-grate in parallel, cutover when ready")
 
 	return recommendations
+}
+
+// humanizeNumber formats a number with commas for readability
+// Issue #170 Phase 2: Helper function for better number formatting
+func humanizeNumber(n int64) string {
+	if n >= 1000000 {
+		return fmt.Sprintf("%.1fM", float64(n)/1000000)
+	} else if n >= 1000 {
+		return fmt.Sprintf("%.1fK", float64(n)/1000)
+	}
+	return fmt.Sprintf("%d", n)
 }

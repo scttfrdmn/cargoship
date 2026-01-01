@@ -19,13 +19,13 @@ import (
 )
 
 var (
-	analyzeFormat        string
-	analyzeRegion        string
-	analyzeProfile       string
-	showSavings          bool
-	analyzeSampleSize    int
+	analyzeFormat         string
+	analyzeRegion         string
+	analyzeProfile        string
+	showSavings           bool
+	analyzeSampleSize     int
 	analyzeEnableSampling bool
-	analyzeShowProgress  bool
+	analyzeShowProgress   bool
 )
 
 // NewAnalyzeCmd creates the analyze command for existing S3 bucket cost analysis
@@ -276,33 +276,37 @@ func outputAnalysisTable(result *costs.S3AnalysisResult, showSavings bool) error
 		fmt.Println(titleStyle.Render("═══════════════════════════════════════════════════════════"))
 		fmt.Println()
 
-		fmt.Println(headerStyle.Render("📦 After CargoShip Re-gration:"))
-		fmt.Printf("   Estimated Chunks:     %s (from %s objects)\n",
+		fmt.Println(headerStyle.Render("📦 After CargoShip Re-gration (Estimated):"))
+		fmt.Printf("├─ Chunks:                %s (from %s objects)\n",
 			humanize.Comma(int64(result.ProjectedCosts.EstimatedChunks)),
 			humanize.Comma(result.BucketStats.ObjectCount))
-		fmt.Printf("   Storage Cost:         $%.2f  (same)\n", result.ProjectedCosts.StorageCost)
+		fmt.Printf("├─ Total Size:            %s (same)\n",
+			humanize.Bytes(uint64(result.BucketStats.TotalSize)))
+		fmt.Printf("└─ Projected Monthly Cost: %s\n",
+			savingsStyle.Render(fmt.Sprintf("$%.2f", result.ProjectedCosts.TotalMonthlyCost)))
+		fmt.Printf("   ├─ Storage:            $%.2f (same)\n", result.ProjectedCosts.StorageCost)
 		if result.ProjectedCosts.MonitoringFees > 0 {
 			reductionPct := 100.0 * (1.0 - result.ProjectedCosts.MonitoringFees/result.CurrentCosts.MonitoringFees)
-			fmt.Printf("   Monitoring Fees:      $%.2f  %s\n",
-				result.ProjectedCosts.MonitoringFees,
+			fmt.Printf("   ├─ Monitoring fees:    %s  %s\n",
+				savingsStyle.Render(fmt.Sprintf("$%.2f", result.ProjectedCosts.MonitoringFees)),
 				savingsStyle.Render(fmt.Sprintf("(%.1f%% reduction!)", reductionPct)))
+		} else {
+			fmt.Printf("   ├─ Monitoring fees:    $%.2f\n", result.ProjectedCosts.MonitoringFees)
 		}
-		fmt.Printf("   Request Costs:        $%.2f\n", result.ProjectedCosts.RequestCosts)
+		// Show request costs as FREE when amortized (Issue #170 Phase 2)
+		if result.ProjectedCosts.RequestCosts < 0.01 {
+			fmt.Printf("   └─ Request costs:      %s\n", savingsStyle.Render("FREE (amortized)"))
+		} else {
+			fmt.Printf("   └─ Request costs:      $%.2f\n", result.ProjectedCosts.RequestCosts)
+		}
 		fmt.Println()
 
-		fmt.Printf("   %s:  %s\n",
-			headerStyle.Render("Total Monthly Cost"),
-			savingsStyle.Render(fmt.Sprintf("$%.2f", result.ProjectedCosts.TotalMonthlyCost)))
-		fmt.Println()
-
-		// Savings summary
-		fmt.Println(savingsStyle.Render("💰 SAVINGS SUMMARY"))
-		fmt.Println(savingsStyle.Render("─────────────────────────────────────────────────────────"))
-		fmt.Printf("   %s: %s (%.1f%% reduction)\n",
+		// Savings summary (Issue #170 Phase 2: More compact format)
+		fmt.Printf("🎯 %s:  %s %s\n",
 			savingsStyle.Render("Monthly Savings"),
 			savingsStyle.Render(fmt.Sprintf("$%.2f", result.Savings.MonthlySavings)),
-			result.Savings.SavingsPercentage)
-		fmt.Printf("   %s:  %s\n",
+			savingsStyle.Render(fmt.Sprintf("(%.1f%% reduction)", result.Savings.SavingsPercentage)))
+		fmt.Printf("📅 %s:   %s\n",
 			savingsStyle.Render("Annual Savings"),
 			savingsStyle.Render(fmt.Sprintf("$%.2f", result.Savings.AnnualSavings)))
 		fmt.Println()
@@ -322,32 +326,44 @@ func outputAnalysisTable(result *costs.S3AnalysisResult, showSavings bool) error
 			fmt.Println()
 		}
 
-		// Migration cost
+		// Migration cost and time (Issue #170 Phase 2: More compact + time estimation)
 		if result.MigrationCost != nil {
-			fmt.Println(headerStyle.Render("🔄 Migration Cost (One-Time):"))
-			fmt.Printf("   GET requests:         $%.2f\n", result.MigrationCost.GetRequestCost)
-			fmt.Printf("   PUT requests:         $%.2f\n", result.MigrationCost.PutRequestCost)
-			if result.MigrationCost.TransferCost > 0 {
-				fmt.Printf("   Data transfer:        $%.2f\n", result.MigrationCost.TransferCost)
-			}
-			fmt.Printf("   %s:          %s\n",
-				headerStyle.Render("Total Migration Cost"),
+			fmt.Printf("💰 %s:  %s\n",
+				headerStyle.Render("One-time Migration Cost"),
 				valueStyle.Render(fmt.Sprintf("$%.2f", result.MigrationCost.TotalCost)))
-			fmt.Println()
 
 			// Payback period
 			if result.Savings.PaybackPeriodDays < 1 {
-				fmt.Printf("   %s: %s\n",
-					savingsStyle.Render("⏱️  Payback Period"),
+				fmt.Printf("⏱️  %s: %s\n",
+					headerStyle.Render("Payback Period"),
 					savingsStyle.Render(fmt.Sprintf("%.1f hours (IMMEDIATE ROI!)", result.Savings.PaybackPeriodDays*24)))
 			} else if result.Savings.PaybackPeriodDays < 30 {
-				fmt.Printf("   %s: %s\n",
-					savingsStyle.Render("⏱️  Payback Period"),
+				fmt.Printf("⏱️  %s: %s\n",
+					headerStyle.Render("Payback Period"),
 					savingsStyle.Render(fmt.Sprintf("%.0f days", result.Savings.PaybackPeriodDays)))
 			} else {
-				fmt.Printf("   %s: %s\n",
-					savingsStyle.Render("⏱️  Payback Period"),
+				fmt.Printf("⏱️  %s: %s\n",
+					headerStyle.Render("Payback Period"),
 					savingsStyle.Render(fmt.Sprintf("%.1f months", result.Savings.PaybackPeriodDays/30)))
+			}
+
+			// Migration time estimation (Issue #170 Phase 2)
+			// Assume 100 MB/s throughput (conservative for S3-to-S3)
+			sizeGB := float64(result.BucketStats.TotalSize) / (1024 * 1024 * 1024)
+			throughputMBps := 100.0
+			estimatedHours := (sizeGB * 1024) / (throughputMBps * 3600)
+			if estimatedHours < 1 {
+				fmt.Printf("🚀 %s: %s\n",
+					headerStyle.Render("Estimated Migration Time"),
+					valueStyle.Render(fmt.Sprintf("%.0f minutes", estimatedHours*60)))
+			} else if estimatedHours < 24 {
+				fmt.Printf("🚀 %s: %s\n",
+					headerStyle.Render("Estimated Migration Time"),
+					valueStyle.Render(fmt.Sprintf("%.1f hours", estimatedHours)))
+			} else {
+				fmt.Printf("🚀 %s: %s\n",
+					headerStyle.Render("Estimated Migration Time"),
+					valueStyle.Render(fmt.Sprintf("%.1f days", estimatedHours/24)))
 			}
 			fmt.Println()
 		}
