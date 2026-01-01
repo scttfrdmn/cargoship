@@ -417,7 +417,20 @@ func outputTable(estimate *costs.CostEstimate, parallelOpt *s3.PrefixOptimizatio
 			fmt.Printf("   Minimum Size Penalty Eliminated: $%.2f/month\n", comparison.SavingsBreakdown.MinimumSizePenaltySaved)
 		}
 		if comparison.SavingsBreakdown.RequestCostSaved > 0 {
-			fmt.Printf("   Request Cost Savings:             $%.2f (one-time)\n", comparison.SavingsBreakdown.RequestCostSaved)
+			fmt.Printf("   PUT Request Cost Savings:         $%.2f (one-time, %s requests reduced)\n",
+				comparison.SavingsBreakdown.RequestCostSaved,
+				humanize.Comma(int64(comparison.SavingsBreakdown.PutRequestsSaved)))
+		}
+		// Issue #169 Phase 2: Show GET and LIST request savings
+		if comparison.SavingsBreakdown.GetRequestCostSaved > 0 {
+			fmt.Printf("   GET Request Cost Savings:         $%.2f/month (%s requests reduced)\n",
+				comparison.SavingsBreakdown.GetRequestCostSaved,
+				humanize.Comma(int64(comparison.SavingsBreakdown.GetRequestsSaved)))
+		}
+		if comparison.SavingsBreakdown.ListRequestCostSaved > 0 {
+			fmt.Printf("   LIST Request Cost Savings:        $%.2f/month (%s requests reduced)\n",
+				comparison.SavingsBreakdown.ListRequestCostSaved,
+				humanize.Comma(int64(comparison.SavingsBreakdown.ListRequestsSaved)))
 		}
 		if comparison.SavingsBreakdown.MonitoringCostSaved > 0 {
 			fmt.Printf("   Monitoring Cost Savings:          $%.2f/month\n", comparison.SavingsBreakdown.MonitoringCostSaved)

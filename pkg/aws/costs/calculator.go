@@ -326,6 +326,13 @@ type SavingsBreakdown struct {
 	TotalMonthlySavings       float64 `json:"total_monthly_savings"`
 	SavingsPercentage         float64 `json:"savings_percentage"`
 	AnnualSavings             float64 `json:"annual_savings"`
+
+	// Issue #169 Phase 2: Detailed request cost savings
+	PutRequestsSaved     int     `json:"put_requests_saved"`
+	GetRequestsSaved     int     `json:"get_requests_saved"`
+	ListRequestsSaved    int     `json:"list_requests_saved"`
+	GetRequestCostSaved  float64 `json:"get_request_cost_saved"`
+	ListRequestCostSaved float64 `json:"list_request_cost_saved"`
 }
 
 // FileStatistics provides file count and size information
@@ -334,6 +341,32 @@ type FileStatistics struct {
 	TotalSizeGB       float64 `json:"total_size_gb"`
 	AverageFileSizeKB float64 `json:"average_file_size_kb"`
 	EstimatedChunks   int     `json:"estimated_chunks"`
+}
+
+// RequestCostBreakdown shows costs by request type
+// Issue #169 Phase 2: Comprehensive request tracking
+type RequestCostBreakdown struct {
+	// Upload costs
+	PutRequests     int     `json:"put_requests"`
+	PutRequestCost  float64 `json:"put_request_cost"`
+
+	// Retrieval costs (for TCO analysis)
+	GetRequests     int     `json:"get_requests"`
+	GetRequestCost  float64 `json:"get_request_cost"`
+
+	// Listing costs
+	ListRequests     int     `json:"list_requests"`
+	ListRequestCost  float64 `json:"list_request_cost"`
+
+	// Lifecycle costs
+	LifecycleTransitions     int     `json:"lifecycle_transitions"`
+	LifecycleTransitionCost  float64 `json:"lifecycle_transition_cost"`
+
+	// Deletion tracking (free, but informative)
+	DeleteRequests int     `json:"delete_requests"`
+
+	// Total request cost
+	TotalRequestCost float64 `json:"total_request_cost"`
 }
 
 // Minimum object size requirements per storage tier (in bytes)
@@ -347,6 +380,27 @@ const (
 // INTELLIGENT_TIERING monitoring fee (per 1000 objects per month)
 // Issue #169: INTELLIGENT_TIERING monitoring costs
 const IntelligentTieringMonitoringFee = 0.0025
+
+// Request cost constants (per 1000 requests)
+// Issue #169 Phase 2: Comprehensive request tracking
+const (
+	// GET/SELECT request costs per 1000 requests
+	GetRequestCostStandard          = 0.0004
+	GetRequestCostStandardIA        = 0.001
+	GetRequestCostOneZoneIA         = 0.001
+	GetRequestCostIntelligentTiering = 0.0004
+	GetRequestCostGlacier           = 0.0004 // After restore
+	GetRequestCostDeepArchive       = 0.0002 // After restore
+
+	// LIST request cost per 1000 requests (same across all tiers)
+	ListRequestCost = 0.005
+
+	// Lifecycle transition request cost per 1000 requests
+	LifecycleTransitionCost = 0.01
+
+	// DELETE request cost (free, but we track count for completeness)
+	DeleteRequestCost = 0.0
+)
 
 // EstimateWithComparison calculates naive vs chunking cost comparison
 // Issue #169: Show chunking benefits in cost estimates
@@ -385,6 +439,28 @@ func (c *Calculator) EstimateWithComparison(
 		return nil, fmt.Errorf("failed to estimate chunked upload cost: %w", err)
 	}
 
+	// Issue #169 Phase 2: Calculate GET and LIST request savings for TCO analysis
+	// Assume 10% of files are accessed per month (conservative estimate for cost comparison)
+	monthlyAccessRate := 0.1
+	naiveGetRequests := int(float64(fileCount) * monthlyAccessRate)
+	chunkedGetRequests := int(float64(chunkCount) * monthlyAccessRate)
+
+	// Assume 20 LIST operations per month for bucket management
+	naiveListRequests := int(float64(fileCount) / 1000) // 1 LIST per 1000 objects
+	if naiveListRequests < 20 {
+		naiveListRequests = 20
+	}
+	chunkedListRequests := int(float64(chunkCount) / 1000) // 1 LIST per 1000 objects
+	if chunkedListRequests < 20 {
+		chunkedListRequests = 20
+	}
+
+	// Calculate GET and LIST costs
+	naiveGetCost := c.calculateGetRequestCost(naiveGetRequests, storageClass)
+	chunkedGetCost := c.calculateGetRequestCost(chunkedGetRequests, storageClass)
+	naiveListCost := c.calculateListRequestCost(naiveListRequests)
+	chunkedListCost := c.calculateListRequestCost(chunkedListRequests)
+
 	// Calculate savings breakdown
 	naiveTotal := naiveCost.TotalMonthlyCost + naiveCost.TotalUploadCost
 	chunkedTotal := chunkedCost.TotalMonthlyCost + chunkedCost.TotalUploadCost
@@ -394,6 +470,13 @@ func (c *Calculator) EstimateWithComparison(
 		RequestCostSaved:        naiveCost.TotalUploadCost - chunkedCost.TotalUploadCost,
 		MonitoringCostSaved:     0, // Calculated separately for INTELLIGENT_TIERING
 		TotalMonthlySavings:     naiveTotal - chunkedTotal,
+
+		// Issue #169 Phase 2: Detailed request savings
+		PutRequestsSaved:     fileCount - chunkCount,
+		GetRequestsSaved:     naiveGetRequests - chunkedGetRequests,
+		ListRequestsSaved:    naiveListRequests - chunkedListRequests,
+		GetRequestCostSaved:  naiveGetCost - chunkedGetCost,
+		ListRequestCostSaved: naiveListCost - chunkedListCost,
 	}
 
 	if naiveTotal > 0 {
@@ -512,6 +595,38 @@ func (c *Calculator) calculateChargedSize(fileCount int, totalSizeGB float64, st
 
 	// No penalty if files are larger than minimum
 	return totalSizeGB
+}
+
+// calculateGetRequestCost calculates GET request costs based on storage class
+// Issue #169 Phase 2: Comprehensive request tracking
+func (c *Calculator) calculateGetRequestCost(numRequests int, storageClass config.StorageClass) float64 {
+	costPerThousand := map[config.StorageClass]float64{
+		config.StorageClassStandard:           GetRequestCostStandard,
+		config.StorageClassStandardIA:         GetRequestCostStandardIA,
+		config.StorageClassOneZoneIA:          GetRequestCostOneZoneIA,
+		config.StorageClassIntelligentTiering: GetRequestCostIntelligentTiering,
+		config.StorageClassGlacier:            GetRequestCostGlacier,
+		config.StorageClassDeepArchive:        GetRequestCostDeepArchive,
+	}
+
+	cost, exists := costPerThousand[storageClass]
+	if !exists {
+		cost = GetRequestCostStandard // Default to STANDARD pricing
+	}
+
+	return (float64(numRequests) / 1000.0) * cost
+}
+
+// calculateListRequestCost calculates LIST request costs
+// Issue #169 Phase 2: Comprehensive request tracking
+func (c *Calculator) calculateListRequestCost(numRequests int) float64 {
+	return (float64(numRequests) / 1000.0) * ListRequestCost
+}
+
+// calculateLifecycleTransitionCost calculates lifecycle transition request costs
+// Issue #169 Phase 2: Comprehensive request tracking
+func (c *Calculator) calculateLifecycleTransitionCost(numTransitions int) float64 {
+	return (float64(numTransitions) / 1000.0) * LifecycleTransitionCost
 }
 
 // generateChunkingRecommendations generates cost optimization recommendations for chunking
