@@ -350,19 +350,29 @@ Examples:
 				}
 			}
 
+			// Issue #164: Get tier chunking strategy
+			tierStrategy, _ := cmd.Flags().GetString("tier-strategy")
+			if tierStrategy != "youngest-file" && tierStrategy != "tier-aware" {
+				return fmt.Errorf("invalid tier-strategy: %q (must be 'youngest-file' or 'tier-aware')", tierStrategy)
+			}
+			if tierStrategy == "tier-aware" && !autoTier {
+				return fmt.Errorf("--tier-strategy=tier-aware requires --auto-tier to be enabled")
+			}
+
 			// Create pipeline config with CargoHold settings
 			pipelineConfig := &pipeline.PipelineConfig{
-				ScannerWorkers:  4,
-				ArchiverWorkers: 4,
-				UploaderWorkers: 4,
-				S3Bucket:        bucket,
-				S3Prefix:        prefix,
-				S3Region:        region,
-				UseRealS3:       true,
-				S3Client:        s3Client,
-				S3StorageClass:  storageClass,
-				TierSelector:    tierSelector,     // Issue #32: Automatic tier selection
-				S3PartSize:      64 * 1024 * 1024, // 64MB parts
+				ScannerWorkers:       4,
+				ArchiverWorkers:      4,
+				UploaderWorkers:      4,
+				S3Bucket:             bucket,
+				S3Prefix:             prefix,
+				S3Region:             region,
+				UseRealS3:            true,
+				S3Client:             s3Client,
+				S3StorageClass:       storageClass,
+				TierSelector:         tierSelector,     // Issue #32: Automatic tier selection
+				TierChunkingStrategy: tierStrategy,     // Issue #164: Tier chunking strategy
+				S3PartSize:           64 * 1024 * 1024, // 64MB parts
 
 				// Issue #163: KMS encryption configuration
 				KMSKeyID:        kmsKeyID,
@@ -531,6 +541,9 @@ Examples:
 	cmd.Flags().Int("tier-hot-days", 30, "Days since access to consider 'hot' (STANDARD)")
 	cmd.Flags().Int("tier-cold-days", 90, "Days since access to consider 'cold' (GLACIER)")
 	cmd.Flags().Int("tier-archive-days", 180, "Days since access to consider 'archive' (DEEP_ARCHIVE)")
+
+	// Issue #164: Tier chunking strategy (opt-in tier-aware chunking)
+	cmd.Flags().String("tier-strategy", "youngest-file", "Tier chunking strategy: 'youngest-file' (v1, default) or 'tier-aware' (v2, optimal cost)")
 
 	cmd.Flags().IntVar(&shardCount, "shard-count", 0, "Number of shards for parallel uploads (0=auto, 4-32=manual, default: 0)")
 	cmd.Flags().StringVar(&shardStrategy, "shard-strategy", "hash", "Shard distribution strategy (hash, size, type, directory)")

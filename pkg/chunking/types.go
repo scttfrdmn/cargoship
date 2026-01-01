@@ -2,6 +2,8 @@ package chunking
 
 import (
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 // File represents a file to be chunked and archived
@@ -21,11 +23,12 @@ type File struct {
 
 // Chunk represents a group of files to be archived together
 type Chunk struct {
-	ID           int    // Chunk identifier
-	Files        []File // Files in this chunk
-	TotalSize    int64  // Total size of all files in bytes
-	FileCount    int    // Number of files
-	EstimatedOps int    // Estimated S3 operations (multipart uploads)
+	ID              int                  // Chunk identifier
+	Files           []File               // Files in this chunk
+	TotalSize       int64                // Total size of all files in bytes
+	FileCount       int                  // Number of files
+	EstimatedOps    int                  // Estimated S3 operations (multipart uploads)
+	PreAssignedTier types.StorageClass   // Issue #164: Pre-assigned storage tier (empty = use default/youngest-file)
 }
 
 // ChunkStats provides statistics about chunking decisions
@@ -83,6 +86,16 @@ type ChunkingConfig struct {
 	// MaxFileChunkSize defines the maximum size for a single file part when splitting
 	// If 0, uses the calculated chunk size (default behavior)
 	MaxFileChunkSize int64
+
+	// Issue #164: Tier-aware chunking configuration
+	// EnableTierAwareChunking groups files by storage tier before chunking
+	// This results in homogeneous tier assignment per chunk, improving cost optimization
+	EnableTierAwareChunking bool
+
+	// TierGroupBufferSize limits the number of files buffered per tier group
+	// This prevents excessive memory usage when tier-aware chunking is enabled
+	// Default: 100000 files per tier
+	TierGroupBufferSize int
 }
 
 // ChunkingStrategy defines the interface for chunking algorithms

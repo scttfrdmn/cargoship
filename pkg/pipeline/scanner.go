@@ -67,7 +67,18 @@ func NewScannerStage(config *ScannerConfig, output chan<- *Job, pipeline *Pipeli
 			MaxFileChunkSize:    200 * 1024 * 1024, // 200MB chunks for split files
 		}
 	}
-	strategy := chunking.NewAdaptiveChunkingStrategy(chunkingConfig)
+	// Create base chunking strategy
+	var strategy chunking.ChunkingStrategy
+	strategy = chunking.NewAdaptiveChunkingStrategy(chunkingConfig)
+
+	// Issue #164: Wrap strategy with TierAwareChunker if tier-aware chunking is enabled
+	if config.TierChunkingStrategy == "tier-aware" && config.TierSelector != nil {
+		bufferSize := chunkingConfig.TierGroupBufferSize
+		if bufferSize <= 0 {
+			bufferSize = 100000 // Default: 100k files per tier
+		}
+		strategy = chunking.NewTierAwareChunker(strategy, config.TierSelector, bufferSize)
+	}
 
 	// Phase 3.3: Initialize compressed-aware chunker if enabled
 	var compressedChunker *chunking.CompressedAwareChunker

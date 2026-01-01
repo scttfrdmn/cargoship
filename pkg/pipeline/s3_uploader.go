@@ -366,9 +366,15 @@ func (s *S3UploaderStage) uploadToS3(ctx context.Context, job *Job) error {
 
 // uploadViaTransporter uploads using advanced S3 transporter
 func (s *S3UploaderStage) uploadViaTransporter(ctx context.Context, s3Key string, job *Job, metadata map[string]string) error {
-	// Determine storage class: use TierSelector if configured, otherwise use default
+	// Determine storage class: use pre-assigned tier (Issue #164), TierSelector, or default
 	storageClass := awsconfig.StorageClass(s.config.StorageClass)
-	if s.config.TierSelector != nil && s.config.TierSelector.Enabled {
+
+	// Issue #164: Check for pre-assigned tier from tier-aware chunking (v2)
+	if job.Chunk.PreAssignedTier != "" {
+		// Tier-aware chunking has already grouped files by tier - use pre-assigned tier
+		storageClass = awsconfig.StorageClass(job.Chunk.PreAssignedTier)
+	} else if s.config.TierSelector != nil && s.config.TierSelector.Enabled {
+		// Fallback to v1 youngest-file strategy for backward compatibility
 		// Find youngest (most recently accessed) file in chunk for tier selection
 		// Conservative approach: if ANY file is hot, keep entire chunk in hot tier
 		if len(job.Chunk.Files) > 0 {
@@ -419,9 +425,15 @@ func (s *S3UploaderStage) uploadViaTransporter(ctx context.Context, s3Key string
 
 // uploadViaManager uploads using basic AWS SDK manager.Uploader (backward compatibility)
 func (s *S3UploaderStage) uploadViaManager(ctx context.Context, s3Key string, job *Job, metadata map[string]string) error {
-	// Determine storage class: use TierSelector if configured, otherwise use default
+	// Determine storage class: use pre-assigned tier (Issue #164), TierSelector, or default
 	storageClass := s.config.StorageClass
-	if s.config.TierSelector != nil && s.config.TierSelector.Enabled {
+
+	// Issue #164: Check for pre-assigned tier from tier-aware chunking (v2)
+	if job.Chunk.PreAssignedTier != "" {
+		// Tier-aware chunking has already grouped files by tier - use pre-assigned tier
+		storageClass = job.Chunk.PreAssignedTier
+	} else if s.config.TierSelector != nil && s.config.TierSelector.Enabled {
+		// Fallback to v1 youngest-file strategy for backward compatibility
 		// Find youngest (most recently accessed) file in chunk for tier selection
 		// Conservative approach: if ANY file is hot, keep entire chunk in hot tier
 		if len(job.Chunk.Files) > 0 {

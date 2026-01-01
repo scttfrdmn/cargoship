@@ -142,6 +142,7 @@ type PipelineConfig struct {
 	S3PartSize     int64                // S3 multipart part size (default: 64MB)
 	S3StorageClass string               // S3 storage class (STANDARD, INTELLIGENT_TIERING, etc.)
 	TierSelector   *StorageTierSelector // Issue #32: Automatic storage tier selection (nil = disabled, uses S3StorageClass)
+	TierChunkingStrategy string         // Issue #164: Tier chunking strategy ("youngest-file" = v1 default, "tier-aware" = v2 opt-in)
 	S3SSEKMSKeyId  string               // Optional KMS key ID for encryption
 
 	// Encryption configuration (Issue #163)
@@ -297,6 +298,10 @@ type ScannerConfig struct {
 
 	// Issue #30: Magika configuration for AI file type detection (optional)
 	MagikaConfig *config.MagikaConfig
+
+	// Issue #164: Tier-aware chunking configuration
+	TierSelector         *StorageTierSelector // For tier-aware chunking (nil = tier-aware chunking disabled)
+	TierChunkingStrategy string               // "youngest-file" (default) or "tier-aware"
 }
 
 // ArchiverConfig configures the archiver stage
