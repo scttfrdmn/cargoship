@@ -426,6 +426,7 @@ Examples:
 			compressionRatio, _ := cmd.Flags().GetFloat64("compression-ratio")
 			dedupRatio, _ := cmd.Flags().GetFloat64("dedup-ratio")
 			storageClassStr, _ := cmd.Flags().GetString("storage-class")
+			showChart, _ := cmd.Flags().GetBool("chart")
 
 			// Parse storage class
 			storageClass, err := parseStorageClass(storageClassStr)
@@ -434,7 +435,7 @@ Examples:
 			}
 
 			return runBenchmarkCompare(cmd.Context(), region, tool, sizeGB, fileCount,
-				compressionRatio, dedupRatio, storageClass)
+				compressionRatio, dedupRatio, storageClass, showChart)
 		},
 	}
 	benchmarkCmd.Flags().String("tool", "", "Tool name (s5cmd, rclone, aws-cli, cargoship)")
@@ -443,6 +444,7 @@ Examples:
 	benchmarkCmd.Flags().Float64("compression-ratio", 1.0, "Compression ratio (e.g., 3.0 for 3:1)")
 	benchmarkCmd.Flags().Float64("dedup-ratio", 1.0, "Deduplication ratio (e.g., 2.0 for 2:1)")
 	benchmarkCmd.Flags().String("storage-class", "STANDARD", "Storage class")
+	benchmarkCmd.Flags().Bool("chart", false, "Display ASCII cost comparison charts")
 	_ = benchmarkCmd.MarkFlagRequired("size-gb")
 	_ = benchmarkCmd.MarkFlagRequired("files")
 
@@ -1332,6 +1334,7 @@ func runBenchmarkCompare(
 	fileCount int64,
 	compressionRatio, dedupRatio float64,
 	storageClass cargoconfig.StorageClass,
+	showChart bool,
 ) error {
 	// Load AWS config
 	awsCfg, cargoConfig, err := loadAWSConfigForCost(ctx, region)
@@ -1349,10 +1352,12 @@ func runBenchmarkCompare(
 	benchmarkCalc := cost.NewBenchmarkCostCalculator(pricingMgr, region)
 
 	var result interface{}
+	var cargoshipCost *cost.BenchmarkCostComparison
+	var competitorCost *cost.BenchmarkCostComparison
 
 	if tool == "" || tool == "cargoship" {
 		// Calculate CargoShip cost with optimizations
-		cargoshipCost, err := benchmarkCalc.CalculateCargoShipCost(
+		cargoshipCost, err = benchmarkCalc.CalculateCargoShipCost(
 			ctx,
 			"benchmark",
 			sizeGB,
@@ -1369,7 +1374,7 @@ func runBenchmarkCompare(
 			result = cargoshipCost
 		} else {
 			// Calculate competitor cost for comparison
-			competitorCost, err := benchmarkCalc.CalculateCompetitorCost(
+			competitorCost, err = benchmarkCalc.CalculateCompetitorCost(
 				ctx,
 				"benchmark",
 				"competitor",
@@ -1386,7 +1391,7 @@ func runBenchmarkCompare(
 		}
 	} else {
 		// Calculate competitor cost only
-		competitorCost, err := benchmarkCalc.CalculateCompetitorCost(
+		competitorCost, err = benchmarkCalc.CalculateCompetitorCost(
 			ctx,
 			"benchmark",
 			tool,
@@ -1399,7 +1404,50 @@ func runBenchmarkCompare(
 		result = competitorCost
 	}
 
-	// Output as JSON
+	// Display ASCII charts if requested
+	if showChart {
+		fmt.Println()
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println("                         COST BENCHMARK COMPARISON")
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println()
+
+		// Show comparison table if we have both costs
+		if cargoshipCost != nil && competitorCost != nil {
+			fmt.Print(cost.ComparisonTable(cargoshipCost, competitorCost))
+			fmt.Println()
+			fmt.Print(cost.CostComparisonChart(cargoshipCost.AnnualTCO, competitorCost.AnnualTCO, "CargoShip", "Competitor"))
+			fmt.Println()
+		}
+
+		// Show CargoShip advantages if available
+		if cargoshipCost != nil && cargoshipCost.CargoShipAdvantages != nil {
+			fmt.Print(cost.SavingsBreakdownChart(cargoshipCost.CargoShipAdvantages))
+			fmt.Println()
+		}
+
+		// Show monthly vs annual projection
+		if cargoshipCost != nil {
+			fmt.Print(cost.MonthlyVsAnnualChart(
+				cargoshipCost.MonthlyRunningCost,
+				cargoshipCost.TotalUploadCost,
+				cargoshipCost.AnnualTCO,
+			))
+		} else if competitorCost != nil {
+			fmt.Print(cost.MonthlyVsAnnualChart(
+				competitorCost.MonthlyRunningCost,
+				competitorCost.TotalUploadCost,
+				competitorCost.AnnualTCO,
+			))
+		}
+
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println()
+
+		return nil
+	}
+
+	// Output as JSON (default behavior for script integration)
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(result)
