@@ -296,3 +296,184 @@ func TestStateFileAtomicWrite(t *testing.T) {
 	// Clean up
 	_ = DeleteState("atomic-test")
 }
+
+// TestUploadState_Age tests the Age method
+func TestUploadState_Age(t *testing.T) {
+	now := time.Now()
+	state := &UploadState{
+		StartTime: now.Add(-1 * time.Hour), // Started 1 hour ago
+	}
+
+	age := state.Age()
+
+	// Should be approximately 1 hour (allow 1 second tolerance)
+	expectedMin := 59 * time.Minute
+	expectedMax := 61 * time.Minute
+
+	if age < expectedMin || age > expectedMax {
+		t.Errorf("Age() = %v, want approximately 1 hour", age)
+	}
+}
+
+// TestUploadState_TimeSinceLastSave tests the TimeSinceLastSave method
+func TestUploadState_TimeSinceLastSave(t *testing.T) {
+	now := time.Now()
+	state := &UploadState{
+		LastSave: now.Add(-30 * time.Minute), // Saved 30 minutes ago
+	}
+
+	timeSince := state.TimeSinceLastSave()
+
+	// Should be approximately 30 minutes (allow 1 second tolerance)
+	expectedMin := 29 * time.Minute
+	expectedMax := 31 * time.Minute
+
+	if timeSince < expectedMin || timeSince > expectedMax {
+		t.Errorf("TimeSinceLastSave() = %v, want approximately 30 minutes", timeSince)
+	}
+}
+
+// TestStateExists tests the StateExists function
+func TestStateExists(t *testing.T) {
+	// Test with empty upload ID
+	if StateExists("") {
+		t.Error("StateExists(\"\") should return false")
+	}
+
+	// Create a test state
+	state := &UploadState{
+		UploadID:  "test-exists-123",
+		StartTime: time.Now(),
+		LastSave:  time.Now(),
+		SourceDir: "/test",
+		Bucket:    "test-bucket",
+		Prefix:    "test-prefix",
+	}
+
+	// Save the state
+	err := SaveState(state)
+	if err != nil {
+		t.Fatalf("Failed to save state: %v", err)
+	}
+	defer func() { _ = DeleteState("test-exists-123") }()
+
+	// Test that it exists
+	if !StateExists("test-exists-123") {
+		t.Error("StateExists() should return true for existing state")
+	}
+
+	// Test with non-existent ID
+	if StateExists("non-existent-id") {
+		t.Error("StateExists() should return false for non-existent state")
+	}
+}
+
+// TestChangeDetectionResult_HasChanges tests the HasChanges method
+func TestChangeDetectionResult_HasChanges(t *testing.T) {
+	tests := []struct {
+		name   string
+		result *ChangeDetectionResult
+		want   bool
+	}{
+		{
+			name: "no changes",
+			result: &ChangeDetectionResult{
+				ModifiedFiles: []string{},
+				DeletedFiles:  []string{},
+				NewFiles:      []string{},
+			},
+			want: false,
+		},
+		{
+			name: "has modified files",
+			result: &ChangeDetectionResult{
+				ModifiedFiles: []string{"file1.txt"},
+				DeletedFiles:  []string{},
+				NewFiles:      []string{},
+			},
+			want: true,
+		},
+		{
+			name: "has deleted files",
+			result: &ChangeDetectionResult{
+				ModifiedFiles: []string{},
+				DeletedFiles:  []string{"file2.txt"},
+				NewFiles:      []string{},
+			},
+			want: true,
+		},
+		{
+			name: "has new files",
+			result: &ChangeDetectionResult{
+				ModifiedFiles: []string{},
+				DeletedFiles:  []string{},
+				NewFiles:      []string{"file3.txt"},
+			},
+			want: true,
+		},
+		{
+			name: "has all types of changes",
+			result: &ChangeDetectionResult{
+				ModifiedFiles: []string{"file1.txt"},
+				DeletedFiles:  []string{"file2.txt"},
+				NewFiles:      []string{"file3.txt"},
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.result.HasChanges()
+			if got != tt.want {
+				t.Errorf("HasChanges() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestChangeDetectionResult_TotalChanges tests the TotalChanges method
+func TestChangeDetectionResult_TotalChanges(t *testing.T) {
+	tests := []struct {
+		name   string
+		result *ChangeDetectionResult
+		want   int
+	}{
+		{
+			name: "no changes",
+			result: &ChangeDetectionResult{
+				ModifiedFiles: []string{},
+				DeletedFiles:  []string{},
+				NewFiles:      []string{},
+			},
+			want: 0,
+		},
+		{
+			name: "one modified file",
+			result: &ChangeDetectionResult{
+				ModifiedFiles: []string{"file1.txt"},
+				DeletedFiles:  []string{},
+				NewFiles:      []string{},
+			},
+			want: 1,
+		},
+		{
+			name: "multiple changes",
+			result: &ChangeDetectionResult{
+				ModifiedFiles: []string{"file1.txt", "file2.txt"},
+				DeletedFiles:  []string{"file3.txt"},
+				NewFiles:      []string{"file4.txt", "file5.txt", "file6.txt"},
+			},
+			want: 6, // 2 modified + 1 deleted + 3 new
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.result.TotalChanges()
+			if got != tt.want {
+				t.Errorf("TotalChanges() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

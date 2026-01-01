@@ -373,8 +373,8 @@ func TestGetLocalStackEndpoint(t *testing.T) {
 	origAWSEndpoint := os.Getenv("AWS_ENDPOINT_URL")
 	origLocalStackEndpoint := os.Getenv("LOCALSTACK_ENDPOINT")
 	defer func() {
-		os.Setenv("AWS_ENDPOINT_URL", origAWSEndpoint)
-		os.Setenv("LOCALSTACK_ENDPOINT", origLocalStackEndpoint)
+		_ = os.Setenv("AWS_ENDPOINT_URL", origAWSEndpoint)
+		_ = os.Setenv("LOCALSTACK_ENDPOINT", origLocalStackEndpoint)
 	}()
 
 	tests := []struct {
@@ -411,8 +411,8 @@ func TestGetLocalStackEndpoint(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			os.Setenv("AWS_ENDPOINT_URL", tt.awsEndpointURL)
-			os.Setenv("LOCALSTACK_ENDPOINT", tt.localStackEndpoint)
+			_ = os.Setenv("AWS_ENDPOINT_URL", tt.awsEndpointURL)
+			_ = os.Setenv("LOCALSTACK_ENDPOINT", tt.localStackEndpoint)
 
 			got := getLocalStackEndpoint()
 			if got != tt.want {
@@ -427,7 +427,7 @@ func TestIsLocalStackConfig(t *testing.T) {
 	// Save original env var
 	origEndpoint := os.Getenv("AWS_ENDPOINT_URL")
 	defer func() {
-		os.Setenv("AWS_ENDPOINT_URL", origEndpoint)
+		_ = os.Setenv("AWS_ENDPOINT_URL", origEndpoint)
 	}()
 
 	tests := []struct {
@@ -459,7 +459,7 @@ func TestIsLocalStackConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			os.Setenv("AWS_ENDPOINT_URL", tt.endpoint)
+			_ = os.Setenv("AWS_ENDPOINT_URL", tt.endpoint)
 
 			got := IsLocalStackConfig()
 			if got != tt.want {

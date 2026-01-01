@@ -103,7 +103,7 @@ func TestArchiverStage_AnalyzeChunkContentTypes(t *testing.T) {
 
 	stage, err := NewArchiverStage(config, input, output)
 	require.NoError(t, err)
-	defer stage.Stop()
+	defer func() { _ = stage.Stop() }()
 
 	tests := []struct {
 		name          string
@@ -192,7 +192,7 @@ func TestArchiverStage_AnalyzeChunkContentTypesWithMagika(t *testing.T) {
 
 	stage, err := NewArchiverStage(config, input, output)
 	require.NoError(t, err)
-	defer stage.Stop()
+	defer func() { _ = stage.Stop() }()
 
 	tests := []struct {
 		name          string
@@ -321,7 +321,7 @@ func TestEncoderPool_MultiLevel(t *testing.T) {
 		pool, err := NewEncoderPool(2, level)
 		require.NoError(t, err)
 		pools[i] = pool
-		defer pool.Close()
+		defer func() { _ = pool.Close() }()
 
 		// Verify pool tracks correct level
 		assert.Equal(t, level, pool.level)
@@ -360,7 +360,7 @@ func TestNewArchiverStageWithSharding(t *testing.T) {
 	stage, err := NewArchiverStageWithSharding(config, input, outputs, shardCount)
 	require.NoError(t, err)
 	require.NotNil(t, stage)
-	defer stage.Stop()
+	defer func() { _ = stage.Stop() }()
 
 	// Verify configuration
 	assert.Equal(t, shardCount, stage.shardCount)
@@ -433,7 +433,7 @@ func TestArchiverStage_SelectOutput(t *testing.T) {
 
 		stage, err := NewArchiverStage(config, input, output)
 		require.NoError(t, err)
-		defer stage.Stop()
+		defer func() { _ = stage.Stop() }()
 
 		// Create a test job
 		job := &Job{
@@ -457,7 +457,7 @@ func TestArchiverStage_SelectOutput(t *testing.T) {
 
 		stage, err := NewArchiverStageWithSharding(config, input, outputs, 3)
 		require.NoError(t, err)
-		defer stage.Stop()
+		defer func() { _ = stage.Stop() }()
 
 		// Test sharding distribution
 		jobs := []*Job{

@@ -1163,3 +1163,154 @@ func TestBuilder_ConcurrentFinalize(t *testing.T) {
 		assert.Equal(t, manifests[0].UploadID, manifests[i].UploadID)
 	}
 }
+
+// TestBuilder_SetSyncInfo tests setting sync information
+func TestBuilder_SetSyncInfo(t *testing.T) {
+	builder, err := NewBuilder("test-upload-123", "/test/source", "test-bucket", "test-prefix", "us-west-2")
+	require.NoError(t, err)
+
+	// Test setting sync info
+	builder.SetSyncInfo("incremental", "previous-upload-456")
+
+	manifest := builder.Build()
+	assert.Equal(t, "incremental", manifest.SyncType)
+	assert.Equal(t, "previous-upload-456", manifest.PreviousManifestID)
+}
+
+// TestBuilder_SetSyncInfo_Empty tests setting empty sync info
+func TestBuilder_SetSyncInfo_Empty(t *testing.T) {
+	builder, err := NewBuilder("test-upload-123", "/test/source", "test-bucket", "test-prefix", "us-west-2")
+	require.NoError(t, err)
+
+	// Test setting empty sync info
+	builder.SetSyncInfo("", "")
+
+	manifest := builder.Build()
+	assert.Empty(t, manifest.SyncType)
+	assert.Empty(t, manifest.PreviousManifestID)
+}
+
+// TestBuilder_SetSyncInfo_Concurrent tests thread-safety
+func TestBuilder_SetSyncInfo_Concurrent(t *testing.T) {
+	builder, err := NewBuilder("test-upload-123", "/test/source", "test-bucket", "test-prefix", "us-west-2")
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	numGoroutines := 10
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			syncType := fmt.Sprintf("sync-type-%d", idx)
+			prevID := fmt.Sprintf("prev-id-%d", idx)
+			builder.SetSyncInfo(syncType, prevID)
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify manifest was updated (exact values unpredictable due to concurrency)
+	manifest := builder.Build()
+	assert.NotEmpty(t, manifest.SyncType)
+	assert.NotEmpty(t, manifest.PreviousManifestID)
+}
+
+// TestBuilder_SetEncryption tests setting encryption metadata
+func TestBuilder_SetEncryption(t *testing.T) {
+	tests := []struct {
+		name              string
+		kmsKeyID          string
+		manifestEncrypted bool
+		expectNil         bool
+		expectEnabled     bool
+	}{
+		{
+			name:              "with KMS key and manifest encryption",
+			kmsKeyID:          "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789abc",
+			manifestEncrypted: true,
+			expectNil:         false,
+			expectEnabled:     true,
+		},
+		{
+			name:              "with KMS key only",
+			kmsKeyID:          "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789abc",
+			manifestEncrypted: false,
+			expectNil:         false,
+			expectEnabled:     true,
+		},
+		{
+			name:              "manifest encrypted without KMS key",
+			kmsKeyID:          "",
+			manifestEncrypted: true,
+			expectNil:         false,
+			expectEnabled:     false,
+		},
+		{
+			name:              "no encryption",
+			kmsKeyID:          "",
+			manifestEncrypted: false,
+			expectNil:         true,
+			expectEnabled:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder, err := NewBuilder("test-upload-123", "/test/source", "test-bucket", "test-prefix", "us-west-2")
+	require.NoError(t, err)
+			builder.SetEncryption(tt.kmsKeyID, tt.manifestEncrypted)
+
+			manifest := builder.Build()
+
+			if tt.expectNil {
+				assert.Nil(t, manifest.Encryption)
+			} else {
+				require.NotNil(t, manifest.Encryption)
+				assert.Equal(t, tt.expectEnabled, manifest.Encryption.Enabled)
+				assert.Equal(t, tt.kmsKeyID, manifest.Encryption.DataKMSKeyID)
+				assert.Equal(t, tt.manifestEncrypted, manifest.Encryption.ManifestEncrypted)
+			}
+		})
+	}
+}
+
+// TestBuilder_SetEncryption_Concurrent tests thread-safety
+func TestBuilder_SetEncryption_Concurrent(t *testing.T) {
+	builder, err := NewBuilder("test-upload-123", "/test/source", "test-bucket", "test-prefix", "us-west-2")
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	numGoroutines := 10
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			kmsKey := fmt.Sprintf("kms-key-%d", idx)
+			builder.SetEncryption(kmsKey, idx%2 == 0)
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify encryption metadata was set
+	manifest := builder.Build()
+	assert.NotNil(t, manifest.Encryption)
+}
+
+// TestBuilder_SetEncryption_ClearEncryption tests clearing encryption
+func TestBuilder_SetEncryption_ClearEncryption(t *testing.T) {
+	builder, err := NewBuilder("test-upload-123", "/test/source", "test-bucket", "test-prefix", "us-west-2")
+	require.NoError(t, err)
+
+	// Set encryption first
+	builder.SetEncryption("test-kms-key", true)
+	manifest := builder.Build()
+	require.NotNil(t, manifest.Encryption)
+
+	// Clear encryption
+	builder.SetEncryption("", false)
+	manifest = builder.Build()
+	assert.Nil(t, manifest.Encryption)
+}
