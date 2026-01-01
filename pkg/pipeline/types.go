@@ -79,10 +79,11 @@ type Pipeline struct {
 	config *PipelineConfig
 
 	// Stages
-	scanner    *ScannerStage
-	archiver   *ArchiverStage
-	uploader   *UploaderStage   // Simulated uploader (for testing)
-	s3Uploader *S3UploaderStage // Real AWS S3 uploader (single-prefix)
+	scanner        *ScannerStage
+	archiver       *ArchiverStage
+	uploader       *UploaderStage         // Simulated uploader (for testing)
+	s3Uploader     *S3UploaderStage       // Real AWS S3 uploader (single-prefix)
+	directUploader *DirectUploaderStage   // Issue #166: Direct uploader (fast path for small files)
 
 	// Phase 3: Multi-prefix parallel upload stages
 	router              *PrefixRouter               // Routes jobs to per-prefix channels
@@ -200,6 +201,15 @@ type PipelineConfig struct {
 	EnableLocalState       bool          // Enable local state file persistence (default: true)
 	LocalStateSaveInterval time.Duration // How often to save local state (default: 30s)
 	DisableFileHashing     bool          // Skip file hashing for change detection (faster but less safe)
+
+	// Direct upload optimization (Issue #166: Small file optimization)
+	EnableDirectUpload        bool    // Enable fast path for small files (bypasses archiving/compression)
+	DirectUploadThresholdMB   int     // Max total size for direct upload mode (default: 500MB)
+	DirectUploadMaxFiles      int     // Max file count for direct upload (default: 50000)
+	DirectUploadAvgSizeMB     float64 // Max average file size for direct upload (default: 5MB)
+	DirectUploadWorkers       int     // Worker count for direct upload (default: 256, matches s5cmd)
+	ForceDirectUpload         bool    // Force direct upload regardless of thresholds (for testing)
+	EnableAutoDirectUpload    bool    // Auto-enable direct upload when thresholds met (default: true)
 
 	// Cleanup configuration (Issue #158: Automatic cleanup on failure)
 	CleanupOnFailure bool // Automatically delete partial uploads on error (default: true)

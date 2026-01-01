@@ -631,3 +631,147 @@ func TestMultipartUploadTracker(t *testing.T) {
 	assert.Equal(t, "etag2", parts[2])
 	assert.Equal(t, "etag3", parts[3])
 }
+
+// TestPipeline_ShouldUseDirectUpload tests the direct upload decision logic (Issue #166)
+func TestPipeline_ShouldUseDirectUpload(t *testing.T) {
+	tests := []struct {
+		name               string
+		config             *PipelineConfig
+		fileCount          int64
+		totalSize          int64
+		expectedDirectMode bool
+	}{
+		{
+			name: "force_direct_upload_enabled",
+			config: &PipelineConfig{
+				S3Bucket:          "test-bucket",
+				ForceDirectUpload: true,
+			},
+			fileCount:          1000,
+			totalSize:          100 * 1024 * 1024, // 100MB
+			expectedDirectMode: true,
+		},
+		{
+			name: "explicit_direct_upload_enabled",
+			config: &PipelineConfig{
+				S3Bucket:           "test-bucket",
+				EnableDirectUpload: true,
+			},
+			fileCount:          1000,
+			totalSize:          100 * 1024 * 1024,
+			expectedDirectMode: true,
+		},
+		{
+			name: "auto_detect_small_avg_file_size",
+			config: &PipelineConfig{
+				S3Bucket:               "test-bucket",
+				EnableAutoDirectUpload: true,
+				DirectUploadThresholdMB: 500,
+				DirectUploadAvgSizeMB:  5.0,
+			},
+			fileCount:          10000,
+			totalSize:          400 * 1024 * 1024, // 400MB total, 0.04MB avg
+			expectedDirectMode: true,
+		},
+		{
+			name: "auto_detect_many_small_files",
+			config: &PipelineConfig{
+				S3Bucket:               "test-bucket",
+				EnableAutoDirectUpload: true,
+				DirectUploadThresholdMB: 500,
+				DirectUploadAvgSizeMB:  5.0,
+			},
+			fileCount:          2000,                 // >1000 files
+			totalSize:          10 * 1024 * 1024 * 1024, // 10GB total, 5MB avg
+			expectedDirectMode: false,                // Total size exceeds threshold
+		},
+		{
+			name: "auto_detect_large_total_size",
+			config: &PipelineConfig{
+				S3Bucket:               "test-bucket",
+				EnableAutoDirectUpload: true,
+				DirectUploadThresholdMB: 500,
+				DirectUploadAvgSizeMB:  5.0,
+			},
+			fileCount:          100,
+			totalSize:          600 * 1024 * 1024, // 600MB, exceeds threshold
+			expectedDirectMode: false,
+		},
+		{
+			name: "auto_detect_enabled_by_default",
+			config: &PipelineConfig{
+				S3Bucket:               "test-bucket",
+				DirectUploadThresholdMB: 500,
+				DirectUploadAvgSizeMB:  5.0,
+				// EnableAutoDirectUpload not set - should default to true
+			},
+			fileCount:          10000,
+			totalSize:          100 * 1024 * 1024, // 100MB total, 0.01MB avg
+			expectedDirectMode: true, // Should auto-enable due to small avg file size
+		},
+		{
+			name: "zero_files",
+			config: &PipelineConfig{
+				S3Bucket:               "test-bucket",
+				EnableAutoDirectUpload: true,
+			},
+			fileCount:          0,
+			totalSize:          0,
+			expectedDirectMode: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pipeline, err := NewPipeline(tt.config)
+			require.NoError(t, err)
+			require.NotNil(t, pipeline)
+
+			result := pipeline.shouldUseDirectUpload(tt.fileCount, tt.totalSize)
+			assert.Equal(t, tt.expectedDirectMode, result,
+				"Expected direct upload=%v for %d files, %d bytes",
+				tt.expectedDirectMode, tt.fileCount, tt.totalSize)
+		})
+	}
+}
+
+// TestNewPipeline_DirectUploadDefaults tests that direct upload defaults are applied (Issue #166)
+func TestNewPipeline_DirectUploadDefaults(t *testing.T) {
+	config := &PipelineConfig{
+		S3Bucket: "test-bucket",
+	}
+
+	pipeline, err := NewPipeline(config)
+	require.NoError(t, err)
+	require.NotNil(t, pipeline)
+
+	// Verify defaults were applied
+	assert.Equal(t, 500, pipeline.config.DirectUploadThresholdMB)
+	assert.Equal(t, 50000, pipeline.config.DirectUploadMaxFiles)
+	assert.Equal(t, 5.0, pipeline.config.DirectUploadAvgSizeMB)
+	assert.Equal(t, 256, pipeline.config.DirectUploadWorkers)
+	assert.True(t, pipeline.config.EnableAutoDirectUpload)
+}
+
+// TestNewPipeline_DirectUploadCustomConfig tests custom direct upload configuration (Issue #166)
+func TestNewPipeline_DirectUploadCustomConfig(t *testing.T) {
+	config := &PipelineConfig{
+		S3Bucket:                "test-bucket",
+		DirectUploadThresholdMB: 1000,
+		DirectUploadMaxFiles:    10000,
+		DirectUploadAvgSizeMB:   10.0,
+		DirectUploadWorkers:     512,
+		EnableDirectUpload:      true,
+	}
+
+	pipeline, err := NewPipeline(config)
+	require.NoError(t, err)
+	require.NotNil(t, pipeline)
+
+	// Verify custom config was preserved
+	assert.Equal(t, 1000, pipeline.config.DirectUploadThresholdMB)
+	assert.Equal(t, 10000, pipeline.config.DirectUploadMaxFiles)
+	assert.Equal(t, 10.0, pipeline.config.DirectUploadAvgSizeMB)
+	assert.Equal(t, 512, pipeline.config.DirectUploadWorkers)
+	assert.True(t, pipeline.config.EnableDirectUpload)
+}

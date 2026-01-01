@@ -394,6 +394,11 @@ Examples:
 
 				// Cleanup on failure
 				CleanupOnFailure: true,
+
+				// Issue #166: Direct upload optimization
+				EnableDirectUpload:  cmd.Flags().Changed("direct-upload"),
+				ForceDirectUpload:   cmd.Flags().Changed("force-direct-upload"),
+				EnableAutoDirectUpload: true, // Auto-enable when thresholds met
 			}
 
 			// Note: Compression level and shard strategy are not yet implemented in the pipeline
@@ -551,6 +556,12 @@ Examples:
 
 	// Issue #119: Resume configuration
 	cmd.Flags().BoolVar(&forceRestart, "force-restart", false, "Ignore saved state and start fresh upload (bypasses resume detection)")
+
+	// Issue #166: Direct upload optimization (fast path for small files)
+	cmd.Flags().Bool("direct-upload", false, "Enable direct upload mode (bypasses archiving/compression for small files)")
+	cmd.Flags().Bool("force-direct-upload", false, "Force direct upload regardless of thresholds (for benchmarking)")
+	cmd.Flags().Int("direct-upload-threshold-mb", 500, "Max total size in MB for auto direct upload (default: 500)")
+	cmd.Flags().Int("direct-upload-workers", 256, "Worker count for direct upload (default: 256)")
 
 	return cmd
 }

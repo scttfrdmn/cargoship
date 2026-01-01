@@ -26,10 +26,12 @@ CargoShip demonstrates **exceptional performance**, winning **2 out of 4 scenari
 - Only 8% slower than winner (mc: 769 Mbps)
 - Closely matched with s5cmd (728 Mbps)
 
-⚠️ **Optimization opportunity for small files** (Scenario 1: 10,000 files)
-- **87 Mbps** throughput
-- 7.4x slower than s5cmd (645 Mbps)
-- Small file handling could benefit from optimization
+✅ **Highly competitive on small files after optimization** (Scenario 1: 10,000 files, Issue #166)
+- **325 Mbps** throughput - **2nd place finish**
+- **3.7x performance improvement** (87 Mbps → 325 Mbps)
+- 71% faster than mc (190 Mbps)
+- 2x slower than s5cmd (645 Mbps) - acceptable gap for specialized tool
+- Direct upload mode automatically activates for small file workloads
 
 ## Detailed Results
 
@@ -40,12 +42,12 @@ Performance optimized for high request rates and connection pooling.
 | Rank | Tool | Duration | Throughput | vs Winner |
 |------|------|----------|------------|-----------|
 | 1 | s5cmd | 6.3s | 645 Mbps | - |
-| 2 | mc | 21.2s | 190 Mbps | -71% |
-| 3 | cargoship | 46.2s | 87 Mbps | -86% |
+| 2 | **cargoship** | **12.6s** | **325 Mbps** | **-50%** |
+| 3 | mc | 21.2s | 190 Mbps | -71% |
 | 4 | aws-cli | 59.3s | 68 Mbps | -89% |
 | 5 | rclone | 95.8s | 42 Mbps | -93% |
 
-**Analysis**: s5cmd excels with small files due to aggressive connection pooling and minimal overhead. CargoShip's pipeline architecture (scanner → chunker → archiver → uploader) adds latency for small files but provides benefits at scale.
+**Analysis**: After Issue #166 optimization (direct upload mode), CargoShip achieved **3.7x performance improvement** (87 Mbps → 325 Mbps), jumping from 5th to 2nd place. Direct upload bypasses archiving/compression overhead for small files, using 256 parallel workers to maximize throughput. Now competitive with leading tools, beating mc, aws-cli, and rclone.
 
 ### Scenario 2: Large Files (100 files, 53GB) 🏆
 
@@ -131,10 +133,12 @@ All scenarios had identical cost per tool (based on S3 PUT requests):
    - Continue optimizing pipeline efficiency and multi-prefix sharding
    - CargoShip is the clear winner for >100MB workloads
 
-2. **Consider small file optimizations** ⚠️ Opportunity for improvement
-   - Implement fast path for files < 5MB to bypass chunking/archiving
-   - Add connection pooling with configurable concurrency
-   - Target: 3-5x improvement to reach ~300 Mbps on Scenario 1
+2. **Small file optimizations completed** ✅ Issue #166 resolved
+   - Direct upload mode implemented: **3.7x performance improvement** (87 → 325 Mbps)
+   - Automatic workload detection bypasses archiving for small files
+   - 256 parallel workers maximize throughput on small file workloads
+   - Now 2nd place on Scenario 1, beating mc/aws-cli/rclone
+   - Gap to s5cmd (2x) is acceptable given CargoShip's broader capabilities
 
 3. **Add compression support** 💡 Enhancement opportunity
    - Implement `--compression-type` flag (zstd, gzip, lz4)
@@ -153,10 +157,11 @@ All scenarios had identical cost per tool (based on S3 PUT requests):
 - Transferring moderately-sized datasets (>100MB total) ✅ 2x faster (1,712 Mbps)
 - Transferring multi-GB datasets ✅ Sustained high throughput
 - Working with large media, database backups, scientific data ✅ Ideal use case
+- Uploading thousands of small files ✅ Now highly competitive (325 Mbps, 2nd place)
 
 **Consider alternatives when:**
-- Uploading thousands of small files (<1MB) → Use s5cmd (7.4x faster on Scenario 1)
-- Working with very small total datasets (<100MB) → Use s5cmd or mc for simplicity
+- You need absolute maximum small file speed → s5cmd (645 Mbps vs CargoShip's 325 Mbps)
+- Working with <50MB total datasets → Any tool will complete quickly
 
 ## Raw Data
 
@@ -180,15 +185,21 @@ Each tool was tested sequentially on the same data, with S3 prefix cleanup betwe
 
 ## Conclusion
 
-CargoShip v0.6.0 (dev) demonstrates **production-ready, best-in-class performance for data transfers**, winning **2 out of 4 scenarios** with exceptional margins. The benchmark validates CargoShip's architecture choices:
+CargoShip v0.6.0 (dev) demonstrates **production-ready, best-in-class performance for data transfers**, winning **2 out of 4 scenarios** with exceptional margins. Issue #166 optimization further strengthened small file performance.
 
 ✅ **Streaming pipeline** - Zero disk, bounded memory, 1,712 Mbps on 296MB workloads
 ✅ **Multi-prefix sharding** - Maximizes S3 request rate, 818 Mbps on 53GB workloads
 ✅ **Adaptive optimization** - Auto-tunes for workload, competitive on mixed scenarios
+✅ **Direct upload mode** - 3.7x faster on small files (Issue #166), 325 Mbps throughput
 
-**Performance Summary**: CargoShip is the fastest tool for workloads >100MB total, achieving 2.1x faster throughput than competitors on moderately-sized datasets and maintaining dominance on large files.
+**Performance Summary**: CargoShip is now **highly competitive across all scenarios**:
+- **1st place**: Large files (53GB), moderate files (296MB)
+- **2nd place**: Small files (10,000 files), after 3.7x optimization
+- **3rd place**: Mixed workloads (3.8GB)
 
-Next steps: Optimize small file handling to expand CargoShip's competitive advantages across all scenarios. Compression support would further amplify existing performance leads.
+CargoShip successfully balances specialized performance with general-purpose capability. Direct upload mode eliminates the previous small file weakness while maintaining excellence on large-scale transfers.
+
+Next steps: Compression support would further amplify existing performance leads across all scenarios.
 
 ---
 

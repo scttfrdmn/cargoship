@@ -132,6 +132,24 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 	// EnableCompressedAwareChunking and EnableArchivePadding are false by default (opt-in)
 	// ForceChunkSizeMB defaults to 0 (use adaptive sizing)
 
+	// Issue #166: Direct upload optimization defaults
+	if config.DirectUploadThresholdMB == 0 {
+		config.DirectUploadThresholdMB = 500 // Default: 500MB max for direct upload
+	}
+	if config.DirectUploadMaxFiles == 0 {
+		config.DirectUploadMaxFiles = 50000 // Default: 50k files max for direct upload
+	}
+	if config.DirectUploadAvgSizeMB == 0 {
+		config.DirectUploadAvgSizeMB = 5.0 // Default: 5MB average file size threshold
+	}
+	if config.DirectUploadWorkers == 0 {
+		config.DirectUploadWorkers = 256 // Default: 256 workers (matches s5cmd)
+	}
+	// EnableAutoDirectUpload defaults to true for automatic optimization
+	if !config.EnableDirectUpload && !config.ForceDirectUpload {
+		config.EnableAutoDirectUpload = true
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	p := &Pipeline{
@@ -348,6 +366,45 @@ func (p *Pipeline) Run(ctx context.Context, rootPath string) (*Result, error) {
 	return result, nil
 }
 
+// shouldUseDirectUpload determines if direct upload mode should be used based on workload characteristics
+// Direct upload bypasses archiving/compression for better performance on small files
+func (p *Pipeline) shouldUseDirectUpload(fileCount int64, totalSize int64) bool {
+	// Force direct upload if explicitly requested (for testing/benchmarking)
+	if p.config.ForceDirectUpload {
+		return true
+	}
+
+	// Check if direct upload is explicitly enabled
+	if p.config.EnableDirectUpload {
+		return true
+	}
+
+	// Auto-detect if enabled
+	if !p.config.EnableAutoDirectUpload {
+		return false
+	}
+
+	// Don't use direct upload if no files
+	if fileCount == 0 {
+		return false
+	}
+
+	// Calculate average file size in MB
+	avgFileSizeMB := float64(totalSize) / float64(fileCount) / (1024 * 1024)
+
+	// Calculate total size in MB
+	totalSizeMB := totalSize / (1024 * 1024)
+
+	// Use direct upload if:
+	// 1. Total size is under threshold AND
+	// 2. Average file size is small (under threshold) OR file count is high
+	underSizeThreshold := totalSizeMB < int64(p.config.DirectUploadThresholdMB)
+	smallAvgSize := avgFileSizeMB < p.config.DirectUploadAvgSizeMB
+	manySmallFiles := fileCount > 1000 && avgFileSizeMB < 10.0 // Many files under 10MB each
+
+	return underSizeThreshold && (smallAvgSize || manySmallFiles)
+}
+
 // startStages initializes and starts all pipeline stages
 func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 	var err error
@@ -366,6 +423,56 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 		return fmt.Errorf("failed to create scanner: %w", err)
 	}
 
+	// Issue #166: Check if we should use direct upload (fast path for small files)
+	// Only check when using real S3 (not simulation mode)
+	useDirectUpload := false
+	if p.config.UseRealS3 {
+		// Estimate workload to determine upload strategy
+		fileCount, totalSize, err := EstimateWorkload(ctx, rootPath)
+		if err != nil {
+			// Log warning but continue with standard path
+			fmt.Printf("Warning: Failed to estimate workload, using standard upload path: %v\n", err)
+		} else {
+			useDirectUpload = p.shouldUseDirectUpload(fileCount, totalSize)
+			if useDirectUpload {
+				avgSizeMB := float64(totalSize) / float64(fileCount) / (1024 * 1024)
+				fmt.Printf("📦 Using direct upload mode (fast path): %d files, %.2f MB total, %.2f MB avg\n",
+					fileCount, float64(totalSize)/(1024*1024), avgSizeMB)
+			}
+		}
+	}
+
+	// Issue #166: Direct upload path (bypasses archiving/compression for small files)
+	if useDirectUpload {
+		// Create direct uploader stage
+		directConfig := &DirectUploaderConfig{
+			S3Client:   p.config.S3Client.(S3Uploader),
+			Bucket:     p.config.S3Bucket,
+			Prefix:     p.config.S3Prefix,
+			Workers:    p.config.DirectUploadWorkers,
+			MaxRetries: 3,
+			RetryDelay: time.Second,
+		}
+
+		p.directUploader, err = NewDirectUploaderStage(directConfig, p.chunkChan, p.resultChan)
+		if err != nil {
+			return fmt.Errorf("failed to create direct uploader: %w", err)
+		}
+
+		// Start scanner and direct uploader
+		if err := p.scanner.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start scanner: %w", err)
+		}
+
+		if err := p.directUploader.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start direct uploader: %w", err)
+		}
+
+		// Direct upload mode - skip archiver and standard uploader creation
+		return nil
+	}
+
+	// Standard upload path: archiver + uploader
 	// Create archiver stage based on configuration
 	archiverConfig := &ArchiverConfig{
 		Workers:         p.config.ArchiverWorkers,
@@ -942,6 +1049,13 @@ func (p *Pipeline) Stop() error {
 	if p.s3Uploader != nil {
 		if err := p.s3Uploader.Stop(); err != nil {
 			errs = append(errs, fmt.Errorf("s3 uploader stop error: %w", err))
+		}
+	}
+
+	// Issue #166: Stop direct uploader if present
+	if p.directUploader != nil {
+		if err := p.directUploader.Stop(); err != nil {
+			errs = append(errs, fmt.Errorf("direct uploader stop error: %w", err))
 		}
 	}
 
