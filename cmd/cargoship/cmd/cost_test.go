@@ -337,6 +337,7 @@ func TestNewCostCmd_Structure(t *testing.T) {
 		"forecast",
 		"burnrate",
 		"exhaustion",
+		"benchmark-compare",
 	}
 
 	commands := cmd.Commands()

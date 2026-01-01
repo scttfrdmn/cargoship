@@ -393,8 +393,61 @@ Examples:
 	exhaustionCmd.Flags().Float64("spent", 0, "Amount already spent (default: calculated from cost records)")
 	_ = exhaustionCmd.MarkFlagRequired("budget")
 
+	// Benchmark Compare subcommand (Issue #165)
+	benchmarkCmd := &cobra.Command{
+		Use:   "benchmark-compare",
+		Short: "Compare CargoShip costs vs competitors for benchmarking",
+		Long: `Calculate and compare costs for benchmark scenarios.
+
+Shows CargoShip's cost advantages:
+- Compression savings (20-70% data reduction)
+- Intelligent chunking (50% fewer requests)
+- Storage tier optimization (30-60% cost reduction)
+- Deduplication (variable savings)
+
+Output format is JSON for easy integration with benchmark scripts.
+
+Examples:
+  # Compare CargoShip (3:1 compression) vs competitor (no compression)
+  cargoship cost benchmark-compare --size 100GB --files 10000 \
+    --compression-ratio 3.0 --storage-class GLACIER
+
+  # Compare with deduplication
+  cargoship cost benchmark-compare --size 100GB --files 10000 \
+    --compression-ratio 2.0 --dedup-ratio 2.0
+
+  # Competitor cost only
+  cargoship cost benchmark-compare --tool s5cmd --size 100GB --files 10000
+`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			tool, _ := cmd.Flags().GetString("tool")
+			sizeGB, _ := cmd.Flags().GetFloat64("size-gb")
+			fileCount, _ := cmd.Flags().GetInt64("files")
+			compressionRatio, _ := cmd.Flags().GetFloat64("compression-ratio")
+			dedupRatio, _ := cmd.Flags().GetFloat64("dedup-ratio")
+			storageClassStr, _ := cmd.Flags().GetString("storage-class")
+
+			// Parse storage class
+			storageClass, err := parseStorageClass(storageClassStr)
+			if err != nil {
+				return fmt.Errorf("invalid storage class: %w", err)
+			}
+
+			return runBenchmarkCompare(cmd.Context(), region, tool, sizeGB, fileCount,
+				compressionRatio, dedupRatio, storageClass)
+		},
+	}
+	benchmarkCmd.Flags().String("tool", "", "Tool name (s5cmd, rclone, aws-cli, cargoship)")
+	benchmarkCmd.Flags().Float64("size-gb", 0, "Data size in GB (required)")
+	benchmarkCmd.Flags().Int64("files", 0, "Number of files (required)")
+	benchmarkCmd.Flags().Float64("compression-ratio", 1.0, "Compression ratio (e.g., 3.0 for 3:1)")
+	benchmarkCmd.Flags().Float64("dedup-ratio", 1.0, "Deduplication ratio (e.g., 2.0 for 2:1)")
+	benchmarkCmd.Flags().String("storage-class", "STANDARD", "Storage class")
+	_ = benchmarkCmd.MarkFlagRequired("size-gb")
+	_ = benchmarkCmd.MarkFlagRequired("files")
+
 	// Add subcommands
-	cmd.AddCommand(estimateCmd, uploadCmd, budgetCmd, pricingCmd, reportCmd, projectsCmd, projectCmd, forecastCmd, burnrateCmd, exhaustionCmd)
+	cmd.AddCommand(estimateCmd, uploadCmd, budgetCmd, pricingCmd, reportCmd, projectsCmd, projectCmd, forecastCmd, burnrateCmd, exhaustionCmd, benchmarkCmd)
 
 	return cmd
 }
@@ -1269,4 +1322,85 @@ func loadCostManagerWithRegion(ctx context.Context, region string) (*cost.Manage
 	}
 
 	return costMgr, nil
+}
+
+// runBenchmarkCompare calculates cost comparison for benchmark scenarios (Issue #165)
+func runBenchmarkCompare(
+	ctx context.Context,
+	region, tool string,
+	sizeGB float64,
+	fileCount int64,
+	compressionRatio, dedupRatio float64,
+	storageClass cargoconfig.StorageClass,
+) error {
+	// Load AWS config
+	awsCfg, cargoConfig, err := loadAWSConfigForCost(ctx, region)
+	if err != nil {
+		return err
+	}
+
+	// Create pricing manager
+	pricingMgr, err := cost.NewPricingManager(&cargoConfig.CostControl.Pricing, awsCfg, slog.Default())
+	if err != nil {
+		return fmt.Errorf("failed to create pricing manager: %w", err)
+	}
+
+	// Create benchmark calculator
+	benchmarkCalc := cost.NewBenchmarkCostCalculator(pricingMgr, region)
+
+	var result interface{}
+
+	if tool == "" || tool == "cargoship" {
+		// Calculate CargoShip cost with optimizations
+		cargoshipCost, err := benchmarkCalc.CalculateCargoShipCost(
+			ctx,
+			"benchmark",
+			sizeGB,
+			fileCount,
+			compressionRatio,
+			dedupRatio,
+			storageClass,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to calculate CargoShip cost: %w", err)
+		}
+
+		if tool == "cargoship" {
+			result = cargoshipCost
+		} else {
+			// Calculate competitor cost for comparison
+			competitorCost, err := benchmarkCalc.CalculateCompetitorCost(
+				ctx,
+				"benchmark",
+				"competitor",
+				sizeGB,
+				fileCount,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to calculate competitor cost: %w", err)
+			}
+
+			// Compare costs
+			comparison := benchmarkCalc.CompareCosts(cargoshipCost, competitorCost)
+			result = comparison
+		}
+	} else {
+		// Calculate competitor cost only
+		competitorCost, err := benchmarkCalc.CalculateCompetitorCost(
+			ctx,
+			"benchmark",
+			tool,
+			sizeGB,
+			fileCount,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to calculate cost: %w", err)
+		}
+		result = competitorCost
+	}
+
+	// Output as JSON
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(result)
 }
