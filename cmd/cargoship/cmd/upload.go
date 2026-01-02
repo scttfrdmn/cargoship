@@ -32,6 +32,7 @@ func NewUploadCmd() *cobra.Command {
 		shardStrategy    string
 		compressionLevel int
 		quiet            bool
+		interactive      bool // Issue #112: Interactive TUI mode
 
 		// v0.6.2: Advanced transporter configuration
 		transporterType    string
@@ -629,6 +630,7 @@ Examples:
 	cmd.Flags().StringVar(&shardStrategy, "shard-strategy", "hash", "Shard distribution strategy (hash, size, type, directory)")
 	cmd.Flags().IntVar(&compressionLevel, "compression-level", 3, "Zstd compression level (1-22, recommended 1-19)")
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "Disable progress display")
+	cmd.Flags().BoolVar(&interactive, "interactive", false, "Enable interactive TUI mode with per-shard progress (Issue #112)")
 
 	// v0.6.2: Advanced transporter flags
 	cmd.Flags().StringVar(&transporterType, "transporter", "staging", "S3 transporter type: basic, staging, adaptive, optimized, none")

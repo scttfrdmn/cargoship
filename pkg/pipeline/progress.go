@@ -120,8 +120,17 @@ func (m progressModel) Init() tea.Cmd {
 func (m progressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" || msg.String() == "q" {
+		switch msg.String() {
+		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "p", "P":
+			// TODO (Issue #112): Implement pause functionality
+			// For now, just log that pause was requested
+			// m.tracker.coordinator.Pause()
+		case "r", "R":
+			// TODO (Issue #112): Implement resume functionality
+			// For now, just log that resume was requested
+			// m.tracker.coordinator.Resume()
 		}
 
 	case tea.WindowSizeMsg:
@@ -231,7 +240,13 @@ func (m progressModel) View() string {
 		}
 		statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor))
 
-		shardLine := fmt.Sprintf("%s %s %s %s %s %s %s",
+		// Worker count display (Issue #112)
+		workerStr := fmt.Sprintf("(%dw)", shardStat.WorkerCount)
+		if shardStat.WorkerCount == 0 {
+			workerStr = "(--)"
+		}
+
+		shardLine := fmt.Sprintf("%s %s %s %s %s %s %s %s",
 			statusStyle.Render(statusIcon),
 			shardStyle.Render(fmt.Sprintf("Shard %d:", i)),
 			progressBar,
@@ -239,6 +254,7 @@ func (m progressModel) View() string {
 			shardStyle.Render("files"),
 			valueStyle.Render(bytesStr),
 			shardStyle.Render(throughputStr),
+			valueStyle.Render(workerStr),
 		)
 		shardViews = append(shardViews, shardLine)
 	}
@@ -307,7 +323,7 @@ func (m progressModel) View() string {
 		footerStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")).
 			MarginTop(1)
-		footer := footerStyle.Render("Press q or Ctrl+C to quit")
+		footer := footerStyle.Render("[P]ause [R]esume [Q]uit")
 		sections = append(sections, footer)
 	}
 
