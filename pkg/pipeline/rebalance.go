@@ -2,14 +2,17 @@ package pipeline
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"math"
 	"sort"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/klauspost/compress/zstd"
 
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
@@ -27,6 +30,14 @@ type RebalanceConfig struct {
 
 	// DryRun if true, only analyze and report without making changes
 	DryRun bool
+
+	// S3 configuration for execution (required if not DryRun)
+	S3Client        *s3.Client      // S3 client for downloading/uploading chunks
+	Bucket          string          // S3 bucket name
+	Prefix          string          // S3 prefix
+	UploadID        string          // Upload ID
+	CompressionType string          // Compression type (e.g., "zstd")
+	StorageClass    types.StorageClass // S3 storage class for new chunks
 }
 
 // ShardBalance represents the balance state of shards
@@ -394,7 +405,7 @@ func RebalanceShards(ctx context.Context, m *manifest.Manifest, config *Rebalanc
 	}
 
 	// Execute rebalancing
-	err = executeRebalancing(ctx, m, plan, result)
+	err = executeRebalancing(ctx, m, plan, result, config)
 	if err != nil {
 		result.Error = err
 		return result, fmt.Errorf("rebalancing execution failed: %w", err)
@@ -558,18 +569,262 @@ func downloadAndExtractFiles(ctx context.Context, s3Client *s3.Client, bucket st
 	return extracted, nil
 }
 
-// executeRebalancing performs the actual file redistribution
-func executeRebalancing(ctx context.Context, m *manifest.Manifest, plan *RebalancePlan, result *RebalanceResult) error {
-	// NOTE: Full implementation requires:
-	// 1. S3 client for downloading/uploading chunks
-	// 2. Integration with existing chunking/archiving pipeline
-	// 3. Temporary storage for extracted files
-	// 4. Chunk creation with proper compression
-	// 5. Manifest updates
-	// 6. Old chunk cleanup
-	//
-	// This is a complex operation that should be done carefully to avoid data loss.
-	// For now, returning an error to indicate this needs further implementation.
+// createAndUploadChunk creates a tar.zst archive from extracted files and uploads to S3
+//
+//nolint:unused // Will be used in full rebalancing execution implementation
+func createAndUploadChunk(ctx context.Context, s3Client *s3.Client, bucket string, s3Key string, files []extractedFile, compressionType string, storageClass types.StorageClass) (*manifest.ChunkEntry, error) {
+	// Create buffer for compressed archive
+	var buf bytes.Buffer
 
-	return fmt.Errorf("rebalancing execution not yet fully implemented - requires S3 client configuration and pipeline integration")
+	// Create compressor
+	var compressor io.WriteCloser
+	switch compressionType {
+	case "zstd":
+		encoder, err := zstd.NewWriter(&buf)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create zstd encoder: %w", err)
+		}
+		defer encoder.Close()
+		compressor = encoder
+	case "gzip", "gz":
+		return nil, fmt.Errorf("gzip compression not yet supported for rebalancing")
+	case "none", "":
+		compressor = nopWriteCloser{&buf}
+	default:
+		return nil, fmt.Errorf("unsupported compression type: %s", compressionType)
+	}
+
+	// Create tar writer
+	tarWriter := tar.NewWriter(compressor)
+	defer tarWriter.Close()
+
+	var uncompressedSize int64
+	filePaths := make([]string, 0, len(files))
+
+	// Add files to archive
+	for _, file := range files {
+		// Create tar header
+		header := &tar.Header{
+			Name:    file.Entry.Path,
+			Mode:    0644,
+			Size:    int64(len(file.Data)),
+			ModTime: file.Entry.ModTime,
+		}
+
+		// Write header
+		if err := tarWriter.WriteHeader(header); err != nil {
+			return nil, fmt.Errorf("failed to write tar header for %s: %w", file.Entry.Path, err)
+		}
+
+		// Write file data
+		if _, err := tarWriter.Write(file.Data); err != nil {
+			return nil, fmt.Errorf("failed to write file %s: %w", file.Entry.Path, err)
+		}
+
+		uncompressedSize += int64(len(file.Data))
+		filePaths = append(filePaths, file.Entry.Path)
+	}
+
+	// Close tar writer to flush
+	if err := tarWriter.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close tar writer: %w", err)
+	}
+
+	// Close compressor to flush
+	if err := compressor.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close compressor: %w", err)
+	}
+
+	// Get compressed data
+	compressedData := buf.Bytes()
+	compressedSize := int64(len(compressedData))
+
+	// Upload to S3
+	_, err := s3Client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:       aws.String(bucket),
+		Key:          aws.String(s3Key),
+		Body:         bytes.NewReader(compressedData),
+		ContentType:  aws.String("application/x-tar"),
+		StorageClass: storageClass,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload chunk to S3: %w", err)
+	}
+
+	// Create chunk entry
+	now := time.Now()
+	chunk := &manifest.ChunkEntry{
+		S3Key:            s3Key,
+		FileCount:        len(files),
+		FilePaths:        filePaths,
+		UncompressedSize: uncompressedSize,
+		CompressedSize:   compressedSize,
+		CreatedAt:        now,
+		UploadedAt:       now,
+	}
+
+	return chunk, nil
+}
+
+// nopWriteCloser wraps a Writer with a no-op Close method
+type nopWriteCloser struct {
+	io.Writer
+}
+
+func (nopWriteCloser) Close() error { return nil }
+
+// executeRebalancing performs the actual file redistribution
+func executeRebalancing(ctx context.Context, m *manifest.Manifest, plan *RebalancePlan, result *RebalanceResult, config *RebalanceConfig) error {
+	if config.S3Client == nil {
+		return fmt.Errorf("S3 client required for rebalancing execution")
+	}
+
+	// Step 1: Group moves by source chunk (download each chunk once)
+	movesBySourceChunk := make(map[int][]FileMove)
+	for _, move := range plan.Moves {
+		movesBySourceChunk[move.SourceChunk] = append(movesBySourceChunk[move.SourceChunk], move)
+	}
+
+	// Step 2: Download and extract files from source chunks
+	extractedFilesByTarget := make(map[int][]extractedFile)
+	chunksToDelete := make(map[int]bool)
+
+	for sourceChunkID, moves := range movesBySourceChunk {
+		// Find chunk metadata
+		var chunk *manifest.ChunkEntry
+		for i := range m.Chunks {
+			if m.Chunks[i].ID == sourceChunkID {
+				chunk = &m.Chunks[i]
+				break
+			}
+		}
+		if chunk == nil {
+			return fmt.Errorf("chunk %d not found in manifest", sourceChunkID)
+		}
+
+		// Build list of files to extract
+		filesToExtract := make([]manifest.FileEntry, len(moves))
+		for i, move := range moves {
+			filesToExtract[i] = move.File
+		}
+
+		// Download and extract files
+		extracted, err := downloadAndExtractFiles(ctx, config.S3Client, config.Bucket, chunk.S3Key, filesToExtract, config.CompressionType)
+		if err != nil {
+			return fmt.Errorf("failed to extract files from chunk %d: %w", sourceChunkID, err)
+		}
+
+		// Group extracted files by target shard
+		for _, ef := range extracted {
+			// Find the move for this file
+			var targetShard int
+			for _, move := range moves {
+				if move.File.Path == ef.Entry.Path {
+					targetShard = move.TargetShard
+					break
+				}
+			}
+			extractedFilesByTarget[targetShard] = append(extractedFilesByTarget[targetShard], ef)
+		}
+
+		// Mark source chunk for deletion
+		chunksToDelete[sourceChunkID] = true
+	}
+
+	// Step 3: Create and upload new chunks for each target shard
+	newChunks := make(map[int]*manifest.ChunkEntry)
+
+	for targetShardID, files := range extractedFilesByTarget {
+		chunkID := len(m.Chunks) // New chunk ID
+		s3Key := fmt.Sprintf("%s/uploads/%s/shard-%d/chunk-rebalance-%d.tar.zst",
+			config.Prefix, config.UploadID, targetShardID, chunkID)
+
+		// Create chunk with extracted files
+		chunk, err := createAndUploadChunk(ctx, config.S3Client, config.Bucket, s3Key, files, config.CompressionType, config.StorageClass)
+		if err != nil {
+			return fmt.Errorf("failed to create chunk for shard %d: %w", targetShardID, err)
+		}
+
+		chunk.ID = chunkID
+		chunk.ShardID = targetShardID
+		newChunks[targetShardID] = chunk
+
+		// Add to manifest
+		m.Chunks = append(m.Chunks, *chunk)
+	}
+
+	// Step 4: Update file entries in manifest with new chunk/shard assignments
+	for _, move := range plan.Moves {
+		for i := range m.Files {
+			if m.Files[i].Path == move.File.Path {
+				m.Files[i].ShardID = move.TargetShard
+				m.Files[i].ChunkID = newChunks[move.TargetShard].ID
+				m.Files[i].S3Key = newChunks[move.TargetShard].S3Key
+				break
+			}
+		}
+	}
+
+	// Step 5: Update shard statistics
+	for i := range m.Shards {
+		shardID := m.Shards[i].ID
+
+		// Recalculate statistics for this shard
+		var fileCount int64
+		var uncompressedSize int64
+		var compressedSize int64
+		var chunkCount int
+		chunkKeys := make(map[string]bool)
+
+		for _, file := range m.Files {
+			if file.ShardID == shardID && !file.IsDuplicate {
+				fileCount++
+				uncompressedSize += file.Size
+			}
+		}
+
+		for _, chunk := range m.Chunks {
+			if chunk.ShardID == shardID {
+				chunkCount++
+				compressedSize += chunk.CompressedSize
+				chunkKeys[chunk.S3Key] = true
+			}
+		}
+
+		// Update shard entry
+		m.Shards[i].FileCount = fileCount
+		m.Shards[i].UncompressedSize = uncompressedSize
+		m.Shards[i].CompressedSize = compressedSize
+		m.Shards[i].ChunkCount = chunkCount
+
+		// Update chunk keys list
+		keys := make([]string, 0, len(chunkKeys))
+		for key := range chunkKeys {
+			keys = append(keys, key)
+		}
+		m.Shards[i].ChunkKeys = keys
+	}
+
+	// Step 6: Delete old chunks from S3 (only those affected by moves)
+	for chunkID := range chunksToDelete {
+		for i, chunk := range m.Chunks {
+			if chunk.ID == chunkID {
+				// Delete from S3
+				_, err := config.S3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
+					Bucket: aws.String(config.Bucket),
+					Key:    aws.String(chunk.S3Key),
+				})
+				if err != nil {
+					// Log error but don't fail - chunk will be orphaned
+					fmt.Printf("Warning: failed to delete old chunk %s: %v\n", chunk.S3Key, err)
+				}
+
+				// Remove from manifest
+				m.Chunks = append(m.Chunks[:i], m.Chunks[i+1:]...)
+				break
+			}
+		}
+	}
+
+	return nil
 }
