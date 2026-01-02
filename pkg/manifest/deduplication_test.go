@@ -373,3 +373,108 @@ func TestAddFile_NonexistentFile(t *testing.T) {
 		t.Errorf("Expected TotalFiles=0 for failed add, got %d", stats.TotalFiles)
 	}
 }
+
+func TestUpdateFileLocation(t *testing.T) {
+	// Create temporary test file
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	index := NewFileDeduplicationIndex()
+
+	// Add file with placeholder location
+	_, _, err := index.AddFile(testFile, -1, -1, "")
+	if err != nil {
+		t.Fatalf("Failed to add file: %v", err)
+	}
+
+	// Get hash
+	hash, _, _, err := index.computeFileHash(testFile)
+	if err != nil {
+		t.Fatalf("Failed to compute hash: %v", err)
+	}
+
+	// Update location
+	err = index.UpdateFileLocation(hash, 5, 10, "s3://bucket/shard-5/chunk-10")
+	if err != nil {
+		t.Fatalf("Failed to update location: %v", err)
+	}
+
+	// Verify location was updated
+	loc := index.FindFile(hash)
+	if loc == nil {
+		t.Fatal("Expected to find file after update")
+	}
+	if loc.ShardID != 5 {
+		t.Errorf("Expected ShardID=5, got %d", loc.ShardID)
+	}
+	if loc.ChunkID != 10 {
+		t.Errorf("Expected ChunkID=10, got %d", loc.ChunkID)
+	}
+	if loc.S3Key != "s3://bucket/shard-5/chunk-10" {
+		t.Errorf("Expected S3Key=s3://bucket/shard-5/chunk-10, got %s", loc.S3Key)
+	}
+}
+
+func TestUpdateFileLocationByPath(t *testing.T) {
+	// Create temporary test file
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	index := NewFileDeduplicationIndex()
+
+	// Add file with placeholder location
+	_, _, err := index.AddFile(testFile, -1, -1, "")
+	if err != nil {
+		t.Fatalf("Failed to add file: %v", err)
+	}
+
+	// Update location by path
+	err = index.UpdateFileLocationByPath(testFile, 7, 15, "s3://bucket/shard-7/chunk-15")
+	if err != nil {
+		t.Fatalf("Failed to update location by path: %v", err)
+	}
+
+	// Verify location was updated
+	loc, err := index.FindFileByPath(testFile)
+	if err != nil {
+		t.Fatalf("Failed to find file by path: %v", err)
+	}
+	if loc == nil {
+		t.Fatal("Expected to find file after update")
+	}
+	if loc.ShardID != 7 {
+		t.Errorf("Expected ShardID=7, got %d", loc.ShardID)
+	}
+	if loc.ChunkID != 15 {
+		t.Errorf("Expected ChunkID=15, got %d", loc.ChunkID)
+	}
+	if loc.S3Key != "s3://bucket/shard-7/chunk-15" {
+		t.Errorf("Expected S3Key=s3://bucket/shard-7/chunk-15, got %s", loc.S3Key)
+	}
+}
+
+func TestUpdateFileLocation_NotFound(t *testing.T) {
+	index := NewFileDeduplicationIndex()
+
+	// Try to update location for non-existent hash
+	err := index.UpdateFileLocation("nonexistent-hash", 0, 0, "s3://bucket/chunk-0")
+	if err == nil {
+		t.Error("Expected error for non-existent hash")
+	}
+}
+
+func TestUpdateFileLocationByPath_NonexistentFile(t *testing.T) {
+	index := NewFileDeduplicationIndex()
+
+	// Try to update location for non-existent file
+	err := index.UpdateFileLocationByPath("/nonexistent/file.txt", 0, 0, "s3://bucket/chunk-0")
+	if err == nil {
+		t.Error("Expected error for non-existent file")
+	}
+}

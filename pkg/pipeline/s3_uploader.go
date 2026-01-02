@@ -314,6 +314,27 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 			s.pipeline.trackUploadedKey(job.S3Key)
 		}
 
+		// Issue #108: Update deduplication index with actual locations after successful upload
+		if s.pipeline != nil && s.pipeline.dedupEnabled && s.pipeline.dedupIndex != nil {
+			dedupIndex := s.pipeline.dedupIndex.(*manifest.FileDeduplicationIndex)
+			for _, file := range job.Chunk.Files {
+				// Check if file has content hash (stored by scanner during dedup filtering)
+				if file.Metadata != nil {
+					if hash, ok := file.Metadata["content_hash"]; ok {
+						// Update location with actual shard/chunk/S3 key
+						if err := dedupIndex.UpdateFileLocation(hash, job.ShardID, job.Chunk.ID, job.S3Key); err != nil {
+							// Log warning but don't fail upload - dedup is best-effort
+							tracing.WarnWithTrace(retryCtx, s.logger, "failed to update dedup location",
+								slog.String("file", file.Path),
+								slog.String("hash", hash),
+								slog.String("error", err.Error()),
+							)
+						}
+					}
+				}
+			}
+		}
+
 		// Record success in spans
 		if s.pipeline != nil && s.pipeline.tracer != nil {
 			tracer := s.pipeline.tracer.(*tracing.PipelineTracer)

@@ -165,6 +165,35 @@ func (d *FileDeduplicationIndex) Clear() {
 	d.contentHash = make(map[string]*FileLocation)
 }
 
+// UpdateFileLocation updates the location information for a file after upload (Issue #108 Phase 2c)
+// This is called after a chunk is successfully uploaded to update placeholder locations with actual values.
+func (d *FileDeduplicationIndex) UpdateFileLocation(hash string, shardID, chunkID int, s3Key string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	location, exists := d.contentHash[hash]
+	if !exists {
+		return fmt.Errorf("file with hash %s not found in deduplication index", hash)
+	}
+
+	// Update location with actual values
+	location.ShardID = shardID
+	location.ChunkID = chunkID
+	location.S3Key = s3Key
+
+	return nil
+}
+
+// UpdateFileLocationByPath updates the location for a file by computing its hash (Issue #108 Phase 2c)
+// Convenience method when you have the file path instead of the hash.
+func (d *FileDeduplicationIndex) UpdateFileLocationByPath(filePath string, shardID, chunkID int, s3Key string) error {
+	hash, _, _, err := d.computeFileHash(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to compute hash for %s: %w", filePath, err)
+	}
+	return d.UpdateFileLocation(hash, shardID, chunkID, s3Key)
+}
+
 // computeFileHash computes the SHA-256 hash of a file
 // Returns: hash (hex string), size (bytes), modTime (Unix timestamp), error
 func (d *FileDeduplicationIndex) computeFileHash(filePath string) (string, int64, int64, error) {
@@ -173,7 +202,7 @@ func (d *FileDeduplicationIndex) computeFileHash(filePath string) (string, int64
 	if err != nil {
 		return "", 0, 0, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Get file info
 	fi, err := file.Stat()
