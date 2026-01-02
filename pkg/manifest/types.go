@@ -42,6 +42,9 @@ type Manifest struct {
 	// Encryption (Issue #163)
 	Encryption *EncryptionMetadata `json:"encryption,omitempty"` // Encryption configuration if enabled
 
+	// Deduplication (Issue #108)
+	Deduplication *ManifestDeduplication `json:"deduplication,omitempty"` // Deduplication metadata if enabled
+
 	// Files - array of all files with their locations
 	Files []FileEntry `json:"files"`
 
@@ -88,6 +91,14 @@ type FileEntry struct {
 	// Optional metadata
 	Checksum string            `json:"checksum,omitempty"` // SHA256 checksum (optional)
 	Metadata map[string]string `json:"metadata,omitempty"` // Additional metadata
+
+	// Deduplication (Issue #108)
+	IsDuplicate       bool   `json:"is_duplicate,omitempty"`        // True if this file is a duplicate
+	DuplicateOfHash   string `json:"duplicate_of_hash,omitempty"`   // Hash of the original file
+	OriginalChunkID   int    `json:"original_chunk_id,omitempty"`   // Chunk ID of the original file
+	OriginalShardID   int    `json:"original_shard_id,omitempty"`   // Shard ID of the original file
+	OriginalS3Key     string `json:"original_s3_key,omitempty"`     // S3 key of the original file
+	DeduplicationRefs int32  `json:"deduplication_refs,omitempty"`  // Number of duplicates referencing this file
 }
 
 // ChunkEntry represents a single chunk (tar.zst archive) in the manifest
