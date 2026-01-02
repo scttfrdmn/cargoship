@@ -30,6 +30,11 @@ type StorageTierSelector struct {
 	// Default: 180 days
 	ArchiveDays int
 
+	// MaxTier limits automatic tier selection to not exceed this tier
+	// Issue #168: Allows users to cap tier selection (e.g., max GLACIER to avoid DEEP_ARCHIVE)
+	// Empty string = no limit (default)
+	MaxTier types.StorageClass
+
 	// FallbackToMtime enables using modification time as a fallback when atime is unavailable
 	// This is useful for filesystems mounted with noatime or when atime extraction fails
 	FallbackToMtime bool
@@ -74,23 +79,59 @@ func (s *StorageTierSelector) SelectTier(atime, mtime time.Time) types.StorageCl
 	daysSinceAccess := time.Since(accessTime).Hours() / 24
 
 	// Select storage tier based on access age
+	var selectedTier types.StorageClass
 	switch {
 	case daysSinceAccess >= float64(s.ArchiveDays):
 		// Very old files (>=180 days default): Deep Archive
-		return types.StorageClassDeepArchive
+		selectedTier = types.StorageClassDeepArchive
 
 	case daysSinceAccess >= float64(s.ColdDays):
 		// Old files (>=90 days default): Glacier
-		return types.StorageClassGlacier
+		selectedTier = types.StorageClassGlacier
 
 	case daysSinceAccess >= float64(s.HotDays):
 		// Moderately old files (>=30 days default): Standard-IA
-		return types.StorageClassStandardIa
+		selectedTier = types.StorageClassStandardIa
 
 	default:
 		// Recently accessed files: Standard
-		return types.StorageClassStandard
+		selectedTier = types.StorageClassStandard
 	}
+
+	// Issue #168: Apply MaxTier cap if set
+	if s.MaxTier != "" {
+		selectedTier = s.capTier(selectedTier, s.MaxTier)
+	}
+
+	return selectedTier
+}
+
+// capTier limits a tier to not exceed the maximum allowed tier
+// Issue #168: Tier capping for cost control
+func (s *StorageTierSelector) capTier(selectedTier, maxTier types.StorageClass) types.StorageClass {
+	// Tier hierarchy (least to most restrictive):
+	// STANDARD < STANDARD_IA < GLACIER < DEEP_ARCHIVE
+	tierPriority := map[types.StorageClass]int{
+		types.StorageClassStandard:     1,
+		types.StorageClassStandardIa:   2,
+		types.StorageClassGlacier:      3,
+		types.StorageClassDeepArchive:  4,
+	}
+
+	selectedPriority, selectedExists := tierPriority[selectedTier]
+	maxPriority, maxExists := tierPriority[maxTier]
+
+	// If either tier is not in our priority map, return selected as-is
+	if !selectedExists || !maxExists {
+		return selectedTier
+	}
+
+	// If selected tier exceeds max, cap it
+	if selectedPriority > maxPriority {
+		return maxTier
+	}
+
+	return selectedTier
 }
 
 // FileWithTimes represents a file with its associated timestamps for tier analysis.

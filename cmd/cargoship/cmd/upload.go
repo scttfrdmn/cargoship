@@ -337,12 +337,31 @@ Examples:
 				coldDays, _ := cmd.Flags().GetInt("tier-cold-days")
 				archiveDays, _ := cmd.Flags().GetInt("tier-archive-days")
 
+				// Issue #168: Get and validate tier-max if specified
+				tierMaxStr, _ := cmd.Flags().GetString("tier-max")
+				var tierMax types.StorageClass
+				if tierMaxStr != "" {
+					// Validate tier-max value
+					validTiers := map[string]types.StorageClass{
+						"STANDARD":       types.StorageClassStandard,
+						"STANDARD_IA":    types.StorageClassStandardIa,
+						"GLACIER":        types.StorageClassGlacier,
+						"DEEP_ARCHIVE":   types.StorageClassDeepArchive,
+					}
+					var ok bool
+					tierMax, ok = validTiers[strings.ToUpper(tierMaxStr)]
+					if !ok {
+						return fmt.Errorf("invalid --tier-max: %q (must be STANDARD, STANDARD_IA, GLACIER, or DEEP_ARCHIVE)", tierMaxStr)
+					}
+				}
+
 				tierSelector = &pipeline.StorageTierSelector{
 					Enabled:         true,
 					DefaultClass:    types.StorageClassStandard,
 					HotDays:         hotDays,
 					ColdDays:        coldDays,
 					ArchiveDays:     archiveDays,
+					MaxTier:         tierMax, // Issue #168: Apply tier cap
 					FallbackToMtime: true,
 				}
 
@@ -350,7 +369,11 @@ Examples:
 					fmt.Println("📊 Automatic storage tier selection enabled")
 					fmt.Printf("   Hot threshold:     %d days (STANDARD)\n", hotDays)
 					fmt.Printf("   Cold threshold:    %d days (GLACIER)\n", coldDays)
-					fmt.Printf("   Archive threshold: %d days (DEEP_ARCHIVE)\n\n", archiveDays)
+					fmt.Printf("   Archive threshold: %d days (DEEP_ARCHIVE)\n", archiveDays)
+					if tierMax != "" {
+						fmt.Printf("   Maximum tier:      %s (capped)\n", tierMax)
+					}
+					fmt.Println()
 				}
 			}
 
@@ -585,6 +608,9 @@ Examples:
 	cmd.Flags().Int("tier-hot-days", 30, "Days since access to consider 'hot' (STANDARD)")
 	cmd.Flags().Int("tier-cold-days", 90, "Days since access to consider 'cold' (GLACIER)")
 	cmd.Flags().Int("tier-archive-days", 180, "Days since access to consider 'archive' (DEEP_ARCHIVE)")
+
+	// Issue #168: Limit maximum tier selection
+	cmd.Flags().String("tier-max", "", "Maximum storage tier (STANDARD, STANDARD_IA, GLACIER, DEEP_ARCHIVE) - prevents automatic selection of more restrictive tiers")
 
 	// Issue #164: Tier chunking strategy (opt-in tier-aware chunking)
 	cmd.Flags().String("tier-strategy", "youngest-file", `Tier chunking strategy (requires --auto-tier):

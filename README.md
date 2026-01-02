@@ -201,6 +201,26 @@ Skip prompt with `--yes` flag for automation:
 cargoship upload --auto-tier --tier-strategy tier-aware --yes ./data s3://bucket
 ```
 
+#### Limiting Maximum Tier Selection
+
+Use `--tier-max` to cap automatic tier selection and avoid more restrictive tiers:
+
+```bash
+# Allow up to GLACIER, but exclude DEEP_ARCHIVE
+$ cargoship upload --auto-tier --tier-strategy tier-aware --tier-max GLACIER ./data s3://bucket
+
+📊 Automatic storage tier selection enabled
+   Hot threshold:     30 days (STANDARD)
+   Cold threshold:    90 days (GLACIER)
+   Archive threshold: 180 days (DEEP_ARCHIVE)
+   Maximum tier:      GLACIER (capped)
+```
+
+**Use Cases:**
+- `--tier-max STANDARD_IA`: Avoid archive tiers entirely (no 90-180 day minimums)
+- `--tier-max GLACIER`: Use Glacier for cold storage, but avoid Deep Archive (no 180-day minimum)
+- Combined with tier-aware: Benefit from tier-based chunking while controlling cost exposure
+
 #### Decision Matrix: Which Strategy to Use?
 
 | Access Pattern | Retention | Recommended Strategy | Why |
@@ -219,6 +239,64 @@ cargoship upload --auto-tier --tier-strategy tier-aware --yes ./data s3://bucket
 5. **Use tier-aware for cold data**: Backups, compliance, long-term archives
 
 See [Issue #168](https://github.com/scttfrdmn/cargoship/issues/168) for complete documentation.
+
+#### Total Cost of Ownership (TCO) Analysis
+
+Use the `estimate` command with `--show-comparison` to see detailed TCO scenarios for archive tiers:
+
+```bash
+$ cargoship estimate ./data --storage-class GLACIER --show-comparison
+
+📊 TOTAL COST OF OWNERSHIP (TCO) SCENARIOS
+
+Archive tiers (Glacier, Deep Archive) have restore costs and access patterns
+that affect Total Cost of Ownership. Here are common usage scenarios:
+
+1. Zero Retrievals (Pure Archival)
+   Description:   Data stored long-term with no retrievals
+   Retrievals:    0x/year (0% of data each time)
+
+   Cost Breakdown:
+      Storage:    $48.00/year
+      Upload:     $0.15 (one-time)
+      ────────────────────────
+      Total TCO:  $48.15/year
+
+2. Occasional Retrievals (2x/year)
+   Description:   Retrieve 10% of data twice yearly (Standard restore, 7-day access)
+   Retrievals:    2x/year (10% of data each time)
+   Restore Tier:  Standard
+
+   Cost Breakdown:
+      Storage:    $48.00/year
+      Upload:     $0.15 (one-time)
+      Retrieval:  $24.00/year
+      ────────────────────────
+      Total TCO:  $72.15/year
+
+3. Frequent Retrievals (10x/year) ⚠️
+   Description:   Retrieve 20% of data 10x yearly (Bulk restore, 3-day access) - NOT RECOMMENDED
+   Retrievals:    10x/year (20% of data each time)
+   Restore Tier:  Bulk
+
+   Cost Breakdown:
+      Storage:    $48.00/year
+      Upload:     $0.15 (one-time)
+      Retrieval:  $240.00/year
+      ────────────────────────
+      Total TCO:  $288.15/year
+
+      ⚠️  This retrieval pattern is NOT RECOMMENDED for archive tiers.
+          Consider STANDARD or INTELLIGENT_TIERING for frequent access.
+
+💡 TCO Analysis:
+   • Archive tiers (Glacier, Deep Archive) are cost-effective for infrequent access
+   • Retrieval costs can exceed storage savings if accessed frequently
+   • Use INTELLIGENT_TIERING if access pattern is unpredictable
+   • Early deletion penalties apply (30-180 days minimum storage)
+```
+
+**Key Takeaway:** Always model your access patterns before choosing archive tiers. Use `--show-comparison` to understand the full TCO impact.
 
 ### Budget Tracking and Cost Control
 
