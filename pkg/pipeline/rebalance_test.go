@@ -277,3 +277,129 @@ func TestDefaultRebalanceConfig(t *testing.T) {
 		t.Error("Expected DryRun to be false by default")
 	}
 }
+
+func TestCreateRebalancePlan_NoImbalance(t *testing.T) {
+	// Create a balanced manifest
+	m := &manifest.Manifest{
+		Version:    "1.0",
+		UploadID:   "test-upload",
+		ShardCount: 4,
+		Shards: []manifest.ShardEntry{
+			{ID: 0, UncompressedSize: 1024 * 1024 * 1024},
+			{ID: 1, UncompressedSize: 1024 * 1024 * 1024},
+			{ID: 2, UncompressedSize: 1024 * 1024 * 1024},
+			{ID: 3, UncompressedSize: 1024 * 1024 * 1024},
+		},
+		Files: []manifest.FileEntry{},
+	}
+
+	balance, err := AnalyzeShardBalance(m, 2.0)
+	if err != nil {
+		t.Fatalf("Failed to analyze balance: %v", err)
+	}
+
+	plan, err := createRebalancePlan(m, balance)
+	if err != nil {
+		t.Fatalf("Failed to create plan: %v", err)
+	}
+
+	// No moves should be needed for balanced shards
+	if len(plan.Moves) != 0 {
+		t.Errorf("Expected 0 moves for balanced shards, got %d", len(plan.Moves))
+	}
+}
+
+func TestCreateRebalancePlan_WithImbalance(t *testing.T) {
+	// Create an imbalanced manifest with actual files
+	m := &manifest.Manifest{
+		Version:    "1.0",
+		UploadID:   "test-upload",
+		ShardCount: 4,
+		Shards: []manifest.ShardEntry{
+			{ID: 0, UncompressedSize: 8 * 1024 * 1024 * 1024}, // 8GB
+			{ID: 1, UncompressedSize: 1 * 1024 * 1024 * 1024}, // 1GB
+			{ID: 2, UncompressedSize: 1 * 1024 * 1024 * 1024},
+			{ID: 3, UncompressedSize: 1 * 1024 * 1024 * 1024},
+		},
+		Files: []manifest.FileEntry{
+			// Shard 0 has large files
+			{Path: "file1.dat", Size: 2 * 1024 * 1024 * 1024, ShardID: 0, ChunkID: 0},
+			{Path: "file2.dat", Size: 2 * 1024 * 1024 * 1024, ShardID: 0, ChunkID: 0},
+			{Path: "file3.dat", Size: 2 * 1024 * 1024 * 1024, ShardID: 0, ChunkID: 0},
+			{Path: "file4.dat", Size: 2 * 1024 * 1024 * 1024, ShardID: 0, ChunkID: 0},
+			// Other shards have smaller files
+			{Path: "file5.dat", Size: 1 * 1024 * 1024 * 1024, ShardID: 1, ChunkID: 1},
+			{Path: "file6.dat", Size: 1 * 1024 * 1024 * 1024, ShardID: 2, ChunkID: 2},
+			{Path: "file7.dat", Size: 1 * 1024 * 1024 * 1024, ShardID: 3, ChunkID: 3},
+		},
+	}
+
+	balance, err := AnalyzeShardBalance(m, 2.0)
+	if err != nil {
+		t.Fatalf("Failed to analyze balance: %v", err)
+	}
+
+	plan, err := createRebalancePlan(m, balance)
+	if err != nil {
+		t.Fatalf("Failed to create plan: %v", err)
+	}
+
+	// Should have moves to rebalance
+	if len(plan.Moves) == 0 {
+		t.Error("Expected moves for imbalanced shards")
+	}
+
+	// All moves should be from shard 0 (overloaded)
+	for _, move := range plan.Moves {
+		if move.SourceShard != 0 {
+			t.Errorf("Expected moves from shard 0, got move from shard %d", move.SourceShard)
+		}
+		if move.TargetShard == 0 {
+			t.Error("Should not move files to the same shard")
+		}
+	}
+
+	// Total bytes moved should be reasonable
+	if plan.TotalBytes == 0 {
+		t.Error("Expected non-zero bytes to be moved")
+	}
+}
+
+func TestCreateRebalancePlan_SkipDuplicates(t *testing.T) {
+	// Create manifest with duplicate files
+	m := &manifest.Manifest{
+		Version:    "1.0",
+		UploadID:   "test-upload",
+		ShardCount: 2,
+		Shards: []manifest.ShardEntry{
+			{ID: 0, UncompressedSize: 5 * 1024 * 1024 * 1024},
+			{ID: 1, UncompressedSize: 1 * 1024 * 1024 * 1024},
+		},
+		Files: []manifest.FileEntry{
+			// Original file
+			{Path: "file1.dat", Size: 2 * 1024 * 1024 * 1024, ShardID: 0, ChunkID: 0, IsDuplicate: false},
+			// Duplicate (should not be considered for moves)
+			{Path: "file1_dup.dat", Size: 2 * 1024 * 1024 * 1024, ShardID: 0, ChunkID: 0, IsDuplicate: true},
+			// Another file
+			{Path: "file2.dat", Size: 3 * 1024 * 1024 * 1024, ShardID: 0, ChunkID: 0, IsDuplicate: false},
+			{Path: "file3.dat", Size: 1 * 1024 * 1024 * 1024, ShardID: 1, ChunkID: 1, IsDuplicate: false},
+		},
+	}
+
+	balance, err := AnalyzeShardBalance(m, 2.0)
+	if err != nil {
+		t.Fatalf("Failed to analyze balance: %v", err)
+	}
+
+	plan, err := createRebalancePlan(m, balance)
+	if err != nil {
+		t.Fatalf("Failed to create plan: %v", err)
+	}
+
+	// Check that duplicate file is not in the moves
+	for _, move := range plan.Moves {
+		if move.File.IsDuplicate {
+			t.Error("Duplicate files should not be moved")
+		}
+	}
+}
