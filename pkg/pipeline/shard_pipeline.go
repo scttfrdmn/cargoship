@@ -79,6 +79,11 @@ type ShardPipeline struct {
 	uploadErr  error              // Upload error (if any)
 	uploadSize int64              // Final uploaded size
 
+	// Pause/resume control (Issue #112)
+	paused    atomic.Bool
+	pauseCond *sync.Cond
+	pauseMu   sync.Mutex
+
 	// Statistics
 	filesAdded     int64 // Total files added to archive
 	bytesProcessed int64 // Total bytes processed
@@ -144,6 +149,9 @@ func NewShardPipeline(ctx context.Context, config *ShardPipelineConfig) (*ShardP
 		fileQueue: make(chan chunking.File, config.FileQueueBuffer),
 		done:      make(chan struct{}),
 	}
+
+	// Initialize pause condition variable (Issue #112)
+	sp.pauseCond = sync.NewCond(&sp.pauseMu)
 
 	// Create or use provided worker pool (Issue #84)
 	if config.WorkerPool != nil {
@@ -275,6 +283,13 @@ func (sp *ShardPipeline) fileAdder() {
 	}()
 
 	for {
+		// Check if paused (Issue #112)
+		sp.pauseMu.Lock()
+		for sp.paused.Load() {
+			sp.pauseCond.Wait() // Block until resumed
+		}
+		sp.pauseMu.Unlock()
+
 		select {
 		case <-sp.ctx.Done():
 			return
@@ -590,6 +605,22 @@ func (sp *ShardPipeline) GetStats() ShardPipelineStats {
 		Error:          sp.uploadErr,
 		WorkerCount:    workerCount,
 	}
+}
+
+// Pause pauses the pipeline (Issue #112)
+func (sp *ShardPipeline) Pause() {
+	sp.paused.Store(true)
+}
+
+// Resume resumes the pipeline (Issue #112)
+func (sp *ShardPipeline) Resume() {
+	sp.paused.Store(false)
+	sp.pauseCond.Broadcast() // Wake up paused goroutine
+}
+
+// IsPaused returns true if pipeline is paused (Issue #112)
+func (sp *ShardPipeline) IsPaused() bool {
+	return sp.paused.Load()
 }
 
 // ShardPipelineStats contains statistics for a shard pipeline

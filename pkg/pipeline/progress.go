@@ -124,13 +124,15 @@ func (m progressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "p", "P":
-			// TODO (Issue #112): Implement pause functionality
-			// For now, just log that pause was requested
-			// m.tracker.coordinator.Pause()
+			// Pause all shard pipelines (Issue #112)
+			if !m.tracker.coordinator.IsPaused() {
+				m.tracker.coordinator.Pause()
+			}
 		case "r", "R":
-			// TODO (Issue #112): Implement resume functionality
-			// For now, just log that resume was requested
-			// m.tracker.coordinator.Resume()
+			// Resume all shard pipelines (Issue #112)
+			if m.tracker.coordinator.IsPaused() {
+				m.tracker.coordinator.Resume()
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -178,7 +180,16 @@ func (m progressModel) View() string {
 			header = titleStyle.Render("✓ Upload completed successfully")
 		}
 	} else {
-		header = titleStyle.Render("🚢 Uploading to S3...")
+		// Check if paused (Issue #112)
+		if m.tracker.coordinator.IsPaused() {
+			pausedStyle := lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("226")). // Yellow
+				MarginBottom(1)
+			header = pausedStyle.Render("⏸  PAUSED - Press [R] to resume")
+		} else {
+			header = titleStyle.Render("🚢 Uploading to S3...")
+		}
 	}
 
 	// Per-shard progress bars

@@ -62,6 +62,9 @@ type ShardCoordinator struct {
 
 	// Memory management (Issue #83)
 	ownsMemoryManager bool // True if we created the MemoryManager and should stop it
+
+	// Pause/resume control (Issue #112)
+	paused atomic.Bool // True if coordinator is paused
 }
 
 // CalculateIntelligentShardCount determines optimal shard count based on workload size
@@ -334,6 +337,27 @@ func (sc *ShardCoordinator) GetShardStats(shardID int) (ShardPipelineStats, erro
 		return ShardPipelineStats{}, fmt.Errorf("invalid shard ID %d (must be 0-%d)", shardID, len(sc.pipelines)-1)
 	}
 	return sc.pipelines[shardID].GetStats(), nil
+}
+
+// Pause pauses all shard pipelines (Issue #112)
+func (sc *ShardCoordinator) Pause() {
+	sc.paused.Store(true)
+	for _, pipeline := range sc.pipelines {
+		pipeline.Pause()
+	}
+}
+
+// Resume resumes all shard pipelines (Issue #112)
+func (sc *ShardCoordinator) Resume() {
+	sc.paused.Store(false)
+	for _, pipeline := range sc.pipelines {
+		pipeline.Resume()
+	}
+}
+
+// IsPaused returns true if coordinator is paused (Issue #112)
+func (sc *ShardCoordinator) IsPaused() bool {
+	return sc.paused.Load()
 }
 
 // ShardCoordinatorStats contains aggregated statistics across all shards
