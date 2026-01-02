@@ -584,7 +584,9 @@ func createAndUploadChunk(ctx context.Context, s3Client *s3.Client, bucket strin
 		if err != nil {
 			return nil, fmt.Errorf("failed to create zstd encoder: %w", err)
 		}
-		defer encoder.Close()
+		defer func() {
+			_ = encoder.Close()
+		}()
 		compressor = encoder
 	case "gzip", "gz":
 		return nil, fmt.Errorf("gzip compression not yet supported for rebalancing")
@@ -596,7 +598,9 @@ func createAndUploadChunk(ctx context.Context, s3Client *s3.Client, bucket strin
 
 	// Create tar writer
 	tarWriter := tar.NewWriter(compressor)
-	defer tarWriter.Close()
+	defer func() {
+		_ = tarWriter.Close()
+	}()
 
 	var uncompressedSize int64
 	filePaths := make([]string, 0, len(files))
