@@ -447,6 +447,9 @@ Examples:
 				EncryptManifest: encryptManifest,
 				KMSClient:       kmsClient,
 
+				// Issue #108: Deduplication configuration
+				EnableDeduplication: func() bool { v, _ := cmd.Flags().GetBool("enable-dedup"); return v }(),
+
 				// v0.6.2: Advanced transporter
 				Transporter: transporter,
 
@@ -648,6 +651,9 @@ Examples:
 	// Issue #163: Encryption flags
 	cmd.Flags().StringVar(&kmsKeyID, "kms-key-id", "", "AWS KMS key ID or ARN for encryption (data chunks encrypted with SSE-KMS)")
 	cmd.Flags().BoolVar(&encryptManifest, "encrypt-manifest", false, "Encrypt manifest with KMS envelope encryption (requires --kms-key-id)")
+
+	// Issue #108: Deduplication flag
+	cmd.Flags().Bool("enable-dedup", false, "Enable cross-shard file deduplication (10-30% space savings for redundant datasets)")
 
 	// Issue #119: Resume configuration
 	cmd.Flags().BoolVar(&forceRestart, "force-restart", false, "Ignore saved state and start fresh upload (bypasses resume detection)")
