@@ -777,6 +777,22 @@ func (p *Pipeline) waitForCompletion(ctx context.Context) *Result {
 func (p *Pipeline) uploadManifest(ctx context.Context) error {
 	builder := p.manifestBuilder.(*manifest.Builder)
 
+	// Issue #108: Export deduplication metadata if enabled
+	if p.dedupEnabled && p.dedupIndex != nil {
+		dedupIndex := p.dedupIndex.(*manifest.FileDeduplicationIndex)
+		dedupMetadata := dedupIndex.ExportToManifest()
+		builder.SetDeduplication(dedupMetadata)
+
+		// Log deduplication statistics
+		if dedupMetadata.DuplicateFiles > 0 {
+			fmt.Printf("📊 Deduplication: %d/%d files were duplicates (%.1f%% space saved, %.2f MB saved)\n",
+				dedupMetadata.DuplicateFiles,
+				dedupMetadata.UniqueFiles+dedupMetadata.DuplicateFiles,
+				dedupMetadata.DeduplicationPct,
+				float64(dedupMetadata.BytesSaved)/(1024*1024))
+		}
+	}
+
 	// Finalize the manifest
 	p.manifestMu.Lock()
 	manifestData := builder.Finalize()

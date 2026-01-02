@@ -191,6 +191,14 @@ func (b *Builder) SetEncryption(kmsKeyID string, manifestEncrypted bool) {
 	}
 }
 
+// SetDeduplication sets deduplication metadata (Issue #108, thread-safe)
+func (b *Builder) SetDeduplication(dedup *ManifestDeduplication) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.manifest.Deduplication = dedup
+}
+
 // UpdateShardStats updates statistics for a shard (thread-safe)
 func (b *Builder) UpdateShardStats(shardID int, chunkKey string, fileCount int64, uncompressed, compressed int64) {
 	b.mu.Lock()
