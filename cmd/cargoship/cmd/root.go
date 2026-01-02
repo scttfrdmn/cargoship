@@ -100,6 +100,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 		NewDownloadCmd(), // Issue #96: Download with selective extraction
 		NewInfoCmd(),     // Issue #98: Info command for upload metadata
 		NewVerifyCmd(),   // Issue #99: Verify command for integrity checks
+		NewBalanceCmd(),  // Issue #109: Analyze shard balance and rebalancing
 		NewDeleteCmd(),   // Delete specific upload
 		NewScuttleCmd(),  // Nuclear option: delete everything
 		NewResumeCmd(),   // Issue #119: Resume interrupted uploads with local state
