@@ -631,7 +631,7 @@ func (cr *CostReporter) GetCurrentPeriodVolume(start, end time.Time) float64 {
 
 	totalVolume := 0.0
 	for _, cost := range cr.costs {
-		if cost.Timestamp.After(start) && cost.Timestamp.Before(end) {
+		if (cost.Timestamp.After(start) || cost.Timestamp.Equal(start)) && cost.Timestamp.Before(end) {
 			totalVolume += cost.SizeGB
 		}
 	}
@@ -651,7 +651,7 @@ func (cr *CostReporter) GetProjectCostsByPeriod(projectID string, period string)
 
 	totalCost := 0.0
 	for _, cost := range cr.costs {
-		if cost.ProjectID == projectID && cost.Timestamp.After(startTime) && cost.Timestamp.Before(endTime) {
+		if cost.ProjectID == projectID && (cost.Timestamp.After(startTime) || cost.Timestamp.Equal(startTime)) && cost.Timestamp.Before(endTime) {
 			totalCost += cost.Cost
 		}
 	}
@@ -743,7 +743,7 @@ func (cr *CostReporter) GenerateProjectReport(ctx context.Context, projectID str
 	// Filter by both project and period
 	var filteredCosts []CostRecord
 	for _, cost := range cr.costs {
-		if cost.ProjectID == projectID && cost.Timestamp.After(startTime) && cost.Timestamp.Before(endTime) {
+		if cost.ProjectID == projectID && (cost.Timestamp.After(startTime) || cost.Timestamp.Equal(startTime)) && cost.Timestamp.Before(endTime) {
 			filteredCosts = append(filteredCosts, cost)
 		}
 	}

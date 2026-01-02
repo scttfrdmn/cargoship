@@ -445,9 +445,12 @@ func TestGenerateReport(t *testing.T) {
 
 	// Add some test cost records
 	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	yesterdayStart := todayStart.Add(-24 * time.Hour)
+
 	records := []CostRecord{
 		{
-			Timestamp:    now.Add(-24 * time.Hour),
+			Timestamp:    yesterdayStart.Add(12 * time.Hour), // Yesterday at noon
 			Operation:    "upload",
 			Service:      "s3",
 			Region:       "us-east-1",
@@ -457,7 +460,7 @@ func TestGenerateReport(t *testing.T) {
 			Currency:     "USD",
 		},
 		{
-			Timestamp:    now.Add(-12 * time.Hour),
+			Timestamp:    todayStart.Add(6 * time.Hour), // Today at 6 AM
 			Operation:    "upload",
 			Service:      "s3",
 			Region:       "us-west-2",
@@ -467,7 +470,7 @@ func TestGenerateReport(t *testing.T) {
 			Currency:     "USD",
 		},
 		{
-			Timestamp:    now.Add(-6 * time.Hour),
+			Timestamp:    todayStart.Add(12 * time.Hour), // Today at noon
 			Operation:    "upload",
 			Service:      "s3",
 			Region:       "us-east-1",
@@ -923,30 +926,31 @@ func TestGetProjectCostsByPeriod(t *testing.T) {
 
 	projectID := "test-project-20251206"
 	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
 	// Add cost records with different timestamps
-	// Use explicit same-day and same-month timestamps to avoid calendar boundary issues
+	// Use absolute timestamps within today to avoid calendar boundary issues
 	reporter.RecordCost(CostRecord{
 		ProjectID: projectID,
-		Timestamp: now.Add(-1 * time.Hour), // Today
+		Timestamp: todayStart.Add(10 * time.Hour), // Today at 10 AM
 		Cost:      10.0,
 		Currency:  "USD",
 	})
 	reporter.RecordCost(CostRecord{
 		ProjectID: projectID,
-		Timestamp: now.Add(-2 * time.Hour), // Today (2 hours ago)
+		Timestamp: todayStart.Add(14 * time.Hour), // Today at 2 PM
 		Cost:      20.0,
 		Currency:  "USD",
 	})
 	reporter.RecordCost(CostRecord{
 		ProjectID: projectID,
-		Timestamp: now.Add(-12 * time.Hour), // 12 hours ago (still today)
+		Timestamp: todayStart.Add(18 * time.Hour), // Today at 6 PM
 		Cost:      30.0,
 		Currency:  "USD",
 	})
 	reporter.RecordCost(CostRecord{
 		ProjectID: projectID,
-		Timestamp: now.Add(-60 * 24 * time.Hour), // 60 days ago
+		Timestamp: todayStart.Add(-60 * 24 * time.Hour), // 60 days ago
 		Cost:      40.0,
 		Currency:  "USD",
 	})
