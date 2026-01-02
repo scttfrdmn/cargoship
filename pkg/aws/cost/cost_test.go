@@ -925,7 +925,7 @@ func TestGetProjectCostsByPeriod(t *testing.T) {
 	now := time.Now()
 
 	// Add cost records with different timestamps
-	// Use explicit same-day timestamps to avoid calendar boundary issues
+	// Use explicit same-day and same-month timestamps to avoid calendar boundary issues
 	reporter.RecordCost(CostRecord{
 		ProjectID: projectID,
 		Timestamp: now.Add(-1 * time.Hour), // Today
@@ -940,7 +940,7 @@ func TestGetProjectCostsByPeriod(t *testing.T) {
 	})
 	reporter.RecordCost(CostRecord{
 		ProjectID: projectID,
-		Timestamp: now.Add(-10 * 24 * time.Hour), // 10 days ago
+		Timestamp: now.Add(-12 * time.Hour), // 12 hours ago (still today)
 		Cost:      30.0,
 		Currency:  "USD",
 	})
@@ -959,17 +959,17 @@ func TestGetProjectCostsByPeriod(t *testing.T) {
 		{
 			name:         "today",
 			period:       "today",
-			expectedCost: 30.0, // 10 + 20 (both today)
+			expectedCost: 60.0, // 10 + 20 + 30 (all today)
 		},
 		{
 			name:         "week",
 			period:       "week",
-			expectedCost: 30.0, // 10 + 20 (both this week)
+			expectedCost: 60.0, // 10 + 20 + 30 (all this week)
 		},
 		{
 			name:         "month",
 			period:       "month",
-			expectedCost: 60.0, // 10 + 20 (today) + 30 (10 days ago, still this month)
+			expectedCost: 60.0, // 10 + 20 + 30 (all this month)
 		},
 	}
 

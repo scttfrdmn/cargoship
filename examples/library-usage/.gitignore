@@ -1,0 +1,9 @@
+# Compiled binaries
+*/01-simple-upload
+*/02-compression
+*/03-manifest
+*/04-multiregion
+*/05-progress
+
+# Build artifacts
+*/main
