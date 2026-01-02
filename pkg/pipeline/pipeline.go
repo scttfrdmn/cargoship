@@ -244,6 +244,12 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 		p.manifestBuilder = builder
 	}
 
+	// Initialize deduplication index if enabled (Issue #108)
+	if config.EnableDeduplication && config.UseRealS3 {
+		p.dedupIndex = manifest.NewFileDeduplicationIndex()
+		p.dedupEnabled = true
+	}
+
 	// Initialize local upload state if enabled (Issue #119: Enhanced resume)
 	if config.EnableLocalState && config.UseRealS3 {
 		uploadState := &resume.UploadState{

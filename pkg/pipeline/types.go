@@ -110,6 +110,10 @@ type Pipeline struct {
 	manifestBuilder interface{} // *manifest.Builder for tracking files/chunks (type: *github.com/scttfrdmn/cargoship/pkg/manifest.Builder)
 	manifestMu      sync.Mutex  // Protects manifest updates
 
+	// Deduplication tracking (Issue #108)
+	dedupIndex   interface{} // *manifest.FileDeduplicationIndex for cross-shard deduplication (type: *github.com/scttfrdmn/cargoship/pkg/manifest.FileDeduplicationIndex)
+	dedupEnabled bool        // Whether deduplication is enabled
+
 	// Local state tracking (Issue #119: Enhanced resume)
 	uploadState   interface{} // *resume.UploadState for local state persistence (type: *github.com/scttfrdmn/cargoship/pkg/resume.UploadState)
 	uploadStateMu sync.Mutex  // Protects uploadState updates
@@ -176,6 +180,9 @@ type PipelineConfig struct {
 	// Manifest configuration
 	EnableManifest bool   // Enable manifest generation (default: true for real S3)
 	SourcePath     string // Original source path for manifest
+
+	// Deduplication configuration (Issue #108)
+	EnableDeduplication bool // Enable cross-shard file deduplication (default: false)
 
 	// Incremental sync configuration (Issue #148)
 	IncludeOnlyFiles []string // If set, only upload these files (for incremental sync)
