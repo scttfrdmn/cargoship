@@ -15,25 +15,39 @@ type S3Analyzer struct {
 	calculator *Calculator
 	scanner    *s3.BucketScanner
 	region     string
+	provider   StorageProvider // Issue #170 Phase 3: Storage provider
 }
 
-// NewS3Analyzer creates a new S3 analyzer
+// NewS3Analyzer creates a new S3 analyzer (AWS S3)
 func NewS3Analyzer(calculator *Calculator, scanner *s3.BucketScanner, region string) *S3Analyzer {
 	return &S3Analyzer{
 		calculator: calculator,
 		scanner:    scanner,
 		region:     region,
+		provider:   ProviderAWS,
+	}
+}
+
+// NewS3AnalyzerWithProvider creates a new S3 analyzer with specified provider
+// Issue #170 Phase 3: Support for S3-compatible providers
+func NewS3AnalyzerWithProvider(calculator *Calculator, scanner *s3.BucketScanner, region string, provider StorageProvider) *S3Analyzer {
+	return &S3Analyzer{
+		calculator: calculator,
+		scanner:    scanner,
+		region:     region,
+		provider:   provider,
 	}
 }
 
 // S3AnalysisResult contains the analysis results for an existing S3 bucket
 type S3AnalysisResult struct {
 	// Bucket information
-	BucketName string    `json:"bucket_name"`
-	Prefix     string    `json:"prefix"`
-	Region     string    `json:"region"`
-	ScanTime   time.Time `json:"scan_time"`
-	IsSampled  bool      `json:"is_sampled"`
+	BucketName string          `json:"bucket_name"`
+	Prefix     string          `json:"prefix"`
+	Region     string          `json:"region"`
+	Provider   StorageProvider `json:"provider"` // Issue #170 Phase 3: Storage provider
+	ScanTime   time.Time       `json:"scan_time"`
+	IsSampled  bool            `json:"is_sampled"`
 
 	// Current bucket statistics
 	BucketStats *s3.BucketStats `json:"bucket_stats"`
@@ -167,6 +181,7 @@ func (a *S3Analyzer) Analyze(ctx context.Context) (*S3AnalysisResult, error) {
 
 	result := &S3AnalysisResult{
 		Region:          a.region,
+		Provider:        a.provider, // Issue #170 Phase 3
 		ScanTime:        time.Now(),
 		IsSampled:       stats.IsSampled,
 		BucketStats:     stats,
@@ -186,6 +201,9 @@ func (a *S3Analyzer) calculateCurrentCosts(ctx context.Context, stats *s3.Bucket
 		ByStorageClass: make(map[string]float64),
 	}
 
+	// Issue #170 Phase 3: Get provider pricing for S3-compatible providers
+	providerPricing := GetProviderPricing(a.provider, a.region)
+
 	// Calculate storage costs by tier
 	for storageClass, sizeBytes := range stats.StorageClassSizes {
 		sizeGB := float64(sizeBytes) / (1024 * 1024 * 1024)
@@ -194,27 +212,43 @@ func (a *S3Analyzer) calculateCurrentCosts(ctx context.Context, stats *s3.Bucket
 		// Convert to CargoShip config storage class
 		configClass := s3.ConvertToStorageClass(storageClass)
 
-		// Calculate storage cost with minimum size penalties
-		avgFileSizeKB := (sizeGB * 1024 * 1024) / float64(objectCount)
-		chargedSizeGB := a.calculator.calculateChargedSize(int(objectCount), sizeGB, configClass, avgFileSizeKB)
-		storageCost := a.calculator.calculateStorageCost(ctx, chargedSizeGB, configClass)
+		var storageCost float64
+		if a.provider == ProviderAWS {
+			// AWS: Use Calculator for region/tier-specific pricing with minimum size penalties
+			avgFileSizeKB := (sizeGB * 1024 * 1024) / float64(objectCount)
+			chargedSizeGB := a.calculator.calculateChargedSize(int(objectCount), sizeGB, configClass, avgFileSizeKB)
+			storageCost = a.calculator.calculateStorageCost(ctx, chargedSizeGB, configClass)
+		} else {
+			// S3-compatible provider: Use flat provider pricing
+			// Apply minimum size penalty if provider has it
+			if providerPricing.HasMinimumSizePenalty {
+				avgFileSizeKB := (sizeGB * 1024 * 1024) / float64(objectCount)
+				chargedSizeGB := a.calculator.calculateChargedSize(int(objectCount), sizeGB, configClass, avgFileSizeKB)
+				storageCost = providerPricing.CalculateProviderStorageCost(chargedSizeGB)
+			} else {
+				storageCost = providerPricing.CalculateProviderStorageCost(sizeGB)
+			}
+		}
 
 		breakdown.ByStorageClass[string(storageClass)] = storageCost
 		breakdown.StorageCost += storageCost
 
-		// Add INTELLIGENT_TIERING monitoring fees
-		if storageClass == types.ObjectStorageClassIntelligentTiering {
-			monitoringFee := (float64(objectCount) / 1000) * IntelligentTieringMonitoringFee
-			breakdown.MonitoringFees += monitoringFee
+		// Add monitoring fees if provider has them
+		if providerPricing.HasMonitoringFees {
+			if storageClass == types.ObjectStorageClassIntelligentTiering {
+				monitoringFee := providerPricing.CalculateProviderMonitoringCost(objectCount)
+				breakdown.MonitoringFees += monitoringFee
+			}
 		}
 	}
 
 	// Estimate monthly request costs (assume moderate access pattern)
 	// Conservative estimate: 10% of objects accessed per month
 	accessedObjects := int(float64(stats.ObjectCount) * 0.1)
-	getRequestCostPerMonth := (float64(accessedObjects) / 1000) * 0.0004 // $0.0004 per 1K GET requests
+	getRequests := accessedObjects
+	listRequests := int(float64(stats.ObjectCount) * 0.01) // 1% LIST operations
 
-	breakdown.RequestCosts = getRequestCostPerMonth
+	breakdown.RequestCosts = providerPricing.CalculateProviderRequestCost(getRequests, 0, listRequests)
 
 	// Calculate totals
 	breakdown.TotalMonthlyCost = breakdown.StorageCost + breakdown.MonitoringFees + breakdown.RequestCosts
@@ -248,6 +282,9 @@ func (a *S3Analyzer) calculateProjectedCosts(ctx context.Context, stats *s3.Buck
 
 	breakdown.EstimatedChunks = chunkCount
 
+	// Issue #170 Phase 3: Get provider pricing for S3-compatible providers
+	providerPricing := GetProviderPricing(a.provider, a.region)
+
 	// Calculate storage costs by tier (no minimum size penalty for large chunks)
 	for storageClass, sizeBytes := range stats.StorageClassSizes {
 		sizeGB := float64(sizeBytes) / (1024 * 1024 * 1024)
@@ -255,20 +292,28 @@ func (a *S3Analyzer) calculateProjectedCosts(ctx context.Context, stats *s3.Buck
 		// Convert to CargoShip config storage class
 		configClass := s3.ConvertToStorageClass(storageClass)
 
-		// Calculate storage cost (no minimum size penalty)
-		storageCost := a.calculator.calculateStorageCost(ctx, sizeGB, configClass)
+		var storageCost float64
+		if a.provider == ProviderAWS {
+			// AWS: Use Calculator for region/tier-specific pricing (no minimum size penalty)
+			storageCost = a.calculator.calculateStorageCost(ctx, sizeGB, configClass)
+		} else {
+			// S3-compatible provider: Use flat provider pricing (no minimum size penalty)
+			storageCost = providerPricing.CalculateProviderStorageCost(sizeGB)
+		}
 		breakdown.StorageCost += storageCost
 
-		// Add INTELLIGENT_TIERING monitoring fees (for chunks, not files)
-		if storageClass == types.ObjectStorageClassIntelligentTiering {
-			// Calculate proportional chunk count for this tier
-			tierProportion := float64(sizeBytes) / float64(stats.TotalSize)
-			tierChunks := int(float64(chunkCount) * tierProportion)
-			if tierChunks < 1 {
-				tierChunks = 1
+		// Add monitoring fees if provider has them (for chunks, not files)
+		if providerPricing.HasMonitoringFees {
+			if storageClass == types.ObjectStorageClassIntelligentTiering {
+				// Calculate proportional chunk count for this tier
+				tierProportion := float64(sizeBytes) / float64(stats.TotalSize)
+				tierChunks := int(float64(chunkCount) * tierProportion)
+				if tierChunks < 1 {
+					tierChunks = 1
+				}
+				monitoringFee := providerPricing.CalculateProviderMonitoringCost(int64(tierChunks))
+				breakdown.MonitoringFees += monitoringFee
 			}
-			monitoringFee := (float64(tierChunks) / 1000) * IntelligentTieringMonitoringFee
-			breakdown.MonitoringFees += monitoringFee
 		}
 	}
 
@@ -307,13 +352,14 @@ func (a *S3Analyzer) calculateSavings(current *CurrentCostBreakdown, projected *
 func (a *S3Analyzer) estimateMigrationCost(ctx context.Context, stats *s3.BucketStats, chunkCount int) *MigrationCostEstimate {
 	estimate := &MigrationCostEstimate{}
 
+	// Issue #170 Phase 3: Get provider pricing for S3-compatible providers
+	providerPricing := GetProviderPricing(a.provider, a.region)
+
 	// GET requests to read source objects
-	// $0.0004 per 1000 GET requests for STANDARD
-	estimate.GetRequestCost = (float64(stats.ObjectCount) / 1000) * 0.0004
+	estimate.GetRequestCost = providerPricing.CalculateProviderRequestCost(int(stats.ObjectCount), 0, 0)
 
 	// PUT requests to write chunks
-	// $0.005 per 1000 PUT requests
-	estimate.PutRequestCost = (float64(chunkCount) / 1000) * 0.005
+	estimate.PutRequestCost = providerPricing.CalculateProviderRequestCost(0, chunkCount, 0)
 
 	// Data transfer is FREE within the same region (no cross-region by default)
 	estimate.TransferCost = 0.0
@@ -327,6 +373,13 @@ func (a *S3Analyzer) estimateMigrationCost(ctx context.Context, stats *s3.Bucket
 // generateRecommendations generates actionable recommendations based on analysis
 func (a *S3Analyzer) generateRecommendations(stats *s3.BucketStats, savings *SavingsAnalysis, migration *MigrationCostEstimate) []string {
 	var recommendations []string
+
+	// Issue #170 Phase 3: Add provider-specific benefit message
+	providerPricing := GetProviderPricing(a.provider, a.region)
+	if a.provider != ProviderAWS {
+		recommendations = append(recommendations, fmt.Sprintf("🌐 %s: %s",
+			providerPricing.Name, providerPricing.GetProviderBenefitMessage()))
+	}
 
 	// Recommendation based on savings
 	if savings.SavingsPercentage > 90 {

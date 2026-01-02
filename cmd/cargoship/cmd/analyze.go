@@ -26,6 +26,8 @@ var (
 	analyzeSampleSize     int
 	analyzeEnableSampling bool
 	analyzeShowProgress   bool
+	analyzeEndpointURL    string // Issue #170 Phase 3: S3-compatible endpoint
+	analyzeProvider       string // Issue #170 Phase 3: Storage provider (aws, wasabi, b2, minio)
 )
 
 // NewAnalyzeCmd creates the analyze command for existing S3 bucket cost analysis
@@ -38,12 +40,24 @@ func NewAnalyzeCmd() *cobra.Command {
 This command scans your existing S3 storage, calculates current costs, and shows
 potential savings from re-grating to CargoShip's chunked format.
 
+Supports AWS S3 and S3-compatible providers (Wasabi, Backblaze B2, MinIO).
+
 Examples:
+  # AWS S3
   cargoship analyze s3://my-bucket
   cargoship analyze s3://my-bucket/data --show-savings
   cargoship analyze s3://my-bucket --format json
   cargoship analyze s3://my-bucket --sampling --sample-size 10000
-  cargoship analyze s3://my-bucket --region us-west-2`,
+  cargoship analyze s3://my-bucket --region us-west-2
+
+  # Wasabi
+  cargoship analyze s3://my-bucket --provider wasabi --endpoint-url https://s3.wasabisys.com
+
+  # Backblaze B2
+  cargoship analyze s3://my-bucket --provider b2 --endpoint-url https://s3.us-west-002.backblazeb2.com
+
+  # MinIO (self-hosted)
+  cargoship analyze s3://my-bucket --provider minio --endpoint-url https://minio.example.com`,
 		Args: cobra.ExactArgs(1),
 		RunE: runAnalyze,
 	}
@@ -55,6 +69,10 @@ Examples:
 	cmd.Flags().IntVar(&analyzeSampleSize, "sample-size", 10000, "Sample size for quick estimates (when --sampling enabled)")
 	cmd.Flags().BoolVar(&analyzeEnableSampling, "sampling", false, "Use sampling mode for quick estimates on large buckets")
 	cmd.Flags().BoolVar(&analyzeShowProgress, "progress", true, "Show progress during bucket scan")
+
+	// Issue #170 Phase 3: S3-compatible storage support
+	cmd.Flags().StringVar(&analyzeEndpointURL, "endpoint-url", "", "S3-compatible endpoint URL (for Wasabi, B2, MinIO, etc.)")
+	cmd.Flags().StringVar(&analyzeProvider, "provider", "aws", "Storage provider (aws, wasabi, b2, minio, custom)")
 
 	return cmd
 }
@@ -68,9 +86,18 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid S3 URL: %w", err)
 	}
 
+	// Issue #170 Phase 3: Validate storage provider
+	provider, err := costs.ValidateProvider(analyzeProvider)
+	if err != nil {
+		return err
+	}
+
 	fmt.Printf("Analyzing S3 bucket: s3://%s", bucket)
 	if prefix != "" {
 		fmt.Printf("/%s", prefix)
+	}
+	if provider != costs.ProviderAWS {
+		fmt.Printf(" (Provider: %s)", analyzeProvider)
 	}
 	fmt.Println()
 
@@ -80,6 +107,12 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	awsCfg, err := loadAWSConfig(ctx, analyzeProfile, analyzeRegion)
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	// Issue #170 Phase 3: Configure custom endpoint URL for S3-compatible providers
+	if analyzeEndpointURL != "" {
+		awsCfg.BaseEndpoint = aws.String(analyzeEndpointURL)
+		fmt.Printf("Using custom endpoint: %s\n", analyzeEndpointURL)
 	}
 
 	// Create S3 client
@@ -123,8 +156,8 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	// Create cost calculator
 	calculator := costs.NewCalculator(region)
 
-	// Create S3 analyzer
-	analyzer := costs.NewS3Analyzer(calculator, scanner, region)
+	// Issue #170 Phase 3: Create S3 analyzer with provider information
+	analyzer := costs.NewS3AnalyzerWithProvider(calculator, scanner, region, provider)
 
 	// Analyze costs
 	if analyzeShowProgress {
