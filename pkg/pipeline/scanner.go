@@ -398,12 +398,18 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 		files = s.enrichWithMagika(ctx, files)
 	}
 
+	// Issue #108: Check for duplicates if deduplication is enabled
+	uniqueFiles := files
+	if s.pipeline != nil && s.pipeline.dedupEnabled {
+		uniqueFiles = s.filterDuplicates(ctx, files)
+	}
+
 	var chunks []chunking.Chunk
 	var err error
 
 	// Phase 3.3: Use compressed-aware chunking if enabled
 	if s.compressedChunker != nil {
-		result, err := s.compressedChunker.CreateChunksWithMetadata(files)
+		result, err := s.compressedChunker.CreateChunksWithMetadata(uniqueFiles)
 		if err != nil {
 			return fmt.Errorf("failed to create compressed-aware chunks: %w", err)
 		}
@@ -470,12 +476,12 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 		// Fallback: Use existing simple chunking strategy
 		chunkSize, _ := s.strategy.CalculateOptimalChunkSize(
 			totalSize,
-			len(files),
+			len(uniqueFiles),
 			4*1024*1024*1024, // 4GB
 			1000,             // 1000x cost savings
 		)
 
-		chunks, err = s.strategy.GroupFilesIntoChunks(files, chunkSize)
+		chunks, err = s.strategy.GroupFilesIntoChunks(uniqueFiles, chunkSize)
 		if err != nil {
 			return fmt.Errorf("failed to group files into chunks: %w", err)
 		}
@@ -643,4 +649,82 @@ func (s *ScannerStage) Error() error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.runError
+}
+
+// filterDuplicates checks files against the deduplication index and filters out duplicates (Issue #108)
+// Returns only unique files that should be uploaded. Duplicate files are tracked in the manifest.
+//
+// Note: This is called during scanning, before we know the actual shard/chunk locations.
+// The dedupIndex tracks hashes and will be updated with actual locations after upload.
+func (s *ScannerStage) filterDuplicates(ctx context.Context, files []chunking.File) []chunking.File {
+	if s.pipeline == nil || s.pipeline.dedupIndex == nil {
+		return files
+	}
+
+	dedupIndex := s.pipeline.dedupIndex.(*manifest.FileDeduplicationIndex)
+	var manifestBuilder *manifest.Builder
+	if s.pipeline.manifestBuilder != nil {
+		manifestBuilder = s.pipeline.manifestBuilder.(*manifest.Builder)
+	}
+
+	uniqueFiles := make([]chunking.File, 0, len(files))
+
+	for _, file := range files {
+		// Check if file with this content hash already exists
+		// Use placeholder location since we don't know actual location yet
+		isDuplicate, location, err := dedupIndex.AddFile(file.Path, -1, -1, "")
+
+		if err != nil {
+			// Error computing hash - treat as unique and upload anyway
+			fmt.Fprintf(os.Stderr, "⚠️  Deduplication hash error for %s: %v (uploading anyway)\n", file.Path, err)
+			uniqueFiles = append(uniqueFiles, file)
+			continue
+		}
+
+		if isDuplicate && location != nil {
+			// File is a duplicate of an already-processed file
+			// Add to manifest with dedup reference, but don't upload
+			if manifestBuilder != nil {
+				manifestBuilder.AddFile(manifest.FileEntry{
+					Path:              file.Path,
+					Size:              file.Size,
+					ModTime:           file.ModTime,
+					ChunkID:           location.ChunkID,
+					ShardID:           location.ShardID,
+					S3Key:             location.S3Key,
+					IsDuplicate:       true,
+					DuplicateOfHash:   location.Hash,
+					OriginalChunkID:   location.ChunkID,
+					OriginalShardID:   location.ShardID,
+					OriginalS3Key:     location.S3Key,
+					Checksum:          location.Hash,
+				})
+			}
+
+			// Skip adding to uniqueFiles - don't upload duplicates
+			continue
+		}
+
+		// File is unique (first time seeing this content hash)
+		// Add to list for upload - dedupIndex will be updated with actual location after upload
+		uniqueFiles = append(uniqueFiles, file)
+
+		// Store hash in file metadata for later location updates
+		if file.Metadata == nil {
+			file.Metadata = make(map[string]string)
+		}
+		if location != nil {
+			file.Metadata["content_hash"] = location.Hash
+		}
+	}
+
+	// Log deduplication stats
+	duplicateCount := len(files) - len(uniqueFiles)
+	if duplicateCount > 0 {
+		dedupRatio := dedupIndex.DeduplicationRatio()
+		fmt.Printf("🔍 Deduplication: %d/%d files are duplicates (%.1f%% space saved)\n",
+			duplicateCount, len(files), dedupRatio*100)
+	}
+
+	return uniqueFiles
 }
