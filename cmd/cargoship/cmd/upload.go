@@ -68,8 +68,8 @@ func NewUploadCmd() *cobra.Command {
 		dvcOutputDir     string
 
 		// Issue #183: DVC budget integration
-		dvcProject  string
-		uploadTags  []string // "key=value" pairs
+		dvcProject string
+		uploadTags []string // "key=value" pairs
 	)
 
 	cmd := &cobra.Command{
