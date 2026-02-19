@@ -91,11 +91,18 @@ func (r *PrefixRouter) route(ctx context.Context) {
 	defer r.closeOutputChannels()
 
 	for {
-		// Prioritize draining input channel over context cancellation
-		job, ok := <-r.input
-		if !ok {
-			// Input channel closed - finish gracefully
+		// Select on both input and context so cancellation is always respected,
+		// even when no new jobs arrive.
+		var job *Job
+		var ok bool
+		select {
+		case <-ctx.Done():
 			return
+		case job, ok = <-r.input:
+			if !ok {
+				// Input channel closed - finish gracefully
+				return
+			}
 		}
 
 		// Extract prefix from S3 key
