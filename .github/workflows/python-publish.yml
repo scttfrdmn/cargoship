@@ -1,0 +1,132 @@
+name: Publish dvc-cargoship to PyPI
+
+# Triggers:
+#   - Pull request touching dvc-cargoship/: run tests + build wheel, publish
+#     to TestPyPI (uses --skip-existing to handle re-runs at the same version).
+#   - Tag  dvc-cargoship/v*.*.*          : publish the release wheel to PyPI.
+
+on:
+  push:
+    tags:
+      - 'dvc-cargoship/v*.*.*'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'dvc-cargoship/**'
+      - '.github/workflows/python-publish.yml'
+
+defaults:
+  run:
+    working-directory: dvc-cargoship
+
+jobs:
+  # -----------------------------------------------------------------------
+  # test — always runs (PR and tag)
+  # -----------------------------------------------------------------------
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install package and dev dependencies
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Run tests
+        run: uv run pytest tests/ -v --tb=short
+
+  # -----------------------------------------------------------------------
+  # build — produce the wheel and sdist as artifacts
+  # -----------------------------------------------------------------------
+  build:
+    name: Build distribution
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build
+        run: pip install build
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dvc-cargoship/dist/
+          retention-days: 7
+
+  # -----------------------------------------------------------------------
+  # publish-testpypi — runs on PR (uses --skip-existing for idempotency)
+  # -----------------------------------------------------------------------
+  publish-testpypi:
+    name: Publish to TestPyPI
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'pull_request'
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/dvc-cargoship
+
+    permissions:
+      id-token: write   # required for trusted publishing
+
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+          packages-dir: dist/
+
+  # -----------------------------------------------------------------------
+  # publish-pypi — runs on version tag push
+  # -----------------------------------------------------------------------
+  publish-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/dvc-cargoship/v')
+    environment:
+      name: pypi
+      url: https://pypi.org/p/dvc-cargoship
+
+    permissions:
+      id-token: write   # required for trusted publishing
+
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

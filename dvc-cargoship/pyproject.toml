@@ -25,7 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "fsspec>=2023.1.0",
-    "dvc>=3.0",
+    "dvc>=3.0,<4.0",
 ]
 
 [project.optional-dependencies]
@@ -39,7 +39,9 @@ cargoship = "dvc_cargoship:CargoShipFileSystem"
 
 [project.urls]
 Homepage = "https://github.com/scttfrdmn/cargoship"
+Documentation = "https://github.com/scttfrdmn/cargoship/tree/main/dvc-cargoship#readme"
 "Bug Tracker" = "https://github.com/scttfrdmn/cargoship/issues"
+Changelog = "https://github.com/scttfrdmn/cargoship/releases"
 
 [tool.setuptools.packages.find]
 where = ["."]
