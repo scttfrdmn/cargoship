@@ -24,6 +24,9 @@ type DefaultRegionSelector struct {
 
 	// mu protects concurrent access to region metrics
 	mu sync.RWMutex
+
+	// geoCache caches the result of client geolocation lookups.
+	geoCache *geoLocationCache
 }
 
 // NewRegionSelector creates a new region selector
@@ -32,6 +35,18 @@ func NewRegionSelector(config *MultiRegionConfig, logger *log.Logger) RegionSele
 		config:        config,
 		logger:        logger,
 		regionMetrics: make(map[string]RegionMetrics),
+		geoCache:      newGeoLocationCache(NewHTTPGeoLocator(), geoLocationCacheTTL),
+	}
+}
+
+// NewRegionSelectorWithGeoLocator creates a region selector with a custom
+// GeoLocator, allowing callers (e.g. tests) to inject a mock implementation.
+func NewRegionSelectorWithGeoLocator(config *MultiRegionConfig, logger *log.Logger, locator GeoLocator) RegionSelector {
+	return &DefaultRegionSelector{
+		config:        config,
+		logger:        logger,
+		regionMetrics: make(map[string]RegionMetrics),
+		geoCache:      newGeoLocationCache(locator, geoLocationCacheTTL),
 	}
 }
 
@@ -235,15 +250,101 @@ func (s *DefaultRegionSelector) selectByLatency(regions []*Region) *Region {
 	return bestRegion
 }
 
-// selectByGeography selects region based on geographic proximity
+// selectByGeography selects the region geographically closest to the client.
+//
+// Resolution order:
+//  1. Explicit "lat,lon" hint via request.Metadata["client_location"]
+//  2. IP-based geolocation (TTL-cached, 2 s timeout, graceful fallback)
+//  3. Priority-based selection when location cannot be determined
+//
+// Data residency: when request.Metadata["data_residency"] is set (e.g. "EU",
+// "US", "APAC") only regions in that zone are considered. If none qualify the
+// restriction is logged and ignored so an upload is never silently dropped.
 func (s *DefaultRegionSelector) selectByGeography(request *UploadRequest, regions []*Region) *Region {
 	if len(regions) == 0 {
 		return nil
 	}
 
-	// TODO: Implement geographic selection based on client location
-	// For now, fall back to priority-based selection
-	return s.selectByPriority(regions)
+	// --- 1. Enforce data residency ---
+	var residencyZone string
+	if request.Metadata != nil {
+		residencyZone = request.Metadata["data_residency"]
+	}
+
+	allowed := regions
+	if residencyZone != "" {
+		filtered := make([]*Region, 0, len(regions))
+		for _, r := range regions {
+			if isRegionInResidencyZone(residencyZone, r.Name) {
+				filtered = append(filtered, r)
+			}
+		}
+		if len(filtered) > 0 {
+			allowed = filtered
+		} else {
+			s.logger.Warn("No regions satisfy data residency requirement; ignoring restriction",
+				"zone", residencyZone)
+		}
+	}
+
+	// --- 2. Determine client location ---
+	var clientLat, clientLon float64
+	located := false
+
+	if request.Metadata != nil {
+		if hint, ok := request.Metadata["client_location"]; ok {
+			lat, lon, err := parseLatLon(hint)
+			if err == nil {
+				clientLat, clientLon = lat, lon
+				located = true
+				s.logger.Debug("Using explicit client location hint",
+					"lat", clientLat, "lon", clientLon)
+			} else {
+				s.logger.Warn("Invalid client_location hint", "hint", hint, "error", err)
+			}
+		}
+	}
+
+	if !located {
+		ctx := request.Context
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		loc := s.geoCache.Get(ctx)
+		if loc != nil {
+			clientLat, clientLon = loc.Lat, loc.Lon
+			located = true
+			s.logger.Debug("Using IP-based client location",
+				"lat", clientLat, "lon", clientLon, "country", loc.CountryCode)
+		}
+	}
+
+	if !located {
+		s.logger.Debug("Client location unavailable; falling back to priority selection")
+		return s.selectByPriority(allowed)
+	}
+
+	// --- 3. Rank allowed regions by proximity ---
+	type candidate struct {
+		region *Region
+		distKm float64
+	}
+	scored := make([]candidate, 0, len(allowed))
+	for _, r := range allowed {
+		scored = append(scored, candidate{
+			region: r,
+			distKm: regionDistance(r.Name, clientLat, clientLon),
+		})
+	}
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].distKm < scored[j].distKm
+	})
+
+	best := scored[0].region
+	s.logger.Debug("Geographic region selected",
+		"region", best.Name,
+		"distance_km", scored[0].distKm)
+	return best
 }
 
 // selectByPriority selects region with highest priority
