@@ -73,30 +73,14 @@ check_requirements() {
     fi
     log_success "Go $(go version | awk '{print $3}')"
 
-    # Check AWS credentials
+    # Check AWS credentials (optional - benchmarks run without AWS)
     if ! command -v aws &> /dev/null; then
-        log_warning "AWS CLI not installed - skipping credential check"
+        log_warning "AWS CLI not installed - S3 integration benchmarks will be skipped"
     else
         if aws sts get-caller-identity &> /dev/null 2>&1; then
             log_success "AWS credentials configured"
         else
-            log_error "AWS credentials not configured"
-            exit 1
-        fi
-    fi
-
-    # Check S3 bucket access
-    if command -v aws &> /dev/null; then
-        if aws s3 ls "s3://${BENCHMARK_BUCKET}" &> /dev/null 2>&1; then
-            log_success "S3 bucket '${BENCHMARK_BUCKET}' accessible"
-        else
-            log_warning "S3 bucket '${BENCHMARK_BUCKET}' not accessible - creating..."
-            if aws s3 mb "s3://${BENCHMARK_BUCKET}" 2>&1; then
-                log_success "Created S3 bucket '${BENCHMARK_BUCKET}'"
-            else
-                log_error "Failed to create S3 bucket"
-                exit 1
-            fi
+            log_warning "AWS credentials not configured - S3 integration benchmarks will be skipped"
         fi
     fi
 }
