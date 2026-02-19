@@ -53,23 +53,27 @@ check_dependencies() {
     fi
     
     # Check for govulncheck (install if missing)
-    if ! command -v govulncheck &> /dev/null; then
+    # Prefer $(go env GOPATH)/bin to avoid stale system/Homebrew installs built
+    # with an older Go toolchain than the one currently on PATH.
+    GOVULNCHECK_BIN="$(go env GOPATH)/bin/govulncheck"
+    if [ ! -x "$GOVULNCHECK_BIN" ]; then
         log_info "Installing govulncheck for vulnerability scanning..."
         if ! go install golang.org/x/vuln/cmd/govulncheck@latest; then
             log_error "Failed to install govulncheck"
             exit 1
         fi
     fi
-    
+
     log_success "All dependencies found"
 }
 
 # Run vulnerability scanning
 run_security_scan() {
     log_info "Running security vulnerability scan..."
-    
+    GOVULNCHECK_BIN="$(go env GOPATH)/bin/govulncheck"
+
     # Run govulncheck
-    if ! govulncheck ./...; then
+    if ! "$GOVULNCHECK_BIN" ./...; then
         log_error "Vulnerability scan failed. Please address security issues before committing."
         log_error "Development rules require zero known vulnerabilities."
         exit 1

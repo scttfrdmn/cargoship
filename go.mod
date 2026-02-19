@@ -1,8 +1,6 @@
 module github.com/scttfrdmn/cargoship
 
-go 1.24.0
-
-toolchain go1.24.3
+go 1.26.0
 
 require (
 	github.com/ProtonMail/go-crypto v1.3.0
