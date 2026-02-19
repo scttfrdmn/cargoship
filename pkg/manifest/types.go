@@ -268,20 +268,53 @@ type ShardEntry struct {
 // ManifestQuery provides query capabilities for the manifest
 type ManifestQuery struct {
 	manifest  *Manifest
-	fileIndex map[string]*FileEntry // O(1) lookup index for files by path
+	fileIndex map[string]*FileEntry   // O(1) lookup by path
+	hashIndex map[string]*FileEntry   // O(1) lookup by ContentHash (Issue #188)
+	commitIndex  map[string][]*FileEntry // lookup by git commit SHA (Issue #188)
+	stageIndex   map[string][]*FileEntry // lookup by DVC stage name (Issue #188)
 }
 
 // NewManifestQuery creates a new query interface for a manifest
 func NewManifestQuery(m *Manifest) *ManifestQuery {
-	// Build file index for O(1) lookups
-	fileIndex := make(map[string]*FileEntry, len(m.Files))
-	for i := range m.Files {
-		fileIndex[m.Files[i].Path] = &m.Files[i]
+	mq := &ManifestQuery{manifest: m}
+	mq.buildIndices()
+	return mq
+}
+
+// buildIndices (re)builds all lookup indices from the manifest's file list.
+func (mq *ManifestQuery) buildIndices() {
+	n := len(mq.manifest.Files)
+	mq.fileIndex = make(map[string]*FileEntry, n)
+	mq.hashIndex = make(map[string]*FileEntry, n)
+	mq.commitIndex = make(map[string][]*FileEntry)
+	mq.stageIndex = make(map[string][]*FileEntry)
+
+	// Manifest-level git commit: all files share the same commit when set.
+	// Pre-allocate the commit slice to eliminate reallocation on append.
+	gitCommit := ""
+	if mq.manifest.GitMetadata != nil {
+		gitCommit = mq.manifest.GitMetadata.Commit
+	}
+	if gitCommit != "" {
+		mq.commitIndex[gitCommit] = make([]*FileEntry, 0, n)
 	}
 
-	return &ManifestQuery{
-		manifest:  m,
-		fileIndex: fileIndex,
+	for i := range mq.manifest.Files {
+		f := &mq.manifest.Files[i]
+
+		mq.fileIndex[f.Path] = f
+
+		if f.ContentHash != "" {
+			mq.hashIndex[f.ContentHash] = f
+		}
+
+		if gitCommit != "" {
+			mq.commitIndex[gitCommit] = append(mq.commitIndex[gitCommit], f)
+		}
+
+		if f.DVCMetadata != nil && f.DVCMetadata.Stage != "" {
+			mq.stageIndex[f.DVCMetadata.Stage] = append(mq.stageIndex[f.DVCMetadata.Stage], f)
+		}
 	}
 }
 
