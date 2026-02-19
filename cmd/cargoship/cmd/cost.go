@@ -185,30 +185,48 @@ Examples:
 	reportCmd := &cobra.Command{
 		Use:   "report",
 		Short: "Generate cost report",
-		Long: `Generate detailed cost report for a time period.
+		Long: `Generate detailed cost report for a time period or compliance report.
 
-Shows:
-- Total costs and savings
-- Cost breakdown by service and region
-- Cost trends and projections
-- Cost optimization recommendations
+Standard mode (default):
+  Shows total costs, breakdown by service/region, trends, and recommendations.
+
+Compliance mode (--format compliance):
+  Generates an NSF or NIH data-management compliance report for a specific
+  budget/project, including data provenance, reproducibility info, and DMP.
 
 Examples:
   # Monthly report
   cargoship cost report --period month
 
-  # Weekly report
-  cargoship cost report --period week
-
   # Export report to file
   cargoship cost report --period month --output report.json
+
+  # NSF compliance report
+  cargoship cost report --budget my-project-id --grant NSF-2024-12345 --format compliance
+
+  # NIH compliance report (text)
+  cargoship cost report --budget my-project-id --grant R01-GM123456 --format compliance --agency NIH --text
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			budgetFlag, _ := cmd.Flags().GetString("budget")
+			grantFlag, _ := cmd.Flags().GetString("grant")
+			agencyFlag, _ := cmd.Flags().GetString("agency")
+			textFlag, _ := cmd.Flags().GetBool("text")
+			formatFlag, _ := cmd.Flags().GetString("format")
+
+			if formatFlag == "compliance" || budgetFlag != "" {
+				return runComplianceReport(cmd.Context(), region, budgetFlag, grantFlag, agencyFlag, outputFile, jsonOutput || !textFlag)
+			}
 			return runReport(cmd.Context(), region, period, outputFile, jsonOutput)
 		},
 	}
 	reportCmd.Flags().StringVar(&period, "period", "month", "Report period (today, week, month, last_month)")
 	reportCmd.Flags().StringVar(&outputFile, "output", "", "Output file path (default: stdout)")
+	reportCmd.Flags().String("budget", "", "Budget/project ID for compliance report")
+	reportCmd.Flags().String("grant", "", "Grant/award number (e.g., NSF-2024-12345, R01-GM123456)")
+	reportCmd.Flags().String("agency", "NSF", "Funding agency for compliance report (NSF or NIH)")
+	reportCmd.Flags().String("format", "", "Output format: compliance (enables compliance report mode)")
+	reportCmd.Flags().Bool("text", false, "Render compliance report as human-readable text (default: JSON)")
 
 	// Projects subcommand (Issue #147 Phase 2)
 	projectsCmd := &cobra.Command{
@@ -1557,5 +1575,63 @@ func runCostSummary(ctx context.Context, region, dvcStage, gitCommit string, jso
 			dvcInfo,
 		)
 	}
+	return nil
+}
+
+// runComplianceReport implements `cargoship cost report --format compliance` (Issue #187).
+func runComplianceReport(ctx context.Context, region, budgetID, grantNumber, agency, outputFile string, jsonOutput bool) error {
+	if budgetID == "" {
+		return fmt.Errorf("--budget is required for compliance reports")
+	}
+	if grantNumber == "" {
+		return fmt.Errorf("--grant is required for compliance reports")
+	}
+
+	awsCfg, cargoConfig, err := loadAWSConfigForCost(ctx, region)
+	if err != nil {
+		return err
+	}
+
+	costMgr, err := cost.NewManager(&cargoConfig.CostControl, awsCfg, slog.Default())
+	if err != nil {
+		return fmt.Errorf("failed to create cost manager: %w", err)
+	}
+
+	var report *cost.ComplianceReport
+	switch strings.ToUpper(agency) {
+	case "NIH":
+		report, err = costMgr.GenerateNIHComplianceReport(budgetID, grantNumber)
+	default: // NSF
+		report, err = costMgr.GenerateNSFComplianceReport(budgetID, grantNumber)
+	}
+	if err != nil {
+		return err
+	}
+
+	var output string
+	if jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if outputFile != "" {
+			f, ferr := os.Create(outputFile)
+			if ferr != nil {
+				return fmt.Errorf("failed to create output file: %w", ferr)
+			}
+			defer func() { _ = f.Close() }()
+			enc = json.NewEncoder(f)
+			enc.SetIndent("", "  ")
+		}
+		return enc.Encode(report)
+	}
+
+	output = cost.FormatComplianceReportText(report)
+	if outputFile != "" {
+		if werr := os.WriteFile(outputFile, []byte(output), 0o644); werr != nil {
+			return fmt.Errorf("failed to write output file: %w", werr)
+		}
+		fmt.Fprintf(os.Stderr, "Compliance report written to %s\n", outputFile)
+		return nil
+	}
+	fmt.Print(output)
 	return nil
 }

@@ -546,6 +546,16 @@ func (m *Manager) QueryCostsByGitCommit(commit string) ([]CostRecord, error) {
 	return m.reporter.QueryCostsByGitCommit(commit)
 }
 
+// GenerateNSFComplianceReport creates an NSF data-management compliance report (Issue #187).
+func (m *Manager) GenerateNSFComplianceReport(budgetID, grantNumber string) (*ComplianceReport, error) {
+	return m.reporter.GenerateNSFComplianceReport(budgetID, grantNumber)
+}
+
+// GenerateNIHComplianceReport creates an NIH data-management compliance report (Issue #187).
+func (m *Manager) GenerateNIHComplianceReport(budgetID, grantNumber string) (*ComplianceReport, error) {
+	return m.reporter.GenerateNIHComplianceReport(budgetID, grantNumber)
+}
+
 // GetAlertConfig returns the current alert configuration (Issue #147 Phase 4)
 func (m *Manager) GetAlertConfig() *BudgetAlertConfig {
 	// TODO: Load from persistent storage (file, database, etc.)
