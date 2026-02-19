@@ -152,6 +152,13 @@ func DetectContentType(filename string) ContentType {
 		return ContentTypeCode
 	}
 
+	// WebM is classified inconsistently across OS MIME databases (audio/webm on Linux,
+	// video/webm or absent on macOS). Treat it as video since it's a Matroska-based
+	// video container format, before the OS MIME lookup below.
+	if ext == ".webm" {
+		return ContentTypeVideo
+	}
+
 	// Try MIME type detection
 	mimeType := mime.TypeByExtension(ext)
 	if mimeType != "" {
