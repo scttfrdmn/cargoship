@@ -570,12 +570,14 @@ func (pc *PipelineCoordinator) ScheduleUpload(upload *ScheduledUpload) error {
 	}
 }
 
-// GetMetrics returns current coordination metrics.
+// GetMetrics returns a snapshot of the current coordination metrics.
+// A copy is returned so callers can safely read fields without holding the lock.
 func (pc *PipelineCoordinator) GetMetrics() *CoordinationMetrics {
 	pc.mu.RLock()
 	defer pc.mu.RUnlock()
 
-	return pc.metrics
+	snapshot := *pc.metrics
+	return &snapshot
 }
 
 // UpdatePrefixMetrics updates performance metrics for a specific prefix.

@@ -96,8 +96,8 @@ func CopySplice(dst io.Writer, src io.Reader) (written int64, err error) {
 	if err != nil {
 		return 0, err
 	}
-	defer pipeR.Close()
-	defer pipeW.Close()
+	defer func() { _ = pipeR.Close() }()
+	defer func() { _ = pipeW.Close() }()
 
 	var totalWritten int64
 
