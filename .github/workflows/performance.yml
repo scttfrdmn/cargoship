@@ -30,7 +30,7 @@ on:
     - cron: '0 0 * * 1'
 
 env:
-  GO_VERSION: '1.24'
+  GO_VERSION: '1.26'
   AWS_REGION: 'us-west-2'
   BENCHMARK_BUCKET: 'cargoship-ci-benchmarks'
 
