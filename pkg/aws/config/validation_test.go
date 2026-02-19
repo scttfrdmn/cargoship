@@ -51,8 +51,8 @@ func TestValidationErrors_Error(t *testing.T) {
 		contains []string
 	}{
 		{
-			name: "no errors",
-			errs: ValidationErrors{},
+			name:     "no errors",
+			errs:     ValidationErrors{},
 			contains: []string{"no validation errors"},
 		},
 		{
@@ -93,21 +93,21 @@ func TestS3Config_ValidateStrict(t *testing.T) {
 		{
 			name: "valid config",
 			config: S3Config{
-				Bucket:              "my-test-bucket",
-				StorageClass:        StorageClassStandard,
-				MultipartThreshold:  10 * 1024 * 1024, // 10MB
-				MultipartChunkSize:  10 * 1024 * 1024, // 10MB
-				Concurrency:         4,
+				Bucket:             "my-test-bucket",
+				StorageClass:       StorageClassStandard,
+				MultipartThreshold: 10 * 1024 * 1024, // 10MB
+				MultipartChunkSize: 10 * 1024 * 1024, // 10MB
+				Concurrency:        4,
 			},
 			wantErr: false,
 		},
 		{
 			name: "empty bucket",
 			config: S3Config{
-				StorageClass:        StorageClassStandard,
-				MultipartThreshold:  10 * 1024 * 1024,
-				MultipartChunkSize:  10 * 1024 * 1024,
-				Concurrency:         4,
+				StorageClass:       StorageClassStandard,
+				MultipartThreshold: 10 * 1024 * 1024,
+				MultipartChunkSize: 10 * 1024 * 1024,
+				Concurrency:        4,
 			},
 			wantErr:   true,
 			errFields: []string{"Bucket"},
@@ -115,11 +115,11 @@ func TestS3Config_ValidateStrict(t *testing.T) {
 		{
 			name: "invalid bucket name",
 			config: S3Config{
-				Bucket:              "Invalid_Bucket",
-				StorageClass:        StorageClassStandard,
-				MultipartThreshold:  10 * 1024 * 1024,
-				MultipartChunkSize:  10 * 1024 * 1024,
-				Concurrency:         4,
+				Bucket:             "Invalid_Bucket",
+				StorageClass:       StorageClassStandard,
+				MultipartThreshold: 10 * 1024 * 1024,
+				MultipartChunkSize: 10 * 1024 * 1024,
+				Concurrency:        4,
 			},
 			wantErr:   true,
 			errFields: []string{"Bucket"},
@@ -127,11 +127,11 @@ func TestS3Config_ValidateStrict(t *testing.T) {
 		{
 			name: "invalid storage class",
 			config: S3Config{
-				Bucket:              "my-bucket",
-				StorageClass:        "INVALID_CLASS",
-				MultipartThreshold:  10 * 1024 * 1024,
-				MultipartChunkSize:  10 * 1024 * 1024,
-				Concurrency:         4,
+				Bucket:             "my-bucket",
+				StorageClass:       "INVALID_CLASS",
+				MultipartThreshold: 10 * 1024 * 1024,
+				MultipartChunkSize: 10 * 1024 * 1024,
+				Concurrency:        4,
 			},
 			wantErr:   true,
 			errFields: []string{"StorageClass"},
@@ -139,11 +139,11 @@ func TestS3Config_ValidateStrict(t *testing.T) {
 		{
 			name: "multipart threshold too small",
 			config: S3Config{
-				Bucket:              "my-bucket",
-				StorageClass:        StorageClassStandard,
-				MultipartThreshold:  1024 * 1024, // 1MB - too small
-				MultipartChunkSize:  10 * 1024 * 1024,
-				Concurrency:         4,
+				Bucket:             "my-bucket",
+				StorageClass:       StorageClassStandard,
+				MultipartThreshold: 1024 * 1024, // 1MB - too small
+				MultipartChunkSize: 10 * 1024 * 1024,
+				Concurrency:        4,
 			},
 			wantErr:   true,
 			errFields: []string{"MultipartThreshold"},
@@ -151,11 +151,11 @@ func TestS3Config_ValidateStrict(t *testing.T) {
 		{
 			name: "multipart threshold too large",
 			config: S3Config{
-				Bucket:              "my-bucket",
-				StorageClass:        StorageClassStandard,
-				MultipartThreshold:  6 * 1024 * 1024 * 1024, // 6GB - too large
-				MultipartChunkSize:  10 * 1024 * 1024,
-				Concurrency:         4,
+				Bucket:             "my-bucket",
+				StorageClass:       StorageClassStandard,
+				MultipartThreshold: 6 * 1024 * 1024 * 1024, // 6GB - too large
+				MultipartChunkSize: 10 * 1024 * 1024,
+				Concurrency:        4,
 			},
 			wantErr:   true,
 			errFields: []string{"MultipartThreshold"},
@@ -163,11 +163,11 @@ func TestS3Config_ValidateStrict(t *testing.T) {
 		{
 			name: "chunk size too small",
 			config: S3Config{
-				Bucket:              "my-bucket",
-				StorageClass:        StorageClassStandard,
-				MultipartThreshold:  10 * 1024 * 1024,
-				MultipartChunkSize:  1024 * 1024, // 1MB - too small
-				Concurrency:         4,
+				Bucket:             "my-bucket",
+				StorageClass:       StorageClassStandard,
+				MultipartThreshold: 10 * 1024 * 1024,
+				MultipartChunkSize: 1024 * 1024, // 1MB - too small
+				Concurrency:        4,
 			},
 			wantErr:   true,
 			errFields: []string{"MultipartChunkSize"},
@@ -175,11 +175,11 @@ func TestS3Config_ValidateStrict(t *testing.T) {
 		{
 			name: "chunk size too large",
 			config: S3Config{
-				Bucket:              "my-bucket",
-				StorageClass:        StorageClassStandard,
-				MultipartThreshold:  10 * 1024 * 1024,
-				MultipartChunkSize:  6 * 1024 * 1024 * 1024, // 6GB - too large
-				Concurrency:         4,
+				Bucket:             "my-bucket",
+				StorageClass:       StorageClassStandard,
+				MultipartThreshold: 10 * 1024 * 1024,
+				MultipartChunkSize: 6 * 1024 * 1024 * 1024, // 6GB - too large
+				Concurrency:        4,
 			},
 			wantErr:   true,
 			errFields: []string{"MultipartChunkSize"},
@@ -187,11 +187,11 @@ func TestS3Config_ValidateStrict(t *testing.T) {
 		{
 			name: "concurrency too low",
 			config: S3Config{
-				Bucket:              "my-bucket",
-				StorageClass:        StorageClassStandard,
-				MultipartThreshold:  10 * 1024 * 1024,
-				MultipartChunkSize:  10 * 1024 * 1024,
-				Concurrency:         0,
+				Bucket:             "my-bucket",
+				StorageClass:       StorageClassStandard,
+				MultipartThreshold: 10 * 1024 * 1024,
+				MultipartChunkSize: 10 * 1024 * 1024,
+				Concurrency:        0,
 			},
 			wantErr:   true,
 			errFields: []string{"Concurrency"},
@@ -199,11 +199,11 @@ func TestS3Config_ValidateStrict(t *testing.T) {
 		{
 			name: "concurrency too high",
 			config: S3Config{
-				Bucket:              "my-bucket",
-				StorageClass:        StorageClassStandard,
-				MultipartThreshold:  10 * 1024 * 1024,
-				MultipartChunkSize:  10 * 1024 * 1024,
-				Concurrency:         10001,
+				Bucket:             "my-bucket",
+				StorageClass:       StorageClassStandard,
+				MultipartThreshold: 10 * 1024 * 1024,
+				MultipartChunkSize: 10 * 1024 * 1024,
+				Concurrency:        10001,
 			},
 			wantErr:   true,
 			errFields: []string{"Concurrency"},
@@ -211,12 +211,12 @@ func TestS3Config_ValidateStrict(t *testing.T) {
 		{
 			name: "invalid KMS key ID",
 			config: S3Config{
-				Bucket:              "my-bucket",
-				StorageClass:        StorageClassStandard,
-				MultipartThreshold:  10 * 1024 * 1024,
-				MultipartChunkSize:  10 * 1024 * 1024,
-				Concurrency:         4,
-				KMSKeyID:            "invalid-key",
+				Bucket:             "my-bucket",
+				StorageClass:       StorageClassStandard,
+				MultipartThreshold: 10 * 1024 * 1024,
+				MultipartChunkSize: 10 * 1024 * 1024,
+				Concurrency:        4,
+				KMSKeyID:           "invalid-key",
 			},
 			wantErr:   true,
 			errFields: []string{"KMSKeyID"},
@@ -224,11 +224,11 @@ func TestS3Config_ValidateStrict(t *testing.T) {
 		{
 			name: "multiple validation errors",
 			config: S3Config{
-				Bucket:              "",
-				StorageClass:        "INVALID",
-				MultipartThreshold:  1024,
-				MultipartChunkSize:  1024,
-				Concurrency:         0,
+				Bucket:             "",
+				StorageClass:       "INVALID",
+				MultipartThreshold: 1024,
+				MultipartChunkSize: 1024,
+				Concurrency:        0,
 			},
 			wantErr:   true,
 			errFields: []string{"Bucket", "StorageClass", "MultipartThreshold", "MultipartChunkSize", "Concurrency"},
@@ -263,10 +263,10 @@ func TestS3Config_Validate(t *testing.T) {
 		{
 			name: "valid config",
 			config: S3Config{
-				Bucket:              "my-bucket",
-				MultipartThreshold:  10 * 1024 * 1024,
-				MultipartChunkSize:  10 * 1024 * 1024,
-				Concurrency:         4,
+				Bucket:             "my-bucket",
+				MultipartThreshold: 10 * 1024 * 1024,
+				MultipartChunkSize: 10 * 1024 * 1024,
+				Concurrency:        4,
 			},
 			wantErr: false,
 		},
@@ -283,10 +283,10 @@ func TestS3Config_Validate(t *testing.T) {
 		{
 			name: "low concurrency",
 			config: S3Config{
-				Bucket:              "my-bucket",
-				MultipartThreshold:  10 * 1024 * 1024,
-				MultipartChunkSize:  10 * 1024 * 1024,
-				Concurrency:         0,
+				Bucket:             "my-bucket",
+				MultipartThreshold: 10 * 1024 * 1024,
+				MultipartChunkSize: 10 * 1024 * 1024,
+				Concurrency:        0,
 			},
 			wantErr: true,
 			errMsg:  "concurrency must be at least 1",
@@ -294,10 +294,10 @@ func TestS3Config_Validate(t *testing.T) {
 		{
 			name: "low multipart threshold",
 			config: S3Config{
-				Bucket:              "my-bucket",
-				MultipartThreshold:  1024 * 1024, // 1MB - too small
-				MultipartChunkSize:  10 * 1024 * 1024,
-				Concurrency:         4,
+				Bucket:             "my-bucket",
+				MultipartThreshold: 1024 * 1024, // 1MB - too small
+				MultipartChunkSize: 10 * 1024 * 1024,
+				Concurrency:        4,
 			},
 			wantErr: true,
 			errMsg:  "multipart threshold must be at least 5MB",
@@ -305,10 +305,10 @@ func TestS3Config_Validate(t *testing.T) {
 		{
 			name: "low chunk size",
 			config: S3Config{
-				Bucket:              "my-bucket",
-				MultipartThreshold:  10 * 1024 * 1024,
-				MultipartChunkSize:  1024 * 1024, // 1MB - too small
-				Concurrency:         4,
+				Bucket:             "my-bucket",
+				MultipartThreshold: 10 * 1024 * 1024,
+				MultipartChunkSize: 1024 * 1024, // 1MB - too small
+				Concurrency:        4,
 			},
 			wantErr: true,
 			errMsg:  "multipart chunk size must be at least 5MB",
@@ -356,11 +356,11 @@ func TestS3Config_ValidateWithDefaults(t *testing.T) {
 		{
 			name: "preserve existing values",
 			config: S3Config{
-				Bucket:              "my-bucket",
-				MultipartThreshold:  50 * 1024 * 1024,
-				MultipartChunkSize:  20 * 1024 * 1024,
-				Concurrency:         8,
-				StorageClass:        StorageClassStandard,
+				Bucket:             "my-bucket",
+				MultipartThreshold: 50 * 1024 * 1024,
+				MultipartChunkSize: 20 * 1024 * 1024,
+				Concurrency:        8,
+				StorageClass:       StorageClassStandard,
 			},
 			expectedThreshold: 50 * 1024 * 1024,
 			expectedChunkSize: 20 * 1024 * 1024,
@@ -605,14 +605,14 @@ func TestValidateChunkSize(t *testing.T) {
 	}{
 		{
 			name:      "valid chunk size",
-			chunkSize: 10 * 1024 * 1024,    // 10MB
-			fileSize:  100 * 1024 * 1024,   // 100MB
+			chunkSize: 10 * 1024 * 1024,  // 10MB
+			fileSize:  100 * 1024 * 1024, // 100MB
 			wantErr:   false,
 		},
 		{
 			name:      "too small",
-			chunkSize: 1 * 1024 * 1024,     // 1MB
-			fileSize:  100 * 1024 * 1024,   // 100MB
+			chunkSize: 1 * 1024 * 1024,   // 1MB
+			fileSize:  100 * 1024 * 1024, // 100MB
 			wantErr:   true,
 			errMsg:    "at least 5MB",
 		},
@@ -625,7 +625,7 @@ func TestValidateChunkSize(t *testing.T) {
 		},
 		{
 			name:      "too many parts",
-			chunkSize: 5 * 1024 * 1024, // 5MB
+			chunkSize: 5 * 1024 * 1024,          // 5MB
 			fileSize:  100 * 1024 * 1024 * 1024, // 100GB = 20,000 parts at 5MB each
 			wantErr:   true,
 			errMsg:    "will result in",
@@ -651,46 +651,46 @@ func TestValidateChunkSize(t *testing.T) {
 // TestSuggestOptimalConfig tests optimal configuration suggestions
 func TestSuggestOptimalConfig(t *testing.T) {
 	tests := []struct {
-		name               string
-		fileSize           int64
-		expectedConcur     int
-		expectedChunkSize  int64
-		expectedThreshold  int64
+		name              string
+		fileSize          int64
+		expectedConcur    int
+		expectedChunkSize int64
+		expectedThreshold int64
 	}{
 		{
-			name:               "small file < 10MB",
-			fileSize:           5 * 1024 * 1024,
-			expectedConcur:     1,
-			expectedChunkSize:  5 * 1024 * 1024,
-			expectedThreshold:  100 * 1024 * 1024,
+			name:              "small file < 10MB",
+			fileSize:          5 * 1024 * 1024,
+			expectedConcur:    1,
+			expectedChunkSize: 5 * 1024 * 1024,
+			expectedThreshold: 100 * 1024 * 1024,
 		},
 		{
-			name:               "medium file < 100MB",
-			fileSize:           50 * 1024 * 1024,
-			expectedConcur:     2,
-			expectedChunkSize:  10 * 1024 * 1024,
-			expectedThreshold:  10 * 1024 * 1024,
+			name:              "medium file < 100MB",
+			fileSize:          50 * 1024 * 1024,
+			expectedConcur:    2,
+			expectedChunkSize: 10 * 1024 * 1024,
+			expectedThreshold: 10 * 1024 * 1024,
 		},
 		{
-			name:               "large file < 1GB",
-			fileSize:           500 * 1024 * 1024,
-			expectedConcur:     4,
-			expectedChunkSize:  10 * 1024 * 1024,
-			expectedThreshold:  10 * 1024 * 1024,
+			name:              "large file < 1GB",
+			fileSize:          500 * 1024 * 1024,
+			expectedConcur:    4,
+			expectedChunkSize: 10 * 1024 * 1024,
+			expectedThreshold: 10 * 1024 * 1024,
 		},
 		{
-			name:               "very large file < 10GB",
-			fileSize:           5 * 1024 * 1024 * 1024,
-			expectedConcur:     8,
-			expectedChunkSize:  50 * 1024 * 1024,
-			expectedThreshold:  10 * 1024 * 1024,
+			name:              "very large file < 10GB",
+			fileSize:          5 * 1024 * 1024 * 1024,
+			expectedConcur:    8,
+			expectedChunkSize: 50 * 1024 * 1024,
+			expectedThreshold: 10 * 1024 * 1024,
 		},
 		{
-			name:               "huge file >= 10GB",
-			fileSize:           20 * 1024 * 1024 * 1024,
-			expectedConcur:     10,
-			expectedChunkSize:  100 * 1024 * 1024,
-			expectedThreshold:  10 * 1024 * 1024,
+			name:              "huge file >= 10GB",
+			fileSize:          20 * 1024 * 1024 * 1024,
+			expectedConcur:    10,
+			expectedChunkSize: 100 * 1024 * 1024,
+			expectedThreshold: 10 * 1024 * 1024,
 		},
 	}
 

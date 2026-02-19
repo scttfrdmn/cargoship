@@ -573,9 +573,9 @@ func TestErrorClassifier_ClassifyPermissionError_AllBranches(t *testing.T) {
 	ec := NewErrorClassifier()
 
 	tests := []struct {
-		name          string
-		errStr        string
-		expectedTips  int
+		name         string
+		errStr       string
+		expectedTips int
 	}{
 		{"putobject specific", "access denied on putobject operation", 4},
 		{"upload generic", "cannot upload to s3", 4},
@@ -595,15 +595,15 @@ func TestErrorClassifier_ClassifyPermissionError_AllBranches(t *testing.T) {
 	}
 }
 
-// TestErrorClassifier_ClassifyStorageError_AllBranches tests all storage error branches  
+// TestErrorClassifier_ClassifyStorageError_AllBranches tests all storage error branches
 func TestErrorClassifier_ClassifyStorageError_AllBranches(t *testing.T) {
 	ec := NewErrorClassifier()
 
 	tests := []struct {
-		name         string
-		errStr       string
-		msgContains  string
-		tipsCount    int
+		name        string
+		errStr      string
+		msgContains string
+		tipsCount   int
 	}{
 		{"nosuchbucket variant 1", "nosuchbucket error", "does not exist", 4},
 		{"nosuchbucket variant 2", "bucket not found", "does not exist", 4},

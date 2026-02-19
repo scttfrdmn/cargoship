@@ -10,25 +10,25 @@ import (
 type StorageProvider string
 
 const (
-	ProviderAWS        StorageProvider = "aws"
-	ProviderWasabi     StorageProvider = "wasabi"
+	ProviderAWS         StorageProvider = "aws"
+	ProviderWasabi      StorageProvider = "wasabi"
 	ProviderBackblazeB2 StorageProvider = "b2"
-	ProviderMinIO      StorageProvider = "minio"
-	ProviderCustom     StorageProvider = "custom"
+	ProviderMinIO       StorageProvider = "minio"
+	ProviderCustom      StorageProvider = "custom"
 )
 
 // ProviderPricing defines pricing structure for a storage provider
 type ProviderPricing struct {
-	Provider             StorageProvider
-	Name                 string
-	StoragePricePerTB    float64 // Monthly storage cost per TB
-	HasMonitoringFees    bool    // Whether provider charges monitoring fees
-	MonitoringFeePerK    float64 // Monitoring fee per 1000 objects (if applicable)
-	HasMinimumSizePenalty bool   // Whether provider has minimum object size penalties
-	EgressPricePerGB     float64 // Data transfer out price per GB
-	GetRequestCostPerK   float64 // GET request cost per 1000 requests
-	PutRequestCostPerK   float64 // PUT request cost per 1000 requests
-	ListRequestCostPerK  float64 // LIST request cost per 1000 requests
+	Provider              StorageProvider
+	Name                  string
+	StoragePricePerTB     float64 // Monthly storage cost per TB
+	HasMonitoringFees     bool    // Whether provider charges monitoring fees
+	MonitoringFeePerK     float64 // Monitoring fee per 1000 objects (if applicable)
+	HasMinimumSizePenalty bool    // Whether provider has minimum object size penalties
+	EgressPricePerGB      float64 // Data transfer out price per GB
+	GetRequestCostPerK    float64 // GET request cost per 1000 requests
+	PutRequestCostPerK    float64 // PUT request cost per 1000 requests
+	ListRequestCostPerK   float64 // LIST request cost per 1000 requests
 }
 
 // GetProviderPricing returns pricing information for a storage provider
@@ -36,44 +36,44 @@ func GetProviderPricing(provider StorageProvider, region string) *ProviderPricin
 	switch provider {
 	case ProviderWasabi:
 		return &ProviderPricing{
-			Provider:             ProviderWasabi,
-			Name:                 "Wasabi",
-			StoragePricePerTB:    5.99,
-			HasMonitoringFees:    false,
-			MonitoringFeePerK:    0,
+			Provider:              ProviderWasabi,
+			Name:                  "Wasabi",
+			StoragePricePerTB:     5.99,
+			HasMonitoringFees:     false,
+			MonitoringFeePerK:     0,
 			HasMinimumSizePenalty: false,
-			EgressPricePerGB:     0, // Free egress
-			GetRequestCostPerK:   0, // Included
-			PutRequestCostPerK:   0, // Included
-			ListRequestCostPerK:  0, // Included
+			EgressPricePerGB:      0, // Free egress
+			GetRequestCostPerK:    0, // Included
+			PutRequestCostPerK:    0, // Included
+			ListRequestCostPerK:   0, // Included
 		}
 
 	case ProviderBackblazeB2:
 		return &ProviderPricing{
-			Provider:             ProviderBackblazeB2,
-			Name:                 "Backblaze B2",
-			StoragePricePerTB:    5.00,
-			HasMonitoringFees:    false,
-			MonitoringFeePerK:    0,
+			Provider:              ProviderBackblazeB2,
+			Name:                  "Backblaze B2",
+			StoragePricePerTB:     5.00,
+			HasMonitoringFees:     false,
+			MonitoringFeePerK:     0,
 			HasMinimumSizePenalty: false,
-			EgressPricePerGB:     0.01, // $0.01/GB egress
-			GetRequestCostPerK:   0.004, // $0.004 per 1K (Class B transactions)
-			PutRequestCostPerK:   0.004, // $0.004 per 1K (Class C transactions)
-			ListRequestCostPerK:  0.004, // $0.004 per 1K (Class B transactions)
+			EgressPricePerGB:      0.01,  // $0.01/GB egress
+			GetRequestCostPerK:    0.004, // $0.004 per 1K (Class B transactions)
+			PutRequestCostPerK:    0.004, // $0.004 per 1K (Class C transactions)
+			ListRequestCostPerK:   0.004, // $0.004 per 1K (Class B transactions)
 		}
 
 	case ProviderMinIO:
 		return &ProviderPricing{
-			Provider:             ProviderMinIO,
-			Name:                 "MinIO (Self-Hosted)",
-			StoragePricePerTB:    0, // Self-hosted, no cloud storage costs
-			HasMonitoringFees:    false,
-			MonitoringFeePerK:    0,
+			Provider:              ProviderMinIO,
+			Name:                  "MinIO (Self-Hosted)",
+			StoragePricePerTB:     0, // Self-hosted, no cloud storage costs
+			HasMonitoringFees:     false,
+			MonitoringFeePerK:     0,
 			HasMinimumSizePenalty: false,
-			EgressPricePerGB:     0, // Self-hosted
-			GetRequestCostPerK:   0, // Self-hosted
-			PutRequestCostPerK:   0, // Self-hosted
-			ListRequestCostPerK:  0, // Self-hosted
+			EgressPricePerGB:      0, // Self-hosted
+			GetRequestCostPerK:    0, // Self-hosted
+			PutRequestCostPerK:    0, // Self-hosted
+			ListRequestCostPerK:   0, // Self-hosted
 		}
 
 	case ProviderAWS:
@@ -81,16 +81,16 @@ func GetProviderPricing(provider StorageProvider, region string) *ProviderPricin
 	default:
 		// AWS pricing is handled by the existing Calculator
 		return &ProviderPricing{
-			Provider:             ProviderAWS,
-			Name:                 "AWS S3",
-			StoragePricePerTB:    0, // Varies by region and tier
-			HasMonitoringFees:    true,
-			MonitoringFeePerK:    0.0025,
+			Provider:              ProviderAWS,
+			Name:                  "AWS S3",
+			StoragePricePerTB:     0, // Varies by region and tier
+			HasMonitoringFees:     true,
+			MonitoringFeePerK:     0.0025,
 			HasMinimumSizePenalty: true,
-			EgressPricePerGB:     0.09, // First 10 TB/month
-			GetRequestCostPerK:   0.0004,
-			PutRequestCostPerK:   0.005,
-			ListRequestCostPerK:  0.005,
+			EgressPricePerGB:      0.09, // First 10 TB/month
+			GetRequestCostPerK:    0.0004,
+			PutRequestCostPerK:    0.005,
+			ListRequestCostPerK:   0.005,
 		}
 	}
 }

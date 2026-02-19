@@ -11,17 +11,17 @@ import (
 
 // BenchmarkCostComparison compares costs between different upload approaches
 type BenchmarkCostComparison struct {
-	Scenario              string                  `json:"scenario"`
-	Tool                  string                  `json:"tool"`
-	DataTransferCost      float64                 `json:"data_transfer_cost"`
-	PUTRequestCost        float64                 `json:"put_request_cost"`
-	StorageCostMonthly    float64                 `json:"storage_cost_monthly"`
-	TotalUploadCost       float64                 `json:"total_upload_cost"`
-	MonthlyRunningCost    float64                 `json:"monthly_running_cost"`
-	AnnualTCO             float64                 `json:"annual_tco"`
-	Currency              string                  `json:"currency"`
-	CargoShipAdvantages   *CargoShipCostAdvantage `json:"cargoship_advantages,omitempty"`
-	EstimatedAt           time.Time               `json:"estimated_at"`
+	Scenario            string                  `json:"scenario"`
+	Tool                string                  `json:"tool"`
+	DataTransferCost    float64                 `json:"data_transfer_cost"`
+	PUTRequestCost      float64                 `json:"put_request_cost"`
+	StorageCostMonthly  float64                 `json:"storage_cost_monthly"`
+	TotalUploadCost     float64                 `json:"total_upload_cost"`
+	MonthlyRunningCost  float64                 `json:"monthly_running_cost"`
+	AnnualTCO           float64                 `json:"annual_tco"`
+	Currency            string                  `json:"currency"`
+	CargoShipAdvantages *CargoShipCostAdvantage `json:"cargoship_advantages,omitempty"`
+	EstimatedAt         time.Time               `json:"estimated_at"`
 }
 
 // CargoShipCostAdvantage shows cost savings from CargoShip features

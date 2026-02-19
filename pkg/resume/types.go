@@ -38,9 +38,9 @@ type UploadState struct {
 
 // ShardState tracks the state of a single shard during upload
 type ShardState struct {
-	ShardID        int    `json:"shard_id"`
-	CompletedFiles int64  `json:"completed_files"`
-	CompletedBytes int64  `json:"completed_bytes"`
+	ShardID         int   `json:"shard_id"`
+	CompletedFiles  int64 `json:"completed_files"`
+	CompletedBytes  int64 `json:"completed_bytes"`
 	CompletedChunks int   `json:"completed_chunks,omitempty"`
 
 	// Track in-progress multipart uploads for resume

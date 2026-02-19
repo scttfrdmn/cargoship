@@ -32,25 +32,25 @@ type RebalanceConfig struct {
 	DryRun bool
 
 	// S3 configuration for execution (required if not DryRun)
-	S3Client        *s3.Client      // S3 client for downloading/uploading chunks
-	Bucket          string          // S3 bucket name
-	Prefix          string          // S3 prefix
-	UploadID        string          // Upload ID
-	CompressionType string          // Compression type (e.g., "zstd")
+	S3Client        *s3.Client         // S3 client for downloading/uploading chunks
+	Bucket          string             // S3 bucket name
+	Prefix          string             // S3 prefix
+	UploadID        string             // Upload ID
+	CompressionType string             // Compression type (e.g., "zstd")
 	StorageClass    types.StorageClass // S3 storage class for new chunks
 }
 
 // ShardBalance represents the balance state of shards
 type ShardBalance struct {
-	TotalSize      int64                // Total size across all shards
-	AverageSize    float64              // Average size per shard
-	MaxSize        int64                // Size of largest shard
-	MinSize        int64                // Size of smallest shard
-	SizeVariance   float64              // Max/Avg ratio (imbalance factor)
-	IsBalanced     bool                 // True if within threshold
-	ShardStats     []ShardStats         // Per-shard statistics
-	ImbalanceRatio float64              // Actual imbalance ratio detected
-	Recommendation string               // Human-readable recommendation
+	TotalSize      int64        // Total size across all shards
+	AverageSize    float64      // Average size per shard
+	MaxSize        int64        // Size of largest shard
+	MinSize        int64        // Size of smallest shard
+	SizeVariance   float64      // Max/Avg ratio (imbalance factor)
+	IsBalanced     bool         // True if within threshold
+	ShardStats     []ShardStats // Per-shard statistics
+	ImbalanceRatio float64      // Actual imbalance ratio detected
+	Recommendation string       // Human-readable recommendation
 }
 
 // ShardStats contains statistics for a single shard
@@ -79,19 +79,19 @@ type RebalanceResult struct {
 
 // RebalancePlan represents a plan for redistributing files between shards
 type RebalancePlan struct {
-	Moves          []FileMove      // Individual file movements
-	TargetBalance  ShardBalance    // Expected balance after rebalancing
-	TotalBytes     int64           // Total bytes to be moved
-	ChunksAffected int             // Number of chunks that will be modified
+	Moves          []FileMove   // Individual file movements
+	TargetBalance  ShardBalance // Expected balance after rebalancing
+	TotalBytes     int64        // Total bytes to be moved
+	ChunksAffected int          // Number of chunks that will be modified
 }
 
 // FileMove represents moving a single file from one shard to another
 type FileMove struct {
-	File          manifest.FileEntry // File to move
-	SourceShard   int                // Current shard ID
-	TargetShard   int                // Destination shard ID
-	SourceChunk   int                // Current chunk ID
-	TargetChunk   int                // New chunk ID (TBD during execution)
+	File        manifest.FileEntry // File to move
+	SourceShard int                // Current shard ID
+	TargetShard int                // Destination shard ID
+	SourceChunk int                // Current chunk ID
+	TargetChunk int                // New chunk ID (TBD during execution)
 }
 
 // extractedFile holds file data extracted from a chunk

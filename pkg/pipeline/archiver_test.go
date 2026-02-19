@@ -147,17 +147,17 @@ func TestArchiverStage_AnalyzeChunkContentTypes(t *testing.T) {
 		{
 			name: "mixed with code predominant by size",
 			files: []chunking.File{
-				{Path: "main.go", Size: 10240},      // 10KB code
-				{Path: "photo.jpg", Size: 5120},     // 5KB image
-				{Path: "README.md", Size: 1024},     // 1KB text
+				{Path: "main.go", Size: 10240},  // 10KB code
+				{Path: "photo.jpg", Size: 5120}, // 5KB image
+				{Path: "README.md", Size: 1024}, // 1KB text
 			},
 			expectedLevel: compression.LevelBest, // 9 (code is largest)
 		},
 		{
 			name: "mixed with images predominant by size",
 			files: []chunking.File{
-				{Path: "photo.jpg", Size: 1048576},  // 1MB image
-				{Path: "main.go", Size: 10240},      // 10KB code
+				{Path: "photo.jpg", Size: 1048576}, // 1MB image
+				{Path: "main.go", Size: 10240},     // 10KB code
 			},
 			expectedLevel: compression.LevelFastest, // 1 (images are largest)
 		},

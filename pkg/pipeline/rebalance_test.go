@@ -11,9 +11,9 @@ import (
 func TestAnalyzeShardBalance_Balanced(t *testing.T) {
 	// Create a manifest with balanced shards (8 shards, 1GB each)
 	m := &manifest.Manifest{
-		Version:   "1.0",
-		UploadID:  "test-upload",
-		CreatedAt: time.Now(),
+		Version:    "1.0",
+		UploadID:   "test-upload",
+		CreatedAt:  time.Now(),
 		ShardCount: 8,
 		Shards: []manifest.ShardEntry{
 			{ID: 0, FileCount: 1000, UncompressedSize: 1024 * 1024 * 1024, ChunkCount: 10},
@@ -63,7 +63,7 @@ func TestAnalyzeShardBalance_Imbalanced(t *testing.T) {
 		ShardCount: 8,
 		Shards: []manifest.ShardEntry{
 			{ID: 0, FileCount: 9000, UncompressedSize: 9 * 1024 * 1024 * 1024, ChunkCount: 90}, // 9GB
-			{ID: 1, FileCount: 143, UncompressedSize: 146 * 1024 * 1024, ChunkCount: 2},         // ~146MB
+			{ID: 1, FileCount: 143, UncompressedSize: 146 * 1024 * 1024, ChunkCount: 2},        // ~146MB
 			{ID: 2, FileCount: 143, UncompressedSize: 146 * 1024 * 1024, ChunkCount: 2},
 			{ID: 3, FileCount: 143, UncompressedSize: 146 * 1024 * 1024, ChunkCount: 2},
 			{ID: 4, FileCount: 143, UncompressedSize: 146 * 1024 * 1024, ChunkCount: 2},

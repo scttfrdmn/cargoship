@@ -10,20 +10,20 @@ import (
 func TestSaveAndLoadState(t *testing.T) {
 	// Create a test state
 	state := &UploadState{
-		UploadID:        "test-upload-123",
-		StartTime:       time.Now(),
-		LastSave:        time.Now(),
-		SourceDir:       "/test/source",
-		Bucket:          "test-bucket",
-		Prefix:          "test-prefix",
-		Region:          "us-west-2",
-		StorageClass:    "STANDARD",
-		TotalFiles:      100,
-		TotalBytes:      1000000,
-		CompletedFiles:  50,
-		CompletedBytes:  500000,
-		ShardCount:      8,
-		Shards:          make([]ShardState, 8),
+		UploadID:       "test-upload-123",
+		StartTime:      time.Now(),
+		LastSave:       time.Now(),
+		SourceDir:      "/test/source",
+		Bucket:         "test-bucket",
+		Prefix:         "test-prefix",
+		Region:         "us-west-2",
+		StorageClass:   "STANDARD",
+		TotalFiles:     100,
+		TotalBytes:     1000000,
+		CompletedFiles: 50,
+		CompletedBytes: 500000,
+		ShardCount:     8,
+		Shards:         make([]ShardState, 8),
 	}
 
 	// Initialize shard states

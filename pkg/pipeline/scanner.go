@@ -686,18 +686,18 @@ func (s *ScannerStage) filterDuplicates(ctx context.Context, files []chunking.Fi
 			// Add to manifest with dedup reference, but don't upload
 			if manifestBuilder != nil {
 				manifestBuilder.AddFile(manifest.FileEntry{
-					Path:              file.Path,
-					Size:              file.Size,
-					ModTime:           file.ModTime,
-					ChunkID:           location.ChunkID,
-					ShardID:           location.ShardID,
-					S3Key:             location.S3Key,
-					IsDuplicate:       true,
-					DuplicateOfHash:   location.Hash,
-					OriginalChunkID:   location.ChunkID,
-					OriginalShardID:   location.ShardID,
-					OriginalS3Key:     location.S3Key,
-					Checksum:          location.Hash,
+					Path:            file.Path,
+					Size:            file.Size,
+					ModTime:         file.ModTime,
+					ChunkID:         location.ChunkID,
+					ShardID:         location.ShardID,
+					S3Key:           location.S3Key,
+					IsDuplicate:     true,
+					DuplicateOfHash: location.Hash,
+					OriginalChunkID: location.ChunkID,
+					OriginalShardID: location.ShardID,
+					OriginalS3Key:   location.S3Key,
+					Checksum:        location.Hash,
 				})
 			}
 

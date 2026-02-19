@@ -118,7 +118,7 @@ State files are read from ~/.cargoship/state/
 // newResumeCleanCmd creates the 'resume clean' subcommand
 func newResumeCleanCmd() *cobra.Command {
 	var (
-		olderThan     string
+		olderThan      string
 		cleanCompleted bool
 	)
 

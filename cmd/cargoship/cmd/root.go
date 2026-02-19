@@ -82,7 +82,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 
 	cmd.AddCommand(
 		NewEstimateCmd(),
-		NewAnalyzeCmd(),  // Issue #170: Analyze existing S3 storage costs
+		NewAnalyzeCmd(), // Issue #170: Analyze existing S3 storage costs
 		NewLifecycleCmd(),
 		NewMetricsCmd(),
 		NewConfigCmd(),

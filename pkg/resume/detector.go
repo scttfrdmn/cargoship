@@ -59,10 +59,10 @@ func ShouldPromptForResume(state *UploadState) bool {
 type ResumeDecision int
 
 const (
-	ResumeYes       ResumeDecision = iota // Resume the upload
-	ResumeNo                              // Start fresh upload
-	ResumeValidate                        // Validate files first, then resume
-	ResumeCanceled                        // Cancel the operation
+	ResumeYes      ResumeDecision = iota // Resume the upload
+	ResumeNo                             // Start fresh upload
+	ResumeValidate                       // Validate files first, then resume
+	ResumeCanceled                       // Cancel the operation
 )
 
 // String returns a human-readable representation of the decision

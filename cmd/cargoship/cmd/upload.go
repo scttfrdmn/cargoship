@@ -354,10 +354,10 @@ Examples:
 				if tierMaxStr != "" {
 					// Validate tier-max value
 					validTiers := map[string]types.StorageClass{
-						"STANDARD":       types.StorageClassStandard,
-						"STANDARD_IA":    types.StorageClassStandardIa,
-						"GLACIER":        types.StorageClassGlacier,
-						"DEEP_ARCHIVE":   types.StorageClassDeepArchive,
+						"STANDARD":     types.StorageClassStandard,
+						"STANDARD_IA":  types.StorageClassStandardIa,
+						"GLACIER":      types.StorageClassGlacier,
+						"DEEP_ARCHIVE": types.StorageClassDeepArchive,
 					}
 					var ok bool
 					tierMax, ok = validTiers[strings.ToUpper(tierMaxStr)]
@@ -528,8 +528,8 @@ Examples:
 				CleanupOnFailure: true,
 
 				// Issue #166: Direct upload optimization
-				EnableDirectUpload:  cmd.Flags().Changed("direct-upload"),
-				ForceDirectUpload:   cmd.Flags().Changed("force-direct-upload"),
+				EnableDirectUpload:     cmd.Flags().Changed("direct-upload"),
+				ForceDirectUpload:      cmd.Flags().Changed("force-direct-upload"),
 				EnableAutoDirectUpload: true, // Auto-enable when thresholds met
 			}
 

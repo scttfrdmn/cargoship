@@ -23,12 +23,12 @@ type File struct {
 
 // Chunk represents a group of files to be archived together
 type Chunk struct {
-	ID              int                  // Chunk identifier
-	Files           []File               // Files in this chunk
-	TotalSize       int64                // Total size of all files in bytes
-	FileCount       int                  // Number of files
-	EstimatedOps    int                  // Estimated S3 operations (multipart uploads)
-	PreAssignedTier types.StorageClass   // Issue #164: Pre-assigned storage tier (empty = use default/youngest-file)
+	ID              int                // Chunk identifier
+	Files           []File             // Files in this chunk
+	TotalSize       int64              // Total size of all files in bytes
+	FileCount       int                // Number of files
+	EstimatedOps    int                // Estimated S3 operations (multipart uploads)
+	PreAssignedTier types.StorageClass // Issue #164: Pre-assigned storage tier (empty = use default/youngest-file)
 }
 
 // ChunkStats provides statistics about chunking decisions

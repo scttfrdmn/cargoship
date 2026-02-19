@@ -472,38 +472,38 @@ func (n *BudgetAlertNotifier) formatEmailBody(alert *BudgetAlert) string {
 
 	buf.WriteString("CargoShip Budget Alert\n")
 	buf.WriteString("======================\n\n")
-	buf.WriteString(fmt.Sprintf("Severity: %s\n", alert.Severity))
-	buf.WriteString(fmt.Sprintf("Type: %s\n", alert.Type))
-	buf.WriteString(fmt.Sprintf("Time: %s\n\n", alert.Timestamp.Format(time.RFC3339)))
+	fmt.Fprintf(&buf, "Severity: %s\n", alert.Severity)
+	fmt.Fprintf(&buf, "Type: %s\n", alert.Type)
+	fmt.Fprintf(&buf, "Time: %s\n\n", alert.Timestamp.Format(time.RFC3339))
 
 	if alert.ProjectID != "" {
-		buf.WriteString(fmt.Sprintf("Project: %s\n", alert.ProjectID))
+		fmt.Fprintf(&buf, "Project: %s\n", alert.ProjectID)
 	} else {
 		buf.WriteString("Scope: Global\n")
 	}
 
-	buf.WriteString(fmt.Sprintf("\n%s\n\n", alert.Description))
+	fmt.Fprintf(&buf, "\n%s\n\n", alert.Description)
 
 	// Cost details
 	if alert.MaxBudget > 0 {
 		buf.WriteString("Budget Details:\n")
-		buf.WriteString(fmt.Sprintf("  Maximum Budget: $%.2f\n", alert.MaxBudget))
-		buf.WriteString(fmt.Sprintf("  Current Spend: $%.2f\n", alert.CurrentSpend))
-		buf.WriteString(fmt.Sprintf("  Remaining: $%.2f\n", alert.BudgetRemaining))
-		buf.WriteString(fmt.Sprintf("  Used: %.1f%%\n\n", alert.BudgetUsedPercent))
+		fmt.Fprintf(&buf, "  Maximum Budget: $%.2f\n", alert.MaxBudget)
+		fmt.Fprintf(&buf, "  Current Spend: $%.2f\n", alert.CurrentSpend)
+		fmt.Fprintf(&buf, "  Remaining: $%.2f\n", alert.BudgetRemaining)
+		fmt.Fprintf(&buf, "  Used: %.1f%%\n\n", alert.BudgetUsedPercent)
 	}
 
 	// Volume details
 	if alert.MaxVolumeGB > 0 {
 		buf.WriteString("Volume Details:\n")
-		buf.WriteString(fmt.Sprintf("  Maximum Quota: %.2f GB\n", alert.MaxVolumeGB))
-		buf.WriteString(fmt.Sprintf("  Current Volume: %.2f GB\n", alert.CurrentVolumeGB))
-		buf.WriteString(fmt.Sprintf("  Remaining: %.2f GB\n", alert.VolumeRemaining))
-		buf.WriteString(fmt.Sprintf("  Used: %.1f%%\n\n", alert.VolumeUsedPercent))
+		fmt.Fprintf(&buf, "  Maximum Quota: %.2f GB\n", alert.MaxVolumeGB)
+		fmt.Fprintf(&buf, "  Current Volume: %.2f GB\n", alert.CurrentVolumeGB)
+		fmt.Fprintf(&buf, "  Remaining: %.2f GB\n", alert.VolumeRemaining)
+		fmt.Fprintf(&buf, "  Used: %.1f%%\n\n", alert.VolumeUsedPercent)
 	}
 
 	if alert.Recommendation != "" {
-		buf.WriteString(fmt.Sprintf("Recommendation:\n%s\n\n", alert.Recommendation))
+		fmt.Fprintf(&buf, "Recommendation:\n%s\n\n", alert.Recommendation)
 	}
 
 	if alert.ActionRequired {

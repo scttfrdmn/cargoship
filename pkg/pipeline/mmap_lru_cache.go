@@ -13,11 +13,11 @@ import (
 // with a maximum size limit to prevent file descriptor exhaustion.
 // Issue #34 Phase 2.1: Limits open file descriptors to prevent leaks.
 type mmapLRUCache struct {
-	mu       sync.Mutex
-	capacity int
-	cache    map[string]*list.Element // path -> list element
-	lruList  *list.List               // LRU list (most recent at front)
-	evictions int64                   // Total number of evictions (for monitoring)
+	mu        sync.Mutex
+	capacity  int
+	cache     map[string]*list.Element // path -> list element
+	lruList   *list.List               // LRU list (most recent at front)
+	evictions int64                    // Total number of evictions (for monitoring)
 }
 
 // mmapLRUEntry represents an entry in the LRU cache

@@ -64,20 +64,20 @@ func (vr *ValidationResult) HasWarnings() bool {
 func (vr *ValidationResult) Summary() string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("Validation: %s\n", map[bool]string{true: "PASS", false: "FAIL"}[vr.Valid]))
-	sb.WriteString(fmt.Sprintf("Errors: %d, Warnings: %d\n", len(vr.Errors), len(vr.Warnings)))
+	fmt.Fprintf(&sb, "Validation: %s\n", map[bool]string{true: "PASS", false: "FAIL"}[vr.Valid])
+	fmt.Fprintf(&sb, "Errors: %d, Warnings: %d\n", len(vr.Errors), len(vr.Warnings))
 
 	if len(vr.Errors) > 0 {
 		sb.WriteString("\nErrors:\n")
 		for _, err := range vr.Errors {
-			sb.WriteString(fmt.Sprintf("  • %s\n", err.Message))
+			fmt.Fprintf(&sb, "  • %s\n", err.Message)
 		}
 	}
 
 	if len(vr.Warnings) > 0 {
 		sb.WriteString("\nWarnings:\n")
 		for _, warn := range vr.Warnings {
-			sb.WriteString(fmt.Sprintf("  • %s\n", warn.Message))
+			fmt.Fprintf(&sb, "  • %s\n", warn.Message)
 		}
 	}
 

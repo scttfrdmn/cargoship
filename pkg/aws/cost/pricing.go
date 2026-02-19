@@ -485,29 +485,29 @@ func (pm *PricingManager) GetCacheStats() map[string]interface{} {
 // ComparisonEstimate represents naive vs CargoShip chunking cost comparison
 // Issue #169: Show chunking benefits in cost estimates
 type ComparisonEstimate struct {
-	NaiveUploadCost   *CostEstimate      `json:"naive_upload_cost"`
-	ChunkedUploadCost *CostEstimate      `json:"chunked_upload_cost"`
-	SavingsBreakdown  SavingsBreakdown   `json:"savings_breakdown"`
-	Recommendations   []string           `json:"recommendations"`
-	FileStats         FileStatistics     `json:"file_stats"`
+	NaiveUploadCost   *CostEstimate    `json:"naive_upload_cost"`
+	ChunkedUploadCost *CostEstimate    `json:"chunked_upload_cost"`
+	SavingsBreakdown  SavingsBreakdown `json:"savings_breakdown"`
+	Recommendations   []string         `json:"recommendations"`
+	FileStats         FileStatistics   `json:"file_stats"`
 }
 
 // SavingsBreakdown shows cost savings from chunking
 type SavingsBreakdown struct {
-	MinimumSizePenaltySaved   float64 `json:"minimum_size_penalty_saved"`
-	RequestCostSaved          float64 `json:"request_cost_saved"`
-	MonitoringCostSaved       float64 `json:"monitoring_cost_saved"`
-	TotalMonthlySavings       float64 `json:"total_monthly_savings"`
-	SavingsPercentage         float64 `json:"savings_percentage"`
-	AnnualSavings             float64 `json:"annual_savings"`
+	MinimumSizePenaltySaved float64 `json:"minimum_size_penalty_saved"`
+	RequestCostSaved        float64 `json:"request_cost_saved"`
+	MonitoringCostSaved     float64 `json:"monitoring_cost_saved"`
+	TotalMonthlySavings     float64 `json:"total_monthly_savings"`
+	SavingsPercentage       float64 `json:"savings_percentage"`
+	AnnualSavings           float64 `json:"annual_savings"`
 }
 
 // FileStatistics provides file count and size information
 type FileStatistics struct {
-	TotalFiles       int     `json:"total_files"`
-	TotalSizeGB      float64 `json:"total_size_gb"`
+	TotalFiles        int     `json:"total_files"`
+	TotalSizeGB       float64 `json:"total_size_gb"`
 	AverageFileSizeKB float64 `json:"average_file_size_kb"`
-	EstimatedChunks  int     `json:"estimated_chunks"`
+	EstimatedChunks   int     `json:"estimated_chunks"`
 }
 
 // Minimum object size requirements per storage tier (in bytes)

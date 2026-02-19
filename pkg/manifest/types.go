@@ -45,6 +45,11 @@ type Manifest struct {
 	// Deduplication (Issue #108)
 	Deduplication *ManifestDeduplication `json:"deduplication,omitempty"` // Deduplication metadata if enabled
 
+	// DVC integration (Issue #172) — all omitempty for v1.0 backward compatibility
+	VersionInfo      *VersionInfo      `json:"version_info,omitempty"`      // Dataset version and experiment metadata
+	GitMetadata      *GitMetadata      `json:"git_metadata,omitempty"`      // Git repository state at upload time
+	DVCCompatibility *DVCCompatibility `json:"dvc_compatibility,omitempty"` // DVC remote compatibility settings
+
 	// Files - array of all files with their locations
 	Files []FileEntry `json:"files"`
 
@@ -53,6 +58,69 @@ type Manifest struct {
 
 	// Shards - array of shard information
 	Shards []ShardEntry `json:"shards"`
+}
+
+// VersionInfo holds dataset version and experiment tracking metadata (Issue #172).
+// All fields are optional; populate via --dvc-stage / --data-version CLI flags.
+type VersionInfo struct {
+	// DataVersion is a user-assigned semantic version or label for the dataset (e.g., "v1.2.0")
+	DataVersion string `json:"data_version,omitempty"`
+
+	// ExperimentID links this upload to a DVC experiment ID (dvc exp run output)
+	ExperimentID string `json:"experiment_id,omitempty"`
+
+	// Tag is a free-form label for grouping related uploads
+	Tag string `json:"tag,omitempty"`
+}
+
+// GitMetadata captures the Git repository state at the time of upload (Issue #172).
+// Populated by ExtractGitMetadata (pkg/manifest/git.go). All fields are omitempty
+// so a manifest created outside a Git repo serializes cleanly.
+type GitMetadata struct {
+	// Commit is the HEAD commit SHA (full 40-character hex)
+	Commit string `json:"commit,omitempty"`
+
+	// Branch is the current branch name; empty in detached-HEAD state
+	Branch string `json:"branch,omitempty"`
+
+	// Tag is the nearest annotated tag reachable from HEAD (git describe --tags)
+	Tag string `json:"tag,omitempty"`
+
+	// Remote is the fetch URL of the "origin" remote
+	Remote string `json:"remote,omitempty"`
+
+	// Dirty is true when the working tree had uncommitted changes at upload time
+	Dirty bool `json:"dirty,omitempty"`
+}
+
+// DVCCompatibility records DVC remote configuration for this manifest (Issue #172).
+// When Enabled is true the manifest was produced in DVC-compatible mode and
+// .dvc sidecar files may have been generated alongside the upload.
+type DVCCompatibility struct {
+	// Enabled indicates DVC compatibility mode was active during this upload
+	Enabled bool `json:"enabled"`
+
+	// DVCVersion is the DVC CLI version detected at upload time (e.g., "3.51.2")
+	DVCVersion string `json:"dvc_version,omitempty"`
+
+	// CacheDir is the resolved path to the DVC cache directory (typically .dvc/cache)
+	CacheDir string `json:"cache_dir,omitempty"`
+
+	// DVCFilesGenerated is true when .dvc sidecar files were written to the source tree
+	DVCFilesGenerated bool `json:"dvc_files_generated,omitempty"`
+}
+
+// DVCMetadata holds DVC pipeline provenance for a single file entry (Issue #172).
+// Populated when the source file is a tracked output of a DVC stage.
+type DVCMetadata struct {
+	// Stage is the DVC pipeline stage name that produced this file
+	Stage string `json:"stage,omitempty"`
+
+	// Pipeline is the DVC pipeline name as declared in dvc.yaml
+	Pipeline string `json:"pipeline,omitempty"`
+
+	// ExperimentID links this file to a specific DVC experiment run
+	ExperimentID string `json:"experiment_id,omitempty"`
 }
 
 // EncryptionMetadata represents encryption configuration for the manifest and data (Issue #163)
@@ -64,10 +132,10 @@ type EncryptionMetadata struct {
 	DataKMSKeyID string `json:"data_kms_key_id,omitempty"` // KMS key ID/ARN for data chunks
 
 	// Manifest encryption (envelope encryption)
-	ManifestEncrypted bool   `json:"manifest_encrypted"`           // Whether manifest itself is encrypted
+	ManifestEncrypted bool   `json:"manifest_encrypted"`            // Whether manifest itself is encrypted
 	ManifestKMSKeyID  string `json:"manifest_kms_key_id,omitempty"` // KMS key ID/ARN for manifest
-	Algorithm         string `json:"algorithm,omitempty"`            // Encryption algorithm (e.g., "AES-256-GCM")
-	EncryptedDEK      string `json:"encrypted_dek,omitempty"`        // Base64-encoded encrypted data encryption key
+	Algorithm         string `json:"algorithm,omitempty"`           // Encryption algorithm (e.g., "AES-256-GCM")
+	EncryptedDEK      string `json:"encrypted_dek,omitempty"`       // Base64-encoded encrypted data encryption key
 }
 
 // FileEntry represents a single file in the manifest
@@ -89,16 +157,20 @@ type FileEntry struct {
 	TotalParts int   `json:"total_parts,omitempty"` // Total parts if split (0 or 1 = not split)
 
 	// Optional metadata
-	Checksum string            `json:"checksum,omitempty"` // SHA256 checksum (optional)
-	Metadata map[string]string `json:"metadata,omitempty"` // Additional metadata
+	Checksum    string            `json:"checksum,omitempty"`     // SHA256 checksum (optional)
+	ContentHash string            `json:"content_hash,omitempty"` // MD5 hex digest for DVC compatibility (Issue #172)
+	Metadata    map[string]string `json:"metadata,omitempty"`     // Additional metadata
+
+	// DVC provenance (Issue #172)
+	DVCMetadata *DVCMetadata `json:"dvc_metadata,omitempty"` // DVC pipeline provenance for this file
 
 	// Deduplication (Issue #108)
-	IsDuplicate       bool   `json:"is_duplicate,omitempty"`        // True if this file is a duplicate
-	DuplicateOfHash   string `json:"duplicate_of_hash,omitempty"`   // Hash of the original file
-	OriginalChunkID   int    `json:"original_chunk_id,omitempty"`   // Chunk ID of the original file
-	OriginalShardID   int    `json:"original_shard_id,omitempty"`   // Shard ID of the original file
-	OriginalS3Key     string `json:"original_s3_key,omitempty"`     // S3 key of the original file
-	DeduplicationRefs int32  `json:"deduplication_refs,omitempty"`  // Number of duplicates referencing this file
+	IsDuplicate       bool   `json:"is_duplicate,omitempty"`       // True if this file is a duplicate
+	DuplicateOfHash   string `json:"duplicate_of_hash,omitempty"`  // Hash of the original file
+	OriginalChunkID   int    `json:"original_chunk_id,omitempty"`  // Chunk ID of the original file
+	OriginalShardID   int    `json:"original_shard_id,omitempty"`  // Shard ID of the original file
+	OriginalS3Key     string `json:"original_s3_key,omitempty"`    // S3 key of the original file
+	DeduplicationRefs int32  `json:"deduplication_refs,omitempty"` // Number of duplicates referencing this file
 }
 
 // ChunkEntry represents a single chunk (tar.zst archive) in the manifest

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "dvc-cargoship"
+version = "0.1.0"
+description = "DVC remote plugin for CargoShip bulk S3 uploads"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+keywords = ["dvc", "cargoship", "s3", "remote", "data-version-control"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "fsspec>=2023.1.0",
+    "dvc>=3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-mock>=3.10",
+]
+
+[project.entry-points."dvc.fs"]
+cargoship = "dvc_cargoship:CargoShipFileSystem"
+
+[project.urls]
+Homepage = "https://github.com/scttfrdmn/cargoship"
+"Bug Tracker" = "https://github.com/scttfrdmn/cargoship/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dvc_cargoship*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

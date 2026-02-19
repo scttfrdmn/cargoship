@@ -61,10 +61,10 @@ type BucketStats struct {
 	StorageClassSizes  map[types.ObjectStorageClass]int64
 
 	// Size distribution buckets
-	SmallFiles   int64 // < 1 MB
-	MediumFiles  int64 // 1 MB - 100 MB
-	LargeFiles   int64 // 100 MB - 1 GB
-	HugeFiles    int64 // > 1 GB
+	SmallFiles  int64 // < 1 MB
+	MediumFiles int64 // 1 MB - 100 MB
+	LargeFiles  int64 // 100 MB - 1 GB
+	HugeFiles   int64 // > 1 GB
 
 	// Average object size (calculated)
 	AverageSize float64

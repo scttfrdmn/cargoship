@@ -664,10 +664,10 @@ func TestPipeline_ShouldUseDirectUpload(t *testing.T) {
 		{
 			name: "auto_detect_small_avg_file_size",
 			config: &PipelineConfig{
-				S3Bucket:               "test-bucket",
-				EnableAutoDirectUpload: true,
+				S3Bucket:                "test-bucket",
+				EnableAutoDirectUpload:  true,
 				DirectUploadThresholdMB: 500,
-				DirectUploadAvgSizeMB:  5.0,
+				DirectUploadAvgSizeMB:   5.0,
 			},
 			fileCount:          10000,
 			totalSize:          400 * 1024 * 1024, // 400MB total, 0.04MB avg
@@ -676,22 +676,22 @@ func TestPipeline_ShouldUseDirectUpload(t *testing.T) {
 		{
 			name: "auto_detect_many_small_files",
 			config: &PipelineConfig{
-				S3Bucket:               "test-bucket",
-				EnableAutoDirectUpload: true,
+				S3Bucket:                "test-bucket",
+				EnableAutoDirectUpload:  true,
 				DirectUploadThresholdMB: 500,
-				DirectUploadAvgSizeMB:  5.0,
+				DirectUploadAvgSizeMB:   5.0,
 			},
-			fileCount:          2000,                 // >1000 files
+			fileCount:          2000,                    // >1000 files
 			totalSize:          10 * 1024 * 1024 * 1024, // 10GB total, 5MB avg
-			expectedDirectMode: false,                // Total size exceeds threshold
+			expectedDirectMode: false,                   // Total size exceeds threshold
 		},
 		{
 			name: "auto_detect_large_total_size",
 			config: &PipelineConfig{
-				S3Bucket:               "test-bucket",
-				EnableAutoDirectUpload: true,
+				S3Bucket:                "test-bucket",
+				EnableAutoDirectUpload:  true,
 				DirectUploadThresholdMB: 500,
-				DirectUploadAvgSizeMB:  5.0,
+				DirectUploadAvgSizeMB:   5.0,
 			},
 			fileCount:          100,
 			totalSize:          600 * 1024 * 1024, // 600MB, exceeds threshold
@@ -700,14 +700,14 @@ func TestPipeline_ShouldUseDirectUpload(t *testing.T) {
 		{
 			name: "auto_detect_enabled_by_default",
 			config: &PipelineConfig{
-				S3Bucket:               "test-bucket",
+				S3Bucket:                "test-bucket",
 				DirectUploadThresholdMB: 500,
-				DirectUploadAvgSizeMB:  5.0,
+				DirectUploadAvgSizeMB:   5.0,
 				// EnableAutoDirectUpload not set - should default to true
 			},
 			fileCount:          10000,
 			totalSize:          100 * 1024 * 1024, // 100MB total, 0.01MB avg
-			expectedDirectMode: true, // Should auto-enable due to small avg file size
+			expectedDirectMode: true,              // Should auto-enable due to small avg file size
 		},
 		{
 			name: "zero_files",

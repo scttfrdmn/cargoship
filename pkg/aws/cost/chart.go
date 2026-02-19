@@ -52,7 +52,7 @@ func (c *ASCIIBarChart) Render() string {
 
 	// Title
 	if c.Title != "" {
-		output.WriteString(fmt.Sprintf("\n%s\n", c.Title))
+		fmt.Fprintf(&output, "\n%s\n", c.Title)
 		output.WriteString(strings.Repeat("=", len(c.Title)) + "\n\n")
 	}
 
@@ -106,7 +106,7 @@ func (c *ASCIIBarChart) Render() string {
 		valueStr := fmt.Sprintf("$%.2f", bar.Value)
 
 		// Render line
-		output.WriteString(fmt.Sprintf("%s │ %-*s %s\n", label, barAreaWidth, barStr, valueStr))
+		fmt.Fprintf(&output, "%s │ %-*s %s\n", label, barAreaWidth, barStr, valueStr)
 	}
 
 	output.WriteString("\n")
@@ -217,8 +217,8 @@ func ComparisonTable(cargoship, competitor *BenchmarkCostComparison) string {
 	if competitor.TotalUploadCost > 0 {
 		uploadSavingsPct = (uploadSavings / competitor.TotalUploadCost) * 100
 	}
-	output.WriteString(fmt.Sprintf("║ Upload Cost                │   $%10.2f  │   $%10.2f  │  $%10.2f   ║\n",
-		cargoship.TotalUploadCost, competitor.TotalUploadCost, uploadSavings))
+	fmt.Fprintf(&output, "║ Upload Cost                │   $%10.2f  │   $%10.2f  │  $%10.2f   ║\n",
+		cargoship.TotalUploadCost, competitor.TotalUploadCost, uploadSavings)
 
 	// Monthly storage cost row
 	monthlySavings := competitor.MonthlyRunningCost - cargoship.MonthlyRunningCost
@@ -226,8 +226,8 @@ func ComparisonTable(cargoship, competitor *BenchmarkCostComparison) string {
 	if competitor.MonthlyRunningCost > 0 {
 		monthlySavingsPct = (monthlySavings / competitor.MonthlyRunningCost) * 100
 	}
-	output.WriteString(fmt.Sprintf("║ Monthly Storage            │   $%10.2f  │   $%10.2f  │  $%10.2f   ║\n",
-		cargoship.MonthlyRunningCost, competitor.MonthlyRunningCost, monthlySavings))
+	fmt.Fprintf(&output, "║ Monthly Storage            │   $%10.2f  │   $%10.2f  │  $%10.2f   ║\n",
+		cargoship.MonthlyRunningCost, competitor.MonthlyRunningCost, monthlySavings)
 
 	// Annual TCO row
 	annualSavings := competitor.AnnualTCO - cargoship.AnnualTCO
@@ -236,14 +236,14 @@ func ComparisonTable(cargoship, competitor *BenchmarkCostComparison) string {
 		annualSavingsPct = (annualSavings / competitor.AnnualTCO) * 100
 	}
 	output.WriteString("╠════════════════════════════╪════════════════╪════════════════╪════════════════╣\n")
-	output.WriteString(fmt.Sprintf("║ Annual TCO                 │   $%10.2f  │   $%10.2f  │  $%10.2f   ║\n",
-		cargoship.AnnualTCO, competitor.AnnualTCO, annualSavings))
+	fmt.Fprintf(&output, "║ Annual TCO                 │   $%10.2f  │   $%10.2f  │  $%10.2f   ║\n",
+		cargoship.AnnualTCO, competitor.AnnualTCO, annualSavings)
 
 	output.WriteString("╠════════════════════════════╧════════════════╧════════════════╧════════════════╣\n")
-	output.WriteString(fmt.Sprintf("║ Savings Percentage:  Upload: %.1f%%  |  Monthly: %.1f%%  |  Annual: %.1f%%      ║\n",
+	fmt.Fprintf(&output, "║ Savings Percentage:  Upload: %.1f%%  |  Monthly: %.1f%%  |  Annual: %.1f%%      ║\n",
 		math.Max(0, uploadSavingsPct),
 		math.Max(0, monthlySavingsPct),
-		math.Max(0, annualSavingsPct)))
+		math.Max(0, annualSavingsPct))
 	output.WriteString("╚════════════════════════════════════════════════════════════════════════════════╝\n\n")
 
 	return output.String()

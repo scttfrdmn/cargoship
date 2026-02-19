@@ -185,7 +185,7 @@ func (acs *AdaptiveCompressionSelector) SelectCompressionAlgorithm(
 					fmt.Sprintf("Fast path: Extension %s → %s (priority %d)",
 						context.FileExtension, rule.RecommendedAlgorithm, rule.Priority),
 				},
-				AlternativeOptions: acs.generateFallbackOptions(rule),
+				AlternativeOptions:  acs.generateFallbackOptions(rule),
 				RecommendedSettings: acs.getOptimalSettings(rule.RecommendedAlgorithm, contentProfile, networkCondition),
 				ContextualFactors: &ContextualFactors{
 					FileSize:         context.FileSize,

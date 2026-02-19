@@ -514,8 +514,8 @@ func TestBudgetPeriod_GetPeriodBounds(t *testing.T) {
 		{
 			name: "Fiscal year - April start",
 			period: BudgetPeriod{
-				Type:                  BudgetPeriodFiscalYear,
-				FiscalYearStartMonth:  4,
+				Type:                 BudgetPeriodFiscalYear,
+				FiscalYearStartMonth: 4,
 			},
 			wantStart: time.Date(2024, 4, 1, 0, 0, 0, 0, time.UTC),
 			wantEnd:   time.Date(2025, 3, 31, 23, 59, 59, 999999999, time.UTC),
@@ -523,8 +523,8 @@ func TestBudgetPeriod_GetPeriodBounds(t *testing.T) {
 		{
 			name: "Fiscal year - invalid month",
 			period: BudgetPeriod{
-				Type:                  BudgetPeriodFiscalYear,
-				FiscalYearStartMonth:  13,
+				Type:                 BudgetPeriodFiscalYear,
+				FiscalYearStartMonth: 13,
 			},
 			wantErr:    true,
 			errMessage: "fiscal_year_start_month must be between 1 and 12",
@@ -598,11 +598,11 @@ func TestBudgetPeriod_GetPeriodBounds(t *testing.T) {
 // TestBudgetPeriod_GetDaysElapsed tests the GetDaysElapsed method
 func TestBudgetPeriod_GetDaysElapsed(t *testing.T) {
 	tests := []struct {
-		name      string
-		period    BudgetPeriod
-		refTime   time.Time
-		want      int
-		wantErr   bool
+		name    string
+		period  BudgetPeriod
+		refTime time.Time
+		want    int
+		wantErr bool
 	}{
 		{
 			name:    "Beginning of daily period",
@@ -620,7 +620,7 @@ func TestBudgetPeriod_GetDaysElapsed(t *testing.T) {
 			name:    "Middle of monthly period",
 			period:  BudgetPeriod{Type: BudgetPeriodMonthly},
 			refTime: time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC), // 15th day
-			want:    14, // 14 full days elapsed (1st = day 0)
+			want:    14,                                            // 14 full days elapsed (1st = day 0)
 		},
 		{
 			name:    "Start of yearly period",
@@ -631,8 +631,8 @@ func TestBudgetPeriod_GetDaysElapsed(t *testing.T) {
 		{
 			name: "Invalid period type",
 			period: BudgetPeriod{
-				Type:                  BudgetPeriodFiscalYear,
-				FiscalYearStartMonth:  13,
+				Type:                 BudgetPeriodFiscalYear,
+				FiscalYearStartMonth: 13,
 			},
 			refTime: time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC),
 			wantErr: true,

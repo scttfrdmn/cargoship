@@ -112,10 +112,10 @@ func (s *StorageTierSelector) capTier(selectedTier, maxTier types.StorageClass) 
 	// Tier hierarchy (least to most restrictive):
 	// STANDARD < STANDARD_IA < GLACIER < DEEP_ARCHIVE
 	tierPriority := map[types.StorageClass]int{
-		types.StorageClassStandard:     1,
-		types.StorageClassStandardIa:   2,
-		types.StorageClassGlacier:      3,
-		types.StorageClassDeepArchive:  4,
+		types.StorageClassStandard:    1,
+		types.StorageClassStandardIa:  2,
+		types.StorageClassGlacier:     3,
+		types.StorageClassDeepArchive: 4,
 	}
 
 	selectedPriority, selectedExists := tierPriority[selectedTier]

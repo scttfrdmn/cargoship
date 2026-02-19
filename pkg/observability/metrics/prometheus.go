@@ -77,8 +77,8 @@ func NewPrometheusCollector() *PrometheusCollector {
 				Name: "cargoship_upload_duration_seconds",
 				Help: "Duration of upload operations in seconds",
 				Buckets: []float64{
-					1, 5, 10, 30, 60,        // 1s to 1min
-					120, 300, 600,           // 2min to 10min
+					1, 5, 10, 30, 60, // 1s to 1min
+					120, 300, 600, // 2min to 10min
 					1800, 3600, 7200, 14400, // 30min to 4hr
 				},
 			},

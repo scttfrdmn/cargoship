@@ -81,9 +81,9 @@ type Pipeline struct {
 	// Stages
 	scanner        *ScannerStage
 	archiver       *ArchiverStage
-	uploader       *UploaderStage         // Simulated uploader (for testing)
-	s3Uploader     *S3UploaderStage       // Real AWS S3 uploader (single-prefix)
-	directUploader *DirectUploaderStage   // Issue #166: Direct uploader (fast path for small files)
+	uploader       *UploaderStage       // Simulated uploader (for testing)
+	s3Uploader     *S3UploaderStage     // Real AWS S3 uploader (single-prefix)
+	directUploader *DirectUploaderStage // Issue #166: Direct uploader (fast path for small files)
 
 	// Phase 3: Multi-prefix parallel upload stages
 	router              *PrefixRouter               // Routes jobs to per-prefix channels
@@ -142,13 +142,13 @@ type PipelineConfig struct {
 	S3Region string
 
 	// Real S3 uploader configuration (optional)
-	UseRealS3      bool                 // If true, use real AWS S3 uploader instead of simulated
-	S3Client       interface{}          // *s3.Client for real uploads (type: *github.com/aws/aws-sdk-go-v2/service/s3.Client)
-	S3PartSize     int64                // S3 multipart part size (default: 64MB)
-	S3StorageClass string               // S3 storage class (STANDARD, INTELLIGENT_TIERING, etc.)
-	TierSelector   *StorageTierSelector // Issue #32: Automatic storage tier selection (nil = disabled, uses S3StorageClass)
-	TierChunkingStrategy string         // Issue #164: Tier chunking strategy ("youngest-file" = v1 default, "tier-aware" = v2 opt-in)
-	S3SSEKMSKeyId  string               // Optional KMS key ID for encryption
+	UseRealS3            bool                 // If true, use real AWS S3 uploader instead of simulated
+	S3Client             interface{}          // *s3.Client for real uploads (type: *github.com/aws/aws-sdk-go-v2/service/s3.Client)
+	S3PartSize           int64                // S3 multipart part size (default: 64MB)
+	S3StorageClass       string               // S3 storage class (STANDARD, INTELLIGENT_TIERING, etc.)
+	TierSelector         *StorageTierSelector // Issue #32: Automatic storage tier selection (nil = disabled, uses S3StorageClass)
+	TierChunkingStrategy string               // Issue #164: Tier chunking strategy ("youngest-file" = v1 default, "tier-aware" = v2 opt-in)
+	S3SSEKMSKeyId        string               // Optional KMS key ID for encryption
 
 	// Encryption configuration (Issue #163)
 	KMSKeyID        string      // KMS key ID or ARN for data chunk encryption
@@ -212,13 +212,13 @@ type PipelineConfig struct {
 	DisableFileHashing     bool          // Skip file hashing for change detection (faster but less safe)
 
 	// Direct upload optimization (Issue #166: Small file optimization)
-	EnableDirectUpload        bool    // Enable fast path for small files (bypasses archiving/compression)
-	DirectUploadThresholdMB   int     // Max total size for direct upload mode (default: 500MB)
-	DirectUploadMaxFiles      int     // Max file count for direct upload (default: 50000)
-	DirectUploadAvgSizeMB     float64 // Max average file size for direct upload (default: 5MB)
-	DirectUploadWorkers       int     // Worker count for direct upload (default: 256, matches s5cmd)
-	ForceDirectUpload         bool    // Force direct upload regardless of thresholds (for testing)
-	EnableAutoDirectUpload    bool    // Auto-enable direct upload when thresholds met (default: true)
+	EnableDirectUpload      bool    // Enable fast path for small files (bypasses archiving/compression)
+	DirectUploadThresholdMB int     // Max total size for direct upload mode (default: 500MB)
+	DirectUploadMaxFiles    int     // Max file count for direct upload (default: 50000)
+	DirectUploadAvgSizeMB   float64 // Max average file size for direct upload (default: 5MB)
+	DirectUploadWorkers     int     // Worker count for direct upload (default: 256, matches s5cmd)
+	ForceDirectUpload       bool    // Force direct upload regardless of thresholds (for testing)
+	EnableAutoDirectUpload  bool    // Auto-enable direct upload when thresholds met (default: true)
 
 	// Cleanup configuration (Issue #158: Automatic cleanup on failure)
 	CleanupOnFailure bool // Automatically delete partial uploads on error (default: true)

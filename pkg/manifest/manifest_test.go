@@ -1258,7 +1258,7 @@ func TestBuilder_SetEncryption(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			builder, err := NewBuilder("test-upload-123", "/test/source", "test-bucket", "test-prefix", "us-west-2")
-	require.NoError(t, err)
+			require.NoError(t, err)
 			builder.SetEncryption(tt.kmsKeyID, tt.manifestEncrypted)
 
 			manifest := builder.Build()

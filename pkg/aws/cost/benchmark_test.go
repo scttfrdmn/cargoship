@@ -171,12 +171,12 @@ func TestCalculateAdvantages(t *testing.T) {
 
 	advantages := bcc.calculateAdvantages(
 		ctx,
-		100.0,        // original size
-		33.33,        // effective size (3:1 compression)
-		10000,        // original file count
-		334,          // actual chunks (100GB / 0.3 = ~334 chunks of 100MB)
-		3.0,          // compression ratio
-		1.0,          // no dedup
+		100.0,                      // original size
+		33.33,                      // effective size (3:1 compression)
+		10000,                      // original file count
+		334,                        // actual chunks (100GB / 0.3 = ~334 chunks of 100MB)
+		3.0,                        // compression ratio
+		1.0,                        // no dedup
 		config.StorageClassGlacier, // cheaper tier
 	)
 
@@ -229,8 +229,8 @@ func TestCompareCosts(t *testing.T) {
 		"test-scenario",
 		100.0,
 		10000,
-		3.0,                       // 3:1 compression
-		1.0,                       // no dedup
+		3.0,                        // 3:1 compression
+		1.0,                        // no dedup
 		config.StorageClassGlacier, // cheaper tier
 	)
 	require.NoError(t, err)
@@ -275,14 +275,14 @@ func TestGenerateCostReport(t *testing.T) {
 			AnnualTCO:          6.10,
 			Currency:           "USD",
 			CargoShipAdvantages: &CargoShipCostAdvantage{
-				CompressionSavings:   15.00,
-				CompressionRatio:     3.0,
-				ChunkingSavings:      0.50,
-				RequestReduction:     9000,
-				StorageTierSavings:   10.00,
-				StorageTierUsed:      "GLACIER_IR",
-				TotalSavings:         25.50,
-				SavingsPercentage:    40.0,
+				CompressionSavings: 15.00,
+				CompressionRatio:   3.0,
+				ChunkingSavings:    0.50,
+				RequestReduction:   9000,
+				StorageTierSavings: 10.00,
+				StorageTierUsed:    "GLACIER_IR",
+				TotalSavings:       25.50,
+				SavingsPercentage:  40.0,
 			},
 		},
 	}

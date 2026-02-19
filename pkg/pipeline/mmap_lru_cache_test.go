@@ -95,7 +95,7 @@ func TestMmapLRUCache_LRUEviction(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create test file: %v", err)
 		}
-		if _, err := f.Write(make([]byte, 150*1024*1024)); err != nil{
+		if _, err := f.Write(make([]byte, 150*1024*1024)); err != nil {
 			t.Fatalf("Failed to write test data: %v", err)
 		}
 		_ = f.Close()
@@ -163,7 +163,7 @@ func TestMmapLRUCache_RefCountPreventsEviction(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create test file: %v", err)
 		}
-		if _, err := f.Write(make([]byte, 150*1024*1024)); err != nil{
+		if _, err := f.Write(make([]byte, 150*1024*1024)); err != nil {
 			t.Fatalf("Failed to write test data: %v", err)
 		}
 		_ = f.Close()
@@ -220,7 +220,7 @@ func TestMmapLRUCache_Concurrent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create test file: %v", err)
 		}
-		if _, err := f.Write(make([]byte, 150*1024*1024)); err != nil{
+		if _, err := f.Write(make([]byte, 150*1024*1024)); err != nil {
 			t.Fatalf("Failed to write test data: %v", err)
 		}
 		_ = f.Close()
@@ -282,7 +282,7 @@ func TestMmapLRUCache_Clear(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create test file: %v", err)
 		}
-		if _, err := f.Write(make([]byte, 150*1024*1024)); err != nil{
+		if _, err := f.Write(make([]byte, 150*1024*1024)); err != nil {
 			t.Fatalf("Failed to write test data: %v", err)
 		}
 		_ = f.Close()
