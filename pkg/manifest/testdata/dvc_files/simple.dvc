@@ -1,0 +1,8 @@
+outs:
+    - path: data.csv
+      md5: acbd18db4cc2f85cedef654fccc4a4d8
+      size: 3
+      meta:
+        cloud_bucket: test-bucket
+        cloud_key: uploads/test-upload/shard-0/chunk-0.tar.zst
+        upload_id: test-upload

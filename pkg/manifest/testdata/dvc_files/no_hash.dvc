@@ -1,0 +1,3 @@
+outs:
+    - path: nomd5.bin
+      size: 42

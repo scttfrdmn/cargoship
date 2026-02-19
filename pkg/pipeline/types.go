@@ -108,6 +108,7 @@ type Pipeline struct {
 
 	// Manifest tracking
 	manifestBuilder interface{} // *manifest.Builder for tracking files/chunks (type: *github.com/scttfrdmn/cargoship/pkg/manifest.Builder)
+	finalManifest   interface{} // *manifest.Manifest set after upload completes (type: *github.com/scttfrdmn/cargoship/pkg/manifest.Manifest)
 	manifestMu      sync.Mutex  // Protects manifest updates
 
 	// Deduplication tracking (Issue #108)

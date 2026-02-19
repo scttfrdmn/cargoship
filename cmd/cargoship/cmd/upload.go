@@ -61,6 +61,11 @@ func NewUploadCmd() *cobra.Command {
 		// Issue #179: Incremental sync
 		incrementalMode bool
 		prevManifest    string
+
+		// Issue #180: DVC .dvc file generation
+		generateDVCFiles bool
+		dvcCacheDir      string
+		dvcOutputDir     string
 	)
 
 	cmd := &cobra.Command{
@@ -606,6 +611,29 @@ Examples:
 				return fmt.Errorf("pipeline completed with %d errors", len(result.Errors))
 			}
 
+			// Issue #180: Generate DVC .dvc sidecar files after a successful upload.
+			if generateDVCFiles && result.Success {
+				outDir := dvcOutputDir
+				if outDir == "" {
+					outDir = absPath // default: write .dvc files alongside source data
+				}
+				dvcOpts := &manifest.DVCGenerateOptions{CacheDir: dvcCacheDir}
+
+				// Retrieve the completed manifest to generate .dvc files from it.
+				// The pipeline exposes the finalized manifest via GetManifest().
+				if m := pipe.GetManifest(); m != nil {
+					n, dvcErr := m.GenerateDVCFiles(outDir, dvcOpts)
+					if dvcErr != nil {
+						_, _ = fmt.Fprintf(cmd.OutOrStderr(),
+							"⚠️  DVC file generation failed: %v\n", dvcErr)
+					} else if !quiet {
+						fmt.Printf("📄 DVC files generated: %d .dvc files → %s\n\n", n, outDir)
+					}
+				} else if !quiet {
+					fmt.Println("⚠️  DVC file generation skipped: manifest not available")
+				}
+			}
+
 			// Record success metrics if enabled
 			if metricsCollector != nil {
 				transporterName := "basic"
@@ -716,6 +744,11 @@ Examples:
 	// Issue #179: Incremental sync flags
 	cmd.Flags().BoolVar(&incrementalMode, "incremental", false, "Enable incremental sync: only upload new or changed files")
 	cmd.Flags().StringVar(&prevManifest, "prev-manifest", "", "Path to previous manifest JSON (or .json.gz) for incremental sync")
+
+	// Issue #180: DVC .dvc file generation
+	cmd.Flags().BoolVar(&generateDVCFiles, "generate-dvc-files", false, "Generate DVC sidecar .dvc files after upload")
+	cmd.Flags().StringVar(&dvcCacheDir, "dvc-cache-dir", ".dvc/cache", "Local DVC cache directory (recorded in manifest; default: .dvc/cache)")
+	cmd.Flags().StringVar(&dvcOutputDir, "dvc-output-dir", "", "Directory to write .dvc files (default: source directory)")
 
 	return cmd
 }

@@ -796,6 +796,7 @@ func (p *Pipeline) uploadManifest(ctx context.Context) error {
 	// Finalize the manifest
 	p.manifestMu.Lock()
 	manifestData := builder.Finalize()
+	p.finalManifest = manifestData // expose via GetManifest()
 	p.manifestMu.Unlock()
 
 	// Get S3 client
@@ -1112,6 +1113,18 @@ func (p *Pipeline) GetErrors() []error {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return append([]error{}, p.errors...)
+}
+
+// GetManifest returns the finalized manifest produced by the most recent Run
+// call, or nil if no manifest has been finalized (e.g., manifest generation was
+// disabled, or Run has not yet completed successfully).
+func (p *Pipeline) GetManifest() *manifest.Manifest {
+	p.manifestMu.Lock()
+	defer p.manifestMu.Unlock()
+	if p.finalManifest == nil {
+		return nil
+	}
+	return p.finalManifest.(*manifest.Manifest)
 }
 
 // GetStats returns statistics for all stages
