@@ -43,6 +43,9 @@ working_*
 public/
 site/
 
+# Quality reports (generated artifacts)
+reports/
+
 # Profiling data (generated artifacts)
 profiles/benchmarks/*.prof
 profiles/benchmarks/*.out

@@ -71,12 +71,12 @@ Run CargoShip in a container without installing:
 # Survey data
 docker run --rm -v $(pwd):/data scttfrdmn/cargoship:latest survey /data
 
-# Ship to AWS (requires AWS credentials)
+# Upload to AWS (requires AWS credentials)
 docker run --rm \
   -v $(pwd):/data \
   -v ~/.aws:/root/.aws \
-  scttfrdmn/cargoship:latest ship /data \
-  --destination s3://my-bucket/archives
+  scttfrdmn/cargoship:latest upload /data \
+  s3://my-bucket/archives
 ```
 
 ## Requirements

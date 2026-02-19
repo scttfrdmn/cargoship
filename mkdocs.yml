@@ -83,31 +83,17 @@ nav:
     - Quick Start Wizard: wizard.md
     - User Guide: USER_GUIDE.md
     - Basic Configuration: advanced/defaults_overrides.md
-  - Blog:
-    - Overview: blog/index.md
-    - "Part 1: Why We Built CargoShip": blog/post-1-why-we-built-cargoship.md
-    - "Part 2: Zero-Disk Streaming": blog/post-2-zero-disk-streaming.md
-    - "Part 3: 8x S3 Performance": blog/post-3-multi-prefix-sharding.md
-    - "Part 4: Save 90% on S3 Costs": blog/post-4-cost-optimization.md
-    - "Part 5: Open Format, Open Source": blog/post-5-open-source.md
-  - Core Features:
+  - Features:
     - Architecture: ARCHITECTURE.md
-    - Components:
-      - Overview: components/
-      - CLI Interface: components/cli_metadata.md
-      - CLI Output: components/cli_output.md
-      - Suitcase Archives: components/suitcase.md
-      - Inventory System: components/inventory.md
-      - Inventory Metadata: components/inventory_metadata.md
-      - Hash Algorithms: components/hashes.md
+    - Storage Format: STORAGE_FORMAT.md
+    - CargoHold Guide: CARGOHOLD_GUIDE.md
     - Cost Management: cost-management.md
-    - Advanced Flow Control: TASK_4_ADVANCED_FLOW_CONTROL.md
-  - AWS Integration:
-    - AWS Setup Guide: AWS_INTEGRATION_REPORT.md
-    - Cost Management Implementation: AWS_COST_MANAGEMENT_IMPLEMENTATION.md
-    - Multi-Region Support: PHASE2_MULTI_REGION.md
-    - Cross-Region Coordination: CROSS_PREFIX_COORDINATION.md
-  - Advanced Features:
+    - Budget Guide: BUDGET_USER_GUIDE.md
+    - Security: SECURITY.md
+    - Performance Benchmarks: PERFORMANCE_BENCHMARKS.md
+    - Optimization Guide: OPTIMIZATION_GUIDE.md
+  - CLI Reference: CLI_REFERENCE.md
+  - Advanced:
     - GPG Encryption: advanced/gpg_encryption.md
     - Travel Agent (Web UI): advanced/travelagent.md
     - Benchmarking: advanced/benchmarks.md
@@ -118,44 +104,25 @@ nav:
     - Launch Agent Setup: launch-agent.md
     - Launch Agent Documentation: deployment/README_LAUNCH.md
     - Ghost Ship Deployment: deployment/GHOST_SHIP_DEPLOYMENT_GUIDE.md
-    - Ghost Ship Debug Guide: deployment/GHOST_SHIP_DEBUG_RESOLUTION.md
     - QNAP Deployment: QNAP_DEPLOYMENT.md
-  - Plugins & Extensions:
-    - Plugin Architecture: plugins/
-    - Transport Plugins:
-      - Cloud Transporter: plugins/transport/cloud.md
-      - Shell Transporter: plugins/transport/shell.md
-    - ObjectFS Integration: OBJECTFS_INTEGRATION_PROPOSAL.md
-  - Development:
-    - Contributing: CONTRIBUTING.md
-    - Development Workflow: DEVELOPMENT_WORKFLOW.md
-    - Development Rules: development/DEVELOPMENT_RULES.md
-    - Testing:
-      - Test Coverage Reports: testing/
-      - TUI Coverage Progress: testing/tui-coverage-progress.md
-      - Integration Tests: development/INTEGRATION_TEST_RESULTS.md
-      - Test Analysis: development/TEST_ANALYSIS_REPORT.md
-      - AWS Testing Plan: development/REAL_AWS_TESTING_PLAN.md
-    - Architecture Documentation:
-      - Project Plan: architecture/CARGOSHIP_PROJECT_PLAN.md
-      - Transporter Enhancements: architecture/CARGOSHIP_TRANSPORTER_ENHANCEMENTS.md
-      - Transfer Architecture: architecture/TRANSFER_ARCHITECTURE.md
-      - S3 Optimization Integration: architecture/S3_OPTIMIZATION_INTEGRATION_COMPLETE.md
-      - S3 Modularization: architecture/S3_OPTIMIZATION_MODULARIZATION_COMPLETE.md
-      - Multi-Region Enhancement: architecture/MULTIREGION_S3_OPTIMIZATION_ENHANCEMENT.md
-    - Project Management:
-      - Project Status: development/PROJECT_STATUS.md
-      - Modularization Plan: development/MODULARIZATION_PLAN.md
-      - Remaining Issues: development/REMAINING_TEST_ISSUES.md
-      - Version Tracking: development/VERSION_TRACKING.md
-      - Release Process: development/RELEASE_PROCESS.md
-      - Docker Environment: development/DOCKER_ENVIRONMENT_STATUS.md
+  - Research Scenarios:
+    - Genomics Researcher: USER_SCENARIOS/01_GENOMICS_RESEARCHER_WALKTHROUGH.md
+    - Imaging Researcher: USER_SCENARIOS/02_IMAGING_RESEARCHER_WALKTHROUGH.md
+    - Lab Data Manager: USER_SCENARIOS/03_LAB_DATA_MANAGER_WALKTHROUGH.md
+    - Principal Investigator: USER_SCENARIOS/04_PRINCIPAL_INVESTIGATOR_WALKTHROUGH.md
+  - Migration:
+    - From rclone: MIGRATION_FROM_RCLONE.md
+  - Blog:
+    - Overview: blog/index.md
+    - "Part 1: Why We Built CargoShip": blog/post-1-why-we-built-cargoship.md
+    - "Part 2: Zero-Disk Streaming": blog/post-2-zero-disk-streaming.md
+    - "Part 3: 8x S3 Performance": blog/post-3-multi-prefix-sharding.md
+    - "Part 4: Save 90% on S3 Costs": blog/post-4-cost-optimization.md
+    - "Part 5: Open Format, Open Source": blog/post-5-open-source.md
   - Reference:
-    - Implementation Summary: IMPLEMENTATION_SUMMARY.md
-    - Progress Summary: PROGRESS_SUMMARY.md
-    - Binary Releases: BINARY_RELEASE_SUMMARY.md
+    - API Stability: api-stability.md
+    - Versioning: versioning.md
     - Attribution: ATTRIBUTION.md
-    - Security Policy: ../SECURITY.md
     - Changelog: ../CHANGELOG.md
     - Roadmap: ../ROADMAP.md
 
@@ -170,5 +137,5 @@ extra:
     property: G-PLACEHOLDER # Replace with actual GA property when ready
 
 copyright: |
-  Copyright &copy; 2024 CargoShip Contributors<br>
+  Copyright &copy; 2025-2026 Scott Friedman<br>
   Built upon <a href="https://gitlab.oit.duke.edu/devil-ops/suitcasectl">SuitcaseCTL</a> by Duke University

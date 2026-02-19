@@ -7,8 +7,8 @@
   [![Go Report Card](https://goreportcard.com/badge/github.com/scttfrdmn/cargoship)](https://goreportcard.com/report/github.com/scttfrdmn/cargoship)
   [![Release](https://img.shields.io/github/v/release/scttfrdmn/cargoship?include_prereleases&sort=semver)](https://github.com/scttfrdmn/cargoship/releases)
   [![Docker Pulls](https://img.shields.io/docker/pulls/scttfrdmn/cargoship)](https://hub.docker.com/r/scttfrdmn/cargoship)
-  [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-  [![Test Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)](https://github.com/scttfrdmn/cargoship)
+  [![Apache 2.0 License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+  [![Test Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen.svg)](https://github.com/scttfrdmn/cargoship)
   [![Security Analysis](https://img.shields.io/badge/security-gosec%20enabled-green.svg)](https://github.com/securecodewarrior/gosec)
   [![Integration Tests](https://img.shields.io/badge/testing-LocalStack%20S3-blue.svg)](https://localstack.cloud/)
   [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/scttfrdmn/cargoship/ci.yml?branch=main)](https://github.com/scttfrdmn/cargoship/actions)
@@ -50,13 +50,11 @@ docker run --rm -v $(pwd):/data scttfrdmn/cargoship:latest survey /data
 cargoship survey /path/to/research/data
 cargoship estimate /path/to/data --storage-class glacier
 
-# Ship your data with proven network algorithms
-cargoship ship /path/to/data \
-  --destination s3://my-enterprise-bucket/archives \
+# Upload your data with parallel streaming
+cargoship upload /path/to/data \
+  s3://my-enterprise-bucket/archives \
   --storage-class intelligent-tiering \
-  --enable-bbr-congestion-control \
-  --encrypt-kms arn:aws:kms:us-east-1:123:key/abc \
-  --max-cost-per-month 2000
+  --encrypt-kms arn:aws:kms:us-east-1:123:key/abc
 
 # Monitor and optimize
 cargoship status
@@ -135,7 +133,7 @@ See our [Development Rules](../DEVELOPMENT_RULES.md) for quality standards and p
 
 ## License and Attribution
 
-CargoShip is licensed under the MIT License. Built upon [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl) by Duke University with gratitude for their innovative work.
+CargoShip is licensed under the Apache 2.0 License. Built upon [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl) by Duke University with gratitude for their innovative work.
 
 ## Support
 

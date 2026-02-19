@@ -7,13 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned for v0.7.0
-- Performance investigation and optimization (Issue #126) ✅ CLOSED
-- Fix flaky tests (Issues #135, #68) ✅ CLOSED
-- Blog post series for community outreach (Issue #123)
-- Zero-copy I/O optimizations (Issue #153)
-- Network stack tuning: HTTP/2 and TCP (Issue #154)
-- Distributed tracing and observability (Issue #155)
+### DVC Integration (Issues #171–#192)
+- Core DVC remote interface and Python package (`dvc-cargoship`) (Issue #181)
+- DVC `.dvc` file generation for tracked datasets (Issue #180)
+- MD5 content hashing with persistent hash cache (Issue #177)
+- Git metadata extraction for manifest v2.0 (Issue #178)
+- IncrementalScanner with MD5-based change detection (Issue #179)
+- Performance helpers for DVC remote — batching and parallel restore (Issue #182)
+- Budget integration for DVC operations (Issue #183)
+- PyPI publication and integration tests for `dvc-cargoship` (Issue #184)
+- DVC pipeline metadata extraction (Issue #185)
+- DVC stage and git commit cost tracking (Issue #186)
+- Federal compliance report generation for NSF/NIH grants (Issue #187)
+- Hash-based manifest query API with DVC-aware lookups (Issue #188)
+- Selective chunk extraction and batch restore with LRU cache (Issue #189)
+- Interactive TUI file browser for selective restore (Issue #190)
+- End-to-end DVC integration test suite (Issue #191)
+- DVC performance benchmark suite (Issue #192)
+
+## [0.7.0] - 2026-01-xx
+
+### Added
+- **Adaptive Shard Count** — Automatic S3 prefix optimization based on workload (Issue #106)
+  - Auto-tunes 4–32 shards from file count, data size, and available CPU/memory
+  - Manual override via `--shard-count` flag
+  - Minimum 6 chunks per shard for load balancing
+- **Zero-Copy I/O** — Linux splice-based data movement for near-zero CPU overhead (Issue #153)
+  - Phase 1: zero-copy read paths
+  - Phase 2: BufferedPipe chunk pooling
+  - Phase 3: upload buffer pooling
+  - Phase 4: splice integration for Linux
+- **HTTP/2 and TCP Network Tuning** — 3x throughput improvement on high-latency links (Issue #154)
+- **Geographic Region Selection** — Automatic S3 region selection based on client location (Issue #138)
+- **Content-Aware Compression** — Magika AI file type detection for optimal compression levels (Issue #105)
+  - Code files: level 9; Documents: level 6; Images/video/archives: none
+- **File Deduplication** — Cross-upload deduplication via content hashing (Issue #108)
+  - Scanner integration, dedup index, manifest export, CLI flag
+- **Shard Balance Analysis** — `cargoship balance` command for shard rebalancing (Issue #109)
+  - Analysis, planning, chunk download/extraction, and execution pipeline
+- **Resume Failed Uploads** — Automatic recovery from interrupted uploads (Issue #157)
+- **Upload Failure Cleanup** — Automatic cleanup of partial S3 multipart uploads (Issue #158)
+- **Incremental Sync** — Only upload changed files using content hashing (Issue #148)
+- **Manifest Enhancements** — Fast in-memory indexing, validation, compression (Issues #88, #91, #92)
+- **CargoHold** — Archive format with selective extraction, manifest query API (Issues #89, #90, #93)
+- **`upload` command** — Primary upload command with CargoHold sharding support (Issue #95)
+- **`download` command** — S3 URL support and auto-compression detection (Issue #96)
+- **`verify` command** — Dataset integrity verification (Issue #99)
+
+### Changed
+- Staging package refactored: removed Simple* stubs, merged compression types (Issue #16)
+- Default S3 upload workers increased from 4 to 8 (Issue #64)
+- TLS certificate loading for controller (Issue #141)
+- Session key generation for load balancer affinity (Issue #139)
+
+### Fixed
+- Goroutine leaks in staging package via `Shutdown()` methods (Issue #142)
+- AWS SDK HTTP connection leaks (Issue #65)
+- Cost package test flakiness and period filtering
+- PrefixRouter deadlock on context cancellation
+- BBR packet tracking timing tolerance (Issue #152)
+- Monitoring interval configurability for flaky test (Issue #151)
+
+### Issues Closed
+- #16, #64, #65, #88, #89, #90, #91, #92, #93, #95, #96, #98, #99, #101, #104
+- #105, #106, #108, #109, #111, #114, #138, #139, #141, #142, #148, #151–#155, #157–#159
 
 ## [0.6.0] - 2025-12-09
 

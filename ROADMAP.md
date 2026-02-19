@@ -1,8 +1,8 @@
 # CargoShip Release Roadmap
 
-**Last Updated**: December 30, 2025
-**Current Version**: v0.6.0 (Released)
-**Next Release**: v0.7.0 (In Development)
+**Last Updated**: February 2026
+**Current Version**: v0.7.0 (Released)
+**Next Release**: v0.8.0 (DVC Integration)
 
 This document outlines the planned feature releases for CargoShip, organized by version with clear deliverables and timelines.
 
@@ -132,32 +132,47 @@ This document outlines the planned feature releases for CargoShip, organized by 
 
 ---
 
-## 🔧 **v0.7.0 - Performance & Optimization** (Target: Q1 2026)
-**Focus**: Zero-copy I/O, advanced optimizations, and community engagement
+## ✅ **v0.7.0 - Performance & Optimization** (RELEASED Q1 2026)
+**Focus**: Zero-copy I/O, adaptive sharding, network improvements, and content-aware compression
 
-### Planned Features:
-- **Zero-Copy I/O Optimizations** (Issue #153) - Reduce memory copies in transfer pipeline
-- **Blog Post Series** (Issue #123) - Community outreach and documentation
-- **Advanced Shard Optimization** - Already completed: Adaptive shard count (Issue #106)
-- **Thread-Safety Hardening** - Already completed: All race conditions resolved (Dec 2025)
-- **Content-Aware Chunking Enhancements** - File type specific optimization strategies
-- **Performance Profiling Tools** - Built-in profiling and optimization recommendations
-
-### Performance Targets:
-- 5-10% throughput improvement via zero-copy I/O
-- Sub-millisecond latency for optimization decisions
-- 90%+ CPU utilization during transfers
-- Memory usage reduction through streaming optimizations
-
-### Success Criteria:
-- ✅ Zero-copy I/O implementation with measurable performance gains
-- ✅ Blog series published with community feedback incorporated
-- ✅ Performance profiling tools integrated into CLI
-- ✅ Benchmark suite expanded with real-world scenarios
+### Completed Features:
+- ✅ **Adaptive Shard Count** - Automatic S3 prefix optimization (Issue #106)
+  - Auto-tunes 4–32 shards based on file count, data size, CPU, and memory
+- ✅ **Zero-Copy I/O** - Linux splice-based transfer with buffer pooling (Issue #153)
+- ✅ **HTTP/2 and TCP Tuning** - 3x throughput improvement on high-latency links (Issue #154)
+- ✅ **Geographic Region Selection** - Automatic S3 region from client location (Issue #138)
+- ✅ **Content-Aware Compression** - Magika AI file type detection (Issue #105)
+- ✅ **File Deduplication** - Cross-upload deduplication via content hashing (Issue #108)
+- ✅ **Shard Rebalancing** - `cargoship balance` command (Issue #109)
+- ✅ **Resume Failed Uploads** (Issue #157), **Cleanup on Failure** (Issue #158)
+- ✅ **Incremental Sync** - MD5-based change detection (Issue #148, #177–#179)
+- ✅ **CargoHold Archive Format** - Selective extraction and manifest query API (Issues #88–#93)
+- ✅ **`upload` command** - Primary upload with CargoHold sharding (Issue #95)
+- ✅ **`verify` command** - Dataset integrity verification (Issue #99)
+- ✅ **Staging Package Refactor** - Merged compression types, removed stubs (Issue #16)
 
 ---
 
-## 🔍 **v0.8.0 - Enhanced Data Retrieval** (Target: Q2 2026)
+## 🔧 **v0.8.0 - DVC Integration** (In Development, Q1–Q2 2026)
+**Focus**: Native DVC remote support for ML/data science workflows
+
+### Planned Features:
+- **`dvc-cargoship` Python Package** - Native DVC remote backed by CargoShip (Issue #181)
+- **DVC `.dvc` File Generation** - Track datasets in Git (Issue #180)
+- **Incremental Sync** - MD5-based change detection for DVC workflows (Issues #177–#179)
+- **Budget Integration for DVC** - Cost tracking per DVC pipeline run (Issue #183)
+- **DVC Pipeline Metadata** - Extract and store pipeline provenance (Issue #185)
+- **Federal Compliance Reports** - NSF/NIH grant compliance for DVC datasets (Issue #187)
+- **Hash-Based Manifest Queries** - DVC-aware lookups (Issue #188)
+- **Selective Restore** - Batch restore with LRU cache (Issue #189)
+- **Interactive TUI Browser** - Browse and restore archived datasets (Issue #190)
+
+### Issues:
+- #171–#192: Full DVC integration milestone
+
+---
+
+## 🔍 **v0.9.0 - Enhanced Data Retrieval** (Target: Q3 2026)
 **Focus**: Comprehensive restoration capabilities and interactive data access
 
 ### Planned Features:
@@ -202,7 +217,7 @@ cargoship restore request s3://archive-bucket/large-dataset/ \
 
 ---
 
-## 💼 **v0.9.0 - Enterprise Integration** (Target: Q3 2026)
+## 💼 **v1.0.0 - Enterprise Integration** (Target: Q4 2026)
 **Focus**: Multi-grant management, hierarchical budgets, and institutional workflows
 
 ### Planned Features:
@@ -343,19 +358,25 @@ cargoship upload /research/genomics-data \
 - ✅ 20+ CLI commands for budget/cost management
 - ✅ 72.5% test coverage, zero linting issues
 
-### v0.7.0 Targets:
-- 5-10% throughput improvement via zero-copy I/O
-- Blog series published with community engagement
-- Performance profiling tools integrated
-- 90%+ CPU utilization during transfers
+### v0.7.0 Achievements:
+- ✅ Zero-copy I/O via Linux splice integration
+- ✅ 3x throughput on high-latency links (HTTP/2 + TCP tuning)
+- ✅ Adaptive shard count: 4–32 shards auto-tuned
+- ✅ Content-aware compression with Magika AI detection
 
-### v0.8.0 Targets:
+### v0.8.0 Targets (DVC Integration):
+- Native DVC remote backed by CargoShip
+- Budget tracking per DVC pipeline run
+- Federal compliance reports for NSF/NIH grants
+- Selective restore with interactive TUI browser
+
+### v0.9.0 Targets:
 - Selective file restoration without full extraction
 - Interactive TUI with search and preview
 - Quota-aware restoration cost tracking
 - Automated Glacier workflow handling
 
-### v0.9.0 Targets:
+### v1.0.0 Targets:
 - 10+ concurrent grant period support
 - Automated optimization saving 15%+ costs
 - Globus integration with institutional endpoints

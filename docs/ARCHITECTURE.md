@@ -1,406 +1,118 @@
-# CargoShip Launch & Ghost Ship Architecture
+# CargoShip Architecture
 
-## Overview
+CargoShip uses a streaming pipeline architecture optimized for large-scale data transfers to AWS S3. The design prioritizes zero local disk usage, bounded memory consumption, and high throughput through parallel operations.
 
-CargoShip's launch and ghost ship architecture enables autonomous distributed archival operations across multiple NAS devices. The system consists of a central controller that coordinates multiple autonomous "ghost ships" - agents that run on remote NAS systems and perform intelligent file archival directly to cloud storage without data round-trips.
-
-## Architecture Diagram
+## Four-Stage Streaming Pipeline
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            CargoShip Launch Architecture                    │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────┐     WebSocket/TLS      ┌──────────────────────────────┐
-│   Central Controller│◄─────────────────────►│       Ghost Ship             │
-│   (Coordinator)     │      Bidirectional     │    (astrapi.local)           │
-│                     │      Communication     │                              │
-│  ┌─────────────────┐│                       │ ┌──────────────────────────┐ │
-│  │  WebSocket API  ││                       │ │   Autonomous Archival    │ │
-│  │  REST API       ││                       │ │   File Watcher           │ │
-│  │  Health Monitor ││                       │ │   Rule Engine            │ │
-│  │  Job Dispatcher ││                       │ │   S3 Optimization       │ │
-│  └─────────────────┘│                       │ └──────────────────────────┘ │
-└─────────────────────┘                       └──────────────────────────────┘
-         │                                                    │
-         │ Monitors & Controls                                │ Direct Upload
-         │ • Agent Status                                     │ (No Round-Trip)
-         │ • Job Assignment                                   │
-         │ • Health Tracking                                  │
-         │ • Performance Metrics                              │
-         │                                                    ▼
-    ┌────▼────┐                                         ┌─────────────┐
-    │ Ghost   │                                         │   AWS S3    │
-    │ Ship    │──────── Autonomous Archival ───────────│   Storage   │
-    │ (NAS 2) │                                         │             │
-    └─────────┘                                         │ • Standard  │
-         │                                              │ • IA        │
-         │ Local Files                                  │ • Glacier   │
-         ▼                                              │ • Deep Arc  │ 
-   ┌─────────────┐                                      └─────────────┘
-   │ NAS Storage │
-   │ /volume1/   │
-   └─────────────┘
+Scanner → Chunker → Archiver → S3 Uploader
 ```
 
-## Core Components
+Data flows through `io.Pipe` connections between stages, ensuring zero disk I/O and bounded memory usage proportional to `chunk_size × workers`.
 
-### 1. Central Controller (`pkg/launch/central_controller.go`)
+### Stage 1: Scanner (`pkg/pipeline/`)
 
-**Purpose**: Coordinates and monitors distributed ghost ships
+Discovers files via `filepath.Walk` and emits file metadata downstream. Supports:
 
-**Key Features**:
-- **WebSocket Server**: Real-time bidirectional communication with agents
-- **REST API**: Management interface for monitoring and control
-- **Agent Registry**: Tracks connected ghost ships and their capabilities
-- **Job Dispatcher**: Assigns archival jobs to appropriate agents
-- **Health Monitor**: Continuous health checking and status aggregation
-- **Authentication**: Token-based security with TLS support
+- File filtering by pattern, size, age, and content type
+- Optional AI-powered file type detection via Magika (`pkg/detection/`)
+- Metadata collection for compression hints
+- Batch processing for efficiency (100 files/batch with Magika)
 
-**API Endpoints**:
+### Stage 2: Chunker (`pkg/chunking/`)
+
+Intelligently partitions the file stream into chunks for parallel upload:
+
+- Content-aware sizing based on compression estimation
+- Archive padding awareness to minimize wasted space
+- Configurable chunk sizes (default: 5GB per chunk)
+- Adaptive shard count based on workload characteristics
+
+### Stage 3: Archiver
+
+Compresses and packages chunks into tar archives:
+
+- Compression algorithms: zstd (default), lz4, gzip, none
+- Content-aware compression levels via Magika type detection:
+  - Code files: level 9 (best compression)
+  - Documents: level 6
+  - Images/video/archives: level 1 or none
+- Stream-based: no temporary files written to disk
+
+### Stage 4: S3 Uploader (`pkg/aws/s3/`)
+
+Handles multi-part uploads to AWS S3:
+
+- Multi-prefix sharding for 8× request rate capacity
+- Adaptive shard count: 4–32 shards auto-tuned to workload
+- Parallel uploads with configurable worker count
+- Automatic retry with exponential backoff
+- Manifest generation for retrieval and inventory
+
+## Key Packages
+
+| Package | Purpose |
+|---------|---------|
+| `pkg/pipeline/` | Pipeline orchestration, stage coordination |
+| `pkg/chunking/` | Content-aware chunking and sizing |
+| `pkg/aws/s3/` | S3 multi-part upload, sharding, retry |
+| `pkg/manifest/` | Upload manifests for retrieval |
+| `pkg/multiregion/` | Multi-region load balancing and failover |
+| `pkg/detection/` | Magika AI file type detection integration |
+| `pkg/aws/cost/` | Budget tracking and ML cost forecasting |
+| `pkg/compression/` | Compression algorithm selection |
+
+## Multi-Prefix S3 Sharding
+
+S3 partitions requests by key prefix. CargoShip distributes uploads across multiple prefixes to multiply effective request rate:
+
 ```
-GET  /api/v1/status              # Global system status
-GET  /api/v1/ghostships          # List connected ghost ships
-GET  /api/v1/ghostships/{id}     # Get specific ghost ship details
-GET  /api/v1/ghostships/{id}/jobs # Get ghost ship jobs
-POST /api/v1/ghostships/{id}/launch # Launch ghost ship operations
-POST /api/v1/ghostships/{id}/stop   # Stop ghost ship operations
-```
-
-**WebSocket Endpoints**:
-```
-/api/v1/agents/connect           # Agent connection endpoint
-/api/v1/ghostships/connect       # Ghost ship connection endpoint
-```
-
-### 2. Ghost Ship (`pkg/launch/ghost_ship.go`)
-
-**Purpose**: Autonomous archival agent running on remote NAS systems
-
-**Key Features**:
-- **Autonomous Operation**: Continues working even when disconnected from controller
-- **Rule-Based Archival**: Configurable rules for different file types and conditions
-- **File Watcher**: Real-time filesystem monitoring with pattern matching
-- **S3 Optimization**: BBR/CUBIC congestion control for high-performance uploads
-- **Storage Class Intelligence**: Automatic storage class selection based on rules
-- **Controller Integration**: Reports status and receives job assignments
-
-**Archival Rules Engine**:
-```yaml
-archival_rules:
-  - name: "document_archival"
-    path_pattern: "/volume1/Public/Documents/**"
-    file_pattern: "*.{pdf,doc,docx}"
-    min_age: "1h"
-    storage_class: "STANDARD_IA"
-    encryption: true
-    priority: 2
-```
-
-### 3. Launch Agent (`pkg/launch/agent.go`)
-
-**Purpose**: Manages ghost ship deployment and communication
-
-**Key Features**:
-- **Controller Connection**: Secure WebSocket communication
-- **Health Monitoring**: Continuous status reporting
-- **Job Processing**: Handles assigned archival tasks
-- **Configuration Management**: Dynamic configuration updates
-
-### 4. Supporting Components
-
-#### File Watcher (`pkg/launch/file_watcher.go`)
-- **Filesystem Monitoring**: Uses fsnotify for real-time file events
-- **Pattern Matching**: Include/exclude patterns with glob support
-- **Recursive Scanning**: Directory tree monitoring
-- **Event Filtering**: Intelligent filtering of system files and temporaries
-
-#### Local Archiver (`pkg/launch/local_archiver.go`)
-- **High-Performance Uploads**: Concurrent S3 operations
-- **Progress Tracking**: Real-time upload progress and statistics
-- **Error Handling**: Retry logic with exponential backoff
-- **Optimization Integration**: BBR/CUBIC transport protocols
-
-#### Controller Connection (`pkg/launch/controller.go`)
-- **WebSocket Management**: Connection lifecycle and reconnection
-- **Message Protocol**: Structured communication with controller
-- **Authentication**: Secure token-based authentication
-- **Heartbeat System**: Connection health monitoring
-
-## Message Protocol
-
-### Agent-to-Controller Messages
-```json
-{
-  "type": "register",
-  "id": "msg-123",
-  "timestamp": "2025-01-27T10:00:00Z",
-  "agent_id": "astrapi-ghost-01",
-  "data": {
-    "name": "Astrapi Ghost Ship",
-    "capabilities": ["file_watching", "s3_upload"],
-    "watch_paths": ["/volume1/Public"]
-  }
-}
+s3://bucket/prefix-0/<chunk>
+s3://bucket/prefix-1/<chunk>
+...
+s3://bucket/prefix-N/<chunk>
 ```
 
-### Controller-to-Agent Messages
-```json
-{
-  "type": "job_assign",
-  "id": "msg-456", 
-  "timestamp": "2025-01-27T10:01:00Z",
-  "agent_id": "astrapi-ghost-01",
-  "data": {
-    "job_id": "job-789",
-    "path": "/volume1/Public/Documents/*.pdf",
-    "destination": "documents/",
-    "storage_class": "STANDARD_IA"
-  }
-}
-```
+The shard count is automatically tuned (Issue #106) based on:
+- File count (1 shard per 10k files)
+- Compressed data size (1 shard per 10 GB)
+- Available CPU cores (1 shard per 2 cores)
+- Minimum 6 chunks per shard for load balancing
 
-## Deployment Architecture
+## Multi-Region Load Balancing (`pkg/multiregion/`)
 
-### Local Development Environment
-```
-docker-compose up -d
-├── cargoship-controller (port 8080)
-├── ghost-ship-1 (port 9091) 
-├── ghost-ship-2 (port 9092)
-├── localstack (S3 simulation)
-├── prometheus (metrics)
-└── grafana (dashboards)
-```
+For cross-region uploads, CargoShip supports:
 
-### Production Deployment (astrapi.local)
-```
-Central Controller (Local/Cloud)
-     │
-     │ WebSocket/TLS
-     ▼
-Docker Container on astrapi.local
-├── Ghost Ship Agent
-├── File Watcher
-├── S3 Transporter
-└── Metrics Exporter
-     │
-     │ Direct Upload
-     ▼
-   AWS S3 Storage
-```
+- Health checking across configured regions
+- Weighted load balancing
+- Automatic failover on region errors
+- Latency-based routing
 
-## Configuration Management
+## Memory Model
 
-### Ghost Ship Configuration
-```yaml
-# Ghost ship identification
-id: "astrapi-ghost-01"
-name: "Astrapi Ghost Ship"
+Memory usage is bounded: `O(chunk_size × workers)`. For the default configuration (5 GB chunks, 4 workers), peak memory is approximately 20 GB. Reducing `--chunk-size` or `--max-concurrency` directly reduces memory usage.
 
-# S3 Configuration
-s3_config:
-  bucket: "cargoship-astrapi-archive"
-  region: "us-west-2"
-  concurrency: 15
+## Manifest System (`pkg/manifest/`)
 
-# Optimization
-optimization_config:
-  enable_bbr: true
-  enable_cubic: true
-  max_connections: 25
+Every upload generates a manifest recording:
 
-# Watch paths
-watch_paths:
-  - path: "/volume1/Public/Documents"
-    include_patterns: ["*.pdf", "*.doc*"]
-    storage_class: "STANDARD_IA"
+- File paths and S3 keys
+- Chunk boundaries and checksums
+- Compression metadata
+- Upload timestamps and region
 
-# Controller integration
-controller_url: "wss://controller.local:8080"
-auth_token: "${CARGOSHIP_AUTH_TOKEN}"
-```
+Manifests enable selective file restoration without downloading entire archives.
 
-### Central Controller Configuration
-```yaml
-# Server settings
-listen_address: "0.0.0.0"
-port: 8080
-tls_enabled: true
+## CLI Entry Point (`cmd/cargoship/`)
 
-# Authentication
-auth_enabled: true
-auth_tokens:
-  - "${CARGOSHIP_CONTROLLER_TOKEN}"
+The CLI uses [cobra](https://github.com/spf13/cobra) for command structure. Core commands:
 
-# Agent management
-agent_timeout: "5m"
-ping_interval: "30s"
-```
-
-## Performance Characteristics
-
-### Network Optimization
-- **BBR Congestion Control**: Bandwidth-delay product optimization
-- **CUBIC Algorithm**: High-bandwidth, low-latency performance
-- **Predictive Bandwidth**: Dynamic bandwidth allocation
-- **Connection Pooling**: Efficient connection reuse
-
-### Measured Performance
-- **Baseline Performance**: Standard S3 uploads
-- **Optimized Performance**: 4.6x improvement with BBR/CUBIC
-- **Aggregate Throughput**: 176.68 MB/s with 100 concurrent uploads
-- **Network Utilization**: 28.3% of 5Gbps connection (highly efficient)
-- **Large File Performance**: 56.34 MB/s sustained on 3.1GB uploads
-
-### Scaling Characteristics
-- **Concurrent Operations**: 100+ simultaneous file uploads
-- **Multiple Ghost Ships**: Unlimited distributed agents
-- **Memory Usage**: <2GB per ghost ship under normal load
-- **CPU Usage**: <80% under high concurrency scenarios
-
-## Security Architecture
-
-### Authentication & Authorization
-- **Token-Based Auth**: Secure API tokens for all communications
-- **TLS Encryption**: End-to-end encrypted WebSocket connections
-- **Certificate Validation**: Proper CA certificate chain validation
-- **Role-Based Access**: Different token types for different access levels
-
-### Network Security
-- **WebSocket Security**: WSS (WebSocket Secure) protocol
-- **API Security**: HTTPS-only REST API endpoints
-- **Network Isolation**: Container-based network isolation
-- **Firewall Integration**: Configurable port and protocol restrictions
-
-### Data Security
-- **S3 Encryption**: Optional server-side encryption for archived files
-- **Credential Management**: Secure AWS credential handling
-- **Log Security**: No sensitive data in logs or metrics
-- **Audit Trail**: Complete archival operation logging
-
-## Monitoring & Observability
-
-### Metrics Collection
-- **Prometheus Integration**: Comprehensive metrics export
-- **Custom Metrics**: CargoShip-specific performance indicators
-- **System Metrics**: CPU, memory, network, and disk utilization
-- **Business Metrics**: Files archived, bytes transferred, success rates
-
-### Key Metrics
-```
-cargoship_active_jobs                    # Current active archival jobs
-cargoship_completed_jobs_total           # Total completed jobs
-cargoship_failed_jobs_total              # Total failed jobs  
-cargoship_bytes_archived_total           # Total bytes archived
-cargoship_average_throughput_mbps        # Average transfer rate
-cargoship_ghost_ships_connected          # Connected ghost ships
-cargoship_controller_uptime_seconds      # Controller uptime
-```
-
-### Logging
-- **Structured Logging**: JSON-formatted logs with structured fields
-- **Log Levels**: Configurable verbosity (debug, info, warn, error)
-- **Distributed Tracing**: Request correlation across components
-- **Log Aggregation**: Centralized log collection and analysis
-
-### Health Monitoring
-- **Health Endpoints**: HTTP health check endpoints for all services
-- **Heartbeat System**: Regular ping/pong between controller and agents
-- **Automatic Recovery**: Self-healing connections and operations
-- **Alert Integration**: Integration with monitoring systems
-
-## Fault Tolerance
-
-### Connection Resilience  
-- **Automatic Reconnection**: Exponential backoff reconnection logic
-- **Connection Pooling**: Multiple connection fallbacks
-- **Offline Operation**: Ghost ships continue autonomous operation
-- **State Synchronization**: Automatic state sync on reconnection
-
-### Error Handling
-- **Retry Logic**: Configurable retry attempts with backoff
-- **Circuit Breakers**: Automatic failure isolation
-- **Graceful Degradation**: Reduced functionality under failure conditions
-- **Error Propagation**: Proper error reporting and handling
-
-### Data Integrity
-- **Checksum Validation**: SHA-256 verification of uploaded files
-- **Atomic Operations**: All-or-nothing archival operations
-- **Transaction Logging**: Complete operation audit trail
-- **Recovery Procedures**: Automatic recovery from partial failures
-
-## Use Case Scenarios
-
-### 1. Autonomous Document Archival
-- **Scenario**: Legal office with compliance requirements
-- **Configuration**: Documents older than 24 hours → STANDARD_IA storage
-- **Benefits**: Automatic compliance, cost optimization, no manual intervention
-
-### 2. Media Asset Management
-- **Scenario**: Photography studio with large RAW files
-- **Configuration**: RAW files older than 7 days → GLACIER storage
-- **Benefits**: Long-term preservation, significant cost savings, automated workflow
-
-### 3. Backup Lifecycle Management
-- **Scenario**: IT department with backup retention policies
-- **Configuration**: Backups older than 30 days → DEEP_ARCHIVE, local deletion
-- **Benefits**: Policy enforcement, storage cost optimization, automated cleanup
-
-### 4. Multi-Location Coordination
-- **Scenario**: Company with multiple office locations
-- **Configuration**: Central controller coordinating ghost ships at each location
-- **Benefits**: Centralized monitoring, consistent policies, unified reporting
-
-## Deployment Scenarios
-
-### Development Environment
 ```bash
-# Start local development stack
-cd docker/development
-docker-compose up -d
-
-# Run comprehensive tests
-./scripts/test-suite.sh --generate-data all
+cargoship upload <path> s3://<bucket>/<prefix>   # Upload data
+cargoship estimate <path>                         # Estimate costs
+cargoship survey <path>                           # Analyze data
+cargoship budget set                              # Configure budgets
+cargoship manifest list                           # List manifests
 ```
 
-### Production Deployment
-```bash
-# Deploy to astrapi.local QNAP NAS
-./scripts/launch-ghost-ship.sh \
-  --target astrapi.local \
-  --config configs/astrapi/ghost-ship-production.yaml \
-  launch
-
-# Monitor operations
-./scripts/launch-ghost-ship.sh --target astrapi.local status
-```
-
-### Scaling Deployment
-```bash
-# Deploy to multiple NAS devices
-for nas in nas1.local nas2.local nas3.local; do
-  ./scripts/launch-ghost-ship.sh \
-    --target "$nas" \
-    --id "ghost-${nas%%.*}" \
-    launch
-done
-```
-
-## Future Enhancements
-
-### Planned Features
-- **Web Dashboard**: Browser-based management interface
-- **Advanced Scheduling**: Cron-based archival scheduling
-- **Content-Aware Rules**: File content analysis for intelligent classification
-- **Multi-Cloud Support**: Azure Blob Storage and Google Cloud Storage
-- **Bandwidth Throttling**: Configurable bandwidth limits and QoS
-- **Compression Optimization**: Intelligent compression based on file type
-
-### API Extensions
-- **GraphQL API**: More flexible query capabilities
-- **Batch Operations**: Bulk job management and status queries
-- **Webhook Integration**: Event-driven notifications and integrations
-- **Plugin System**: Extensible rule engine and transport plugins
-
-This architecture enables truly distributed, autonomous archival operations while maintaining central visibility and control - embodying the CargoShip "launch" and "ghost ship" concept for modern cloud storage workflows.
+See [CLI Reference](CLI_REFERENCE.md) for complete command documentation.

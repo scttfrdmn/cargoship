@@ -747,4 +747,4 @@ Have questions or suggestions about the storage format?
 
 ## License
 
-CargoShip is open-source under the MIT License. The storage format is open and unencumbered.
+CargoShip is open-source under the Apache 2.0 License. The storage format is open and unencumbered.

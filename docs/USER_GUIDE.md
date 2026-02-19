@@ -96,15 +96,15 @@ Archive your completed research datasets:
 
 ```bash
 # Archive completed analysis
-cargoship ship /data/completed-analysis \
-  --destination s3://research-archive/project-2024/analysis \
+cargoship upload /data/completed-analysis \
+  s3://research-archive/project-2024/analysis \
   --storage-class deep-archive \
   --description "RNA-seq analysis, experiment batch 3" \
   --tags "project=rna-seq,batch=3,status=complete"
 
 # Archive with metadata preservation
-cargoship ship /data/microscopy-images \
-  --destination s3://research-archive/imaging/batch-15 \
+cargoship upload /data/microscopy-images \
+  s3://research-archive/imaging/batch-15 \
   --storage-class glacier \
   --preserve-metadata \
   --include-checksums
@@ -224,7 +224,7 @@ For deployment on research computing servers:
 # Install as systemd service
 sudo cargoship agent install \
   --watch-paths /scratch/completed,/data/analysis-output \
-  --destination s3://research-archive \
+  --target s3://research-archive \
   --storage-class glacier \
   --max-cost 300
 
@@ -339,15 +339,15 @@ Archive sequencing data efficiently:
 
 ```bash
 # Archive raw sequencing data
-cargoship ship /data/raw-sequences \
-  --destination s3://genomics-archive/project-001/raw \
+cargoship upload /data/raw-sequences \
+  s3://genomics-archive/project-001/raw \
   --storage-class deep-archive \
   --compression zstd \
   --tags "project=cancer-genomics,grant=NIH-001"
 
 # Archive analysis results  
-cargoship ship /data/variant-calls \
-  --destination s3://genomics-archive/project-001/analysis \
+cargoship upload /data/variant-calls \
+  s3://genomics-archive/project-001/analysis \
   --storage-class glacier \
   --preserve-metadata \
   --include-checksums
@@ -359,8 +359,8 @@ Handle large imaging datasets:
 
 ```bash
 # Archive microscopy images
-cargoship ship /data/confocal-images \
-  --destination s3://imaging-archive/experiment-456 \
+cargoship upload /data/confocal-images \
+  s3://imaging-archive/experiment-456 \
   --storage-class glacier \
   --max-archive-size 10GB \
   --compression lz4 \
@@ -373,8 +373,8 @@ Set up institutional archival:
 
 ```bash
 # Create preservation-grade archive
-cargoship ship /data/thesis-dataset \
-  --destination s3://university-preservation/student-123 \
+cargoship upload /data/thesis-dataset \
+  s3://university-preservation/student-123 \
   --storage-class deep-archive \
   --encrypt-kms arn:aws:kms:us-east-1:account:key/preservation-key \
   --preserve-metadata \
