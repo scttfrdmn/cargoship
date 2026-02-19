@@ -200,6 +200,7 @@ class TestPutFile:
             local_path = f.name
         try:
             fs.put_file(local_path, "cargoship://b/p/data.csv")
+            fs.flush_batch()  # small file is buffered; flush to trigger upload
         finally:
             os.unlink(local_path)
         fs.cli.upload.assert_called_once()
@@ -210,7 +211,6 @@ class TestPutFile:
     def test_staging_directory_is_cleaned_up(self):
         fs = _make_fs()
         staging_dirs = []
-        original_upload = fs.cli.upload
 
         def capture_staging(staging, *args, **kwargs):
             staging_dirs.append(staging)
@@ -222,6 +222,7 @@ class TestPutFile:
             local_path = f.name
         try:
             fs.put_file(local_path, "cargoship://my-bucket/my-prefix/f.txt")
+            fs.flush_batch()  # small file is buffered; flush to trigger upload + cleanup
         finally:
             os.unlink(local_path)
 
@@ -341,3 +342,171 @@ class TestDVC2Compat:
         with pytest.raises(NotImplementedError):
             fs.remove("cargoship://b/p/file.txt")
         fs.rm.assert_called_once_with("cargoship://b/p/file.txt")
+
+
+# ---------------------------------------------------------------------------
+# Performance config via constructor (dvc remote modify)
+# ---------------------------------------------------------------------------
+
+
+class TestPerfConfig:
+    def test_default_small_file_threshold(self):
+        fs = CargoShipFileSystem(bucket="b")
+        assert fs._small_file_threshold == 10 * 1024 * 1024
+
+    def test_string_threshold_parsed(self):
+        fs = CargoShipFileSystem(bucket="b", small_file_threshold="5MB")
+        assert fs._small_file_threshold == 5 * 1024 * 1024
+
+    def test_integer_threshold_accepted(self):
+        fs = CargoShipFileSystem(bucket="b", small_file_threshold=1024)
+        assert fs._small_file_threshold == 1024
+
+    def test_zero_threshold_disables_batching(self):
+        fs = CargoShipFileSystem(bucket="b", small_file_threshold="0")
+        assert fs._small_file_threshold == 0
+
+    def test_download_workers_string(self):
+        fs = CargoShipFileSystem(bucket="b", download_workers="8")
+        assert fs._download_workers == 8
+
+    def test_download_workers_int(self):
+        fs = CargoShipFileSystem(bucket="b", download_workers=2)
+        assert fs._download_workers == 2
+
+
+# ---------------------------------------------------------------------------
+# put_file — small file batching
+# ---------------------------------------------------------------------------
+
+
+class TestPutFileSmallFileBatching:
+    def _make_fs(self, threshold: int = 10 * 1024 * 1024) -> CargoShipFileSystem:
+        fs = CargoShipFileSystem(
+            bucket="b", prefix="p", small_file_threshold=threshold
+        )
+        fs.cli = MagicMock()
+        fs.cli.upload = MagicMock()
+        return fs
+
+    def test_small_file_does_not_call_upload_immediately(self):
+        fs = self._make_fs(threshold=10 * 1024 * 1024)
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"x" * 100)  # 100 bytes < 10MB
+            lpath = f.name
+        try:
+            fs.put_file(lpath, "cargoship://b/p/tiny.bin")
+            fs.cli.upload.assert_not_called()
+        finally:
+            os.unlink(lpath)
+            fs.close()
+
+    def test_small_file_uploaded_after_flush(self):
+        fs = self._make_fs(threshold=10 * 1024 * 1024)
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"x" * 100)
+            lpath = f.name
+        try:
+            fs.put_file(lpath, "cargoship://b/p/tiny.bin")
+            fs.flush_batch()
+            fs.cli.upload.assert_called_once()
+        finally:
+            os.unlink(lpath)
+
+    def test_large_file_uploaded_immediately(self):
+        fs = self._make_fs(threshold=100)  # 100-byte threshold
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"x" * 200)  # 200 bytes > 100-byte threshold
+            lpath = f.name
+        try:
+            fs.put_file(lpath, "cargoship://b/p/big.bin")
+            fs.cli.upload.assert_called_once()
+        finally:
+            os.unlink(lpath)
+            fs.close()
+
+    def test_multiple_small_files_batched_in_one_upload(self):
+        fs = self._make_fs(threshold=10 * 1024 * 1024)
+        paths = []
+        try:
+            for i in range(3):
+                f = tempfile.NamedTemporaryFile(delete=False, suffix=".bin")
+                f.write(b"x" * 10)
+                f.close()
+                paths.append(f.name)
+                fs.put_file(f.name, f"cargoship://b/p/file{i}.bin")
+            fs.flush_batch()
+            # All 3 files should be uploaded in a single call
+            assert fs.cli.upload.call_count == 1
+        finally:
+            for p in paths:
+                os.unlink(p)
+
+    def test_close_flushes_pending_small_files(self):
+        fs = self._make_fs(threshold=10 * 1024 * 1024)
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"y" * 50)
+            lpath = f.name
+        try:
+            fs.put_file(lpath, "cargoship://b/p/pending.bin")
+            fs.close()
+            fs.cli.upload.assert_called_once()
+        finally:
+            os.unlink(lpath)
+
+
+# ---------------------------------------------------------------------------
+# get_files — parallel restore
+# ---------------------------------------------------------------------------
+
+
+class TestGetFiles:
+    def _make_fs(self) -> CargoShipFileSystem:
+        fs = CargoShipFileSystem(bucket="b", prefix="p", download_workers=2)
+        fs.cli = MagicMock()
+        return fs
+
+    def _make_restoring_cli(self) -> MagicMock:
+        def _restore(dest, staging, *, file_path=None, **kwargs):
+            out = os.path.join(staging, os.path.basename(file_path))
+            with open(out, "w") as fh:
+                fh.write("content")
+
+        cli = MagicMock()
+        cli.restore.side_effect = _restore
+        return cli
+
+    def test_get_files_restores_all(self):
+        fs = self._make_fs()
+        fs.cli = self._make_restoring_cli()
+        with tempfile.TemporaryDirectory() as outdir:
+            rpaths = [
+                "cargoship://b/p/a.txt",
+                "cargoship://b/p/b.txt",
+            ]
+            lpaths = [
+                os.path.join(outdir, "a.txt"),
+                os.path.join(outdir, "b.txt"),
+            ]
+            fs.get_files(rpaths, lpaths)
+            assert os.path.exists(lpaths[0])
+            assert os.path.exists(lpaths[1])
+
+    def test_get_files_raises_on_partial_failure(self):
+        fs = self._make_fs()
+        fs.cli.restore = MagicMock()  # does nothing — no files created
+        with tempfile.TemporaryDirectory() as outdir:
+            rpaths = ["cargoship://b/p/missing.txt"]
+            lpaths = [os.path.join(outdir, "missing.txt")]
+            with pytest.raises(RuntimeError, match="failed to restore"):
+                fs.get_files(rpaths, lpaths)
+
+    def test_get_files_invokes_callback(self):
+        fs = self._make_fs()
+        fs.cli = self._make_restoring_cli()
+        progress = []
+        with tempfile.TemporaryDirectory() as outdir:
+            rpaths = ["cargoship://b/p/x.txt"]
+            lpaths = [os.path.join(outdir, "x.txt")]
+            fs.get_files(rpaths, lpaths, callback=progress.append)
+        assert progress == [1]

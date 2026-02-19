@@ -5,10 +5,22 @@ Once installed, a remote can be added with::
 
     dvc remote add myremote cargoship://my-bucket/my-prefix
 
+Performance tuning via ``dvc remote modify``::
+
+    dvc remote modify myremote small_file_threshold 10MB
+    dvc remote modify myremote download_workers 8
+
 **Architecture note** — CargoShip is a *bulk* uploader: it archives an entire
 directory into compressed, sharded tar.zst chunks.  This adapter translates
 DVC's individual-file cache operations (put_file / get_file) into CargoShip
 CLI calls by using a temporary staging directory for each operation.
+
+Small files (below *small_file_threshold*) are buffered in a
+:class:`~dvc_cargoship.perf.BatchUploadBuffer` and sent as a single
+``cargoship upload`` call, eliminating per-file invocation overhead.
+
+Downloads are accelerated with :func:`~dvc_cargoship.perf.parallel_restore`
+when :meth:`get_files` is called with multiple targets.
 
 **DVC config-schema limitation** — DVC currently validates remote URLs
 against a hard-coded schema (iterative/dvc#9711).  Until that issue is
@@ -25,6 +37,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from fsspec.spec import AbstractFileSystem
 
 from .cli import CargoShipCLI, CargoShipCLIError
+from .perf import (
+    BatchUploadBuffer,
+    _DEFAULT_DOWNLOAD_WORKERS,
+    _DEFAULT_SMALL_FILE_THRESHOLD,
+    parallel_restore,
+    parse_size,
+)
 
 _PROTOCOL = "cargoship"
 
@@ -41,6 +60,12 @@ class CargoShipFileSystem(AbstractFileSystem):
     cargoship_bin:
         Name or absolute path of the ``cargoship`` binary.  Defaults to
         ``"cargoship"`` which will be resolved via PATH at first use.
+    small_file_threshold:
+        Files smaller than this value (bytes or size string such as ``"10MB"``)
+        are aggregated into a single CargoShip upload rather than being sent
+        one at a time.  Defaults to 10 MB.  Set to ``"0"`` to disable batching.
+    download_workers:
+        Number of parallel threads used by :meth:`get_files`.  Defaults to 4.
     """
 
     protocol = _PROTOCOL
@@ -51,6 +76,8 @@ class CargoShipFileSystem(AbstractFileSystem):
         bucket: str = "",
         prefix: str = "",
         cargoship_bin: str = "cargoship",
+        small_file_threshold: Any = _DEFAULT_SMALL_FILE_THRESHOLD,
+        download_workers: Any = _DEFAULT_DOWNLOAD_WORKERS,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -58,6 +85,17 @@ class CargoShipFileSystem(AbstractFileSystem):
         self._prefix = prefix.strip("/")
         self._cli: Optional[CargoShipCLI] = None
         self._cargoship_bin = cargoship_bin
+
+        # Parse size/int config values (DVC passes them as strings)
+        self._small_file_threshold: int = (
+            parse_size(str(small_file_threshold))
+            if isinstance(small_file_threshold, str)
+            else int(small_file_threshold)
+        )
+        self._download_workers: int = int(download_workers)
+
+        # Lazy batch buffer — created on first small-file put_file
+        self._batch: Optional[BatchUploadBuffer] = None
 
     # ------------------------------------------------------------------
     # Lazy CLI accessor (enables unit-test injection)
@@ -74,6 +112,46 @@ class CargoShipFileSystem(AbstractFileSystem):
     def cli(self, value: CargoShipCLI) -> None:
         """Inject a :class:`CargoShipCLI` (used in unit tests)."""
         self._cli = value
+        # Reset the batch buffer so it picks up the new CLI instance.
+        if self._batch is not None:
+            self._batch.close()
+            self._batch = None
+
+    # ------------------------------------------------------------------
+    # Batch buffer helpers
+    # ------------------------------------------------------------------
+
+    @property
+    def _batch_buffer(self) -> BatchUploadBuffer:
+        """Return (or lazily create) the per-instance batch upload buffer."""
+        if self._batch is None:
+            self._batch = BatchUploadBuffer(
+                self.cli,
+                self._destination_url(),
+                threshold=self._small_file_threshold,
+            )
+        return self._batch
+
+    def flush_batch(self) -> None:
+        """Flush any pending small-file uploads.
+
+        Called automatically by :meth:`close` and the destructor.  May also be
+        called explicitly after a sequence of :meth:`put_file` calls.
+        """
+        if self._batch is not None:
+            self._batch.flush()
+
+    def close(self) -> None:
+        """Flush pending uploads and release resources."""
+        if self._batch is not None:
+            self._batch.close()
+            self._batch = None
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # URL / path helpers
@@ -171,14 +249,22 @@ class CargoShipFileSystem(AbstractFileSystem):
     def put_file(self, lpath: str, rpath: str, **kwargs: Any) -> None:
         """Upload the local file at *lpath* to the remote at *rpath*.
 
-        CargoShip is a bulk uploader; this method stages the file in a
-        temporary directory and calls ``cargoship upload`` on that directory.
-        The resulting upload is associated with this remote's bucket and prefix.
+        **Small files** (below *small_file_threshold*) are symlinked into a
+        shared staging directory and deferred until the buffer is flushed via
+        :meth:`flush_batch` or :meth:`close`.
+
+        **Large files** are uploaded immediately via a per-file
+        ``cargoship upload`` call.
         """
-        with tempfile.TemporaryDirectory(prefix="dvc-cargoship-put-") as staging:
-            dest_name = os.path.basename(lpath)
-            shutil.copy2(lpath, os.path.join(staging, dest_name))
-            self.cli.upload(staging, self._destination_url(), quiet=True)
+        file_size = os.path.getsize(lpath)
+        if self._batch_buffer.should_buffer(file_size):
+            rel_key = self._relative_key(rpath) or os.path.basename(lpath)
+            self._batch_buffer.add(lpath, rel_key)
+        else:
+            with tempfile.TemporaryDirectory(prefix="dvc-cargoship-put-") as staging:
+                dest_name = os.path.basename(lpath)
+                shutil.copy2(lpath, os.path.join(staging, dest_name))
+                self.cli.upload(staging, self._destination_url(), quiet=True)
 
     def get_file(self, rpath: str, lpath: str, **kwargs: Any) -> None:
         """Download the remote file at *rpath* to *lpath*.
@@ -200,6 +286,44 @@ class CargoShipFileSystem(AbstractFileSystem):
                 )
             os.makedirs(os.path.dirname(os.path.abspath(lpath)), exist_ok=True)
             shutil.move(restored, lpath)
+
+    def get_files(
+        self,
+        rpaths: List[str],
+        lpaths: List[str],
+        callback: Any = None,
+    ) -> None:
+        """Download multiple remote files in parallel.
+
+        Uses :func:`~dvc_cargoship.perf.parallel_restore` with
+        *download_workers* threads.  Any failures are re-raised as a combined
+        error after all files have been attempted.
+
+        Parameters
+        ----------
+        rpaths:
+            Remote paths (``cargoship://`` URLs or bare keys).
+        lpaths:
+            Corresponding local destination paths.
+        callback:
+            Optional progress callback ``(completed: int) -> None``.
+        """
+        pairs = [
+            (self._relative_key(rp), lp) for rp, lp in zip(rpaths, lpaths)
+        ]
+        results = parallel_restore(
+            self.cli,
+            self._destination_url(),
+            pairs,
+            workers=self._download_workers,
+            progress_callback=callback,
+        )
+        errors = {k: v for k, v in results.items() if v is not None}
+        if errors:
+            msgs = "\n".join(f"  {k}: {v}" for k, v in errors.items())
+            raise RuntimeError(
+                f"{len(errors)} file(s) failed to restore:\n{msgs}"
+            )
 
     def rm(self, path: str, recursive: bool = False, **kwargs: Any) -> None:
         """Not supported — CargoShip archives are immutable.

@@ -11,11 +11,15 @@ See https://github.com/scttfrdmn/cargoship for CargoShip documentation.
 
 from ._version import __version__
 from .cli import CargoShipCLI, CargoShipCLIError
+from .perf import BatchUploadBuffer, parallel_restore, parse_size
 from .remote import CargoShipFileSystem
 
 __all__ = [
     "CargoShipFileSystem",
     "CargoShipCLI",
     "CargoShipCLIError",
+    "BatchUploadBuffer",
+    "parallel_restore",
+    "parse_size",
     "__version__",
 ]
