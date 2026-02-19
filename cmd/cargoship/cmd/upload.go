@@ -70,6 +70,10 @@ func NewUploadCmd() *cobra.Command {
 		// Issue #183: DVC budget integration
 		dvcProject string
 		uploadTags []string // "key=value" pairs
+
+		// Issue #185: DVC pipeline metadata extraction
+		dvcStage           string
+		includeGitMetadata bool
 	)
 
 	cmd := &cobra.Command{
@@ -392,6 +396,44 @@ Examples:
 				}
 			}
 
+			// Issue #185: Extract DVC pipeline metadata before running the pipeline.
+			var dvcPipelineData *manifest.DVCPipeline
+			if dvcStage != "" {
+				extracted, pipeErr := manifest.ExtractDVCPipeline(absPath, dvcStage)
+				if pipeErr != nil {
+					_, _ = fmt.Fprintf(cmd.OutOrStderr(),
+						"⚠️  DVC pipeline extraction failed: %v\n", pipeErr)
+				} else {
+					dvcPipelineData = extracted
+					if !quiet && dvcPipelineData.Command != "" {
+						lockShort := dvcPipelineData.LockHash
+						if len(lockShort) > 8 {
+							lockShort = lockShort[:8]
+						}
+						fmt.Printf("📋 DVC stage: %s (%s)\n", dvcStage, lockShort)
+					}
+				}
+			}
+
+			// Issue #185: Extract Git metadata when --git-metadata is set.
+			var gitMetadataData *manifest.GitMetadata
+			if includeGitMetadata {
+				extracted, gitErr := manifest.ExtractGitMetadata(absPath)
+				if gitErr != nil {
+					_, _ = fmt.Fprintf(cmd.OutOrStderr(),
+						"⚠️  Git metadata extraction failed: %v\n", gitErr)
+				} else {
+					gitMetadataData = extracted
+					if !quiet && gitMetadataData.Commit != "" {
+						commitShort := gitMetadataData.Commit
+						if len(commitShort) > 12 {
+							commitShort = commitShort[:12]
+						}
+						fmt.Printf("🔖 Git commit: %s\n", commitShort)
+					}
+				}
+			}
+
 			// Issue #183: Parse --tag key=value flags into a map.
 			uploadTagMap := make(map[string]string)
 			for _, t := range uploadTags {
@@ -549,6 +591,10 @@ Examples:
 				// Issue #183: DVC budget integration
 				ProjectID: dvcProject,
 				Tags:      uploadTagMap,
+
+				// Issue #185: DVC pipeline and Git metadata
+				DVCPipelineData: dvcPipelineData,
+				GitMetadataData: gitMetadataData,
 			}
 
 			// Note: Compression level and shard strategy are not yet implemented in the pipeline
@@ -771,6 +817,10 @@ Examples:
 	// Issue #183: DVC budget integration
 	cmd.Flags().StringVar(&dvcProject, "project", "", "Project ID for cost tracking (e.g. 'dvc_cache' for DVC remotes)")
 	cmd.Flags().StringArrayVar(&uploadTags, "tag", nil, "Custom tag in key=value format, repeatable (e.g. --tag dvc_cache=true --tag env=prod)")
+
+	// Issue #185: DVC pipeline metadata extraction
+	cmd.Flags().StringVar(&dvcStage, "dvc-stage", "", "DVC pipeline stage name to extract provenance from (reads dvc.yaml + dvc.lock)")
+	cmd.Flags().BoolVar(&includeGitMetadata, "git-metadata", false, "Embed Git repository metadata (commit, branch, tag, remote) in the manifest")
 
 	return cmd
 }

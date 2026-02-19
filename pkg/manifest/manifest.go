@@ -97,6 +97,7 @@ func NewBuilderFromExisting(existing *Manifest) (*Builder, error) {
 		VersionInfo:      existing.VersionInfo,
 		GitMetadata:      existing.GitMetadata,
 		DVCCompatibility: existing.DVCCompatibility,
+		DVCPipeline:      existing.DVCPipeline,
 	}
 
 	return &Builder{
@@ -203,6 +204,24 @@ func (b *Builder) SetDeduplication(dedup *ManifestDeduplication) {
 	defer b.mu.Unlock()
 
 	b.manifest.Deduplication = dedup
+}
+
+// SetGitMetadata stores Git repository state in the manifest (Issue #185, thread-safe).
+// Pass nil to clear a previously set value.
+func (b *Builder) SetGitMetadata(meta *GitMetadata) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.manifest.GitMetadata = meta
+}
+
+// SetDVCPipeline stores DVC pipeline provenance in the manifest (Issue #185, thread-safe).
+// Pass nil to clear a previously set value.
+func (b *Builder) SetDVCPipeline(pipeline *DVCPipeline) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.manifest.DVCPipeline = pipeline
 }
 
 // UpdateShardStats updates statistics for a shard (thread-safe)

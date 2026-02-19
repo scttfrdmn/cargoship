@@ -793,6 +793,14 @@ func (p *Pipeline) uploadManifest(ctx context.Context) error {
 		}
 	}
 
+	// Issue #185: Embed DVC pipeline and Git metadata when provided.
+	if p.config.DVCPipelineData != nil {
+		builder.SetDVCPipeline(p.config.DVCPipelineData)
+	}
+	if p.config.GitMetadataData != nil {
+		builder.SetGitMetadata(p.config.GitMetadataData)
+	}
+
 	// Finalize the manifest
 	p.manifestMu.Lock()
 	manifestData := builder.Finalize()

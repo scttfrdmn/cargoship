@@ -49,6 +49,7 @@ type Manifest struct {
 	VersionInfo      *VersionInfo      `json:"version_info,omitempty"`      // Dataset version and experiment metadata
 	GitMetadata      *GitMetadata      `json:"git_metadata,omitempty"`      // Git repository state at upload time
 	DVCCompatibility *DVCCompatibility `json:"dvc_compatibility,omitempty"` // DVC remote compatibility settings
+	DVCPipeline      *DVCPipeline      `json:"dvc_pipeline,omitempty"`      // DVC pipeline provenance (Issue #185)
 
 	// Files - array of all files with their locations
 	Files []FileEntry `json:"files"`
@@ -121,6 +122,60 @@ type DVCMetadata struct {
 
 	// ExperimentID links this file to a specific DVC experiment run
 	ExperimentID string `json:"experiment_id,omitempty"`
+}
+
+// DVCDep is a single dependency entry from a DVC pipeline stage (Issue #185).
+type DVCDep struct {
+	// Path is the dependency's path relative to the repo root
+	Path string `json:"path"`
+	// MD5 is the content hash recorded in dvc.lock (empty when dvc.lock is absent)
+	MD5 string `json:"md5,omitempty"`
+	// Size is the byte size recorded in dvc.lock (0 when dvc.lock is absent)
+	Size int64 `json:"size,omitempty"`
+}
+
+// DVCOut is a single output entry from a DVC pipeline stage (Issue #185).
+type DVCOut struct {
+	// Path is the output's path relative to the repo root
+	Path string `json:"path"`
+	// MD5 is the content hash recorded in dvc.lock (empty when dvc.lock is absent)
+	MD5 string `json:"md5,omitempty"`
+	// Size is the byte size recorded in dvc.lock (0 when dvc.lock is absent)
+	Size int64 `json:"size,omitempty"`
+}
+
+// DVCPipeline holds pipeline provenance extracted from dvc.yaml and dvc.lock
+// for a single named stage (Issue #185).
+//
+// ExtractDVCPipeline populates this struct; all fields except StageName are
+// omitempty so manifests created without DVC stage info remain clean.
+type DVCPipeline struct {
+	// StageName is the DVC pipeline stage name (e.g. "preprocess", "train")
+	StageName string `json:"stage_name"`
+
+	// PipelineFile is the path to the dvc.yaml that defines the stage,
+	// relative to the repo root (typically "dvc.yaml")
+	PipelineFile string `json:"pipeline_file,omitempty"`
+
+	// Command is the shell command declared for the stage in dvc.yaml
+	Command string `json:"command,omitempty"`
+
+	// Deps lists the stage's declared dependencies
+	Deps []DVCDep `json:"deps,omitempty"`
+
+	// Outputs lists the stage's declared outputs
+	Outputs []DVCOut `json:"outputs,omitempty"`
+
+	// Params holds the resolved parameter values from dvc.lock (key → value)
+	Params map[string]any `json:"params,omitempty"`
+
+	// ExecutedAt is the modification time of dvc.lock, used as a proxy for
+	// when the stage was last run
+	ExecutedAt time.Time `json:"executed_at,omitempty"`
+
+	// LockHash is the MD5 hex digest of the entire dvc.lock file contents,
+	// providing a stable fingerprint for the locked pipeline state
+	LockHash string `json:"lock_hash,omitempty"`
 }
 
 // EncryptionMetadata represents encryption configuration for the manifest and data (Issue #163)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
 	"github.com/scttfrdmn/cargoship/pkg/config"
+	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
 
 // Job represents a unit of work flowing through the pipeline
@@ -230,6 +231,10 @@ type PipelineConfig struct {
 	// DVC budget integration (Issue #183)
 	ProjectID string            // Project ID for cost tracking (e.g. "dvc_cache" for DVC remotes)
 	Tags      map[string]string // Custom tags for cost records (e.g. {"dvc_cache": "true", "dvc_operation": "push"})
+
+	// DVC pipeline metadata (Issue #185)
+	DVCPipelineData *manifest.DVCPipeline // Pipeline provenance extracted from dvc.yaml + dvc.lock
+	GitMetadataData *manifest.GitMetadata // Git repository state at upload time
 }
 
 // Progress represents current pipeline progress

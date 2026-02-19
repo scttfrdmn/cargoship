@@ -1,0 +1,25 @@
+stages:
+  preprocess:
+    cmd: python scripts/preprocess.py --input data/raw --output data/processed
+    deps:
+      - data/raw
+      - scripts/preprocess.py
+    params:
+      - params.yaml:
+          - learning_rate
+          - batch_size
+    outs:
+      - data/processed
+  train:
+    cmd: python scripts/train.py --data data/processed --output models/model.pkl
+    deps:
+      - data/processed
+      - scripts/train.py
+    params:
+      - params.yaml:
+          - epochs
+          - learning_rate
+    outs:
+      - models/model.pkl
+      - metrics/train_metrics.json:
+          cache: false
