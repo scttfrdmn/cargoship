@@ -188,9 +188,33 @@ func (lb *DefaultLoadBalancer) Route(ctx context.Context, request *UploadRequest
 		return nil, fmt.Errorf("failed to route by strategy: %w", err)
 	}
 
-	// Create session affinity if sticky sessions are enabled
+	// Store session affinity under write lock with double-check to prevent
+	// concurrent requests with the same session key from recording different regions.
 	if lb.config.LoadBalancing.StickySessions {
-		lb.createSessionAffinity(request, region)
+		sessionKey := lb.generateSessionKey(request)
+		if sessionKey != "" {
+			lb.mu.Lock()
+			if existing, exists := lb.sessionAffinityMap[sessionKey]; exists &&
+				time.Since(existing.CreatedAt) <= lb.config.LoadBalancing.SessionTTL {
+				// Another goroutine already stored a session; use their region
+				storedName := existing.RegionName
+				lb.mu.Unlock()
+				for _, r := range availableRegions {
+					if r.Name == storedName {
+						return r, nil
+					}
+				}
+				// Stored region gone; fall through and keep our chosen region
+			} else {
+				lb.sessionAffinityMap[sessionKey] = SessionAffinity{
+					RegionName:   region.Name,
+					CreatedAt:    time.Now(),
+					LastUsed:     time.Now(),
+					RequestCount: 1,
+				}
+				lb.mu.Unlock()
+			}
+		}
 	}
 
 	lb.logger.Debug("Routed request to region",
@@ -473,23 +497,6 @@ func (lb *DefaultLoadBalancer) getSessionAffinityRegion(request *UploadRequest, 
 	return nil
 }
 
-// createSessionAffinity creates session affinity for a request
-func (lb *DefaultLoadBalancer) createSessionAffinity(request *UploadRequest, region *Region) {
-	sessionKey := lb.generateSessionKey(request)
-	if sessionKey == "" {
-		return
-	}
-
-	lb.mu.Lock()
-	defer lb.mu.Unlock()
-
-	lb.sessionAffinityMap[sessionKey] = SessionAffinity{
-		RegionName:   region.Name,
-		CreatedAt:    time.Now(),
-		LastUsed:     time.Now(),
-		RequestCount: 1,
-	}
-}
 
 // generateSessionKey generates a session key for sticky sessions (Issue #139)
 // Session key generation priority:
