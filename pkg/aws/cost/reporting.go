@@ -46,6 +46,24 @@ type CostRecord struct {
 	JobID           string            `json:"job_id,omitempty"`
 	ProjectID       string            `json:"project_id,omitempty"` // Manifest UploadID (Issue #147 Phase 2)
 	Tags            map[string]string `json:"tags,omitempty"`
+
+	// DVC pipeline provenance (Issue #186)
+	DVCStage     string `json:"dvc_stage,omitempty"`
+	DVCPipeline  string `json:"dvc_pipeline,omitempty"`
+	GitCommit    string `json:"git_commit,omitempty"`
+	ExperimentID string `json:"experiment_id,omitempty"`
+}
+
+// DVCStageSummary provides cost summary for a DVC pipeline stage (Issue #186).
+type DVCStageSummary struct {
+	DVCStage    string             `json:"dvc_stage"`
+	TotalCost   float64            `json:"total_cost"`
+	TotalSizeGB float64            `json:"total_size_gb"`
+	RecordCount int                `json:"record_count"`
+	Currency    string             `json:"currency"`
+	ByCommit    map[string]float64 `json:"by_commit,omitempty"`
+	FirstRun    time.Time          `json:"first_run"`
+	LastRun     time.Time          `json:"last_run"`
 }
 
 // CostSummary provides cost summary statistics
@@ -155,6 +173,14 @@ func (cr *CostReporter) RecordArchivalCost(ctx context.Context, fileName string,
 		JobID:           jobID,
 		ProjectID:       projectID,
 		Tags:            tags,
+	}
+
+	// Extract DVC provenance fields from tags (Issue #186)
+	if tags != nil {
+		record.DVCStage = tags["dvc_stage"]
+		record.DVCPipeline = tags["dvc_pipeline"]
+		record.GitCommit = tags["git_commit"]
+		record.ExperimentID = tags["experiment_id"]
 	}
 
 	cr.RecordCost(record)
@@ -800,4 +826,74 @@ func (cr *CostReporter) GenerateProjectReport(ctx context.Context, projectID str
 	summary.Recommendations = cr.generateRecommendations(filteredCosts)
 
 	return summary, nil
+}
+
+// DVC pipeline cost query methods (Issue #186)
+
+// QueryCostsByDVCStage returns an aggregated cost summary for a named DVC pipeline stage.
+// Returns an error when no matching records exist.
+func (cr *CostReporter) QueryCostsByDVCStage(stage string) (*DVCStageSummary, error) {
+	cr.mu.RLock()
+	defer cr.mu.RUnlock()
+
+	var stageCosts []CostRecord
+	for _, c := range cr.costs {
+		if c.DVCStage == stage {
+			stageCosts = append(stageCosts, c)
+		}
+	}
+
+	if len(stageCosts) == 0 {
+		return nil, fmt.Errorf("no cost records found for DVC stage: %s", stage)
+	}
+
+	summary := &DVCStageSummary{
+		DVCStage: stage,
+		Currency: stageCosts[0].Currency,
+		ByCommit: make(map[string]float64),
+		FirstRun: stageCosts[0].Timestamp,
+		LastRun:  stageCosts[0].Timestamp,
+	}
+
+	for _, c := range stageCosts {
+		summary.TotalCost += c.Cost
+		summary.TotalSizeGB += c.SizeGB
+		summary.RecordCount++
+
+		if c.GitCommit != "" {
+			summary.ByCommit[c.GitCommit] += c.Cost
+		}
+		if c.Timestamp.Before(summary.FirstRun) {
+			summary.FirstRun = c.Timestamp
+		}
+		if c.Timestamp.After(summary.LastRun) {
+			summary.LastRun = c.Timestamp
+		}
+	}
+
+	if len(summary.ByCommit) == 0 {
+		summary.ByCommit = nil
+	}
+
+	return summary, nil
+}
+
+// QueryCostsByGitCommit returns all cost records tagged with the given git commit SHA.
+// Returns an error when no matching records exist.
+func (cr *CostReporter) QueryCostsByGitCommit(commit string) ([]CostRecord, error) {
+	cr.mu.RLock()
+	defer cr.mu.RUnlock()
+
+	var records []CostRecord
+	for _, c := range cr.costs {
+		if c.GitCommit == commit {
+			records = append(records, c)
+		}
+	}
+
+	if len(records) == 0 {
+		return nil, fmt.Errorf("no cost records found for git commit: %s", commit)
+	}
+
+	return records, nil
 }

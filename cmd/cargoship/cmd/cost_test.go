@@ -338,6 +338,7 @@ func TestNewCostCmd_Structure(t *testing.T) {
 		"burnrate",
 		"exhaustion",
 		"benchmark-compare",
+		"summary", // Issue #186: DVC stage / git-commit cost aggregation
 	}
 
 	commands := cmd.Commands()

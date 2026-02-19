@@ -448,8 +448,41 @@ Examples:
 	_ = benchmarkCmd.MarkFlagRequired("size-gb")
 	_ = benchmarkCmd.MarkFlagRequired("files")
 
+	// Summary subcommand — DVC stage / git-commit cost aggregation (Issue #186)
+	summaryCmd := &cobra.Command{
+		Use:   "summary",
+		Short: "Summarize costs by DVC stage or git commit",
+		Long: `Aggregate recorded costs by DVC pipeline stage or git commit.
+
+Requires cost records that were tagged with DVC provenance information
+(populated automatically when --dvc-stage is passed to 'cargoship upload').
+
+Examples:
+  # Summarise costs for a specific DVC stage
+  cargoship cost summary --by-dvc-stage preprocess
+
+  # List all records for a git commit
+  cargoship cost summary --git-commit abc1234
+`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dvcStageFlag, _ := cmd.Flags().GetString("by-dvc-stage")
+			gitCommitFlag, _ := cmd.Flags().GetString("git-commit")
+
+			if dvcStageFlag == "" && gitCommitFlag == "" {
+				return fmt.Errorf("one of --by-dvc-stage or --git-commit is required")
+			}
+			if dvcStageFlag != "" && gitCommitFlag != "" {
+				return fmt.Errorf("--by-dvc-stage and --git-commit are mutually exclusive")
+			}
+
+			return runCostSummary(cmd.Context(), region, dvcStageFlag, gitCommitFlag, jsonOutput)
+		},
+	}
+	summaryCmd.Flags().String("by-dvc-stage", "", "Aggregate costs for this DVC pipeline stage")
+	summaryCmd.Flags().String("git-commit", "", "List costs tagged with this git commit SHA")
+
 	// Add subcommands
-	cmd.AddCommand(estimateCmd, uploadCmd, budgetCmd, pricingCmd, reportCmd, projectsCmd, projectCmd, forecastCmd, burnrateCmd, exhaustionCmd, benchmarkCmd)
+	cmd.AddCommand(estimateCmd, uploadCmd, budgetCmd, pricingCmd, reportCmd, projectsCmd, projectCmd, forecastCmd, burnrateCmd, exhaustionCmd, benchmarkCmd, summaryCmd)
 
 	return cmd
 }
@@ -1451,4 +1484,78 @@ func runBenchmarkCompare(
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(result)
+}
+
+// runCostSummary implements `cargoship cost summary` (Issue #186).
+func runCostSummary(ctx context.Context, region, dvcStage, gitCommit string, jsonOutput bool) error {
+	awsCfg, cargoConfig, err := loadAWSConfigForCost(ctx, region)
+	if err != nil {
+		return err
+	}
+
+	costMgr, err := cost.NewManager(&cargoConfig.CostControl, awsCfg, slog.Default())
+	if err != nil {
+		return fmt.Errorf("failed to create cost manager: %w", err)
+	}
+
+	if dvcStage != "" {
+		summary, err := costMgr.QueryCostsByDVCStage(dvcStage)
+		if err != nil {
+			return err
+		}
+
+		if jsonOutput {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(summary)
+		}
+
+		fmt.Printf("DVC Stage: %s\n", summary.DVCStage)
+		fmt.Printf("  Total cost:    $%.4f %s\n", summary.TotalCost, summary.Currency)
+		fmt.Printf("  Total size:    %.3f GB\n", summary.TotalSizeGB)
+		fmt.Printf("  Records:       %d\n", summary.RecordCount)
+		fmt.Printf("  First run:     %s\n", summary.FirstRun.Format(time.RFC3339))
+		fmt.Printf("  Last run:      %s\n", summary.LastRun.Format(time.RFC3339))
+		if len(summary.ByCommit) > 0 {
+			fmt.Println("  By commit:")
+			for commit, c := range summary.ByCommit {
+				fmt.Printf("    %s  $%.4f\n", commit, c)
+			}
+		}
+		return nil
+	}
+
+	// gitCommit path
+	records, err := costMgr.QueryCostsByGitCommit(gitCommit)
+	if err != nil {
+		return err
+	}
+
+	if jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(records)
+	}
+
+	totalCost := 0.0
+	for _, r := range records {
+		totalCost += r.Cost
+	}
+	fmt.Printf("Git commit: %s\n", gitCommit)
+	fmt.Printf("  Records:    %d\n", len(records))
+	fmt.Printf("  Total cost: $%.4f\n", totalCost)
+	fmt.Println("  Records:")
+	for _, r := range records {
+		dvcInfo := ""
+		if r.DVCStage != "" {
+			dvcInfo = fmt.Sprintf(" [stage: %s]", r.DVCStage)
+		}
+		fmt.Printf("    %s  %s  $%.4f%s\n",
+			r.Timestamp.Format("2006-01-02T15:04:05Z"),
+			r.FileName,
+			r.Cost,
+			dvcInfo,
+		)
+	}
+	return nil
 }

@@ -536,6 +536,16 @@ func (m *Manager) GetReporter() *CostReporter {
 	return m.reporter
 }
 
+// QueryCostsByDVCStage returns an aggregated cost summary for a named DVC pipeline stage (Issue #186).
+func (m *Manager) QueryCostsByDVCStage(stage string) (*DVCStageSummary, error) {
+	return m.reporter.QueryCostsByDVCStage(stage)
+}
+
+// QueryCostsByGitCommit returns all cost records tagged with the given git commit SHA (Issue #186).
+func (m *Manager) QueryCostsByGitCommit(commit string) ([]CostRecord, error) {
+	return m.reporter.QueryCostsByGitCommit(commit)
+}
+
 // GetAlertConfig returns the current alert configuration (Issue #147 Phase 4)
 func (m *Manager) GetAlertConfig() *BudgetAlertConfig {
 	// TODO: Load from persistent storage (file, database, etc.)
