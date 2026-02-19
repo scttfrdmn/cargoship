@@ -16,6 +16,7 @@ import (
 	"golang.org/x/term"
 
 	cargoconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
+	"github.com/scttfrdmn/cargoship/pkg/manifest"
 	"github.com/scttfrdmn/cargoship/pkg/observability/metrics"
 	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
@@ -56,6 +57,10 @@ func NewUploadCmd() *cobra.Command {
 
 		// Issue #168: Skip confirmation prompts
 		skipConfirmation bool
+
+		// Issue #179: Incremental sync
+		incrementalMode bool
+		prevManifest    string
 	)
 
 	cmd := &cobra.Command{
@@ -378,6 +383,37 @@ Examples:
 				}
 			}
 
+			// Issue #179: Incremental sync — determine which files need uploading.
+			var includeOnlyFiles []string
+			var prevUploadID string
+			if incrementalMode && prevManifest != "" {
+				prev, err := manifest.LoadManifestFromFile(prevManifest)
+				if err != nil {
+					return fmt.Errorf("load previous manifest: %w", err)
+				}
+				prevUploadID = prev.UploadID
+
+				incScanner, err := pipeline.NewIncrementalScanner(prev, "")
+				if err != nil {
+					return fmt.Errorf("create incremental scanner: %w", err)
+				}
+
+				toUpload, scanErr := incScanner.FilterFiles(absPath)
+				if scanErr != nil && !quiet {
+					fmt.Printf("⚠️  Incremental scan errors (proceeding): %v\n", scanErr)
+				}
+				includeOnlyFiles = toUpload
+
+				if !quiet {
+					stats := incScanner.Stats()
+					fmt.Printf("📊 Incremental Scan:\n")
+					fmt.Printf("   Files scanned:     %d\n", stats.FilesScanned)
+					fmt.Printf("   Unchanged (skip):  %d (%.2f GB saved)\n",
+						stats.FilesSkipped, float64(stats.BytesSaved)/(1024*1024*1024))
+					fmt.Printf("   Changed (upload):  %d\n\n", stats.FilesUploaded)
+				}
+			}
+
 			// Issue #164: Get tier chunking strategy
 			tierStrategy, _ := cmd.Flags().GetString("tier-strategy")
 			if tierStrategy != "youngest-file" && tierStrategy != "tier-aware" {
@@ -449,6 +485,16 @@ Examples:
 
 				// Issue #108: Deduplication configuration
 				EnableDeduplication: func() bool { v, _ := cmd.Flags().GetBool("enable-dedup"); return v }(),
+
+				// Issue #179: Incremental sync configuration
+				IncludeOnlyFiles: includeOnlyFiles,
+				SyncType: func() string {
+					if incrementalMode {
+						return "incremental"
+					}
+					return "full"
+				}(),
+				PreviousUploadID: prevUploadID,
 
 				// v0.6.2: Advanced transporter
 				Transporter: transporter,
@@ -666,6 +712,10 @@ Examples:
 	cmd.Flags().Bool("force-direct-upload", false, "Force direct upload regardless of thresholds (for benchmarking)")
 	cmd.Flags().Int("direct-upload-threshold-mb", 500, "Max total size in MB for auto direct upload (default: 500)")
 	cmd.Flags().Int("direct-upload-workers", 256, "Worker count for direct upload (default: 256)")
+
+	// Issue #179: Incremental sync flags
+	cmd.Flags().BoolVar(&incrementalMode, "incremental", false, "Enable incremental sync: only upload new or changed files")
+	cmd.Flags().StringVar(&prevManifest, "prev-manifest", "", "Path to previous manifest JSON (or .json.gz) for incremental sync")
 
 	return cmd
 }

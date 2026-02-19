@@ -19,7 +19,10 @@ import (
 
 const (
 	// ManifestVersion is the current manifest format version
-	ManifestVersion = "1.0"
+	ManifestVersion = "2.0"
+
+	// ManifestVersionV1 is the legacy v1.0 manifest format version (backward-compat read-only)
+	ManifestVersionV1 = "1.0"
 
 	// ManifestFileName is the standard manifest filename
 	ManifestFileName = "manifest.json"
@@ -91,6 +94,9 @@ func NewBuilderFromExisting(existing *Manifest) (*Builder, error) {
 		Files:            append([]FileEntry(nil), existing.Files...),
 		Chunks:           append([]ChunkEntry(nil), existing.Chunks...),
 		Shards:           append([]ShardEntry(nil), existing.Shards...),
+		VersionInfo:      existing.VersionInfo,
+		GitMetadata:      existing.GitMetadata,
+		DVCCompatibility: existing.DVCCompatibility,
 	}
 
 	return &Builder{
@@ -270,6 +276,20 @@ func (m *Manifest) ToJSONCompressed() ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+// LoadManifestFromFile reads a manifest from the local filesystem.
+// Files ending in ".gz" are treated as gzip-compressed JSON; all other files
+// are read as plain JSON.
+func LoadManifestFromFile(path string) (*Manifest, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read manifest %s: %w", path, err)
+	}
+	if len(path) > 3 && path[len(path)-3:] == ".gz" {
+		return FromJSONCompressed(data)
+	}
+	return FromJSON(data)
 }
 
 // FromJSON deserializes a manifest from JSON
