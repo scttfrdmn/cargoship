@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/spf13/cobra"
@@ -229,7 +230,11 @@ func runBudgetStatus(ctx context.Context, projectID string, jsonOutput bool) err
 	}
 
 	// Format output
-	fmt.Printf("Budget Status for Project: %s\n\n", projectID)
+	dvcNote := ""
+	if isDVCProject(projectID) {
+		dvcNote = " [DVC Operations]"
+	}
+	fmt.Printf("Budget Status for Project: %s%s\n\n", projectID, dvcNote)
 
 	// Cost budget section
 	fmt.Println("=== Cost Budget ===")
@@ -337,8 +342,33 @@ func runBudgetList(ctx context.Context, jsonOutput bool) error {
 
 	fmt.Printf("Project Budgets (%d total)\n\n", len(budgets))
 
+	hasDVC := false
+	hasNonDVC := false
 	for _, budget := range budgets {
-		fmt.Printf("Project: %s\n", budget.ProjectID)
+		if isDVCProject(budget.ProjectID) {
+			hasDVC = true
+		} else {
+			hasNonDVC = true
+		}
+	}
+	if hasDVC && hasNonDVC {
+		fmt.Println("=== DVC Projects ===")
+	}
+	inDVCSection := hasDVC && hasNonDVC
+
+	for i, budget := range budgets {
+		if inDVCSection && i > 0 && !isDVCProject(budgets[i-1].ProjectID) && isDVCProject(budget.ProjectID) {
+			fmt.Println("=== DVC Projects ===")
+		}
+		if inDVCSection && i > 0 && isDVCProject(budgets[i-1].ProjectID) && !isDVCProject(budget.ProjectID) {
+			fmt.Println("=== Direct Upload Projects ===")
+		}
+
+		dvcLabel := ""
+		if isDVCProject(budget.ProjectID) {
+			dvcLabel = " [DVC]"
+		}
+		fmt.Printf("Project: %s%s\n", budget.ProjectID, dvcLabel)
 		if budget.MaxBudget > 0 {
 			fmt.Printf("  Cost Budget:    $%.2f\n", budget.MaxBudget)
 		} else {
@@ -372,6 +402,12 @@ func runBudgetRemove(ctx context.Context, projectID string) error {
 	fmt.Println("   Project will now use global budget and quota settings")
 
 	return nil
+}
+
+// isDVCProject returns true when the project ID is associated with DVC operations.
+// Projects named "dvc_cache" or starting with "dvc_" are treated as DVC projects.
+func isDVCProject(id string) bool {
+	return id == "dvc_cache" || strings.HasPrefix(id, "dvc_")
 }
 
 // Helper function to load cost manager

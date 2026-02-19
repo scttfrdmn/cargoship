@@ -10,6 +10,7 @@ See https://github.com/scttfrdmn/cargoship for CargoShip documentation.
 """
 
 from ._version import __version__
+from .budget import DVCBudgetChecker, DVCBudgetExceededError
 from .cli import CargoShipCLI, CargoShipCLIError
 from .perf import BatchUploadBuffer, parallel_restore, parse_size
 from .remote import CargoShipFileSystem
@@ -18,6 +19,8 @@ __all__ = [
     "CargoShipFileSystem",
     "CargoShipCLI",
     "CargoShipCLIError",
+    "DVCBudgetChecker",
+    "DVCBudgetExceededError",
     "BatchUploadBuffer",
     "parallel_restore",
     "parse_size",

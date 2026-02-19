@@ -36,6 +36,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fsspec.spec import AbstractFileSystem
 
+from .budget import DVCBudgetChecker, DVCBudgetExceededError
 from .cli import CargoShipCLI, CargoShipCLIError
 from .perf import (
     BatchUploadBuffer,
@@ -78,6 +79,8 @@ class CargoShipFileSystem(AbstractFileSystem):
         cargoship_bin: str = "cargoship",
         small_file_threshold: Any = _DEFAULT_SMALL_FILE_THRESHOLD,
         download_workers: Any = _DEFAULT_DOWNLOAD_WORKERS,
+        project_id: str = "",
+        enable_budget_check: Any = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -93,6 +96,13 @@ class CargoShipFileSystem(AbstractFileSystem):
             else int(small_file_threshold)
         )
         self._download_workers: int = int(download_workers)
+
+        # Issue #183: Budget integration
+        self._project_id: str = project_id
+        self._enable_budget_check: bool = str(enable_budget_check).lower() not in (
+            "false", "0", ""
+        ) if isinstance(enable_budget_check, str) else bool(enable_budget_check)
+        self.__budget: Optional[DVCBudgetChecker] = None
 
         # Lazy batch buffer — created on first small-file put_file
         self._batch: Optional[BatchUploadBuffer] = None
@@ -112,10 +122,35 @@ class CargoShipFileSystem(AbstractFileSystem):
     def cli(self, value: CargoShipCLI) -> None:
         """Inject a :class:`CargoShipCLI` (used in unit tests)."""
         self._cli = value
-        # Reset the batch buffer so it picks up the new CLI instance.
+        # Reset the batch buffer and budget checker so they pick up the new CLI.
         if self._batch is not None:
             self._batch.close()
             self._batch = None
+        self.__budget = None
+
+    # ------------------------------------------------------------------
+    # Budget helpers (Issue #183)
+    # ------------------------------------------------------------------
+
+    @property
+    def _budget_checker(self) -> Optional[DVCBudgetChecker]:
+        """Return the :class:`DVCBudgetChecker`, or *None* when disabled.
+
+        Budget checking is skipped when *enable_budget_check* is False or
+        when no *project_id* is configured.
+        """
+        if not self._enable_budget_check or not self._project_id:
+            return None
+        if self.__budget is None:
+            self.__budget = DVCBudgetChecker(self.cli, self._project_id)
+        return self.__budget
+
+    def _dvc_tags(self, operation: str = "push") -> Dict[str, str]:
+        """Return the standard DVC cost-record tags for *operation*."""
+        tags: Dict[str, str] = {"dvc_cache": "true", "dvc_operation": operation}
+        if self._project_id:
+            tags["dvc_project"] = self._project_id
+        return tags
 
     # ------------------------------------------------------------------
     # Batch buffer helpers
@@ -129,6 +164,8 @@ class CargoShipFileSystem(AbstractFileSystem):
                 self.cli,
                 self._destination_url(),
                 threshold=self._small_file_threshold,
+                project_id=self._project_id or None,
+                tags=self._dvc_tags("push"),
             )
         return self._batch
 
@@ -249,14 +286,26 @@ class CargoShipFileSystem(AbstractFileSystem):
     def put_file(self, lpath: str, rpath: str, **kwargs: Any) -> None:
         """Upload the local file at *lpath* to the remote at *rpath*.
 
+        **Budget check** — when *enable_budget_check* is True and a
+        *project_id* is configured, the budget is verified before the upload
+        proceeds.  :class:`~dvc_cargoship.budget.DVCBudgetExceededError` is
+        raised if the project is over budget.
+
         **Small files** (below *small_file_threshold*) are symlinked into a
         shared staging directory and deferred until the buffer is flushed via
-        :meth:`flush_batch` or :meth:`close`.
+        :meth:`flush_batch` or :meth:`close`.  The batch upload is tagged
+        ``dvc_cache=true, dvc_operation=push``.
 
         **Large files** are uploaded immediately via a per-file
-        ``cargoship upload`` call.
+        ``cargoship upload`` call, also tagged with DVC metadata.
         """
         file_size = os.path.getsize(lpath)
+
+        # Budget pre-check (Issue #183)
+        checker = self._budget_checker
+        if checker is not None:
+            checker.check_upload(size_bytes=file_size, operation="push")
+
         if self._batch_buffer.should_buffer(file_size):
             rel_key = self._relative_key(rpath) or os.path.basename(lpath)
             self._batch_buffer.add(lpath, rel_key)
@@ -264,7 +313,13 @@ class CargoShipFileSystem(AbstractFileSystem):
             with tempfile.TemporaryDirectory(prefix="dvc-cargoship-put-") as staging:
                 dest_name = os.path.basename(lpath)
                 shutil.copy2(lpath, os.path.join(staging, dest_name))
-                self.cli.upload(staging, self._destination_url(), quiet=True)
+                self.cli.upload(
+                    staging,
+                    self._destination_url(),
+                    quiet=True,
+                    project_id=self._project_id or None,
+                    tags=self._dvc_tags("push"),
+                )
 
     def get_file(self, rpath: str, lpath: str, **kwargs: Any) -> None:
         """Download the remote file at *rpath* to *lpath*.

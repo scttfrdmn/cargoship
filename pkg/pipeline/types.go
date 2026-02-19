@@ -226,6 +226,10 @@ type PipelineConfig struct {
 	// Observability configuration (Issue #155: Distributed tracing)
 	EnableTracing bool        // Enable distributed tracing with OpenTelemetry (default: false)
 	Tracer        interface{} // Optional: Pre-configured tracer (type: *github.com/scttfrdmn/cargoship/pkg/observability/tracing.PipelineTracer)
+
+	// DVC budget integration (Issue #183)
+	ProjectID string            // Project ID for cost tracking (e.g. "dvc_cache" for DVC remotes)
+	Tags      map[string]string // Custom tags for cost records (e.g. {"dvc_cache": "true", "dvc_operation": "push"})
 }
 
 // Progress represents current pipeline progress

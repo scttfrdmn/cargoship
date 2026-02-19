@@ -510,3 +510,137 @@ class TestGetFiles:
             lpaths = [os.path.join(outdir, "x.txt")]
             fs.get_files(rpaths, lpaths, callback=progress.append)
         assert progress == [1]
+
+
+# ---------------------------------------------------------------------------
+# Budget integration (Issue #183)
+# ---------------------------------------------------------------------------
+
+
+class TestBudgetConfig:
+    def test_project_id_default_is_empty(self):
+        fs = CargoShipFileSystem(bucket="b", prefix="p")
+        assert fs._project_id == ""
+
+    def test_project_id_accepted(self):
+        fs = CargoShipFileSystem(bucket="b", prefix="p", project_id="dvc_cache")
+        assert fs._project_id == "dvc_cache"
+
+    def test_enable_budget_check_default_is_false(self):
+        fs = CargoShipFileSystem(bucket="b", prefix="p")
+        assert fs._enable_budget_check is False
+
+    def test_enable_budget_check_true(self):
+        fs = CargoShipFileSystem(bucket="b", prefix="p", enable_budget_check=True)
+        assert fs._enable_budget_check is True
+
+    def test_enable_budget_check_string_true(self):
+        fs = CargoShipFileSystem(bucket="b", prefix="p", enable_budget_check="true")
+        assert fs._enable_budget_check is True
+
+    def test_enable_budget_check_string_false(self):
+        fs = CargoShipFileSystem(bucket="b", prefix="p", enable_budget_check="false")
+        assert fs._enable_budget_check is False
+
+    def test_budget_checker_none_when_disabled(self):
+        fs = CargoShipFileSystem(bucket="b", prefix="p", project_id="dvc_cache", enable_budget_check=False)
+        assert fs._budget_checker is None
+
+    def test_budget_checker_none_when_no_project(self):
+        fs = CargoShipFileSystem(bucket="b", prefix="p", enable_budget_check=True)
+        assert fs._budget_checker is None
+
+    def test_budget_checker_created_when_enabled(self):
+        from dvc_cargoship.budget import DVCBudgetChecker
+        fs = CargoShipFileSystem(bucket="b", prefix="p", project_id="dvc_cache", enable_budget_check=True)
+        fs.cli = MagicMock()
+        checker = fs._budget_checker
+        assert isinstance(checker, DVCBudgetChecker)
+        assert checker.project_id == "dvc_cache"
+
+
+class TestDVCTags:
+    def test_push_tags(self):
+        fs = CargoShipFileSystem(bucket="b", prefix="p", project_id="dvc_cache")
+        tags = fs._dvc_tags("push")
+        assert tags["dvc_cache"] == "true"
+        assert tags["dvc_operation"] == "push"
+        assert tags["dvc_project"] == "dvc_cache"
+
+    def test_pull_tags(self):
+        fs = CargoShipFileSystem(bucket="b", prefix="p", project_id="dvc_cache")
+        tags = fs._dvc_tags("pull")
+        assert tags["dvc_operation"] == "pull"
+
+    def test_no_project_tag_when_project_id_empty(self):
+        fs = CargoShipFileSystem(bucket="b", prefix="p")
+        tags = fs._dvc_tags("push")
+        assert "dvc_project" not in tags
+
+
+class TestPutFileBudgetCheck:
+    def _make_fs(self, project_id="dvc_cache", enable_budget_check=True):
+        fs = CargoShipFileSystem(
+            bucket="b", prefix="p",
+            project_id=project_id,
+            enable_budget_check=enable_budget_check,
+            small_file_threshold=0,  # force direct upload path
+        )
+        fs.cli = MagicMock()
+        return fs
+
+    def test_budget_check_not_called_when_disabled(self):
+        from unittest.mock import patch
+        fs = self._make_fs(enable_budget_check=False)
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"data")
+            lpath = f.name
+        try:
+            with patch("dvc_cargoship.remote.DVCBudgetChecker") as MockChecker:
+                fs.put_file(lpath, "cargoship://b/p/data.bin")
+                MockChecker.assert_not_called()
+        finally:
+            os.unlink(lpath)
+
+    def test_budget_check_raises_propagates(self):
+        from dvc_cargoship.budget import DVCBudgetExceededError
+        fs = self._make_fs()
+        # inject a checker that always raises
+        mock_checker = MagicMock()
+        mock_checker.check_upload.side_effect = DVCBudgetExceededError(
+            "dvc_cache", 100.0, 105.0
+        )
+        fs._CargoShipFileSystem__budget = mock_checker
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"data")
+            lpath = f.name
+        try:
+            with pytest.raises(DVCBudgetExceededError):
+                fs.put_file(lpath, "cargoship://b/p/data.bin")
+        finally:
+            os.unlink(lpath)
+
+    def test_large_file_upload_includes_dvc_tags(self):
+        fs = self._make_fs(enable_budget_check=False)
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"x" * 100)
+            lpath = f.name
+        try:
+            fs.put_file(lpath, "cargoship://b/p/big.bin")
+        finally:
+            os.unlink(lpath)
+        call_kwargs = fs.cli.upload.call_args[1]
+        assert call_kwargs.get("tags", {}).get("dvc_cache") == "true"
+        assert call_kwargs.get("tags", {}).get("dvc_operation") == "push"
+
+    def test_large_file_upload_includes_project_id(self):
+        fs = self._make_fs(enable_budget_check=False)
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"x" * 100)
+            lpath = f.name
+        try:
+            fs.put_file(lpath, "cargoship://b/p/big.bin")
+        finally:
+            os.unlink(lpath)
+        call_kwargs = fs.cli.upload.call_args[1]
+        assert call_kwargs.get("project_id") == "dvc_cache"

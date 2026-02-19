@@ -106,6 +106,8 @@ class CargoShipCLI:
         prev_manifest: Optional[str] = None,
         generate_dvc_files: bool = False,
         quiet: bool = True,
+        project_id: Optional[str] = None,
+        tags: Optional[Dict[str, str]] = None,
     ) -> None:
         """Upload *source_dir* to *destination* (``s3://bucket/prefix``).
 
@@ -124,6 +126,14 @@ class CargoShipCLI:
             Pass ``--generate-dvc-files`` to emit ``.dvc`` sidecars.
         quiet:
             Pass ``--quiet`` to suppress progress output.
+        project_id:
+            Project ID for cost tracking (``--project <id>``).
+            DVC remotes typically use ``"dvc_cache"``.
+        tags:
+            Custom key/value tags recorded in cost entries
+            (``--tag key=value``, one flag per pair).
+            DVC remotes automatically add ``dvc_cache=true`` and
+            ``dvc_operation=push``.
         """
         args: List[str] = ["upload", source_dir, destination]
         if incremental:
@@ -134,7 +144,67 @@ class CargoShipCLI:
             args.append("--generate-dvc-files")
         if quiet:
             args.append("--quiet")
+        if project_id is not None:
+            args += ["--project", project_id]
+        if tags:
+            for key, value in tags.items():
+                args += ["--tag", f"{key}={value}"]
         self.run(*args)
+
+    def budget_status(
+        self,
+        project_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Return budget status for *project_id* as a dict.
+
+        Calls ``cargoship budget status <project_id> --json``.
+
+        Returns an empty dict when no budget is configured, the project does
+        not exist, or the ``cargoship`` binary is unavailable / not
+        authenticated.
+        """
+        if project_id is None:
+            return {}
+        try:
+            result = self.run("budget", "status", project_id, "--json")
+        except CargoShipCLIError:
+            return {}
+        try:
+            data = json.loads(result.stdout)
+            return data if isinstance(data, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+
+    def cost_estimate(
+        self,
+        size_bytes: int,
+        storage_class: str = "STANDARD",
+        region: str = "us-west-2",
+    ) -> Dict[str, Any]:
+        """Return a cost estimate for uploading *size_bytes* bytes.
+
+        Calls ``cargoship cost estimate --size <bytes>B --storage-class <sc>
+        --region <r> --json``.
+
+        Returns an empty dict on failure (e.g. no AWS credentials or network
+        unavailable) so that callers can treat a missing estimate as zero cost.
+        """
+        args: List[str] = [
+            "cost", "estimate",
+            "--size", f"{size_bytes}B",
+            "--storage-class", storage_class,
+            "--region", region,
+            "--json",
+        ]
+        try:
+            result = self.run(*args)
+        except CargoShipCLIError:
+            return {}
+        try:
+            data = json.loads(result.stdout)
+            return data if isinstance(data, dict) else {}
+        except json.JSONDecodeError:
+            return {}
 
     def list_files(
         self,

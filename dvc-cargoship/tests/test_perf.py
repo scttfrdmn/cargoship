@@ -334,3 +334,51 @@ class TestParallelRestore:
             # Just verify it's called with the default workers
             parallel_restore(cli, "s3://b/p", [])
         MockPool.assert_called_once_with(max_workers=_DEFAULT_DOWNLOAD_WORKERS)
+
+
+# ---------------------------------------------------------------------------
+# BatchUploadBuffer — project_id and tags (Issue #183)
+# ---------------------------------------------------------------------------
+
+
+class TestBatchUploadBufferProjectAndTags:
+    def test_flush_passes_project_id(self):
+        cli = _mock_cli()
+        with tempfile.TemporaryDirectory() as d:
+            f = _write_file(d, "a.csv", 10)
+            buf = BatchUploadBuffer(cli, "s3://b/p", project_id="dvc_cache")
+            buf.add(f, "a.csv")
+            buf.flush()
+        call_kwargs = cli.upload.call_args[1]
+        assert call_kwargs.get("project_id") == "dvc_cache"
+
+    def test_flush_passes_tags(self):
+        cli = _mock_cli()
+        tags = {"dvc_cache": "true", "dvc_operation": "push"}
+        with tempfile.TemporaryDirectory() as d:
+            f = _write_file(d, "a.csv", 10)
+            buf = BatchUploadBuffer(cli, "s3://b/p", tags=tags)
+            buf.add(f, "a.csv")
+            buf.flush()
+        call_kwargs = cli.upload.call_args[1]
+        assert call_kwargs.get("tags") == tags
+
+    def test_flush_passes_none_when_no_tags(self):
+        cli = _mock_cli()
+        with tempfile.TemporaryDirectory() as d:
+            f = _write_file(d, "a.csv", 10)
+            buf = BatchUploadBuffer(cli, "s3://b/p")
+            buf.add(f, "a.csv")
+            buf.flush()
+        call_kwargs = cli.upload.call_args[1]
+        assert call_kwargs.get("tags") is None
+
+    def test_flush_passes_none_project_id_when_not_set(self):
+        cli = _mock_cli()
+        with tempfile.TemporaryDirectory() as d:
+            f = _write_file(d, "a.csv", 10)
+            buf = BatchUploadBuffer(cli, "s3://b/p")
+            buf.add(f, "a.csv")
+            buf.flush()
+        call_kwargs = cli.upload.call_args[1]
+        assert call_kwargs.get("project_id") is None

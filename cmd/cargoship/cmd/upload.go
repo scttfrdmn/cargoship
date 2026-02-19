@@ -66,6 +66,10 @@ func NewUploadCmd() *cobra.Command {
 		generateDVCFiles bool
 		dvcCacheDir      string
 		dvcOutputDir     string
+
+		// Issue #183: DVC budget integration
+		dvcProject  string
+		uploadTags  []string // "key=value" pairs
 	)
 
 	cmd := &cobra.Command{
@@ -388,6 +392,16 @@ Examples:
 				}
 			}
 
+			// Issue #183: Parse --tag key=value flags into a map.
+			uploadTagMap := make(map[string]string)
+			for _, t := range uploadTags {
+				parts := strings.SplitN(t, "=", 2)
+				if len(parts) != 2 {
+					return fmt.Errorf("invalid --tag value %q: expected key=value", t)
+				}
+				uploadTagMap[parts[0]] = parts[1]
+			}
+
 			// Issue #179: Incremental sync — determine which files need uploading.
 			var includeOnlyFiles []string
 			var prevUploadID string
@@ -531,6 +545,10 @@ Examples:
 				EnableDirectUpload:     cmd.Flags().Changed("direct-upload"),
 				ForceDirectUpload:      cmd.Flags().Changed("force-direct-upload"),
 				EnableAutoDirectUpload: true, // Auto-enable when thresholds met
+
+				// Issue #183: DVC budget integration
+				ProjectID: dvcProject,
+				Tags:      uploadTagMap,
 			}
 
 			// Note: Compression level and shard strategy are not yet implemented in the pipeline
@@ -749,6 +767,10 @@ Examples:
 	cmd.Flags().BoolVar(&generateDVCFiles, "generate-dvc-files", false, "Generate DVC sidecar .dvc files after upload")
 	cmd.Flags().StringVar(&dvcCacheDir, "dvc-cache-dir", ".dvc/cache", "Local DVC cache directory (recorded in manifest; default: .dvc/cache)")
 	cmd.Flags().StringVar(&dvcOutputDir, "dvc-output-dir", "", "Directory to write .dvc files (default: source directory)")
+
+	// Issue #183: DVC budget integration
+	cmd.Flags().StringVar(&dvcProject, "project", "", "Project ID for cost tracking (e.g. 'dvc_cache' for DVC remotes)")
+	cmd.Flags().StringArrayVar(&uploadTags, "tag", nil, "Custom tag in key=value format, repeatable (e.g. --tag dvc_cache=true --tag env=prod)")
 
 	return cmd
 }

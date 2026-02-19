@@ -115,11 +115,15 @@ class BatchUploadBuffer:
         *,
         threshold: int = _DEFAULT_SMALL_FILE_THRESHOLD,
         auto_flush_bytes: int = _DEFAULT_AUTO_FLUSH_BYTES,
+        project_id: Optional[str] = None,
+        tags: Optional[Dict[str, str]] = None,
     ) -> None:
         self._cli = cli
         self._destination = destination
         self.threshold = threshold
         self._auto_flush_bytes = auto_flush_bytes
+        self._project_id = project_id
+        self._tags: Dict[str, str] = dict(tags) if tags else {}
         self._staging: Optional[tempfile.TemporaryDirectory] = None
         self._staging_path: Optional[str] = None
         self._buffered_bytes: int = 0
@@ -188,7 +192,13 @@ class BatchUploadBuffer:
         if self._staging is None or self._file_count == 0:
             return
         staging_path = self._staging_path
-        self._cli.upload(staging_path, self._destination, quiet=True)
+        self._cli.upload(
+            staging_path,
+            self._destination,
+            quiet=True,
+            project_id=self._project_id,
+            tags=self._tags if self._tags else None,
+        )
         self._reset()
 
     def close(self) -> None:

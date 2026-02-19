@@ -261,3 +261,153 @@ class TestRestore:
         cli.run = MagicMock(side_effect=CargoShipCLIError("not found"))
         with pytest.raises(CargoShipCLIError):
             cli.restore("s3://b/p", "/tmp/out", file_path="missing.txt")
+
+
+# ---------------------------------------------------------------------------
+# CargoShipCLI.upload() — project_id and tags (Issue #183)
+# ---------------------------------------------------------------------------
+
+
+class TestUploadProjectAndTags:
+    def _cli(self):
+        cli = CargoShipCLI(binary="cargoship")
+        cli.run = MagicMock(return_value=MagicMock(returncode=0))
+        return cli
+
+    def test_project_id_flag(self):
+        cli = self._cli()
+        cli.upload("/src", "s3://b/p", project_id="dvc_cache")
+        args = cli.run.call_args[0]
+        assert "--project" in args
+        assert "dvc_cache" in args
+
+    def test_no_project_flag_when_omitted(self):
+        cli = self._cli()
+        cli.upload("/src", "s3://b/p")
+        args = cli.run.call_args[0]
+        assert "--project" not in args
+
+    def test_single_tag(self):
+        cli = self._cli()
+        cli.upload("/src", "s3://b/p", tags={"dvc_cache": "true"})
+        args = cli.run.call_args[0]
+        assert "--tag" in args
+        assert "dvc_cache=true" in args
+
+    def test_multiple_tags(self):
+        cli = self._cli()
+        cli.upload("/src", "s3://b/p", tags={"dvc_cache": "true", "dvc_operation": "push"})
+        args = cli.run.call_args[0]
+        assert args.count("--tag") == 2
+        assert "dvc_cache=true" in args
+        assert "dvc_operation=push" in args
+
+    def test_no_tag_flags_when_omitted(self):
+        cli = self._cli()
+        cli.upload("/src", "s3://b/p")
+        args = cli.run.call_args[0]
+        assert "--tag" not in args
+
+
+# ---------------------------------------------------------------------------
+# CargoShipCLI.budget_status() (Issue #183)
+# ---------------------------------------------------------------------------
+
+
+class TestBudgetStatus:
+    def _cli(self, stdout="{}"):
+        cli = CargoShipCLI(binary="cargoship")
+        cli.run = MagicMock(return_value=MagicMock(returncode=0, stdout=stdout))
+        return cli
+
+    def test_returns_empty_when_project_id_is_none(self):
+        cli = self._cli()
+        assert cli.budget_status(None) == {}
+        cli.run.assert_not_called()
+
+    def test_calls_budget_status_with_json_flag(self):
+        cli = self._cli('{"max_budget": 100}')
+        cli.budget_status("dvc_cache")
+        args = cli.run.call_args[0]
+        assert args == ("budget", "status", "dvc_cache", "--json")
+
+    def test_returns_parsed_dict(self):
+        cli = self._cli('{"max_budget": 100.0, "current_spend": 42.5}')
+        result = cli.budget_status("proj")
+        assert result == {"max_budget": 100.0, "current_spend": 42.5}
+
+    def test_returns_empty_on_cli_error(self):
+        cli = CargoShipCLI(binary="cargoship")
+        cli.run = MagicMock(side_effect=CargoShipCLIError("no budget"))
+        assert cli.budget_status("proj") == {}
+
+    def test_returns_empty_on_invalid_json(self):
+        cli = self._cli("not-json")
+        assert cli.budget_status("proj") == {}
+
+    def test_returns_empty_when_json_is_not_dict(self):
+        cli = self._cli("[1, 2, 3]")
+        assert cli.budget_status("proj") == {}
+
+
+# ---------------------------------------------------------------------------
+# CargoShipCLI.cost_estimate() (Issue #183)
+# ---------------------------------------------------------------------------
+
+
+class TestCostEstimate:
+    def _cli(self, stdout="{}"):
+        cli = CargoShipCLI(binary="cargoship")
+        cli.run = MagicMock(return_value=MagicMock(returncode=0, stdout=stdout))
+        return cli
+
+    def test_passes_size_as_bytes_with_B_suffix(self):
+        cli = self._cli('{"total_cost": 0.01}')
+        cli.cost_estimate(10_485_760)
+        args = cli.run.call_args[0]
+        assert "--size" in args
+        size_idx = args.index("--size")
+        assert args[size_idx + 1] == "10485760B"
+
+    def test_passes_storage_class(self):
+        cli = self._cli("{}")
+        cli.cost_estimate(1024, storage_class="GLACIER")
+        args = cli.run.call_args[0]
+        assert "--storage-class" in args
+        sc_idx = args.index("--storage-class")
+        assert args[sc_idx + 1] == "GLACIER"
+
+    def test_passes_region(self):
+        cli = self._cli("{}")
+        cli.cost_estimate(1024, region="eu-west-1")
+        args = cli.run.call_args[0]
+        assert "--region" in args
+        r_idx = args.index("--region")
+        assert args[r_idx + 1] == "eu-west-1"
+
+    def test_passes_json_flag(self):
+        cli = self._cli("{}")
+        cli.cost_estimate(1024)
+        args = cli.run.call_args[0]
+        assert "--json" in args
+
+    def test_returns_parsed_dict(self):
+        cli = self._cli('{"total_cost": 0.0042, "currency": "USD"}')
+        result = cli.cost_estimate(1024)
+        assert result == {"total_cost": 0.0042, "currency": "USD"}
+
+    def test_returns_empty_on_cli_error(self):
+        cli = CargoShipCLI(binary="cargoship")
+        cli.run = MagicMock(side_effect=CargoShipCLIError("no pricing"))
+        assert cli.cost_estimate(1024) == {}
+
+    def test_returns_empty_on_invalid_json(self):
+        cli = self._cli("bad json")
+        assert cli.cost_estimate(1024) == {}
+
+    def test_default_storage_class_is_standard(self):
+        cli = self._cli("{}")
+        cli.cost_estimate(1024)
+        args = cli.run.call_args[0]
+        sc_idx = args.index("--storage-class")
+        assert args[sc_idx + 1] == "STANDARD"
