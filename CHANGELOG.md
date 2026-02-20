@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.8.0] - 2026-02-19
+## [0.10.0] - 2026-02-19
 
 ### DVC Integration (Issues #171–#192)
 - Core DVC remote interface and Python package (`dvc-cargoship`) (Issue #181)
