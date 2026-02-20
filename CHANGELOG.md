@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Archive Filesystem Shell (v0.12.0 milestone, Issue #203)
+## [0.12.0] - 2026-02-19
+
+### Archive Filesystem Shell (Issue #203)
 - `cargoship shell s3://bucket/prefix` — interactive filesystem shell for CargoShip archives
   - Navigate archive structure: `ls`, `cd`, `pwd` — no extraction required
   - Inspect files: `stat` (size, hash, chunk, DVC stage, git commit), `cat`, `head`
@@ -16,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - On-demand extraction: `get <file> [dest]` restores a single file to local disk
   - Falls back to generic CargoShip REPL when called with no arguments
 - New `pkg/archivefs` package: virtual filesystem tree built from manifest paths
+
+### Documentation (Issue #204)
+- CLI_REFERENCE.md: added Data Retrieval Commands section (restore, restore jobs, browse);
+  expanded cargoship shell entry to cover archive filesystem mode; version bumped to v0.11.0
+- USER_GUIDE.md: added Retrieving Archived Data section covering shell browsing, selective
+  restore, TUI browse, Glacier async workflow, and restore job management
+- mkdocs.yml: added Data Retrieval nav entry
 
 ## [0.11.0] - 2026-02-19
 

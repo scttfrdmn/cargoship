@@ -1,8 +1,8 @@
 # CargoShip Release Roadmap
 
 **Last Updated**: February 2026
-**Current Version**: v0.11.0 (Released)
-**Next Release**: v0.12.0 (Archive Inspection & Developer Experience)
+**Current Version**: v0.12.0 (Released)
+**Next Release**: v0.13.0 (TBD)
 
 This document outlines the planned feature releases for CargoShip, organized by version with clear deliverables and timelines.
 
@@ -217,23 +217,21 @@ cargoship restore request s3://archive-bucket/large-dataset/ \
 
 ---
 
-## 🐚 **v0.12.0 - Archive Inspection & Developer Experience** (Target: Q2 2026)
+## ✅ **v0.12.0 - Archive Inspection & Developer Experience** (RELEASED February 2026)
 **Focus**: Make archived data inspectable without extraction; documentation accuracy and polish
 
-### Planned Features:
-- **Archive Filesystem REPL** - `cargoship shell s3://bucket/prefix` virtual filesystem shell (Issue #203)
+### Completed Features:
+- ✅ **Archive Filesystem REPL** - `cargoship shell s3://bucket/prefix` virtual filesystem shell (Issue #203)
   - Navigate archive like a local directory: `ls`, `cd`, `pwd`
-  - Inspect file content: `cat`, `head`, `tail`, streaming decompression
-  - Metadata commands: `stat`, `info`, `find`
+  - Inspect file content: `cat`, `head`, streaming decompression
+  - Metadata commands: `stat`, `find`
   - DVC/git awareness: `stage list`, filter by stage or commit
   - On-demand restore: `get <file> [dest]`
-  - Tab completion on manifest paths
-- **Documentation Overhaul** - Accuracy fixes, cruft removal, user-facing rewrites (Issue #204)
-  - Remove stale internal planning artifacts from docs/
-  - Rewrite ARCHITECTURE.md to match actual streaming pipeline
-  - Fix command syntax throughout (cargoship upload, not cargoship ship)
-  - Update license references (Apache 2.0, not MIT)
-  - Rebuild mkdocs.yml navigation
+- ✅ **Documentation Overhaul** - Accuracy fixes, cruft removal, user-facing rewrites (Issue #204)
+  - Removed stale internal planning artifacts from docs/
+  - CLI_REFERENCE.md updated with Data Retrieval Commands section
+  - USER_GUIDE.md updated with Retrieving Archived Data section
+  - mkdocs.yml navigation rebuilt
 
 ### REPL Session Example:
 ```bash
