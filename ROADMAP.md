@@ -1,8 +1,8 @@
 # CargoShip Release Roadmap
 
 **Last Updated**: February 2026
-**Current Version**: v0.7.0 (Released)
-**Next Release**: v0.8.0 (DVC Integration)
+**Current Version**: v0.8.0 (Released)
+**Next Release**: v0.9.0 (Enhanced Data Retrieval)
 
 This document outlines the planned feature releases for CargoShip, organized by version with clear deliverables and timelines.
 
@@ -153,7 +153,7 @@ This document outlines the planned feature releases for CargoShip, organized by 
 
 ---
 
-## 🔧 **v0.8.0 - DVC Integration** (In Development, Q1–Q2 2026)
+## ✅ **v0.8.0 - DVC Integration** (RELEASED February 2026)
 **Focus**: Native DVC remote support for ML/data science workflows
 
 ### Planned Features:

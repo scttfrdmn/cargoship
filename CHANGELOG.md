@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-02-19
+
 ### DVC Integration (Issues #171–#192)
 - Core DVC remote interface and Python package (`dvc-cargoship`) (Issue #181)
 - DVC `.dvc` file generation for tracked datasets (Issue #180)
@@ -25,7 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end DVC integration test suite (Issue #191)
 - DVC performance benchmark suite (Issue #192)
 
-## [0.7.0] - 2026-01-xx
+### Security
+- Remove `InsecureSkipVerify` from `TLSConfig` struct; restrict to `CARGOSHIP_TLS_INSECURE` env var (Issue #195)
+- Add `--` separator in Magika CLI invocation to prevent flag injection (Issue #196)
+- Mark `SMTPPassword`, `SlackWebhookURL`, `WebhookURL` with `json:"-"` to prevent credential leakage (Issue #197)
+- Validate WebSocket `Origin` header against server `Host` (Issue #198)
+- Validate symlink targets in tar extraction stay within output directory (Issue #198)
+- Profile output directories use mode `0700` (Issue #199)
+- Add `Timeout` to `http.Client` in geo locator (Issue #199)
+- Filter job environment variables through security denylist in launch server (Issue #199)
+
+## [0.7.0] - 2026-01-15
 
 ### Added
 - **Adaptive Shard Count** — Automatic S3 prefix optimization based on workload (Issue #106)
