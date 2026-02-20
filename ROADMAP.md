@@ -1,8 +1,8 @@
 # CargoShip Release Roadmap
 
 **Last Updated**: February 2026
-**Current Version**: v0.10.0 (Released)
-**Next Release**: v0.11.0 (Enhanced Data Retrieval)
+**Current Version**: v0.11.0 (Released)
+**Next Release**: v0.12.0 (Archive Inspection & Developer Experience)
 
 This document outlines the planned feature releases for CargoShip, organized by version with clear deliverables and timelines.
 
@@ -172,7 +172,7 @@ This document outlines the planned feature releases for CargoShip, organized by 
 
 ---
 
-## 🔍 **v0.11.0 - Enhanced Data Retrieval** (Target: Q3 2026)
+## ✅ **v0.11.0 - Enhanced Data Retrieval** (RELEASED February 2026)
 **Focus**: Comprehensive restoration capabilities and interactive data access
 
 ### Planned Features:
@@ -214,6 +214,63 @@ cargoship restore request s3://archive-bucket/large-dataset/ \
 - ✅ Interactive TUI with search and preview capabilities
 - ✅ Quota tracking for all restoration operations
 - ✅ Progress monitoring for long-running restoration jobs
+
+---
+
+## 🐚 **v0.12.0 - Archive Inspection & Developer Experience** (Target: Q2 2026)
+**Focus**: Make archived data inspectable without extraction; documentation accuracy and polish
+
+### Planned Features:
+- **Archive Filesystem REPL** - `cargoship shell s3://bucket/prefix` virtual filesystem shell (Issue #203)
+  - Navigate archive like a local directory: `ls`, `cd`, `pwd`
+  - Inspect file content: `cat`, `head`, `tail`, streaming decompression
+  - Metadata commands: `stat`, `info`, `find`
+  - DVC/git awareness: `stage list`, filter by stage or commit
+  - On-demand restore: `get <file> [dest]`
+  - Tab completion on manifest paths
+- **Documentation Overhaul** - Accuracy fixes, cruft removal, user-facing rewrites (Issue #204)
+  - Remove stale internal planning artifacts from docs/
+  - Rewrite ARCHITECTURE.md to match actual streaming pipeline
+  - Fix command syntax throughout (cargoship upload, not cargoship ship)
+  - Update license references (Apache 2.0, not MIT)
+  - Rebuild mkdocs.yml navigation
+
+### REPL Session Example:
+```bash
+$ cargoship shell s3://my-bucket/uploads/20240101-abc123
+
+CargoShip Archive Shell — 2847 files, 10 chunks
+Type 'help' for available commands.
+
+archive:/> ls data/
+  models/    raw/    train/
+archive:/> cd data/train
+archive:/data/train> ls
+  features.parquet  (12.4 MB, stage: train, hash: d8e8fc...)
+  labels.csv        (2.1 MB, stage: train, hash: a3f2c1...)
+archive:/data/train> stat features.parquet
+  Path:        data/train/features.parquet
+  Size:        12.4 MB (4.1 MB compressed)
+  Hash:        d8e8fca2dc0f896fd7cb4cb0031ba249
+  Chunk:       shard-0/chunk-3.tar.zst
+  DVC stage:   train
+  Git commit:  deadbeef
+archive:/data/train> cat labels.csv
+[streams decompressed content to stdout]
+archive:/data/train> get features.parquet ./local/
+  ✅ Restored features.parquet → ./local/features.parquet
+archive:/> stage list
+  preprocess  (50 files)
+  train       (2 files)
+archive:/> exit
+```
+
+### Success Criteria:
+- Archive can be explored without any local extraction
+- `cat` streams individual files without downloading full chunks when possible
+- Tab completion works on manifest paths
+- DVC stage and git commit filtering available as first-class filters
+- All user-facing docs use correct command syntax and license
 
 ---
 

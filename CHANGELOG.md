@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Enhanced Data Retrieval (v0.11.0 milestone, Issues #200–#202)
+### v0.12.0 Archive Inspection & Developer Experience
+- Archive Filesystem REPL: `cargoship shell` — navigate archives like a local filesystem (Issue #203)
+- Documentation overhaul: accuracy fixes, user-facing rewrites, nav cleanup (Issue #204)
+
+## [0.11.0] - 2026-02-19
+
+### Enhanced Data Retrieval (Issues #200–#202)
 - S3 Glacier/Deep Archive pre-flight check and restore orchestration (Issue #200)
   - `GlacierRestorer` with `CheckAndRestore` — HeadObject checks, RestoreObject requests, Expedited/Standard/Bulk tiers
   - `WaitForRestore` — polls until all chunks accessible, with progress callback
@@ -23,7 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `cargoship restore jobs download <job-id>` — download files once Glacier restore completes
   - `cargoship restore jobs clean [--older-than 24h]` — remove old completed/failed jobs
   - When Glacier restore is pending without `--wait`, job is auto-saved with instructions
-- Roadmap version numbering corrected: v0.9.0 Enhanced Data Retrieval → v0.11.0
 
 ## [0.10.0] - 2026-02-19
 
