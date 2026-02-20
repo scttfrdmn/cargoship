@@ -283,8 +283,21 @@ func (e *Extractor) createRegularFile(tarReader *tar.Reader, path string, header
 	return nil
 }
 
-// createSymlink creates a symbolic link from tar header
+// createSymlink creates a symbolic link from tar header.
+// The symlink target is validated to prevent path traversal via crafted archives (CWE-22).
 func (e *Extractor) createSymlink(path string, header *tar.Header) error {
+	// Validate symlink target: reject absolute paths and any ".." components.
+	if filepath.IsAbs(header.Linkname) || strings.Contains(header.Linkname, "..") {
+		return fmt.Errorf("invalid symlink target %q: must be relative and must not contain '..'", header.Linkname)
+	}
+
+	// Resolve what the symlink would point to and ensure it stays inside OutputDir.
+	resolvedTarget := filepath.Join(filepath.Dir(path), header.Linkname)
+	outputDir := filepath.Clean(e.config.OutputDir) + string(os.PathSeparator)
+	if !strings.HasPrefix(filepath.Clean(resolvedTarget)+string(os.PathSeparator), outputDir) {
+		return fmt.Errorf("symlink target %q escapes extraction directory", header.Linkname)
+	}
+
 	// Create parent directories
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("failed to create parent directory: %w", err)

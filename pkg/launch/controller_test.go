@@ -160,20 +160,9 @@ func TestBuildTLSConfig(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name: "enabled TLS with insecure skip verify",
-			tlsConfig: &TLSConfig{
-				Enabled:            true,
-				InsecureSkipVerify: true,
-			},
-			wantNil: false,
-		},
-		{
-			name: "enabled TLS secure",
-			tlsConfig: &TLSConfig{
-				Enabled:            true,
-				InsecureSkipVerify: false,
-			},
-			wantNil: false,
+			name:      "enabled TLS secure",
+			tlsConfig: &TLSConfig{Enabled: true},
+			wantNil:   false,
 		},
 	}
 
@@ -194,10 +183,26 @@ func TestBuildTLSConfig(t *testing.T) {
 				assert.Nil(t, tlsConfig)
 			} else {
 				assert.NotNil(t, tlsConfig)
-				assert.Equal(t, tt.tlsConfig.InsecureSkipVerify, tlsConfig.InsecureSkipVerify)
+				// Certificate verification must be enabled by default.
+				assert.False(t, tlsConfig.InsecureSkipVerify)
 			}
 		})
 	}
+}
+
+func TestBuildTLSConfigInsecureEnvVar(t *testing.T) {
+	t.Setenv("CARGOSHIP_TLS_INSECURE", "true")
+
+	logger := slog.Default()
+	conn := &ControllerConnection{
+		config: &AgentConfig{TLSConfig: &TLSConfig{Enabled: true}},
+		logger: logger,
+	}
+
+	tlsConfig := conn.buildTLSConfig()
+	assert.NotNil(t, tlsConfig)
+	// InsecureSkipVerify is only true when the env var is explicitly set.
+	assert.True(t, tlsConfig.InsecureSkipVerify)
 }
 
 func TestGenerateMessageID(t *testing.T) {

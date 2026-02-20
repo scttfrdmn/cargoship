@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -290,10 +291,16 @@ func (s *Server) executeJob(job *JobStatus) {
 	// Execute the command
 	cmd := exec.CommandContext(job.ctx, job.Command[0], job.Command[1:]...)
 
-	// Set environment variables
+	// Set environment variables.
+	// Job-supplied vars are filtered through a denylist to prevent callers
+	// from hijacking dynamic linker or credential env vars (CWE-454).
 	cmd.Env = os.Environ()
 	for key, value := range job.Environment {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
+		if isSafeEnvKey(key) {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
+		} else {
+			s.logger.Warn("Rejected unsafe environment variable in job", "job_id", job.JobID, "key", key)
+		}
 	}
 
 	// Capture output
@@ -328,6 +335,28 @@ func (s *Server) executeJob(job *JobStatus) {
 
 	// Cancel context
 	job.cancel()
+}
+
+// isSafeEnvKey returns true if the environment variable name is safe to pass
+// to a subprocess. Rejects names that are empty, contain "=", or match
+// security-sensitive prefixes/names (dynamic linker, credential vars).
+func isSafeEnvKey(key string) bool {
+	if key == "" || strings.ContainsRune(key, '=') {
+		return false
+	}
+	// Denylist: dynamic linker hijack vectors and credential vars
+	denied := []string{
+		"LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES",
+		"DYLD_LIBRARY_PATH", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+		"AWS_SECURITY_TOKEN",
+	}
+	upper := strings.ToUpper(key)
+	for _, d := range denied {
+		if upper == d {
+			return false
+		}
+	}
+	return true
 }
 
 func corsMiddleware(next http.Handler) http.Handler {

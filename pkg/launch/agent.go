@@ -58,13 +58,15 @@ type AgentConfig struct {
 	LogLevel    string       `json:"log_level" yaml:"log_level"`
 }
 
-// TLSConfig holds TLS configuration for secure communication
+// TLSConfig holds TLS configuration for secure communication.
+// Certificate validation is always enabled. To use a custom CA, set CAFile.
+// InsecureSkipVerify is intentionally not exposed; override only via the
+// CARGOSHIP_TLS_INSECURE=true environment variable in development environments.
 type TLSConfig struct {
-	Enabled            bool   `json:"enabled" yaml:"enabled"`
-	InsecureSkipVerify bool   `json:"insecure_skip_verify" yaml:"insecure_skip_verify"`
-	CertFile           string `json:"cert_file" yaml:"cert_file"`
-	KeyFile            string `json:"key_file" yaml:"key_file"`
-	CAFile             string `json:"ca_file" yaml:"ca_file"`
+	Enabled  bool   `json:"enabled" yaml:"enabled"`
+	CertFile string `json:"cert_file" yaml:"cert_file"`
+	KeyFile  string `json:"key_file" yaml:"key_file"`
+	CAFile   string `json:"ca_file" yaml:"ca_file"`
 }
 
 // WatchPath defines a directory to watch for archival

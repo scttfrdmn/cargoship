@@ -98,8 +98,8 @@ type BudgetAlertConfig struct {
 
 	// Webhook configuration
 	WebhookEnabled bool              `yaml:"webhook_enabled" json:"webhook_enabled"`
-	WebhookURL     string            `yaml:"webhook_url" json:"webhook_url"`
-	WebhookHeaders map[string]string `yaml:"webhook_headers" json:"webhook_headers,omitempty"`
+	WebhookURL     string            `yaml:"webhook_url" json:"-"`     // excluded from JSON: contains secret URL
+	WebhookHeaders map[string]string `yaml:"webhook_headers" json:"-"` // may contain auth headers
 	WebhookTimeout time.Duration     `yaml:"webhook_timeout" json:"webhook_timeout"`
 
 	// CloudWatch alarm configuration
@@ -113,13 +113,13 @@ type BudgetAlertConfig struct {
 	SMTPHost        string   `yaml:"smtp_host" json:"smtp_host,omitempty"`
 	SMTPPort        int      `yaml:"smtp_port" json:"smtp_port,omitempty"`
 	SMTPUsername    string   `yaml:"smtp_username" json:"smtp_username,omitempty"`
-	SMTPPassword    string   `yaml:"smtp_password" json:"smtp_password,omitempty"`
+	SMTPPassword    string   `yaml:"smtp_password" json:"-"` // excluded from JSON: credential
 	SMTPFrom        string   `yaml:"smtp_from" json:"smtp_from,omitempty"`
 	SMTPUseTLS      bool     `yaml:"smtp_use_tls" json:"smtp_use_tls"`
 
 	// Slack notification configuration (Issue #147 Phase 4)
 	SlackEnabled    bool   `yaml:"slack_enabled" json:"slack_enabled"`
-	SlackWebhookURL string `yaml:"slack_webhook_url" json:"slack_webhook_url,omitempty"`
+	SlackWebhookURL string `yaml:"slack_webhook_url" json:"-"`                     // excluded from JSON: secret webhook URL
 	SlackChannel    string `yaml:"slack_channel" json:"slack_channel,omitempty"`   // Optional override
 	SlackUsername   string `yaml:"slack_username" json:"slack_username,omitempty"` // Optional bot name
 

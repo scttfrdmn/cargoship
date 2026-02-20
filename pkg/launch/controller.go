@@ -422,15 +422,23 @@ func (cc *ControllerConnection) startConnectionMonitor(ctx context.Context) {
 	}
 }
 
-// buildTLSConfig creates TLS configuration based on agent config
+// buildTLSConfig creates TLS configuration based on agent config.
+// Certificate validation is always enforced. The only escape hatch is the
+// CARGOSHIP_TLS_INSECURE=true environment variable, which logs a loud warning
+// and must never be set in production.
 func (cc *ControllerConnection) buildTLSConfig() *tls.Config {
 	if cc.config.TLSConfig == nil || !cc.config.TLSConfig.Enabled {
 		return nil
 	}
 
+	insecure := os.Getenv("CARGOSHIP_TLS_INSECURE") == "true"
+	if insecure {
+		cc.logger.Warn("SECURITY WARNING: TLS certificate verification is DISABLED via CARGOSHIP_TLS_INSECURE. This must never be used in production.")
+	}
+
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: cc.config.TLSConfig.InsecureSkipVerify,
-		MinVersion:         tls.VersionTLS12, // Enforce TLS 1.2 minimum
+		InsecureSkipVerify: insecure, //nolint:gosec // only set via explicit env var with warning above
+		MinVersion:         tls.VersionTLS12,
 	}
 
 	// Issue #141: Load client certificate if specified

@@ -117,9 +117,10 @@ func (md *MagikaDetector) DetectBatch(ctx context.Context, paths []string) (map[
 
 // detectUncached runs Magika on uncached files
 func (md *MagikaDetector) detectUncached(ctx context.Context, paths []string) (map[string]*MagikaResult, error) {
-	// Build magika command
-	// Note: --json already includes MIME type and score, so no need for extra flags
-	args := []string{"--json"}
+	// Build magika command.
+	// "--" terminates flag parsing so file paths starting with "-" are not
+	// misinterpreted as Magika flags (CWE-88).
+	args := []string{"--json", "--"}
 	args = append(args, paths...)
 
 	// Execute with timeout

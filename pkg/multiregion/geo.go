@@ -76,9 +76,10 @@ type HTTPGeoLocator struct {
 
 // NewHTTPGeoLocator creates an HTTPGeoLocator with a 2-second timeout.
 func NewHTTPGeoLocator() *HTTPGeoLocator {
+	t := 2 * time.Second
 	return &HTTPGeoLocator{
-		client:  &http.Client{},
-		timeout: 2 * time.Second,
+		client:  &http.Client{Timeout: t},
+		timeout: t,
 	}
 }
 

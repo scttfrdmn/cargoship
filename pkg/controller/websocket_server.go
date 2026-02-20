@@ -69,7 +69,15 @@ func NewWebSocketServer(addr, authToken string, registry *AgentRegistry, logger 
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 			CheckOrigin: func(r *http.Request) bool {
-				return true // Allow all origins for now
+				// Agents (non-browser clients) send no Origin header — always allow.
+				origin := r.Header.Get("Origin")
+				if origin == "" {
+					return true
+				}
+				// Browser-initiated connections must originate from the same host
+				// to prevent CSRF-style attacks (CWE-352).
+				host := r.Host
+				return strings.Contains(origin, host)
 			},
 		},
 		ctx:    ctx,
