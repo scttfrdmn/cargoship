@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -253,4 +255,99 @@ func flattenParams(paramFiles map[string]map[string]any) map[string]any {
 		return nil
 	}
 	return flat
+}
+
+// BuildFileStageIndex parses dvc.yaml at repoPath and returns a map of every
+// stage output path → stage name.
+// Directory outputs (no file extension) are stored with a trailing "/" for
+// prefix-based matching.
+// Returns an empty map (not an error) when dvc.yaml is absent — graceful fallback.
+func BuildFileStageIndex(repoPath string) (map[string]string, error) {
+	absPath, err := filepath.Abs(filepath.Clean(repoPath))
+	if err != nil {
+		return map[string]string{}, nil
+	}
+
+	dvcYAMLPath := filepath.Join(absPath, "dvc.yaml")
+	yamlBytes, err := os.ReadFile(dvcYAMLPath) //nolint:gosec // path sanitised above
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]string{}, nil
+		}
+		return map[string]string{}, fmt.Errorf("read dvc.yaml: %w", err)
+	}
+
+	var dvcYAML dvcYAMLFile
+	if err := yaml.Unmarshal(yamlBytes, &dvcYAML); err != nil {
+		return map[string]string{}, fmt.Errorf("parse dvc.yaml: %w", err)
+	}
+
+	index := make(map[string]string)
+
+	// Iterate stages in deterministic order for consistent results.
+	stageNames := make([]string, 0, len(dvcYAML.Stages))
+	for name := range dvcYAML.Stages {
+		stageNames = append(stageNames, name)
+	}
+	sort.Strings(stageNames)
+
+	for _, stageName := range stageNames {
+		stage := dvcYAML.Stages[stageName]
+		for i := range stage.Outs {
+			outPath := extractYAMLNodePath(&stage.Outs[i])
+			if outPath == "" {
+				continue
+			}
+			// Paths with no file extension are treated as directory outputs.
+			if filepath.Ext(outPath) == "" {
+				index[outPath+"/"] = stageName
+			} else {
+				index[outPath] = stageName
+			}
+		}
+	}
+
+	return index, nil
+}
+
+// AnnotateFilesWithDVCStages sets DVCMetadata.Stage on each FileEntry whose
+// path falls under a stage output discovered in dvc.yaml at repoPath.
+// Files not matching any stage output are left unchanged.
+// Index-build failures are silently ignored (graceful degradation).
+func AnnotateFilesWithDVCStages(files []FileEntry, repoPath string) {
+	index, err := BuildFileStageIndex(repoPath)
+	if err != nil || len(index) == 0 {
+		return
+	}
+
+	// Collect sorted keys so deterministic first-match wins when multiple
+	// stages could match the same path (alphabetical stage name order).
+	keys := make([]string, 0, len(index))
+	for k := range index {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for i := range files {
+		f := &files[i]
+		for _, key := range keys {
+			stageName := index[key]
+			var matched bool
+			if strings.HasSuffix(key, "/") {
+				// Directory output: prefix match.
+				dirPath := key[:len(key)-1]
+				matched = f.Path == dirPath || strings.HasPrefix(f.Path, dirPath+"/")
+			} else {
+				// File output: exact match.
+				matched = f.Path == key
+			}
+			if matched {
+				if f.DVCMetadata == nil {
+					f.DVCMetadata = &DVCMetadata{}
+				}
+				f.DVCMetadata.Stage = stageName
+				break // first match wins
+			}
+		}
+	}
 }

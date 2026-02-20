@@ -20,18 +20,18 @@ import (
 // selective file restoration (Issue #189, #200, #201).
 func NewRestoreCmd() *cobra.Command {
 	var (
-		hash          string
-		filePaths     []string
-		gitCommit     string
-		dvcStage      string
-		region        string
-		cacheGB       int64
-		jsonOutput    bool
-		tier          string
-		wait          bool
-		dryRun        bool
+		hash           string
+		filePaths      []string
+		gitCommit      string
+		dvcStage       string
+		region         string
+		cacheGB        int64
+		jsonOutput     bool
+		tier           string
+		wait           bool
+		dryRun         bool
 		maxRestoreCost float64
-		restoreDays   int32
+		restoreDays    int32
 	)
 
 	cmd := &cobra.Command{

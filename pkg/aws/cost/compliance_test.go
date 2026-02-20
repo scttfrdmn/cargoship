@@ -12,19 +12,19 @@ import (
 // makeProjectRecord creates a cost record with a specific project and optional DVC provenance.
 func makeProjectRecord(projectID, dvcStage, gitCommit, pipeline string, cost float64, sizeGB float64, ts time.Time) CostRecord {
 	return CostRecord{
-		Timestamp:   ts,
-		Operation:   "upload",
-		Service:     "s3",
-		Region:      "us-east-1",
+		Timestamp:    ts,
+		Operation:    "upload",
+		Service:      "s3",
+		Region:       "us-east-1",
 		StorageClass: "GLACIER_IR",
-		SizeGB:      sizeGB,
-		Cost:        cost,
-		Currency:    "USD",
-		FileName:    "chunk.tar.zst",
-		ProjectID:   projectID,
-		DVCStage:    dvcStage,
-		DVCPipeline: pipeline,
-		GitCommit:   gitCommit,
+		SizeGB:       sizeGB,
+		Cost:         cost,
+		Currency:     "USD",
+		FileName:     "chunk.tar.zst",
+		ProjectID:    projectID,
+		DVCStage:     dvcStage,
+		DVCPipeline:  pipeline,
+		GitCommit:    gitCommit,
 	}
 }
 
@@ -183,11 +183,11 @@ func TestFormatComplianceReportText_WithPIName(t *testing.T) {
 		PeriodStart: time.Now(),
 		PeriodEnd:   time.Now(),
 		DataManagementPlan: DataManagementPlan{
-			StorageProvider: "Amazon S3",
-			RetentionPolicy: "3 years",
-			AccessControls:  "IAM",
-			BackupStrategy:  "S3 durability",
-			DataFormat:      "zstd",
+			StorageProvider:     "Amazon S3",
+			RetentionPolicy:     "3 years",
+			AccessControls:      "IAM",
+			BackupStrategy:      "S3 durability",
+			DataFormat:          "zstd",
 			ReproducibilityNote: "test note",
 		},
 	}

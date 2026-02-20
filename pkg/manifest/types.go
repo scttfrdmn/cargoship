@@ -267,11 +267,11 @@ type ShardEntry struct {
 
 // ManifestQuery provides query capabilities for the manifest
 type ManifestQuery struct {
-	manifest  *Manifest
-	fileIndex map[string]*FileEntry   // O(1) lookup by path
-	hashIndex map[string]*FileEntry   // O(1) lookup by ContentHash (Issue #188)
-	commitIndex  map[string][]*FileEntry // lookup by git commit SHA (Issue #188)
-	stageIndex   map[string][]*FileEntry // lookup by DVC stage name (Issue #188)
+	manifest    *Manifest
+	fileIndex   map[string]*FileEntry   // O(1) lookup by path
+	hashIndex   map[string]*FileEntry   // O(1) lookup by ContentHash (Issue #188)
+	commitIndex map[string][]*FileEntry // lookup by git commit SHA (Issue #188)
+	stageIndex  map[string][]*FileEntry // lookup by DVC stage name (Issue #188)
 }
 
 // NewManifestQuery creates a new query interface for a manifest

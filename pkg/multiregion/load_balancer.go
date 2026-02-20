@@ -497,7 +497,6 @@ func (lb *DefaultLoadBalancer) getSessionAffinityRegion(request *UploadRequest, 
 	return nil
 }
 
-
 // generateSessionKey generates a session key for sticky sessions (Issue #139)
 // Session key generation priority:
 // 1. Explicit session_id from request metadata (for multi-request workflows)

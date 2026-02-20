@@ -74,6 +74,9 @@ func NewUploadCmd() *cobra.Command {
 		// Issue #185: DVC pipeline metadata extraction
 		dvcStage           string
 		includeGitMetadata bool
+
+		// v0.13.0: DVC stage auto-discovery
+		dvcAuto bool
 	)
 
 	cmd := &cobra.Command{
@@ -675,6 +678,21 @@ Examples:
 				return fmt.Errorf("pipeline completed with %d errors", len(result.Errors))
 			}
 
+			// v0.13.0: DVC auto-annotation — annotate each FileEntry with its DVC stage
+			// by parsing dvc.yaml, then re-upload the manifest to S3 so that
+			// cargoship dvc stages / restore --dvc-stage work correctly.
+			if dvcAuto && result.Success {
+				if m := pipe.GetManifest(); m != nil {
+					manifest.AnnotateFilesWithDVCStages(m.Files, absPath)
+					if rerr := m.UploadToS3(ctx, s3Client, true); rerr != nil {
+						_, _ = fmt.Fprintf(cmd.OutOrStderr(),
+							"⚠️  DVC annotation manifest re-upload failed: %v\n", rerr)
+					} else if !quiet {
+						fmt.Println("📋 DVC stage annotations written to manifest")
+					}
+				}
+			}
+
 			// Issue #180: Generate DVC .dvc sidecar files after a successful upload.
 			if generateDVCFiles && result.Success {
 				outDir := dvcOutputDir
@@ -821,6 +839,9 @@ Examples:
 	// Issue #185: DVC pipeline metadata extraction
 	cmd.Flags().StringVar(&dvcStage, "dvc-stage", "", "DVC pipeline stage name to extract provenance from (reads dvc.yaml + dvc.lock)")
 	cmd.Flags().BoolVar(&includeGitMetadata, "git-metadata", false, "Embed Git repository metadata (commit, branch, tag, remote) in the manifest")
+
+	// v0.13.0: DVC stage auto-discovery
+	cmd.Flags().BoolVar(&dvcAuto, "dvc-auto", false, "Auto-discover DVC stages from dvc.yaml and annotate each file entry with its stage name")
 
 	return cmd
 }

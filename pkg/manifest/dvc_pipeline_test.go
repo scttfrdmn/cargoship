@@ -336,3 +336,138 @@ func TestDVCDepAndOutFields(t *testing.T) {
 		t.Errorf("Path = %q", out.Path)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// BuildFileStageIndex
+// ---------------------------------------------------------------------------
+
+func TestBuildFileStageIndex_AllStages(t *testing.T) {
+	dir := t.TempDir()
+	// Only dvc.yaml needed.
+	src := filepath.Join("testdata", "dvc.yaml")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dvc.yaml"), data, 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	index, err := BuildFileStageIndex(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// preprocess has 1 output: data/processed (directory → stored with trailing "/")
+	if stage, ok := index["data/processed/"]; !ok || stage != "preprocess" {
+		t.Errorf("index[data/processed/] = %q, want preprocess", stage)
+	}
+	// train has 2 outputs: models/model.pkl and metrics/train_metrics.json
+	if stage, ok := index["models/model.pkl"]; !ok || stage != "train" {
+		t.Errorf("index[models/model.pkl] = %q, want train", stage)
+	}
+	if stage, ok := index["metrics/train_metrics.json"]; !ok || stage != "train" {
+		t.Errorf("index[metrics/train_metrics.json] = %q, want train", stage)
+	}
+}
+
+func TestBuildFileStageIndex_NoDVCYAML(t *testing.T) {
+	dir := t.TempDir()
+	// No dvc.yaml present — should return empty map, not error.
+	index, err := BuildFileStageIndex(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(index) != 0 {
+		t.Errorf("expected empty index, got %v", index)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AnnotateFilesWithDVCStages
+// ---------------------------------------------------------------------------
+
+func TestAnnotateFilesWithDVCStages_Basic(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join("testdata", "dvc.yaml")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dvc.yaml"), data, 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	files := []FileEntry{
+		{Path: "data/processed/features.csv"},
+		{Path: "models/model.pkl"},
+	}
+	AnnotateFilesWithDVCStages(files, dir)
+
+	if files[0].DVCMetadata == nil || files[0].DVCMetadata.Stage != "preprocess" {
+		t.Errorf("files[0] Stage = %v, want preprocess", files[0].DVCMetadata)
+	}
+	if files[1].DVCMetadata == nil || files[1].DVCMetadata.Stage != "train" {
+		t.Errorf("files[1] Stage = %v, want train", files[1].DVCMetadata)
+	}
+}
+
+func TestAnnotateFilesWithDVCStages_DirectoryOutput(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join("testdata", "dvc.yaml")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dvc.yaml"), data, 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	// All three paths are under data/processed/, which is a directory output of preprocess.
+	files := []FileEntry{
+		{Path: "data/processed/a.csv"},
+		{Path: "data/processed/sub/b.csv"},
+		{Path: "data/processed"}, // exact directory path itself
+	}
+	AnnotateFilesWithDVCStages(files, dir)
+
+	for i, f := range files {
+		if f.DVCMetadata == nil || f.DVCMetadata.Stage != "preprocess" {
+			t.Errorf("files[%d] (path=%s) Stage = %v, want preprocess", i, f.Path, f.DVCMetadata)
+		}
+	}
+}
+
+func TestAnnotateFilesWithDVCStages_NoMatch(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join("testdata", "dvc.yaml")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dvc.yaml"), data, 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	files := []FileEntry{
+		{Path: "src/unrelated.go"},
+	}
+	AnnotateFilesWithDVCStages(files, dir)
+
+	if files[0].DVCMetadata != nil {
+		t.Errorf("expected no DVCMetadata, got %v", files[0].DVCMetadata)
+	}
+}
+
+func TestAnnotateFilesWithDVCStages_NoDVCYAML(t *testing.T) {
+	dir := t.TempDir()
+	// No dvc.yaml — should be a no-op.
+	files := []FileEntry{
+		{Path: "data/processed/x.csv"},
+	}
+	AnnotateFilesWithDVCStages(files, dir)
+
+	if files[0].DVCMetadata != nil {
+		t.Errorf("expected no DVCMetadata when dvc.yaml absent, got %v", files[0].DVCMetadata)
+	}
+}

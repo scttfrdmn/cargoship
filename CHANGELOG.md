@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### DVC Pipeline Auto-Discovery (v0.13.0)
+- `BuildFileStageIndex` in `pkg/manifest`: parses `dvc.yaml` and returns a map of output path → stage name; directory outputs stored with trailing "/" for prefix matching
+- `AnnotateFilesWithDVCStages` in `pkg/manifest`: walks `[]FileEntry` and sets `DVCMetadata.Stage` for every file that matches a stage output; graceful no-op when `dvc.yaml` is absent
+- `cargoship upload --dvc-auto`: auto-discovers DVC stages from `dvc.yaml` and annotates each `FileEntry` with its stage name; re-uploads manifest to S3 so stage-aware commands work correctly
+- `cargoship dvc stages <S3_URL>`: prints stage → file-count table from manifest DVCMetadata
+- `cargoship dvc status <LOCAL_PATH> <S3_URL>`: compares local files against manifest by content hash; reports `unchanged`, `modified`, or `missing` per file
+- `cargoship dvc export <S3_URL> [OUTPUT_DIR]`: downloads manifest and generates `.dvc` sidecar files via existing `GenerateDVCFiles`
+
 ## [0.12.0] - 2026-02-19
 
 ### Archive Filesystem Shell (Issue #203)

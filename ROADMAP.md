@@ -2,9 +2,22 @@
 
 **Last Updated**: February 2026
 **Current Version**: v0.12.0 (Released)
-**Next Release**: v0.13.0 (TBD)
+**Next Release**: v0.13.0 (In Development)
 
 This document outlines the planned feature releases for CargoShip, organized by version with clear deliverables and timelines.
+
+---
+
+## 🚧 **v0.13.0 - DVC Pipeline Auto-Discovery** (In Development)
+**Status**: In Development — closes the gap where `FileEntry.DVCMetadata.Stage` was never populated during real uploads
+
+### Planned Features:
+- 🚧 **`BuildFileStageIndex`** — parse `dvc.yaml` → map of output path → stage name
+- 🚧 **`AnnotateFilesWithDVCStages`** — walk `[]FileEntry` and set `DVCMetadata.Stage` via stage index
+- 🚧 **`cargoship upload --dvc-auto`** — auto-discover DVC stages from `dvc.yaml` and annotate each file entry; re-uploads manifest so stage-aware commands function in production
+- 🚧 **`cargoship dvc stages <S3_URL>`** — list pipeline stages and file counts from manifest
+- 🚧 **`cargoship dvc status <LOCAL_PATH> <S3_URL>`** — compare local files against manifest (unchanged / modified / missing), with optional `--stage` filter
+- 🚧 **`cargoship dvc export <S3_URL> [OUTPUT_DIR]`** — generate `.dvc` sidecar files from manifest `ContentHash` entries
 
 ---
 

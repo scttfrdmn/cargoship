@@ -28,18 +28,18 @@ func newTestReporter() *CostReporter {
 // makeDVCRecord returns a pre-built CostRecord with DVC fields set.
 func makeDVCRecord(stage, pipeline, commit, experiment string, cost float64, sizeGB float64, ts time.Time) CostRecord {
 	return CostRecord{
-		Timestamp:   ts,
-		Operation:   "upload",
-		Service:     "s3",
-		Region:      "us-west-2",
+		Timestamp:    ts,
+		Operation:    "upload",
+		Service:      "s3",
+		Region:       "us-west-2",
 		StorageClass: "GLACIER_IR",
-		SizeGB:      sizeGB,
-		Cost:        cost,
-		Currency:    "USD",
-		FileName:    "chunk-0001.tar.zst",
-		DVCStage:    stage,
-		DVCPipeline: pipeline,
-		GitCommit:   commit,
+		SizeGB:       sizeGB,
+		Cost:         cost,
+		Currency:     "USD",
+		FileName:     "chunk-0001.tar.zst",
+		DVCStage:     stage,
+		DVCPipeline:  pipeline,
+		GitCommit:    commit,
 		ExperimentID: experiment,
 	}
 }
@@ -68,9 +68,9 @@ func TestRecordArchivalCost_ExtractsDVCTagsIntoFields(t *testing.T) {
 	// real PricingManager, but we can verify the field-extraction logic by
 	// directly calling RecordCost and inspecting the stored record).
 	tags := map[string]string{
-		"dvc_stage":    "train",
-		"dvc_pipeline": "dvc.yaml",
-		"git_commit":   "deadbeef",
+		"dvc_stage":     "train",
+		"dvc_pipeline":  "dvc.yaml",
+		"git_commit":    "deadbeef",
 		"experiment_id": "exp-42",
 	}
 
