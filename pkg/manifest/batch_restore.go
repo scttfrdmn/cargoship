@@ -150,6 +150,55 @@ func NewSelectiveExtractor(manifest *Manifest, s3Client S3Downloader, maxCacheSi
 	}
 }
 
+// ChunkKeysForPaths returns the deduplicated set of S3 chunk keys that contain
+// the requested file paths. Unknown paths are silently skipped. Use this to
+// obtain the keys for a Glacier pre-flight check before calling BatchRestore.
+func (se *SelectiveExtractor) ChunkKeysForPaths(paths []string) []string {
+	seen := make(map[string]struct{})
+	var keys []string
+	for _, p := range paths {
+		entry := se.query.FindFile(p)
+		if entry == nil {
+			continue
+		}
+		if _, ok := seen[entry.S3Key]; !ok {
+			seen[entry.S3Key] = struct{}{}
+			keys = append(keys, entry.S3Key)
+		}
+	}
+	return keys
+}
+
+// ChunkKeysForDVCStage returns the S3 chunk keys for all files in a DVC stage.
+func (se *SelectiveExtractor) ChunkKeysForDVCStage(stage string) []string {
+	entries := se.query.FindFilesByDVCStage(stage)
+	paths := make([]string, len(entries))
+	for i, e := range entries {
+		paths[i] = e.Path
+	}
+	return se.ChunkKeysForPaths(paths)
+}
+
+// ChunkKeysForCommit returns the S3 chunk keys for all files in a git commit.
+func (se *SelectiveExtractor) ChunkKeysForCommit(commit string) []string {
+	entries := se.query.FindFilesByCommit(commit)
+	paths := make([]string, len(entries))
+	for i, e := range entries {
+		paths[i] = e.Path
+	}
+	return se.ChunkKeysForPaths(paths)
+}
+
+// AllChunkKeys returns the S3 keys for every chunk in the manifest. Use this
+// for a full-archive Glacier pre-flight check.
+func (se *SelectiveExtractor) AllChunkKeys() []string {
+	keys := make([]string, 0, len(se.manifest.Chunks))
+	for _, c := range se.manifest.Chunks {
+		keys = append(keys, c.S3Key)
+	}
+	return keys
+}
+
 // ExtractFileByHash locates a file by its MD5 ContentHash and extracts it to
 // destDir, preserving the original directory structure. It downloads only the
 // containing S3 chunk and scans the tar archive for the matching entry.

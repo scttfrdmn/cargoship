@@ -172,7 +172,7 @@ This document outlines the planned feature releases for CargoShip, organized by 
 
 ---
 
-## 🔍 **v0.9.0 - Enhanced Data Retrieval** (Target: Q3 2026)
+## 🔍 **v0.11.0 - Enhanced Data Retrieval** (Target: Q3 2026)
 **Focus**: Comprehensive restoration capabilities and interactive data access
 
 ### Planned Features:

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Enhanced Data Retrieval (v0.11.0 milestone, Issues #200–#201)
+- S3 Glacier/Deep Archive pre-flight check and restore orchestration (Issue #200)
+  - `GlacierRestorer` with `CheckAndRestore` — HeadObject checks, RestoreObject requests, Expedited/Standard/Bulk tiers
+  - `WaitForRestore` — polls until all chunks accessible, with progress callback
+  - `EstimateRetrievalCost` — approximate USD fees by storage class and tier
+  - New `ChunkKeysForPaths`, `ChunkKeysForDVCStage`, `ChunkKeysForCommit`, `AllChunkKeys` helpers on `SelectiveExtractor`
+- Quota-aware restore with `--max-restore-cost` flag (Issue #201)
+- `cargoship restore` new flags: `--tier`, `--wait`, `--dry-run`, `--max-restore-cost`, `--restore-days`
+- `cargoship browse` new flags: `--tier`, `--wait`, `--max-restore-cost`, `--restore-days`
+- Roadmap version numbering corrected: v0.9.0 Enhanced Data Retrieval → v0.11.0
+
 ## [0.10.0] - 2026-02-19
 
 ### DVC Integration (Issues #171–#192)
