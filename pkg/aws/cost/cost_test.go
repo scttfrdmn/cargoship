@@ -1073,12 +1073,14 @@ func TestGenerateProjectReport(t *testing.T) {
 
 	projectID := "test-project-20251206"
 	now := time.Now()
+	// Anchor to noon today so records are always within "today" regardless of when the test runs.
+	// Using relative offsets like -1h or -2h fails if the test runs near midnight.
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, now.Location())
 
 	// Add cost records for the project
-	// Use explicit same-day timestamps to avoid calendar boundary issues
 	reporter.RecordCost(CostRecord{
 		ProjectID:    projectID,
-		Timestamp:    now.Add(-1 * time.Hour),
+		Timestamp:    startOfToday,
 		Cost:         10.0,
 		SizeGB:       5.0,
 		Region:       "us-east-1",
@@ -1089,7 +1091,7 @@ func TestGenerateProjectReport(t *testing.T) {
 	})
 	reporter.RecordCost(CostRecord{
 		ProjectID:    projectID,
-		Timestamp:    now.Add(-2 * time.Hour), // Changed from -48h to -2h (same day)
+		Timestamp:    startOfToday.Add(1 * time.Hour),
 		Cost:         20.0,
 		SizeGB:       10.0,
 		Region:       "us-west-2",
