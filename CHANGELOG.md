@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### v0.12.0 Archive Inspection & Developer Experience
-- Archive Filesystem REPL: `cargoship shell` — navigate archives like a local filesystem (Issue #203)
-- Documentation overhaul: accuracy fixes, user-facing rewrites, nav cleanup (Issue #204)
+### Archive Filesystem Shell (v0.12.0 milestone, Issue #203)
+- `cargoship shell s3://bucket/prefix` — interactive filesystem shell for CargoShip archives
+  - Navigate archive structure: `ls`, `cd`, `pwd` — no extraction required
+  - Inspect files: `stat` (size, hash, chunk, DVC stage, git commit), `cat`, `head`
+  - Search: `find <glob>` searches full path and basename
+  - DVC-aware: `stage list` shows all pipeline stages; `stage <name>` lists stage files
+  - On-demand extraction: `get <file> [dest]` restores a single file to local disk
+  - Falls back to generic CargoShip REPL when called with no arguments
+- New `pkg/archivefs` package: virtual filesystem tree built from manifest paths
 
 ## [0.11.0] - 2026-02-19
 
