@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Enhanced Data Retrieval (v0.11.0 milestone, Issues #200–#201)
+### Enhanced Data Retrieval (v0.11.0 milestone, Issues #200–#202)
 - S3 Glacier/Deep Archive pre-flight check and restore orchestration (Issue #200)
   - `GlacierRestorer` with `CheckAndRestore` — HeadObject checks, RestoreObject requests, Expedited/Standard/Bulk tiers
   - `WaitForRestore` — polls until all chunks accessible, with progress callback
@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Quota-aware restore with `--max-restore-cost` flag (Issue #201)
 - `cargoship restore` new flags: `--tier`, `--wait`, `--dry-run`, `--max-restore-cost`, `--restore-days`
 - `cargoship browse` new flags: `--tier`, `--wait`, `--max-restore-cost`, `--restore-days`
+- Restore job management for async Glacier restores (Issue #202)
+  - `pkg/restore` — Job persistence layer (`~/.cargoship/restore-jobs/`, XDG_DATA_HOME aware)
+  - `cargoship restore jobs list` — tabular view of all queued/in-progress/completed jobs
+  - `cargoship restore jobs check [job-id]` — poll S3 and mark jobs ready when chunks accessible
+  - `cargoship restore jobs download <job-id>` — download files once Glacier restore completes
+  - `cargoship restore jobs clean [--older-than 24h]` — remove old completed/failed jobs
+  - When Glacier restore is pending without `--wait`, job is auto-saved with instructions
 - Roadmap version numbering corrected: v0.9.0 Enhanced Data Retrieval → v0.11.0
 
 ## [0.10.0] - 2026-02-19

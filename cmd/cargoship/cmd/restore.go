@@ -11,8 +11,9 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
 
-	"github.com/scttfrdmn/cargoship/pkg/manifest"
 	s3pkg "github.com/scttfrdmn/cargoship/pkg/aws/s3"
+	"github.com/scttfrdmn/cargoship/pkg/manifest"
+	"github.com/scttfrdmn/cargoship/pkg/restore"
 )
 
 // NewRestoreCmd creates the 'restore' command for hash-based and DVC-aware
@@ -201,9 +202,25 @@ Examples:
 					}
 					fmt.Println("✅ All chunks are accessible.")
 				} else {
+					// Save a job so the user can check and download later.
+					jobStore, storeErr := restore.NewDefaultStore()
+					if storeErr == nil {
+						sel := restore.SelectionCriteria{
+							Hash:      hash,
+							FilePaths: filePaths,
+							GitCommit: gitCommit,
+							DVCStage:  dvcStage,
+						}
+						job, jobErr := jobStore.NewJob(s3URL, outputDir, region,
+							string(restoreTier), restoreDays, bucket, chunkKeys, sel,
+							report.EstimatedCostUSD)
+						if jobErr == nil {
+							fmt.Printf("\n💾 Restore job saved: %s\n", job.ID)
+							fmt.Printf("   Check status:  cargoship restore jobs check %s\n", job.ID)
+							fmt.Printf("   Download when ready: cargoship restore jobs download %s\n", job.ID)
+						}
+					}
 					fmt.Printf("\n⚠️  %d chunk(s) are not yet accessible.\n", len(report.Frozen)+len(report.InProgress))
-					fmt.Println("   Re-run with --wait to block until restoration completes, or")
-					fmt.Println("   re-run without --tier once the restore is ready.")
 					return nil
 				}
 			}
@@ -268,5 +285,6 @@ Examples:
 	cmd.Flags().Float64Var(&maxRestoreCost, "max-restore-cost", 0, "Abort if estimated retrieval cost exceeds this USD amount")
 	cmd.Flags().Int32Var(&restoreDays, "restore-days", 7, "Days to keep Glacier restored copy available")
 
+	cmd.AddCommand(newRestoreJobsCmd())
 	return cmd
 }

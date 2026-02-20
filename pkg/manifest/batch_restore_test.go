@@ -319,3 +319,76 @@ func TestBatchRestoreByCommit_Miss(t *testing.T) {
 	_, err := se.BatchRestoreByCommit(context.Background(), "unknown", t.TempDir())
 	require.Error(t, err)
 }
+
+// ---------------------------------------------------------------------------
+// ChunkKeysForPaths / ChunkKeysForDVCStage / ChunkKeysForCommit / AllChunkKeys
+// ---------------------------------------------------------------------------
+
+func TestChunkKeysForPaths_Basic(t *testing.T) {
+	m := build100FileManifest()
+	se := NewSelectiveExtractor(m, &mockS3Client{}, 0)
+
+	// Files 0 and 1 are both in chunk-0.
+	keys := se.ChunkKeysForPaths([]string{"data/file-000.bin", "data/file-001.bin"})
+	assert.Equal(t, []string{"shard-0/chunk-0.tar.zst"}, keys)
+}
+
+func TestChunkKeysForPaths_Deduplicates(t *testing.T) {
+	m := build100FileManifest()
+	se := NewSelectiveExtractor(m, &mockS3Client{}, 0)
+
+	// Both files are in chunk-0 — result must deduplicate to a single key.
+	keys := se.ChunkKeysForPaths([]string{"data/file-000.bin", "data/file-000.bin"})
+	assert.Len(t, keys, 1)
+}
+
+func TestChunkKeysForPaths_UnknownSkipped(t *testing.T) {
+	m := build100FileManifest()
+	se := NewSelectiveExtractor(m, &mockS3Client{}, 0)
+
+	keys := se.ChunkKeysForPaths([]string{"does/not/exist.bin"})
+	assert.Empty(t, keys)
+}
+
+func TestChunkKeysForDVCStage(t *testing.T) {
+	m := build100FileManifest()
+	se := NewSelectiveExtractor(m, &mockS3Client{}, 0)
+
+	// "preprocess" stage has every even-indexed file — 50 files across all 10 chunks.
+	keys := se.ChunkKeysForDVCStage("preprocess")
+	assert.Len(t, keys, 10)
+}
+
+func TestChunkKeysForDVCStage_Unknown(t *testing.T) {
+	m := build100FileManifest()
+	se := NewSelectiveExtractor(m, &mockS3Client{}, 0)
+	keys := se.ChunkKeysForDVCStage("no-such-stage")
+	assert.Empty(t, keys)
+}
+
+func TestChunkKeysForCommit(t *testing.T) {
+	m := build100FileManifest()
+	se := NewSelectiveExtractor(m, &mockS3Client{}, 0)
+
+	// Manifest commit "deadbeef" covers all 100 files across all 10 chunks.
+	keys := se.ChunkKeysForCommit("deadbeef")
+	assert.Len(t, keys, 10)
+}
+
+func TestChunkKeysForCommit_Unknown(t *testing.T) {
+	m := build100FileManifest()
+	se := NewSelectiveExtractor(m, &mockS3Client{}, 0)
+	keys := se.ChunkKeysForCommit("unknown-sha")
+	assert.Empty(t, keys)
+}
+
+func TestAllChunkKeys(t *testing.T) {
+	m := build100FileManifest()
+	se := NewSelectiveExtractor(m, &mockS3Client{}, 0)
+
+	keys := se.AllChunkKeys()
+	assert.Len(t, keys, 10)
+	// Spot-check that known keys are present.
+	assert.Contains(t, keys, "shard-0/chunk-0.tar.zst")
+	assert.Contains(t, keys, "shard-0/chunk-9.tar.zst")
+}

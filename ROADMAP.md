@@ -176,12 +176,12 @@ This document outlines the planned feature releases for CargoShip, organized by 
 **Focus**: Comprehensive restoration capabilities and interactive data access
 
 ### Planned Features:
-- **Selective File Restoration** - Extract specific files without full suitcase restoration
-- **S3 Glacier Management** - Automated Deep Archive and Glacier restoration workflows
-- **Interactive Browse Interface** - TUI and web-based browsing of archived data
-- **Bulk Restoration Operations** - Restore entire datasets with progress tracking
-- **Restoration Job Management** - Queue, schedule, and monitor restoration processes
-- **Quota-Aware Restoration** - Track restoration costs against budget quotas
+- ✅ **Selective File Restoration** - Extract specific files without full suitcase restoration (Issues #188, #189)
+- ✅ **S3 Glacier Management** - Automated Deep Archive and Glacier restoration workflows (Issue #200)
+- ✅ **Interactive Browse Interface** - TUI browsing of archived data (Issue #190)
+- ✅ **Bulk Restoration Operations** - Restore entire datasets with progress tracking (Issues #189, #201)
+- ✅ **Restoration Job Management** - Queue, schedule, and monitor restoration processes (Issue #202)
+- ✅ **Quota-Aware Restoration** - Track restoration costs against budget quotas (Issue #201)
 
 ### Restoration Features:
 ```bash
