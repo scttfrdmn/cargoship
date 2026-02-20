@@ -93,6 +93,8 @@ nav:
     - Performance Benchmarks: PERFORMANCE_BENCHMARKS.md
     - Optimization Guide: OPTIMIZATION_GUIDE.md
   - CLI Reference: CLI_REFERENCE.md
+  - Data Retrieval:
+    - User Guide: USER_GUIDE.md
   - Advanced:
     - GPG Encryption: advanced/gpg_encryption.md
     - Travel Agent (Web UI): advanced/travelagent.md

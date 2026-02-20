@@ -1,7 +1,7 @@
 # CargoShip CLI Reference
 
-**Version**: v0.6.2
-**Last Updated**: December 2025
+**Version**: v0.11.0
+**Last Updated**: February 2026
 
 Complete command-line reference for CargoShip.
 
@@ -12,11 +12,12 @@ Complete command-line reference for CargoShip.
 1. [Global Options](#global-options)
 2. [Upload Commands](#upload-commands)
 3. [Download Commands](#download-commands)
-4. [Management Commands](#management-commands)
-5. [Cost Commands](#cost-commands)
-6. [Utility Commands](#utility-commands)
-7. [Configuration](#configuration)
-8. [Environment Variables](#environment-variables)
+4. [Data Retrieval Commands](#data-retrieval-commands)
+5. [Management Commands](#management-commands)
+6. [Cost Commands](#cost-commands)
+7. [Utility Commands](#utility-commands)
+8. [Configuration](#configuration)
+9. [Environment Variables](#environment-variables)
 
 ---
 
@@ -212,6 +213,214 @@ cargoship download \
   --output ./archives \
   --decompress=false
 ```
+
+---
+
+## Data Retrieval Commands
+
+### `cargoship restore`
+
+Selectively restore specific files from a CargoShip archive without downloading the entire archive.
+Files can be identified by content hash, path, git commit, or DVC pipeline stage.
+
+**Synopsis**:
+```bash
+cargoship restore S3_URL OUTPUT_DIR [flags]
+```
+
+**Arguments**:
+
+| Argument | Description |
+|----------|-------------|
+| `S3_URL` | S3 URL of the archive (e.g. `s3://bucket/uploads/upload-id`) |
+| `OUTPUT_DIR` | Local directory where restored files will be written |
+
+**Flags**:
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--hash` | string | | MD5 content hash of the file to restore |
+| `--file` | string[] | | Exact file path(s) to restore (repeatable) |
+| `--git-commit` | string | | Restore all files from this git commit SHA |
+| `--dvc-stage` | string | | Restore all files produced by this DVC pipeline stage |
+| `--tier` | string | | Glacier retrieval tier: `expedited`, `standard` (default), `bulk` |
+| `--wait` | bool | false | Block until Glacier restoration completes before downloading |
+| `--dry-run` | bool | false | Show what would be restored without downloading |
+| `--max-restore-cost` | float | 0 | Abort if estimated retrieval cost exceeds this USD amount |
+| `--restore-days` | int | 7 | Days to keep Glacier restored copy available |
+| `-r, --region` | string | us-east-1 | AWS region |
+| `--cache-gb` | int | 10 | LRU chunk cache size in GB |
+| `--json` | bool | false | Output restore statistics as JSON |
+
+**Examples**:
+
+```bash
+# Restore a file by content hash
+cargoship restore s3://my-bucket/uploads/20250101-abc123 ./output \
+  --hash d8e8fca2dc0f896fd7cb4cb0031ba249
+
+# Restore specific files by path (repeatable)
+cargoship restore s3://my-bucket/uploads/20250101-abc123 ./output \
+  --file data/train/features.parquet \
+  --file models/model.pkl
+
+# Restore all files from a DVC pipeline stage
+cargoship restore s3://my-bucket/uploads/20250101-abc123 ./output \
+  --dvc-stage train
+
+# Restore all files from a specific git commit
+cargoship restore s3://my-bucket/uploads/20250101-abc123 ./output \
+  --git-commit deadbeef
+
+# Dry-run: see what would be restored from Glacier without incurring cost
+cargoship restore s3://my-bucket/uploads/20250101-abc123 ./output \
+  --dvc-stage preprocess \
+  --dry-run
+
+# Restore from Glacier Deep Archive (bulk tier, wait for completion)
+cargoship restore s3://my-bucket/uploads/20250101-abc123 ./output \
+  --dvc-stage train \
+  --tier bulk \
+  --wait \
+  --restore-days 14
+
+# Abort if Glacier retrieval costs more than $5
+cargoship restore s3://my-bucket/uploads/20250101-abc123 ./output \
+  --dvc-stage train \
+  --max-restore-cost 5.00
+```
+
+**Notes**:
+- At least one of `--hash`, `--file`, `--git-commit`, or `--dvc-stage` is required.
+- For Glacier/Deep Archive storage classes, restoration may take 1–48 hours depending on the tier.
+  When `--wait` is omitted the job is queued and tracked; use `cargoship restore jobs` to manage it.
+- The `--dry-run` flag prints file names, sizes, and estimated Glacier retrieval cost without downloading.
+
+---
+
+### `cargoship restore jobs`
+
+Manage async Glacier restore jobs queued by `cargoship restore`. Jobs are persisted locally in
+`~/.local/share/cargoship/restore-jobs/`.
+
+**Synopsis**:
+```bash
+cargoship restore jobs <subcommand> [flags]
+```
+
+**Subcommands**:
+
+#### `restore jobs list`
+
+List all restore jobs and their current status.
+
+```bash
+cargoship restore jobs list
+```
+
+**Output columns**: Job ID, S3 URL, output directory, status (pending / ready / downloading / done / failed), file count, creation time.
+
+#### `restore jobs check [job-id]`
+
+Poll AWS for the current Glacier restore status of pending jobs. When `job-id` is omitted all pending jobs are checked.
+
+```bash
+# Check all pending jobs
+cargoship restore jobs check
+
+# Check one specific job
+cargoship restore jobs check --job-id abc123
+```
+
+**Flags**:
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--job-id` | string | | Check only this specific job ID |
+
+When Glacier reports that a restore is ready the job status is automatically updated to `ready`.
+
+#### `restore jobs download <job-id>`
+
+Download files for a job that has reached `ready` status.
+
+```bash
+cargoship restore jobs download abc123
+```
+
+**Flags**:
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--cache-gb` | int | 10 | LRU chunk cache size in GB |
+
+#### `restore jobs clean`
+
+Remove completed and failed jobs older than a given age.
+
+```bash
+# Clean jobs completed more than 24 hours ago (default)
+cargoship restore jobs clean
+
+# Clean jobs older than 7 days
+cargoship restore jobs clean --older-than 168h
+```
+
+**Flags**:
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--older-than` | string | 24h | Remove jobs older than this duration (e.g. `72h`, `168h`) |
+
+---
+
+### `cargoship browse`
+
+Open an interactive TUI (terminal user interface) for browsing and restoring files from a CargoShip archive.
+Supports keyboard-driven navigation, file preview, and selective extraction.
+
+**Synopsis**:
+```bash
+cargoship browse S3_URL [OUTPUT_DIR] [flags]
+```
+
+**Arguments**:
+
+| Argument | Description |
+|----------|-------------|
+| `S3_URL` | S3 URL of the archive |
+| `OUTPUT_DIR` | Local directory for restored files (default: current directory) |
+
+**Flags**:
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-r, --region` | string | us-east-1 | AWS region |
+| `--cache-gb` | int | 10 | LRU chunk cache size in GB |
+| `--tier` | string | | Glacier retrieval tier: `expedited`, `standard`, `bulk` |
+| `--wait` | bool | false | Block until Glacier restoration completes |
+| `--max-restore-cost` | float | 0 | Abort if estimated retrieval cost exceeds this USD amount |
+| `--restore-days` | int | 7 | Days to keep Glacier restored copy available |
+
+**Examples**:
+
+```bash
+# Browse an archive interactively
+cargoship browse s3://my-bucket/uploads/20250101-abc123
+
+# Browse and restore to a specific directory
+cargoship browse s3://my-bucket/uploads/20250101-abc123 ./output
+```
+
+**Key bindings** (inside the TUI):
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate file list |
+| `Enter` | Expand directory / open file detail |
+| `Space` | Toggle file selection |
+| `r` | Restore selected files |
+| `q` / `Esc` | Quit |
 
 ---
 
@@ -570,25 +779,92 @@ Guides you through:
 
 ### `cargoship shell`
 
-Start an interactive CargoShip shell.
+Start an interactive shell. Two modes are available depending on whether an S3 URL is provided.
 
 **Synopsis**:
 ```bash
-cargoship shell [flags]
+cargoship shell [S3_URL] [flags]
+cargoship repl [S3_URL] [flags]      # alias
+cargoship interactive [S3_URL] [flags]  # alias
 ```
 
-**Examples**:
+**Arguments**:
+
+| Argument | Description |
+|----------|-------------|
+| `S3_URL` | (optional) S3 URL of a CargoShip archive. If provided, opens archive filesystem mode. |
+
+**Flags**:
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-r, --region` | string | us-east-1 | AWS region (archive mode only) |
+| `--cache-gb` | int | 10 | LRU chunk cache size in GB (archive mode only) |
+
+**Mode 1 — Generic REPL** (no S3 URL):
+
+Runs CargoShip commands interactively without re-typing `cargoship` each time.
 
 ```bash
-# Start interactive shell
 cargoship shell
 
 # Shell commands:
-> upload ./data --bucket my-bucket
-> list --bucket my-bucket
-> info --upload-id 20251215-abc123
+> upload ./data s3://my-bucket/uploads/2025
+> list s3://my-bucket/uploads/2025
 > exit
 ```
+
+**Mode 2 — Archive Filesystem Shell** (with S3 URL):
+
+Opens a virtual filesystem REPL for navigating a CargoShip archive without downloading it.
+The manifest is loaded from S3 on startup; all `ls`/`cd`/`stat`/`find` commands work without
+any further network access. Only `cat`, `head`, and `get` trigger S3 downloads.
+
+```bash
+cargoship shell s3://my-bucket/uploads/20250101-abc123
+
+archive:/> ls
+  data/
+  models/
+  README.md
+archive:/> cd data/train
+archive:/data/train> ls
+  features.parquet         12.4 MB  [stage:train  hash:d8e8fca2…]
+  labels.csv                2.0 MB  [stage:train]
+archive:/data/train> stat features.parquet
+  Path:      data/train/features.parquet
+  Size:      12.4 MB
+  Modified:  2025-01-01 10:00:00
+  Hash:      d8e8fca2dc0f896fd7cb4cb0031ba249
+  Chunk:     shard-0/chunk-1.tar.zst
+  DVC stage: train
+  Commit:    deadbeef
+archive:/data/train> find *.csv
+  data/raw/input.csv            1.0 kB
+  data/train/labels.csv         2.0 MB  [stage:train]
+archive:/data/train> stage list
+  train                     3 file(s)
+archive:/data/train> get features.parquet
+  ✅ Restored → ./data/train/features.parquet
+archive:/data/train> exit
+```
+
+**Archive filesystem commands**:
+
+| Command | Description |
+|---------|-------------|
+| `ls [path]` | List files and directories |
+| `cd <dir>` | Change current directory (supports `..`) |
+| `pwd` | Print current directory |
+| `stat <file>` | Show file metadata (size, hash, chunk, DVC stage, git commit) |
+| `find <pattern>` | Find files by glob pattern (e.g. `*.csv`, `data/*.parquet`) |
+| `stage list` | List all DVC pipeline stages and their file counts |
+| `stage <name>` | List files belonging to a DVC stage |
+| `cat <file>` | Stream file content to stdout (downloads from S3) |
+| `head <file> [n]` | Print first n lines (default 10, downloads from S3) |
+| `get <file> [dst]` | Extract file to a local path (downloads from S3) |
+| `help` | Show command help |
+| `exit` / `quit` | Exit the shell |
 
 ### `cargoship dashboard`
 

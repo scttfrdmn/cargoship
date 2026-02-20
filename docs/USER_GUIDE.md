@@ -7,6 +7,7 @@ A comprehensive guide for using CargoShip to archive research data to AWS S3 int
 - [Getting Started](#getting-started)
 - [Research Workflows](#research-workflows)
 - [Cost Optimization](#cost-optimization)
+- [Retrieving Archived Data](#retrieving-archived-data)
 - [Launch Agents](#launch-agents)
 - [AWS Setup for Researchers](#aws-setup-for-researchers)
 - [Common Use Cases](#common-use-cases)
@@ -381,6 +382,162 @@ cargoship upload /data/thesis-dataset \
   --integrity-check sha256 \
   --redundancy 3
 ```
+
+## Retrieving Archived Data
+
+CargoShip provides several tools for selectively retrieving files from an archive without
+downloading the entire dataset. This is especially useful for large archives stored in
+Glacier or Deep Archive where retrieving everything would be slow and expensive.
+
+### Browse Without Downloading
+
+Before restoring any files, use the archive filesystem shell to explore what is in an archive:
+
+```bash
+cargoship shell s3://research-archive/project-2024/analysis
+```
+
+This loads only the manifest (a small JSON file) and lets you navigate the virtual filesystem
+interactively — no S3 data transfer beyond the manifest itself:
+
+```
+archive:/> ls
+  data/
+  models/
+  README.md
+archive:/> cd data/train
+archive:/data/train> ls
+  features.parquet         12.4 MB  [stage:train  hash:d8e8fca2…]
+  labels.csv                2.0 MB  [stage:train]
+archive:/data/train> stat features.parquet
+  Path:      data/train/features.parquet
+  Size:      12.4 MB
+  Hash:      d8e8fca2dc0f896fd7cb4cb0031ba249
+  DVC stage: train
+  Commit:    deadbeef
+archive:/data/train> find *.parquet
+  data/train/features.parquet   12.4 MB  [stage:train  hash:d8e8fca2…]
+```
+
+**Useful archive shell commands for researchers:**
+- `stage list` — see all DVC pipeline stages and how many files each contains
+- `stage train` — list every file produced by the `train` stage
+- `find *.csv` — find all CSV files across the entire archive
+- `stat <file>` — view full metadata including content hash and git commit
+
+### Selective Restore
+
+Once you know which files you need, `cargoship restore` downloads only those files:
+
+```bash
+# Restore all files from a DVC pipeline stage
+cargoship restore s3://research-archive/project-2024/analysis ./restored \
+  --dvc-stage train
+
+# Restore a specific file by its content hash
+cargoship restore s3://research-archive/project-2024/analysis ./restored \
+  --hash d8e8fca2dc0f896fd7cb4cb0031ba249
+
+# Restore multiple specific files
+cargoship restore s3://research-archive/project-2024/analysis ./restored \
+  --file data/train/features.parquet \
+  --file models/model.pkl
+
+# Restore all files from a specific git commit
+cargoship restore s3://research-archive/project-2024/analysis ./restored \
+  --git-commit deadbeef
+```
+
+**Dry-run first** — see what would be restored and the estimated cost before downloading:
+
+```bash
+cargoship restore s3://research-archive/project-2024/analysis ./restored \
+  --dvc-stage train \
+  --dry-run
+```
+
+### TUI Browser
+
+For a graphical (terminal) experience, use `cargoship browse` to navigate and select files
+interactively:
+
+```bash
+cargoship browse s3://research-archive/project-2024/analysis ./restored
+```
+
+Use arrow keys to navigate, `Space` to select files, and `r` to restore selected files.
+
+### Working with Glacier and Deep Archive
+
+When your archive is stored in Glacier or Deep Archive, retrieval requires an extra step:
+AWS must first "restore" the data to S3 Standard before it can be downloaded, which takes
+1–48 hours depending on the tier you choose.
+
+**Retrieval tiers:**
+
+| Tier | Typical Latency | Cost |
+|------|-----------------|------|
+| `expedited` | 1–5 minutes | Highest |
+| `standard` | 3–5 hours | Moderate |
+| `bulk` | 5–12 hours | Lowest |
+
+**Option 1: Wait for restoration to complete** (synchronous, for small restores):
+
+```bash
+cargoship restore s3://research-archive/project-2024/analysis ./restored \
+  --dvc-stage train \
+  --tier standard \
+  --wait
+```
+
+**Option 2: Queue and check later** (recommended for large archives):
+
+```bash
+# Start the restore — this queues a job and exits immediately
+cargoship restore s3://research-archive/project-2024/analysis ./restored \
+  --dvc-stage train \
+  --tier bulk
+
+# Check job status (run again later)
+cargoship restore jobs check
+
+# Once status shows "ready", download the restored files
+cargoship restore jobs list      # find the job ID
+cargoship restore jobs download <job-id>
+```
+
+**Cost guard** — abort automatically if retrieval cost exceeds a threshold:
+
+```bash
+cargoship restore s3://research-archive/project-2024/analysis ./restored \
+  --dvc-stage train \
+  --tier standard \
+  --max-restore-cost 10.00     # abort if estimated cost > $10
+```
+
+### Managing Restore Jobs
+
+```bash
+# List all restore jobs and their status
+cargoship restore jobs list
+
+# Check Glacier restore status for all pending jobs
+cargoship restore jobs check
+
+# Download files for a specific ready job
+cargoship restore jobs download abc123
+
+# Clean up old completed jobs (default: older than 24h)
+cargoship restore jobs clean
+
+# Clean up jobs older than 7 days
+cargoship restore jobs clean --older-than 168h
+```
+
+Jobs are stored locally in `~/.local/share/cargoship/restore-jobs/` and persist across
+CargoShip restarts.
+
+---
 
 ## Troubleshooting
 
