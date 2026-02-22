@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### DVC Pipeline Auto-Discovery (v0.13.0)
+## [0.13.0] - 2026-02-19
+
+### DVC Pipeline Auto-Discovery
 - `BuildFileStageIndex` in `pkg/manifest`: parses `dvc.yaml` and returns a map of output path → stage name; directory outputs stored with trailing "/" for prefix matching
 - `AnnotateFilesWithDVCStages` in `pkg/manifest`: walks `[]FileEntry` and sets `DVCMetadata.Stage` for every file that matches a stage output; graceful no-op when `dvc.yaml` is absent
 - `cargoship upload --dvc-auto`: auto-discovers DVC stages from `dvc.yaml` and annotates each `FileEntry` with its stage name; re-uploads manifest to S3 so stage-aware commands work correctly
@@ -83,28 +85,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add `Timeout` to `http.Client` in geo locator (Issue #199)
 - Filter job environment variables through security denylist in launch server (Issue #199)
 
-## [0.7.0] - 2026-01-15
+## [0.9.1] - 2026-01-02
+
+### Fixed
+- Cost package test flakiness and inconsistent period filtering
+
+## [0.9.0] - 2026-01-02
 
 ### Added
-- **Adaptive Shard Count** — Automatic S3 prefix optimization based on workload (Issue #106)
-  - Auto-tunes 4–32 shards from file count, data size, and available CPU/memory
-  - Manual override via `--shard-count` flag
-  - Minimum 6 chunks per shard for load balancing
-- **Zero-Copy I/O** — Linux splice-based data movement for near-zero CPU overhead (Issue #153)
-  - Phase 1: zero-copy read paths
-  - Phase 2: BufferedPipe chunk pooling
-  - Phase 3: upload buffer pooling
-  - Phase 4: splice integration for Linux
-- **HTTP/2 and TCP Network Tuning** — 3x throughput improvement on high-latency links (Issue #154)
-- **Geographic Region Selection** — Automatic S3 region selection based on client location (Issue #138)
-- **Content-Aware Compression** — Magika AI file type detection for optimal compression levels (Issue #105)
-  - Code files: level 9; Documents: level 6; Images/video/archives: none
-- **File Deduplication** — Cross-upload deduplication via content hashing (Issue #108)
-  - Scanner integration, dedup index, manifest export, CLI flag
-- **Shard Balance Analysis** — `cargoship balance` command for shard rebalancing (Issue #109)
-  - Analysis, planning, chunk download/extraction, and execution pipeline
-- **Resume Failed Uploads** — Automatic recovery from interrupted uploads (Issue #157)
-- **Upload Failure Cleanup** — Automatic cleanup of partial S3 multipart uploads (Issue #158)
+- **File Deduplication** — Cross-upload deduplication via content hashing, complete implementation (Issue #108)
+  - Pipeline integration, dedup index, manifest export, CLI `--enable-dedup` flag
+- **Shard Balance Analysis** — `cargoship balance` command, complete implementation (Issue #109)
+  - Analysis, planning, chunk download/extraction, and full execution pipeline
+- **Tier-Aware Chunking** — Groups files by storage tier for optimal cost savings (Issue #164)
+  - `--tier-strategy tier-aware` flag; cost warning prompts with `--yes` bypass
+- **Tier Cost Limits** — `--tier-max` flag prevents automatic selection of restrictive tiers (Issue #168)
+- **Archive Tier TCO Modeling** — Total cost of ownership analysis for Glacier/Deep Archive (Issue #169)
+- **Cost Benchmarking & Transparency** — ASCII cost comparison charts, chunking cost breakdown (Issue #165)
+- **Direct Upload Mode** — Fast path bypassing archiving/compression for small datasets; 3.7× improvement (Issue #166)
+  - `--direct-upload`, `--force-direct-upload`, `--direct-upload-threshold-mb` flags
+- **S3 Cost Analyzer** — `cargoship analyze` command for existing bucket cost analysis (Issue #170)
+  - S3-compatible storage provider support
+- **Interactive TUI** — Pause/resume controls and live worker counts (Issue #112)
+
+### Fixed
+- Race conditions across multiregion, pipeline, staging, and adaptive controller packages
+- Deadlock in `RealTimeLoadBalancer` and congestion control
+- CloudWatch publisher timer race condition (Issue #15)
+- AWS Open Data bucket configurations for benchmark suite (Issue #166)
+- GitHub Actions: updated to Go 1.24, artifact actions v4
+
+## [0.7.3] - 2025-12-17
+
+### Added
+- **AWS KMS Encryption** — SSE-KMS for data chunks + envelope encryption for manifests (Issue #163)
+  - `--kms-key-id` and `--encrypt-manifest` flags; decrypt support in download/list/info
+- **Magika AI File Type Detection** — Optional AI-powered compression type selection (Issue #30)
+  - Lazy detection with extension pre-filter; ~1000 files/sec throughput
+- **Distributed Tracing** — OpenTelemetry tracing across all pipeline stages (Issue #155)
+  - stdout, Jaeger, and OTLP exporters; `--tracing`, `--tracing-exporter`, `--tracing-endpoint` flags
+- **Prometheus Metrics** — `--prometheus-addr` flag; per-upload counters and throughput gauges (Issue #155)
+- **Adaptive Shard Count** — Auto-tunes 4–32 shards from file count, data size, CPU/memory (Issue #106)
+- **Resume Interrupted Uploads** — Local state persistence + auto-detection + `cargoship resume` command (Issue #119)
+- **Automatic Storage Tier Selection** — `--auto-tier` selects STANDARD/GLACIER/DEEP_ARCHIVE by file age (Issue #32)
+- **Zero-Copy I/O** — Linux splice: BufferedPipe pooling, upload buffer pooling (Issue #153)
+- **HTTP/2 and TCP Network Tuning** — 3× throughput improvement on high-latency links (Issue #154)
+- **Content-Aware Compression** — Multi-level encoder pools; code/text/binary/media profiles (Issue #105)
+- **Adaptive Worker Scaling** — Worker count scales with workload size (Issue #58)
+- **Performance Optimizations** — mmap LRU cache, lock-free manifest updates, parallel scanner batching, HTTP connection pooling (Issue #34)
+- **CloudWatch Metrics** — CargoHold pipeline operation metrics (Issue #111)
+- **`cargoship migrate`** — Archive conversion command (Issue #100)
+- **CargoHold config file** — Config file support for CargoHold options (Issue #101)
+- **GoReleaser** — Automated multi-platform release builds (Issue #160)
 - **Incremental Sync** — Only upload changed files using content hashing (Issue #148)
 - **Manifest Enhancements** — Fast in-memory indexing, validation, compression (Issues #88, #91, #92)
 - **CargoHold** — Archive format with selective extraction, manifest query API (Issues #89, #90, #93)
@@ -119,16 +151,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session key generation for load balancer affinity (Issue #139)
 
 ### Fixed
-- Goroutine leaks in staging package via `Shutdown()` methods (Issue #142)
-- AWS SDK HTTP connection leaks (Issue #65)
-- Cost package test flakiness and period filtering
-- PrefixRouter deadlock on context cancellation
+- Critical context propagation bug in pipeline stages (Issue #155)
 - BBR packet tracking timing tolerance (Issue #152)
 - Monitoring interval configurability for flaky test (Issue #151)
+- Goroutine leaks in staging package via `Shutdown()` methods (Issue #142)
+- AWS SDK HTTP connection leaks (Issue #65)
+- PrefixRouter deadlock on context cancellation
+- Platform build issues: mmap, NUMA, SYS_GETCPU cross-compilation
+- CloudWatch publisher race condition (Issue #15)
 
 ### Issues Closed
-- #16, #64, #65, #88, #89, #90, #91, #92, #93, #95, #96, #98, #99, #101, #104
-- #105, #106, #108, #109, #111, #114, #138, #139, #141, #142, #148, #151–#155, #157–#159
+- #15, #16, #30, #32, #34, #58, #64, #65, #88–#96, #98–#101, #104–#106, #108–#109
+- #111, #114, #119, #138–#142, #148, #151–#155, #157–#160, #163
+
+## [0.6.2] - 2025-12-15
+
+### Added
+- Advanced S3 transporters integrated into Pipeline CLI: staging, adaptive, optimized, and basic modes
+  - `--transporter` flag: `basic`, `staging`, `adaptive`, `optimized`, `none`
+  - `--optimization`, `--congestion-control`, `--disable-staging` flags
+
+### Fixed
+- OptimizedTransporter Content-Length bug — switched to S3 manager uploader (Issue #162)
+
+## [0.6.1] - 2025-12-14
+
+### Added
+- **Performance Profiling Infrastructure** — Phases 1–4: continuous profiling, regression detection, CI/CD integration (Issue #33)
+- **S3 URL support for `info` command** (Issue #98)
+- **Upload Failure Cleanup** — Automatic cleanup of partial S3 multipart uploads (Issue #158)
+- **Resume Failed Uploads** — Initial resume infrastructure (Issue #157)
+- **Manifest Enhancements** — Thread-safe builder, validation, compression, query API (Issues #88–#93)
+- **`upload` command** — CargoHold sharding, `--shard-count`, `--shard-strategy` (Issue #95)
+- **`download` command** — S3 URL + auto-compression detection (Issue #96)
+- **`verify` command** — Dataset integrity verification (Issue #99)
+- **`migrate` command** — Archive conversion (Issue #100)
+- **CargoHold config** — Config file support (Issue #101)
+- **CloudWatch metrics** — Pipeline operation metrics (Issue #111)
+- Budget alert notification system (Issue #133)
+- HTTP/2 and TCP network tuning (Issue #154)
+- Zero-copy I/O optimizations (Issue #153)
+
+### Fixed
+- Goroutine leaks in staging package via `Shutdown()` methods (Issue #142)
+- AWS SDK HTTP connection leaks (Issue #65)
+- BBR packet tracking timing tolerance (Issue #152)
+- Monitoring interval configurability (Issue #151)
+- Platform build issues: mmap, NUMA cross-compilation
 
 ## [0.6.0] - 2025-12-09
 
