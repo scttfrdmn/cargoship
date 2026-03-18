@@ -254,6 +254,23 @@ func (b *Builder) UpdateFileS3Keys(chunkID int, shardID int, s3Key string) {
 	}
 }
 
+// UpdateFileS3KeyByPath updates the S3Key, ShardID, and ChunkID for the single
+// FileEntry whose SourcePath matches path. Used by direct upload mode where each
+// file has its own S3 key (unlike chunk-based mode where all files in a chunk
+// share the same key).
+func (b *Builder) UpdateFileS3KeyByPath(path string, shardID int, s3Key string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for i := range b.manifest.Files {
+		if b.manifest.Files[i].Path == path {
+			b.manifest.Files[i].S3Key = s3Key
+			b.manifest.Files[i].ShardID = shardID
+			b.manifest.Files[i].ChunkID = 0 // direct mode: no chunking
+			return
+		}
+	}
+}
+
 // Finalize completes the manifest and returns it (thread-safe)
 func (b *Builder) Finalize() *Manifest {
 	b.mu.Lock()
