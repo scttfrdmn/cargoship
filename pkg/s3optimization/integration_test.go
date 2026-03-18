@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,40 +17,133 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/scttfrdmn/substrate"
 )
 
 const (
-	testProfile = "aws"
-	testRegion  = "us-west-2"
-	testBucket  = "cargoship-integration-test"
-	testPrefix  = "s3optimization-test"
+	testPrefix = "s3optimization-test"
 )
 
-// TestRealAWSS3Integration performs comprehensive integration testing with real AWS S3
-func TestRealAWSS3Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
+var (
+	substrateURL string
+	testBucket   = "cargoship-integration-test"
+	testRegion   = "us-east-1"
+)
+
+func TestMain(m *testing.M) {
+	if os.Getenv("CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS") == "1" {
+		testRegion = "us-west-2" // real AWS path uses existing values
+	} else {
+		url, cancel, err := launchSubstrate()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "substrate: %v\n", err)
+			os.Exit(1)
+		}
+		defer cancel()
+		substrateURL = url
+		os.Setenv("AWS_ENDPOINT_URL", url)
+		os.Setenv("AWS_ACCESS_KEY_ID", "test")
+		os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+		os.Setenv("AWS_REGION", testRegion)
+		if err := createSubstrateBucket(url, testBucket); err != nil {
+			fmt.Fprintf(os.Stderr, "create bucket: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	os.Exit(m.Run())
+}
+
+// launchSubstrate starts an in-process Substrate server for use in TestMain.
+func launchSubstrate() (string, context.CancelFunc, error) {
+	cfg := substrate.DefaultConfig()
+	cfg.Server.Address = "127.0.0.1:0"
+	cfg.EventStore.Enabled = false
+	cfg.Log.Level = "error"
+
+	state := substrate.NewMemoryStateManager()
+	tc := substrate.NewTimeController(time.Now())
+	registry := substrate.NewPluginRegistry()
+	logger := substrate.NewDefaultLogger(slog.LevelError, false)
+	store := substrate.NewEventStore(cfg.EventStore.ToEventStoreConfig(), substrate.WithTimeController(tc))
+
+	ctx := context.Background()
+	if err := substrate.RegisterDefaultPlugins(ctx, registry, state, tc, logger, store, nil); err != nil {
+		return "", nil, fmt.Errorf("register plugins: %w", err)
 	}
 
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", nil, fmt.Errorf("listen: %w", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	srv := substrate.NewServer(*cfg, registry, store, state, tc, logger)
+	srvCtx, cancel := context.WithCancel(context.Background())
+	go func() { _ = srv.Serve(srvCtx, ln) }()
+
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, pingErr := http.Get(baseURL + "/health") //nolint:noctx
+		if pingErr == nil {
+			_ = resp.Body.Close()
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return baseURL, cancel, nil
+}
+
+// createSubstrateBucket creates an S3 bucket on the Substrate server.
+func createSubstrateBucket(baseURL, bucket string) error {
+	cfg := aws.Config{
+		Region:       "us-east-1",
+		BaseEndpoint: aws.String(baseURL),
+		Credentials:  credentials.NewStaticCredentialsProvider("test", "test", ""),
+	}
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) { o.UsePathStyle = true })
+	_, err := client.CreateBucket(context.Background(), &s3.CreateBucketInput{
+		Bucket: aws.String(bucket),
+	})
+	return err
+}
+
+// getTestS3Client returns an S3 client configured for Substrate or real AWS.
+func getTestS3Client(ctx context.Context) *s3.Client {
+	if substrateURL != "" {
+		cfg := aws.Config{
+			Region:       testRegion,
+			BaseEndpoint: aws.String(substrateURL),
+			Credentials:  credentials.NewStaticCredentialsProvider("test", "test", ""),
+		}
+		return s3.NewFromConfig(cfg, func(o *s3.Options) { o.UsePathStyle = true })
+	}
+	// Real AWS path
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithSharedConfigProfile("aws"),
+		config.WithRegion(testRegion),
+	)
+	if err != nil {
+		panic(fmt.Sprintf("failed to load AWS config: %v", err))
+	}
+	return s3.NewFromConfig(cfg)
+}
+
+// TestRealAWSS3Integration performs comprehensive integration testing with S3
+func TestRealAWSS3Integration(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	// Load AWS config with specific profile and region
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithSharedConfigProfile(testProfile),
-		config.WithRegion(testRegion),
-	)
-	require.NoError(t, err, "Failed to load AWS config")
-
-	// Create S3 client
-	s3Client := s3.NewFromConfig(cfg)
+	s3Client := getTestS3Client(ctx)
 
 	// Verify bucket exists or create it
-	err = ensureTestBucket(ctx, s3Client, testBucket)
+	err := ensureTestBucket(ctx, s3Client, testBucket)
 	require.NoError(t, err, "Failed to ensure test bucket exists")
 
 	t.Run("BasicOptimizedOperations", func(t *testing.T) {

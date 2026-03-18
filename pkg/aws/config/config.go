@@ -409,17 +409,15 @@ func (c *AWSConfig) Validate() error {
 	return nil
 }
 
-// isLocalStackEndpoint checks if the current configuration is using LocalStack
-func isLocalStackEndpoint() bool {
+// isEmulatorEndpoint checks if the current configuration uses a local AWS emulator.
+// Matches any localhost or 127.0.0.1 endpoint regardless of port.
+func isEmulatorEndpoint() bool {
 	endpointURL := os.Getenv("AWS_ENDPOINT_URL")
 	if endpointURL == "" {
-		endpointURL = os.Getenv("LOCALSTACK_ENDPOINT")
+		endpointURL = os.Getenv("LOCALSTACK_ENDPOINT") // backward compat
 	}
-
-	// Check for common LocalStack endpoint patterns
-	return strings.Contains(endpointURL, "localhost:4566") ||
-		strings.Contains(endpointURL, "127.0.0.1:4566") ||
-		strings.Contains(endpointURL, "localstack")
+	return strings.Contains(endpointURL, "localhost:") ||
+		strings.Contains(endpointURL, "127.0.0.1:")
 }
 
 // LoadAWSConfig loads AWS configuration with CargoShip defaults
@@ -442,34 +440,39 @@ func LoadAWSConfig(ctx context.Context, profile, region string) (aws.Config, err
 		return cfg, fmt.Errorf("failed to load AWS config for region '%s': %w", region, err)
 	}
 
-	// Configure for LocalStack compatibility if detected
-	if isLocalStackEndpoint() {
-		// Create custom endpoint resolver for LocalStack
-		cfg.BaseEndpoint = aws.String(getLocalStackEndpoint())
+	// Configure for local emulator compatibility if detected
+	if isEmulatorEndpoint() {
+		// Point the SDK at the local emulator endpoint
+		cfg.BaseEndpoint = aws.String(getEmulatorEndpoint())
 
-		// Note: S3 UsePathStyle must be configured on the S3 client options
-		// See: IsLocalStackConfig() and CreateLocalStackS3Client() functions
+		// Note: S3 UsePathStyle must be configured on the S3 client options.
+		// See: IsEmulatorConfig() / IsLocalStackConfig() functions.
 	}
 
 	return cfg, nil
 }
 
-// getLocalStackEndpoint returns the LocalStack endpoint URL
-func getLocalStackEndpoint() string {
+// getEmulatorEndpoint returns the local AWS emulator endpoint URL.
+func getEmulatorEndpoint() string {
 	endpointURL := os.Getenv("AWS_ENDPOINT_URL")
 	if endpointURL == "" {
-		endpointURL = os.Getenv("LOCALSTACK_ENDPOINT")
+		endpointURL = os.Getenv("LOCALSTACK_ENDPOINT") // backward compat
 	}
 	if endpointURL == "" {
-		endpointURL = "http://localhost:4566" // Default LocalStack endpoint
+		endpointURL = "http://localhost:4566" // default (docker-compose Substrate)
 	}
 	return endpointURL
 }
 
-// IsLocalStackConfig returns true if the current configuration is using LocalStack
-// This function can be used by other packages to determine LocalStack usage
+// IsEmulatorConfig returns true if the current configuration is using a local AWS emulator
+// (Substrate, LocalStack, or any other emulator reachable on localhost).
+func IsEmulatorConfig() bool {
+	return isEmulatorEndpoint()
+}
+
+// IsLocalStackConfig is a deprecated alias for IsEmulatorConfig.
 func IsLocalStackConfig() bool {
-	return isLocalStackEndpoint()
+	return IsEmulatorConfig()
 }
 
 // GetPeriodBounds returns the start and end dates for the budget period

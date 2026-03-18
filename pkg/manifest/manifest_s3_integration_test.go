@@ -6,15 +6,21 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/scttfrdmn/substrate"
 )
 
 const (
@@ -23,17 +29,97 @@ const (
 	testProfileEnv = "AWS_PROFILE"
 )
 
+var (
+	substrateURL    string
+	integTestBucket = "cargoship-manifest-test"
+)
+
+func TestMain(m *testing.M) {
+	if bucket := os.Getenv(testBucketEnv); bucket != "" {
+		integTestBucket = bucket // real AWS
+	} else {
+		url, cancel, err := launchSubstrate()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "substrate: %v\n", err)
+			os.Exit(1)
+		}
+		defer cancel()
+		substrateURL = url
+		os.Setenv("AWS_ENDPOINT_URL", url)
+		os.Setenv("AWS_ACCESS_KEY_ID", "test")
+		os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+		os.Setenv("AWS_REGION", "us-east-1")
+		if err := createSubstrateBucket(url, integTestBucket); err != nil {
+			fmt.Fprintf(os.Stderr, "create bucket: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	os.Exit(m.Run())
+}
+
+// launchSubstrate starts an in-process Substrate server for use in TestMain.
+func launchSubstrate() (string, context.CancelFunc, error) {
+	cfg := substrate.DefaultConfig()
+	cfg.Server.Address = "127.0.0.1:0"
+	cfg.EventStore.Enabled = false
+	cfg.Log.Level = "error"
+
+	state := substrate.NewMemoryStateManager()
+	tc := substrate.NewTimeController(time.Now())
+	registry := substrate.NewPluginRegistry()
+	logger := substrate.NewDefaultLogger(slog.LevelError, false)
+	store := substrate.NewEventStore(cfg.EventStore.ToEventStoreConfig(), substrate.WithTimeController(tc))
+
+	ctx := context.Background()
+	if err := substrate.RegisterDefaultPlugins(ctx, registry, state, tc, logger, store, nil); err != nil {
+		return "", nil, fmt.Errorf("register plugins: %w", err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", nil, fmt.Errorf("listen: %w", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	srv := substrate.NewServer(*cfg, registry, store, state, tc, logger)
+	srvCtx, cancel := context.WithCancel(context.Background())
+	go func() { _ = srv.Serve(srvCtx, ln) }()
+
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, pingErr := http.Get(baseURL + "/health") //nolint:noctx
+		if pingErr == nil {
+			_ = resp.Body.Close()
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return baseURL, cancel, nil
+}
+
+// createSubstrateBucket creates an S3 bucket on the Substrate server.
+func createSubstrateBucket(baseURL, bucket string) error {
+	cfg := aws.Config{
+		Region:       "us-east-1",
+		BaseEndpoint: aws.String(baseURL),
+		Credentials:  credentials.NewStaticCredentialsProvider("test", "test", ""),
+	}
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) { o.UsePathStyle = true })
+	_, err := client.CreateBucket(context.Background(), &s3.CreateBucketInput{
+		Bucket: aws.String(bucket),
+	})
+	return err
+}
+
 func getTestConfig(t *testing.T) (bucket, region string, s3Client *s3.Client) {
 	t.Helper()
 
-	bucket = os.Getenv(testBucketEnv)
-	if bucket == "" {
-		t.Skipf("Skipping S3 integration test: %s not set", testBucketEnv)
-	}
+	bucket = integTestBucket
 
 	region = os.Getenv(testRegionEnv)
 	if region == "" {
-		region = "us-west-2" // Default
+		region = "us-east-1"
 	}
 
 	profile := os.Getenv(testProfileEnv)
@@ -56,7 +142,11 @@ func getTestConfig(t *testing.T) (bucket, region string, s3Client *s3.Client) {
 
 	require.NoError(t, err, "Failed to load AWS config")
 
-	s3Client = s3.NewFromConfig(cfg)
+	var s3Opts []func(*s3.Options)
+	if substrateURL != "" {
+		s3Opts = append(s3Opts, func(o *s3.Options) { o.UsePathStyle = true })
+	}
+	s3Client = s3.NewFromConfig(cfg, s3Opts...)
 	return bucket, region, s3Client
 }
 
@@ -123,7 +213,7 @@ func TestManifest_UploadToS3_Integration(t *testing.T) {
 		})
 		require.NoError(t, err)
 		assert.NotNil(t, result)
-		assert.Equal(t, "application/json", *result.ContentType)
+		assert.Equal(t, "application/json", aws.ToString(result.ContentType))
 	})
 
 	// Test compressed upload
@@ -141,8 +231,8 @@ func TestManifest_UploadToS3_Integration(t *testing.T) {
 		})
 		require.NoError(t, err)
 		assert.NotNil(t, result)
-		assert.Equal(t, "application/json", *result.ContentType)
-		assert.Equal(t, "gzip", *result.ContentEncoding)
+		assert.Equal(t, "application/json", aws.ToString(result.ContentType))
+		assert.Equal(t, "gzip", aws.ToString(result.ContentEncoding))
 	})
 }
 

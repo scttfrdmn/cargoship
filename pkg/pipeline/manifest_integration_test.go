@@ -25,11 +25,6 @@ import (
 // - S3 bucket available (CARGOSHIP_TEST_BUCKET or defaults to cargoship-pipeline-test)
 // - Run with: go test -tags=integration -run TestManifestIntegration_Generation
 func TestManifestIntegration_Generation(t *testing.T) {
-	// Skip if not explicitly enabled
-	if os.Getenv("CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS") == "" {
-		t.Skip("S3 integration tests disabled. Set CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1 to enable")
-	}
-
 	// Get S3 bucket from environment or use default
 	bucket := os.Getenv("CARGOSHIP_TEST_BUCKET")
 	if bucket == "" {
@@ -39,7 +34,7 @@ func TestManifestIntegration_Generation(t *testing.T) {
 	// Get AWS region from environment or use default
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
-		region = "us-west-2"
+		region = "us-east-1"
 	}
 
 	// Create AWS config
@@ -49,16 +44,12 @@ func TestManifestIntegration_Generation(t *testing.T) {
 	require.NoError(t, err, "Failed to load AWS config")
 
 	// Create S3 client
-	s3Client := s3.NewFromConfig(cfg)
-
-	// Verify bucket exists
-	ctx := context.Background()
-	_, err = s3Client.HeadBucket(ctx, &s3.HeadBucketInput{
-		Bucket: aws.String(bucket),
-	})
-	if err != nil {
-		t.Skipf("S3 bucket %s not accessible: %v", bucket, err)
+	var s3Opts []func(*s3.Options)
+	if substrateURL != "" {
+		s3Opts = append(s3Opts, func(o *s3.Options) { o.UsePathStyle = true })
 	}
+	s3Client := s3.NewFromConfig(cfg, s3Opts...)
+	ctx := context.Background()
 
 	// Create test directory with files
 	tmpDir, cleanup := createTestFiles(t, 25, 5*1024) // 25 files @ 5KB each
@@ -173,11 +164,6 @@ func TestManifestIntegration_Generation(t *testing.T) {
 
 // TestManifestIntegration_QueryAPI tests the manifest query functionality
 func TestManifestIntegration_QueryAPI(t *testing.T) {
-	// Skip if not explicitly enabled
-	if os.Getenv("CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS") == "" {
-		t.Skip("S3 integration tests disabled. Set CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1 to enable")
-	}
-
 	// Get S3 bucket from environment or use default
 	bucket := os.Getenv("CARGOSHIP_TEST_BUCKET")
 	if bucket == "" {
@@ -187,7 +173,7 @@ func TestManifestIntegration_QueryAPI(t *testing.T) {
 	// Get AWS region from environment or use default
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
-		region = "us-west-2"
+		region = "us-east-1"
 	}
 
 	// Create AWS config
@@ -197,16 +183,12 @@ func TestManifestIntegration_QueryAPI(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create S3 client
-	s3Client := s3.NewFromConfig(cfg)
-
-	// Verify bucket exists
-	ctx := context.Background()
-	_, err = s3Client.HeadBucket(ctx, &s3.HeadBucketInput{
-		Bucket: aws.String(bucket),
-	})
-	if err != nil {
-		t.Skipf("S3 bucket %s not accessible: %v", bucket, err)
+	var s3Opts []func(*s3.Options)
+	if substrateURL != "" {
+		s3Opts = append(s3Opts, func(o *s3.Options) { o.UsePathStyle = true })
 	}
+	s3Client := s3.NewFromConfig(cfg, s3Opts...)
+	ctx := context.Background()
 
 	// Create test directory with known file structure
 	tmpDir, cleanup := createTestFiles(t, 15, 3*1024) // 15 files @ 3KB each

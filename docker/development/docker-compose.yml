@@ -30,7 +30,7 @@ services:
       start_period: 30s
     depends_on:
       - prometheus
-      - localstack
+      - substrate
 
   # Ghost Ship 1 - simulates astrapi.local
   ghost-ship-1:
@@ -53,12 +53,12 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-west-2
-      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ENDPOINT_URL=http://substrate:4566
     networks:
       - cargoship-net
     depends_on:
       - cargoship-controller
-      - localstack
+      - substrate
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
       interval: 15s
@@ -87,12 +87,12 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-west-2
-      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ENDPOINT_URL=http://substrate:4566
     networks:
       - cargoship-net
     depends_on:
       - cargoship-controller
-      - localstack
+      - substrate
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
       interval: 15s
@@ -100,24 +100,15 @@ services:
       retries: 3
       start_period: 45s
 
-  # LocalStack - AWS services simulation
-  localstack:
-    image: localstack/localstack:latest
-    container_name: cargoship-localstack
+  # Substrate - in-process AWS emulator (replaces LocalStack)
+  substrate:
+    image: ghcr.io/scttfrdmn/substrate:latest
+    container_name: cargoship-substrate
     ports:
-      - "4566:4566"    # LocalStack endpoint
-      - "4571:4571"    # LocalStack dashboard
+      - "4566:4566"
     environment:
-      - SERVICES=s3,cloudwatch,logs
-      - DEBUG=1
-      - DATA_DIR=/tmp/localstack-data
-      - DOCKER_HOST=unix:///var/run/docker.sock
-      - AWS_DEFAULT_REGION=us-west-2
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
-    volumes:
-      - localstack-data:/tmp/localstack-data
-      - "/var/run/docker.sock:/var/run/docker.sock"
+      - SUBSTRATE_SERVER_ADDRESS=:4566
+      - SUBSTRATE_LOG_LEVEL=error
     networks:
       - cargoship-net
     healthcheck:
@@ -125,7 +116,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 5s
 
   # Prometheus - Metrics collection
   prometheus:
@@ -193,7 +184,7 @@ services:
       - CONTROLLER_URL=http://cargoship-controller:8080
       - GHOST_SHIP_1_URL=http://ghost-ship-1:9090
       - GHOST_SHIP_2_URL=http://ghost-ship-2:9090
-      - LOCALSTACK_URL=http://localstack:4566
+      - SUBSTRATE_URL=http://substrate:4566
       - TEST_TIMEOUT=300s
     networks:
       - cargoship-net
@@ -201,7 +192,7 @@ services:
       - cargoship-controller
       - ghost-ship-1
       - ghost-ship-2
-      - localstack
+      - substrate
     profiles:
       - testing
 
@@ -234,6 +225,5 @@ volumes:
   ghost-ship-2-logs:
   ghost-ship-1-work:
   ghost-ship-2-work:
-  localstack-data:
   prometheus-data:
   grafana-data:

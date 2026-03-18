@@ -367,8 +367,8 @@ func TestLoadAWSConfig_Contexts(t *testing.T) {
 	// Test with timeout context would be more complex and may not be reliable in tests
 }
 
-// TestGetLocalStackEndpoint tests the getLocalStackEndpoint function
-func TestGetLocalStackEndpoint(t *testing.T) {
+// TestGetEmulatorEndpoint tests the getEmulatorEndpoint function
+func TestGetEmulatorEndpoint(t *testing.T) {
 	// Save original env vars
 	origAWSEndpoint := os.Getenv("AWS_ENDPOINT_URL")
 	origLocalStackEndpoint := os.Getenv("LOCALSTACK_ENDPOINT")
@@ -390,16 +390,16 @@ func TestGetLocalStackEndpoint(t *testing.T) {
 			want:               "http://custom:4566",
 		},
 		{
-			name:               "LOCALSTACK_ENDPOINT set",
+			name:               "LOCALSTACK_ENDPOINT set (backward compat)",
 			awsEndpointURL:     "",
-			localStackEndpoint: "http://localstack:4566",
-			want:               "http://localstack:4566",
+			localStackEndpoint: "http://localhost:9000",
+			want:               "http://localhost:9000",
 		},
 		{
 			name:               "Both set - AWS_ENDPOINT_URL takes precedence",
-			awsEndpointURL:     "http://aws:4566",
-			localStackEndpoint: "http://local:4566",
-			want:               "http://aws:4566",
+			awsEndpointURL:     "http://127.0.0.1:8000",
+			localStackEndpoint: "http://127.0.0.1:4566",
+			want:               "http://127.0.0.1:8000",
 		},
 		{
 			name:               "Neither set - default",
@@ -414,16 +414,16 @@ func TestGetLocalStackEndpoint(t *testing.T) {
 			_ = os.Setenv("AWS_ENDPOINT_URL", tt.awsEndpointURL)
 			_ = os.Setenv("LOCALSTACK_ENDPOINT", tt.localStackEndpoint)
 
-			got := getLocalStackEndpoint()
+			got := getEmulatorEndpoint()
 			if got != tt.want {
-				t.Errorf("getLocalStackEndpoint() = %v, want %v", got, tt.want)
+				t.Errorf("getEmulatorEndpoint() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-// TestIsLocalStackConfig tests the IsLocalStackConfig function
-func TestIsLocalStackConfig(t *testing.T) {
+// TestIsEmulatorConfig tests the IsEmulatorConfig function
+func TestIsEmulatorConfig(t *testing.T) {
 	// Save original env var
 	origEndpoint := os.Getenv("AWS_ENDPOINT_URL")
 	defer func() {
@@ -441,8 +441,18 @@ func TestIsLocalStackConfig(t *testing.T) {
 			want:     true,
 		},
 		{
+			name:     "localhost on random port (Substrate)",
+			endpoint: "http://localhost:54321",
+			want:     true,
+		},
+		{
 			name:     "127.0.0.1 endpoint",
 			endpoint: "http://127.0.0.1:4566",
+			want:     true,
+		},
+		{
+			name:     "127.0.0.1 on random port (Substrate)",
+			endpoint: "http://127.0.0.1:12345",
 			want:     true,
 		},
 		{
@@ -461,9 +471,9 @@ func TestIsLocalStackConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_ = os.Setenv("AWS_ENDPOINT_URL", tt.endpoint)
 
-			got := IsLocalStackConfig()
+			got := IsEmulatorConfig()
 			if got != tt.want {
-				t.Errorf("IsLocalStackConfig() = %v, want %v", got, tt.want)
+				t.Errorf("IsEmulatorConfig() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -1261,5 +1271,12 @@ func TestBudgetPeriod_String(t *testing.T) {
 				t.Errorf("String() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsLocalStackConfig(t *testing.T) {
+	t.Setenv("AWS_ENDPOINT_URL", "http://127.0.0.1:4566")
+	if !IsLocalStackConfig() {
+		t.Error("IsLocalStackConfig() = false, want true")
 	}
 }

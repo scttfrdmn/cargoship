@@ -5,6 +5,9 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -14,59 +17,86 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/scttfrdmn/substrate"
 )
 
-const (
-	localStackEndpoint = "http://localhost:4566"
-	testRegion         = "us-east-1"
-)
+const testRegion = "us-east-1"
+
+var substrateURL string
 
 func TestMain(m *testing.M) {
-	// Check if LocalStack is available
-	if !isLocalStackAvailable() {
-		fmt.Println("Skipping integration tests - LocalStack not available")
-		fmt.Println("To run integration tests:")
-		fmt.Println("  docker run --rm -d -p 4566:4566 localstack/localstack")
-		os.Exit(0)
+	url, cancel, err := launchSubstrate()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "substrate: %v\n", err)
+		os.Exit(1)
 	}
-
-	// Run tests
-	code := m.Run()
-	os.Exit(code)
+	defer cancel()
+	substrateURL = url
+	os.Exit(m.Run())
 }
 
-func isLocalStackAvailable() bool {
-	client := getTestCloudWatchClient()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+// launchSubstrate starts an in-process Substrate server for use in TestMain.
+func launchSubstrate() (string, context.CancelFunc, error) {
+	cfg := substrate.DefaultConfig()
+	cfg.Server.Address = "127.0.0.1:0"
+	cfg.EventStore.Enabled = false
+	cfg.Log.Level = "error"
 
-	// Try to list metrics - this will succeed even if there are no metrics
-	_, err := client.ListMetrics(ctx, &cloudwatch.ListMetricsInput{})
-	return err == nil
+	state := substrate.NewMemoryStateManager()
+	tc := substrate.NewTimeController(time.Now())
+	registry := substrate.NewPluginRegistry()
+	logger := substrate.NewDefaultLogger(slog.LevelError, false)
+	store := substrate.NewEventStore(cfg.EventStore.ToEventStoreConfig(), substrate.WithTimeController(tc))
+
+	ctx := context.Background()
+	if err := substrate.RegisterDefaultPlugins(ctx, registry, state, tc, logger, store, nil); err != nil {
+		return "", nil, fmt.Errorf("register plugins: %w", err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", nil, fmt.Errorf("listen: %w", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	srv := substrate.NewServer(*cfg, registry, store, state, tc, logger)
+	srvCtx, cancel := context.WithCancel(context.Background())
+	go func() { _ = srv.Serve(srvCtx, ln) }()
+
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, pingErr := http.Get(baseURL + "/health") //nolint:noctx
+		if pingErr == nil {
+			_ = resp.Body.Close()
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return baseURL, cancel, nil
 }
 
 func getTestCloudWatchClient() *cloudwatch.Client {
 	cfg := aws.Config{
-		Region:      testRegion,
-		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
-		EndpointResolverWithOptions: aws.EndpointResolverWithOptionsFunc(
-			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-				return aws.Endpoint{
-					URL:           localStackEndpoint,
-					SigningRegion: testRegion,
-				}, nil
-			},
-		),
+		Region:       testRegion,
+		Credentials:  credentials.NewStaticCredentialsProvider("test", "test", ""),
+		BaseEndpoint: aws.String(substrateURL),
 	}
-
 	return cloudwatch.NewFromConfig(cfg)
 }
 
 func TestRunMetricsIntegrationWithLocalStack(t *testing.T) {
-	// This test requires LocalStack running with CloudWatch support
+	// This test requires Substrate running with CloudWatch support
 	if testing.Short() {
-		t.Skip("Skipping LocalStack integration test in short mode")
+		t.Skip("Skipping integration test in short mode")
 	}
+
+	// Route AWS SDK calls to Substrate for this test
+	t.Setenv("AWS_ENDPOINT_URL", substrateURL)
+	t.Setenv("AWS_ACCESS_KEY_ID", "test")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+	t.Setenv("AWS_REGION", testRegion)
 
 	// Save original global variables
 	originalNamespace := metricsNamespace
@@ -92,11 +122,11 @@ func TestRunMetricsIntegrationWithLocalStack(t *testing.T) {
 	err = cmd.Flags().Set("region", metricsRegion)
 	require.NoError(t, err)
 
-	// Run the metrics command - this should work with LocalStack
+	// Run the metrics command - this should work with Substrate
 	err = cmd.RunE(cmd, []string{})
-	assert.NoError(t, err, "runMetrics should succeed with LocalStack")
+	assert.NoError(t, err, "runMetrics should succeed with Substrate")
 
-	// Verify metrics were published to LocalStack
+	// Verify metrics were published to Substrate
 	client := getTestCloudWatchClient()
 	ctx := context.Background()
 
@@ -110,8 +140,8 @@ func TestRunMetricsIntegrationWithLocalStack(t *testing.T) {
 	assert.NoError(t, err)
 
 	// We should have some metrics published
-	if len(output.Metrics) > 0 {
-		t.Logf("Successfully published %d metrics to LocalStack CloudWatch", len(output.Metrics))
+	if output != nil && len(output.Metrics) > 0 {
+		t.Logf("Successfully published %d metrics to Substrate CloudWatch", len(output.Metrics))
 
 		// Verify some expected metric names
 		metricNames := make(map[string]bool)
@@ -126,7 +156,7 @@ func TestRunMetricsIntegrationWithLocalStack(t *testing.T) {
 			assert.True(t, metricNames[expected], "Should have published %s metric", expected)
 		}
 	} else {
-		t.Log("No metrics found - LocalStack may not fully support CloudWatch metrics API")
+		t.Log("No metrics found - Substrate may not fully support CloudWatch metrics API")
 	}
 }
 
@@ -150,8 +180,14 @@ func TestRunMetricsValidationIntegration(t *testing.T) {
 
 func TestRunMetricsWithCustomParameters(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping LocalStack integration test in short mode")
+		t.Skip("Skipping integration test in short mode")
 	}
+
+	// Route AWS SDK calls to Substrate for this test
+	t.Setenv("AWS_ENDPOINT_URL", substrateURL)
+	t.Setenv("AWS_ACCESS_KEY_ID", "test")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+	t.Setenv("AWS_REGION", testRegion)
 
 	// Save original global variables
 	originalNamespace := metricsNamespace
@@ -210,11 +246,14 @@ func TestRunMetricsWithCustomParameters(t *testing.T) {
 
 func TestRunMetricsAWSConfigHandling(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping LocalStack integration test in short mode")
+		t.Skip("Skipping integration test in short mode")
 	}
 
-	// This test verifies that the function can handle AWS config loading
-	// even if it encounters errors (which is common in test environments)
+	// Route AWS SDK calls to Substrate for this test
+	t.Setenv("AWS_ENDPOINT_URL", substrateURL)
+	t.Setenv("AWS_ACCESS_KEY_ID", "test")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+	t.Setenv("AWS_REGION", testRegion)
 
 	// Save original global variables
 	originalNamespace := metricsNamespace
@@ -234,8 +273,7 @@ func TestRunMetricsAWSConfigHandling(t *testing.T) {
 	err := cmd.Flags().Set("test", "true")
 	require.NoError(t, err)
 
-	// This should succeed even if AWS credentials are not properly configured
-	// because we're using LocalStack
+	// This should succeed because we're using Substrate
 	err = cmd.RunE(cmd, []string{})
 	assert.NoError(t, err, "Should handle AWS config loading gracefully")
 }

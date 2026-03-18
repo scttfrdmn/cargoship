@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -14,119 +12,27 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/scttfrdmn/substrate"
+
 	awsconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
 	"github.com/scttfrdmn/cargoship/pkg/staging"
 )
 
-var (
-	localStackContainer  string
-	localStackStarted    bool
-	localStackWasRunning bool
-)
 
-// startLocalStack starts a LocalStack container for testing
-func startLocalStack(t *testing.T) {
-	if localStackStarted {
-		return
-	}
-
-	// Skip LocalStack tests if explicitly requested (e.g., in pre-commit hooks)
-	if os.Getenv("SKIP_LOCALSTACK") != "" || os.Getenv("SKIP_INTEGRATION") != "" {
-		t.Skip("Skipping LocalStack tests (SKIP_LOCALSTACK or SKIP_INTEGRATION set)")
-		return
-	}
-
-	// Skip in short mode (go test -short)
+// setupSubstrateEnv starts an in-process Substrate server and sets the AWS
+// environment variables to point at it. The returned cleanup restores them.
+func setupSubstrateEnv(t *testing.T) func() {
+	t.Helper()
 	if testing.Short() {
-		t.Skip("Skipping LocalStack integration tests in short mode")
-		return
+		t.Skip("Skipping Substrate integration test in short mode")
 	}
-
-	// Check if LocalStack is already running
-	conn, err := net.DialTimeout("tcp", "localhost:4566", 2*time.Second)
-	if err == nil {
-		_ = conn.Close()
-		localStackStarted = true
-		localStackWasRunning = true
-		t.Logf("Using existing LocalStack instance at localhost:4566")
-		return
-	}
-
-	// Check if Docker is available
-	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("Docker not available, skipping AWS integration tests")
-		return
-	}
-
-	// Start LocalStack container
-	cmd := exec.Command("docker", "run", "-d", "--rm",
-		"-p", "4566:4566",
-		"-e", "SERVICES=s3",
-		"-e", "DEBUG=1",
-		"--name", "cargoship-test-localstack",
-		"localstack/localstack:latest")
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Logf("Failed to start LocalStack: %v\nOutput: %s", err, output)
-		t.Skip("Could not start LocalStack for AWS integration tests")
-		return
-	}
-
-	localStackContainer = strings.TrimSpace(string(output))
-	t.Logf("Started LocalStack container: %s", localStackContainer)
-
-	// Wait for LocalStack to be ready
-	for i := 0; i < 30; i++ {
-		conn, err := net.DialTimeout("tcp", "localhost:4566", 1*time.Second)
-		if err == nil {
-			_ = conn.Close()
-			localStackStarted = true
-			t.Logf("LocalStack is ready after %d seconds", i+1)
-			return
-		}
-		time.Sleep(1 * time.Second)
-	}
-
-	// If we get here, LocalStack didn't start properly
-	stopLocalStack(t)
-	t.Skip("LocalStack failed to start within 30 seconds")
-}
-
-// stopLocalStack stops the LocalStack container
-func stopLocalStack(t *testing.T) {
-	if localStackContainer == "" {
-		return
-	}
-
-	cmd := exec.Command("docker", "stop", localStackContainer)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Logf("Failed to stop LocalStack container: %v\nOutput: %s", err, output)
-	} else {
-		t.Logf("Stopped LocalStack container: %s", localStackContainer)
-	}
-
-	localStackContainer = ""
-	localStackStarted = false
-}
-
-// setupLocalStackEnv sets up environment variables for LocalStack
-func setupLocalStackEnv(t *testing.T) func() {
-	startLocalStack(t)
-
-	// Set environment variables for AWS SDK to use LocalStack
-	_ = os.Setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	_ = os.Setenv("AWS_REGION", "us-east-1")
-
-	return func() {
-		_ = os.Unsetenv("AWS_ENDPOINT_URL")
-		_ = os.Unsetenv("AWS_ACCESS_KEY_ID")
-		_ = os.Unsetenv("AWS_SECRET_ACCESS_KEY")
-		_ = os.Unsetenv("AWS_REGION")
-	}
+	ts := substrate.StartTestServer(t)
+	t.Setenv("AWS_ENDPOINT_URL", ts.URL)
+	t.Setenv("AWS_ACCESS_KEY_ID", "test")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+	t.Setenv("AWS_REGION", "us-east-1")
+	return func() {} // t.Setenv already registers cleanup via t.Cleanup
 }
 
 // createValidMultiRegionS3Config creates a valid configuration for testing
@@ -284,7 +190,7 @@ func TestNewMultiRegionS3Transporter(t *testing.T) {
 }
 
 func TestMultiRegionS3Transporter_Upload(t *testing.T) {
-	cleanup := setupLocalStackEnv(t)
+	cleanup := setupSubstrateEnv(t)
 	defer cleanup()
 
 	// Create minimal config for testing (will likely fail due to no AWS credentials)
@@ -296,7 +202,7 @@ func TestMultiRegionS3Transporter_Upload(t *testing.T) {
 
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
-		t.Skip("Skipping upload test: failed to create transporter (LocalStack not available or AWS config issue)")
+		t.Skip("Skipping upload test: failed to create transporter")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
 
@@ -378,17 +284,8 @@ func TestMultiRegionS3Transporter_Upload(t *testing.T) {
 }
 
 func TestMultiRegionS3Transporter_UploadSingle(t *testing.T) {
-	// Use LocalStack endpoint for testing
-	_ = os.Setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	_ = os.Setenv("AWS_REGION", "us-east-1")
-	defer func() {
-		_ = os.Unsetenv("AWS_ENDPOINT_URL")
-		_ = os.Unsetenv("AWS_ACCESS_KEY_ID")
-		_ = os.Unsetenv("AWS_SECRET_ACCESS_KEY")
-		_ = os.Unsetenv("AWS_REGION")
-	}()
+	cleanup := setupSubstrateEnv(t)
+	defer cleanup()
 
 	config := createValidMultiRegionS3Config()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -398,7 +295,7 @@ func TestMultiRegionS3Transporter_UploadSingle(t *testing.T) {
 
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
-		t.Skip("Skipping uploadSingle test: failed to create transporter (LocalStack not available)")
+		t.Skip("Skipping uploadSingle test: failed to create transporter")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
 
@@ -413,17 +310,8 @@ func TestMultiRegionS3Transporter_UploadSingle(t *testing.T) {
 }
 
 func TestMultiRegionS3Transporter_UploadRedundant(t *testing.T) {
-	// Use LocalStack endpoint for testing
-	_ = os.Setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	_ = os.Setenv("AWS_REGION", "us-east-1")
-	defer func() {
-		_ = os.Unsetenv("AWS_ENDPOINT_URL")
-		_ = os.Unsetenv("AWS_ACCESS_KEY_ID")
-		_ = os.Unsetenv("AWS_SECRET_ACCESS_KEY")
-		_ = os.Unsetenv("AWS_REGION")
-	}()
+	cleanup := setupSubstrateEnv(t)
+	defer cleanup()
 
 	config := createValidMultiRegionS3Config()
 	config.RedundantUploads = true
@@ -435,7 +323,7 @@ func TestMultiRegionS3Transporter_UploadRedundant(t *testing.T) {
 
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
-		t.Skip("Skipping uploadRedundant test: failed to create transporter (LocalStack not available)")
+		t.Skip("Skipping uploadRedundant test: failed to create transporter")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
 
@@ -450,17 +338,8 @@ func TestMultiRegionS3Transporter_UploadRedundant(t *testing.T) {
 }
 
 func TestMultiRegionS3Transporter_UploadWithFailover(t *testing.T) {
-	// Use LocalStack endpoint for testing
-	_ = os.Setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	_ = os.Setenv("AWS_REGION", "us-east-1")
-	defer func() {
-		_ = os.Unsetenv("AWS_ENDPOINT_URL")
-		_ = os.Unsetenv("AWS_ACCESS_KEY_ID")
-		_ = os.Unsetenv("AWS_SECRET_ACCESS_KEY")
-		_ = os.Unsetenv("AWS_REGION")
-	}()
+	cleanup := setupSubstrateEnv(t)
+	defer cleanup()
 
 	config := createValidMultiRegionS3Config()
 	config.CrossRegionRetries = 2
@@ -471,7 +350,7 @@ func TestMultiRegionS3Transporter_UploadWithFailover(t *testing.T) {
 
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
-		t.Skip("Skipping uploadWithFailover test: failed to create transporter (LocalStack not available)")
+		t.Skip("Skipping uploadWithFailover test: failed to create transporter")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
 
@@ -486,17 +365,8 @@ func TestMultiRegionS3Transporter_UploadWithFailover(t *testing.T) {
 }
 
 func TestMultiRegionS3Transporter_ExecuteUpload(t *testing.T) {
-	// Use LocalStack endpoint for testing
-	_ = os.Setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	_ = os.Setenv("AWS_REGION", "us-east-1")
-	defer func() {
-		_ = os.Unsetenv("AWS_ENDPOINT_URL")
-		_ = os.Unsetenv("AWS_ACCESS_KEY_ID")
-		_ = os.Unsetenv("AWS_SECRET_ACCESS_KEY")
-		_ = os.Unsetenv("AWS_REGION")
-	}()
+	cleanup := setupSubstrateEnv(t)
+	defer cleanup()
 
 	config := createValidMultiRegionS3Config()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -506,7 +376,7 @@ func TestMultiRegionS3Transporter_ExecuteUpload(t *testing.T) {
 
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
-		t.Skip("Skipping executeUpload test: failed to create transporter (LocalStack not available)")
+		t.Skip("Skipping executeUpload test: failed to create transporter")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
 
@@ -524,17 +394,8 @@ func TestMultiRegionS3Transporter_ExecuteUpload(t *testing.T) {
 }
 
 func TestMultiRegionS3Transporter_GetRegionTransporter(t *testing.T) {
-	// Use LocalStack endpoint for testing
-	_ = os.Setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	_ = os.Setenv("AWS_REGION", "us-east-1")
-	defer func() {
-		_ = os.Unsetenv("AWS_ENDPOINT_URL")
-		_ = os.Unsetenv("AWS_ACCESS_KEY_ID")
-		_ = os.Unsetenv("AWS_SECRET_ACCESS_KEY")
-		_ = os.Unsetenv("AWS_REGION")
-	}()
+	cleanup := setupSubstrateEnv(t)
+	defer cleanup()
 
 	config := createValidMultiRegionS3Config()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -544,7 +405,7 @@ func TestMultiRegionS3Transporter_GetRegionTransporter(t *testing.T) {
 
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
-		t.Skip("Skipping getRegionTransporter test: failed to create transporter (LocalStack not available)")
+		t.Skip("Skipping getRegionTransporter test: failed to create transporter")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
 
@@ -563,17 +424,8 @@ func TestMultiRegionS3Transporter_GetRegionTransporter(t *testing.T) {
 }
 
 func TestMultiRegionS3Transporter_InitializeRegionTransporters(t *testing.T) {
-	// Use LocalStack endpoint for testing
-	_ = os.Setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	_ = os.Setenv("AWS_REGION", "us-east-1")
-	defer func() {
-		_ = os.Unsetenv("AWS_ENDPOINT_URL")
-		_ = os.Unsetenv("AWS_ACCESS_KEY_ID")
-		_ = os.Unsetenv("AWS_SECRET_ACCESS_KEY")
-		_ = os.Unsetenv("AWS_REGION")
-	}()
+	cleanup := setupSubstrateEnv(t)
+	defer cleanup()
 
 	// Test the initialization process
 	config := createValidMultiRegionS3Config()
@@ -604,17 +456,8 @@ func TestMultiRegionS3Transporter_InitializeRegionTransporters(t *testing.T) {
 }
 
 func TestMultiRegionS3Transporter_Shutdown(t *testing.T) {
-	// Use LocalStack endpoint for testing
-	_ = os.Setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	_ = os.Setenv("AWS_REGION", "us-east-1")
-	defer func() {
-		_ = os.Unsetenv("AWS_ENDPOINT_URL")
-		_ = os.Unsetenv("AWS_ACCESS_KEY_ID")
-		_ = os.Unsetenv("AWS_SECRET_ACCESS_KEY")
-		_ = os.Unsetenv("AWS_REGION")
-	}()
+	cleanup := setupSubstrateEnv(t)
+	defer cleanup()
 
 	config := createValidMultiRegionS3Config()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -624,7 +467,7 @@ func TestMultiRegionS3Transporter_Shutdown(t *testing.T) {
 
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
-		t.Skip("Skipping shutdown test: failed to create transporter (LocalStack not available)")
+		t.Skip("Skipping shutdown test: failed to create transporter")
 	}
 
 	// Test shutdown
@@ -828,37 +671,14 @@ func TestMultiRegionS3Config_Validation(t *testing.T) {
 	}
 }
 
-// TestMain sets up and tears down LocalStack for all tests
 func TestMain(m *testing.M) {
-	// Run tests
-	code := m.Run()
-
-	// Clean up LocalStack only if we started it ourselves
-	if localStackContainer != "" && !localStackWasRunning {
-		cmd := exec.Command("docker", "stop", localStackContainer)
-		if err := cmd.Run(); err != nil {
-			fmt.Printf("Warning: Failed to stop LocalStack container: %v\n", err)
-		} else {
-			fmt.Printf("Stopped LocalStack container: %s\n", localStackContainer)
-		}
-	}
-
-	os.Exit(code)
+	os.Exit(m.Run())
 }
 
 // TestMultiRegionS3Transporter_ConcurrentAccess tests thread safety
 func TestMultiRegionS3Transporter_ConcurrentAccess(t *testing.T) {
-	// Use LocalStack endpoint for testing
-	_ = os.Setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	_ = os.Setenv("AWS_REGION", "us-east-1")
-	defer func() {
-		_ = os.Unsetenv("AWS_ENDPOINT_URL")
-		_ = os.Unsetenv("AWS_ACCESS_KEY_ID")
-		_ = os.Unsetenv("AWS_SECRET_ACCESS_KEY")
-		_ = os.Unsetenv("AWS_REGION")
-	}()
+	cleanup := setupSubstrateEnv(t)
+	defer cleanup()
 
 	config := createValidMultiRegionS3Config()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -868,7 +688,7 @@ func TestMultiRegionS3Transporter_ConcurrentAccess(t *testing.T) {
 
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
-		t.Skip("Skipping concurrent access test: failed to create transporter (LocalStack not available)")
+		t.Skip("Skipping concurrent access test: failed to create transporter")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
 
@@ -896,17 +716,8 @@ func TestMultiRegionS3Transporter_ConcurrentAccess(t *testing.T) {
 
 // Test uploadSingle function to improve coverage
 func TestMultiRegionS3Transporter_uploadSingle(t *testing.T) {
-	// Use LocalStack endpoint for testing
-	_ = os.Setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	_ = os.Setenv("AWS_REGION", "us-east-1")
-	defer func() {
-		_ = os.Unsetenv("AWS_ENDPOINT_URL")
-		_ = os.Unsetenv("AWS_ACCESS_KEY_ID")
-		_ = os.Unsetenv("AWS_SECRET_ACCESS_KEY")
-		_ = os.Unsetenv("AWS_REGION")
-	}()
+	cleanup := setupSubstrateEnv(t)
+	defer cleanup()
 
 	config := createValidMultiRegionS3Config()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -916,7 +727,7 @@ func TestMultiRegionS3Transporter_uploadSingle(t *testing.T) {
 
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
-		t.Skip("Skipping upload test: failed to create transporter (LocalStack not available)")
+		t.Skip("Skipping upload test: failed to create transporter")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
 
@@ -955,17 +766,8 @@ func TestMultiRegionS3Transporter_uploadSingle(t *testing.T) {
 
 // Test uploadRedundant function to improve coverage
 func TestMultiRegionS3Transporter_uploadRedundant(t *testing.T) {
-	// Use LocalStack endpoint for testing
-	_ = os.Setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	_ = os.Setenv("AWS_REGION", "us-east-1")
-	defer func() {
-		_ = os.Unsetenv("AWS_ENDPOINT_URL")
-		_ = os.Unsetenv("AWS_ACCESS_KEY_ID")
-		_ = os.Unsetenv("AWS_SECRET_ACCESS_KEY")
-		_ = os.Unsetenv("AWS_REGION")
-	}()
+	cleanup := setupSubstrateEnv(t)
+	defer cleanup()
 
 	config := createValidMultiRegionS3Config()
 	config.RedundantUploads = true
@@ -977,7 +779,7 @@ func TestMultiRegionS3Transporter_uploadRedundant(t *testing.T) {
 
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
-		t.Skip("Skipping redundant upload test: failed to create transporter (LocalStack not available)")
+		t.Skip("Skipping redundant upload test: failed to create transporter")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
 
@@ -1016,7 +818,7 @@ func TestMultiRegionS3Transporter_uploadRedundant(t *testing.T) {
 
 // Test uploadWithFailover function to improve coverage
 func TestMultiRegionS3Transporter_uploadWithFailover(t *testing.T) {
-	cleanup := setupLocalStackEnv(t)
+	cleanup := setupSubstrateEnv(t)
 	defer cleanup()
 
 	config := createValidMultiRegionS3Config()
@@ -1027,7 +829,7 @@ func TestMultiRegionS3Transporter_uploadWithFailover(t *testing.T) {
 
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
-		t.Skip("Skipping failover upload test: failed to create transporter (LocalStack not available)")
+		t.Skip("Skipping failover upload test: failed to create transporter")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
 
@@ -1066,17 +868,8 @@ func TestMultiRegionS3Transporter_uploadWithFailover(t *testing.T) {
 
 // Test executeUpload function to improve coverage
 func TestMultiRegionS3Transporter_executeUpload(t *testing.T) {
-	// Use LocalStack endpoint for testing
-	_ = os.Setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	_ = os.Setenv("AWS_REGION", "us-east-1")
-	defer func() {
-		_ = os.Unsetenv("AWS_ENDPOINT_URL")
-		_ = os.Unsetenv("AWS_ACCESS_KEY_ID")
-		_ = os.Unsetenv("AWS_SECRET_ACCESS_KEY")
-		_ = os.Unsetenv("AWS_REGION")
-	}()
+	cleanup := setupSubstrateEnv(t)
+	defer cleanup()
 
 	config := createValidMultiRegionS3Config()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -1086,7 +879,7 @@ func TestMultiRegionS3Transporter_executeUpload(t *testing.T) {
 
 	transporter, err := NewMultiRegionS3Transporter(ctx, config, logger)
 	if err != nil {
-		t.Skip("Skipping execute upload test: failed to create transporter (LocalStack not available)")
+		t.Skip("Skipping execute upload test: failed to create transporter")
 	}
 	defer func() { _ = transporter.Shutdown(ctx) }()
 

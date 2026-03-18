@@ -166,25 +166,18 @@ func setupIntegrationSuiteB(b *testing.B) *IntegrationTestSuite {
 		suite.S3Client = s3.NewFromConfig(cfg)
 		b.Logf("Using real AWS S3 with bucket: %s", suite.S3Bucket)
 	} else {
-		// LocalStack for benchmarks without real AWS
-		cfg, err = config.LoadDefaultConfig(ctx,
-			config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
-				func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-					return aws.Endpoint{
-						URL:               "http://localhost:4566",
-						HostnameImmutable: true,
-					}, nil
-				},
-			)),
-			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("test", "test", "")),
-		)
-		if err != nil {
-			b.Fatalf("Failed to load LocalStack config: %v", err)
+		// Use in-process Substrate emulator (started by TestMain)
+		cfg = aws.Config{
+			Region:       "us-east-1",
+			BaseEndpoint: aws.String(substrateURL),
+			Credentials:  credentials.NewStaticCredentialsProvider("test", "test", ""),
 		}
 
-		suite.S3Client = s3.NewFromConfig(cfg)
+		suite.S3Client = s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.UsePathStyle = true
+		})
 		suite.S3Bucket = "test-bucket"
-		b.Logf("Using LocalStack with bucket: %s", suite.S3Bucket)
+		b.Logf("Using Substrate at %s with bucket: %s", substrateURL, suite.S3Bucket)
 	}
 
 	// Register cleanup for temp directory
@@ -243,38 +236,23 @@ func (s *IntegrationTestSuite) setupS3Client() {
 		s.S3Client = s3.NewFromConfig(cfg)
 		s.t.Logf("Using real AWS S3 with bucket: %s", s.S3Bucket)
 	} else {
-		// Use LocalStack
-		endpoint := os.Getenv("LOCALSTACK_ENDPOINT")
-		if endpoint == "" {
-			endpoint = "http://localhost:4566"
+		// Use in-process Substrate emulator (started by TestMain)
+		cfg = aws.Config{
+			Region:       "us-east-1",
+			BaseEndpoint: aws.String(substrateURL),
+			Credentials:  credentials.NewStaticCredentialsProvider("test", "test", ""),
 		}
-
-		cfg, err = config.LoadDefaultConfig(ctx,
-			config.WithRegion("us-east-1"),
-			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("test", "test", "")),
-			config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
-				func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-					return aws.Endpoint{
-						URL:           endpoint,
-						SigningRegion: region,
-					}, nil
-				},
-			)),
-		)
-		require.NoError(s.t, err, "Failed to load LocalStack config")
 
 		s.S3Client = s3.NewFromConfig(cfg, func(o *s3.Options) {
 			o.UsePathStyle = true
 		})
 		s.S3Bucket = "cargoship-test-bucket"
-		s.t.Logf("Using LocalStack at %s with bucket: %s", endpoint, s.S3Bucket)
+		s.t.Logf("Using Substrate at %s with bucket: %s", substrateURL, s.S3Bucket)
 
-		// Create bucket in LocalStack
-		ctx := context.Background()
+		// Create bucket in Substrate
 		_, err = s.S3Client.CreateBucket(ctx, &s3.CreateBucketInput{
 			Bucket: aws.String(s.S3Bucket),
 		})
-		// Ignore error if bucket already exists
 		if err != nil {
 			s.t.Logf("Bucket may already exist: %v", err)
 		}
@@ -2588,3 +2566,4 @@ func TestIntegration_MixedFileSizes(t *testing.T) {
 	t.Logf("✓ Mixed file sizes test complete: %d files (%.2f MB) in %v",
 		totalFiles, float64(totalBytes)/(1024*1024), totalTime)
 }
+

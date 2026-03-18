@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -15,51 +14,34 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/scttfrdmn/substrate"
+
 	awsconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 	"github.com/scttfrdmn/cargoship/pkg/staging"
 )
+
 
 // Mock S3 client for testing staging transporter
 type MockStagingS3Client struct {
 	mock.Mock
 }
 
-// Helper function to create LocalStack S3 client for staging tests
-func createStagingLocalStackS3Client(t *testing.T) *s3.Client {
+// createSubstrateS3Client starts an in-process Substrate server and returns
+// an S3 client pointed at it. The server is stopped when the test ends.
+func createSubstrateS3Client(t *testing.T) *s3.Client {
 	t.Helper()
-
-	// Skip LocalStack tests if explicitly requested (e.g., in pre-commit hooks)
-	if os.Getenv("SKIP_LOCALSTACK") != "" || os.Getenv("SKIP_INTEGRATION") != "" {
-		t.Skip("Skipping LocalStack tests (SKIP_LOCALSTACK or SKIP_INTEGRATION set)")
-		return nil
-	}
-
-	// Skip in short mode (go test -short)
 	if testing.Short() {
-		t.Skip("Skipping LocalStack integration tests in short mode")
+		t.Skip("Skipping Substrate integration test in short mode")
 		return nil
 	}
 
-	// Check if LocalStack is available
-	localStackURL := os.Getenv("LOCALSTACK_ENDPOINT")
-	if localStackURL == "" {
-		localStackURL = "http://localhost:4566" // Default LocalStack endpoint
-	}
-
-	// Create AWS config for LocalStack
+	ts := substrate.StartTestServer(t)
 	cfg := aws.Config{
 		Region:       "us-east-1",
-		BaseEndpoint: aws.String(localStackURL),
-		Credentials: credentials.StaticCredentialsProvider{
-			Value: aws.Credentials{
-				AccessKeyID:     "test",
-				SecretAccessKey: "test",
-				SessionToken:    "",
-			},
-		},
+		BaseEndpoint: aws.String(ts.URL),
+		Credentials:  credentials.NewStaticCredentialsProvider("test", "test", ""),
 	}
-
-	return s3.NewFromConfig(cfg)
+	return s3.NewFromConfig(cfg, func(o *s3.Options) { o.UsePathStyle = true })
 }
 
 // Helper function to create test bucket for staging tests
@@ -719,13 +701,8 @@ func TestStagingTransporter_AbortMultipartUpload(t *testing.T) {
 // Additional tests for improving coverage of 0% coverage functions
 
 func TestStagingTransporter_UploadWithStaging(t *testing.T) {
-	// Skip test if LocalStack is not available
-	if os.Getenv("SKIP_LOCALSTACK_TESTS") == "true" {
-		t.Skip("Skipping LocalStack test")
-	}
-
 	ctx := context.Background()
-	client := createStagingLocalStackS3Client(t)
+	client := createSubstrateS3Client(t)
 	bucketName := "test-staging-bucket"
 
 	// Create test bucket
@@ -745,15 +722,15 @@ func TestStagingTransporter_UploadWithStaging(t *testing.T) {
 		Key:             "test-archive.tar.gz",
 		Size:            1024,
 		CompressionType: "gzip",
-		Reader:          strings.NewReader("test archive content for staging upload with LocalStack"),
+		Reader:          strings.NewReader("test archive content for staging upload with Substrate"),
 	}
 
-	// Test upload with staging using LocalStack
+	// Test upload with staging using Substrate
 	result, err := st.UploadWithStaging(ctx, archive)
 
-	// Should succeed with LocalStack
+	// Should succeed with Substrate
 	if err != nil {
-		t.Logf("Upload error (may be expected if LocalStack unavailable): %v", err)
+		t.Logf("Upload error (may be expected if Substrate unavailable): %v", err)
 		// Even if it fails, we're testing the function coverage
 		return
 	}

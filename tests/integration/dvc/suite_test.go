@@ -2,14 +2,12 @@
 
 // Package dvc contains end-to-end integration tests for the DVC workflow:
 // incremental sync, selective restore, budget enforcement, and concurrent
-// operations. All tests require CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1 and
-// a writable S3 bucket identified by CARGOSHIP_TEST_BUCKET.
+// operations. By default tests run against an in-process Substrate server.
+// Set CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1 and CARGOSHIP_TEST_BUCKET to
+// run against real AWS S3.
 //
 // Run with:
 //
-//	CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1 \
-//	CARGOSHIP_TEST_BUCKET=cargoship-test-bucket \
-//	AWS_REGION=us-east-1 \
 //	go test -v -tags=integration ./tests/integration/dvc/... -timeout=30m
 package dvc
 
@@ -19,7 +17,10 @@ import (
 	"context"
 	"crypto/md5" //nolint:gosec // MD5 for DVC compatibility, not security
 	"fmt"
+	"log/slog"
 	"math/rand"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -29,10 +30,13 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/scttfrdmn/substrate"
 
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
@@ -47,6 +51,80 @@ const (
 	envAWSRegion   = "AWS_REGION"
 )
 
+var substrateURL string
+
+func TestMain(m *testing.M) {
+	if os.Getenv(envEnableInteg) != "1" {
+		url, cancel, err := launchSubstrate()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "substrate: %v\n", err)
+			os.Exit(1)
+		}
+		defer cancel()
+		substrateURL = url
+		os.Setenv("AWS_ENDPOINT_URL", url)
+		os.Setenv("AWS_ACCESS_KEY_ID", "test")
+		os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+		os.Setenv("AWS_REGION", "us-east-1")
+	}
+	os.Exit(m.Run())
+}
+
+// launchSubstrate starts an in-process Substrate server for use in TestMain.
+func launchSubstrate() (string, context.CancelFunc, error) {
+	cfg := substrate.DefaultConfig()
+	cfg.Server.Address = "127.0.0.1:0"
+	cfg.EventStore.Enabled = false
+	cfg.Log.Level = "error"
+
+	state := substrate.NewMemoryStateManager()
+	tc := substrate.NewTimeController(time.Now())
+	registry := substrate.NewPluginRegistry()
+	logger := substrate.NewDefaultLogger(slog.LevelError, false)
+	store := substrate.NewEventStore(cfg.EventStore.ToEventStoreConfig(), substrate.WithTimeController(tc))
+
+	ctx := context.Background()
+	if err := substrate.RegisterDefaultPlugins(ctx, registry, state, tc, logger, store, nil); err != nil {
+		return "", nil, fmt.Errorf("register plugins: %w", err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", nil, fmt.Errorf("listen: %w", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	srv := substrate.NewServer(*cfg, registry, store, state, tc, logger)
+	srvCtx, cancel := context.WithCancel(context.Background())
+	go func() { _ = srv.Serve(srvCtx, ln) }()
+
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, pingErr := http.Get(baseURL + "/health") //nolint:noctx
+		if pingErr == nil {
+			_ = resp.Body.Close()
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return baseURL, cancel, nil
+}
+
+// createSubstrateBucket creates an S3 bucket on the Substrate server.
+func createSubstrateBucket(baseURL, bucket string) error {
+	cfg := aws.Config{
+		Region:       "us-east-1",
+		BaseEndpoint: aws.String(baseURL),
+		Credentials:  credentials.NewStaticCredentialsProvider("test", "test", ""),
+	}
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) { o.UsePathStyle = true })
+	_, err := client.CreateBucket(context.Background(), &s3.CreateBucketInput{
+		Bucket: aws.String(bucket),
+	})
+	return err
+}
+
 // integEnv holds the shared test environment for S3-backed tests.
 type integEnv struct {
 	ctx      context.Context
@@ -55,17 +133,11 @@ type integEnv struct {
 	prefix   string
 }
 
-// newIntegEnv skips the test if integration tests are not enabled, otherwise
-// returns a configured environment with a cleanup hook.
+// newIntegEnv returns a configured environment with a cleanup hook.
+// If CARGOSHIP_TEST_BUCKET is set it uses real AWS; otherwise it uses Substrate.
 func newIntegEnv(t *testing.T) *integEnv {
 	t.Helper()
-	if os.Getenv(envEnableInteg) != "1" {
-		t.Skipf("set %s=1 to run DVC integration tests", envEnableInteg)
-	}
 	bucket := os.Getenv(envTestBucket)
-	if bucket == "" {
-		t.Skipf("%s not set", envTestBucket)
-	}
 	region := os.Getenv(envAWSRegion)
 	if region == "" {
 		region = "us-east-1"
@@ -73,9 +145,19 @@ func newIntegEnv(t *testing.T) *integEnv {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
+
+	var s3Opts []func(*s3.Options)
+	if bucket == "" {
+		bucket = "cargoship-dvc-test"
+		if err := createSubstrateBucket(substrateURL, bucket); err != nil {
+			t.Logf("bucket may already exist: %v", err)
+		}
+		s3Opts = append(s3Opts, func(o *s3.Options) { o.UsePathStyle = true })
+	}
+
 	env := &integEnv{
 		ctx:      ctx,
-		s3Client: s3.NewFromConfig(cfg),
+		s3Client: s3.NewFromConfig(cfg, s3Opts...),
 		bucket:   bucket,
 		prefix:   fmt.Sprintf("dvc-integ/%s", t.Name()),
 	}

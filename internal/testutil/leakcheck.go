@@ -46,6 +46,9 @@ func WithLeakCheck(t *testing.T, opts LeakCheckOptions, testFunc func(t *testing
 	for _, pattern := range opts.IgnorePatterns {
 		goleakOpts = append(goleakOpts, goleak.IgnoreTopFunction(pattern))
 	}
+	// Snapshot goroutines that exist before the test starts (e.g. TestMain-level
+	// Substrate server goroutines) so they are not reported as leaks.
+	goleakOpts = append(goleakOpts, goleak.IgnoreCurrent())
 
 	defer goleak.VerifyNone(t, goleakOpts...)
 

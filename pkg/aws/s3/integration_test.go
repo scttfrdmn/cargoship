@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -15,13 +18,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
+	"github.com/scttfrdmn/substrate"
+
 	awsconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 )
 
 const (
-	localStackEndpoint = "http://localhost:4566"
-	testBucket         = "test-cargoship-bucket"
-	testRegion         = "us-east-1"
+	testBucket = "test-cargoship-bucket"
+	testRegion = "us-east-1"
 )
 
 var (
@@ -29,7 +33,50 @@ var (
 	realAWSProfile string
 	realAWSRegion  string
 	realAWSBucket  string
+	substrateURL   string
 )
+
+// launchSubstrate starts an in-process Substrate server for use in TestMain
+// (which has no *testing.T). The returned cancel stops the server.
+func launchSubstrate() (string, context.CancelFunc, error) {
+	cfg := substrate.DefaultConfig()
+	cfg.Server.Address = "127.0.0.1:0"
+	cfg.EventStore.Enabled = false
+	cfg.Log.Level = "error"
+
+	state := substrate.NewMemoryStateManager()
+	tc := substrate.NewTimeController(time.Now())
+	registry := substrate.NewPluginRegistry()
+	logger := substrate.NewDefaultLogger(slog.LevelError, false)
+	store := substrate.NewEventStore(cfg.EventStore.ToEventStoreConfig(), substrate.WithTimeController(tc))
+
+	ctx := context.Background()
+	if err := substrate.RegisterDefaultPlugins(ctx, registry, state, tc, logger, store, nil); err != nil {
+		return "", nil, fmt.Errorf("substrate: register plugins: %w", err)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", nil, fmt.Errorf("substrate: listen: %w", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	srv := substrate.NewServer(*cfg, registry, store, state, tc, logger)
+	srvCtx, cancel := context.WithCancel(context.Background())
+	go func() { _ = srv.Serve(srvCtx, ln) }()
+
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, pingErr := http.Get(baseURL + "/health") //nolint:noctx
+		if pingErr == nil {
+			_ = resp.Body.Close()
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return baseURL, cancel, nil
+}
 
 func TestMain(m *testing.M) {
 	// Check if real AWS integration is requested
@@ -53,14 +100,15 @@ func TestMain(m *testing.M) {
 		fmt.Printf("  Region:  %s\n", realAWSRegion)
 		fmt.Printf("  Bucket:  %s\n", realAWSBucket)
 	} else {
-		// Check if LocalStack is available
-		if !isLocalStackAvailable() {
-			fmt.Println("Skipping integration tests - LocalStack not available")
-			fmt.Println("To run integration tests:")
-			fmt.Println("  docker run --rm -d -p 4566:4566 localstack/localstack")
-			fmt.Println("  OR set CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS=true for real AWS testing")
-			os.Exit(0)
+		var cancel context.CancelFunc
+		var err error
+		substrateURL, cancel, err = launchSubstrate()
+		if err != nil {
+			fmt.Printf("Failed to start Substrate: %v\n", err)
+			os.Exit(1)
 		}
+		defer cancel()
+		fmt.Printf("Running integration tests against Substrate at %s\n", substrateURL)
 	}
 
 	// Setup test environment
@@ -76,15 +124,6 @@ func TestMain(m *testing.M) {
 	cleanupTestEnvironment()
 
 	os.Exit(code)
-}
-
-func isLocalStackAvailable() bool {
-	client := getTestS3Client()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	_, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
-	return err == nil
 }
 
 func setupTestEnvironment() error {
@@ -177,25 +216,15 @@ func getTestS3Client() *s3.Client {
 		return s3.NewFromConfig(cfg)
 	}
 
-	// Use LocalStack
+	// Use in-process Substrate emulator
 	cfg := aws.Config{
-		Region:      testRegion,
-		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
-		EndpointResolverWithOptions: aws.EndpointResolverWithOptionsFunc(
-			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-				return aws.Endpoint{
-					URL:           localStackEndpoint,
-					SigningRegion: testRegion,
-				}, nil
-			},
-		),
+		Region:       testRegion,
+		Credentials:  credentials.NewStaticCredentialsProvider("test", "test", ""),
+		BaseEndpoint: aws.String(substrateURL),
 	}
-
-	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
-		o.UsePathStyle = true // Required for LocalStack
+	return s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.UsePathStyle = true
 	})
-
-	return client
 }
 
 func getTestTransporter() *Transporter {
@@ -228,8 +257,8 @@ func TestTransporterUploadIntegration(t *testing.T) {
 			name: "simple upload",
 			archive: Archive{
 				Key:             "test/simple.txt",
-				Reader:          bytes.NewReader([]byte("Hello, LocalStack!")),
-				Size:            18,
+				Reader:          bytes.NewReader([]byte("Hello, Substrate!")),
+				Size:            17,
 				StorageClass:    awsconfig.StorageClassStandard,
 				OriginalSize:    18,
 				CompressionType: "none",

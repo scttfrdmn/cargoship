@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-03-18
+
+### Test Infrastructure
+- Migrated all remaining integration test packages from LocalStack to in-process Substrate emulator (`github.com/scttfrdmn/substrate`): `cmd/cargoship/cmd`, `pkg/pipeline`, `pkg/manifest`, `pkg/s3optimization`, `tests/integration/dvc`
+- All integration tests now run without Docker or external AWS services by default; real-AWS path retained via `CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1`
+- Removed LocalStack endpoint hard-codes (`localhost:4566`) from all test files
+- Fixed nil-pointer dereferences in manifest integration tests (`aws.ToString` for optional response fields)
+
 ## [0.13.0] - 2026-02-19
 
 ### DVC Pipeline Auto-Discovery

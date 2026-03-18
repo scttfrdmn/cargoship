@@ -11,10 +11,6 @@ on:
       - 'benchmarks/**'
       - '.github/workflows/benchmark.yml'
 
-  # Run nightly for tracking trends
-  schedule:
-    - cron: '0 2 * * *'  # 2 AM UTC daily
-
   # Allow manual trigger
   workflow_dispatch:
     inputs:
@@ -65,7 +61,18 @@ jobs:
           sudo mv mc /usr/local/bin/
           mc --version
 
+      - name: Check AWS credentials availability
+        id: aws_check
+        run: |
+          if [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+            echo "AWS credentials not configured — running local-only benchmarks"
+          fi
+
       - name: Configure AWS credentials
+        if: steps.aws_check.outputs.available == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -77,6 +84,7 @@ jobs:
         env:
           CARGOSHIP_BENCHMARK_BUCKET: ${{ secrets.BENCHMARK_BUCKET }}
           SCENARIO: ${{ github.event.inputs.scenario || 'small' }}
+          CARGOSHIP_BENCHMARK_LOCAL_ONLY: ${{ steps.aws_check.outputs.available == 'false' && 'true' || '' }}
         run: |
           cd benchmarks/cargohold
           make build
@@ -143,29 +151,3 @@ jobs:
           echo "❌ Performance regression detected!"
           exit 1
 
-  trend-analysis:
-    name: Trend Analysis
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
-    needs: benchmark
-
-    steps:
-      - name: Download historical results
-        uses: actions/download-artifact@v4
-        with:
-          name: benchmark-results
-          path: ./historical
-
-      - name: Analyze trends
-        run: |
-          echo "📊 Analyzing performance trends..."
-          # TODO: Implement trend analysis
-          # - Load historical results
-          # - Calculate moving averages
-          # - Detect long-term trends
-          # - Alert on degradation
-
-      - name: Generate trend report
-        run: |
-          echo "📈 Generating trend report..."
-          # TODO: Generate charts showing performance over time

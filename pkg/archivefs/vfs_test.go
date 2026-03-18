@@ -202,3 +202,9 @@ func TestNew_LargeManifest(t *testing.T) {
 	vfs := New(m)
 	assert.Len(t, vfs.List("flat"), 1000)
 }
+
+func TestManifest(t *testing.T) {
+	m := buildTestManifest()
+	vfs := New(m)
+	require.Same(t, m, vfs.Manifest())
+}

@@ -71,3 +71,11 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+func TestLeakDetector_WithIgnoredAndTimeout(t *testing.T) {
+	ld := NewLeakDetector(t).
+		WithIgnored("some.func").
+		WithTimeout(100 * time.Millisecond).
+		Start()
+	ld.Check()
+}
