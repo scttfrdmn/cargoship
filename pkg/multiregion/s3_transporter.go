@@ -407,10 +407,9 @@ func (t *MultiRegionS3Transporter) initializeRegionTransporters(ctx context.Cont
 		// Override region
 		cfg.Region = region.Name
 
-		// Create S3 client with LocalStack compatibility
+		// Create S3 client with emulator compatibility
 		client := s3.NewFromConfig(cfg, func(o *s3.Options) {
-			// Enable path-style addressing for LocalStack compatibility
-			// This prevents XML parsing errors with LocalStack
+			// Enable path-style addressing for emulator (Substrate) compatibility
 			if awsconfig.IsLocalStackConfig() {
 				o.UsePathStyle = true
 			}

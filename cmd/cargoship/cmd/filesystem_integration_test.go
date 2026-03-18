@@ -190,7 +190,7 @@ func setupIntegrationSuiteB(b *testing.B) *IntegrationTestSuite {
 	return suite
 }
 
-// setupS3Client initializes S3 client for LocalStack or real AWS
+// setupS3Client initializes S3 client for Substrate emulator or real AWS
 func (s *IntegrationTestSuite) setupS3Client() {
 	ctx := context.Background()
 

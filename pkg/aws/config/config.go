@@ -470,7 +470,7 @@ func IsEmulatorConfig() bool {
 	return isEmulatorEndpoint()
 }
 
-// IsLocalStackConfig is a deprecated alias for IsEmulatorConfig.
+// IsLocalStackConfig is a deprecated alias for IsEmulatorConfig. Use IsEmulatorConfig instead.
 func IsLocalStackConfig() bool {
 	return IsEmulatorConfig()
 }
