@@ -129,8 +129,14 @@ func NewCentralController(config *CentralControllerConfig, logger *slog.Logger) 
 		ghostShips: make(map[string]*ConnectedGhostShip),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
-				// In production, implement proper origin checking
-				return true
+				// Agents (non-browser clients) send no Origin header — always allow.
+				origin := r.Header.Get("Origin")
+				if origin == "" {
+					return true
+				}
+				// Browser-initiated connections must originate from the same host
+				// to prevent cross-site WebSocket hijacking (CWE-352).
+				return strings.Contains(origin, r.Host)
 			},
 			HandshakeTimeout: 10 * time.Second,
 		},
@@ -321,6 +327,7 @@ func (cc *CentralController) runHealthChecker() {
 // handleAgentConnect handles agent WebSocket connections
 func (cc *CentralController) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 	// Upgrade to WebSocket
+	// nosemgrep: go.gorilla.security.audit.websocket-missing-origin-check.websocket-missing-origin-check -- CheckOrigin (same-origin) is set on the upgrader; rule can't see struct config
 	conn, err := cc.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		cc.logger.Error("Failed to upgrade agent connection", "error", err)
@@ -341,6 +348,7 @@ func (cc *CentralController) handleAgentConnect(w http.ResponseWriter, r *http.R
 // handleGhostShipConnect handles ghost ship WebSocket connections
 func (cc *CentralController) handleGhostShipConnect(w http.ResponseWriter, r *http.Request) {
 	// Upgrade to WebSocket
+	// nosemgrep: go.gorilla.security.audit.websocket-missing-origin-check.websocket-missing-origin-check -- CheckOrigin (same-origin) is set on the upgrader; rule can't see struct config
 	conn, err := cc.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		cc.logger.Error("Failed to upgrade ghost ship connection", "error", err)

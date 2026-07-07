@@ -4,11 +4,13 @@
 version: '3.8'
 
 services:
-  cargoship-agent:
+  cargoship-agent: # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service -- deployment template; service writes to mounted volumes (archives/TSDB/dashboards), read-only root not applicable
     image: scttfrdmn/cargoship:launch
     container_name: cargoship-launch-agent
     restart: unless-stopped
-    
+    security_opt:
+      - no-new-privileges:true
+
     # Environment variables for configuration
     environment:
       # Required: Controller connection

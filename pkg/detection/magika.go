@@ -128,7 +128,7 @@ func (md *MagikaDetector) detectUncached(ctx context.Context, paths []string) (m
 	cmdCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(cmdCtx, md.binaryPath, args...)
+	cmd := exec.CommandContext(cmdCtx, md.binaryPath, args...) // nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- invokes the configured magika binary on discovered file paths
 	output, err := cmd.Output()
 	if err != nil {
 		// Check if it's a context timeout

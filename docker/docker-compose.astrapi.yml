@@ -4,7 +4,7 @@
 version: '3.8'
 
 services:
-  cargoship-ghost-ship:
+  cargoship-ghost-ship: # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service -- deployment template; service writes to mounted volumes (archives/TSDB/dashboards), read-only root not applicable
     build:
       context: ..
       dockerfile: docker/Dockerfile.astrapi
@@ -88,7 +88,7 @@ services:
       - "com.cargoship.version=1.0.0"
 
   # Optional: Prometheus for metrics collection
-  prometheus:
+  prometheus: # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service -- deployment template; service writes to mounted volumes (archives/TSDB/dashboards), read-only root not applicable
     image: prom/prometheus:latest
     container_name: cargoship-prometheus
     command:
@@ -102,12 +102,14 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - /volume1/docker/cargoship/prometheus:/prometheus:rw
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     profiles:
       - monitoring
 
   # Optional: Grafana for visualization
-  grafana:
+  grafana: # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service -- deployment template; service writes to mounted volumes (archives/TSDB/dashboards), read-only root not applicable
     image: grafana/grafana:latest
     container_name: cargoship-grafana
     environment:
@@ -117,6 +119,8 @@ services:
     volumes:
       - /volume1/docker/cargoship/grafana:/var/lib/grafana:rw
       - ./grafana-dashboards:/etc/grafana/provisioning/dashboards:ro
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     profiles:
       - monitoring

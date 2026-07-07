@@ -3,13 +3,10 @@ package s3
 import (
 	"context"
 	"log/slog"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -32,78 +29,6 @@ func createTestStagingConfig() *StagingConfig {
 		MaxStagingMemoryMB:  256,
 		NetworkMonitoringHz: 0.2,
 	}
-}
-
-// Helper function to create LocalStack S3 client for testing
-func createLocalStackS3Client(t *testing.T) *s3.Client {
-	t.Helper()
-
-	// Skip LocalStack tests if explicitly requested (e.g., in pre-commit hooks)
-	if os.Getenv("SKIP_LOCALSTACK") != "" || os.Getenv("SKIP_INTEGRATION") != "" {
-		t.Skip("Skipping LocalStack tests (SKIP_LOCALSTACK or SKIP_INTEGRATION set)")
-		return nil
-	}
-
-	// Skip in short mode (go test -short)
-	if testing.Short() {
-		t.Skip("Skipping LocalStack integration tests in short mode")
-		return nil
-	}
-
-	// Check if LocalStack is available
-	localStackURL := os.Getenv("LOCALSTACK_ENDPOINT")
-	if localStackURL == "" {
-		localStackURL = "http://localhost:4566" // Default LocalStack endpoint
-	}
-
-	// Create AWS config for LocalStack
-	cfg := aws.Config{
-		Region:       "us-east-1",
-		BaseEndpoint: aws.String(localStackURL),
-		Credentials: credentials.StaticCredentialsProvider{
-			Value: aws.Credentials{
-				AccessKeyID:     "test",
-				SecretAccessKey: "test",
-				SessionToken:    "",
-			},
-		},
-	}
-
-	return s3.NewFromConfig(cfg)
-}
-
-// Helper function to create test bucket in LocalStack
-func createTestBucket(t *testing.T, client *s3.Client, bucketName string) {
-	t.Helper()
-
-	ctx := context.Background()
-	_, err := client.CreateBucket(ctx, &s3.CreateBucketInput{
-		Bucket: aws.String(bucketName),
-	})
-	if err != nil {
-		t.Logf("Warning: Could not create test bucket (may already exist): %v", err)
-	}
-
-	// Clean up on test completion
-	t.Cleanup(func() {
-		// List and delete all objects in bucket
-		listResp, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
-			Bucket: aws.String(bucketName),
-		})
-		if err == nil {
-			for _, obj := range listResp.Contents {
-				_, _ = client.DeleteObject(ctx, &s3.DeleteObjectInput{
-					Bucket: aws.String(bucketName),
-					Key:    obj.Key,
-				})
-			}
-		}
-
-		// Delete bucket
-		_, _ = client.DeleteBucket(ctx, &s3.DeleteBucketInput{
-			Bucket: aws.String(bucketName),
-		})
-	})
 }
 
 func TestDefaultAdaptiveTransporterConfig(t *testing.T) {
@@ -737,54 +662,6 @@ func TestAdaptiveTransporterConfig_Fields(t *testing.T) {
 }
 
 // Additional tests for improving coverage of 0% coverage functions
-
-func TestAdaptiveTransporter_UploadWithAdaptation(t *testing.T) {
-	// Skip test if LocalStack is not available
-	if os.Getenv("SKIP_LOCALSTACK_TESTS") == "true" {
-		t.Skip("Skipping LocalStack test")
-	}
-
-	ctx := context.Background()
-	client := createLocalStackS3Client(t)
-	bucketName := "test-adaptive-bucket"
-
-	// Create test bucket
-	createTestBucket(t, client, bucketName)
-
-	s3Config := awsconfig.S3Config{
-		Bucket:             bucketName,
-		MultipartChunkSize: 16 * 1024 * 1024,
-		Concurrency:        4,
-	}
-
-	config := DefaultAdaptiveTransporterConfig()
-	config.EnableRealTimeAdaptation = false
-
-	at, err := NewAdaptiveTransporter(ctx, client, s3Config, config, nil)
-	assert.NoError(t, err)
-
-	// Create test archive
-	archive := Archive{
-		Key:             "test-archive.tar.gz",
-		Size:            1024,
-		CompressionType: "gzip",
-		Reader:          strings.NewReader("test archive content for adaptive upload"),
-	}
-
-	// Test upload with adaptation using LocalStack
-	result, err := at.UploadWithAdaptation(ctx, archive)
-
-	// Should succeed with LocalStack
-	if err != nil {
-		t.Logf("Upload error (may be expected if LocalStack unavailable): %v", err)
-		// Even if it fails, we're testing the function coverage
-		return
-	}
-
-	assert.NotNil(t, result)
-	assert.NotEmpty(t, result.Location)
-	assert.Greater(t, result.Duration, time.Duration(0))
-}
 
 func TestAdaptiveTransporter_PerformAdaptiveUpload(t *testing.T) {
 	ctx := context.Background()

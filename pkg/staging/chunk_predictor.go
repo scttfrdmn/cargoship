@@ -429,7 +429,7 @@ func (cpd *ContentPatternDetector) DetectPatterns(data []byte, offset int64) []C
 	defer cpd.mu.Unlock()
 
 	// Create cache key
-	hasher := md5.New()
+	hasher := md5.New()                          // nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-md5 -- in-memory cache key, not security
 	hasher.Write(data[:minInt(len(data), 1024)]) // Hash first 1KB for cache key
 	cacheKey := fmt.Sprintf("%x", hasher.Sum(nil))
 

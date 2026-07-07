@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	mathrand "math/rand"
+	mathrand "math/rand" // nosemgrep: go.lang.security.audit.crypto.math_random.math-random-used -- non-crypto: sleep-based benchmark simulation
 	"os"
 	"path/filepath"
 	"sort"

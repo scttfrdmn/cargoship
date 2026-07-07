@@ -486,7 +486,7 @@ func editConfig() error {
 	fmt.Printf("Opening %s with %s...\n", configPath, editor)
 
 	// Execute editor
-	cmd := exec.Command(editor, configPath)
+	cmd := exec.Command(editor, configPath) // nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- launches user-configured  by design
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

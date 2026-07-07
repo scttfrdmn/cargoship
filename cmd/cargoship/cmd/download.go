@@ -375,7 +375,7 @@ func extractFilesFromChunk(reader io.Reader, filesToExtract []manifest.FileEntry
 				return extractedCount, extractedSize, fmt.Errorf("failed to create file %s: %w", outputPath, err)
 			}
 
-			written, err := io.Copy(outFile, tarReader)
+			written, err := io.Copy(outFile, tarReader) // nosemgrep: go.lang.security.decompression_bomb.potential-dos-via-decompression-bomb -- extracting cargoship's own archive tar stream
 			_ = outFile.Close()
 			if err != nil {
 				return extractedCount, extractedSize, fmt.Errorf("failed to extract file %s: %w", header.Name, err)

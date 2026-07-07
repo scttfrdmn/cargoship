@@ -44,10 +44,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -57,13 +57,16 @@ jobs:
 
       - name: Determine benchmark type
         id: benchmark-type
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TYPE: ${{ inputs.benchmark_type }}
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "type=${{ inputs.benchmark_type }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "type=short" >> $GITHUB_OUTPUT
+          if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
+            echo "type=$INPUT_TYPE" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" == "pull_request" ]; then
+            echo "type=short" >> "$GITHUB_OUTPUT"
           else
-            echo "type=all" >> $GITHUB_OUTPUT
+            echo "type=all" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run benchmarks
@@ -88,7 +91,7 @@ jobs:
 
       - name: Upload benchmark results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: benchmark-results-${{ github.run_id }}
           path: |
@@ -99,7 +102,7 @@ jobs:
 
       - name: Comment on PR
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const fs = require('fs');

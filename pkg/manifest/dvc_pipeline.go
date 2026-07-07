@@ -81,7 +81,7 @@ func ExtractDVCPipeline(repoPath, stageName string) (*DVCPipeline, error) {
 	}
 
 	// LockHash: stable fingerprint of the entire lock file.
-	sum := md5.Sum(lockBytes) //nolint:gosec
+	sum := md5.Sum(lockBytes) //nolint:gosec // nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-md5 -- lock-file fingerprint, not security
 	result.LockHash = fmt.Sprintf("%x", sum)
 
 	// ExecutedAt: use the lock file's modification time as a proxy for when

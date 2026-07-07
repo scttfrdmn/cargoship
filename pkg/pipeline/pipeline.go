@@ -452,14 +452,21 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 
 	// Issue #166: Direct upload path (bypasses archiving/compression for small files)
 	if useDirectUpload {
+		// Build manifest builder reference if available
+		var directManifest directManifestBuilder
+		if mb, ok := p.manifestBuilder.(directManifestBuilder); ok {
+			directManifest = mb
+		}
+
 		// Create direct uploader stage
 		directConfig := &DirectUploaderConfig{
-			S3Client:   p.config.S3Client.(S3Uploader),
-			Bucket:     p.config.S3Bucket,
-			Prefix:     p.config.S3Prefix,
-			Workers:    p.config.DirectUploadWorkers,
-			MaxRetries: 3,
-			RetryDelay: time.Second,
+			S3Client:        p.config.S3Client.(S3Uploader),
+			Bucket:          p.config.S3Bucket,
+			Prefix:          p.config.S3Prefix,
+			Workers:         p.config.DirectUploadWorkers,
+			MaxRetries:      3,
+			RetryDelay:      time.Second,
+			ManifestBuilder: directManifest,
 		}
 
 		p.directUploader, err = NewDirectUploaderStage(directConfig, p.chunkChan, p.resultChan)

@@ -15,6 +15,12 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
 )
 
+// directManifestBuilder is the interface satisfied by *manifest.Builder for direct upload mode.
+// Using a minimal interface keeps direct_uploader.go decoupled from the concrete type.
+type directManifestBuilder interface {
+	UpdateFileS3KeyByPath(path string, shardID int, s3Key string)
+}
+
 // S3Uploader is an interface for uploading to S3 (allows mocking)
 type S3Uploader interface {
 	PutObject(ctx context.Context, input *s3.PutObjectInput, opts ...func(*s3.Options)) (*s3.PutObjectOutput, error)
@@ -28,13 +34,14 @@ type S3Uploader interface {
 
 // DirectUploaderConfig configures the direct uploader stage
 type DirectUploaderConfig struct {
-	S3Client   S3Uploader          // AWS S3 client (interface for testability)
-	Bucket     string              // Target S3 bucket
-	Prefix     string              // S3 key prefix (optional)
-	Workers    int                 // Number of concurrent upload workers
-	MaxRetries int                 // Maximum upload retry attempts
-	RetryDelay time.Duration       // Delay between retries
-	WorkerPool *AdaptiveWorkerPool // Optional: Use adaptive worker pool
+	S3Client        S3Uploader            // AWS S3 client (interface for testability)
+	Bucket          string                // Target S3 bucket
+	Prefix          string                // S3 key prefix (optional)
+	Workers         int                   // Number of concurrent upload workers
+	MaxRetries      int                   // Maximum upload retry attempts
+	RetryDelay      time.Duration         // Delay between retries
+	WorkerPool      *AdaptiveWorkerPool   // Optional: Use adaptive worker pool
+	ManifestBuilder directManifestBuilder // Optional: records S3Key per file after upload
 }
 
 // DirectUploaderStage uploads files directly to S3 without archiving or compression
@@ -149,16 +156,29 @@ func (s *DirectUploaderStage) dispatcher(ctx context.Context) {
 			}
 
 			// Process each file in the chunk independently
-			var fileWg sync.WaitGroup
+			var (
+				fileWg   sync.WaitGroup
+				jobErr   error
+				jobErrMu sync.Mutex
+			)
 			for _, file := range job.Chunk.Files {
 				// Create a copy of job for each file to avoid race conditions
 				fileCopy := file
 				fileWg.Add(1)
-				s.submitFileUpload(ctx, fileCopy, &fileWg)
+				s.submitFileUpload(ctx, fileCopy, &fileWg, func(err error) {
+					if err != nil {
+						jobErrMu.Lock()
+						if jobErr == nil {
+							jobErr = err
+						}
+						jobErrMu.Unlock()
+					}
+				})
 			}
 
 			// Wait for all files in this job to complete
 			fileWg.Wait()
+			job.Error = jobErr
 
 			// Mark job as processed and send to output
 			atomic.AddInt64(&s.jobsProcessed, 1)
@@ -173,16 +193,20 @@ func (s *DirectUploaderStage) dispatcher(ctx context.Context) {
 	}
 }
 
-// submitFileUpload submits a single file upload to the worker pool
-func (s *DirectUploaderStage) submitFileUpload(ctx context.Context, file chunking.File, wg *sync.WaitGroup) {
+// submitFileUpload submits a single file upload to the worker pool.
+// onDone is called with the upload error (nil on success) after the worker completes.
+func (s *DirectUploaderStage) submitFileUpload(ctx context.Context, file chunking.File, wg *sync.WaitGroup, onDone func(error)) {
 	err := s.pool.Submit(func(workerCtx context.Context) error {
 		defer wg.Done()
-		return s.uploadFile(workerCtx, file)
+		uploadErr := s.uploadFile(workerCtx, file)
+		onDone(uploadErr)
+		return uploadErr
 	})
 
 	if err != nil {
 		// If submission failed, still decrement WaitGroup
 		wg.Done()
+		onDone(err)
 		// Log error but continue processing other files
 		s.mu.Lock()
 		s.stats.JobsFailed++
@@ -237,6 +261,11 @@ func (s *DirectUploaderStage) uploadFile(ctx context.Context, file chunking.File
 		if err != nil {
 			lastErr = err
 			continue
+		}
+
+		// Record S3 key in manifest (if builder is configured)
+		if s.config.ManifestBuilder != nil {
+			s.config.ManifestBuilder.UpdateFileS3KeyByPath(file.Path, 0, s3Key)
 		}
 
 		// Success

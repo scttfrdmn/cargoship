@@ -18,7 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
-	"github.com/scttfrdmn/substrate"
+	substrate "github.com/scttfrdmn/substrate/emulator"
 
 	awsconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 )

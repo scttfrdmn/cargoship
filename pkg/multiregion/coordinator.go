@@ -4,7 +4,7 @@ package multiregion
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand" // nosemgrep: go.lang.security.audit.crypto.math_random.math-random-used -- non-crypto: backoff jitter / health sampling
 	"os"
 	"sync"
 	"time"

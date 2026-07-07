@@ -289,7 +289,7 @@ func (s *Server) executeJob(job *JobStatus) {
 	s.jobsMu.Unlock()
 
 	// Execute the command
-	cmd := exec.CommandContext(job.ctx, job.Command[0], job.Command[1:]...)
+	cmd := exec.CommandContext(job.ctx, job.Command[0], job.Command[1:]...) // nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- job runner: executing the submitted job command is its purpose; env filtered via denylist
 
 	// Set environment variables.
 	// Job-supplied vars are filtered through a denylist to prevent callers

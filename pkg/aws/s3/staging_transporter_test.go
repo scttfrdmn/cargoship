@@ -14,21 +14,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/scttfrdmn/substrate"
+	substrate "github.com/scttfrdmn/substrate/emulator"
 
 	awsconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 	"github.com/scttfrdmn/cargoship/pkg/staging"
 )
-
 
 // Mock S3 client for testing staging transporter
 type MockStagingS3Client struct {
 	mock.Mock
 }
 
-// createSubstrateS3Client starts an in-process Substrate server and returns
-// an S3 client pointed at it. The server is stopped when the test ends.
-func createSubstrateS3Client(t *testing.T) *s3.Client {
+// createStagingSubstrateS3Client starts an in-process Substrate server and
+// returns an S3 client pointed at it. The server is stopped when the test ends.
+func createStagingSubstrateS3Client(t *testing.T) *s3.Client {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("Skipping Substrate integration test in short mode")
@@ -702,7 +701,7 @@ func TestStagingTransporter_AbortMultipartUpload(t *testing.T) {
 
 func TestStagingTransporter_UploadWithStaging(t *testing.T) {
 	ctx := context.Background()
-	client := createSubstrateS3Client(t)
+	client := createStagingSubstrateS3Client(t)
 	bucketName := "test-staging-bucket"
 
 	// Create test bucket

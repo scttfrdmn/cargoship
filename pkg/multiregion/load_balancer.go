@@ -6,7 +6,7 @@ import (
 	cryptorand "crypto/rand"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/rand" // nosemgrep: go.lang.security.audit.crypto.math_random.math-random-used -- non-crypto: weighted load-balancer selection
 	"strings"
 	"sync"
 	"time"

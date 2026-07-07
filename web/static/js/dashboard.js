@@ -2,7 +2,10 @@
 class CargoShipDashboard {
     constructor() {
         this.apiBase = '/api/v1';
-        this.wsUrl = `ws://${window.location.host}/api/v1/ws`;
+        // Match the page's scheme so the socket is secure (wss) whenever the
+        // dashboard is served over HTTPS.
+        const wsScheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        this.wsUrl = `${wsScheme}//${window.location.host}/api/v1/ws`;
         this.ws = null;
         this.agents = [];
         this.jobs = [];
@@ -143,6 +146,7 @@ class CargoShipDashboard {
             
             return await response.json();
         } catch (error) {
+            // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- template literal, not a util.format format string; endpoint is an internal constant
             console.error(`API call failed (${endpoint}):`, error);
             this.showToast(`Failed to ${endpoint}: ${error.message}`, 'error');
             throw error;

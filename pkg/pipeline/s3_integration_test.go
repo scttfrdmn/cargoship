@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/scttfrdmn/substrate"
+	substrate "github.com/scttfrdmn/substrate/emulator"
 )
 
 var substrateURL string

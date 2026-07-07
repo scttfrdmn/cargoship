@@ -371,48 +371,48 @@ func TestLoadAWSConfig_Contexts(t *testing.T) {
 func TestGetEmulatorEndpoint(t *testing.T) {
 	// Save original env vars
 	origAWSEndpoint := os.Getenv("AWS_ENDPOINT_URL")
-	origLocalStackEndpoint := os.Getenv("LOCALSTACK_ENDPOINT")
+	origLegacyEndpoint := os.Getenv("LOCALSTACK_ENDPOINT")
 	defer func() {
 		_ = os.Setenv("AWS_ENDPOINT_URL", origAWSEndpoint)
-		_ = os.Setenv("LOCALSTACK_ENDPOINT", origLocalStackEndpoint)
+		_ = os.Setenv("LOCALSTACK_ENDPOINT", origLegacyEndpoint)
 	}()
 
 	tests := []struct {
-		name               string
-		awsEndpointURL     string
-		localStackEndpoint string
-		want               string
+		name           string
+		awsEndpointURL string
+		legacyEndpoint string
+		want           string
 	}{
 		{
-			name:               "AWS_ENDPOINT_URL set",
-			awsEndpointURL:     "http://custom:4566",
-			localStackEndpoint: "",
-			want:               "http://custom:4566",
+			name:           "AWS_ENDPOINT_URL set",
+			awsEndpointURL: "http://custom:4566",
+			legacyEndpoint: "",
+			want:           "http://custom:4566",
 		},
 		{
-			name:               "LOCALSTACK_ENDPOINT set (backward compat)",
-			awsEndpointURL:     "",
-			localStackEndpoint: "http://localhost:9000",
-			want:               "http://localhost:9000",
+			name:           "LOCALSTACK_ENDPOINT set (backward compat)",
+			awsEndpointURL: "",
+			legacyEndpoint: "http://localhost:9000",
+			want:           "http://localhost:9000",
 		},
 		{
-			name:               "Both set - AWS_ENDPOINT_URL takes precedence",
-			awsEndpointURL:     "http://127.0.0.1:8000",
-			localStackEndpoint: "http://127.0.0.1:4566",
-			want:               "http://127.0.0.1:8000",
+			name:           "Both set - AWS_ENDPOINT_URL takes precedence",
+			awsEndpointURL: "http://127.0.0.1:8000",
+			legacyEndpoint: "http://127.0.0.1:4566",
+			want:           "http://127.0.0.1:8000",
 		},
 		{
-			name:               "Neither set - default",
-			awsEndpointURL:     "",
-			localStackEndpoint: "",
-			want:               "http://localhost:4566",
+			name:           "Neither set - default",
+			awsEndpointURL: "",
+			legacyEndpoint: "",
+			want:           "http://localhost:4566",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_ = os.Setenv("AWS_ENDPOINT_URL", tt.awsEndpointURL)
-			_ = os.Setenv("LOCALSTACK_ENDPOINT", tt.localStackEndpoint)
+			_ = os.Setenv("LOCALSTACK_ENDPOINT", tt.legacyEndpoint)
 
 			got := getEmulatorEndpoint()
 			if got != tt.want {
@@ -1275,6 +1275,7 @@ func TestBudgetPeriod_String(t *testing.T) {
 }
 
 func TestIsLocalStackConfig(t *testing.T) {
+	// IsLocalStackConfig is a deprecated alias for IsEmulatorConfig — keep test for backward compat.
 	t.Setenv("AWS_ENDPOINT_URL", "http://127.0.0.1:4566")
 	if !IsLocalStackConfig() {
 		t.Error("IsLocalStackConfig() = false, want true")

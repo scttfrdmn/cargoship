@@ -652,9 +652,15 @@ Examples:
 			// Run pipeline
 			result, err := pipe.Run(ctx, absPath)
 			if err != nil {
-				// Record error metrics if enabled
+				// Record error metrics if enabled. result may be nil when the
+				// pipeline fails before producing one (e.g. stage startup), so
+				// guard the UploadID access.
 				if metricsCollector != nil {
-					metricsCollector.RecordUploadError(ctx, result.UploadID, "pipeline_error", "pipeline")
+					uploadID := ""
+					if result != nil {
+						uploadID = result.UploadID
+					}
+					metricsCollector.RecordUploadError(ctx, uploadID, "pipeline_error", "pipeline")
 				}
 				return fmt.Errorf("pipeline failed: %w", err)
 			}

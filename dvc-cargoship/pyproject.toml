@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "DVC remote plugin for CargoShip bulk S3 uploads"
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 keywords = ["dvc", "cargoship", "s3", "remote", "data-version-control"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -16,7 +16,6 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -42,6 +41,17 @@ Homepage = "https://github.com/scttfrdmn/cargoship"
 Documentation = "https://github.com/scttfrdmn/cargoship/tree/main/dvc-cargoship#readme"
 "Bug Tracker" = "https://github.com/scttfrdmn/cargoship/issues"
 Changelog = "https://github.com/scttfrdmn/cargoship/releases"
+
+[tool.uv] # nosemgrep: python.uv.security.uv-missing-dependency-cooldown.uv-missing-dependency-cooldown -- deps are fully pinned in uv.lock and updated deliberately; exclude-newer takes a fixed timestamp that would go stale
+# Force patched versions of transitive dependencies (pulled in via dvc) that
+# have known HIGH CVEs. These raise the floor without changing direct deps;
+# remove an entry once dvc's own constraints move past it.
+constraint-dependencies = [
+    "cryptography>=48.0.1",
+    "orjson>=3.11.6",
+    "urllib3>=2.7.0",
+    "dulwich>=1.2.5",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

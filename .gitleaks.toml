@@ -1,0 +1,16 @@
+# gitleaks configuration for cargoship.
+# Extends the built-in default ruleset; adds an allowlist for known
+# false positives — documentation examples and test fixtures that contain
+# illustrative (fake) keys, not real credentials.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Docs examples and test fixtures contain placeholder secrets, not real ones"
+paths = [
+  '''.*\.md$''',              # documentation examples (Bearer YOUR_TOKEN, sample UUIDs, ...)
+  '''docs/vhs/.*\.tape$''',   # VHS demo scripts with placeholder credentials
+  '''pkg/testdata/.*''',      # test fixtures (e.g. fakey-private.key)
+  '''.*_test\.go$''',
+]
