@@ -1,6 +1,6 @@
 module github.com/scttfrdmn/cargoship/examples/library-usage/02-compression
 
-go 1.24.0
+go 1.26.0
 
 replace github.com/scttfrdmn/cargoship => ../../..
 
@@ -20,4 +20,5 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.82.0 // indirect
 	github.com/aws/smithy-go v1.24.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

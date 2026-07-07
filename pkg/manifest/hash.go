@@ -22,7 +22,7 @@ func ComputeContentHash(filePath string) (string, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	h := md5.New() //nolint:gosec // MD5 required for DVC protocol compatibility, not used for security
+	h := md5.New() //nolint:gosec // MD5 required for DVC protocol compatibility, not used for security // nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-md5 -- DVC protocol hash, not security
 	if _, err := io.Copy(h, f); err != nil {
 		return "", fmt.Errorf("hash %s: %w", filePath, err)
 	}
@@ -43,7 +43,7 @@ func computeContentHashWithStat(filePath string) (hash string, size int64, modTi
 		return "", 0, time.Time{}, fmt.Errorf("stat %s: %w", filePath, err)
 	}
 
-	h := md5.New() //nolint:gosec // MD5 required for DVC protocol compatibility, not used for security
+	h := md5.New() //nolint:gosec // MD5 required for DVC protocol compatibility, not used for security // nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-md5 -- DVC protocol hash, not security
 	if _, err := io.Copy(h, f); err != nil {
 		return "", 0, time.Time{}, fmt.Errorf("hash %s: %w", filePath, err)
 	}

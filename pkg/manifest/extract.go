@@ -383,7 +383,7 @@ func (e *Extractor) extractFilesFromChunk(chunkData io.ReadCloser, req *ExtractR
 			return fmt.Errorf("failed to create file %s: %w", outputPath, err)
 		}
 
-		bytesWritten, err := io.Copy(outFile, tarReader)
+		bytesWritten, err := io.Copy(outFile, tarReader) // nosemgrep: go.lang.security.decompression_bomb.potential-dos-via-decompression-bomb -- extracting cargoship's own archive tar stream
 		if closeErr := outFile.Close(); closeErr != nil {
 			return fmt.Errorf("failed to close file %s: %w", outputPath, closeErr)
 		}

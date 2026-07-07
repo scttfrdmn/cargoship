@@ -8,6 +8,10 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "America/New_York"
+    # Wait before opening PRs for freshly-published versions, so a
+    # just-released malicious version isn't picked up immediately.
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 10
     reviewers:
       - "scttfrdmn"
@@ -56,6 +60,8 @@ updates:
       day: "sunday"
       time: "06:00"
       timezone: "America/New_York"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     reviewers:
       - "scttfrdmn"
@@ -78,6 +84,8 @@ updates:
       day: "saturday"
       time: "06:00"
       timezone: "America/New_York"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 3
     reviewers:
       - "scttfrdmn"

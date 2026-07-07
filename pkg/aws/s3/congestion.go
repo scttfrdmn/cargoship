@@ -9,7 +9,7 @@ package s3
 import (
 	"context"
 	"math"
-	"math/rand"
+	"math/rand" // nosemgrep: go.lang.security.audit.crypto.math_random.math-random-used -- non-crypto: backoff jitter
 	"sync"
 	"time"
 )

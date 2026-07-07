@@ -12,13 +12,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/scttfrdmn/substrate"
+	substrate "github.com/scttfrdmn/substrate/emulator"
 
 	awsconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
 	"github.com/scttfrdmn/cargoship/pkg/staging"
 )
-
 
 // setupSubstrateEnv starts an in-process Substrate server and sets the AWS
 // environment variables to point at it. The returned cleanup restores them.

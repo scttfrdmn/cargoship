@@ -209,6 +209,7 @@ func (ws *WebSocketServer) handleAgentConnection(w http.ResponseWriter, r *http.
 	}
 
 	// Upgrade to WebSocket
+	// nosemgrep: go.gorilla.security.audit.websocket-missing-origin-check.websocket-missing-origin-check -- CheckOrigin (same-origin) is set on the upgrader; rule can't see struct config
 	conn, err := ws.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		ws.logger.Error("Failed to upgrade WebSocket connection", "error", err, "agent_id", agentID)

@@ -1,0 +1,24 @@
+# Semgrep ignore list for cargoship.
+# See https://semgrep.dev/docs/ignoring-files-folders-code
+
+# Inactive workflows kept for reference only — they do not run in CI and are
+# superseded by the active workflows in .github/workflows/.
+.github/workflows-disabled/
+
+# Illustrative sample programs, not shipped in the cargoship binary.
+examples/
+
+# Benchmark harnesses and their test data, not shipped in the binary.
+benchmarks/
+
+# Test code and fixtures are not shipped; scan product code only. Test files
+# legitimately use md5 cache keys, math/rand, exec, and insecure sockets on
+# loopback.
+*_test.go
+pkg/testdata/
+
+# Local development compose configs and docs (insecure sockets on localhost).
+docker/development/
+
+# Vendored / generated
+vendor/

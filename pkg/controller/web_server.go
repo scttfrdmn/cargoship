@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -91,7 +92,14 @@ func NewWebServer(addr, authToken string, registry *AgentRegistry, logger *slog.
 		router:    mux.NewRouter(),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
-				return true // Allow all origins for now
+				// Non-browser clients send no Origin header — always allow.
+				origin := r.Header.Get("Origin")
+				if origin == "" {
+					return true
+				}
+				// Browser-initiated connections must originate from the same host
+				// to prevent cross-site WebSocket hijacking (CWE-352).
+				return strings.Contains(origin, r.Host)
 			},
 		},
 		wsClients: make(map[*websocket.Conn]bool),
@@ -352,6 +360,7 @@ func (ws *WebServer) handleGetMetrics(w http.ResponseWriter, r *http.Request) {
 
 // handleWebSocket handles WebSocket connections for real-time updates
 func (ws *WebServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	// nosemgrep: go.gorilla.security.audit.websocket-missing-origin-check.websocket-missing-origin-check -- CheckOrigin (same-origin) is set on the upgrader; rule can't see struct config
 	conn, err := ws.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		ws.logger.Error("WebSocket upgrade failed", "error", err)

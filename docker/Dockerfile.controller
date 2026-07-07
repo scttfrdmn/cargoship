@@ -37,6 +37,14 @@ COPY --from=builder /app/configs /etc/cargoship/
 # Create directories for logs and data
 RUN mkdir -p /var/log/cargoship /var/lib/cargoship
 
+# Create non-root user for security
+RUN addgroup -g 1000 cargoship && \
+    adduser -u 1000 -G cargoship -s /bin/sh -D cargoship && \
+    chown -R cargoship:cargoship /var/log/cargoship /var/lib/cargoship /root/
+
+# Switch to non-root user
+USER cargoship
+
 # Expose ports
 EXPOSE 8080 9090
 
