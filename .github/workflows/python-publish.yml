@@ -98,7 +98,8 @@ jobs:
           path: dist/
 
       - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@6733eb7d741f0b11ec6a39b58540dab7590f9b7d # v1.14.0
+        # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag -- Docker action: its image is FROM ghcr.io/...:${GITHUB_ACTION_REF}, so a commit SHA yields "manifest unknown". The immutable release tag is the correct pin here.
+        uses: pypa/gh-action-pypi-publish@v1.14.0
         with:
           repository-url: https://test.pypi.org/legacy/
           skip-existing: true
@@ -127,6 +128,7 @@ jobs:
           path: dist/
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@6733eb7d741f0b11ec6a39b58540dab7590f9b7d # v1.14.0
+        # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag -- Docker action: its image is FROM ghcr.io/...:${GITHUB_ACTION_REF}, so a commit SHA yields "manifest unknown". The immutable release tag is the correct pin here.
+        uses: pypa/gh-action-pypi-publish@v1.14.0
         with:
           packages-dir: dist/
