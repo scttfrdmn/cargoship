@@ -54,3 +54,8 @@ profiles/reports/*.svg
 profiles/baselines/*.json
 profiles/baselines/*.txt
 benchmark-current.txt
+
+# Local secrets / environment (never commit)
+.env
+.env.*
+!.env.example
