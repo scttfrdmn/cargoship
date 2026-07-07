@@ -96,12 +96,14 @@ jobs:
         with:
           python-version: '3.11'
 
+      # This job doesn't check out the repo, so the default
+      # working-directory (dvc-cargoship) doesn't exist. Run at the workspace
+      # root, where the downloaded artifacts land.
       - name: Install twine
+        working-directory: ${{ github.workspace }}
         run: pip install twine
 
       - name: Check wheel and sdist metadata
-        # Artifacts land at the workspace root, not under the default
-        # working-directory (dvc-cargoship).
         working-directory: ${{ github.workspace }}
         run: twine check dist/*
 
