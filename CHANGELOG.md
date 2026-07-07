@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-07-07
+
+### CI/CD & Security
+- Repaired CI, which had failed on every job since February: integration tests imported the Substrate module root instead of the `github.com/scttfrdmn/substrate/emulator` package, breaking `go mod tidy` and leaving `go.sum` incomplete. Imports now target the emulator package; the local-path `replace` directive was dropped and `substrate` pinned to `v0.71.0`.
+- Added `.github/workflows/security.yml`: govulncheck (pinned v1.3.0), gitleaks, Trivy (filesystem + config), and Semgrep, all SHA-pinned. Removed the duplicate govulncheck-only job from `test.yml`.
+- SHA-pinned every action across all active workflows; routed `${{ inputs }}` through `env` in `performance.yml` to close a shell-injection vector.
+- Added Dependabot cooldown and enabled Dependabot alerts/automated security fixes.
+- Added `.gitleaks.toml` and `.semgrepignore` to allowlist documentation/test/example false positives.
+
+### Fixed
+- Populate manifest `S3Key`/`ShardID`/`ChunkID` in pipeline direct-upload mode (#205)
+- Guard against a nil-pointer panic in `upload.go` when `pipe.Run` returns a nil result on the error path
+
+### Security Hardening
+- Bumped `go-git/v5` v5.16.5 → v5.19.1 (resolves 5 CVEs including an RCE, plus GO-2026-5496)
+- Bumped `aws-sdk-go-v2/service/s3` v1.82.0 → v1.97.3 (resolves GO-2026-5764 in the eventstream protocol)
+- Bumped transitive Python dependencies (cryptography, orjson, urllib3, dulwich) in `dvc-cargoship` via uv `constraint-dependencies`; dropped EOL Python 3.9
+- WebSocket upgraders in `pkg/controller` and `pkg/launch` now enforce same-origin checks (CWE-352); dashboard derives `ws`/`wss` from the page scheme
+- `Dockerfile.controller` runs as a non-root user; compose services set `no-new-privileges`
+
 ## [0.13.1] - 2026-03-18
 
 ### Test Infrastructure
