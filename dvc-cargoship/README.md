@@ -143,7 +143,7 @@ exceeded.
 
 ```bash
 # Set a budget for the DVC cache project
-cargoship budget set --project my_research_data --max-budget 500.00
+cargoship budget set my_research_data --cost 500.00 --volume 500
 
 # Configure the DVC remote to track against this project
 dvc remote modify myremote project_id my_research_data
