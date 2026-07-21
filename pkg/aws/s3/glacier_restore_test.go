@@ -2,6 +2,7 @@ package s3
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,13 +14,31 @@ import (
 )
 
 // mockGlacierClient implements GlacierS3Client for testing.
+//
+// WaitForRestore polls HeadObject from its own goroutine while tests mutate the
+// canned responses (e.g. flipping a key to "restored" mid-poll), so all access
+// to the shared maps is guarded by mu. HeadObject returns a copy of the stored
+// output so callers never read a struct a test may concurrently mutate.
 type mockGlacierClient struct {
+	mu       sync.Mutex
 	heads    map[string]*s3.HeadObjectOutput
 	headErr  error
 	restored map[string]bool
 }
 
+// setRestore updates the Restore header for a key under the lock. Tests use this
+// to transition an object to accessible while WaitForRestore is polling.
+func (m *mockGlacierClient) setRestore(key, restore string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if out, ok := m.heads[key]; ok {
+		out.Restore = aws.String(restore)
+	}
+}
+
 func (m *mockGlacierClient) HeadObject(_ context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.headErr != nil {
 		return nil, m.headErr
 	}
@@ -27,10 +46,15 @@ func (m *mockGlacierClient) HeadObject(_ context.Context, input *s3.HeadObjectIn
 	if !ok {
 		return &s3.HeadObjectOutput{}, nil
 	}
-	return out, nil
+	// Return a copy so the caller can't race with a concurrent mutation of the
+	// stored output.
+	cp := *out
+	return &cp, nil
 }
 
 func (m *mockGlacierClient) RestoreObject(_ context.Context, input *s3.RestoreObjectInput, _ ...func(*s3.Options)) (*s3.RestoreObjectOutput, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.restored == nil {
 		m.restored = make(map[string]bool)
 	}
@@ -177,7 +201,7 @@ func TestWaitForRestore(t *testing.T) {
 	// Transition to accessible after first poll.
 	go func() {
 		time.Sleep(15 * time.Millisecond)
-		client.heads["key"].Restore = aws.String(`ongoing-request="false"`)
+		client.setRestore("key", `ongoing-request="false"`)
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
