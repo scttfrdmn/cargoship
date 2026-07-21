@@ -215,7 +215,7 @@ export default defineConfig({
     ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
     ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
     ['link', { href: 'https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&family=Atkinson+Hyperlegible+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap', rel: 'stylesheet' }],
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+    ['link', { rel: 'icon', type: 'image/png', href: '/logo-512.png' }],
     // Default OpenGraph/Twitter card metadata (per-page title/description still
     // override via frontmatter). og-cover.png is a user-supplied asset slot.
     ['meta', { property: 'og:type', content: 'website' }],
@@ -230,7 +230,7 @@ export default defineConfig({
 
   themeConfig: {
     siteTitle: 'CargoShip',
-    logo: '/logo.svg',
+    logo: '/logo-512.png',
 
     nav: [
       { text: 'Get Started', link: '/start/quickstart' },

@@ -6,8 +6,8 @@ hero:
   text: High-performance S3 data archiving
   tagline: Stream large datasets straight to S3 — sharded, compressed, verifiable, and cost-aware. Your data lands in an open, portable archive format you can read with or without CargoShip.
   image:
-    src: /hero.svg
-    alt: CargoShip
+    src: /hero.png
+    alt: CargoShip — a container ship sailing on a cloud
   actions:
     - theme: brand
       text: Quick Start
