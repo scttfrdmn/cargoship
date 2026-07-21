@@ -1,35 +1,51 @@
 # DVC integration
 
 CargoShip works with [DVC](https://dvc.org) (Data Version Control) in two
-complementary ways, so you can choose how deeply to integrate:
+complementary ways, so you can choose how deeply to integrate. They are
+independent — use either, or both.
 
-- **The Go `dvc` command** (built into the CargoShip binary) reads DVC pipeline
-  metadata that has been embedded in an upload's manifest — list stages, compare
-  local files against the archive, and generate `.dvc` sidecar files. Upload with
-  `--dvc-auto` to record each file's stage from `dvc.yaml`. See
-  [Go `dvc` command](/guides/dvc/command).
+## The two integration paths
 
-- **The Python `dvc-cargoship` plugin** registers CargoShip as a DVC *remote*
-  (the `cargoship://` URL scheme) so `dvc push` / `dvc pull` route cache
-  operations through CargoShip's chunked, compressed, parallel uploads — with
-  optional per-project budget checks. See
-  [Python dvc-cargoship plugin](/guides/dvc/plugin).
+### A. The Go `dvc` command (built into the CargoShip binary)
+
+CargoShip can record DVC pipeline provenance directly in an upload's manifest.
+Upload with `--dvc-auto` and CargoShip auto-discovers stages from `dvc.yaml`,
+annotating every file entry with the stage that produced it. Afterward, the
+`cargoship dvc` command group reads that metadata back — list stages, compare
+local files against the archive, and regenerate `.dvc` sidecar files.
 
 ```bash
-# Annotate an upload with DVC stage provenance (Go command)
+# Annotate an upload with DVC stage provenance
 cargoship upload ./data s3://my-bucket/dataset --dvc-auto
+```
 
-# Or use CargoShip as a DVC remote (Python plugin)
+This path lives entirely in this repository (`cargoship dvc` plus the `--dvc-auto`
+upload flag). See [Go `dvc` command](/guides/dvc/command) for the full workflow.
+
+### B. The Python `dvc-cargoship` remote plugin
+
+The `dvc-cargoship` plugin registers CargoShip as a DVC *remote* (the
+`cargoship://` URL scheme) so `dvc push` / `dvc pull` route cache operations
+through CargoShip's chunked, compressed, parallel uploads — with optional per-project
+budget checks.
+
+```bash
 pip install dvc-cargoship
 dvc remote add -d myremote cargoship://my-bucket/dvc-cache
 dvc push
 ```
 
-::: warning Draft
-This overview page is being expanded. For flags, see the
-[DVC command reference](/reference/commands/dvc); for a full walkthrough, see
-[ML datasets with DVC](/tutorials/ml-dvc).
-:::
+The plugin is documented separately on the
+[Python dvc-cargoship plugin](/guides/dvc/plugin) page — see there for install,
+configuration, and remote setup.
+
+## Which should I use?
+
+- Want to **version and track cache** through DVC's own `push`/`pull` commands?
+  Use the **Python plugin (path B)**.
+- Want to **archive a dataset with CargoShip** while preserving which pipeline
+  stage produced each file, then inspect or restore by stage? Use the **Go `dvc`
+  command (path A)**.
 
 ## See also
 
