@@ -1147,14 +1147,19 @@ func TestShardCoordinator_Integration_HashRouting(t *testing.T) {
 
 		t.Logf("  Shard %d: %d files (%.1f%%)", i, filesInShard, percentage)
 
-		// Hash-based routing should distribute relatively evenly (within 25% of average)
-		// With 1000 files, some variance is expected due to hash randomness
+		// Hash-based routing should distribute relatively evenly. Files are
+		// hashed by their (temp-dir-prefixed, therefore per-run-random) path, so
+		// the per-shard count is a binomial sample: for 1000 files across 10
+		// shards the mean is 100 with sd ~9.5. A ±25% band (~2.6 sd) is breached
+		// by chance often enough to make this test flaky, so use a ±40% band
+		// (~4 sd) — wide enough to be reliable, still tight enough to catch a
+		// genuinely broken router (e.g. everything landing in one shard).
 		expectedAvg := fileCount / shardCount
-		lowerBound := int64(float64(expectedAvg) * 0.75)
-		upperBound := int64(float64(expectedAvg) * 1.25)
+		lowerBound := int64(float64(expectedAvg) * 0.60)
+		upperBound := int64(float64(expectedAvg) * 1.40)
 
 		if filesInShard < lowerBound || filesInShard > upperBound {
-			t.Errorf("Shard %d has uneven distribution: %d files (expected %d ±25%%)",
+			t.Errorf("Shard %d has uneven distribution: %d files (expected %d ±40%%)",
 				i, filesInShard, expectedAvg)
 		}
 	}

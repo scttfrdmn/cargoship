@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -230,7 +231,7 @@ func BenchmarkCompressionEstimator_EstimateRatio_CacheMiss(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		testFile := filepath.Join(tmpDir, "test-"+string(rune(i))+".unique")
+		testFile := filepath.Join(tmpDir, "test-"+strconv.Itoa(i)+".unique")
 		err := os.WriteFile(testFile, []byte(content), 0644)
 		require.NoError(b, err)
 		b.StartTimer()
@@ -250,7 +251,7 @@ func BenchmarkCompressionEstimator_EstimateRatio_CacheHit(b *testing.B) {
 	// Create multiple files with same extension
 	files := make([]string, 100)
 	for i := 0; i < 100; i++ {
-		files[i] = filepath.Join(tmpDir, "test-"+string(rune(i))+".txt")
+		files[i] = filepath.Join(tmpDir, "test-"+strconv.Itoa(i)+".txt")
 		err := os.WriteFile(files[i], []byte(content), 0644)
 		require.NoError(b, err)
 	}
