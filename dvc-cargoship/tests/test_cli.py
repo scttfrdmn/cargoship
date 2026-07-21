@@ -146,16 +146,24 @@ class TestUpload:
 
 
 class TestListFiles:
-    def _cli(self, stdout: str = "[]", returncode: int = 0):
+    # list_files() is implemented on top of `cargoship info --json`: it returns
+    # the manifest's "files" array. (The `cargoship list` command takes
+    # --bucket/--upload-id flags and prints human-readable text, not JSON, so it
+    # is not usable here.)
+    def _cli(self, stdout: str = "{}", returncode: int = 0):
         cli = CargoShipCLI(binary="cargoship")
         cli.run = MagicMock(return_value=_make_completed(returncode=returncode, stdout=stdout))
         return cli
 
-    def test_returns_parsed_list(self):
+    def test_returns_files_from_manifest(self):
         entries = [{"path": "a.txt", "size": 100, "content_hash": "abc"}]
-        cli = self._cli(stdout=json.dumps(entries))
+        cli = self._cli(stdout=json.dumps({"upload_id": "u-1", "files": entries}))
         result = cli.list_files("s3://b/p")
         assert result == entries
+
+    def test_returns_empty_list_when_no_files_key(self):
+        cli = self._cli(stdout=json.dumps({"upload_id": "u-1"}))
+        assert cli.list_files("s3://b/p") == []
 
     def test_returns_empty_list_on_cli_error(self):
         cli = CargoShipCLI(binary="cargoship")
@@ -166,8 +174,8 @@ class TestListFiles:
         cli = self._cli(stdout="not-json")
         assert cli.list_files("s3://b/p") == []
 
-    def test_returns_empty_list_when_json_not_list(self):
-        cli = self._cli(stdout='{"key": "value"}')
+    def test_returns_empty_list_when_files_not_list(self):
+        cli = self._cli(stdout='{"files": {"key": "value"}}')
         assert cli.list_files("s3://b/p") == []
 
     def test_includes_upload_id(self):
@@ -178,10 +186,11 @@ class TestListFiles:
         assert "u-123" in args
 
     def test_basic_args(self):
+        # Delegates to `info`: positional S3 URL + --json.
         cli = self._cli()
         cli.list_files("s3://b/p")
         args = cli.run.call_args[0]
-        assert args == ("list", "s3://b/p", "--json")
+        assert args == ("info", "s3://b/p", "--json")
 
 
 # ---------------------------------------------------------------------------
