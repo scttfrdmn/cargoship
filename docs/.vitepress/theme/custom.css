@@ -1,0 +1,60 @@
+/* CargoShip docs — Atkinson Hyperlegible + nautical brand palette.
+   Colours are chosen for WCAG AA: the brand blue is used as a solid button
+   background with white text (light mode) and lightened for link text on the
+   dark background (dark mode), where a strong blue would fall below 4.5:1. */
+
+:root {
+  --vp-font-family-base: 'Atkinson Hyperlegible', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --vp-font-family-mono: 'Atkinson Hyperlegible Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+
+  /* Brand: ocean blue with a teal accent. */
+  --vp-c-brand-1: #0369a1;   /* brand blue (links/accents, light mode) */
+  --vp-c-brand-2: #075985;   /* deeper blue (hover) */
+  --vp-c-brand-3: #0e7490;   /* teal accent */
+  --vp-c-brand-soft: rgba(3, 105, 161, 0.1);
+
+  /* Home hero brand gradient. */
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #0369a1 30%, #0e7490);
+  --vp-home-hero-image-background-image: linear-gradient(-45deg, rgba(3, 105, 161, 0.35), rgba(14, 116, 144, 0.35));
+  --vp-home-hero-image-filter: blur(44px);
+}
+
+/* Dark mode: lift the brand blue for link text so it clears AA on the dark bg. */
+.dark {
+  --vp-c-brand-1: #5fb3e0;
+  --vp-c-brand-2: #7dc4ea;
+  --vp-c-brand-3: #38bdf8;
+}
+
+/* ── Typography ── */
+.vp-doc h1 { letter-spacing: -0.025em; }
+.vp-doc h2 { letter-spacing: -0.02em; padding-top: 1.5rem; }
+.vp-doc h3 { letter-spacing: -0.01em; }
+.vp-doc p  { line-height: 1.75; }
+
+/* ── Nav / sidebar ── */
+.VPNavBar { border-bottom: 1px solid var(--vp-c-divider); }
+.VPNavBarTitle .title { font-weight: 700; letter-spacing: -0.01em; }
+.VPSidebarItem.level-0 > .item .text { font-weight: 600; }
+
+/* ── Home hero ── */
+.VPHero .tagline { font-size: 1.1rem !important; line-height: 1.7; }
+.VPHero .name { letter-spacing: -0.03em; }
+.VPHero .actions .VPButton.brand {
+  /* white on #0369a1 = 5.9:1; independent of the dark-mode brand-1 lightening */
+  background: #0369a1;
+  border-color: #0369a1;
+  color: #fff;
+}
+
+/* ── Feature cards ── */
+.VPFeature .title { letter-spacing: -0.01em; }
+
+/* ── Code blocks ── */
+.vp-doc [class*='language-'] { border-radius: 8px; }
+
+/* ── Custom containers ── */
+.vp-doc .tip     { border-color: var(--vp-c-brand-1); }
+.vp-doc .warning { border-color: #b45309; }
+.vp-doc .danger  { border-color: #dc2626; }

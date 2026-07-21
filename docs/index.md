@@ -1,146 +1,92 @@
-<div align="center">
-  <img src="assets/cargoship-logo.svg" alt="CargoShip Logo" width="200" height="200">
-  <h1>CargoShip</h1>
-  <p><strong>Enterprise data archiving for AWS, built for speed and intelligence</strong></p>
-  
-  [![Go Reference](https://pkg.go.dev/badge/github.com/scttfrdmn/cargoship.svg)](https://pkg.go.dev/github.com/scttfrdmn/cargoship)
-  [![Go Report Card](https://goreportcard.com/badge/github.com/scttfrdmn/cargoship)](https://goreportcard.com/report/github.com/scttfrdmn/cargoship)
-  [![Release](https://img.shields.io/github/v/release/scttfrdmn/cargoship?include_prereleases&sort=semver)](https://github.com/scttfrdmn/cargoship/releases)
-  [![Docker Pulls](https://img.shields.io/docker/pulls/scttfrdmn/cargoship)](https://hub.docker.com/r/scttfrdmn/cargoship)
-  [![Apache 2.0 License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-  [![Test Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen.svg)](https://github.com/scttfrdmn/cargoship)
-  [![Security Analysis](https://img.shields.io/badge/security-gosec%20enabled-green.svg)](https://github.com/securecodewarrior/gosec)
-  [![Integration Tests](https://img.shields.io/badge/testing-LocalStack%20S3-blue.svg)](https://localstack.cloud/)
-  [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/scttfrdmn/cargoship/ci.yml?branch=main)](https://github.com/scttfrdmn/cargoship/actions)
-  [![AWS Integration](https://img.shields.io/badge/AWS-Native%20Integration-FF9900?logo=amazon-aws)](https://aws.amazon.com/)
-</div>
+---
+layout: home
 
-CargoShip is a next-generation data archiving tool optimized for AWS infrastructure. Built on the foundation of Duke University's excellent [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl), CargoShip adds native AWS integration, intelligent cost optimization, and enterprise-grade observability.
+hero:
+  name: CargoShip
+  text: High-performance S3 data archiving
+  tagline: Stream large datasets straight to S3 — sharded, compressed, verifiable, and cost-aware. Your data lands in an open, portable archive format you can read with or without CargoShip.
+  image:
+    src: /hero.svg
+    alt: CargoShip
+  actions:
+    - theme: brand
+      text: Quick Start
+      link: /start/quickstart
+    - theme: alt
+      text: What is CargoShip?
+      link: /intro/how-it-works
+    - theme: alt
+      text: View on GitHub
+      link: https://github.com/scttfrdmn/cargoship
 
-<!-- ![CargoShip Demo](./vhs/demo.gif) -->
-
-## 🚀 Key Features
-
-- **🚢 Ship It Smart**: Production-proven flow control with BBR and CUBIC algorithms
-- **⚡ Ship It Fast**: 4.6x faster uploads with advanced network protocols (v0.4.0)
-- **💰 Ship It Cheap**: 50% cost reduction through intelligent storage class selection
-- **📊 Ship It Visible**: Complete observability with real-time network metrics
-- **🔒 Ship It Secure**: KMS encryption, IAM integration, and enterprise audit logging
-- **🧠 Ship It Optimized**: Signal processing, deterministic loss detection, and adaptive buffer sizing
-
-## Quick Start
-
-### Installation
-
-```bash
-# Using Go install
-go install github.com/scttfrdmn/cargoship/cmd/cargoship@latest
-
-# Using pre-built binaries (coming soon)
-curl -sSL https://github.com/scttfrdmn/cargoship/releases/latest/download/install.sh | sh
-
-# Using Docker
-docker run --rm -v $(pwd):/data scttfrdmn/cargoship:latest survey /data
-```
-
-### Basic Usage
-
-```bash
-# Survey your data and estimate costs
-cargoship survey /path/to/research/data
-cargoship estimate /path/to/data --storage-class glacier
-
-# Upload your data with parallel streaming
-cargoship upload /path/to/data \
-  s3://my-enterprise-bucket/archives \
-  --storage-class intelligent-tiering \
-  --encrypt-kms arn:aws:kms:us-east-1:123:key/abc
-
-# Monitor and optimize
-cargoship status
-cargoship costs optimize --dry-run
-```
-
-## Why CargoShip?
-
-### Built for AWS, Optimized for Performance (v0.4.0)
-
-- **Native S3 Integration**: Direct AWS SDK with production-tested BBR congestion control
-- **Advanced Flow Control**: CUBIC algorithm and signal processing for optimal throughput
-- **Intelligent Multipart Uploads**: Adaptive chunk sizing with network-aware optimization
-- **Storage Class Intelligence**: Algorithm-driven optimization based on access patterns
-- **Network Adaptation**: Real-time parameter adjustment with deterministic algorithms
-
-### Cost Intelligence That Saves Money
-
-CargoShip provides comprehensive cost analysis and optimization recommendations, helping you save thousands on AWS storage costs through intelligent lifecycle policies and storage class selection.
-
-### Enterprise-Ready Observability
-
-- **Real-time Metrics**: CloudWatch integration with custom dashboards
-- **Cost Monitoring**: Automated alerts and budget controls
-- **Audit Logging**: Complete compliance and security trail
-- **Performance Tracking**: Upload speeds, error rates, and optimization metrics
-
-## Documentation
-
-- **[Installation Guide](install.md)** - Get up and running in 5 minutes
-- **[Advanced Flow Control](TASK_4_ADVANCED_FLOW_CONTROL.md)** - v0.4.0 network optimization
-- **[Configuration](advanced/defaults_overrides.md)** - Complete configuration options
-- **[AWS Setup](AWS_INTEGRATION_REPORT.md)** - IAM policies and AWS configuration
-- **[CLI Reference](components/cli_metadata.md)** - All commands and options
-- **[Components](components/)** - Detailed component documentation
-
-## Architecture
-
-CargoShip follows a modular, cloud-native architecture designed for enterprise use:
-
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Data Sources  │    │    CargoShip     │    │   AWS Services  │
-│                 │    │     Engine       │    │                 │
-│ • File Systems  │───▶│                  │───▶│ • S3 Storage    │
-│ • Network Mounts│    │ • Discovery      │    │ • KMS Encryption│
-│ • Archives      │    │ • Compression    │    │ • CloudWatch    │
-│ • Databases     │    │ • Upload Manager │    │ • Lifecycle Mgmt│
-└─────────────────┘    │ • Cost Optimizer │    │ • Cost Analysis │
-                       └──────────────────┘    └─────────────────┘
-```
-
-## Performance
-
-CargoShip significantly outperforms generic cloud tools:
-
-| Metric | CargoShip | Generic Tools | Improvement |
-|--------|-----------|---------------|-------------|
-| Upload Speed | 300 MB/s | 65 MB/s | 4.6x faster |
-| Memory Usage | 512 MB | 1.2 GB | 57% less |
-| Cost Optimization | Algorithm-Driven | Manual | Intelligent |
-| Network Optimization | BBR/CUBIC | None | Production-Proven |
-| AWS Integration | Native | External | Seamless |
-
-## Contributing
-
-We welcome contributions! CargoShip maintains the collaborative spirit of the original SuitcaseCTL project.
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
-
-See our [Development Rules](../DEVELOPMENT_RULES.md) for quality standards and pre-commit hook setup.
-
-## License and Attribution
-
-CargoShip is licensed under the Apache 2.0 License. Built upon [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl) by Duke University with gratitude for their innovative work.
-
-## Support
-
-- **Documentation**: [https://cargoship.app](https://cargoship.app)
-- **Issues**: [GitHub Issues](https://github.com/scttfrdmn/cargoship/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/scttfrdmn/cargoship/discussions)
-
+features:
+  - icon: 🚢
+    title: Zero-disk streaming pipeline
+    details: Scanner → Chunker → Archiver → Uploader, connected over io.Pipe. Data streams directly to S3 without staging to local disk, so memory stays bounded regardless of dataset size.
+    link: /intro/how-it-works
+    linkText: How it works
+  - icon: ⚡
+    title: Multi-prefix parallel sharding
+    details: CargoHold spreads chunks across multiple S3 prefixes with an adaptive shard count (4–32), parallelizing request throughput instead of funnelling through one key space.
+    link: /guides/features/sharding
+    linkText: Learn more
+  - icon: 🗜️
+    title: Content-aware compression
+    details: Streaming tar + Zstandard with per-content-type levels, plus optional Magika AI file-type detection to compress smarter.
+    link: /guides/features/compression
+    linkText: Learn more
+  - icon: 💰
+    title: Cost & budget controls
+    details: Estimate before you upload, track spend by project, set dual cost + volume quotas, and forecast burn-down with multiple models.
+    link: /guides/cost/estimate
+    linkText: Learn more
+  - icon: 🔒
+    title: Encryption & integrity
+    details: SSE and KMS-envelope-encrypted manifests, optional GPG, and manifest-checksum verification that proves a round trip on restore.
+    link: /guides/features/encryption
+    linkText: Learn more
+  - icon: 📖
+    title: Open, portable format
+    details: Plain tar.zst objects plus a documented JSON manifest (v2.0). Extract your data with standard tools even without CargoShip installed.
+    link: /reference/format/
+    linkText: Read the spec
 ---
 
-**Ship your data with confidence. Ship it with CargoShip.** 🚢
+## Get where you're going
+
+CargoShip ships large research and backup datasets to Amazon S3 quickly, cheaply,
+and reversibly. Pick the path that fits you:
+
+- **New here?** Start with [How it works](/intro/how-it-works) for the mental model,
+  then run the [Quick Start](/start/quickstart) to get a verified upload in a few minutes.
+- **Know what you want?** Jump to a [use-case tutorial](/tutorials/) (genomics, imaging,
+  ML/DVC, lab data) or the [command reference](/reference/).
+- **Building tooling on top?** Read the [canonical archive & manifest format spec](/reference/format/).
+
+### Install
+
+::: code-group
+
+```bash [Homebrew]
+brew install scttfrdmn/tap/cargoship
+```
+
+```bash [Go]
+go install github.com/scttfrdmn/cargoship/cmd/cargoship@latest
+```
+
+```bash [Binary]
+# Download the latest release for your platform from:
+# https://github.com/scttfrdmn/cargoship/releases/latest
+```
+
+:::
+
+Then send your first dataset to S3:
+
+```bash
+cargoship upload ./my-data s3://my-bucket/archives/
+```
+
+See [Install](/start/install) for all methods and [Your first upload](/start/first-upload)
+for a line-by-line walkthrough.
