@@ -8,7 +8,7 @@ the actual ``cargoship`` binary.
 The mock binary supports the subset of commands used by CargoShipCLI:
 - ``upload <source_dir> <dest_url> [flags...]``
 - ``restore <dest_url> <staging_dir> [--file <path>]``
-- ``list <dest_url> --json``
+- ``info <dest_url> --json`` (manifest with a ``files`` array; backs list_files)
 """
 
 from __future__ import annotations
@@ -82,8 +82,11 @@ def mock_cargoship(tmp_path) -> Tuple[str, str]:
                 shutil.copy2(src, dst)
 
 
-        def cmd_list(_argv):
+        def cmd_info(argv):
             # argv: <s3://...> --json [--upload-id <id>]
+            # Emit the manifest as JSON, matching the real binary's
+            # `cargoship info --json` (manifest.ToJSON): an object whose "files"
+            # array holds the file entries.
             entries = []
             for root, _dirs, files in os.walk(STORE):
                 for fname in files:
@@ -94,10 +97,14 @@ def mock_cargoship(tmp_path) -> Tuple[str, str]:
                         "size": os.path.getsize(full),
                         "content_hash": "",
                     }})
-            print(json.dumps(entries))
+            print(json.dumps({{
+                "version": "2.0",
+                "total_files": len(entries),
+                "files": entries,
+            }}))
 
 
-        COMMANDS = {{"upload": cmd_upload, "restore": cmd_restore, "list": cmd_list}}
+        COMMANDS = {{"upload": cmd_upload, "restore": cmd_restore, "info": cmd_info}}
         cmd = sys.argv[1] if len(sys.argv) > 1 else ""
         handler = COMMANDS.get(cmd)
         if handler is None:
