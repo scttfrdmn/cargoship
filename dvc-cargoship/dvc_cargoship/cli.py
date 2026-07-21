@@ -218,19 +218,16 @@ class CargoShipCLI:
 
         Returns an empty list when the remote has no uploads or the command
         fails so that callers can treat a missing remote as an empty cache.
+
+        Implemented on top of ``cargoship info --json``: that command takes the
+        S3 URL as a positional argument and emits the full manifest as JSON
+        (whose ``files`` array holds the file entries). The ``cargoship list``
+        command, by contrast, requires ``--bucket``/``--upload-id`` flags and
+        prints human-readable text, not JSON.
         """
-        args: List[str] = ["list", destination, "--json"]
-        if upload_id is not None:
-            args += ["--upload-id", upload_id]
-        try:
-            result = self.run(*args)
-        except CargoShipCLIError:
-            return []
-        try:
-            data = json.loads(result.stdout)
-            return data if isinstance(data, list) else []
-        except json.JSONDecodeError:
-            return []
+        manifest = self.info(destination, upload_id=upload_id)
+        files = manifest.get("files", [])
+        return files if isinstance(files, list) else []
 
     def info(
         self,
