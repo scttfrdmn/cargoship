@@ -37,7 +37,8 @@ environment variables to configure agents with.
 ::: tip Secure the connection
 Set an explicit `--auth-token` (rather than relying on the generated one) and
 enable `--tls` with a real certificate whenever the controller is reachable beyond
-localhost. Without TLS, agents connect over `ws://`; with TLS they use `wss://`.
+localhost. Without TLS the agent WebSocket is unencrypted; enabling TLS upgrades it
+to a secure (TLS-wrapped) WebSocket.
 :::
 
 ## Connecting agents
