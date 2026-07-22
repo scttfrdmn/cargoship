@@ -90,6 +90,7 @@ Collect `cargoship --version`, `cargoship config --show` (redacted), and
 
 ## See also
 
+- [Recovery & operations runbook](/reference/recovery) — step-by-step recovery for interrupted uploads, damaged chunks, credential/KMS issues, and partial restores.
 - [FAQ](/reference/faq).
 - [AWS setup & credentials](/start/aws-setup).
 - [Security model](/project/security).

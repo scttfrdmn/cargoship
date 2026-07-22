@@ -124,6 +124,8 @@ const sidebar = {
         { text: 'Global flags', link: '/reference/commands/global-flags' },
         { text: 'Environment variables', link: '/reference/environment-variables' },
         { text: 'Configuration schema', link: '/reference/configuration' },
+        { text: 'CargoShip vs. other tools', link: '/reference/comparison' },
+        { text: 'Recovery & operations runbook', link: '/reference/recovery' },
         { text: 'Troubleshooting', link: '/reference/troubleshooting' },
         { text: 'FAQ', link: '/reference/faq' },
         { text: 'Glossary', link: '/reference/glossary' },

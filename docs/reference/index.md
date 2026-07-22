@@ -28,6 +28,8 @@ binary actually accepts.
 
 - [Environment variables](/reference/environment-variables)
 - [Configuration schema](/reference/configuration)
+- [CargoShip vs. other tools](/reference/comparison)
+- [Recovery & operations runbook](/reference/recovery)
 - [Troubleshooting](/reference/troubleshooting) · [FAQ](/reference/faq)
 - [Glossary](/reference/glossary) · [Cheat sheet](/reference/cheatsheet)
 
