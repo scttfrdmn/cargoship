@@ -17,7 +17,7 @@ import (
 // PricingManager handles cost calculations with AWS Pricing API integration
 type PricingManager struct {
 	config     *config.PricingConfig
-	pricingAPI *pricing.Client
+	pricingAPI pricingAPIClient
 	logger     *slog.Logger
 	cache      *PricingCache
 	mu         sync.RWMutex
@@ -240,16 +240,22 @@ func (pm *PricingManager) getRequestPrice(ctx context.Context, requestType strin
 		return price, nil
 	}
 
-	// Use AWS Pricing API or fallback
+	// Use AWS Pricing API if enabled, falling back to the static table on error.
 	if pm.config.UseAWSPricingAPI && pm.pricingAPI != nil {
-		// AWS Pricing API implementation would go here
-		// For now, use fallback prices
-		price = pm.getFallbackRequestPrice(requestType)
+		apiPrice, err := pm.getAWSRequestPrice(ctx, strings.ToUpper(requestType), region)
+		if err != nil {
+			pm.logger.Warn("Failed to get AWS request pricing, using fallback", "error", err)
+			price = pm.getFallbackRequestPrice(requestType)
+			pm.setCachedPrice(cacheKey, price, "fallback")
+		} else {
+			price = apiPrice
+			pm.setCachedPrice(cacheKey, price, "aws_api")
+		}
 	} else {
 		price = pm.getFallbackRequestPrice(requestType)
+		pm.setCachedPrice(cacheKey, price, "fallback")
 	}
 
-	pm.setCachedPrice(cacheKey, price, "fallback")
 	return price, nil
 }
 
@@ -383,10 +389,41 @@ func (pm *PricingManager) calculateEnterpriseDiscount(cost float64, service stri
 }
 
 // Helper methods for AWS Pricing API integration
+
+// getAWSStoragePrice queries the AWS Price List API for the per-GB-month storage
+// price of storageClass in region. Returns an error (so the caller falls back to
+// the static table) when the storage class has no Price List mapping or the
+// query yields no usable price.
 func (pm *PricingManager) getAWSStoragePrice(ctx context.Context, storageClass config.StorageClass, region string) (float64, error) {
-	// This would implement actual AWS Pricing API calls
-	// For now, return fallback prices
-	return pm.getFallbackStoragePrice(storageClass), nil
+	volumeType, ok := s3StorageVolumeType(storageClass)
+	if !ok {
+		return 0, fmt.Errorf("no Price List volumeType for storage class %q", storageClass)
+	}
+	return pm.queryAWSPrice(ctx, region, map[string]string{
+		"productFamily": "Storage",
+		"volumeType":    volumeType,
+	})
+}
+
+// getAWSRequestPrice queries the AWS Price List API for the per-request price of
+// requestType in region, returned as a price per 1,000 requests to match the
+// rest of the pricing code. Returns an error (caller falls back) when the
+// request type has no Price List mapping or the query yields no usable price.
+func (pm *PricingManager) getAWSRequestPrice(ctx context.Context, requestType, region string) (float64, error) {
+	group, ok := s3RequestGroup(requestType)
+	if !ok {
+		return 0, fmt.Errorf("no Price List group for request type %q", requestType)
+	}
+	// The API returns a per-request price; the rest of the code works in
+	// price-per-1,000-requests, so scale up.
+	perRequest, err := pm.queryAWSPrice(ctx, region, map[string]string{
+		"productFamily": "API Request",
+		"group":         group,
+	})
+	if err != nil {
+		return 0, err
+	}
+	return perRequest * 1000, nil
 }
 
 // Fallback pricing methods
