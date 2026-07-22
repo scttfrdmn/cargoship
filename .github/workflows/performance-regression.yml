@@ -45,12 +45,15 @@ jobs:
       - name: Run current benchmarks
         run: |
           echo "Running benchmarks on current code..."
-          # Scope: pkg/compression and pkg/chunking only. pkg/pipeline's
-          # benchmarks are integration-scale (10k–1M files, multi-GB synthetic
-          # data) and can't complete two passes within the job timeout — they're
-          # for manual/local runs, not a per-PR gate. -run='^$' skips regular
-          # tests so only benchmarks execute.
-          go test -bench=. -benchmem -run='^$' -count=5 -timeout=15m ./pkg/compression ./pkg/chunking > benchmark-current.txt
+          # Scope: pkg/chunking's micro-benchmarks. pkg/pipeline is excluded —
+          # its benchmarks are integration-scale (10k–1M files, multi-GB
+          # synthetic data) and can't complete two passes within the job timeout;
+          # they're for manual/local runs, not a per-PR gate. (pkg/compression
+          # has no testing.B benchmarks.) Flags: -run='^$' runs benchmarks only,
+          # not the test suite; -benchtime=20x fixes the iteration count so wall
+          # time is bounded (the default ~1s/benchmark made this step take
+          # minutes and, with pipeline, hit the 30-min timeout).
+          go test -bench=. -benchmem -run='^$' -benchtime=20x -count=6 -timeout=15m ./pkg/chunking > benchmark-current.txt
           echo "Current benchmarks complete"
 
       - name: Checkout baseline (main branch)
@@ -64,7 +67,7 @@ jobs:
         run: |
           echo "Running benchmarks on baseline..."
           # Keep in sync with the "Run current benchmarks" step above.
-          go test -bench=. -benchmem -run='^$' -count=5 -timeout=15m ./pkg/compression ./pkg/chunking > ../benchmark-baseline.txt
+          go test -bench=. -benchmem -run='^$' -benchtime=20x -count=6 -timeout=15m ./pkg/chunking > ../benchmark-baseline.txt
           echo "Baseline benchmarks complete"
 
       - name: Compare benchmarks
