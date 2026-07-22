@@ -83,6 +83,9 @@ jobs:
       # CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS. (#238)
       - name: Run integration tests
         run: go test -tags integration ./... -timeout 15m
+
+  test-race:
+    name: Test with Race Detector
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
