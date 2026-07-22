@@ -569,20 +569,18 @@ func TestIntegrationFramework_BasicFunctionality(t *testing.T) {
 		// Create file
 		filePath := suite.CreateTestFile("checksum-test.dat", 10*1024)
 
-		// Verify checksum
+		// Verify checksum matches for the unmodified file.
 		suite.VerifyChecksum("checksum-test.dat", filePath)
 
-		// Modify file and verify checksum fails
-		err := os.WriteFile(filePath, []byte("corrupted"), 0644)
-		require.NoError(t, err)
-
-		// This should fail
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("Expected checksum verification to fail for corrupted file")
-			}
-		}()
-		suite.VerifyChecksum("checksum-test.dat", filePath)
+		// Corrupt the file and confirm the recomputed checksum no longer matches.
+		// (The previous version expected VerifyChecksum to panic on mismatch, but
+		// it uses require.Equal → t.FailNow → runtime.Goexit, which recover()
+		// cannot catch — so the check never worked. Compare checksums directly.)
+		expected := suite.Checksums["checksum-test.dat"]
+		require.NoError(t, os.WriteFile(filePath, []byte("corrupted"), 0644))
+		corrupted := suite.CalculateChecksum(filePath)
+		require.NotEqual(t, expected, corrupted,
+			"checksum of a corrupted file must differ from the original")
 	})
 
 	t.Run("S3Operations", func(t *testing.T) {
@@ -814,6 +812,13 @@ func TestIntegration_DataIntegrity_EmptyAndSmallFiles(t *testing.T) {
 func TestIntegration_LargeFiles(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping large file test in short mode (requires significant disk space and time)")
+	}
+	// This test writes multi-GB files and asserts bounded process memory; it needs
+	// tens of GB of disk and minutes to run, so it is not part of the standard
+	// integration CI job. Opt in explicitly (nightly / local). See #238 and the
+	// memory-usage follow-up issue.
+	if os.Getenv("CARGOSHIP_ENABLE_LARGE_FILE_TESTS") != "1" {
+		t.Skip("Skipping large-file test; set CARGOSHIP_ENABLE_LARGE_FILE_TESTS=1 to run")
 	}
 
 	suite := setupIntegrationSuite(t)
@@ -2566,4 +2571,3 @@ func TestIntegration_MixedFileSizes(t *testing.T) {
 	t.Logf("✓ Mixed file sizes test complete: %d files (%.2f MB) in %v",
 		totalFiles, float64(totalBytes)/(1024*1024), totalTime)
 }
-

@@ -51,8 +51,11 @@ func TestManifestIntegration_Generation(t *testing.T) {
 	s3Client := s3.NewFromConfig(cfg, s3Opts...)
 	ctx := context.Background()
 
-	// Create test directory with files
-	tmpDir, cleanup := createTestFiles(t, 25, 5*1024) // 25 files @ 5KB each
+	// Create test directory with files. This test validates *chunked* manifest
+	// generation, so the files must be large enough to stay out of direct-upload
+	// mode (avg >= 5 MB, see shouldUseDirectUpload). 6 files @ 6 MB → chunked.
+	const wantFiles = 6
+	tmpDir, cleanup := createTestFiles(t, wantFiles, 6*1024*1024) // 6 files @ 6MB each
 	defer cleanup()
 
 	// Create pipeline config with manifest enabled
@@ -113,9 +116,9 @@ func TestManifestIntegration_Generation(t *testing.T) {
 	assert.Equal(t, testPrefix, m.Prefix, "Prefix should match")
 	assert.Equal(t, region, m.Region, "Region should match")
 	assert.Equal(t, tmpDir, m.SourcePath, "Source path should match")
-	assert.Equal(t, int64(25), m.TotalFiles, "Total files should be 25")
-	assert.Equal(t, 25, len(m.Files), "Files array should have 25 entries")
-	assert.Greater(t, len(m.Chunks), 0, "Should have at least 1 chunk")
+	assert.Equal(t, int64(wantFiles), m.TotalFiles, "Total files should match")
+	assert.Equal(t, wantFiles, len(m.Files), "Files array should have all entries")
+	assert.Greater(t, len(m.Chunks), 0, "Should have at least 1 chunk (chunked mode)")
 	assert.Equal(t, 4, m.ShardCount, "Should have 4 shards")
 	assert.Equal(t, 4, len(m.Shards), "Shards array should have 4 entries")
 

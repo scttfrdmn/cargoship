@@ -235,6 +235,8 @@ func buildManifest(files []syntheticFile, bucket, prefix, uploadID string, chunk
 		CreatedAt:       time.Now(),
 	}
 	chunkKeys := make(map[int]string)
+	chunkFileCount := make(map[int]int)
+	chunkSize := make(map[int]int64)
 	for i, sf := range files {
 		chunkID := i / perChunk
 		if chunkID >= chunkCount {
@@ -243,6 +245,8 @@ func buildManifest(files []syntheticFile, bucket, prefix, uploadID string, chunk
 		if _, ok := chunkKeys[chunkID]; !ok {
 			chunkKeys[chunkID] = fmt.Sprintf("%s/%s/chunk-%02d.tar.zst", prefix, uploadID, chunkID)
 		}
+		chunkFileCount[chunkID]++
+		chunkSize[chunkID] += int64(len(sf.data))
 		m.Files = append(m.Files, manifest.FileEntry{
 			Path:        sf.path,
 			Size:        int64(len(sf.data)),
@@ -255,6 +259,40 @@ func buildManifest(files []syntheticFile, bucket, prefix, uploadID string, chunk
 		})
 	}
 	m.TotalFiles = int64(len(files))
+
+	// Populate the Chunks slice so this is a valid chunked manifest. Without it,
+	// len(m.Chunks) == 0 and the restore path treats the manifest as
+	// direct-upload mode (writing files by basename), which breaks the
+	// path-preserving chunked restore these tests assert. (see #228, #238)
+	var totalFiles int64
+	var totalSize int64
+	for id := 0; id < chunkCount; id++ {
+		key, ok := chunkKeys[id]
+		if !ok {
+			continue // fewer chunks than requested (small dataset)
+		}
+		m.Chunks = append(m.Chunks, manifest.ChunkEntry{
+			ID:               id,
+			ShardID:          0,
+			S3Key:            key,
+			FileCount:        chunkFileCount[id],
+			UncompressedSize: chunkSize[id],
+			CompressedSize:   chunkSize[id],
+			CreatedAt:        time.Now(),
+		})
+		totalFiles += int64(chunkFileCount[id])
+		totalSize += chunkSize[id]
+	}
+	m.TotalChunks = len(m.Chunks)
+	m.ShardCount = 1
+	m.Shards = []manifest.ShardEntry{{
+		ID:               0,
+		Prefix:           fmt.Sprintf("%s/%s/shard-0", prefix, uploadID),
+		ChunkCount:       len(m.Chunks),
+		FileCount:        totalFiles,
+		UncompressedSize: totalSize,
+		CompressedSize:   totalSize,
+	}}
 	return m
 }
 
