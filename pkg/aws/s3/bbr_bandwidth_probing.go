@@ -272,7 +272,9 @@ func NewBBRBandwidthProber(ctx context.Context, config *BBRConfig) *BBRBandwidth
 		appLimited:     false,
 		deliveredBytes: 0,
 		deliveredTime:  time.Now(),
-		firstSentTime:  time.Now(),
+		// firstSentTime is intentionally left zero: OnPacketSent records the
+		// actual send time of the first packet (its IsZero guard depends on it).
+		// Pre-seeding it here would make that guard never fire.
 
 		// lossDetector:        NewBBRLossDetector(), // Reserved for future use
 		lossThreshold:        config.LossThreshold,
