@@ -31,21 +31,31 @@ const (
 	transpTestPrefix  = "transporter-test"
 )
 
-// TestCargoShipTransporterIntegration tests all CargoShip transporters with real AWS S3
+// TestCargoShipTransporterIntegration tests all CargoShip transporters with real AWS S3.
+//
+// This is a REAL-AWS test: it needs the shared "aws" profile, real credentials,
+// and a real bucket. It is not part of the emulator PR job — it self-skips unless
+// CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1 and the profile actually loads. It runs
+// in the nightly real-AWS job. (#238 Phase 5)
 func TestCargoShipTransporterIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
+	}
+	if os.Getenv("CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS") != "1" {
+		t.Skip("Skipping real-AWS transporter test; set CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1 to run")
 	}
 
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	// Load AWS config
+	// Load AWS config (real credentials via the shared profile).
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithSharedConfigProfile(transpTestProfile),
 		config.WithRegion(transpTestRegion),
 	)
-	require.NoError(t, err)
+	if err != nil {
+		t.Skipf("Skipping: real AWS profile %q not available: %v", transpTestProfile, err)
+	}
 
 	s3Client := s3.NewFromConfig(cfg)
 
