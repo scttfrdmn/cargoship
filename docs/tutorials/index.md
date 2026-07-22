@@ -9,6 +9,7 @@ dataset sizes, storage-class choices, and cost trade-offs.
 
 | If you… | Start here |
 |---------|-----------|
+| Archive millions of tiny files without a huge S3 request bill | [Millions of small files](/tutorials/small-files) |
 | Move large sequencing files (FASTQ / BAM / VCF) off an HPC cluster | [Genomics / sequencing data](/tutorials/genomics) |
 | Archive microscopy stacks and screening images without losing pixels | [Imaging / microscopy data](/tutorials/imaging) |
 | Version ML datasets and push them through DVC | [ML datasets with DVC](/tutorials/ml-dvc) |
