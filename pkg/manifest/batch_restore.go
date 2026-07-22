@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -230,7 +231,7 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 	chunkMap := make(map[string]*chunkGroup)
 
 	for _, target := range targets {
-		entry := se.query.FindFile(target)
+		entry := se.resolveEntry(target)
 		if entry == nil {
 			stats.Failed++
 			continue
@@ -246,6 +247,11 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 		return nil, fmt.Errorf("create destination directory: %w", err)
 	}
 
+	// Direct-upload manifests have no chunks: each file was stored as its own S3
+	// object (the object at FileEntry.S3Key IS the raw file, not a tar.zst chunk).
+	// Restore those by writing the downloaded bytes directly. (Issue #228)
+	directMode := len(se.manifest.Chunks) == 0
+
 	for _, grp := range chunkMap {
 		data := se.cache.get(grp.s3Key)
 		if data == nil {
@@ -259,6 +265,17 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 			stats.ChunksDownloaded++
 		}
 
+		if directMode {
+			// One S3 object == one file; write the raw bytes.
+			restored, written, err := se.writeDirectFiles(data, grp.files, destDir)
+			stats.Restored += int64(restored)
+			stats.Bytes += written
+			if err != nil {
+				stats.Failed += int64(len(grp.files)) - int64(restored)
+			}
+			continue
+		}
+
 		restored, written, err := se.extractFromChunkData(data, grp.files, destDir)
 		stats.Restored += int64(restored)
 		stats.Bytes += written
@@ -268,6 +285,54 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 	}
 
 	return stats, nil
+}
+
+// resolveEntry finds the manifest entry for a restore target. It tries an exact
+// path match first (via the O(1) index), then falls back to matching by relative
+// suffix / basename — so `--file greeting.txt` resolves even though manifests
+// currently store the file's absolute source path. (Issue #228)
+func (se *SelectiveExtractor) resolveEntry(target string) *FileEntry {
+	if entry := se.query.FindFile(target); entry != nil {
+		return entry
+	}
+	clean := filepath.Clean(target)
+	base := filepath.Base(clean)
+	var suffixMatch *FileEntry
+	for i := range se.manifest.Files {
+		p := se.manifest.Files[i].Path
+		// e.g. target "sub/greeting.txt" matching stored "/abs/root/sub/greeting.txt"
+		if p == clean || strings.HasSuffix(p, string(filepath.Separator)+clean) {
+			return &se.manifest.Files[i]
+		}
+		if filepath.Base(p) == base {
+			if suffixMatch != nil {
+				// Ambiguous basename; require a more specific target.
+				return nil
+			}
+			suffixMatch = &se.manifest.Files[i]
+		}
+	}
+	return suffixMatch
+}
+
+// writeDirectFiles writes direct-upload objects (raw file bytes, one object per
+// file) to destDir. The output path is the file's basename (manifests may store
+// an absolute source path; we never write outside destDir). (Issue #228)
+func (se *SelectiveExtractor) writeDirectFiles(data []byte, files []*FileEntry, destDir string) (int, int64, error) {
+	var restored int
+	var totalBytes int64
+	for _, entry := range files {
+		outPath := filepath.Join(destDir, filepath.Base(entry.Path))
+		if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
+			return restored, totalBytes, fmt.Errorf("mkdir for %s: %w", outPath, err)
+		}
+		if err := os.WriteFile(outPath, data, 0644); err != nil {
+			return restored, totalBytes, fmt.Errorf("write %s: %w", outPath, err)
+		}
+		restored++
+		totalBytes += int64(len(data))
+	}
+	return restored, totalBytes, nil
 }
 
 // BatchRestoreByDVCStage restores all files tagged with the given DVC pipeline

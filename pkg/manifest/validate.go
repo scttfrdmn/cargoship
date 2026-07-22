@@ -305,8 +305,18 @@ func (v *Validator) validateFileConsistency(result *ValidationResult) {
 			valid = false
 		}
 
-		// Check chunk ID is valid
-		if file.ChunkID < 0 || file.ChunkID >= v.manifest.TotalChunks {
+		// Check chunk ID is valid. Direct-upload manifests have no chunks
+		// (TotalChunks == 0); each file is its own S3 object, so validate that it
+		// carries an S3 key instead of a chunk reference. (Issue #228)
+		if v.manifest.TotalChunks == 0 {
+			if file.S3Key == "" {
+				result.AddError(fmt.Sprintf("file[%d].s3_key", i),
+					"non-empty",
+					"",
+					fmt.Sprintf("Direct-upload file %s has no S3 key", file.Path))
+				valid = false
+			}
+		} else if file.ChunkID < 0 || file.ChunkID >= v.manifest.TotalChunks {
 			result.AddError(fmt.Sprintf("file[%d].chunk_id", i),
 				fmt.Sprintf("0-%d", v.manifest.TotalChunks-1),
 				fmt.Sprintf("%d", file.ChunkID),
