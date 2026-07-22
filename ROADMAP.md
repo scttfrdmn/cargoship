@@ -1,23 +1,36 @@
 # CargoShip Release Roadmap
 
-**Last Updated**: February 2026
-**Current Version**: v0.12.0 (Released)
-**Next Release**: v0.13.0 (In Development)
+**Last Updated**: July 2026
+**Current Version**: v0.13.2 (Released 2026-07-07)
+**Next Release**: v0.14.0 (Planning)
 
 This document outlines the planned feature releases for CargoShip, organized by version with clear deliverables and timelines.
 
 ---
 
-## 🚧 **v0.13.0 - DVC Pipeline Auto-Discovery** (In Development)
-**Status**: In Development — closes the gap where `FileEntry.DVCMetadata.Stage` was never populated during real uploads
+## ✅ **v0.13.2 - CI Repair & Security Hardening** (RELEASED July 2026)
+**Status**: Complete
 
-### Planned Features:
-- 🚧 **`BuildFileStageIndex`** — parse `dvc.yaml` → map of output path → stage name
-- 🚧 **`AnnotateFilesWithDVCStages`** — walk `[]FileEntry` and set `DVCMetadata.Stage` via stage index
-- 🚧 **`cargoship upload --dvc-auto`** — auto-discover DVC stages from `dvc.yaml` and annotate each file entry; re-uploads manifest so stage-aware commands function in production
-- 🚧 **`cargoship dvc stages <S3_URL>`** — list pipeline stages and file counts from manifest
-- 🚧 **`cargoship dvc status <LOCAL_PATH> <S3_URL>`** — compare local files against manifest (unchanged / modified / missing), with optional `--stage` filter
-- 🚧 **`cargoship dvc export <S3_URL> [OUTPUT_DIR]`** — generate `.dvc` sidecar files from manifest `ContentHash` entries
+- ✅ Repaired CI (broken since February); Substrate emulator import fixes, `go.sum`/dependency reconciliation
+- ✅ Multi-scanner security workflow: govulncheck, gitleaks, Trivy, Semgrep — all SHA-pinned
+- ✅ Dependency CVE fixes (go-git, aws-sdk-go-v2, x/text, grpc); same-origin WebSocket checks; non-root containers
+- ✅ New VitePress documentation site at cargoship.app; stub pages expanded
+
+## ✅ **v0.13.1 - Substrate Test Migration** (RELEASED 2026-03-18)
+**Status**: Complete
+
+- ✅ Migrated all integration tests from LocalStack to an in-process Substrate emulator (no Docker required)
+- ✅ Removed LocalStack endpoint hard-codes; real-AWS path retained via `CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1`
+
+## ✅ **v0.13.0 - DVC Pipeline Auto-Discovery** (RELEASED 2026-02)
+**Status**: Complete — populates `FileEntry.DVCMetadata.Stage` during real uploads
+
+- ✅ **`BuildFileStageIndex`** — parse `dvc.yaml` → map of output path → stage name
+- ✅ **`AnnotateFilesWithDVCStages`** — walk `[]FileEntry` and set `DVCMetadata.Stage` via stage index
+- ✅ **`cargoship upload --dvc-auto`** — auto-discover DVC stages from `dvc.yaml` and annotate each file entry; re-uploads manifest so stage-aware commands function in production
+- ✅ **`cargoship dvc stages <S3_URL>`** — list pipeline stages and file counts from manifest
+- ✅ **`cargoship dvc status <LOCAL_PATH> <S3_URL>`** — compare local files against manifest (unchanged / modified / missing), with optional `--stage` filter
+- ✅ **`cargoship dvc export <S3_URL> [OUTPUT_DIR]`** — generate `.dvc` sidecar files from manifest `ContentHash` entries
 
 ---
 

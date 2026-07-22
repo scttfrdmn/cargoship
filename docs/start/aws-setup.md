@@ -53,18 +53,32 @@ bucket. A minimal policy:
     {
       "Sid": "CargoShipBucketLevel",
       "Effect": "Allow",
-      "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:ListBucketMultipartUploads"
+      ],
       "Resource": "arn:aws:s3:::my-bucket"
     },
     {
       "Sid": "CargoShipObjectLevel",
       "Effect": "Allow",
-      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject",
+        "s3:AbortMultipartUpload",
+        "s3:ListMultipartUploadParts"
+      ],
       "Resource": "arn:aws:s3:::my-bucket/*"
     }
   ]
 }
 ```
+
+Large files upload via S3 multipart, which is why the multipart actions are
+included (`s3:PutObject` authorizes create/upload-part; `AbortMultipartUpload`
+lets CargoShip clean up interrupted uploads).
 
 Add these only if you use the matching features:
 
