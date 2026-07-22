@@ -1,539 +1,73 @@
-# CargoShip Release Roadmap
+# CargoShip Roadmap
 
 **Last Updated**: July 2026
 **Current Version**: v0.13.2 (Released 2026-07-07)
-**Next Release**: v0.14.0 (Planning)
 
-This document outlines the planned feature releases for CargoShip, organized by version with clear deliverables and timelines.
+This is a forward-looking roadmap: it answers "what's next," not "what happened."
+For released-version history, see [CHANGELOG.md](CHANGELOG.md).
 
----
-
-## ✅ **v0.13.2 - CI Repair & Security Hardening** (RELEASED July 2026)
-**Status**: Complete
-
-- ✅ Repaired CI (broken since February); Substrate emulator import fixes, `go.sum`/dependency reconciliation
-- ✅ Multi-scanner security workflow: govulncheck, gitleaks, Trivy, Semgrep — all SHA-pinned
-- ✅ Dependency CVE fixes (go-git, aws-sdk-go-v2, x/text, grpc); same-origin WebSocket checks; non-root containers
-- ✅ New VitePress documentation site at cargoship.app; stub pages expanded
-
-## ✅ **v0.13.1 - Substrate Test Migration** (RELEASED 2026-03-18)
-**Status**: Complete
-
-- ✅ Migrated all integration tests from LocalStack to an in-process Substrate emulator (no Docker required)
-- ✅ Removed LocalStack endpoint hard-codes; real-AWS path retained via `CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1`
-
-## ✅ **v0.13.0 - DVC Pipeline Auto-Discovery** (RELEASED 2026-02)
-**Status**: Complete — populates `FileEntry.DVCMetadata.Stage` during real uploads
-
-- ✅ **`BuildFileStageIndex`** — parse `dvc.yaml` → map of output path → stage name
-- ✅ **`AnnotateFilesWithDVCStages`** — walk `[]FileEntry` and set `DVCMetadata.Stage` via stage index
-- ✅ **`cargoship upload --dvc-auto`** — auto-discover DVC stages from `dvc.yaml` and annotate each file entry; re-uploads manifest so stage-aware commands function in production
-- ✅ **`cargoship dvc stages <S3_URL>`** — list pipeline stages and file counts from manifest
-- ✅ **`cargoship dvc status <LOCAL_PATH> <S3_URL>`** — compare local files against manifest (unchanged / modified / missing), with optional `--stage` filter
-- ✅ **`cargoship dvc export <S3_URL> [OUTPUT_DIR]`** — generate `.dvc` sidecar files from manifest `ContentHash` entries
+Dates and scope are targets, not commitments, and may shift with community
+feedback and development progress.
 
 ---
 
-## ✅ **v0.3.2 - Multi-Region Stability** (RELEASED July 2025)
-**Status**: Complete - Advanced multi-region testing and production readiness
+## Current release — v0.13.2
 
-### Completed Features:
-- ✅ **Region Selection Strategy Tests** - Comprehensive validation of all selection algorithms
-- ✅ **Failover Scenario Testing** - Region failure simulation and recovery validation
-- ✅ **Performance Benchmarking Suite** - Real-world performance metrics and comparison tools
-- ✅ **Test Coverage Improvements** - Achieved 85%+ coverage across all multiregion packages
+CI repair and security hardening: multi-scanner security workflow, dependency
+CVE fixes, and the new documentation site. See the [changelog](CHANGELOG.md) for
+details.
 
----
+## Next — v0.14.0 (Planning)
 
-## ✅ **v0.4.0 - Advanced Network Algorithms** (RELEASED July 2025)
-**Status**: Complete - Production-proven network optimization algorithms
+Theme: **enterprise budget foundations**. Candidate items (planned/proposed, not
+yet committed to a date):
 
-### Completed Features:
-- ✅ **BBR Congestion Control** - Google's production-tested bandwidth probing algorithm
-- ✅ **CUBIC TCP Algorithm** - Linux kernel's proven congestion window management
-- ✅ **RTT Estimation System** - Signal processing with Kalman filtering and statistical methods
-- ✅ **Loss Detection & Recovery** - Multi-method packet loss detection with deterministic recovery
-- ✅ **Bandwidth-Delay Product** - Dynamic buffer optimization for maximum throughput
+- Multi-grant portfolio management — track multiple concurrent grants/budgets.
+- Hierarchical budget controls — department → lab → project → user inheritance.
+- Advanced burn-rate analytics — predictive spending with seasonality.
+- Budget approval workflows — multi-stage approval for large transfers.
 
-### Achieved Performance:
-- ✅ 4.6x faster uploads than generic tools
-- ✅ Production-proven algorithms from Google and Linux kernel
-- ✅ 95% test coverage with comprehensive validation
-- ✅ Real-time network condition adaptation
+Exact scope will be finalized during planning; some items may land across
+several minor releases.
 
----
+## Near-term (following minor releases)
 
-## ✅ **v0.4.1 - Documentation & Accuracy** (RELEASED July 2025)
-**Status**: Complete - Honest documentation and enterprise messaging alignment
+High-level themes, in rough priority order:
 
-### Completed Features:
-- ✅ **Documentation Accuracy** - Corrected ML claims to reflect actual algorithm implementations
-- ✅ **Enterprise Messaging** - Unified professional positioning across all documentation
-- ✅ **Performance Transparency** - Accurate representation of proven network algorithms
-- ✅ **GitHub Pages Updates** - Enhanced site with v0.4.0 capabilities
+- **Institutional workflows** — cost-center integration and chargeback;
+  research/federal compliance reporting (OSTP 2025, NSF/NIH).
+- **Transfer integrations** — Globus endpoint integration for institutional
+  data movement.
+- **Maturity work** — graduate beta components (DVC integration, distributed
+  agents) toward stable; expand test coverage and docs.
 
----
+## Longer-term — path to v1.0.0
 
-## ✅ **v0.5.1 - Integration Testing & Reliability** (RELEASED November 2025)
-**Status**: Complete - Production-ready testing infrastructure and benchmarks
+v1.0.0 is about stability and maturity, not a feature dump:
 
-### Completed Features:
-- ✅ **Integration Testing Framework** - 19 tests with real AWS S3 validation (not just LocalStack)
-- ✅ **Performance Benchmark Suite** - 5 comprehensive benchmarks
-  - Compression speed: zstd 527.30 MB/s (10.7x faster than gzip)
-  - S3 Upload: 10MB → 32.20 MB/s, 100MB → 23.07 MB/s
-  - S3 Download: 10MB → 64.15 MB/s, 100MB → 89.68 MB/s
-  - Memory efficiency: 4.21 MB peak for 100MB file
-- ✅ **Failure Scenario Tests** - 7 production reliability tests
-  - S3 bucket not found, corrupted archives, invalid permissions
-  - Network timeouts, partial upload cleanup, concurrent races
-  - Disk space monitoring and handling
-- ✅ **Large-Scale Scenario Tests** - 5 comprehensive edge case tests
-  - Large directory: 10,000 files in 11.38s (11,383 files/sec)
-  - Deep nesting: 25 directory levels, 330-char paths
-  - Long paths: 484-494 character validation
-  - Special characters: Unicode, emoji, punctuation
-  - Mixed file sizes: 184 files (1KB-50MB), 855 MB/s compression
+- **API stabilization** — settle the public Go API package-by-package (today
+  it's mixed per `docs/project/maturity.md`) and commit to semver guarantees.
+- **Graduate beta → stable** — DVC commands/plugin, distributed agents, and
+  Magika detection move from beta to stable once wire formats and command
+  surfaces settle.
+- **Experimental → supported** — decide the fate of multi-region (library-only
+  today, not wired into `cargoship upload`).
+- **Uphold the archive-compatibility guarantee** — archives stay readable across
+  releases within the documented format versions.
 
-### Performance Validation:
-- ✅ 10,000 files in 9.26s (133x faster than 20min target)
-- ✅ All failure scenarios validated for production readiness
-- ✅ Real AWS S3 integration with automatic bucket lifecycle management
+Aspirational, and gated on real-world validation rather than a fixed date.
+
+## Exploratory — NOT committed
+
+Ideas under consideration only. These are not promises and may never ship:
+
+- Multi-cloud support (Azure, GCP) alongside AWS.
+- True ML / predictive optimization — learned parameter tuning and network
+  modeling (current optimization is deterministic).
+- Serverless / auto-scaling agents and container-orchestrated deployment.
+- Next-gen protocols (HTTP/3) and a REST API surface.
 
 ---
 
-## ✅ **v0.6.0 - Enterprise Budget & Cost Management** (RELEASED December 2025)
-**Status**: Complete - Production-ready cost tracking and forecasting
-
-### Completed Features:
-- ✅ **Dual Budget Controls** - Cost budgets (USD) AND volume quotas (GB) enforced independently
-  - Grant period management: 1-3 year budget periods with rollover support
-  - Threshold alerts: Warning at 80%, critical at 100%
-  - Budget enforcement: Operations blocked if limits would be exceeded
-- ✅ **Project-Based Cost Tracking** - Each manifest upload ID = project for granular analysis
-  - Time period filtering (day/week/month/year/custom date ranges)
-  - Multi-dimensional breakdowns (region, storage class, project)
-  - Cost summaries with total costs, savings, file counts, data volumes
-- ✅ **ML-Powered Forecasting** - Budget forecasting and burn rate analysis
-  - 4 forecasting models: linear, exponential, moving_average, ensemble
-  - Confidence intervals: 90%, 95%, 99% prediction bounds
-  - Burn rate analysis: Historical trends, acceleration, volatility tracking
-  - Budget exhaustion predictions with exact dates and probability estimates
-- ✅ **Multi-Channel Alert Notifications** - Production-ready alert system
-  - Email (SMTP): TLS 1.2+ encrypted, multiple recipients
-  - Slack webhooks: Rich message formatting with color-coded attachments
-  - Custom webhooks: JSON payload with complete alert metadata
-  - CloudWatch integration: Native AWS metrics and alarms
-  - 6 alert types, 3 severity levels (info, warning, critical)
-- ✅ **Comprehensive CLI Commands** - 20+ subcommands across 3 groups
-  - Budget: `budget status`, `budget set`, `budget list`, `budget remove`
-  - Cost: `cost summary`, `cost projects`, `cost forecast`, `cost burnrate`
-  - Alerts: `alerts configure`, `alerts test`, `alerts enable/disable`
-- ✅ **Rclone Integration Removal** - Transitioned to S3-native architecture
-  - Simplified codebase focusing on S3 optimization
-  - Removed `--cloud-destination` flag and `cargoship rclone` command
-
-### Technical Achievements:
-- ✅ ~140KB production code across 6 core files
-- ✅ ~102KB test code with 67 tests passing
-- ✅ 72.5% test coverage (pkg/aws/cost)
-- ✅ Zero linting issues, zero security vulnerabilities
-- ✅ 2,970+ lines of comprehensive documentation
-
-### Issues Closed:
-- #147: Budget & Cost Management System (Phases 1-6)
-- #148: Incremental sync with manifest-based delta detection
-- #149: Project-based cost tracking
-- #150: Timezone issue in week period calculation
-- #163: AWS KMS encryption support for manifests and data
-- #162: OptimizedTransporter Content-Length header bug
-- #161: Transporter performance benchmarks
-- #160: GoReleaser for automated multi-platform releases
-- #159: FindFile O(1) hash map lookup optimization
-- #158: Automatic cleanup on upload failure
-- #157: Resume capability for failed uploads
-- #156: Flaky TestRealTimeLoadBalancerRealTimeMonitoring
-- #155: Distributed tracing and observability infrastructure
-- #154: Network stack tuning: HTTP/2 and TCP optimization
-
----
-
-## ✅ **v0.7.0 - Performance & Optimization** (RELEASED Q1 2026)
-**Focus**: Zero-copy I/O, adaptive sharding, network improvements, and content-aware compression
-
-### Completed Features:
-- ✅ **Adaptive Shard Count** - Automatic S3 prefix optimization (Issue #106)
-  - Auto-tunes 4–32 shards based on file count, data size, CPU, and memory
-- ✅ **Zero-Copy I/O** - Linux splice-based transfer with buffer pooling (Issue #153)
-- ✅ **HTTP/2 and TCP Tuning** - 3x throughput improvement on high-latency links (Issue #154)
-- ✅ **Geographic Region Selection** - Automatic S3 region from client location (Issue #138)
-- ✅ **Content-Aware Compression** - Magika AI file type detection (Issue #105)
-- ✅ **File Deduplication** - Cross-upload deduplication via content hashing (Issue #108)
-- ✅ **Shard Rebalancing** - `cargoship balance` command (Issue #109)
-- ✅ **Resume Failed Uploads** (Issue #157), **Cleanup on Failure** (Issue #158)
-- ✅ **Incremental Sync** - MD5-based change detection (Issue #148, #177–#179)
-- ✅ **CargoHold Archive Format** - Selective extraction and manifest query API (Issues #88–#93)
-- ✅ **`upload` command** - Primary upload with CargoHold sharding (Issue #95)
-- ✅ **`verify` command** - Dataset integrity verification (Issue #99)
-- ✅ **Staging Package Refactor** - Merged compression types, removed stubs (Issue #16)
-
----
-
-## ✅ **v0.10.0 - DVC Integration** (RELEASED February 2026)
-**Focus**: Native DVC remote support for ML/data science workflows
-
-### Planned Features:
-- **`dvc-cargoship` Python Package** - Native DVC remote backed by CargoShip (Issue #181)
-- **DVC `.dvc` File Generation** - Track datasets in Git (Issue #180)
-- **Incremental Sync** - MD5-based change detection for DVC workflows (Issues #177–#179)
-- **Budget Integration for DVC** - Cost tracking per DVC pipeline run (Issue #183)
-- **DVC Pipeline Metadata** - Extract and store pipeline provenance (Issue #185)
-- **Federal Compliance Reports** - NSF/NIH grant compliance for DVC datasets (Issue #187)
-- **Hash-Based Manifest Queries** - DVC-aware lookups (Issue #188)
-- **Selective Restore** - Batch restore with LRU cache (Issue #189)
-- **Interactive TUI Browser** - Browse and restore archived datasets (Issue #190)
-
-### Issues:
-- #171–#192: Full DVC integration milestone
-
----
-
-## ✅ **v0.11.0 - Enhanced Data Retrieval** (RELEASED February 2026)
-**Focus**: Comprehensive restoration capabilities and interactive data access
-
-### Planned Features:
-- ✅ **Selective File Restoration** - Extract specific files without full suitcase restoration (Issues #188, #189)
-- ✅ **S3 Glacier Management** - Automated Deep Archive and Glacier restoration workflows (Issue #200)
-- ✅ **Interactive Browse Interface** - TUI browsing of archived data (Issue #190)
-- ✅ **Bulk Restoration Operations** - Restore entire datasets with progress tracking (Issues #189, #201)
-- ✅ **Restoration Job Management** - Queue, schedule, and monitor restoration processes (Issue #202)
-- ✅ **Quota-Aware Restoration** - Track restoration costs against budget quotas (Issue #201)
-
-### Restoration Features:
-```bash
-# Interactive browsing of archived data
-cargoship browse s3://archive-bucket/project-2024 --interactive
-cargoship browse --tui --search "*.fastq.gz" --preview
-
-# Selective file restoration with quota tracking
-cargoship restore s3://archive-bucket/genomics/sample-001.bam \
-  --destination /tmp/restored \
-  --quota restoration-budget \
-  --priority expedited
-
-# Bulk restoration with progress tracking
-cargoship restore s3://archive-bucket/analysis-results/ \
-  --destination /data/restored \
-  --tier standard \
-  --track-progress
-
-# S3 Glacier restoration management
-cargoship restore request s3://archive-bucket/large-dataset/ \
-  --tier expedited \
-  --notify-when-ready \
-  --max-cost 500
-```
-
-### Success Criteria:
-- ✅ Selective restoration without full archive extraction
-- ✅ Automated Glacier/Deep Archive workflow handling
-- ✅ Interactive TUI with search and preview capabilities
-- ✅ Quota tracking for all restoration operations
-- ✅ Progress monitoring for long-running restoration jobs
-
----
-
-## ✅ **v0.12.0 - Archive Inspection & Developer Experience** (RELEASED February 2026)
-**Focus**: Make archived data inspectable without extraction; documentation accuracy and polish
-
-### Completed Features:
-- ✅ **Archive Filesystem REPL** - `cargoship shell s3://bucket/prefix` virtual filesystem shell (Issue #203)
-  - Navigate archive like a local directory: `ls`, `cd`, `pwd`
-  - Inspect file content: `cat`, `head`, streaming decompression
-  - Metadata commands: `stat`, `find`
-  - DVC/git awareness: `stage list`, filter by stage or commit
-  - On-demand restore: `get <file> [dest]`
-- ✅ **Documentation Overhaul** - Accuracy fixes, cruft removal, user-facing rewrites (Issue #204)
-  - Removed stale internal planning artifacts from docs/
-  - CLI_REFERENCE.md updated with Data Retrieval Commands section
-  - USER_GUIDE.md updated with Retrieving Archived Data section
-  - mkdocs.yml navigation rebuilt
-
-### REPL Session Example:
-```bash
-$ cargoship shell s3://my-bucket/uploads/20240101-abc123
-
-CargoShip Archive Shell — 2847 files, 10 chunks
-Type 'help' for available commands.
-
-archive:/> ls data/
-  models/    raw/    train/
-archive:/> cd data/train
-archive:/data/train> ls
-  features.parquet  (12.4 MB, stage: train, hash: d8e8fc...)
-  labels.csv        (2.1 MB, stage: train, hash: a3f2c1...)
-archive:/data/train> stat features.parquet
-  Path:        data/train/features.parquet
-  Size:        12.4 MB (4.1 MB compressed)
-  Hash:        d8e8fca2dc0f896fd7cb4cb0031ba249
-  Chunk:       shard-0/chunk-3.tar.zst
-  DVC stage:   train
-  Git commit:  deadbeef
-archive:/data/train> cat labels.csv
-[streams decompressed content to stdout]
-archive:/data/train> get features.parquet ./local/
-  ✅ Restored features.parquet → ./local/features.parquet
-archive:/> stage list
-  preprocess  (50 files)
-  train       (2 files)
-archive:/> exit
-```
-
-### Success Criteria:
-- Archive can be explored without any local extraction
-- `cat` streams individual files without downloading full chunks when possible
-- Tab completion works on manifest paths
-- DVC stage and git commit filtering available as first-class filters
-- All user-facing docs use correct command syntax and license
-
----
-
-## 💼 **v1.0.0 - Enterprise Integration** (Target: Q4 2026)
-**Focus**: Multi-grant management, hierarchical budgets, and institutional workflows
-
-### Planned Features:
-- **Multi-Grant Portfolio Management** - Track multiple concurrent grants/budgets
-- **Hierarchical Budget Controls** - Department → Lab → Project → User inheritance
-- **Advanced Burn Rate Analytics** - Predictive spending with seasonality
-- **Budget Approval Workflows** - Multi-stage approval for large transfers
-- **Cost Center Integration** - Enterprise cost accounting and chargeback systems
-- **Globus Transfer Integration** - Direct integration with institutional Globus endpoints
-- **Research Workflow Support** - Academic data archiving with federal compliance
-
-### Enterprise Features:
-```bash
-# Multi-grant portfolio with hierarchical limits
-cargoship budget create-portfolio \
-  --grants "NSF-2024:$10k,NIH-2025:$15k" \
-  --department-limit 50000 \
-  --lab-limit 5000 \
-  --user-limit 1000
-
-# Approval workflow for large transfers
-cargoship upload /large-dataset \
-  --max-cost 2000 \
-  --require-approval \
-  --approvers "pi@university.edu,admin@university.edu"
-
-# Automated cost optimization under budget pressure
-cargoship budget set-optimization \
-  --auto-tier-when-over 80% \
-  --emergency-glacier-at 95%
-
-# Globus integration with budget tracking
-cargoship upload /research/genomics-data \
-  --via globus \
-  --endpoint duke-cluster \
-  --grant NSF-2024 \
-  --budget-limit 500
-```
-
-### Success Criteria:
-- ✅ Support for 10+ concurrent grant periods
-- ✅ Automated budget optimization recommendations
-- ✅ Integration with university financial systems
-- ✅ Approval workflows reducing unauthorized spending
-- ✅ Seamless Globus endpoint discovery and authentication
-- ✅ OSTP 2025 federal data sharing compliance
-
----
-
-## 🤖 **v1.0.0 - Machine Learning Implementation** (Target: Q4 2026)
-**Focus**: True ML integration and predictive optimization
-
-### Planned Features:
-- **ML-Based Parameter Optimization** - Train models on historical transfer data
-- **Predictive Network Modeling** - ML models for network condition prediction
-- **Transfer Performance Learning** - Optimize future transfers from patterns
-- **Adaptive Algorithm Selection** - ML-driven selection between BBR, CUBIC, etc.
-
-### ML Implementation:
-- 🤖 Supervised learning models trained on transfer telemetry
-- 📊 Time series prediction for network condition forecasting
-- 🧠 Reinforcement learning for dynamic parameter optimization
-- 📈 Feature engineering from network metrics and performance
-
-### Technical Requirements:
-- Data collection infrastructure for training datasets
-- Model training pipeline with performance validation
-- A/B testing framework for algorithm comparison
-- Model deployment and inference optimization
-
-### Success Criteria:
-- ✅ Demonstrable performance improvement over deterministic algorithms
-- ✅ Model accuracy validation against real-world scenarios
-- ✅ Reduced manual parameter tuning through learned optimization
-- ✅ Production-ready ML infrastructure with monitoring and rollback
-
----
-
-## 👻 **v1.1.0 - Cloud-Native Scaling** (Target: Q1 2027)
-**Focus**: Serverless and auto-scaling architecture
-
-### Planned Features:
-- **Ghostships** - Ephemeral cloud-based auto-scaling agents
-- **Serverless Data Movement** - Cost-optimized cloud bursting
-- **Multi-Cloud Support** - Azure, GCP integration alongside AWS
-- **Container Orchestration** - Kubernetes-based agent deployment
-
-### Success Criteria:
-- ✅ Cost-effective scaling for variable workloads
-- ✅ Multi-cloud cost optimization and vendor flexibility
-- ✅ Zero-management deployment in cloud environments
-
----
-
-## 🔮 **v1.2.0 - Protocol Innovation** (Target: Q2 2027)
-**Focus**: Advanced protocols and enterprise features
-
-### Planned Features:
-- **HTTP/3 Optimizations** - Next-generation protocol support
-- **Advanced Analytics** - Comprehensive transfer analytics and reporting
-- **Backup & Versioning** - Incremental backups with lifecycle management
-- **Enterprise Security** - LDAP, SSO, and compliance features
-
-### Success Criteria:
-- ✅ Industry-leading transfer protocols and optimizations
-- ✅ Comprehensive analytics for transfer optimization
-- ✅ Enterprise-ready security and compliance features
-- ✅ Full backup and disaster recovery capabilities
-
----
-
-## 📋 **Release Planning & Tracking**
-
-### Development Phases:
-- **Alpha**: Core features implemented, internal testing
-- **Beta**: Feature complete, community testing and feedback
-- **RC**: Release candidate, final testing and bug fixes
-- **GA**: General availability, production ready
-
-### Version Numbering:
-- **Major (x.0.0)**: Significant architectural changes or new major features
-- **Minor (0.x.0)**: New features, performance improvements, API additions
-- **Patch (0.0.x)**: Bug fixes, security updates, minor improvements
-
-### Release Cadence:
-- **Major Releases**: Every 6-9 months
-- **Minor Releases**: Every 2-3 months
-- **Patch Releases**: As needed for critical fixes
-
----
-
-## 🎯 **Success Metrics by Version**
-
-### v0.6.0 Achieved:
-- ✅ Dual budget controls (cost + volume quotas)
-- ✅ 4 ML forecasting models with 90-99% confidence intervals
-- ✅ Multi-channel alerts (Email, Slack, CloudWatch, webhooks)
-- ✅ 20+ CLI commands for budget/cost management
-- ✅ 72.5% test coverage, zero linting issues
-
-### v0.7.0 Achievements:
-- ✅ Zero-copy I/O via Linux splice integration
-- ✅ 3x throughput on high-latency links (HTTP/2 + TCP tuning)
-- ✅ Adaptive shard count: 4–32 shards auto-tuned
-- ✅ Content-aware compression with Magika AI detection
-
-### v0.10.0 Targets (DVC Integration):
-- Native DVC remote backed by CargoShip
-- Budget tracking per DVC pipeline run
-- Federal compliance reports for NSF/NIH grants
-- Selective restore with interactive TUI browser
-
-### v0.9.0 Targets:
-- Selective file restoration without full extraction
-- Interactive TUI with search and preview
-- Quota-aware restoration cost tracking
-- Automated Glacier workflow handling
-
-### v1.0.0 Targets:
-- 10+ concurrent grant period support
-- Automated optimization saving 15%+ costs
-- Globus integration with institutional endpoints
-- Federal compliance (OSTP 2025) support
-
-### v1.0.0 Targets:
-- ML-based performance improvements over deterministic algorithms
-- Predictive network modeling with 90%+ accuracy
-- Automated parameter optimization reducing manual tuning
-
----
-
-## 🔄 **Continuous Improvements**
-
-### Every Release:
-- **Security Updates** - Latest vulnerability fixes and security enhancements
-- **Performance Monitoring** - Continuous performance regression testing
-- **Documentation** - Updated guides, examples, and API documentation
-- **Test Coverage** - Maintain 80%+ coverage across all packages
-- **Code Quality** - Zero linting violations and automated quality checks
-
-### Community Feedback:
-- Regular community input on feature priorities
-- User experience improvements based on real-world usage
-- Performance optimization based on field deployment data
-- Research community specific feature requests
-
----
-
-## 📞 **Release Communication**
-
-### Pre-Release:
-- Feature announcements and development updates
-- Alpha/Beta testing program for early adopters
-- Documentation preview and migration guides
-
-### Release:
-- Comprehensive changelog and feature highlights
-- Performance benchmarks and improvement metrics
-- Migration guides and breaking change documentation
-- Community demos and feature walkthroughs
-
-### Post-Release:
-- User feedback collection and analysis
-- Performance monitoring and optimization
-- Bug fix releases and security updates
-- Next version planning and roadmap updates
-
----
-
-## 📊 **Current Status (v0.6.0)**
-
-### Production Readiness: ✅ EXCELLENT
-- All tests passing with race detector enabled
-- 75.4% test coverage (pkg/aws/s3)
-- Zero linting issues, zero security vulnerabilities
-- Thread-safety hardened (all race conditions resolved)
-- Clean builds across all platforms
-
-### Recent Achievements (December 2025):
-- Fixed 4 critical race conditions in memory buffer, network monitor, and interface segregation
-- Resolved deadlock in RealTimeLoadBalancer.performRealTimeMonitoring()
-- Comprehensive thread-safety audit completed
-- All concurrent access patterns validated and protected
-
-### Open Issues: 15
-**High Priority:**
-- #166: Realistic Benchmark Data & Infrastructure
-- #165: Cost Benchmarking & Transparency
-
-**Enhancement Backlog:**
-- #167: AI-Powered Optimizer (vision)
-- #140: Adaptive staging enhancements
-- #138: Geographic region selection
-- #137: ML-based adaptive routing
-
----
-
-**Note**: This roadmap is subject to change based on community feedback, technical discoveries, and research priorities. All dates are targets and may be adjusted based on development progress and quality requirements.
+**Note**: This roadmap is subject to change. All dates are targets and may be
+adjusted based on development progress, quality requirements, and priorities.

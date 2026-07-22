@@ -4,24 +4,30 @@ CargoShip follows [Semantic Versioning 2.0.0](https://semver.org/):
 `MAJOR.MINOR.PATCH`. This page explains what that means for the CLI and for
 projects that import CargoShip as a Go library.
 
-## Semantic versioning
+CargoShip follows [Semantic Versioning 2.0.0](https://semver.org/), but the exact
+compatibility rules differ before and after `v1.0` — as SemVer itself specifies
+for the `0.x` series. **CargoShip is currently `v0.x`, so the pre-1.0 policy
+below is the one in force today.**
 
-- **MAJOR** (`v0.x → v1.0`) — breaking API changes: removing or renaming public
-  functions, changing signatures or return types, removing struct fields, or
-  changing documented behavior. Requires consumer code changes; a migration guide
-  is provided.
-- **MINOR** (`v0.4 → v0.5`) — backward-compatible additions: new features, new
-  methods, new struct fields with zero-value defaults, new packages, and
-  deprecations (marking, not removing).
-- **PATCH** (`v0.4.4 → v0.4.5`) — bug fixes, security patches, performance
-  improvements, and documentation. Safe to upgrade immediately.
+## Current policy (pre-1.0)
 
-## Pre-1.0 status
+- **`0.MINOR.0`** (`v0.13 → v0.14`) — *may* contain **documented breaking
+  changes** alongside new features. This is standard for the `0.x` series. Any
+  break is called out in the release notes with a migration path.
+- **`0.MINOR.PATCH`** (`v0.13.1 → v0.13.2`) — bug fixes, security patches,
+  performance, and docs. Always backward compatible; safe to upgrade immediately.
 
-CargoShip is currently `v0.x`. In this phase, `v0.MINOR` bumps *may* include
-documented breaking changes, while `v0.PATCH` is always backward compatible.
-Despite the `v0.x` label, the **stable** library APIs are treated as
-production-ready and are not broken casually.
+Even so, the packages marked **Stable** below are not broken casually — they get
+the [deprecation policy](#deprecation-policy) treatment rather than abrupt
+changes. Pin a version if you need certainty across minor bumps.
+
+## Policy after 1.0
+
+Once CargoShip reaches `v1.0`, standard SemVer applies:
+
+- **MAJOR** (`v1 → v2`) — breaking changes; migration guide provided.
+- **MINOR** (`v1.1 → v1.2`) — backward-compatible additions only.
+- **PATCH** (`v1.1.1 → v1.1.2`) — backward-compatible fixes.
 
 ## Stability levels for the Go library
 
@@ -31,8 +37,8 @@ Public APIs are classified into three levels:
   and `pkg/aws/config` (`S3Config`, `StorageClass` constants). Backward compatible
   within the major version; new methods and fields may be added, but existing ones
   are not removed or changed.
-- **Beta** — cost-control config and `pkg/multiregion` coordination. Production-
-  ready but evolving; changes come with a deprecation notice (at least 2 minor
+- **Beta** — cost-control config and `pkg/multiregion` coordination. Usable but
+  still evolving; changes come with a deprecation notice (at least 2 minor
   versions).
 - **Experimental** — `pkg/staging`, `pkg/s3optimization` (predictive prefetching).
   May change in any version without notice; marked with

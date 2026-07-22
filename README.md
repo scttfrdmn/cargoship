@@ -1,7 +1,7 @@
 <div align="center">
   <img src="assets/images/logo.png" alt="CargoShip Logo" width="200" height="200">
   <h1>CargoShip</h1>
-  <p><strong>Enterprise data archiving for AWS, built for speed and intelligence</strong></p>
+  <p><strong>High-performance S3 data archiving</strong></p>
 </div>
 
 [![Go Version](https://img.shields.io/github/go-mod/go-version/scttfrdmn/cargoship)](https://github.com/scttfrdmn/cargoship/blob/main/go.mod)
@@ -15,24 +15,21 @@
 [![GitHub Issues](https://img.shields.io/github/issues/scttfrdmn/cargoship)](https://github.com/scttfrdmn/cargoship/issues)
 [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/scttfrdmn/cargoship)](https://github.com/scttfrdmn/cargoship/pulls)
 
-CargoShip is a next-generation data archiving tool optimized for AWS infrastructure, featuring streaming pipeline architecture, multi-prefix parallel uploads (up to ~8× S3 request-rate capacity), and intelligent cost optimization. Originally inspired by Duke University's SuitcaseCTL research, CargoShip has evolved into a modern, production-ready solution for enterprise-scale data archiving.
+CargoShip turns large directory trees into compressed, verifiable, portable
+archives streamed directly to Amazon S3. It is for research and technical
+datasets with many files, where ordinary copy tools create excessive S3
+requests, give weak recovery guarantees, or make storage costs hard to predict.
 
-## 🚀 Enterprise Features with Modern Architecture
+## Why not plain `aws s3 cp` or `rclone`?
 
-**High-performance streaming data uploads (v0.5.1+):**
-- 🚀 **Streaming Pipeline** - Zero local disk usage, stream directly to S3
-- ⚡ **Multi-Prefix Parallel Uploads** - up to ~8× S3 request-rate capacity via prefix sharding
-- 📊 **Real-Time Progress Tracking** - Beautiful TUI with live upload metrics
-- 🧠 **Intelligent Chunking** - Adaptive chunk sizing with compression-aware optimization
-- 💰 **Cost Optimization** - Intelligent storage class selection and lifecycle policies
-- 🎯 **Advanced S3 Features** - Multi-region support, predictive prefetching
-- 📈 **Performance Monitoring** - Comprehensive metrics and analytics
-- 💵 **Budget Tracking** - Project-based cost and volume quota management with burn rate forecasting
-- 🛡️ **Security first** - KMS encryption and compliance-ready audit trails
+Those tools copy files one-to-one, which turns a million-file dataset into a
+million S3 requests with no packaging, manifest, or cost model. CargoShip packs
+files into compressed archives, shards uploads across S3 prefixes for
+throughput, records a verifiable manifest, and can estimate cost before you
+commit. See the [feature comparison](https://cargoship.app/reference/comparison)
+for a side-by-side breakdown.
 
-## 🚀 Quick Start
-
-### Installation
+## Installation
 
 ```bash
 # Homebrew (macOS/Linux)
@@ -42,485 +39,137 @@ brew install scttfrdmn/tap/cargoship
 scoop bucket add scttfrdmn https://github.com/scttfrdmn/scoop-bucket
 scoop install cargoship
 
-# Go Install
+# Go install
 go install github.com/scttfrdmn/cargoship/cmd/cargoship@latest
 ```
 
-See the [Installation Guide](https://cargoship.app/start/install) for more options.
+Pre-built binaries for macOS, Linux, and Windows are on the
+[releases page](https://github.com/scttfrdmn/cargoship/releases). CargoShip
+reads AWS credentials from the standard SDK chain (environment, shared config,
+or IAM role); see [AWS setup](https://cargoship.app/start/aws-setup) for the
+minimal IAM policy and the [installation guide](https://cargoship.app/start/install)
+for more options.
 
-### Basic Workflow
+## Example
+
+A complete round trip: estimate, upload, inspect, verify, and restore a single file.
 
 ```bash
-# 1. Estimate costs before uploading
+# 1. Estimate cost before uploading
 cargoship estimate /data/project-2024 --storage-class deep-archive
 
 # 2. Upload a directory to S3 (canonical command)
-cargoship upload /data/completed-analysis s3://my-bucket/project-2024 \
+cargoship upload /data/project-2024 s3://my-bucket/project-2024 \
   --storage-class INTELLIGENT_TIERING
 
-# Real-time progress display:
 # 🚢 Uploading: 1234 files | 5.67 GB | 89 chunks | 123.4 MB/s | 1m30s elapsed
+# ✅ Upload Complete!  Upload ID: 20260721-123456-abcd1234
 
-# 3. List uploaded files using manifest (no download required)
-cargoship list --bucket my-bucket --upload-id 20251206-123456-abcd1234
+# 3. Inspect what was uploaded, straight from the manifest (no download)
+cargoship info s3://my-bucket/project-2024
 
-# 4. Manage S3 lifecycle policies
-cargoship lifecycle --bucket my-bucket --template archive-optimization
+# 4. Verify the archive against its manifest checksums
+cargoship verify s3://my-bucket/project-2024
+
+# 5. Restore a single file without pulling the whole archive
+cargoship restore s3://my-bucket/project-2024 \
+  --file results/summary.csv --output ./restored/
 ```
 
-## 💰 Intelligent Cost Optimization
+See the [quick start](https://cargoship.app/start/quickstart) for a guided
+walkthrough and the [command reference](https://cargoship.app/reference/) for
+every command and flag.
 
-CargoShip provides enterprise-grade cost optimization with proven algorithms:
+Sharding is chosen automatically from the workload, but you can override it:
 
 ```bash
-$ cargoship estimate ./genomics-analysis --show-breakdown
-
-📊 Archive Cost Estimate (1.2TB genomics data)
-┌─────────────────┬──────────────┬──────────────┐
-│ Storage Class   │ Monthly Cost │ Annual Cost  │
-├─────────────────┼──────────────┼──────────────┤
-│ Standard        │ $276.48     │ $3,317.76   │
-│ Glacier         │ $61.44      │ $737.28     │
-│ Deep Archive    │ $12.29      │ $147.48     │
-└─────────────────┴──────────────┴──────────────┘
-
-💡 Optimization Recommendations (v0.5.1+):
-• Archive raw data → Deep Archive (90% savings)
-• Analysis results → Glacier (75% savings)
-• Enable lifecycle policies → Additional 15% savings
-• Multi-prefix parallel uploads → 8x throughput improvement
-• Streaming pipeline → Zero local disk usage
-• Intelligent chunking → Optimal compression ratios
-
-Total annual savings: $3,170/year with 8x upload performance
-
-✅ Available Now:
-• `cargoship upload` - Sharded, compressed, verifiable uploads
-• `cargoship lifecycle` - Automated lifecycle policy management
-• `cargoship budget` - Project-based cost and volume quota tracking
-• Real-time progress tracking with TUI
+cargoship upload /data/project-2024 s3://my-bucket/project-2024 --shard-count 16
 ```
 
-### Storage Tier Cost Implications ⚠️
-
-When using `--tier-strategy tier-aware` with `--auto-tier`, CargoShip assigns files to cost-optimized storage tiers. **Understanding the full cost implications is critical** to avoid unexpected charges.
-
-#### Hidden Costs: Minimum Storage Duration & Retrieval Fees
-
-AWS charges for minimum storage duration **even if you delete data early**:
-
-| Tier | Storage Cost | Minimum Duration | Retrieval Cost | Retrieval Time | Best For |
-|------|--------------|------------------|----------------|----------------|----------|
-| **STANDARD** | $0.023/GB-month | None | Free | Immediate | Active data, frequent access |
-| **STANDARD_IA** | $0.0125/GB-month | 30 days | $0.01/GB | Immediate | Infrequent access (< 1x/month) |
-| **GLACIER** | $0.004/GB-month | **90 days** ⚠️ | $0.01/GB | 3-5 hours | Rarely accessed (<1x/year) |
-| **DEEP_ARCHIVE** | $0.00099/GB-month | **180 days** ⚠️ | $0.02/GB | 12 hours | Compliance (<1x/5 years) |
-
-**Example: Early Deletion Penalty**
-```
-Upload 100GB to DEEP_ARCHIVE, delete after 30 days:
-├─ Storage (30 days):        $0.10
-├─ Early deletion penalty:   $0.50 (charged for remaining 150 days)
-└─ Total:                    $0.60 (6x more than expected!)
-```
-
-**Example: Retrieval Costs**
-```
-Retrieve 1TB from GLACIER:
-├─ Retrieval fee:   1024GB × $0.01/GB  = $10.24
-├─ Data transfer:   1024GB × $0.09/GB  = $92.16
-└─ Total:                               = $102.40
-```
-
-#### Cost Scenarios: When to Use Each Strategy
-
-**Scenario 1: Long-term Archive (No Retrieval) - ✅ Use tier-aware**
-```
-100GB mixed-age dataset, stored 1 year, no retrievals:
-
-V1 (youngest-file):
-└─ 100GB STANDARD:          $27.60/year
-
-V2 (tier-aware):
-├─ 25GB STANDARD:           $6.90/year
-├─ 25GB STANDARD_IA:        $3.75/year
-├─ 25GB GLACIER:            $1.20/year
-└─ 25GB DEEP_ARCHIVE:       $0.30/year
-   Total:                   $12.15/year
-
-Savings: $15.45/year (56% reduction) ✅
-```
-
-**Scenario 2: Frequent Retrieval (10x/year) - ❌ Use youngest-file instead**
-```
-100GB dataset, 10 retrievals per year:
-
-V1 (youngest-file):
-└─ Storage + retrieval:     $27.60/year (no retrieval fees)
-
-V2 (tier-aware):
-├─ Storage:                 $12.15/year
-├─ Retrieval fees:          $7.50/year
-└─ Data transfer:           $22.50/year
-   Total:                   $42.15/year
-
-Loss: -$14.55/year (53% increase) ❌
-```
-
-#### Interactive Confirmation
-
-CargoShip prompts for confirmation when using tier-aware strategy:
-
-```bash
-$ cargoship upload --auto-tier --tier-strategy tier-aware ./data s3://bucket
-
-⚠️  TIER-AWARE CHUNKING: COST IMPLICATIONS WARNING
-══════════════════════════════════════════════════
-
-🧊 GLACIER:
-   • 90-day minimum storage duration (early deletion penalty applies)
-   • $0.01/GB retrieval fee
-   • 3-5 hour retrieval time (standard)
-   • Best for: Data accessed <1x per year
-
-❄️  DEEP_ARCHIVE:
-   • 180-day minimum storage duration (early deletion penalty applies)
-   • $0.02/GB retrieval fee
-   • 12 hour retrieval time (standard)
-   • Best for: Compliance/long-term archives accessed <1x per 5 years
-
-Do you understand these cost implications and wish to proceed? [y/N]:
-```
-
-Skip prompt with `--yes` flag for automation:
-```bash
-cargoship upload --auto-tier --tier-strategy tier-aware --yes ./data s3://bucket
-```
-
-#### Limiting Maximum Tier Selection
-
-Use `--tier-max` to cap automatic tier selection and avoid more restrictive tiers:
-
-```bash
-# Allow up to GLACIER, but exclude DEEP_ARCHIVE
-$ cargoship upload --auto-tier --tier-strategy tier-aware --tier-max GLACIER ./data s3://bucket
-
-📊 Automatic storage tier selection enabled
-   Hot threshold:     30 days (STANDARD)
-   Cold threshold:    90 days (GLACIER)
-   Archive threshold: 180 days (DEEP_ARCHIVE)
-   Maximum tier:      GLACIER (capped)
-```
-
-**Use Cases:**
-- `--tier-max STANDARD_IA`: Avoid archive tiers entirely (no 90-180 day minimums)
-- `--tier-max GLACIER`: Use Glacier for cold storage, but avoid Deep Archive (no 180-day minimum)
-- Combined with tier-aware: Benefit from tier-based chunking while controlling cost exposure
-
-#### Decision Matrix: Which Strategy to Use?
-
-| Access Pattern | Retention | Recommended Strategy | Why |
-|----------------|-----------|---------------------|-----|
-| >1x per month | Any | `youngest-file` (v1) | Retrieval costs exceed savings |
-| <1x per month | <6 months | `youngest-file` (v1) | Early deletion penalties |
-| <1x per year | >6 months | `tier-aware` (v2) | Storage savings outweigh retrieval |
-| <1x per 5 years | >1 year | `tier-aware` (v2) | Maximum savings from DEEP_ARCHIVE |
-| Compliance/backup | >1 year | `tier-aware` (v2) | Designed for long-term storage |
-
-**Best Practices:**
-1. **Estimate costs first**: Use `cargoship estimate` before uploading
-2. **Know your access patterns**: Track how often you retrieve data
-3. **Ensure 6+ month retention**: Avoid early deletion penalties
-4. **Use youngest-file for active data**: Frequent access makes v1 cheaper
-5. **Use tier-aware for cold data**: Backups, compliance, long-term archives
-
-See [Issue #168](https://github.com/scttfrdmn/cargoship/issues/168) for complete documentation.
-
-#### Total Cost of Ownership (TCO) Analysis
-
-Use the `estimate` command with `--show-comparison` to see detailed TCO scenarios for archive tiers:
-
-```bash
-$ cargoship estimate ./data --storage-class GLACIER --show-comparison
-
-📊 TOTAL COST OF OWNERSHIP (TCO) SCENARIOS
-
-Archive tiers (Glacier, Deep Archive) have restore costs and access patterns
-that affect Total Cost of Ownership. Here are common usage scenarios:
-
-1. Zero Retrievals (Pure Archival)
-   Description:   Data stored long-term with no retrievals
-   Retrievals:    0x/year (0% of data each time)
-
-   Cost Breakdown:
-      Storage:    $48.00/year
-      Upload:     $0.15 (one-time)
-      ────────────────────────
-      Total TCO:  $48.15/year
-
-2. Occasional Retrievals (2x/year)
-   Description:   Retrieve 10% of data twice yearly (Standard restore, 7-day access)
-   Retrievals:    2x/year (10% of data each time)
-   Restore Tier:  Standard
-
-   Cost Breakdown:
-      Storage:    $48.00/year
-      Upload:     $0.15 (one-time)
-      Retrieval:  $24.00/year
-      ────────────────────────
-      Total TCO:  $72.15/year
-
-3. Frequent Retrievals (10x/year) ⚠️
-   Description:   Retrieve 20% of data 10x yearly (Bulk restore, 3-day access) - NOT RECOMMENDED
-   Retrievals:    10x/year (20% of data each time)
-   Restore Tier:  Bulk
-
-   Cost Breakdown:
-      Storage:    $48.00/year
-      Upload:     $0.15 (one-time)
-      Retrieval:  $240.00/year
-      ────────────────────────
-      Total TCO:  $288.15/year
-
-      ⚠️  This retrieval pattern is NOT RECOMMENDED for archive tiers.
-          Consider STANDARD or INTELLIGENT_TIERING for frequent access.
-
-💡 TCO Analysis:
-   • Archive tiers (Glacier, Deep Archive) are cost-effective for infrequent access
-   • Retrieval costs can exceed storage savings if accessed frequently
-   • Use INTELLIGENT_TIERING if access pattern is unpredictable
-   • Early deletion penalties apply (30-180 days minimum storage)
-```
-
-**Key Takeaway:** Always model your access patterns before choosing archive tiers. Use `--show-comparison` to understand the full TCO impact.
-
-### Budget Tracking and Cost Control
-
-CargoShip includes enterprise-grade budget management to prevent cost overruns:
-
-```bash
-# Set project budget with cost and volume limits
-$ cargoship budget set genomics-2025 --cost 5000 --volume 2000
-
-# Monitor budget status with burn rate forecasting
-$ cargoship budget status genomics-2025
-
-📊 Budget Status: genomics-2025
-Cost Budget:
-├─ Maximum:     $5,000.00
-├─ Current:     $1,234.56 (24.7%)
-├─ Remaining:   $3,765.44
-├─ Daily Burn:  $41.23
-└─ Projected:   $4,123.00 (within budget ✅)
-
-Volume Quota:
-├─ Maximum:     2,000 GB
-├─ Current:     487 GB (24.4%)
-├─ Remaining:   1,513 GB
-└─ Projected:   1,948 GB (within quota ✅)
-```
-
-**Features**:
-- **Dual Controls**: Cost budgets (USD) and volume quotas (GB)
-- **Project-Based**: Track spending per project, grant, or department
-- **Burn Rate Forecasting**: ML-powered end-of-period projections
-- **Automatic Blocking**: Prevents uploads that exceed budgets
-- **Multi-Channel Alerts**: Email, Slack, CloudWatch notifications
-
-See the [Budget Management Guide](https://cargoship.app/guides/cost/budgets) for complete documentation.
-
-```
-
-## 🏗️ Modern Streaming Architecture
-
-### High-Performance Pipeline (v0.5.1+)
-
-CargoShip uses a modern streaming pipeline architecture for maximum performance:
-
-**Pipeline Stages**:
-- **Scanner**: Multi-threaded file discovery with parallel directory traversal
-- **Chunker**: Intelligent chunking with compression-aware boundary detection
-- **Archiver**: Streaming tar+zstd compression with zero disk writes
-- **Uploader**: Multi-prefix parallel S3 uploads (8x capacity improvement)
-
-**Performance Features**:
-- **Zero Local Disk**: Streams directly from filesystem → compression → S3
-- **Bounded Memory**: O(chunk_size × workers) prevents OOM conditions
-- **Adaptive Chunking**: Smart file grouping based on size and compressibility
-- **Multi-Prefix Sharding**: Parallel uploads across 8 S3 prefixes
-- **Real-Time Progress**: Live metrics with throughput and ETA tracking
-
-### Architecture Diagram
-
-```
-┌─────────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Source Data       │    │  CargoShip       │    │   AWS S3        │
-│                     │    │  Pipeline        │    │                 │
-│ • Local Files       │───▶│                  │───▶│ • Standard      │
-│ • Network Shares    │    │ • Scanner        │    │ • IA            │
-│ • Data Lakes        │    │ • Chunker        │    │ • Glacier       │
-│ • Archive Systems   │    │ • Archiver       │    │ • Deep Archive  │
-└─────────────────────┘    │ • Uploader (8x)  │    └─────────────────┘
-                           └──────────────────┘
-                                    │
-                                    ▼
-                           Real-Time Progress TUI
-                           Files | GB | MB/s | ETA
-```
-
-### Performance Tuning
-
-For fine-grained pipeline control, the advanced `cargoship create upload` variant
-exposes explicit worker/chunk/shard tuning (most users should use the canonical
-`cargoship upload` — see [upload vs. create upload](https://cargoship.app/guides/upload-vs-create-upload)):
-
-```bash
-# For many small files (<1MB):
-cargoship create upload /data --bucket my-bucket \
-  --chunk-size-mb 50 --workers 8
-
-# For large files (>100MB):
-cargoship create upload /data --bucket my-bucket \
-  --chunk-size-mb 500 --workers 4
-
-# Maximum throughput:
-cargoship create upload /data --bucket my-bucket \
-  --shards 16 --workers 8 --storage-class STANDARD
-```
-
-### Real-Time Progress Tracking
-
-CargoShip provides beautiful real-time progress display during uploads (v0.5.1+):
-
-```bash
-$ cargoship create upload /data/genomics --bucket research-data --prefix 2024-study
-
-🚢 Uploading: 1,234 files | 5.67 GB | 89 chunks | 123.4 MB/s | 1m30s elapsed
-
-✅ Upload Complete!
-   Files:       1,234 files
-   Data Size:   5.67 GB (uncompressed)
-   Chunks:      89 archives
-   Shards:      8 S3 prefixes
-   Throughput:  123.4 MB/s
-   Duration:    1m32s
-   Upload ID:   20251206-123456-abcd1234
-```
-
-**Features**:
-- **Terminal Detection**: Automatically disables for non-TTY contexts (pipes, CI/CD)
-- **Live Metrics**: Files, data size, chunks, throughput, elapsed time
-- **Clean Display**: Single-line progress with ANSI escape codes
-- **Zero Configuration**: Works out of the box, no flags required
-
-### Performance Benchmarks
-
-Illustrative results from one benchmark run (CargoShip **v0.5.1**, real AWS S3,
-`us-west-2`, STANDARD class, 8 shards / 8 workers, zstd level 3). These are a
-point-in-time snapshot, not a guarantee — **your numbers depend on file-size
-distribution, network, region, instance, and concurrency.**
-
-| Workload | Files | Size | Duration | Throughput | Memory |
-|----------|-------|------|----------|------------|--------|
-| **Small files** | 10,000 | 176 MB | 437ms | 403 MB/s | 3.4 GB |
-| **Large files** | 100 | 56 GB | 311s | 185 MB/s | 4.9 GB |
-
-Architecture-grounded characteristics (independent of any single run):
-
-- **Multi-prefix sharding** distributes chunks across S3 prefixes, so request-rate
-  capacity scales with the shard count (up to ~8× with the default 8 shards) — see
-  [sharding](https://cargoship.app/guides/features/sharding).
-- **Content-aware zstd** compresses text/code well and skips already-compressed
-  data — see [compression](https://cargoship.app/guides/features/compression).
-- **Bounded memory** — data streams to S3 without staging to disk, so memory
-  tracks `chunk_size × workers`, not dataset size.
-
-**Reproduce these yourself** (results include environment + commit metadata):
-
-```bash
-# In-process Go micro-benchmarks (no AWS):
-scripts/run-benchmarks.sh            # or: make test-benchmark
-
-# End-to-end against your own S3 bucket:
-export CARGOSHIP_BENCHMARK_BUCKET=my-bench-bucket
-make bench-s3 SCENARIO=small         # small | medium | large | xlarge
-```
-
-See [Performance tuning](https://cargoship.app/guides/features/optimization) for
-the knobs behind these results.
-
-## 🎯 Use Cases
-
-CargoShip excels at large-scale data archiving:
-
-- **Research Data**: Genomics, imaging, sensor data archiving
-- **Analytics Output**: ML training data, analysis results
-- **Enterprise Backup**: Long-term retention with cost optimization
-- **Compliance**: Audit trails and secure archival storage
-- **Data Lakes**: Cost-effective cold storage tier migration
-
-## 📖 Documentation
+## Common commands
+
+| Command | Purpose |
+|---------|---------|
+| `cargoship estimate` | Model storage cost before uploading |
+| `cargoship upload` | Pack, compress, and stream a directory to S3 |
+| `cargoship info` | Inspect an archive from its manifest, no download |
+| `cargoship verify` | Check archive contents against manifest checksums |
+| `cargoship restore` | Restore all or selected files from an archive |
+| `cargoship budget` | Set and monitor per-project cost and volume budgets |
+| `cargoship lifecycle` | Manage S3 lifecycle policies for stored archives |
+
+## Key differentiators
+
+- **Zero-disk streaming pipeline** — files stream from disk through compression
+  to S3 with no local staging; memory stays bounded to `chunk_size × workers`.
+- **Multi-prefix sharding** — chunks are distributed across S3 prefixes, so
+  request-rate capacity scales with the shard count (up to ~8× with the default
+  8 shards). See [sharding](https://cargoship.app/guides/features/sharding).
+- **Content-aware compression** — zstd compresses text and code well and skips
+  already-compressed data. See [compression](https://cargoship.app/guides/features/compression).
+- **Cost and budget controls** — estimate spend before uploading and enforce
+  per-project cost and volume budgets. See [budgets](https://cargoship.app/guides/cost/budgets).
+- **Open, portable format** — archives are `tar.zst` with a JSON manifest, both
+  readable with standard tools. See the [format spec](https://cargoship.app/reference/format/).
+
+CargoShip suits research data, analytics output, long-term backup and
+compliance retention, and cold-tier data-lake migration — anywhere a large file
+count and predictable cost matter more than one-to-one file copies.
+
+## Safety and portability
+
+CargoShip never modifies source files; it only reads them. Archives use the
+open `tar.zst` format alongside a plain JSON manifest, so your data stays
+recoverable with standard tools (`tar`, `zstd`, `jq`) even without CargoShip
+installed. The manifest records per-file checksums, letting `cargoship verify`
+confirm integrity after upload and letting `cargoship restore` pull a single
+file without downloading the whole archive. The
+[format spec](https://cargoship.app/reference/format/) documents the layout in
+full.
+
+## Documentation
 
 Full documentation lives at **[cargoship.app](https://cargoship.app)**.
 
-### Getting Started
-- **[Quick Start](https://cargoship.app/start/quickstart)** - Zero to a verified upload in minutes
-- **[Installation](https://cargoship.app/start/install)** - Get CargoShip running in your environment
-- **[AWS Setup & Credentials](https://cargoship.app/start/aws-setup)** - Credentials and minimal IAM policy
-- **[How It Works](https://cargoship.app/intro/how-it-works)** - The streaming pipeline, explained
-- **[Command Reference](https://cargoship.app/reference/)** - Every command and flag
+### Getting started
+- [Quick Start](https://cargoship.app/start/quickstart) — zero to a verified upload in minutes
+- [Installation](https://cargoship.app/start/install) — get CargoShip running in your environment
+- [AWS Setup & Credentials](https://cargoship.app/start/aws-setup) — credentials and minimal IAM policy
+- [How It Works](https://cargoship.app/intro/how-it-works) — the streaming pipeline, explained
+- [Command Reference](https://cargoship.app/reference/) — every command and flag
 
-### Performance & Optimization
-- **[Performance Tuning](https://cargoship.app/guides/features/optimization)** - Tuning for maximum throughput
-- **[Multi-Prefix Sharding](https://cargoship.app/guides/features/sharding)** - How parallel uploads scale
-- **[Compression](https://cargoship.app/guides/features/compression)** - Content-aware zstd
-- **[Troubleshooting](https://cargoship.app/reference/troubleshooting)** - Common issues and solutions
+### Guides & tutorials
+- [Use-case Tutorials](https://cargoship.app/tutorials/) — genomics, imaging, ML/DVC, lab data
+- [Performance Tuning](https://cargoship.app/guides/features/optimization) — throughput knobs and benchmarks
+- [Migration from rclone / aws cli](https://cargoship.app/tutorials/migrating) — switching to CargoShip
+- [upload vs. create upload](https://cargoship.app/guides/upload-vs-create-upload) — the advanced tuning variant
 
-### Migration & Integration
-- **[Migration from rclone / aws cli](https://cargoship.app/tutorials/migrating)** - Switch to CargoShip
-- **[Use-case Tutorials](https://cargoship.app/tutorials/)** - Genomics, imaging, ML/DVC, lab data
-- **[DVC Integration](https://cargoship.app/guides/dvc/)** - Data Version Control remote
+### Cost & format
+- [Estimating Costs](https://cargoship.app/guides/cost/estimate) — model spend before uploading
+- [Budgets & Quotas](https://cargoship.app/guides/cost/budgets) — project-based cost and volume tracking
+- [Lifecycle & Storage Tiers](https://cargoship.app/guides/cost/lifecycle) — tier selection and retrieval costs
+- [Archive & Manifest Format Spec](https://cargoship.app/reference/format/) — the open, portable format
 
-### Architecture & Format
-- **[Archive & Manifest Format Spec](https://cargoship.app/reference/format/)** - Open, portable format for data portability
-- **[Architecture](https://cargoship.app/project/architecture)** - System design
-- **[Project Maturity & Compatibility](https://cargoship.app/project/maturity)** - What's stable vs. beta, and what's guaranteed
-- **[Manifest System](pkg/manifest/README.md)** - File indexing and fast query API
+### Project
+- [Architecture](https://cargoship.app/project/architecture) — system design
+- [Project Maturity & Compatibility](https://cargoship.app/project/maturity) — what's stable vs. beta
+- [Comparison](https://cargoship.app/reference/comparison) — CargoShip vs. other tools
+- [Contributing](CONTRIBUTING.md) — how to get involved
+- [Security Policy](SECURITY.md) — reporting vulnerabilities
 
-### Cost & Budget
-- **[Estimating Costs](https://cargoship.app/guides/cost/estimate)** - Model spend before uploading
-- **[Cost Management](https://cargoship.app/guides/cost/management)** - Reports and forecasts
-- **[Budgets & Quotas](https://cargoship.app/guides/cost/budgets)** - Project-based cost and volume tracking
+## Project status and license
 
-### Deployment & Operations
-- **[Deployment Guide](https://cargoship.app/enterprise/deployment)** - Production deployment strategies
-- **[Launch Agents](https://cargoship.app/enterprise/launch-agent)** - Enterprise agent deployment
-- **[Ghost Ship](https://cargoship.app/enterprise/ghost-ship)** - Distributed agent setup
+CargoShip is at **v0.13.2** and is a community-maintained v0.x project — the CLI
+and archive format are usable in production, with compatibility caveats tracked
+on the [maturity page](https://cargoship.app/project/maturity). To report a
+security issue, see [SECURITY.md](SECURITY.md).
 
-## 🤝 Contributing
+Licensed under the Apache License 2.0; see [LICENSE](LICENSE). Originally
+inspired by Duke University's [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl)
+research project, now an independent project.
 
-CargoShip welcomes contributions from developers and researchers! Originally inspired by Duke University's SuitcaseCTL research, now a fully independent project.
+## Support
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
-
-## 📄 License and Attribution
-
-CargoShip is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
-
-**Research Origins**: Originally inspired by Duke University's [SuitcaseCTL](https://gitlab.oit.duke.edu/devil-ops/suitcasectl) research project. CargoShip has evolved into an independent, production-ready solution with a modern streaming architecture and enterprise features.
-
-## 🆘 Support
-
-- **Documentation**: [cargoship.app](https://cargoship.app)
-- **Issues**: [GitHub Issues](https://github.com/scttfrdmn/cargoship/issues)
-- **Community**: [GitHub Discussions](https://github.com/scttfrdmn/cargoship/discussions)
-
----
-
-**Ship your data with confidence. Ship it with CargoShip.** 🚢
+- Documentation: [cargoship.app](https://cargoship.app)
+- Issues: [GitHub Issues](https://github.com/scttfrdmn/cargoship/issues)
+- Community: [GitHub Discussions](https://github.com/scttfrdmn/cargoship/discussions)

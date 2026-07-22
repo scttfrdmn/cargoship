@@ -2,8 +2,15 @@
 
 CargoShip encrypts data at rest using AWS Key Management Service (KMS). It offers
 two independent, composable layers — encrypt data chunks, encrypt the manifest, or
-both for end-to-end protection. This page covers the model and setup; for the
-day-to-day flags see [Encryption (KMS & GPG)](/guides/features/encryption).
+both for complete at-rest protection of your data and its metadata. This page
+covers the model and setup; for the day-to-day flags see
+[Encryption (KMS & GPG)](/guides/features/encryption).
+
+::: info Not end-to-end encryption
+Data chunks use **SSE-KMS**, so S3 sees plaintext at write time and encrypts it
+server-side — this is at-rest encryption, not end-to-end. The manifest layer
+(`--encrypt-manifest`) *is* client-side (S3 never sees the plaintext manifest).
+:::
 
 ## Two encryption layers
 
