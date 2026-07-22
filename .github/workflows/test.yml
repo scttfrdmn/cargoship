@@ -34,6 +34,30 @@ jobs:
       - name: Run tests
         run: go test ./... -short -timeout=10m
 
+  e2e-quickstart:
+    name: Quick Start E2E (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      # Drives the real cargoship binary through the documented Quick Start
+      # (upload → info → verify → restore) against an in-process Substrate S3
+      # emulator. No AWS credentials required. Guards docs/start/quickstart.md.
+      - name: Run Quick Start end-to-end
+        run: go test -tags e2e ./tests/e2e/ -timeout 10m
+
   test-race:
     name: Test with Race Detector
     runs-on: ubuntu-latest
