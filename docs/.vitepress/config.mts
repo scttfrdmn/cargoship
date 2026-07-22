@@ -125,6 +125,7 @@ const sidebar = {
         { text: 'Environment variables', link: '/reference/environment-variables' },
         { text: 'Configuration schema', link: '/reference/configuration' },
         { text: 'CargoShip vs. other tools', link: '/reference/comparison' },
+        { text: 'Benchmarks & methodology', link: '/reference/benchmarks' },
         { text: 'Recovery & operations runbook', link: '/reference/recovery' },
         { text: 'Troubleshooting', link: '/reference/troubleshooting' },
         { text: 'FAQ', link: '/reference/faq' },

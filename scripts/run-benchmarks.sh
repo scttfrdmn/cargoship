@@ -113,6 +113,63 @@ print_config() {
     echo "  Trace:          ${ENABLE_TRACE}"
 }
 
+write_provenance() {
+    print_header "Recording Provenance"
+
+    # Every published benchmark number must be reproducible: capture exactly what
+    # machine, code, and settings produced it. This header is prepended to the
+    # report so results are never quoted without their environment.
+    local git_commit git_dirty go_version os arch cpu_model cpu_cores mem_total
+
+    git_commit=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+    if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+        git_dirty=" (dirty — uncommitted changes present)"
+    else
+        git_dirty=""
+    fi
+    go_version=$(go version 2>/dev/null | awk '{print $3}')
+    os=$(uname -s)
+    arch=$(uname -m)
+
+    case "$os" in
+        Darwin)
+            cpu_model=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "unknown")
+            cpu_cores=$(sysctl -n hw.ncpu 2>/dev/null || echo "unknown")
+            mem_total="$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 / 1024 )) MB"
+            ;;
+        Linux)
+            cpu_model=$(grep -m1 "model name" /proc/cpuinfo 2>/dev/null | cut -d: -f2 | sed 's/^ *//' || echo "unknown")
+            cpu_cores=$(nproc 2>/dev/null || echo "unknown")
+            mem_total="$(( $(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0) / 1024 )) MB"
+            ;;
+        *)
+            cpu_model="unknown"; cpu_cores="unknown"; mem_total="unknown"
+            ;;
+    esac
+
+    # Prepend the provenance block to the report file.
+    {
+        echo "# CargoShip benchmark report"
+        echo "#"
+        echo "# Generated:      ${TIMESTAMP}"
+        echo "# Git commit:     ${git_commit}${git_dirty}"
+        echo "# Go version:     ${go_version}"
+        echo "# OS / arch:      ${os} / ${arch}"
+        echo "# CPU:            ${cpu_model} (${cpu_cores} cores)"
+        echo "# Memory:         ${mem_total}"
+        echo "# Bench time:     ${BENCH_TIME} × ${BENCH_COUNT} iterations"
+        echo "# Benchmark dir:  ${BENCHMARK_DIR}"
+        echo "#"
+        echo "# Reproduce:      BENCH_TIME=${BENCH_TIME} BENCH_COUNT=${BENCH_COUNT} scripts/run-benchmarks.sh"
+        echo "# Methodology:    docs/reference/benchmarks.md"
+        echo ""
+    } > "${REPORT_FILE}"
+
+    log_success "Provenance recorded to ${REPORT_FILE}"
+    log_info "Commit ${git_commit}${git_dirty}"
+    log_info "${os}/${arch}, ${cpu_cores} cores, ${mem_total}"
+}
+
 run_benchmarks() {
     print_header "Running Benchmarks"
 
@@ -135,8 +192,9 @@ run_benchmarks() {
     log_info "Running: go test ${BENCH_FLAGS} ${BENCHMARK_DIR}"
     echo ""
 
-    # Run benchmarks and capture output
-    if go test ${BENCH_FLAGS} ${BENCHMARK_DIR} 2>&1 | tee "${REPORT_FILE}"; then
+    # Run benchmarks and append to the report (the provenance header was already
+    # written by write_provenance).
+    if go test ${BENCH_FLAGS} ${BENCHMARK_DIR} 2>&1 | tee -a "${REPORT_FILE}"; then
         log_success "Benchmarks completed successfully"
     else
         log_error "Benchmarks failed"
@@ -270,6 +328,7 @@ main() {
     check_requirements
     setup_directories
     print_config
+    write_provenance
     run_benchmarks
     analyze_profiles
     compare_baseline
