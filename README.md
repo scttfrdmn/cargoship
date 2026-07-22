@@ -46,7 +46,7 @@ scoop install cargoship
 go install github.com/scttfrdmn/cargoship/cmd/cargoship@latest
 ```
 
-See the [Installation Guide](docs/install.md) for more options.
+See the [Installation Guide](https://cargoship.app/start/install) for more options.
 
 ### Basic Workflow
 
@@ -331,7 +331,7 @@ Volume Quota:
 - **Automatic Blocking**: Prevents uploads that exceed budgets
 - **Multi-Channel Alerts**: Email, Slack, CloudWatch notifications
 
-See the [Budget Management Guide](docs/BUDGET.md) for complete documentation.
+See the [Budget Management Guide](https://cargoship.app/guides/cost/budgets) for complete documentation.
 
 ```
 
@@ -449,35 +449,40 @@ CargoShip excels at large-scale data archiving:
 
 ## 📖 Documentation
 
+Full documentation lives at **[cargoship.app](https://cargoship.app)**.
+
 ### Getting Started
-- **[Installation Guide](docs/install.md)** - Get CargoShip running in your environment
-- **[S3 Direct Upload Guide](docs/S3_DIRECT_UPLOAD.md)** - Complete guide to CargoShip's streaming pipeline
-- **[CLI Reference](docs/CLI_REFERENCE.md)** - Comprehensive command-line reference
-- **[Quick Start Wizard](docs/wizard.md)** - Interactive setup guide
-- **[Complete Documentation](https://cargoship.app)** - Full documentation site
+- **[Quick Start](https://cargoship.app/start/quickstart)** - Zero to a verified upload in minutes
+- **[Installation](https://cargoship.app/start/install)** - Get CargoShip running in your environment
+- **[AWS Setup & Credentials](https://cargoship.app/start/aws-setup)** - Credentials and minimal IAM policy
+- **[How It Works](https://cargoship.app/intro/how-it-works)** - The streaming pipeline, explained
+- **[Command Reference](https://cargoship.app/reference/)** - Every command and flag
 
 ### Performance & Optimization
-- **[Performance Benchmarks](docs/PERFORMANCE_BENCHMARKS.md)** - **7x faster than s5cmd**, 40x faster than rclone
-- **[Optimization Guide](docs/OPTIMIZATION_GUIDE.md)** - Tuning for maximum performance
-- **[Advanced Flow Control](docs/TASK_4_ADVANCED_FLOW_CONTROL.md)** - Network optimization algorithms
-- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Performance Tuning](https://cargoship.app/guides/features/optimization)** - Tuning for maximum throughput
+- **[Multi-Prefix Sharding](https://cargoship.app/guides/features/sharding)** - How parallel uploads scale
+- **[Compression](https://cargoship.app/guides/features/compression)** - Content-aware zstd
+- **[Troubleshooting](https://cargoship.app/reference/troubleshooting)** - Common issues and solutions
 
 ### Migration & Integration
-- **[Migration from rclone](docs/MIGRATION_FROM_RCLONE.md)** - Switch from rclone to CargoShip
-- **[AWS Integration Guide](docs/AWS_INTEGRATION_REPORT.md)** - Complete AWS setup and configuration
-- **[User Guide](docs/USER_GUIDE.md)** - Complete feature walkthrough
+- **[Migration from rclone / aws cli](https://cargoship.app/tutorials/migrating)** - Switch to CargoShip
+- **[Use-case Tutorials](https://cargoship.app/tutorials/)** - Genomics, imaging, ML/DVC, lab data
+- **[DVC Integration](https://cargoship.app/guides/dvc/)** - Data Version Control remote
 
-### Architecture & Features
-- **[Storage Format Documentation](docs/STORAGE_FORMAT.md)** - Open S3 storage format for data portability
-- **[Session Affinity](docs/SESSION_AFFINITY.md)** - Multi-region load balancing
+### Architecture & Format
+- **[Archive & Manifest Format Spec](https://cargoship.app/reference/format/)** - Open, portable format for data portability
+- **[Architecture](https://cargoship.app/project/architecture)** - System design
 - **[Manifest System](pkg/manifest/README.md)** - File indexing and fast query API
-- **[Cost Management](docs/cost-management.md)** - Intelligent cost optimization features
-- **[Budget Management](docs/BUDGET.md)** - Project-based cost and volume quota tracking
+
+### Cost & Budget
+- **[Estimating Costs](https://cargoship.app/guides/cost/estimate)** - Model spend before uploading
+- **[Cost Management](https://cargoship.app/guides/cost/management)** - Reports and forecasts
+- **[Budgets & Quotas](https://cargoship.app/guides/cost/budgets)** - Project-based cost and volume tracking
 
 ### Deployment & Operations
-- **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)** - Production deployment strategies
-- **[Launch Agent Setup](docs/launch-agent.md)** - Enterprise agent deployment
-- **[Ghost Ship Deployment](docs/deployment/GHOST_SHIP_DEPLOYMENT_GUIDE.md)** - Distributed agent setup
+- **[Deployment Guide](https://cargoship.app/enterprise/deployment)** - Production deployment strategies
+- **[Launch Agents](https://cargoship.app/enterprise/launch-agent)** - Enterprise agent deployment
+- **[Ghost Ship](https://cargoship.app/enterprise/ghost-ship)** - Distributed agent setup
 
 ## 🤝 Contributing
 
