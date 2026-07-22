@@ -49,17 +49,17 @@ func TestCalculateCompetitorCost(t *testing.T) {
 	assert.Equal(t, 0.0, comparison.DataTransferCost)
 
 	// PUT requests: 10000 files = 10000 requests
-	// Price: $0.0005 per 1000 requests * 10 = $0.005 total
-	assert.InDelta(t, 0.005, comparison.PUTRequestCost, 0.001)
+	// Price: $0.005 per 1000 requests * 10 = $0.05 total
+	assert.InDelta(t, 0.05, comparison.PUTRequestCost, 0.001)
 
 	// Storage: 100 GB * $0.023 per GB-month = $2.30/month
 	assert.InDelta(t, 2.30, comparison.StorageCostMonthly, 0.10)
 
 	// Upload cost = transfer + requests
-	assert.InDelta(t, 0.005, comparison.TotalUploadCost, 0.001)
+	assert.InDelta(t, 0.05, comparison.TotalUploadCost, 0.001)
 
 	// Annual TCO = upload + (12 * monthly storage)
-	expectedAnnualTCO := 0.005 + (2.30 * 12)
+	expectedAnnualTCO := 0.05 + (2.30 * 12)
 	assert.InDelta(t, expectedAnnualTCO, comparison.AnnualTCO, 0.50)
 }
 

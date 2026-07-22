@@ -411,16 +411,16 @@ func (pm *PricingManager) getFallbackStoragePrice(storageClass config.StorageCla
 }
 
 func (pm *PricingManager) getFallbackRequestPrice(requestType string) float64 {
-	// Approximate AWS S3 request prices (USD per 1000 requests)
+	// Approximate AWS S3 request prices (USD per 1000 requests), STANDARD tier.
 	switch strings.ToUpper(requestType) {
 	case "PUT", "POST", "COPY", "LIST":
-		return 0.0005
+		return 0.005 // $0.005 per 1,000 PUT/COPY/POST/LIST requests
 	case "GET", "SELECT":
-		return 0.0004
+		return 0.0004 // $0.0004 per 1,000 GET/SELECT requests
 	case "DELETE":
 		return 0.0
 	default:
-		return 0.0005
+		return 0.005
 	}
 }
 
