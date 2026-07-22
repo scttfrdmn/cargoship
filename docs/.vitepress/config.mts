@@ -51,6 +51,7 @@ const sidebar = {
       collapsed: false,
       items: [
         { text: 'Overview', link: '/tutorials/' },
+        { text: 'Millions of small files', link: '/tutorials/small-files' },
         { text: 'Genomics / sequencing data', link: '/tutorials/genomics' },
         { text: 'Imaging / microscopy data', link: '/tutorials/imaging' },
         { text: 'ML datasets with DVC', link: '/tutorials/ml-dvc' },

@@ -24,7 +24,9 @@ simpler one is.
 **`aws s3 cp` / `aws s3 sync`** — the right choice for a handful of files, or when
 you want each file to remain an individually-addressable S3 object. Simple,
 ubiquitous, no packing. Downsides at scale: one PUT per file (request cost and
-throughput), no compression, no cost preview.
+throughput), no compression, no cost preview. For a worked example of what "one
+PUT per file" costs at millions of files, see
+[Millions of small files](/tutorials/small-files).
 
 **`rclone`** — excellent general-purpose sync across many cloud backends, with
 filtering and bandwidth control. Reach for it for ongoing folder sync or
