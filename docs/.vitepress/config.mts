@@ -4,6 +4,17 @@ import path from 'node:path'
 
 const SITE_URL = 'https://cargoship.app'
 
+// Versioned docs (task #37). The site deploys two trees from one config:
+//   /      → "latest": docs from the newest release tag that contains the site
+//            (falls back to main until a release ships the site)
+//   /dev/  → "dev": docs built from main (unreleased)
+// The deploy workflow sets DOCS_BASE ('/' or '/dev/') and DOCS_VERSION_LABEL
+// per build. The version switcher (below) uses absolute SITE_URL links so it
+// navigates between trees regardless of the active base.
+const DOCS_BASE = process.env.DOCS_BASE || '/'
+const DOCS_VERSION_LABEL = process.env.DOCS_VERSION_LABEL || 'latest'
+const IS_DEV_TREE = DOCS_BASE === '/dev/'
+
 // One global sidebar (keyed on '/') applied to every page, so the whole site
 // reads as a single progressive-disclosure path: Introduction → Get Started →
 // Tutorials → Core Workflows → Cost & Budget → Features → DVC → Configuration →
@@ -205,9 +216,14 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
 
+  // Set per deploy: '/' for the latest tree, '/dev/' for the unreleased tree.
+  base: DOCS_BASE,
+
   // Emit sitemap.xml for search + AI indexers (VitePress only generates it when
-  // a hostname is set).
-  sitemap: {
+  // a hostname is set). Only the latest (root) tree is indexed; the dev tree is
+  // excluded from the sitemap and marked noindex (see head, below) so search
+  // engines don't surface unreleased docs as canonical.
+  sitemap: IS_DEV_TREE ? undefined : {
     hostname: SITE_URL,
   },
 
@@ -230,6 +246,9 @@ export default defineConfig({
     ['meta', { property: 'og:image', content: SITE_URL + '/og-cover.png' }],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
     ['meta', { name: 'twitter:image', content: SITE_URL + '/og-cover.png' }],
+    // The dev tree (built from main) must not be indexed as canonical — the
+    // latest release docs at the root are authoritative.
+    ...(IS_DEV_TREE ? [['meta', { name: 'robots', content: 'noindex' }] as const] : []),
   ],
 
   themeConfig: {
@@ -242,6 +261,15 @@ export default defineConfig({
       { text: 'Guides', link: '/guides/uploading' },
       { text: 'Reference', link: '/reference/' },
       { text: 'Format Spec', link: '/reference/format/' },
+      // Version switcher. Absolute links so it crosses between the latest (root)
+      // and dev trees regardless of which base this build was rendered with.
+      {
+        text: DOCS_VERSION_LABEL,
+        items: [
+          { text: 'latest (released)', link: SITE_URL + '/' },
+          { text: 'dev (main)', link: SITE_URL + '/dev/' },
+        ],
+      },
       {
         text: 'Get help',
         items: [
