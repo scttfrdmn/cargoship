@@ -90,14 +90,13 @@ func TestBBRPacketSentTracking(t *testing.T) {
 	// Test first packet sent
 	prober.OnPacketSent(packetSize, sendTime)
 
-	if prober.firstSentTime.IsZero() {
-		t.Error("Expected first sent time to be set")
-	}
-
-	// Allow for timing variance in the test (Issue #152: increased from 1ms to 10ms to fix flaky test)
-	// The exact timing isn't critical - we just verify firstSentTime is set approximately correctly
-	if prober.firstSentTime.Sub(sendTime).Abs() > 10*time.Millisecond {
-		t.Errorf("Expected first sent time to be close to %v, got %v (diff: %v)", sendTime, prober.firstSentTime, prober.firstSentTime.Sub(sendTime))
+	// OnPacketSent records the exact send time it was given, so assert equality
+	// rather than a wall-clock tolerance. (Previously this compared against a
+	// second time.Now() with a 10ms fudge, which flaked on loaded CI runners —
+	// and masked a bug where the constructor pre-seeded firstSentTime, so the
+	// real send time was never recorded.)
+	if !prober.firstSentTime.Equal(sendTime) {
+		t.Errorf("Expected first sent time to be %v, got %v", sendTime, prober.firstSentTime)
 	}
 
 	// Test app-limited tracking
