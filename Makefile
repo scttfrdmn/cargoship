@@ -1,13 +1,13 @@
 # CargoShip Makefile
 # Provides common development tasks including comprehensive security scanning
 
-.PHONY: help build test test-unit test-integration test-performance test-e2e test-all test-leak-check test-quality lint security audit install-tools clean docker
+.PHONY: help build test test-unit test-integration test-performance test-e2e test-all test-leak-check test-quality test-benchmark bench-s3 lint security audit install-tools clean docker
 
 # Default target
 help: ## Show this help message
 	@echo "CargoShip Development Commands"
 	@echo "============================="
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # Build targets
 build: ## Build CargoShip binaries
@@ -53,6 +53,22 @@ codecov-upload: codecov-test ## Upload coverage to Codecov (requires CODECOV_TOK
 test-benchmark: ## Run benchmark tests
 	@echo "⚡ Running benchmarks..."
 	go test -bench=. -benchmem ./...
+
+bench-s3: ## Run the end-to-end S3 upload benchmark suite (requires a real bucket)
+	@echo "🚢 Running CargoShip S3 upload benchmarks..."
+	@if [ -z "$$CARGOSHIP_BENCHMARK_BUCKET" ]; then \
+		echo "❌ Set CARGOSHIP_BENCHMARK_BUCKET to an S3 bucket you own, e.g.:"; \
+		echo "     export CARGOSHIP_BENCHMARK_BUCKET=my-bench-bucket"; \
+		echo "     export AWS_REGION=us-west-2   # plus valid AWS credentials"; \
+		echo "   Then: make bench-s3            (default SCENARIO=small, ~10k files)"; \
+		echo "         make bench-s3 SCENARIO=medium   # or large / xlarge"; \
+		echo "   This uploads real data to S3 and incurs cost — run it periodically,"; \
+		echo "   not on every change. See benchmarks/cargohold/README.md."; \
+		exit 1; \
+	fi
+	$(MAKE) -C benchmarks/cargohold run SCENARIO=$(SCENARIO)
+
+SCENARIO ?= small
 
 benchmark-profile: ## Run benchmarks with CPU and memory profiling
 	@echo "📊 Running benchmarks with profiling..."
