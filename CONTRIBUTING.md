@@ -51,10 +51,10 @@ Thank you for your interest in contributing to CargoShip! This project builds up
 
 ### Code Standards
 
-CargoShip follows strict development standards outlined in [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md):
+CargoShip enforces these standards via the pre-commit hook and CI:
 
-- **Zero linting violations** - golangci-lint must pass
-- **Security scanning** - gosec and vulnerability checks
+- **Zero linting violations** - `golangci-lint` must pass
+- **Security scanning** - `govulncheck` (zero known vulnerabilities), gitleaks, Trivy, Semgrep
 - **Test coverage** - New code requires tests
 - **Go module consistency** - All modules must be verified
 
@@ -145,11 +145,13 @@ func TestFeature(t *testing.T) {
 
 ### Key Modules
 
-- **`pkg/aws/s3/`** - Advanced S3 optimization with BBR/CUBIC
-- **`pkg/compression/`** - Multi-algorithm compression
-- **`pkg/controller/`** - Distributed agent coordination
+- **`pkg/pipeline/`** - Streaming pipeline (Scanner → Chunker → Archiver → Uploader)
+- **`pkg/chunking/`** - File grouping into chunks and shard routing
+- **`pkg/compression/`** - Compression (zstd and others)
+- **`pkg/manifest/`** - Manifest read/write, query, and extraction
+- **`pkg/aws/s3/`** - S3 upload transporters and Glacier restore
+- **`pkg/controller/`** / **`pkg/launch/`** - Distributed agent coordination
 - **`pkg/tui/`** - Terminal user interface
-- **`pkg/suitcase/`** - Archive format handling
 
 ### Adding New Features
 
@@ -195,7 +197,7 @@ func TestFeature(t *testing.T) {
 Clear description of the bug.
 
 **Steps to Reproduce**
-1. Run command `cargoship ship...`
+1. Run command `cargoship upload ...`
 2. See error
 
 **Expected Behavior**
@@ -229,25 +231,18 @@ What actually happened.
 
 ## 🎯 Priority Areas
 
-We particularly welcome contributions in these areas:
+We particularly welcome contributions aligned with the current
+[roadmap](ROADMAP.md):
 
-### High Priority
-- **Network optimization** - BBR/CUBIC algorithm improvements
-- **Cost optimization** - Enhanced cost analysis algorithms
-- **Security** - Additional encryption and compliance features
-- **Performance** - Upload speed and memory optimization
+- **Cost & budget** - cost-analysis accuracy, reporting, budget/quota features
+- **Reliability** - upload/restore robustness, resume, verification
+- **Performance** - upload throughput and memory efficiency
+- **DVC & workflows** - graduating the DVC integration from beta toward stable
+- **Documentation & tests** - guides, examples, and edge-case coverage
 
-### Medium Priority
-- **Multi-cloud support** - Azure, GCP integration
-- **UI improvements** - Enhanced terminal interface
-- **Documentation** - User guides and examples
-- **Testing** - Additional edge case coverage
-
-### Future Focus
-- **Machine learning** - Predictive optimization
-- **Advanced analytics** - Usage pattern analysis
-- **Enterprise features** - RBAC, audit logging
-- **API expansion** - REST API enhancements
+Speculative directions (multi-cloud, ML-based optimization, a REST API) are
+listed as **not committed** on the [roadmap](ROADMAP.md) — discuss in an issue
+before investing significant effort.
 
 ## 🔄 Pull Request Process
 

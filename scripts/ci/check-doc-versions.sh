@@ -73,7 +73,34 @@ for token in "${denylist[@]}"; do
   fi
 done
 
+# --- Check 3: local file links in root markdown resolve ------------------------
+#
+# VitePress already fails its build on dead links inside the docs/ site. This
+# covers the gap: relative file links in the repo-root markdown (README,
+# CONTRIBUTING, SECURITY, ROADMAP) that point at files in the repo — e.g.
+# [x](docs/foo.md), [x](pkg/manifest/README.md), [x](CHANGELOG.md). External
+# (http) and in-page anchor links are skipped.
+
+root_md=(README.md CONTRIBUTING.md SECURITY.md ROADMAP.md CLAUDE.md)
+for f in "${root_md[@]}"; do
+  [ -f "$f" ] || continue
+  # Extract link targets: [text](target). Drop http(s):, mailto:, and #anchors.
+  while IFS= read -r target; do
+    [ -z "$target" ] && continue
+    case "$target" in
+      http://*|https://*|mailto:*|\#*) continue ;;
+    esac
+    # Strip any #fragment from the path before checking existence.
+    path="${target%%#*}"
+    [ -z "$path" ] && continue
+    if [ ! -e "$path" ]; then
+      echo "::error file=$f::broken local link → $target"
+      fail=1
+    fi
+  done < <(grep -oE '\]\([^)]+\)' "$f" | sed -E 's/^\]\(//; s/\)$//')
+done
+
 if [ "$fail" -eq 0 ]; then
-  echo "✅ doc-consistency: Current Version matches $latest_tag; no denylisted tokens."
+  echo "✅ doc-consistency: Current Version matches $latest_tag; no denylisted tokens; local links resolve."
 fi
 exit $fail
