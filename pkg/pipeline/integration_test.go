@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -106,10 +107,12 @@ func TestPipeline_ProgressTracking(t *testing.T) {
 	pipeline, err := NewPipeline(config)
 	require.NoError(t, err)
 
-	// Track progress updates
-	progressUpdates := 0
+	// Track progress updates. The callback fires on the pipeline's progress
+	// goroutine while the test goroutine reads the count after Run returns, so
+	// the counter must be accessed atomically to avoid a data race.
+	var progressUpdates atomic.Int64
 	pipeline.SetProgressCallback(func(p Progress) {
-		progressUpdates++
+		progressUpdates.Add(1)
 		t.Logf("Progress: %d/%d files, %d/%d chunks",
 			p.FilesProcessed, p.TotalFiles,
 			p.ChunksCompleted, p.TotalChunks)
@@ -123,13 +126,14 @@ func TestPipeline_ProgressTracking(t *testing.T) {
 	// Progress updates may be 0 if test completes faster than the first ticker fire
 	// The ticker fires at intervals, not immediately, so even if total time > interval,
 	// we may not get updates if the work completes before the first ticker.C event
+	updates := progressUpdates.Load()
 	t.Logf("Progress updates received: %d (test completed in %v, interval: %v)",
-		progressUpdates, result.TotalTime, config.ProgressInterval)
+		updates, result.TotalTime, config.ProgressInterval)
 
 	// Only assert progress if test took significantly longer than interval
 	// (at least 2x to ensure ticker had time to fire)
 	if result.TotalTime > 2*config.ProgressInterval {
-		assert.Greater(t, progressUpdates, 0, "Should have progress updates for tests much longer than interval")
+		assert.Greater(t, updates, int64(0), "Should have progress updates for tests much longer than interval")
 	}
 }
 
