@@ -54,13 +54,9 @@ See the [Installation Guide](https://cargoship.app/start/install) for more optio
 # 1. Estimate costs before uploading
 cargoship estimate /data/project-2024 --storage-class deep-archive
 
-# 2. Upload with streaming pipeline (NEW in v0.5.1+)
-cargoship create upload /data/completed-analysis \
-  --bucket my-bucket \
-  --prefix project-2024 \
-  --storage-class INTELLIGENT_TIERING \
-  --shards 8 \
-  --workers 4
+# 2. Upload a directory to S3 (canonical command)
+cargoship upload /data/completed-analysis s3://my-bucket/project-2024 \
+  --storage-class INTELLIGENT_TIERING
 
 # Real-time progress display:
 # 🚢 Uploading: 1234 files | 5.67 GB | 89 chunks | 123.4 MB/s | 1m30s elapsed
@@ -99,7 +95,7 @@ $ cargoship estimate ./genomics-analysis --show-breakdown
 Total annual savings: $3,170/year with 8x upload performance
 
 ✅ Available Now:
-• `cargoship create upload` - High-performance streaming uploads
+• `cargoship upload` - Sharded, compressed, verifiable uploads
 • `cargoship lifecycle` - Automated lifecycle policy management
 • `cargoship budget` - Project-based cost and volume quota tracking
 • Real-time progress tracking with TUI
@@ -374,7 +370,9 @@ CargoShip uses a modern streaming pipeline architecture for maximum performance:
 
 ### Performance Tuning
 
-Optimize CargoShip for your workload:
+For fine-grained pipeline control, the advanced `cargoship create upload` variant
+exposes explicit worker/chunk/shard tuning (most users should use the canonical
+`cargoship upload` — see [upload vs. create upload](https://cargoship.app/guides/upload-vs-create-upload)):
 
 ```bash
 # For many small files (<1MB):
@@ -472,6 +470,7 @@ Full documentation lives at **[cargoship.app](https://cargoship.app)**.
 ### Architecture & Format
 - **[Archive & Manifest Format Spec](https://cargoship.app/reference/format/)** - Open, portable format for data portability
 - **[Architecture](https://cargoship.app/project/architecture)** - System design
+- **[Project Maturity & Compatibility](https://cargoship.app/project/maturity)** - What's stable vs. beta, and what's guaranteed
 - **[Manifest System](pkg/manifest/README.md)** - File indexing and fast query API
 
 ### Cost & Budget

@@ -10,10 +10,13 @@ Thank you for your interest in contributing to CargoShip! This project builds up
 
 ### Prerequisites
 
-- **Go 1.21+** - CargoShip is written in Go
-- **Docker** - For integration testing with LocalStack
-- **AWS CLI** (optional) - For real AWS testing
-- **Pre-commit hooks** - Automatic code quality checks
+- **Go 1.26+** - CargoShip is written in Go (see `go.mod`)
+- **AWS CLI** (optional) - Only for opt-in real-AWS testing
+- **Pre-commit hooks** - Automatic code quality/security checks
+
+> Integration tests run against an **in-process Substrate emulator** — no Docker
+> or LocalStack required (this replaced the old Docker/LocalStack setup in
+> v0.13.1).
 
 ### Development Setup
 
@@ -38,10 +41,10 @@ Thank you for your interest in contributing to CargoShip! This project builds up
    make test
    go test -race ./...
    ```
-
-5. **Start Development Environment**
+   Integration tests use an in-process emulator, so no external services are
+   needed:
    ```bash
-   docker-compose -f docker/development/docker-compose.yml up -d
+   go test -tags integration ./...
    ```
 
 ## 📋 Development Process
@@ -84,7 +87,7 @@ Our pre-commit hook automatically runs:
    go test -short ./...
    ```
 
-2. **Integration Tests** - LocalStack S3 testing
+2. **Integration Tests** - in-process Substrate S3 emulator (no Docker)
    ```bash
    go test -tags integration ./...
    ```
@@ -105,7 +108,8 @@ Our pre-commit hook automatically runs:
 - **Bug fixes**: Must include regression tests
 - **Performance features**: Must include benchmarks
 
-Current coverage: **95%+** across all modules
+The pre-commit hook enforces a project-wide coverage floor (currently 56%) and a
+code-quality score; check the current number with `make test-coverage`.
 
 ### Test Patterns
 
@@ -183,9 +187,9 @@ func TestFeature(t *testing.T) {
 ### Bug Report Template
 
 ```markdown
-**CargoShip Version**: v0.4.0
-**Go Version**: 1.21.5
-**OS**: Ubuntu 22.04
+**CargoShip Version**: (output of `cargoship --version`)
+**Go Version**: (output of `go version`)
+**OS**: e.g. Ubuntu 22.04
 
 **Description**
 Clear description of the bug.
