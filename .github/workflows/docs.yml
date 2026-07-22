@@ -3,11 +3,14 @@ name: Deploy Documentation
 on:
   push:
     branches:
+      # Rebuilds the dev (/dev) tree, which must track main. No paths filter: a
+      # commit that changes cmd/cargoship (the generated CLI reference) or the
+      # workflow itself must also rebuild, and per-ref-type path filters aren't
+      # expressible here.
       - main
-    paths:
-      - 'docs/**'
-      - 'cmd/cargoship/**'
-      - '.github/workflows/docs.yml'
+    # A new release tag ships a new "latest": rebuild so the root tree tracks it.
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -26,6 +29,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Need tags + history to resolve the newest release that ships the site.
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -39,9 +45,31 @@ jobs:
           cache: npm
           cache-dependency-path: docs/package-lock.json
 
+      # Resolve which ref backs the "latest" (root) tree: the newest release tag
+      # whose tree contains the VitePress site. The docs site shipped after the
+      # most recent release tag, so until a release includes it this resolves to
+      # main — root and /dev then track main identically, and the split activates
+      # automatically at the next release. main is always the /dev tree.
+      - name: Resolve latest docs ref
+        id: refs
+        run: |
+          latest_ref="main"
+          for tag in $(git tag -l 'v*' --sort=-v:refname); do
+            if git cat-file -e "${tag}:docs/.vitepress/config.mts" 2>/dev/null; then
+              latest_ref="$tag"
+              break
+            fi
+          done
+          echo "latest_ref=${latest_ref}" >> "$GITHUB_OUTPUT"
+          echo "Latest (root) tree builds from: ${latest_ref}"
+
+      # --- latest (root) tree -------------------------------------------------
+      - name: Check out latest docs ref
+        run: git checkout --detach "${{ steps.refs.outputs.latest_ref }}"
+
       # Regenerate the vendored CLI reference from the live cobra tree and fail
       # if it drifts from what's committed. Keeps docs/gen/cli/ authoritative.
-      - name: Check CLI reference is in sync
+      - name: Check CLI reference is in sync (latest)
         run: |
           ./docs/scripts/gen-cli.sh
           if ! git diff --quiet -- docs/gen/cli; then
@@ -50,13 +78,48 @@ jobs:
             exit 1
           fi
 
-      - name: Install dependencies
+      - name: Reinstall deps for latest ref
         working-directory: docs
         run: npm ci
 
-      - name: Build docs (VitePress)
+      - name: Build docs — latest (root)
         working-directory: docs
+        env:
+          DOCS_BASE: /
+          DOCS_VERSION_LABEL: latest
         run: npm run build
+
+      - name: Stage latest tree
+        run: |
+          mkdir -p site
+          cp -r docs/.vitepress/dist/. site/
+
+      # --- dev tree (main) ----------------------------------------------------
+      # The dev tree always tracks main's tip, even when this run was triggered
+      # by a tag push (where GITHUB_SHA is the tagged commit, not necessarily
+      # main). Fetch and check out origin/main explicitly.
+      - name: Check out main for dev tree
+        run: |
+          git fetch --depth=1 origin main
+          git checkout --detach FETCH_HEAD
+
+      - name: Reinstall deps for main
+        working-directory: docs
+        run: npm ci
+
+      - name: Build docs — dev (main)
+        working-directory: docs
+        env:
+          DOCS_BASE: /dev/
+          DOCS_VERSION_LABEL: dev
+        run: npm run build
+
+      - name: Stage dev tree under /dev
+        run: |
+          mkdir -p site/dev
+          cp -r docs/.vitepress/dist/. site/dev/
+          # One CNAME at the root serves both trees; drop the nested copy.
+          rm -f site/dev/CNAME
 
       - name: Configure Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
@@ -64,7 +127,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
-          path: docs/.vitepress/dist
+          path: site
 
   deploy:
     environment:
