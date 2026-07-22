@@ -1,0 +1,40 @@
+name: Doc Consistency
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'README.md'
+      - 'SECURITY.md'
+      - 'CONTRIBUTING.md'
+      - 'ROADMAP.md'
+      - 'CLAUDE.md'
+      - 'docs/**'
+      - 'scripts/ci/check-doc-versions.sh'
+      - '.github/workflows/doc-consistency.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'README.md'
+      - 'SECURITY.md'
+      - 'CONTRIBUTING.md'
+      - 'ROADMAP.md'
+      - 'CLAUDE.md'
+      - 'docs/**'
+      - 'scripts/ci/check-doc-versions.sh'
+      - '.github/workflows/doc-consistency.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Docs match the current release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0  # need full tag history for the version check
+      - name: Check doc version consistency
+        run: ./scripts/ci/check-doc-versions.sh

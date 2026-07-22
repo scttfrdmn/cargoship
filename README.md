@@ -15,13 +15,13 @@
 [![GitHub Issues](https://img.shields.io/github/issues/scttfrdmn/cargoship)](https://github.com/scttfrdmn/cargoship/issues)
 [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/scttfrdmn/cargoship)](https://github.com/scttfrdmn/cargoship/pulls)
 
-CargoShip is a next-generation data archiving tool optimized for AWS infrastructure, featuring streaming pipeline architecture, multi-prefix parallel uploads (8× throughput), and intelligent cost optimization. Originally inspired by Duke University's SuitcaseCTL research, CargoShip has evolved into a modern, production-ready solution for enterprise-scale data archiving.
+CargoShip is a next-generation data archiving tool optimized for AWS infrastructure, featuring streaming pipeline architecture, multi-prefix parallel uploads (up to ~8× S3 request-rate capacity), and intelligent cost optimization. Originally inspired by Duke University's SuitcaseCTL research, CargoShip has evolved into a modern, production-ready solution for enterprise-scale data archiving.
 
 ## 🚀 Enterprise Features with Modern Architecture
 
 **High-performance streaming data uploads (v0.5.1+):**
 - 🚀 **Streaming Pipeline** - Zero local disk usage, stream directly to S3
-- ⚡ **Multi-Prefix Parallel Uploads** - 8x throughput improvement with S3 prefix sharding
+- ⚡ **Multi-Prefix Parallel Uploads** - up to ~8× S3 request-rate capacity via prefix sharding
 - 📊 **Real-Time Progress Tracking** - Beautiful TUI with live upload metrics
 - 🧠 **Intelligent Chunking** - Adaptive chunk sizing with compression-aware optimization
 - 💰 **Cost Optimization** - Intelligent storage class selection and lifecycle policies
@@ -415,25 +415,39 @@ $ cargoship create upload /data/genomics --bucket research-data --prefix 2024-st
 
 ### Performance Benchmarks
 
-Real AWS S3 performance results (v0.5.1):
+Illustrative results from one benchmark run (CargoShip **v0.5.1**, real AWS S3,
+`us-west-2`, STANDARD class, 8 shards / 8 workers, zstd level 3). These are a
+point-in-time snapshot, not a guarantee — **your numbers depend on file-size
+distribution, network, region, instance, and concurrency.**
 
 | Workload | Files | Size | Duration | Throughput | Memory |
 |----------|-------|------|----------|------------|--------|
 | **Small files** | 10,000 | 176 MB | 437ms | 403 MB/s | 3.4 GB |
 | **Large files** | 100 | 56 GB | 311s | 185 MB/s | 4.9 GB |
 
-**Key Performance Metrics**:
-- **Compression**: zstd @ 527 MB/s (10.7× faster than gzip)
-- **Memory Efficiency**: 6-8% of data size (excellent scaling)
-- **Multi-Prefix**: 8× S3 request rate capacity
-- **Streaming**: Zero local disk usage
+Architecture-grounded characteristics (independent of any single run):
 
-**Benchmark Details**:
-- Test environment: Real AWS S3 (not LocalStack simulation)
-- Storage class: STANDARD
-- Shards: 8 (default)
-- Workers: 8 (Phase 4 optimization)
-- Compression: zstd level 3
+- **Multi-prefix sharding** distributes chunks across S3 prefixes, so request-rate
+  capacity scales with the shard count (up to ~8× with the default 8 shards) — see
+  [sharding](https://cargoship.app/guides/features/sharding).
+- **Content-aware zstd** compresses text/code well and skips already-compressed
+  data — see [compression](https://cargoship.app/guides/features/compression).
+- **Bounded memory** — data streams to S3 without staging to disk, so memory
+  tracks `chunk_size × workers`, not dataset size.
+
+**Reproduce these yourself** (results include environment + commit metadata):
+
+```bash
+# In-process Go micro-benchmarks (no AWS):
+scripts/run-benchmarks.sh            # or: make test-benchmark
+
+# End-to-end against your own S3 bucket:
+export CARGOSHIP_BENCHMARK_BUCKET=my-bench-bucket
+make bench-s3 SCENARIO=small         # small | medium | large | xlarge
+```
+
+See [Performance tuning](https://cargoship.app/guides/features/optimization) for
+the knobs behind these results.
 
 ## 🎯 Use Cases
 
