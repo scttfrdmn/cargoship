@@ -141,6 +141,7 @@ Full documentation lives at **[cargoship.app](https://cargoship.app)**.
 ### Guides & tutorials
 - [Use-case Tutorials](https://cargoship.app/tutorials/) — genomics, imaging, ML/DVC, lab data
 - [Performance Tuning](https://cargoship.app/guides/features/optimization) — throughput knobs and benchmarks
+- [Benchmarks & Methodology](https://cargoship.app/reference/benchmarks) — reproduce the numbers on your own hardware
 - [Migration from rclone / aws cli](https://cargoship.app/tutorials/migrating) — switching to CargoShip
 - [upload vs. create upload](https://cargoship.app/guides/upload-vs-create-upload) — the advanced tuning variant
 
