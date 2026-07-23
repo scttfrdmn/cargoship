@@ -100,11 +100,15 @@ func TestCostBenchmarkCompare(t *testing.T) {
 	}
 }
 
-// TestBudgetSet exercises `budget set`. NOTE: budget state does not persist
-// across processes yet (#241 — cost.Manager storage is a TODO stub), so we only
-// assert the command runs and reports success. Upgrade to a set→status
-// round-trip once #241 lands.
-func TestBudgetSet(t *testing.T) {
+// TestBudgetSetStatus_RoundTrip sets a project budget in one process and reads
+// it back in another, asserting it persisted (#241). Uses an isolated on-disk
+// store via CARGOSHIP_BUDGET_STORE so it doesn't touch the developer's real
+// ~/.cargoship/budgets.json.
+func TestBudgetSetStatus_RoundTrip(t *testing.T) {
+	store := filepath.Join(t.TempDir(), "budgets.json")
+	t.Setenv("CARGOSHIP_BUDGET_STORE", store)
+
+	// Set the budget (one process).
 	out, err := runCargoshipAllowErr(t, "budget", "set", "e2e-proj",
 		"--cost", "100", "--volume", "50")
 	if err != nil {
@@ -112,6 +116,15 @@ func TestBudgetSet(t *testing.T) {
 	}
 	if !strings.Contains(out, "Budget set for project") {
 		t.Fatalf("budget set output missing confirmation:\n%s", out)
+	}
+
+	// Read it back (a fresh process) — it must have persisted.
+	status, err := runCargoshipAllowErr(t, "budget", "status", "e2e-proj")
+	if err != nil {
+		t.Fatalf("budget status failed (did the budget persist?): %v\n%s", err, status)
+	}
+	if !strings.Contains(status, "$100.00") {
+		t.Fatalf("budget status did not report the persisted $100.00 budget:\n%s", status)
 	}
 }
 

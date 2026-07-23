@@ -386,8 +386,13 @@ func TestDefaultLoadBalancer_WeightedDistribution(t *testing.T) {
 
 	selections := make(map[string]int)
 
-	// Run many selections to test distribution
-	for i := 0; i < 100; i++ {
+	// Run many selections to test distribution. Routing is randomized (80/20
+	// weights → ~4:1 expected), so use a large sample: with 100 samples the
+	// observed ratio occasionally dipped below the 2:1 floor and flaked in CI
+	// (seen at 1.86). 4000 samples shrinks the variance enough that a 2:1 floor
+	// is effectively never breached while still asserting the weighting works.
+	const samples = 4000
+	for i := 0; i < samples; i++ {
 		request := &UploadRequest{
 			FilePath: "/test/file.txt",
 			Size:     1024,
@@ -401,9 +406,9 @@ func TestDefaultLoadBalancer_WeightedDistribution(t *testing.T) {
 	// us-east-1 should be selected more often due to higher weight
 	assert.Greater(t, selections["us-east-1"], selections["us-west-2"])
 
-	// Rough check - us-east-1 should get roughly 4x more selections
+	// Expected ratio is ~4:1; assert a conservative 2:1 floor.
 	ratio := float64(selections["us-east-1"]) / float64(selections["us-west-2"])
-	assert.Greater(t, ratio, 2.0) // At least 2:1 ratio
+	assert.Greater(t, ratio, 2.0, "80/20 weighting should yield >2:1 (expected ~4:1)")
 }
 
 func TestDefaultLoadBalancer_StartSessionCleanup(t *testing.T) {
