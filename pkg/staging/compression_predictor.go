@@ -224,25 +224,40 @@ func (cs *CompressionStats) UpdateWithResult(uncompressedSize, compressedSize in
 	cs.LastUpdated = time.Now()
 }
 
-// CompressionHistory tracks historical compression performance.
+// CompressionHistory tracks historical compression performance. When durable
+// persistence is enabled (opt-in via CARGOSHIP_COMPRESSION_HISTORY, see #262),
+// results survive process restarts so predictions converge across runs;
+// otherwise it behaves exactly as the prior in-memory-only tracker.
 type CompressionHistory struct {
 	results    map[string][]*HistoricalCompressionResult
 	maxResults int
+	store      compressionHistoryStore
 	mu         sync.RWMutex
 }
 
-// NewCompressionHistory creates a new compression history tracker.
+// NewCompressionHistory creates a new compression history tracker. If durable
+// persistence is enabled it loads any previously learned history, dropping
+// entries older than the decay window and honoring the per-content-type cap.
 func NewCompressionHistory() *CompressionHistory {
-	return &CompressionHistory{
+	store := newCompressionHistoryStore()
+	ch := &CompressionHistory{
 		results:    make(map[string][]*HistoricalCompressionResult),
 		maxResults: 1000,
+		store:      store,
 	}
+	// Best-effort load: a corrupt or unreadable store must never block startup.
+	if loaded, err := store.load(time.Now(), ch.maxResults); err == nil && loaded != nil {
+		ch.results = loaded
+	}
+	return ch
 }
 
-// AddResult adds a compression result to the history.
+// AddResult adds a compression result to the history. When persistence is
+// enabled the updated history is flushed to disk best-effort — a save failure
+// is swallowed so it can never fail an upload (mirrors the budget ledger's
+// persistLedger, #246).
 func (ch *CompressionHistory) AddResult(contentType string, size int64, ratio float64) {
 	ch.mu.Lock()
-	defer ch.mu.Unlock()
 
 	result := &HistoricalCompressionResult{
 		ContentType: contentType,
@@ -261,6 +276,25 @@ func (ch *CompressionHistory) AddResult(contentType string, size int64, ratio fl
 	if len(ch.results[contentType]) > ch.maxResults {
 		ch.results[contentType] = ch.results[contentType][1:]
 	}
+
+	// Snapshot under lock; persist outside it.
+	snapshot := ch.snapshotLocked()
+	ch.mu.Unlock()
+
+	_ = ch.store.save(snapshot)
+}
+
+// snapshotLocked returns a deep-enough copy of the results map for persistence.
+// The per-type slices are copied (the pointer elements are treated as
+// immutable once appended). Caller must hold ch.mu.
+func (ch *CompressionHistory) snapshotLocked() map[string][]*HistoricalCompressionResult {
+	out := make(map[string][]*HistoricalCompressionResult, len(ch.results))
+	for k, v := range ch.results {
+		cp := make([]*HistoricalCompressionResult, len(v))
+		copy(cp, v)
+		out[k] = cp
+	}
+	return out
 }
 
 // GetAverageRatio gets the average compression ratio for similar content.
@@ -294,13 +328,13 @@ func (ch *CompressionHistory) GetAverageRatio(contentType string, size int64) fl
 	now := time.Now()
 
 	for _, result := range similarResults {
-		// Weight decreases with age (max 30 days)
+		// Weight decreases with age (down to a floor past the decay window)
 		age := now.Sub(result.Timestamp)
 		var weight float64
-		if age > time.Hour*24*30 {
+		if age > compressionHistoryDecayWindow {
 			weight = 0.1
 		} else {
-			weight = 1.0 - float64(age)/(float64(time.Hour*24*30))
+			weight = 1.0 - float64(age)/float64(compressionHistoryDecayWindow)
 		}
 
 		weightedSum += result.Ratio * weight
@@ -331,10 +365,10 @@ func (ch *CompressionHistory) GetResultsForContentType(contentType string) []*Hi
 
 // HistoricalCompressionResult represents a historical compression result.
 type HistoricalCompressionResult struct {
-	ContentType string
-	Size        int64
-	Ratio       float64
-	Timestamp   time.Time
+	ContentType string    `json:"content_type"`
+	Size        int64     `json:"size"`
+	Ratio       float64   `json:"ratio"`
+	Timestamp   time.Time `json:"timestamp"`
 }
 
 // abs64 returns the absolute value of a 64-bit integer.
