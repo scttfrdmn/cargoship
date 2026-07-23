@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Live AWS Price List API integration for S3 storage & request pricing, replacing the hardcoded-only fallback path (#235)
+- First-class VitePress documentation site at cargoship.app, replacing the mkdocs tree (#216)
+- Versioned docs: `latest` (root) + `dev` (/dev) trees with a version switcher (#231)
+- Benchmark methodology page plus reproducible provenance recorded by the benchmark runner (#230)
+- Tutorial: millions of small files & the S3 request-cost problem (#236)
+
+### Fixed
+- Restore & verify now work for direct-upload archives (the documented default path was broken) (#228, #229)
+- Corrected the S3 PUT request fallback price: $0.0005 → $0.005 per 1,000 requests (10× error) (#233)
+- Project budgets now persist across CLI invocations via `~/.cargoship/budgets.json` (#241)
+- `dvc` list_files no longer calls a broken `cargoship list` contract (#219)
+- Recorded first-packet send time in the BBR prober (#232)
+
+### Testing & CI
+- Integration suite now runs in CI against the in-process Substrate emulator (credential-free); repaired rotted integration tests (#240)
+- End-to-end coverage for `estimate`/`cost`/`list`/`download`/`sync`/`dvc`, which surfaced and fixed two bugs (#242)
+- Corrected the large-file memory assertion in `TestIntegration_LargeFiles`: the reported multi-GB usage was an emulator measurement artifact, not a product regression — real-S3 memory is a flat ~12 MB for a 5 GB file (#239, #245)
+- Fixed data races in the pipeline progress counter (#234) and the `TestWaitForRestore` mock client (#220)
+- CI speedup: dropped the redundant Test job and run integration with `-short` (#243)
+
 ## [0.13.2] - 2026-07-07
 
 ### CI/CD & Security
