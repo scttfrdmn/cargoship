@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/pricing"
 	"github.com/scttfrdmn/cargoship/pkg/aws/config"
+	"github.com/scttfrdmn/cargoship/pkg/aws/pricingfallback"
 )
 
 // PricingManager handles cost calculations with AWS Pricing API integration
@@ -245,14 +246,14 @@ func (pm *PricingManager) getRequestPrice(ctx context.Context, requestType strin
 		apiPrice, err := pm.getAWSRequestPrice(ctx, strings.ToUpper(requestType), region)
 		if err != nil {
 			pm.logger.Warn("Failed to get AWS request pricing, using fallback", "error", err)
-			price = pm.getFallbackRequestPrice(requestType)
+			price = pm.getFallbackRequestPrice(requestType, storageClass)
 			pm.setCachedPrice(cacheKey, price, "fallback")
 		} else {
 			price = apiPrice
 			pm.setCachedPrice(cacheKey, price, "aws_api")
 		}
 	} else {
-		price = pm.getFallbackRequestPrice(requestType)
+		price = pm.getFallbackRequestPrice(requestType, storageClass)
 		pm.setCachedPrice(cacheKey, price, "fallback")
 	}
 
@@ -426,39 +427,19 @@ func (pm *PricingManager) getAWSRequestPrice(ctx context.Context, requestType, r
 	return perRequest * 1000, nil
 }
 
-// Fallback pricing methods
+// Fallback pricing methods delegate to the canonical pricingfallback tables so
+// the numbers are defined in exactly one place (#237).
 func (pm *PricingManager) getFallbackStoragePrice(storageClass config.StorageClass) float64 {
-	// These are approximate AWS S3 prices as of 2024 (USD per GB per month)
-	switch storageClass {
-	case config.StorageClassStandard:
-		return 0.023
-	case config.StorageClassStandardIA:
-		return 0.0125
-	case config.StorageClassOneZoneIA:
-		return 0.01
-	case config.StorageClassIntelligentTiering:
-		return 0.023 // Same as Standard + monitoring
-	case config.StorageClassGlacier:
-		return 0.004
-	case config.StorageClassDeepArchive:
-		return 0.00099
-	default:
-		return 0.023
-	}
+	return pricingfallback.StoragePrice(storageClass)
 }
 
-func (pm *PricingManager) getFallbackRequestPrice(requestType string) float64 {
-	// Approximate AWS S3 request prices (USD per 1000 requests), STANDARD tier.
-	switch strings.ToUpper(requestType) {
-	case "PUT", "POST", "COPY", "LIST":
-		return 0.005 // $0.005 per 1,000 PUT/COPY/POST/LIST requests
-	case "GET", "SELECT":
-		return 0.0004 // $0.0004 per 1,000 GET/SELECT requests
-	case "DELETE":
-		return 0.0
-	default:
-		return 0.005
-	}
+// getFallbackRequestPrice returns the per-1000 request price for a verb and
+// storage class. PUT/COPY/POST/LIST prices vary by storage class (archival
+// classes cost far more per request than Standard); GET/SELECT and DELETE are
+// verb-only. Previously this ignored storageClass and priced every PUT at the
+// Standard rate, undercounting Glacier/Deep-Archive uploads (#237).
+func (pm *PricingManager) getFallbackRequestPrice(requestType string, storageClass config.StorageClass) float64 {
+	return pricingfallback.RequestPrice(requestType, storageClass)
 }
 
 // Cache management methods

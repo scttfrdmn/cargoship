@@ -640,6 +640,19 @@ func TestService_setFallbackRequestPricing(t *testing.T) {
 			t.Errorf("setFallbackRequestPricing() invalid price %v for %v", price, class)
 		}
 	}
+
+	// Pin the corrected canonical values (#237). This table was previously 10x
+	// too low here (Standard 0.0005); a >0 check let that bug survive.
+	wantExact := map[config.StorageClass]float64{
+		config.StorageClassStandard:    0.005,
+		config.StorageClassGlacier:     0.03,
+		config.StorageClassDeepArchive: 0.05,
+	}
+	for class, want := range wantExact {
+		if got := priceData.RequestPrice[class]; got != want {
+			t.Errorf("setFallbackRequestPricing()[%v] = %v, want %v", class, got, want)
+		}
+	}
 }
 
 func TestService_InvalidateCache(t *testing.T) {

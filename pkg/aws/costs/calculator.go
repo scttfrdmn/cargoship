@@ -9,6 +9,7 @@ import (
 
 	"github.com/scttfrdmn/cargoship/pkg/aws/config"
 	"github.com/scttfrdmn/cargoship/pkg/aws/pricing"
+	"github.com/scttfrdmn/cargoship/pkg/aws/pricingfallback"
 	"github.com/scttfrdmn/cargoship/pkg/aws/s3"
 )
 
@@ -177,22 +178,8 @@ func (c *Calculator) calculateStorageCost(ctx context.Context, sizeGB float64, s
 		// Note: In production, consider more sophisticated error handling
 	}
 
-	// Fallback pricing (original static prices)
-	pricePerGB := map[config.StorageClass]float64{
-		config.StorageClassStandard:           0.023,   // $0.023/GB
-		config.StorageClassStandardIA:         0.0125,  // $0.0125/GB
-		config.StorageClassOneZoneIA:          0.01,    // $0.01/GB
-		config.StorageClassIntelligentTiering: 0.0225,  // $0.0225/GB + monitoring
-		config.StorageClassGlacier:            0.004,   // $0.004/GB
-		config.StorageClassDeepArchive:        0.00099, // $0.00099/GB
-	}
-
-	price, exists := pricePerGB[storageClass]
-	if !exists {
-		price = pricePerGB[config.StorageClassStandard] // Default fallback
-	}
-
-	return sizeGB * price
+	// Fallback pricing from the canonical table (#237).
+	return sizeGB * pricingfallback.StoragePrice(storageClass)
 }
 
 // calculateTransferCost calculates data transfer cost (first 1GB free)
@@ -227,22 +214,8 @@ func (c *Calculator) calculateRequestCost(ctx context.Context, numRequests int, 
 		}
 	}
 
-	// Fallback pricing per 1,000 requests
-	pricePerThousand := map[config.StorageClass]float64{
-		config.StorageClassStandard:           0.005, // $0.005/1K requests
-		config.StorageClassStandardIA:         0.01,  // $0.01/1K requests
-		config.StorageClassOneZoneIA:          0.01,  // $0.01/1K requests
-		config.StorageClassIntelligentTiering: 0.005, // $0.005/1K requests
-		config.StorageClassGlacier:            0.03,  // $0.03/1K requests
-		config.StorageClassDeepArchive:        0.05,  // $0.05/1K requests
-	}
-
-	price, exists := pricePerThousand[storageClass]
-	if !exists {
-		price = pricePerThousand[config.StorageClassStandard]
-	}
-
-	return (float64(numRequests) / 1000.0) * price
+	// Fallback pricing per 1,000 PUT requests from the canonical table (#237).
+	return (float64(numRequests) / 1000.0) * pricingfallback.PutRequestPrice(storageClass)
 }
 
 // generateRecommendations creates cost optimization recommendations

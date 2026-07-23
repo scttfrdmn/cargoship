@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/pricing/types"
 
 	"github.com/scttfrdmn/cargoship/pkg/aws/config"
+	"github.com/scttfrdmn/cargoship/pkg/aws/pricingfallback"
 )
 
 // PricingClient interface for AWS pricing operations
@@ -409,26 +410,20 @@ func (s *Service) setFallbackStoragePricing(priceData *PriceData, region string)
 		multiplier = 1.1 // 10% higher for most non-US regions
 	}
 
-	priceData.StoragePrice = map[config.StorageClass]float64{
-		config.StorageClassStandard:           0.023 * multiplier,
-		config.StorageClassStandardIA:         0.0125 * multiplier,
-		config.StorageClassOneZoneIA:          0.01 * multiplier,
-		config.StorageClassIntelligentTiering: 0.0225 * multiplier,
-		config.StorageClassGlacier:            0.004 * multiplier,
-		config.StorageClassDeepArchive:        0.00099 * multiplier,
+	// Base numbers come from the canonical fallback table (#237); the regional
+	// multiplier is applied on top.
+	priceData.StoragePrice = pricingfallback.StoragePriceTable()
+	for sc, p := range priceData.StoragePrice {
+		priceData.StoragePrice[sc] = p * multiplier
 	}
 }
 
-// setFallbackRequestPricing sets fallback request pricing
+// setFallbackRequestPricing sets fallback request pricing from the canonical
+// table. This previously carried its own copy of the request prices that was
+// 10x too low across the board (Standard 0.0005 vs the correct 0.005) — the same
+// class of bug as #233, in a third location (#237).
 func (s *Service) setFallbackRequestPricing(priceData *PriceData) {
-	priceData.RequestPrice = map[config.StorageClass]float64{
-		config.StorageClassStandard:           0.0005,
-		config.StorageClassStandardIA:         0.001,
-		config.StorageClassOneZoneIA:          0.001,
-		config.StorageClassIntelligentTiering: 0.0005,
-		config.StorageClassGlacier:            0.003,
-		config.StorageClassDeepArchive:        0.005,
-	}
+	priceData.RequestPrice = pricingfallback.PutRequestPriceTable()
 }
 
 // InvalidateCache clears the pricing cache for a region
