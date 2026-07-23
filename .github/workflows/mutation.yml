@@ -1,0 +1,114 @@
+name: Mutation Testing
+
+# Mutation testing surfaces weak assertions — tests that execute code (so
+# coverage looks fine) but don't actually constrain its behavior. This is the
+# class of gap behind several real bugs found in this repo: a request-price
+# table asserted only with `> 0` (a 10x error survived), range-based storage
+# assertions, etc. gremlins flips constants/operators/conditionals and reports
+# mutations the tests fail to catch ("LIVED").
+#
+# It's slow (each surviving-candidate mutant re-runs the package's tests), so it
+# runs on a schedule + on demand, NOT per-PR. Non-blocking: it reports signal,
+# it doesn't gate merges (the efficacy of these suites isn't high enough yet to
+# gate, and gating on a nightly is disruptive). Scoped to the highest-value
+# logic packages — the cost/pricing and format code where correctness bugs hurt.
+
+on:
+  schedule:
+    - cron: '0 8 * * 1' # Mondays 08:00 UTC — weekly, off the PR path
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: 'Space-separated package paths to mutate'
+        default: './pkg/aws/cost/ ./pkg/manifest/ ./pkg/chunking/'
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: '1.26'
+  # gremlins is not mutated code; pin to a released version.
+  GREMLINS_VERSION: v0.6.0
+
+jobs:
+  mutation:
+    name: Mutation testing (weekly, non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install gremlins
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@${{ env.GREMLINS_VERSION }}
+
+      # One gremlins run per package so a slow/failed package can't hide the
+      # others' results. Non-blocking: we never fail the job on surviving
+      # mutants — the artifacts + summary are the deliverable.
+      - name: Run mutation testing
+        env:
+          # Route the workflow input through env rather than interpolating
+          # ${{ github.event.inputs }} directly into the script — inline
+          # interpolation of github-context data in a run: step is a shell
+          # injection vector (matches the hardening already applied elsewhere).
+          INPUT_PACKAGES: ${{ github.event.inputs.packages }}
+        run: |
+          set -u
+          pkgs="$INPUT_PACKAGES"
+          [ -z "$pkgs" ] && pkgs="./pkg/aws/cost/ ./pkg/manifest/ ./pkg/chunking/"
+          mkdir -p mutation-results
+          for pkg in $pkgs; do
+            name=$(echo "$pkg" | tr -cd '[:alnum:]')
+            echo "::group::gremlins $pkg"
+            # --timeout-coefficient 10: some mutants (e.g. flipped loop bounds)
+            # spin, and the default timeout is too tight — a low coefficient
+            # reports nearly everything as TIMED OUT instead of evaluating it.
+            gremlins unleash "$pkg" \
+              --timeout-coefficient 10 \
+              --output "mutation-results/${name}.json" || true # never fail the job
+            echo "::endgroup::"
+          done
+
+      - name: Summarize surviving mutants
+        if: always()
+        run: |
+          echo "## Mutation testing — surviving mutants (LIVED)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "A LIVED mutant is code the tests execute but don't constrain — a weak/missing assertion. TIMED_OUT usually means a mutant caused a hang (effectively caught)." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          for f in mutation-results/*.json; do
+            [ -f "$f" ] || continue
+            name=$(basename "$f" .json)
+            python3 - "$f" "$name" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json, sys
+          f, name = sys.argv[1], sys.argv[2]
+          d = json.load(open(f))
+          lived = []
+          killed = 0
+          for fe in d.get("files", []):
+              for m in fe.get("mutations", []):
+                  s = m.get("status")
+                  if s == "LIVED":
+                      lived.append(f"{fe['file_name']}:{m['line']}:{m['column']} ({m['type']})")
+                  elif s == "KILLED":
+                      killed += 1
+          print(f"### `{name}` — {len(lived)} lived / {killed} killed")
+          for l in lived:
+              print(f"- `{l}`")
+          print()
+          PY
+          done
+
+      - name: Upload mutation results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mutation-results
+          path: mutation-results/
+          retention-days: 30
