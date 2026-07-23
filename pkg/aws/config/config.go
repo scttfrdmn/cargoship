@@ -75,6 +75,13 @@ type CostControlConfig struct {
 	// If not set, projects use the global budget period
 	ProjectBudgets map[string]ProjectBudget `yaml:"project_budgets,omitempty" json:"project_budgets,omitempty"`
 
+	// BudgetStoreLocation selects where budgets persist (#246 Phase B). Empty
+	// means the local file (~/.cargoship/budgets.json); an "s3://bucket/prefix"
+	// value uses an S3-backed store with optimistic-concurrency writes so
+	// budgets are durable and shareable across machines. Overridden by the
+	// `budget --store` flag and the CARGOSHIP_BUDGET_STORE env var.
+	BudgetStoreLocation string `yaml:"budget_store_location,omitempty" json:"budget_store_location,omitempty"`
+
 	// Enable automatic cost optimization
 	AutoOptimize bool `yaml:"auto_optimize" json:"auto_optimize"`
 

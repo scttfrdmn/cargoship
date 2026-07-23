@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -55,6 +56,13 @@ Examples:
 			return cmd.Help()
 		},
 	}
+
+	// --store selects where budgets persist (#246 Phase B). Default (empty) is
+	// the local file; an s3://bucket/prefix value stores budgets in S3 with
+	// optimistic-concurrency writes so they're durable and shareable across
+	// machines. Persistent so every subcommand inherits it.
+	cmd.PersistentFlags().StringVar(&budgetStoreFlag, "store", "",
+		"Budget store location: local (default) or s3://bucket/prefix for a shared, durable store")
 
 	// Add subcommands
 	cmd.AddCommand(newBudgetStatusCmd())
@@ -410,6 +418,11 @@ func isDVCProject(id string) bool {
 	return id == "dvc_cache" || strings.HasPrefix(id, "dvc_")
 }
 
+// budgetStoreFlag holds the value of the `--store` persistent flag on the budget
+// command. Empty means "use the default" (config key, then CARGOSHIP_BUDGET_STORE
+// env, then the local file).
+var budgetStoreFlag string
+
 // Helper function to load cost manager
 func loadCostManager(ctx context.Context) (*cost.Manager, error) {
 	// Load AWS config
@@ -421,8 +434,20 @@ func loadCostManager(ctx context.Context) (*cost.Manager, error) {
 	// Load CargoShip config (use default for now)
 	cargoConfig := cargoconfig.DefaultAWSConfig()
 
+	// Resolve the budget-store location (#246 Phase B). Precedence: --store flag,
+	// then the config key, then the CARGOSHIP_BUDGET_STORE env (which may be an
+	// s3:// URL or a local path), then the local default. An empty spec selects
+	// the local store.
+	spec := budgetStoreFlag
+	if spec == "" {
+		spec = cargoConfig.CostControl.BudgetStoreLocation
+	}
+	if spec == "" {
+		spec = os.Getenv("CARGOSHIP_BUDGET_STORE")
+	}
+
 	// Create cost manager
-	manager, err := cost.NewManager(&cargoConfig.CostControl, awsCfg, nil)
+	manager, err := cost.NewManagerWithStoreSpec(ctx, &cargoConfig.CostControl, awsCfg, nil, spec)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cost manager: %w", err)
 	}

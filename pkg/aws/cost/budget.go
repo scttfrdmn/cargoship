@@ -515,6 +515,12 @@ func (m *Manager) SetProjectBudget(projectID string, maxBudget float64, maxVolum
 	if projectID == "" {
 		return fmt.Errorf("project ID cannot be empty")
 	}
+	// The project ID becomes part of an S3 object key when using the S3-backed
+	// store (#246); reject separators and control characters so it can't inject
+	// a key prefix or a malformed key.
+	if err := validateProjectID(projectID); err != nil {
+		return err
+	}
 	if maxBudget < 0 {
 		return fmt.Errorf("max budget cannot be negative (use 0 for unlimited)")
 	}
