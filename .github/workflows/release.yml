@@ -23,6 +23,20 @@ jobs:
         with:
           go-version: '1.26'
 
+      # The pushed tag must match the canonical version (internal/version/
+      # version.txt). This closes the loop on the single-source-of-truth: docs
+      # are checked against version.txt in CI, and the release tag is checked
+      # against it here, so tag == version.txt == docs always holds.
+      - name: Verify tag matches internal/version/version.txt
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          file="$(tr -d '[:space:]' < internal/version/version.txt)"
+          if [ "$tag" != "$file" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match internal/version/version.txt (v${file}); bump version.txt before tagging"
+            exit 1
+          fi
+          echo "tag ${GITHUB_REF_NAME} matches version.txt (v${file})"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
         with:

@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
-# Doc-consistency guard: keep repo docs from drifting behind releases.
+# Doc-consistency guard: keep repo docs in lockstep with the canonical version.
 #
-# Two independent checks, both intentionally SURGICAL to avoid false positives on
-# legitimate version mentions (semver examples like "v0.4 → v0.5", historical
+# Three independent checks, all intentionally SURGICAL to avoid false positives
+# on legitimate version mentions (semver examples like "v0.4 → v0.5", historical
 # roadmap entries, benchmark-environment notes):
 #
-#   1. "Current Version" declarations must match the latest release. The files
-#      below each carry one authoritative "Current Version: vX.Y.Z" line; those
-#      must equal the newest semver git tag. Every OTHER version string in the
-#      repo is left alone.
+#   1. Doc version declarations must match the single source of truth,
+#      internal/version/version.txt (NOT the latest git tag — version.txt may
+#      legitimately lead the tag during release prep; the tag==version.txt
+#      guarantee is enforced at release time by the tag step, not here). Each
+#      file below carries one authoritative version string; those must equal
+#      version.txt. Every OTHER version string in the repo is left alone.
 #
 #   2. Denylisted tokens must not appear anywhere in the tracked docs. These are
 #      removed commands / fictional settings that are always wrong if present
 #      (not version numbers). Historical prose that must reference them can be
 #      added to the allowlist below.
+#
+#   3. Local file links in root markdown must resolve.
 #
 # Usage: scripts/ci/check-doc-versions.sh
 # Exit 0 = consistent; exit 1 = drift found (prints what and where).
@@ -24,25 +28,30 @@ cd "$REPO_ROOT"
 
 fail=0
 
-# --- Check 1: "Current Version" declarations track the latest release tag ------
+# --- Check 1: doc version declarations match internal/version/version.txt ------
 
-# Newest vX.Y.Z tag (sorted by version). Fall back gracefully if no tags.
-latest_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)"
-if [ -z "$latest_tag" ]; then
-  echo "::warning::no vX.Y.Z git tags found; skipping current-version check"
+version_file="internal/version/version.txt"
+if [ ! -f "$version_file" ]; then
+  echo "::error::$version_file (canonical version source) not found"
+  fail=1
 else
-  # Files that declare the canonical current version.
-  version_files=(CLAUDE.md ROADMAP.md)
-  for f in "${version_files[@]}"; do
+  ver="$(tr -d '[:space:]' < "$version_file")" # e.g. 0.14.0
+  vver="v${ver}"
+
+  # Each entry: "<file>|<exact string that must be present>".
+  # These are the authoritative version declarations the release process bumps.
+  declarations=(
+    "CLAUDE.md|**Current Version**: ${vver}"
+    "ROADMAP.md|**Current Version**: ${vver}"
+    "README.md|**${vver}**"
+    "CHANGELOG.md|## [${ver}]"
+  )
+  for entry in "${declarations[@]}"; do
+    f="${entry%%|*}"
+    needle="${entry#*|}"
     [ -f "$f" ] || continue
-    # Extract the version from a line like: **Current Version**: v0.13.2 (...)
-    declared="$(grep -oE 'Current Version\*{0,2}:? *v[0-9]+\.[0-9]+\.[0-9]+' "$f" \
-                  | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-    if [ -z "$declared" ]; then
-      echo "::error file=$f::no 'Current Version: vX.Y.Z' declaration found"
-      fail=1
-    elif [ "$declared" != "$latest_tag" ]; then
-      echo "::error file=$f::declares Current Version $declared but latest release is $latest_tag"
+    if ! grep -qF "$needle" "$f"; then
+      echo "::error file=$f::missing current-version declaration; expected to find \"$needle\" (from $version_file = $ver)"
       fail=1
     fi
   done
@@ -101,6 +110,6 @@ for f in "${root_md[@]}"; do
 done
 
 if [ "$fail" -eq 0 ]; then
-  echo "✅ doc-consistency: Current Version matches $latest_tag; no denylisted tokens; local links resolve."
+  echo "✅ doc-consistency: version declarations match ${version_file:+$(tr -d '[:space:]' < "$version_file")}; no denylisted tokens; local links resolve."
 fi
 exit $fail
