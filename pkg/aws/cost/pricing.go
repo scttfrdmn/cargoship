@@ -243,7 +243,7 @@ func (pm *PricingManager) getRequestPrice(ctx context.Context, requestType strin
 
 	// Use AWS Pricing API if enabled, falling back to the static table on error.
 	if pm.config.UseAWSPricingAPI && pm.pricingAPI != nil {
-		apiPrice, err := pm.getAWSRequestPrice(ctx, strings.ToUpper(requestType), region)
+		apiPrice, err := pm.getAWSRequestPrice(ctx, strings.ToUpper(requestType), storageClass, region)
 		if err != nil {
 			pm.logger.Warn("Failed to get AWS request pricing, using fallback", "error", err)
 			price = pm.getFallbackRequestPrice(requestType, storageClass)
@@ -407,11 +407,14 @@ func (pm *PricingManager) getAWSStoragePrice(ctx context.Context, storageClass c
 }
 
 // getAWSRequestPrice queries the AWS Price List API for the per-request price of
-// requestType in region, returned as a price per 1,000 requests to match the
-// rest of the pricing code. Returns an error (caller falls back) when the
-// request type has no Price List mapping or the query yields no usable price.
-func (pm *PricingManager) getAWSRequestPrice(ctx context.Context, requestType, region string) (float64, error) {
-	group, ok := s3RequestGroup(requestType)
+// requestType against storageClass in region, returned as a price per 1,000
+// requests to match the rest of the pricing code. Request pricing varies by
+// storage class (archival classes cost more per PUT), so the storage class
+// selects the Price List request group (#252). Returns an error (caller falls
+// back) when the request type has no Price List mapping or the query yields no
+// usable price.
+func (pm *PricingManager) getAWSRequestPrice(ctx context.Context, requestType string, storageClass config.StorageClass, region string) (float64, error) {
+	group, ok := s3RequestGroup(requestType, storageClass)
 	if !ok {
 		return 0, fmt.Errorf("no Price List group for request type %q", requestType)
 	}
