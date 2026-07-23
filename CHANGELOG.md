@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-23
+
+### Added
+- **Per-upload outcome history — the measurement corpus (#261).** An opt-in,
+  durable, append-only record of each completed upload joins its inputs
+  (dataset size, file count, file-type mix, chunk/shard counts, compression
+  algorithm/level, storage class, region) to its outcomes (actual compression
+  ratio, throughput, duration, error count, cost). Off by default; enable with
+  `CARGOSHIP_UPLOAD_HISTORY` or `cost_control.upload_history_location`. Metadata
+  only — no file content, names, or paths. Inspect it with `cargoship cost
+  history` (table or `--json`). This is the substrate later optimization work
+  learns from.
+- **Persistent staging compression-ratio history (#262).** The staging
+  compression predictor's online learner now survives restarts (opt-in via
+  `CARGOSHIP_COMPRESSION_HISTORY`), so predictions converge across runs instead
+  of starting cold each process. Decay-window pruning and the per-content-type
+  cap are honored on load.
+
+### Changed
+- **Real exponential & moving-average cost forecasts (#263).** `cargoship cost
+  forecast` previously advertised four models but only linear was implemented —
+  the other two silently fell back to linear, which also made the "ensemble"
+  a linear forecast in disguise. Exponential now uses Holt's double exponential
+  smoothing (level + trend); moving average uses an exponentially-weighted
+  7-day window; the ensemble genuinely blends the three distinct components.
+
+### Fixed
+- CI: regenerated the CLI reference for the #246 budget flags (`--global`,
+  `--store`) and made the fuzz lane deterministic (execution-count budget
+  instead of a wall-clock deadline that could spuriously time out) (#266).
+
 ## [0.14.0] - 2026-07-23
 
 ### Added
