@@ -318,15 +318,33 @@ func (s *Service) extractStorageClass(attributes map[string]interface{}) string 
 }
 
 // extractStorageClassFromRequest maps request types to storage classes
+// extractStorageClassFromRequest determines which storage class a Price List
+// "API Request" product prices. Only PUT-tier (Tier1) products feed
+// RequestPrice, which models PUT cost. The storage class is carried in the
+// product's `group` attribute (e.g. S3-API-GIR-Tier1 = Glacier Instant
+// Retrieval), NOT the `storageClass` attribute, which is empty for this family
+// — the previous code read the empty attribute and defaulted everything to
+// Standard (#252). Returns "" to skip non-PUT-tier and unmapped products.
 func (s *Service) extractStorageClassFromRequest(attributes map[string]interface{}) string {
-	requestType, _ := attributes["requestType"].(string)
-
-	if strings.Contains(requestType, "PUT") {
-		storageClass, _ := attributes["storageClass"].(string)
-		return s.extractStorageClass(map[string]interface{}{"storageClass": storageClass})
+	group, _ := attributes["group"].(string)
+	if !strings.HasSuffix(group, "Tier1") {
+		return "" // only PUT/COPY/POST/LIST tier feeds PUT request pricing
 	}
 
-	return string(config.StorageClassStandard) // Default for most requests
+	switch group {
+	case "S3-API-Tier1":
+		return string(config.StorageClassStandard)
+	case "S3-API-SIA-Tier1":
+		return string(config.StorageClassStandardIA)
+	case "S3-API-ZIA-Tier1":
+		return string(config.StorageClassOneZoneIA)
+	case "S3-API-GIR-Tier1":
+		return string(config.StorageClassGlacier)
+	default:
+		// Other Tier1 groups (FSx, Express One Zone, etc.) aren't storage
+		// classes CargoShip models; skip them.
+		return ""
+	}
 }
 
 // extractPriceFromTerms extracts the actual price from pricing terms
