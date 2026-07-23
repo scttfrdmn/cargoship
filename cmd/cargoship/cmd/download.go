@@ -165,6 +165,40 @@ Examples:
 			fmt.Printf("📦 Selected %d files (%s uncompressed)\n\n",
 				len(filesToDownload), humanize.Bytes(uint64(totalSize)))
 
+			// Direct-upload manifests have no chunks: each file is its own S3
+			// object (not a tar.zst chunk), so the chunk-download path below can't
+			// extract them. Route through the shared SelectiveExtractor, which
+			// handles direct-upload restore (writing raw object bytes). Mirrors the
+			// restore command's fix. (#228 / #238 Phase 2)
+			if m.TotalChunks == 0 {
+				if dryRun {
+					fmt.Println("🔍 Dry run - would download (direct-upload objects):")
+					for _, file := range filesToDownload {
+						fmt.Printf("    - %s (%s)\n", file.Path, humanize.Bytes(uint64(file.Size)))
+					}
+					fmt.Printf("\nTotal: %d files, %s\n", len(filesToDownload), humanize.Bytes(uint64(totalSize)))
+					return nil
+				}
+				if err := os.MkdirAll(outputDir, 0755); err != nil {
+					return fmt.Errorf("failed to create output directory: %w", err)
+				}
+				targets := make([]string, len(filesToDownload))
+				for i, file := range filesToDownload {
+					targets[i] = file.Path
+				}
+				extractor := manifest.NewSelectiveExtractor(m, s3Client, 0)
+				stats, err := extractor.BatchRestore(ctx, targets, outputDir)
+				if err != nil {
+					return fmt.Errorf("failed to download direct-upload files: %w", err)
+				}
+				fmt.Printf("✅ Downloaded %d files (%s) — %d failed\n",
+					stats.Restored, humanize.Bytes(uint64(stats.Bytes)), stats.Failed)
+				if stats.Failed > 0 {
+					return fmt.Errorf("%d file(s) failed to download", stats.Failed)
+				}
+				return nil
+			}
+
 			// Step 3: Group files by chunk to minimize chunk downloads
 			chunkFiles := make(map[int][]manifest.FileEntry)
 			for _, file := range filesToDownload {

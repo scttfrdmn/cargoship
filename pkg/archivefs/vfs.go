@@ -64,11 +64,14 @@ func New(m *manifest.Manifest) *VirtualFS {
 			dirPath = ""
 		}
 
-		// Register all ancestor directories up to the root.
+		// Register all ancestor directories up to the root. path.Dir("/") == "/"
+		// (and path.Dir of any rooted path bottoms out at "/", never ""), so stop
+		// when the parent stops making progress — otherwise an absolute file path
+		// loops forever here. (direct-upload manifests store absolute paths)
 		cur := dirPath
 		for {
 			vfs.dirSet[cur] = struct{}{}
-			if cur == "" {
+			if cur == "" || cur == "/" {
 				break
 			}
 			parent := path.Dir(cur)
@@ -76,6 +79,9 @@ func New(m *manifest.Manifest) *VirtualFS {
 				parent = ""
 			}
 			ensureDir(parent, path.Base(cur))
+			if parent == cur {
+				break // no progress (e.g. cur == "/"): avoid infinite loop
+			}
 			cur = parent
 		}
 
