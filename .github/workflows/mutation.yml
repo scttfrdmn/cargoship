@@ -52,9 +52,15 @@ jobs:
       # others' results. Non-blocking: we never fail the job on surviving
       # mutants — the artifacts + summary are the deliverable.
       - name: Run mutation testing
+        env:
+          # Route the workflow input through env rather than interpolating
+          # ${{ github.event.inputs }} directly into the script — inline
+          # interpolation of github-context data in a run: step is a shell
+          # injection vector (matches the hardening already applied elsewhere).
+          INPUT_PACKAGES: ${{ github.event.inputs.packages }}
         run: |
           set -u
-          pkgs="${{ github.event.inputs.packages }}"
+          pkgs="$INPUT_PACKAGES"
           [ -z "$pkgs" ] && pkgs="./pkg/aws/cost/ ./pkg/manifest/ ./pkg/chunking/"
           mkdir -p mutation-results
           for pkg in $pkgs; do
