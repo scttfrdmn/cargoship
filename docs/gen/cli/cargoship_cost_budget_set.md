@@ -29,6 +29,9 @@ Examples:
   # Set unlimited
   cargoship budget set project1 --cost 0 --volume 0
 
+  # Set the org/team-wide budget ceiling (across all projects)
+  cargoship budget set --global --cost 10000 --volume 5000
+
 
 ```
 cargoship cost budget set <project-id> [flags]
@@ -39,6 +42,7 @@ cargoship cost budget set <project-id> [flags]
 ```
       --cost float           Maximum cost budget in USD (0 = unlimited)
       --cost-alert float     Cost alert threshold (0.0-1.0, default 0.8) (default 0.8)
+      --global               Set the org/team-wide budget ceiling (across all projects) instead of a per-project budget
   -h, --help                 help for set
       --volume float         Maximum volume quota in GB (0 = unlimited)
       --volume-alert float   Volume alert threshold (0.0-1.0, default 0.75) (default 0.75)
@@ -54,6 +58,7 @@ cargoship cost budget set <project-id> [flags]
       --pprof-addr string     Address for runtime profiling HTTP endpoint (default "localhost:6060")
       --profile               Enable performance profiling. This will generate profile files in a temp directory
   -r, --region string         AWS region (default "us-west-2")
+      --store string          Budget store location: local (default) or s3://bucket/prefix for a shared, durable store
   -t, --trace                 Enable trace messages in output
   -v, --verbose               Enable verbose output
 ```
