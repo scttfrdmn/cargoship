@@ -540,8 +540,9 @@ func (m *Manager) SetProjectBudget(projectID string, maxBudget float64, maxVolum
 		VolumeAlertThreshold: volumeAlertThreshold,
 	}
 
-	// Persist so the budget survives across CLI invocations (#241).
-	if err := saveProjectBudgets(m.config.ProjectBudgets); err != nil {
+	// Persist so the budget survives across CLI invocations (#241), carrying the
+	// recorded ledger through untouched so a limits update can't clobber it (#246).
+	if err := m.saveState(); err != nil {
 		return fmt.Errorf("persist project budget: %w", err)
 	}
 
@@ -567,8 +568,8 @@ func (m *Manager) DeleteProjectBudget(projectID string) error {
 
 	delete(m.config.ProjectBudgets, projectID)
 
-	// Persist the removal (#241).
-	if err := saveProjectBudgets(m.config.ProjectBudgets); err != nil {
+	// Persist the removal (#241), preserving the recorded ledger (#246).
+	if err := m.saveState(); err != nil {
 		return fmt.Errorf("persist project budget removal: %w", err)
 	}
 

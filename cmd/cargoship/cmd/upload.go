@@ -684,6 +684,16 @@ Examples:
 				return fmt.Errorf("pipeline completed with %d errors", len(result.Errors))
 			}
 
+			// #246: record this upload's cost against its project budget so
+			// `cargoship budget status <project>` reflects real spend and it
+			// persists across runs. Gated on --project so plain uploads (no
+			// budgeting opt-in) don't write a budget store. Best-effort: the
+			// upload already succeeded, so a recording/enforcement error is a
+			// warning, never a command failure.
+			if dvcProject != "" {
+				recordUploadCost(ctx, cmd, dvcProject, storageClass, region, result, uploadTagMap)
+			}
+
 			// v0.13.0: DVC auto-annotation — annotate each FileEntry with its DVC stage
 			// by parsing dvc.yaml, then re-upload the manifest to S3 so that
 			// cargoship dvc stages / restore --dvc-stage work correctly.
@@ -917,6 +927,30 @@ func promptForResume(state *resume.UploadState) bool {
 
 	// Empty or "y" means yes
 	return response == "" || response == "y" || response == "Y"
+}
+
+// recordUploadCost records a completed upload's cost against its project budget
+// so `cargoship budget status <project>` reflects real spend and persists it
+// across runs (#246). Best-effort: any failure is a warning to stderr, never a
+// command error — the upload has already succeeded.
+func recordUploadCost(ctx context.Context, cmd *cobra.Command, projectID, storageClass, region string, result *pipeline.Result, tags map[string]string) {
+	mgr, err := loadCostManager(ctx)
+	if err != nil {
+		_, _ = fmt.Fprintf(cmd.OutOrStderr(), "⚠️  cost tracking skipped: %v\n", err)
+		return
+	}
+	if err := mgr.RecordCompletedUpload(
+		ctx,
+		result.UploadID,
+		result.TotalBytes,
+		cargoconfig.StorageClass(storageClass),
+		region,
+		result.UploadID,
+		projectID,
+		tags,
+	); err != nil {
+		_, _ = fmt.Fprintf(cmd.OutOrStderr(), "⚠️  cost tracking failed: %v\n", err)
+	}
 }
 
 // formatDuration formats a duration in a human-readable way
