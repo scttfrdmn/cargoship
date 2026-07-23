@@ -92,14 +92,17 @@ type ProgressTracker struct {
 
 // PerformanceAnalyzer analyzes upload performance patterns.
 type PerformanceAnalyzer struct {
-	// Analysis algorithms
-	// trendAnalyzer       *TrendAnalyzer // TODO: Add trend analysis
-	// patternDetector     *PatternDetector // TODO: Add pattern detection
-	// anomalyDetector     *AnomalyDetector // TODO: Add anomaly detection
-	// predictionModel     *PerformancePredictionModel // TODO: Add prediction model
+	// Analysis algorithms (#140). The trend/anomaly layer is fed by the
+	// persisted upload-outcome corpus (#261) via IngestOutcomes. The ML
+	// predictionModel and the streaming patternDetector remain deferred to
+	// Option L / #137.
+	trendAnalyzer   *TrendAnalyzer
+	anomalyDetector *AnomalyDetector
+	// patternDetector *PatternDetector             // deferred (Option L / #137)
+	// predictionModel *PerformancePredictionModel  // deferred (Option L / #137)
 
 	// Performance characteristics
-	// baselineMetrics     *BaselineMetrics // TODO: Add baseline metrics
+	baselineMetrics    *BaselineMetrics
 	currentPerformance *PerformanceMetrics
 	performanceTrends  map[string]*TrendData
 
@@ -899,6 +902,9 @@ func NewProgressTracker() *ProgressTracker {
 
 func NewPerformanceAnalyzer() *PerformanceAnalyzer {
 	return &PerformanceAnalyzer{
+		trendAnalyzer:      NewTrendAnalyzer(),
+		anomalyDetector:    NewAnomalyDetector(),
+		baselineMetrics:    NewBaselineMetrics(),
 		performanceTrends:  make(map[string]*TrendData),
 		adaptationTriggers: make([]AdaptationTrigger, 0),
 		triggerThresholds:  make(map[string]float64),
@@ -1137,11 +1143,12 @@ func (ra *ResourceAllocator) SetMaxConcurrentChunks(count int) {
 }
 
 // Placeholder types for completeness
-type TrendAnalyzer struct{}
 type PatternDetector struct{}
-type AnomalyDetector struct{}
 type PerformancePredictionModel struct{}
-type BaselineMetrics struct{}
-type TrendData struct{}
 type AdaptationTrigger struct{}
 type StagingPriorityQueue struct{}
+
+// TrendAnalyzer, AnomalyDetector, BaselineMetrics, and TrendData are implemented
+// in staging_trends.go (#140): they turn the persisted per-upload outcome corpus
+// (#261) into per-metric trends and anomaly flags. The ML predictionModel field
+// remains deferred to Option L / #137.
