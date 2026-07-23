@@ -12,6 +12,11 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/aws/config"
 )
 
+// maxLedgerRecords bounds the persisted cost ledger. When the recorded history
+// exceeds this, the oldest records are dropped (FIFO) before a save so the store
+// file can't grow without limit (#246).
+const maxLedgerRecords = 10000
+
 // Manager provides integrated cost management functionality
 type Manager struct {
 	config        *config.CostControlConfig
@@ -19,6 +24,7 @@ type Manager struct {
 	reporter      *CostReporter
 	budgetTracker *BudgetTracker
 	notifier      *BudgetAlertNotifier // Issue #133: Budget alert notifier
+	store         BudgetStore          // #246: durable budget limits + cost ledger
 	logger        *slog.Logger
 	awsConfig     aws.Config // Issue #147 Phase 4: Needed for alert notification
 }
@@ -46,14 +52,24 @@ type CostApprovalRequest struct {
 	DeniedReason   string     `json:"denied_reason,omitempty"`
 }
 
-// NewManager creates a new cost management manager
+// NewManager creates a new cost management manager backed by the default local
+// budget store (~/.cargoship/budgets.json).
 func NewManager(cfg *config.CostControlConfig, awsCfg aws.Config, logger *slog.Logger) (*Manager, error) {
+	return newManagerWithStore(cfg, awsCfg, logger, localStore{})
+}
+
+// newManagerWithStore is the injectable constructor used by tests to supply a
+// custom BudgetStore. Production code uses NewManager.
+func newManagerWithStore(cfg *config.CostControlConfig, awsCfg aws.Config, logger *slog.Logger, store BudgetStore) (*Manager, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("cost control config cannot be nil")
 	}
 
 	if logger == nil {
 		logger = slog.Default()
+	}
+	if store == nil {
+		store = localStore{}
 	}
 
 	// Initialize pricing manager
@@ -82,20 +98,25 @@ func NewManager(cfg *config.CostControlConfig, awsCfg aws.Config, logger *slog.L
 	alertConfig := DefaultBudgetAlertConfig()
 	notifier := NewBudgetAlertNotifier(alertConfig, awsCfg)
 
-	// Load persisted project budgets so `budget set` survives across CLI
-	// invocations (#241). Budgets from the config file (if any) take precedence
-	// over the persisted store for the same project ID.
-	if persisted, err := loadProjectBudgets(); err != nil {
-		logger.Warn("failed to load persisted project budgets", "error", err)
-	} else if len(persisted) > 0 {
-		if cfg.ProjectBudgets == nil {
-			cfg.ProjectBudgets = make(map[string]config.ProjectBudget)
-		}
-		for id, b := range persisted {
-			if _, exists := cfg.ProjectBudgets[id]; !exists {
-				cfg.ProjectBudgets[id] = b
+	// Load persisted budget state so `budget set` survives across CLI
+	// invocations (#241) and recorded spend is rehydrated across restarts (#246).
+	// Budgets from the config file (if any) take precedence over the persisted
+	// store for the same project ID; the recorded ledger seeds the reporter so
+	// `budget status` reflects prior uploads.
+	if state, _, err := store.Load(); err != nil {
+		logger.Warn("failed to load persisted budget store", "error", err)
+	} else {
+		if len(state.ProjectBudgets) > 0 {
+			if cfg.ProjectBudgets == nil {
+				cfg.ProjectBudgets = make(map[string]config.ProjectBudget)
+			}
+			for id, b := range state.ProjectBudgets {
+				if _, exists := cfg.ProjectBudgets[id]; !exists {
+					cfg.ProjectBudgets[id] = b
+				}
 			}
 		}
+		reporter.SeedRecords(state.Records)
 	}
 
 	return &Manager{
@@ -104,9 +125,45 @@ func NewManager(cfg *config.CostControlConfig, awsCfg aws.Config, logger *slog.L
 		reporter:      reporter,
 		budgetTracker: budgetTracker,
 		notifier:      notifier,
+		store:         store,
 		logger:        logger.With("component", "cost-manager"),
 		awsConfig:     awsCfg, // Issue #147 Phase 4: For alert notification
 	}, nil
+}
+
+// saveState writes the current project budgets and recorded cost ledger to the
+// store as one document (both halves together, so a limits update never clobbers
+// the recorded ledger and vice versa — #246). FIFO rotation bounds the ledger.
+func (m *Manager) saveState() error {
+	if m.store == nil {
+		m.store = localStore{}
+	}
+	records := m.reporter.SnapshotRecords()
+	if len(records) > maxLedgerRecords {
+		records = records[len(records)-maxLedgerRecords:]
+	}
+	state := LedgerState{
+		Version:        StoreVersion,
+		ProjectBudgets: m.config.ProjectBudgets,
+		Records:        records,
+	}
+	// Load the current token first so a Phase B S3 store can do a CAS write; the
+	// local store ignores it. A load error still attempts an unconditional save.
+	_, tok, err := m.store.Load()
+	if err != nil {
+		m.logger.Warn("budget store load before save failed", "error", err)
+		tok = ""
+	}
+	return m.store.Save(state, tok)
+}
+
+// persistLedger is the best-effort variant of saveState used on the
+// operation-recording path: a storage failure is logged, not returned, so it
+// can't fail an operation whose work already completed (#246).
+func (m *Manager) persistLedger() {
+	if err := m.saveState(); err != nil {
+		m.logger.Warn("failed to persist budget ledger", "error", err)
+	}
 }
 
 // EstimateOperationCost estimates the cost of an operation before execution
@@ -211,6 +268,10 @@ func (m *Manager) RecordOperationCost(ctx context.Context, operation string, fil
 		return fmt.Errorf("failed to record cost: %w", err)
 	}
 
+	// Persist the recorded ledger so `budget status` reflects this upload across
+	// process restarts (#246). Best-effort.
+	m.persistLedger()
+
 	// Update legacy budget tracking (for backward compatibility)
 	if estimate != nil {
 		m.budgetTracker.currentSpend += estimate.TotalCost
@@ -221,6 +282,23 @@ func (m *Manager) RecordOperationCost(ctx context.Context, operation string, fil
 		m.logger.Error("Failed to check budget alerts", "error", err)
 	}
 
+	return nil
+}
+
+// RecordCompletedUpload records the cost of an upload that has ALREADY finished,
+// then persists the ledger. Unlike RecordOperationCost it does not enforce
+// budgets (there is nothing left to block — the bytes are in S3), so an
+// over-budget upload is still recorded rather than silently dropped (#246).
+// It still fires budget alerts so an over-budget condition is surfaced. Returns
+// an error only if the cost couldn't be recorded at all.
+func (m *Manager) RecordCompletedUpload(ctx context.Context, fileName string, sizeBytes int64, storageClass config.StorageClass, region string, jobID string, projectID string, tags map[string]string) error {
+	if err := m.reporter.RecordArchivalCost(ctx, fileName, sizeBytes, storageClass, region, jobID, projectID, tags); err != nil {
+		return fmt.Errorf("failed to record cost: %w", err)
+	}
+	m.persistLedger()
+	if err := m.checkAndSendBudgetAlerts(ctx); err != nil {
+		m.logger.Error("Failed to check budget alerts", "error", err)
+	}
 	return nil
 }
 

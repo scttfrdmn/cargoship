@@ -146,6 +146,29 @@ func (cr *CostReporter) RecordCost(record CostRecord) {
 		"size_gb", record.SizeGB)
 }
 
+// SeedRecords replaces the in-memory cost ledger with the given records. Used
+// at startup to rehydrate persisted spend history so GetProjectCosts and the
+// other cr.costs readers reflect prior uploads across process restarts (#246).
+func (cr *CostReporter) SeedRecords(records []CostRecord) {
+	cr.mu.Lock()
+	defer cr.mu.Unlock()
+	if records == nil {
+		cr.costs = make([]CostRecord, 0)
+		return
+	}
+	cr.costs = records
+}
+
+// SnapshotRecords returns a copy of the current cost ledger, safe to hand to the
+// budget store for persistence without racing concurrent RecordCost calls (#246).
+func (cr *CostReporter) SnapshotRecords() []CostRecord {
+	cr.mu.RLock()
+	defer cr.mu.RUnlock()
+	out := make([]CostRecord, len(cr.costs))
+	copy(out, cr.costs)
+	return out
+}
+
 // RecordArchivalCost records cost for an archival operation
 func (cr *CostReporter) RecordArchivalCost(ctx context.Context, fileName string, sizeBytes int64, storageClass config.StorageClass, region string, jobID string, projectID string, tags map[string]string) error {
 	sizeGB := float64(sizeBytes) / (1024 * 1024 * 1024)
