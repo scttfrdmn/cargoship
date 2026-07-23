@@ -38,7 +38,18 @@ var (
 
 func TestMain(m *testing.M) {
 	if os.Getenv("CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS") == "1" {
-		testRegion = "us-west-2" // real AWS path uses existing values
+		// Real AWS path. Honor the standard env knobs so the suite is runnable
+		// both locally (AWS_PROFILE=aws) and in CI (creds from the default chain,
+		// bucket from CARGOSHIP_TEST_BUCKET). Fall back to the historical
+		// hardcoded values when unset.
+		if b := os.Getenv("CARGOSHIP_TEST_BUCKET"); b != "" {
+			testBucket = b
+		}
+		if r := os.Getenv("AWS_REGION"); r != "" {
+			testRegion = r
+		} else {
+			testRegion = "us-west-2"
+		}
 	} else {
 		url, cancel, err := launchSubstrate()
 		if err != nil {
@@ -124,11 +135,14 @@ func getTestS3Client(ctx context.Context) *s3.Client {
 		}
 		return s3.NewFromConfig(cfg, func(o *s3.Options) { o.UsePathStyle = true })
 	}
-	// Real AWS path
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithSharedConfigProfile("aws"),
-		config.WithRegion(testRegion),
-	)
+	// Real AWS path. Use AWS_PROFILE when set (local dev, e.g. "aws"); otherwise
+	// fall back to the default credential chain (env/OIDC), which is how CI
+	// supplies credentials.
+	opts := []func(*config.LoadOptions) error{config.WithRegion(testRegion)}
+	if profile := os.Getenv("AWS_PROFILE"); profile != "" {
+		opts = append(opts, config.WithSharedConfigProfile(profile))
+	}
+	cfg, err := config.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
 		panic(fmt.Sprintf("failed to load AWS config: %v", err))
 	}

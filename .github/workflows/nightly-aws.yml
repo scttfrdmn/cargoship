@@ -1,0 +1,84 @@
+name: Nightly Real-AWS Integration
+
+# Phase 5 of #238: run the credential-gated real-AWS integration suites against
+# a real S3 bucket in a sandbox account. This is intentionally NOT a PR job —
+# it needs real credentials and mutates a real bucket, so it runs on a schedule
+# (and on demand) instead of slowing every pull request. The emulator-based
+# integration job in test.yml already guards PRs credential-free.
+#
+# Credentials are obtained via GitHub OIDC (no long-lived keys). The job is a
+# no-op unless the repository provides the role + bucket, so forks and clones
+# without the secrets configured don't fail:
+#   - secret AWS_NIGHTLY_ROLE_ARN — IAM role to assume via OIDC
+#   - variable AWS_NIGHTLY_REGION — region (defaults to us-west-2)
+#   - variable AWS_NIGHTLY_BUCKET — pre-existing test bucket
+
+on:
+  schedule:
+    # 07:00 UTC daily (~midnight US Pacific), off the PR critical path.
+    - cron: '0 7 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write # required for OIDC role assumption
+  contents: read
+
+env:
+  GO_VERSION: '1.26'
+
+jobs:
+  real-aws:
+    name: Real-AWS integration (sandbox)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check for AWS role configuration
+        id: guard
+        env:
+          ROLE_ARN: ${{ secrets.AWS_NIGHTLY_ROLE_ARN }}
+        run: |
+          if [ -z "$ROLE_ARN" ]; then
+            echo "AWS_NIGHTLY_ROLE_ARN not set — skipping real-AWS suite (expected on forks)."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout code
+        if: steps.guard.outputs.configured == 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        if: steps.guard.outputs.configured == 'true'
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.guard.outputs.configured == 'true'
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_NIGHTLY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_NIGHTLY_REGION || 'us-west-2' }}
+
+      - name: Download dependencies
+        if: steps.guard.outputs.configured == 'true'
+        run: go mod download
+
+      # Runs the //go:build integration suites with the real-AWS gate enabled.
+      # Suites that don't touch S3 (or gate on the emulator) self-skip; the
+      # real-AWS suites resolve credentials from the default chain (provided by
+      # the OIDC step above — no AWS_PROFILE) and the bucket from
+      # CARGOSHIP_TEST_BUCKET. The large-file suite stays opt-in (it needs tens
+      # of GB); enable it explicitly here since this lane has the time budget.
+      - name: Run real-AWS integration tests
+        if: steps.guard.outputs.configured == 'true'
+        env:
+          CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS: '1'
+          CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS: 'true'
+          CARGOSHIP_ENABLE_LARGE_FILE_TESTS: '1'
+          CARGOSHIP_QUICK_LARGE_FILE_TEST: 'true'
+          CARGOSHIP_TEST_BUCKET: ${{ vars.AWS_NIGHTLY_BUCKET }}
+          AWS_REGION: ${{ vars.AWS_NIGHTLY_REGION || 'us-west-2' }}
+        run: go test -tags integration ./... -timeout 40m
