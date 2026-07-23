@@ -17,8 +17,12 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Coverage requirements - Progressive targets
-PROJECT_COVERAGE_TARGET=56  # Current: 56.4%, Goal: 85% (temporarily lowered to allow Issue #28 commit)
-INDIVIDUAL_FILE_COVERAGE_TARGET=56  # Temporarily lowered to match project-wide target; many cmd/ and pkg/ packages need test work
+PROJECT_COVERAGE_TARGET=56  # Current: ~56%, Goal: 85%. Project-wide hard floor.
+# Per-package floors are enforced by the monotonic ratchet in
+# scripts/ci/coverage-ratchet.sh against .coverage-baseline (#238 Phase 6).
+# INDIVIDUAL_FILE_COVERAGE_TARGET is only a fallback for when that script or the
+# baseline is absent (see run_tests below).
+INDIVIDUAL_FILE_COVERAGE_TARGET=56
 
 # Helper functions
 log_info() {
@@ -141,27 +145,42 @@ run_tests() {
     local project_coverage=0
     if [ -f coverage.out ]; then
         project_coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-        rm -f coverage.out
     fi
-    
+
     rm -f test_output.tmp
-    
+
     log_info "Project coverage: ${project_coverage}% (target: ${PROJECT_COVERAGE_TARGET}%)"
-    
+
     # Check project coverage
     if (( $(echo "$project_coverage < $PROJECT_COVERAGE_TARGET" | bc -l) )); then
         log_error "Project coverage (${project_coverage}%) is below target (${PROJECT_COVERAGE_TARGET}%)"
+        rm -f coverage.out
         exit 1
     fi
-    
-    # Check individual package coverage (warning only; project-wide check is the hard gate)
-    if [ ${#failed_packages[@]} -gt 0 ]; then
-        log_warning "The following packages have coverage below ${INDIVIDUAL_FILE_COVERAGE_TARGET}% (non-blocking):"
-        for package in "${failed_packages[@]}"; do
-            log_warning "  $package"
-        done
+
+    # Per-package coverage ratchet (#238 Phase 6): fail if any package regressed
+    # below its recorded floor in .coverage-baseline. This is the hard per-package
+    # gate that replaces the old warning-only flat check; reuse the profile just
+    # generated so we don't run the suite a third time.
+    if [ -f scripts/ci/coverage-ratchet.sh ] && [ -f .coverage-baseline ]; then
+        if ! bash scripts/ci/coverage-ratchet.sh --profile coverage.out --check; then
+            log_error "Coverage ratchet failed — a package dropped below its floor (see above)."
+            log_error "If the drop is intentional, justify it and lower the floor in .coverage-baseline."
+            rm -f coverage.out
+            exit 1
+        fi
+        log_info "Coverage ratchet passed (no package below its floor)."
+    else
+        # Fall back to the legacy warning-only per-package report.
+        if [ ${#failed_packages[@]} -gt 0 ]; then
+            log_warning "The following packages have coverage below ${INDIVIDUAL_FILE_COVERAGE_TARGET}% (non-blocking):"
+            for package in "${failed_packages[@]}"; do
+                log_warning "  $package"
+            done
+        fi
     fi
-    
+
+    rm -f coverage.out
     log_success "All tests passed with sufficient coverage"
 }
 
