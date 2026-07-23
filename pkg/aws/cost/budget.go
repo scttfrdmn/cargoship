@@ -298,12 +298,13 @@ func (m *Manager) GetProjectBudgetStatus(projectID string) (*BudgetStatus, error
 	// Get current project spending and volume
 	currentSpend := m.reporter.GetProjectCosts(projectID)
 
-	// Calculate current volume for project
-	projectSummary, err := m.reporter.GetProjectSummary(projectID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get project summary: %w", err)
+	// Calculate current volume for project. A budget can be set before any spend
+	// is recorded (fresh `budget set`), in which case there are no cost records
+	// yet — treat that as zero volume rather than an error. (#241)
+	var currentVolumeGB float64
+	if projectSummary, err := m.reporter.GetProjectSummary(projectID); err == nil {
+		currentVolumeGB = projectSummary.TotalSizeGB
 	}
-	currentVolumeGB := projectSummary.TotalSizeGB
 
 	now := time.Now()
 
@@ -539,6 +540,11 @@ func (m *Manager) SetProjectBudget(projectID string, maxBudget float64, maxVolum
 		VolumeAlertThreshold: volumeAlertThreshold,
 	}
 
+	// Persist so the budget survives across CLI invocations (#241).
+	if err := saveProjectBudgets(m.config.ProjectBudgets); err != nil {
+		return fmt.Errorf("persist project budget: %w", err)
+	}
+
 	m.logger.Info("Project budget updated",
 		"project_id", projectID,
 		"max_budget", maxBudget,
@@ -560,6 +566,11 @@ func (m *Manager) DeleteProjectBudget(projectID string) error {
 	}
 
 	delete(m.config.ProjectBudgets, projectID)
+
+	// Persist the removal (#241).
+	if err := saveProjectBudgets(m.config.ProjectBudgets); err != nil {
+		return fmt.Errorf("persist project budget removal: %w", err)
+	}
 
 	m.logger.Info("Project budget deleted", "project_id", projectID)
 	return nil

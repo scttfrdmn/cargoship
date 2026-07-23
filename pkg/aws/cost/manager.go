@@ -82,6 +82,22 @@ func NewManager(cfg *config.CostControlConfig, awsCfg aws.Config, logger *slog.L
 	alertConfig := DefaultBudgetAlertConfig()
 	notifier := NewBudgetAlertNotifier(alertConfig, awsCfg)
 
+	// Load persisted project budgets so `budget set` survives across CLI
+	// invocations (#241). Budgets from the config file (if any) take precedence
+	// over the persisted store for the same project ID.
+	if persisted, err := loadProjectBudgets(); err != nil {
+		logger.Warn("failed to load persisted project budgets", "error", err)
+	} else if len(persisted) > 0 {
+		if cfg.ProjectBudgets == nil {
+			cfg.ProjectBudgets = make(map[string]config.ProjectBudget)
+		}
+		for id, b := range persisted {
+			if _, exists := cfg.ProjectBudgets[id]; !exists {
+				cfg.ProjectBudgets[id] = b
+			}
+		}
+	}
+
 	return &Manager{
 		config:        cfg,
 		pricingMgr:    pricingMgr,

@@ -13,6 +13,7 @@ import (
 // TestSetProjectBudget tests setting project budgets with cost and volume quotas (Issue #147 Phase 4)
 func TestSetProjectBudget(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
+	isolateBudgetStore(t)
 
 	now := time.Now()
 	cfg := &config.CostControlConfig{
@@ -69,6 +70,7 @@ func TestSetProjectBudget(t *testing.T) {
 // TestSetProjectBudgetValidation tests budget validation (Issue #147 Phase 4)
 func TestSetProjectBudgetValidation(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
+	isolateBudgetStore(t)
 
 	cfg := &config.CostControlConfig{
 		ProjectBudgets: make(map[string]config.ProjectBudget),
@@ -201,6 +203,7 @@ func TestSetProjectBudgetValidation(t *testing.T) {
 // TestRemoveProjectBudget tests removing project budgets (Issue #147 Phase 4)
 func TestRemoveProjectBudget(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
+	isolateBudgetStore(t)
 
 	cfg := &config.CostControlConfig{
 		ProjectBudgets: make(map[string]config.ProjectBudget),
@@ -242,6 +245,7 @@ func TestRemoveProjectBudget(t *testing.T) {
 // TestListProjectBudgets tests listing all project budgets (Issue #147 Phase 4)
 func TestListProjectBudgets(t *testing.T) {
 	testutil.RequireNoGoroutineLeak(t)
+	isolateBudgetStore(t)
 
 	cfg := &config.CostControlConfig{
 		ProjectBudgets: make(map[string]config.ProjectBudget),
