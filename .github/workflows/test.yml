@@ -93,6 +93,43 @@ jobs:
       - name: Run tests with race detector
         run: go test ./... -short -race -timeout=15m
 
+  fuzz:
+    name: Fuzz (short burst)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      # Runs each fuzz target for a short burst to catch new crashers beyond the
+      # committed seed corpus (which the -short jobs already execute as unit
+      # tests). -fuzz runs one target per package invocation, so iterate. Kept
+      # brief (20s each) to stay on the PR critical path; the corpus grows over
+      # time via developers running longer local sessions. (#238 Phase 4)
+      - name: Fuzz manifest + chunking targets
+        run: |
+          set -euo pipefail
+          fuzz_pkg() {
+            local pkg="$1"; shift
+            for target in "$@"; do
+              echo "::group::$pkg $target"
+              go test "$pkg" -run '^$' -fuzz "^${target}$" -fuzztime 20s
+              echo "::endgroup::"
+            done
+          }
+          fuzz_pkg ./pkg/manifest/ FuzzFromJSON FuzzFromJSONAuto FuzzManifestRoundTrip FuzzParseS3URL
+          fuzz_pkg ./pkg/chunking/ FuzzCreateChunks
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
