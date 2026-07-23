@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-07-23
+
 ### Added
+- **Durable, shareable budgets (#246).** Project spend/volume is now recorded on
+  every upload and persisted, so `cargoship budget status` reflects real spend
+  across restarts. Budgets can be stored in S3 (`budget --store s3://bucket/prefix`)
+  with optimistic-concurrency (ETag/If-Match) writes so a laptop, CI, and
+  teammates converge without lost updates. Adds an org/team-wide budget ceiling
+  (`budget set --global`) enforced across all projects on top of per-project caps.
 - Live AWS Price List API integration for S3 storage & request pricing, replacing the hardcoded-only fallback path (#235)
 - First-class VitePress documentation site at cargoship.app, replacing the mkdocs tree (#216)
 - Versioned docs: `latest` (root) + `dev` (/dev) trees with a version switcher (#231)
@@ -15,15 +23,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tutorial: millions of small files & the S3 request-cost problem (#236)
 
 ### Fixed
-- Restore & verify now work for direct-upload archives (the documented default path was broken) (#228, #229)
+- **S3 request pricing is now storage-class-aware everywhere (#237, #252).**
+  Consolidated three drifting fallback price tables into one canonical source
+  (`pkg/aws/pricingfallback`), fixing a second live instance of the 10× PUT-price
+  bug and correcting archival PUT costs (Glacier/Deep Archive) in both the
+  fallback and live Price List API paths.
 - Corrected the S3 PUT request fallback price: $0.0005 → $0.005 per 1,000 requests (10× error) (#233)
-- Project budgets now persist across CLI invocations via `~/.cargoship/budgets.json` (#241)
+- Restore & verify now work for direct-upload archives (the documented default path was broken) (#228, #229)
+- Project budgets now persist across CLI invocations (#241, superseded by #246)
 - `dvc` list_files no longer calls a broken `cargoship list` contract (#219)
 - Recorded first-packet send time in the BBR prober (#232)
 
 ### Testing & CI
 - Integration suite now runs in CI against the in-process Substrate emulator (credential-free); repaired rotted integration tests (#240)
 - End-to-end coverage for `estimate`/`cost`/`list`/`download`/`sync`/`dvc`, which surfaced and fixed two bugs (#242)
+- Comprehensive test-harness build-out (#238): shared fixture builder + golden files (#251), fuzz targets for the manifest & chunking formats (#249), a scheduled real-AWS integration lane (#248), and a monotonic per-package coverage ratchet enforced in CI (#250)
+- Pilot mutation testing (gremlins) on the cost/manifest/chunking packages to surface weak assertions (#256)
 - Corrected the large-file memory assertion in `TestIntegration_LargeFiles`: the reported multi-GB usage was an emulator measurement artifact, not a product regression — real-S3 memory is a flat ~12 MB for a 5 GB file (#239, #245)
 - Fixed data races in the pipeline progress counter (#234) and the `TestWaitForRestore` mock client (#220)
 - CI speedup: dropped the redundant Test job and run integration with `-short` (#243)

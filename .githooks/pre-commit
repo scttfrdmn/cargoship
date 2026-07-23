@@ -393,7 +393,7 @@ main() {
     
     check_go_modules
     echo
-    
+
     run_security_scan
     echo
     

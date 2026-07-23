@@ -9,11 +9,15 @@ import (
 	"os"
 
 	"github.com/scttfrdmn/cargoship/cmd/cargoship/cmd"
+	versionpkg "github.com/scttfrdmn/cargoship/internal/version"
 )
 
-// Version information set during build
+// Version information. version defaults to the canonical value embedded in
+// internal/version (so dev and `go run` builds report the real version);
+// release builds override all three via goreleaser ldflags (-X main.version
+// from the git tag, plus commit/date).
 var (
-	version = "dev"
+	version = versionpkg.Version
 	commit  = "unknown"
 	date    = "unknown"
 )
