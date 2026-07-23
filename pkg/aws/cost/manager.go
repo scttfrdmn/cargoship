@@ -150,6 +150,11 @@ func newManagerWithStore(cfg *config.CostControlConfig, awsCfg aws.Config, logge
 				}
 			}
 		}
+		// Seed the persisted global/team budget (#246 PR2) unless the config file
+		// already specifies one (config takes precedence, matching projects).
+		if state.GlobalBudget != nil && cfg.GlobalBudget == nil {
+			cfg.GlobalBudget = state.GlobalBudget
+		}
 		reporter.SeedRecords(state.Records)
 	}
 
@@ -180,6 +185,7 @@ func (m *Manager) saveState() error {
 		Version:        StoreVersion,
 		ProjectBudgets: m.config.ProjectBudgets,
 		Records:        records,
+		GlobalBudget:   m.config.GlobalBudget,
 	}
 	// Load the current token first so a Phase B S3 store can do a CAS write; the
 	// local store ignores it. A load error still attempts an unconditional save.

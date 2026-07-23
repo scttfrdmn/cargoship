@@ -116,7 +116,7 @@ display_metric "Linting" "$lint_score" 25 "($lint_issues issues)"
 # 4. Test Coverage (20 points)
 echo -e "${BLUE}🧪 Calculating test coverage...${NC}"
 if go test -coverprofile=coverage.out ./... >/dev/null 2>&1; then
-    coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+    coverage=$(go tool cover -func=coverage.out | grep '^total:' | awk '{print $3}' | sed 's/%//')
     coverage_score=$(echo "scale=1; $coverage * 20 / 100" | bc -l)
     rm -f coverage.out
 else

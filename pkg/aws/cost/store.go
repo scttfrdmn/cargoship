@@ -22,6 +22,11 @@ type LedgerState struct {
 	// that backs `budget status` spend/volume totals. Bounded by the caller
 	// (FIFO rotation) so the file can't grow without limit.
 	Records []CostRecord `json:"records,omitempty"`
+
+	// GlobalBudget is the persisted org/team-wide budget ceiling (#246 Phase B
+	// PR2). Pointer + omitempty so pre-PR2 documents (and every local file
+	// written before this) round-trip unchanged: absent → nil.
+	GlobalBudget *config.GlobalBudget `json:"global_budget,omitempty"`
 }
 
 // Token is an opaque optimistic-concurrency token returned by Load and passed

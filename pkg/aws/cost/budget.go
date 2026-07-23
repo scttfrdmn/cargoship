@@ -183,6 +183,12 @@ func (m *Manager) CheckProjectVolumeQuota(projectID string, additionalGB float64
 
 // checkGlobalVolumeQuota checks if an operation would exceed the global volume quota
 func (m *Manager) checkGlobalVolumeQuota(additionalGB float64) error {
+	// Persisted global/team volume ceiling across all projects (#246 PR2),
+	// enforced in addition to any budget-period quota.
+	if err := m.checkGlobalVolumeCeiling(additionalGB); err != nil {
+		return err
+	}
+
 	// Check if budget periods are configured (new system)
 	if len(m.config.BudgetPeriods) > 0 {
 		return m.checkBudgetPeriodVolume(additionalGB)
@@ -234,6 +240,12 @@ func (m *Manager) checkBudgetPeriodVolume(additionalGB float64) error {
 
 // checkGlobalBudget checks if an operation would exceed the global budget
 func (m *Manager) checkGlobalBudget(additionalCost float64) error {
+	// Persisted global/team cost ceiling across all projects (#246 PR2),
+	// enforced in addition to any budget-period cap.
+	if err := m.checkGlobalBudgetCeiling(additionalCost); err != nil {
+		return err
+	}
+
 	// Check if budget periods are configured (new system)
 	if len(m.config.BudgetPeriods) > 0 {
 		return m.checkBudgetPeriod(additionalCost)
@@ -586,4 +598,132 @@ func (m *Manager) DeleteProjectBudget(projectID string) error {
 // RemoveProjectBudget is an alias for DeleteProjectBudget for CLI compatibility
 func (m *Manager) RemoveProjectBudget(projectID string) error {
 	return m.DeleteProjectBudget(projectID)
+}
+
+// SetGlobalBudget creates or updates the persisted org/team-wide budget ceiling
+// (#246 Phase B PR2). It caps aggregate spend/volume across ALL projects and is
+// enforced in addition to any per-project cap. maxBudget/maxVolumeGB of 0 mean
+// unlimited for that dimension.
+func (m *Manager) SetGlobalBudget(maxBudget, maxVolumeGB, costAlertThreshold, volumeAlertThreshold float64) error {
+	if maxBudget < 0 {
+		return fmt.Errorf("max budget cannot be negative (use 0 for unlimited)")
+	}
+	if maxVolumeGB < 0 {
+		return fmt.Errorf("max volume cannot be negative (use 0 for unlimited)")
+	}
+	if costAlertThreshold < 0 || costAlertThreshold > 1 {
+		return fmt.Errorf("cost alert threshold must be between 0.0 and 1.0")
+	}
+	if volumeAlertThreshold < 0 || volumeAlertThreshold > 1 {
+		return fmt.Errorf("volume alert threshold must be between 0.0 and 1.0")
+	}
+
+	m.config.GlobalBudget = &config.GlobalBudget{
+		MaxBudget:            maxBudget,
+		MaxVolumeGB:          maxVolumeGB,
+		AlertThreshold:       costAlertThreshold,
+		VolumeAlertThreshold: volumeAlertThreshold,
+	}
+
+	if err := m.saveState(); err != nil {
+		return fmt.Errorf("persist global budget: %w", err)
+	}
+
+	m.logger.Info("Global budget updated",
+		"max_budget", maxBudget,
+		"max_volume_gb", maxVolumeGB,
+		"cost_alert_threshold", costAlertThreshold,
+		"volume_alert_threshold", volumeAlertThreshold)
+	return nil
+}
+
+// GetGlobalTeamBudgetStatus returns the status of the persisted global/team
+// budget ceiling (#246 PR2) — aggregate spend/volume across all projects
+// against the GlobalBudget caps. Distinct from GetGlobalBudgetStatus, which
+// reports the legacy BudgetPeriods-based global status. Returns a status with
+// zero maxima when no global budget is set.
+func (m *Manager) GetGlobalTeamBudgetStatus() *BudgetStatus {
+	status := &BudgetStatus{
+		BudgetType:   "global",
+		Currency:     m.config.Pricing.Currency,
+		CurrentSpend: m.totalSpend(),
+	}
+	gb := m.config.GlobalBudget
+	if gb == nil {
+		return status
+	}
+	status.MaxBudget = gb.MaxBudget
+	status.AlertThreshold = gb.AlertThreshold
+	if gb.MaxBudget > 0 {
+		status.BudgetRemaining = gb.MaxBudget - status.CurrentSpend
+		status.BudgetUsed = status.CurrentSpend / gb.MaxBudget
+		status.OverBudget = status.CurrentSpend > gb.MaxBudget
+		status.AlertTriggered = gb.AlertThreshold > 0 && status.BudgetUsed >= gb.AlertThreshold
+	}
+	return status
+}
+
+// totalSpend returns the aggregate recorded cost across all projects (and
+// un-projected records) — the basis for the global/team ceiling.
+func (m *Manager) totalSpend() float64 {
+	total := 0.0
+	for _, r := range m.reporter.SnapshotRecords() {
+		total += r.Cost
+	}
+	return total
+}
+
+// totalVolumeGB returns the aggregate recorded volume across all projects.
+func (m *Manager) totalVolumeGB() float64 {
+	total := 0.0
+	for _, r := range m.reporter.SnapshotRecords() {
+		total += r.SizeGB
+	}
+	return total
+}
+
+// checkGlobalBudgetCeiling enforces the persisted GlobalBudget cost ceiling
+// across all projects (#246 PR2). Returns a BudgetExceededError when the
+// additional cost would push aggregate spend over the ceiling.
+func (m *Manager) checkGlobalBudgetCeiling(additionalCost float64) error {
+	gb := m.config.GlobalBudget
+	if gb == nil || gb.MaxBudget <= 0 {
+		return nil // no global cost ceiling set
+	}
+	current := m.totalSpend()
+	projected := current + additionalCost
+	if projected > gb.MaxBudget {
+		return &BudgetExceededError{
+			BudgetType:     "global",
+			MaxBudget:      gb.MaxBudget,
+			CurrentSpend:   current,
+			AdditionalCost: additionalCost,
+			ProjectedSpend: projected,
+			Overage:        projected - gb.MaxBudget,
+			Currency:       m.config.Pricing.Currency,
+		}
+	}
+	return nil
+}
+
+// checkGlobalVolumeCeiling enforces the persisted GlobalBudget volume ceiling
+// across all projects (#246 PR2).
+func (m *Manager) checkGlobalVolumeCeiling(additionalGB float64) error {
+	gb := m.config.GlobalBudget
+	if gb == nil || gb.MaxVolumeGB <= 0 {
+		return nil // no global volume ceiling set
+	}
+	current := m.totalVolumeGB()
+	projected := current + additionalGB
+	if projected > gb.MaxVolumeGB {
+		return &VolumeQuotaExceededError{
+			QuotaType:       "global",
+			MaxVolumeGB:     gb.MaxVolumeGB,
+			CurrentVolumeGB: current,
+			AdditionalGB:    additionalGB,
+			ProjectedVolume: projected,
+			Overage:         projected - gb.MaxVolumeGB,
+		}
+	}
+	return nil
 }
