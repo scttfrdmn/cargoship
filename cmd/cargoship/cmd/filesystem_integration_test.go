@@ -23,6 +23,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/require"
@@ -345,7 +346,13 @@ func (s *IntegrationTestSuite) UploadToS3(localPath, s3Key string) string {
 	require.NoError(s.t, err, "Failed to open file for upload: %s", localPath)
 	defer file.Close()
 
-	_, err = s.S3Client.PutObject(ctx, &s3.PutObjectInput{
+	// Use the multipart upload manager rather than a bare PutObject: S3 caps a
+	// single PutObject at 5 GiB, and this suite uploads larger archives. The
+	// manager streams the file in bounded-size parts, which is also what
+	// CargoShip's own uploader does — so it keeps process memory flat regardless
+	// of file size (see #239).
+	uploader := manager.NewUploader(s.S3Client)
+	_, err = uploader.Upload(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(s.S3Bucket),
 		Key:    aws.String(s3Key),
 		Body:   file,
@@ -913,13 +920,31 @@ func TestIntegration_LargeFiles(t *testing.T) {
 			maxMemoryMB := maxMemory / (1024 * 1024)
 			t.Logf("✓ %s file verified - max memory: %d MB", tc.name, maxMemoryMB)
 
-			// Memory limit check (allow more generous limit for very large files)
-			memoryLimit := uint64(500)
-			if tc.size >= 5*1024*1024*1024 { // For 5GB+ files
-				memoryLimit = 1000 // 1GB limit for very large files
+			// The memory-usage assertion is only meaningful against real S3.
+			// The in-process Substrate emulator stores every uploaded object in
+			// an in-RAM afero MemMapFs *and* buffers each request body via
+			// io.ReadAll — both live in this same process, so a multi-GB upload
+			// inherently holds multiple GB that the whole-process
+			// runtime.MemStats.Alloc sampler above counts. That is a property of
+			// the test harness, not of CargoShip's streaming upload path. (See
+			// #239: 500MB→~1.6GB on the emulator vs a flat ~5MB against real S3
+			// regardless of file size.) Skip the assertion when not on real S3.
+			if !suite.UseRealS3 {
+				t.Logf("Skipping memory-usage assertion: emulator holds uploaded "+
+					"objects in RAM, so measured %d MB reflects the harness, not "+
+					"CargoShip. Run with CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS=true "+
+					"to assert bounded streaming memory against real S3.", maxMemoryMB)
+			} else {
+				// Bounded streaming ceiling. Real-S3 runs measure single-digit MB
+				// (streaming PutObject + buffered download), independent of file
+				// size; these limits leave generous headroom for GC timing.
+				memoryLimit := uint64(500)
+				if tc.size >= 5*1024*1024*1024 { // For 5GB+ files
+					memoryLimit = 1000 // 1GB limit for very large files
+				}
+				require.Less(t, maxMemoryMB, memoryLimit,
+					"Memory usage exceeded %dMB: actual %dMB", memoryLimit, maxMemoryMB)
 			}
-			require.Less(t, maxMemoryMB, memoryLimit,
-				"Memory usage exceeded %dMB: actual %dMB", memoryLimit, maxMemoryMB)
 
 			// Cleanup large files to save disk space
 			os.Remove(largeFilePath)
