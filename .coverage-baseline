@@ -3,6 +3,12 @@
 # Monotonic: raise a floor when coverage improves; never lower it without cause.
 # Regenerate/raise with: scripts/ci/coverage-ratchet.sh --update
 # Project-wide floor is PROJECT_FLOOR in the script (currently 56).
+#
+# Seed from a CI-equivalent environment. pkg/detection is intentionally floored
+# low (~34) because its Magika tests self-skip when the `magika` CLI is absent,
+# which is the case in CI; a local run WITH magika reports ~92%. Do not `--update`
+# this file from a machine with magika installed, or the detection floor will be
+# raised to a value CI can't meet.
 cmd/cargoship 60
 cmd/cargoship-cost 57
 cmd/cargoship-launch 49
@@ -26,7 +32,7 @@ pkg/compression 92
 pkg/config 92
 pkg/context 40
 pkg/controller 39
-pkg/detection 92
+pkg/detection 34
 pkg/encryption 82
 pkg/errors 99
 pkg/extraction 85
