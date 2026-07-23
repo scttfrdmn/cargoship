@@ -1,0 +1,51 @@
+# CargoShip per-package coverage ratchet baseline.
+# Format: <package> <min-percent>. Coverage must not drop below the floor.
+# Monotonic: raise a floor when coverage improves; never lower it without cause.
+# Regenerate/raise with: scripts/ci/coverage-ratchet.sh --update
+# Project-wide floor is PROJECT_FLOOR in the script (currently 56).
+cmd/cargoship 60
+cmd/cargoship-cost 57
+cmd/cargoship-launch 49
+cmd/cargoship-test 0
+cmd/cargoship/cmd 22
+cmd/controller 17
+cmd/ghost-ship 0
+cmd/launch-server 0
+internal/testutil 84
+pkg/archivefs 98
+pkg/aws/config 89
+pkg/aws/cost 72
+pkg/aws/costs 18
+pkg/aws/lifecycle 90
+pkg/aws/metrics 100
+pkg/aws/pricing 90
+pkg/aws/s3 74
+pkg/benchmarks 0
+pkg/chunking 82
+pkg/compression 92
+pkg/config 92
+pkg/context 40
+pkg/controller 39
+pkg/detection 92
+pkg/encryption 82
+pkg/errors 99
+pkg/extraction 85
+pkg/gpg 88
+pkg/ioutils 53
+pkg/launch 5
+pkg/manifest 75
+pkg/migration 0
+pkg/monitoring 39
+pkg/multiregion 72
+pkg/observability/metrics 79
+pkg/observability/tracing 65
+pkg/pipeline 57
+pkg/profiling 0
+pkg/progress 99
+pkg/repl 41
+pkg/restore 76
+pkg/resume 41
+pkg/s3optimization 58
+pkg/staging 81
+pkg/testutils 76
+pkg/tui 74

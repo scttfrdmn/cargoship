@@ -141,6 +141,13 @@ jobs:
       - name: Run tests with coverage
         run: go test ./... -short -coverprofile=coverage.out -covermode=atomic -timeout=10m
 
+      # Per-package coverage ratchet (#238 Phase 6): enforce that no package
+      # regressed below its floor in .coverage-baseline. Reuses the profile just
+      # generated. This is CI's only hard coverage gate (Codecov below is
+      # informational, continue-on-error).
+      - name: Enforce coverage ratchet
+        run: bash scripts/ci/coverage-ratchet.sh --profile coverage.out --check
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         continue-on-error: true
