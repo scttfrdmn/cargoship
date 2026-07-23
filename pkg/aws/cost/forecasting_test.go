@@ -385,6 +385,162 @@ func TestConfidenceIntervals(t *testing.T) {
 	assert.Greater(t, width99, width95, "99% CI should be wider than 95%")
 }
 
+// TestGenerateForecast_ModelsAreDistinct verifies the exponential and
+// moving-average models are no longer linear relabeled (#263): on a series
+// where the recent burn rate differs from the long-run average they must
+// produce materially different forecasts.
+func TestGenerateForecast_ModelsAreDistinct(t *testing.T) {
+	reporter := createTestReporterWithHistoricalData(t, 30, 10.0, "increasing")
+	engine := NewForecastEngine(reporter)
+
+	linear, err := engine.GenerateForecast("test-project", ForecastModelLinear, 90)
+	require.NoError(t, err)
+	exp, err := engine.GenerateForecast("test-project", ForecastModelExponential, 90)
+	require.NoError(t, err)
+	ma, err := engine.GenerateForecast("test-project", ForecastModelMovingAverage, 90)
+	require.NoError(t, err)
+
+	assert.Equal(t, ForecastModelExponential, exp.Model)
+	assert.Equal(t, ForecastModelMovingAverage, ma.Model)
+
+	// Each model must diverge from linear at the 90-day horizon.
+	assert.Greater(t, math.Abs(linear.Predicted90Days-exp.Predicted90Days), 1.0,
+		"exponential should differ from linear")
+	assert.Greater(t, math.Abs(linear.Predicted90Days-ma.Predicted90Days), 1.0,
+		"moving average should differ from linear")
+	// And from each other.
+	assert.Greater(t, math.Abs(exp.Predicted90Days-ma.Predicted90Days), 1.0,
+		"exponential and moving average should differ from each other")
+
+	t.Logf("90d forecasts: linear=%.2f exponential=%.2f moving_avg=%.2f",
+		linear.Predicted90Days, exp.Predicted90Days, ma.Predicted90Days)
+}
+
+// TestGenerateForecast_Exponential checks Holt's smoothing characteristics.
+func TestGenerateForecast_Exponential(t *testing.T) {
+	tests := []struct {
+		name  string
+		trend string
+	}{
+		{"increasing", "increasing"},
+		{"decreasing", "decreasing"},
+		{"stable", "stable"},
+		{"volatile", "volatile"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reporter := createTestReporterWithHistoricalData(t, 30, 10.0, tt.trend)
+			engine := NewForecastEngine(reporter)
+
+			f, err := engine.GenerateForecast("test-project", ForecastModelExponential, 90)
+			require.NoError(t, err)
+			require.NotNil(t, f)
+
+			assert.Equal(t, ForecastModelExponential, f.Model)
+			assert.Len(t, f.DailyForecasts, 90)
+			assert.Equal(t, 30, f.HistoricalDays)
+
+			// Cumulative forecast is monotonically non-decreasing (daily cost is
+			// clamped at >= 0).
+			for day := 1; day < 90; day++ {
+				assert.GreaterOrEqual(t, f.DailyForecasts[day+1], f.DailyForecasts[day],
+					"cumulative forecast should be non-decreasing")
+			}
+
+			// For a rising series, forecast should exceed the base cost.
+			if tt.trend == "increasing" {
+				assert.Greater(t, f.Predicted90Days, f.BaseCost,
+					"increasing trend should forecast growth")
+			}
+
+			// Confidence intervals present; when the in-sample fit has non-zero
+			// residuals the interval widens with the horizon.
+			require.NotNil(t, f.Confidence7Days)
+			require.NotNil(t, f.Confidence90Days)
+			w7 := f.Confidence7Days.UpperBound - f.Confidence7Days.LowerBound
+			w90 := f.Confidence90Days.UpperBound - f.Confidence90Days.LowerBound
+			if w7 > 0 {
+				assert.Greater(t, w90, w7, "90-day CI should be wider than 7-day")
+			}
+
+			t.Logf("%s exponential: base=%.2f 90d=%.2f R²=%.2f MAE=%.2f",
+				tt.name, f.BaseCost, f.Predicted90Days, f.R2Score, f.MeanAbsoluteError)
+		})
+	}
+}
+
+// TestGenerateForecast_MovingAverage checks the flat-projection characteristic:
+// because the weighted MA projects a constant daily cost, its cumulative
+// forecast grows linearly with a constant per-day increment.
+func TestGenerateForecast_MovingAverage(t *testing.T) {
+	reporter := createTestReporterWithHistoricalData(t, 30, 10.0, "increasing")
+	engine := NewForecastEngine(reporter)
+
+	f, err := engine.GenerateForecast("test-project", ForecastModelMovingAverage, 90)
+	require.NoError(t, err)
+	require.NotNil(t, f)
+
+	assert.Equal(t, ForecastModelMovingAverage, f.Model)
+	assert.Len(t, f.DailyForecasts, 90)
+
+	// Constant daily increment => equal successive differences.
+	inc1 := f.DailyForecasts[2] - f.DailyForecasts[1]
+	inc2 := f.DailyForecasts[3] - f.DailyForecasts[2]
+	assert.InDelta(t, inc1, inc2, 1e-6, "moving average projects a constant daily cost")
+	assert.Greater(t, inc1, 0.0, "daily increment should be positive for non-zero costs")
+
+	// The projected daily cost reflects the recent window, so on a rising
+	// series it exceeds the earliest daily costs.
+	assert.Greater(t, f.Predicted90Days, f.BaseCost)
+
+	t.Logf("moving average: base=%.2f 90d=%.2f daily_inc=%.2f", f.BaseCost, f.Predicted90Days, inc1)
+}
+
+// TestGenerateForecast_EnsembleBlends verifies the ensemble is a genuine blend
+// of three distinct components, not linear relabeled.
+func TestGenerateForecast_EnsembleBlends(t *testing.T) {
+	reporter := createTestReporterWithHistoricalData(t, 30, 10.0, "increasing")
+	engine := NewForecastEngine(reporter)
+
+	linear, err := engine.GenerateForecast("test-project", ForecastModelLinear, 90)
+	require.NoError(t, err)
+	exp, err := engine.GenerateForecast("test-project", ForecastModelExponential, 90)
+	require.NoError(t, err)
+	ma, err := engine.GenerateForecast("test-project", ForecastModelMovingAverage, 90)
+	require.NoError(t, err)
+	ens, err := engine.GenerateForecast("test-project", ForecastModelEnsemble, 90)
+	require.NoError(t, err)
+
+	assert.Equal(t, ForecastModelEnsemble, ens.Model)
+
+	// The blended 90-day prediction must equal the 0.5/0.3/0.2 weighting.
+	want := 0.5*linear.Predicted90Days + 0.3*exp.Predicted90Days + 0.2*ma.Predicted90Days
+	assert.InDelta(t, want, ens.Predicted90Days, 1e-6, "ensemble should be the weighted blend")
+
+	// And be distinct from a plain linear forecast.
+	assert.Greater(t, math.Abs(linear.Predicted90Days-ens.Predicted90Days), 1.0,
+		"ensemble should differ from linear once components differ")
+
+	require.NotNil(t, ens.Confidence90Days)
+
+	t.Logf("ensemble 90d=%.2f (linear=%.2f exp=%.2f ma=%.2f)",
+		ens.Predicted90Days, linear.Predicted90Days, exp.Predicted90Days, ma.Predicted90Days)
+}
+
+// TestGenerateForecast_ModelsInsufficientData ensures the new models surface the
+// same insufficient-data error as linear rather than panicking.
+func TestGenerateForecast_ModelsInsufficientData(t *testing.T) {
+	reporter := createTestReporterWithHistoricalData(t, 1, 10.0, "stable")
+	engine := NewForecastEngine(reporter)
+
+	for _, m := range []ForecastModel{ForecastModelExponential, ForecastModelMovingAverage, ForecastModelEnsemble} {
+		f, err := engine.GenerateForecast("test-project", m, 30)
+		assert.Error(t, err, "model %s should error on insufficient data", m)
+		assert.Nil(t, f)
+		assert.Contains(t, err.Error(), "insufficient historical data")
+	}
+}
+
 // BenchmarkAnalyzeBurnRate benchmarks burn rate analysis
 func BenchmarkAnalyzeBurnRate(b *testing.B) {
 	reporter := createTestReporterWithHistoricalData(&testing.T{}, 90, 10.0, "increasing")

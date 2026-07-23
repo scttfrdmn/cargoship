@@ -281,14 +281,26 @@ func (fe *ForecastEngine) GenerateForecast(projectID string, model ForecastModel
 	}
 }
 
-// generateLinearForecast uses linear regression for forecasting
-func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays int) (*CostForecast, error) {
+// dailyPoint is one calendar day of the cost series: the cost incurred that
+// day and the running cumulative total through that day.
+type dailyPoint struct {
+	day        string
+	dayCost    float64
+	cumulative float64
+}
+
+// forecastHistoricalDays is the look-back window all forecast models train on.
+const forecastHistoricalDays = 90
+
+// buildDailySeries aggregates the reporter's raw cost records into an ordered,
+// de-duplicated per-day series (oldest first) for the given project over the
+// look-back window. It acquires the reporter read lock itself, so callers must
+// not already hold it.
+func (fe *ForecastEngine) buildDailySeries(projectID string) ([]dailyPoint, error) {
 	fe.reporter.mu.RLock()
 	defer fe.reporter.mu.RUnlock()
 
-	// Get historical data (last 90 days or all available)
-	historicalDays := 90
-	cutoffDate := time.Now().Add(-time.Duration(historicalDays) * 24 * time.Hour)
+	cutoffDate := time.Now().Add(-time.Duration(forecastHistoricalDays) * 24 * time.Hour)
 	var records []CostRecord
 	for _, r := range fe.reporter.costs {
 		if r.Timestamp.After(cutoffDate) {
@@ -297,44 +309,117 @@ func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays 
 			}
 		}
 	}
-
 	if len(records) == 0 {
 		return nil, fmt.Errorf("no historical cost records found")
 	}
 
-	// Sort by timestamp
 	sort.Slice(records, func(i, j int) bool {
 		return records[i].Timestamp.Before(records[j].Timestamp)
 	})
 
-	// Calculate cumulative daily costs
 	dailyCosts := make(map[string]float64)
+	var order []string
+	seen := make(map[string]bool)
 	for _, r := range records {
 		day := r.Timestamp.Format("2006-01-02")
+		if !seen[day] {
+			seen[day] = true
+			order = append(order, day)
+		}
 		dailyCosts[day] += r.Cost
 	}
 
-	// Convert to sorted cumulative costs
-	type dayCost struct {
-		day            string
-		cumulativeCost float64
-	}
-	var costs []dayCost
+	points := make([]dailyPoint, 0, len(order))
 	cumulative := 0.0
-	for _, r := range records {
-		day := r.Timestamp.Format("2006-01-02")
-		// Check if we already processed this day
-		found := false
-		for _, dc := range costs {
-			if dc.day == day {
-				found = true
-				break
-			}
-		}
-		if !found {
-			cumulative += dailyCosts[day]
-			costs = append(costs, dayCost{day: day, cumulativeCost: cumulative})
-		}
+	for _, day := range order {
+		cumulative += dailyCosts[day]
+		points = append(points, dailyPoint{day: day, dayCost: dailyCosts[day], cumulative: cumulative})
+	}
+	return points, nil
+}
+
+// fitMetrics returns the R², MAE and RMSE of a fitted series against actuals.
+func fitMetrics(actual, fitted []float64) (r2, mae, rmse float64) {
+	n := len(actual)
+	if n == 0 {
+		return 0, 0, 0
+	}
+	mean := 0.0
+	for _, a := range actual {
+		mean += a
+	}
+	mean /= float64(n)
+
+	var ssTotal, ssResidual, sumAbs, sumSq float64
+	for i := range actual {
+		res := actual[i] - fitted[i]
+		diff := actual[i] - mean
+		ssTotal += diff * diff
+		ssResidual += res * res
+		sumAbs += math.Abs(res)
+		sumSq += res * res
+	}
+	if ssTotal > 0 {
+		r2 = 1 - ssResidual/ssTotal
+	}
+	mae = sumAbs / float64(n)
+	rmse = math.Sqrt(sumSq / float64(n))
+	return r2, mae, rmse
+}
+
+// setKeyPredictions copies the daily cumulative forecasts into the named
+// time-point fields (7/14/30/60/90 days) that are within the horizon.
+func setKeyPredictions(f *CostForecast) {
+	if f.ForecastDays >= 7 {
+		f.Predicted7Days = f.DailyForecasts[7]
+	}
+	if f.ForecastDays >= 14 {
+		f.Predicted14Days = f.DailyForecasts[14]
+	}
+	if f.ForecastDays >= 30 {
+		f.Predicted30Days = f.DailyForecasts[30]
+	}
+	if f.ForecastDays >= 60 {
+		f.Predicted60Days = f.DailyForecasts[60]
+	}
+	if f.ForecastDays >= 90 {
+		f.Predicted90Days = f.DailyForecasts[90]
+	}
+}
+
+// growingConfidence builds a 95% interval whose width grows with the square
+// root of the forecast horizon (random-walk style), from an in-sample residual
+// standard error.
+func growingConfidence(prediction, stdError float64, horizon int) *ConfidenceInterval {
+	const z = 1.96
+	margin := z * stdError * math.Sqrt(float64(horizon))
+	return &ConfidenceInterval{
+		ConfidenceLevel: 95,
+		Prediction:      prediction,
+		LowerBound:      math.Max(0, prediction-margin),
+		UpperBound:      prediction + margin,
+	}
+}
+
+// setGrowingConfidence populates the 7/30/90-day confidence intervals from a
+// single residual standard error, widening with the horizon.
+func setGrowingConfidence(f *CostForecast, stdError float64) {
+	if f.ForecastDays >= 7 {
+		f.Confidence7Days = growingConfidence(f.Predicted7Days, stdError, 7)
+	}
+	if f.ForecastDays >= 30 {
+		f.Confidence30Days = growingConfidence(f.Predicted30Days, stdError, 30)
+	}
+	if f.ForecastDays >= 90 {
+		f.Confidence90Days = growingConfidence(f.Predicted90Days, stdError, 90)
+	}
+}
+
+// generateLinearForecast uses linear regression for forecasting
+func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays int) (*CostForecast, error) {
+	costs, err := fe.buildDailySeries(projectID)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(costs) < 2 {
@@ -350,7 +435,7 @@ func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays 
 	sumX2 := 0.0
 	for i, c := range costs {
 		x := float64(i)
-		y := c.cumulativeCost
+		y := c.cumulative
 		sumX += x
 		sumY += y
 		sumXY += x * y
@@ -365,7 +450,7 @@ func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays 
 		Model:          ForecastModelLinear,
 		GeneratedAt:    time.Now(),
 		ForecastDays:   forecastDays,
-		BaseCost:       costs[len(costs)-1].cumulativeCost,
+		BaseCost:       costs[len(costs)-1].cumulative,
 		BaseDate:       time.Now(),
 		HistoricalDays: len(costs),
 		DailyForecasts: make(map[int]float64),
@@ -400,7 +485,7 @@ func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays 
 	sumSquaredResiduals := 0.0
 	for i, c := range costs {
 		predicted := intercept + slope*float64(i)
-		residual := c.cumulativeCost - predicted
+		residual := c.cumulative - predicted
 		sumSquaredResiduals += residual * residual
 	}
 	stdError := math.Sqrt(sumSquaredResiduals / (n - 2))
@@ -441,8 +526,8 @@ func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays 
 	ssResidual := 0.0
 	for i, c := range costs {
 		predicted := intercept + slope*float64(i)
-		diff1 := c.cumulativeCost - meanY
-		diff2 := c.cumulativeCost - predicted
+		diff1 := c.cumulative - meanY
+		diff2 := c.cumulative - predicted
 		ssTotal += diff1 * diff1
 		ssResidual += diff2 * diff2
 	}
@@ -456,7 +541,7 @@ func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays 
 	sumSquaredError := 0.0
 	for i, c := range costs {
 		predicted := intercept + slope*float64(i)
-		error := math.Abs(c.cumulativeCost - predicted)
+		error := math.Abs(c.cumulative - predicted)
 		sumAbsError += error
 		sumSquaredError += error * error
 	}
@@ -466,27 +551,146 @@ func (fe *ForecastEngine) generateLinearForecast(projectID string, forecastDays 
 	return forecast, nil
 }
 
-// generateExponentialForecast uses exponential smoothing
+// Holt's double exponential smoothing parameters.
+const (
+	holtAlpha = 0.3 // level smoothing factor
+	holtBeta  = 0.1 // trend smoothing factor
+)
+
+// generateExponentialForecast forecasts with Holt's double exponential smoothing
+// (level + trend) over the per-day cost series. Unlike linear regression, it
+// weights recent observations more heavily, so it tracks changes in the recent
+// burn rate rather than fitting the whole history equally.
 func (fe *ForecastEngine) generateExponentialForecast(projectID string, forecastDays int) (*CostForecast, error) {
-	// TODO: Implement exponential smoothing (alpha = 0.3 for level, beta = 0.1 for trend)
-	// For now, fall back to linear forecast
-	forecast, err := fe.generateLinearForecast(projectID, forecastDays)
+	costs, err := fe.buildDailySeries(projectID)
 	if err != nil {
 		return nil, err
 	}
-	forecast.Model = ForecastModelExponential
+	if len(costs) < 2 {
+		return nil, fmt.Errorf("insufficient historical data for forecasting (need at least 2 days)")
+	}
+
+	// Initialize level to the first observation and trend to the first delta.
+	level := costs[0].dayCost
+	trend := costs[1].dayCost - costs[0].dayCost
+
+	// One-step-ahead in-sample fit for accuracy metrics (on daily cost).
+	actual := make([]float64, 0, len(costs)-1)
+	fitted := make([]float64, 0, len(costs)-1)
+	for i := 1; i < len(costs); i++ {
+		forecastOne := level + trend // one-step-ahead prediction for day i
+		actual = append(actual, costs[i].dayCost)
+		fitted = append(fitted, forecastOne)
+
+		prevLevel := level
+		level = holtAlpha*costs[i].dayCost + (1-holtAlpha)*(level+trend)
+		trend = holtBeta*(level-prevLevel) + (1-holtBeta)*trend
+	}
+
+	base := costs[len(costs)-1].cumulative
+	forecast := &CostForecast{
+		Model:          ForecastModelExponential,
+		GeneratedAt:    time.Now(),
+		ForecastDays:   forecastDays,
+		BaseCost:       base,
+		BaseDate:       time.Now(),
+		HistoricalDays: len(costs),
+		DailyForecasts: make(map[int]float64),
+	}
+
+	// Project forward: daily cost h steps out is level + h*trend (clamped at 0),
+	// accumulated onto the current cumulative total.
+	cumulative := base
+	for day := 1; day <= forecastDays; day++ {
+		dayCost := math.Max(0, level+trend*float64(day))
+		cumulative += dayCost
+		forecast.DailyForecasts[day] = cumulative
+	}
+
+	setKeyPredictions(forecast)
+	r2, mae, rmse := fitMetrics(actual, fitted)
+	forecast.R2Score = r2
+	forecast.ModelAccuracy = math.Max(0, r2)
+	forecast.MeanAbsoluteError = mae
+	forecast.RootMeanSquaredError = rmse
+	setGrowingConfidence(forecast, rmse)
+
 	return forecast, nil
 }
 
-// generateMovingAverageForecast uses weighted moving average
+// maWindow is the trailing window (days) for the weighted moving average.
+const maWindow = 7
+
+// generateMovingAverageForecast forecasts with an exponentially-weighted moving
+// average over the trailing 7-day daily-cost window. It projects the most
+// recent smoothed burn rate flat into the future, so — unlike the trend-bearing
+// linear and exponential models — its daily cost is constant and it reacts
+// quickly to the latest days while ignoring older history.
 func (fe *ForecastEngine) generateMovingAverageForecast(projectID string, forecastDays int) (*CostForecast, error) {
-	// TODO: Implement weighted moving average (window = 7 days, exponential weights)
-	// For now, fall back to linear forecast
-	forecast, err := fe.generateLinearForecast(projectID, forecastDays)
+	costs, err := fe.buildDailySeries(projectID)
 	if err != nil {
 		return nil, err
 	}
-	forecast.Model = ForecastModelMovingAverage
+	if len(costs) < 2 {
+		return nil, fmt.Errorf("insufficient historical data for forecasting (need at least 2 days)")
+	}
+
+	// weightedMA returns the exponentially-weighted average of the daily costs
+	// in costs[:end] over the trailing maWindow, most-recent weighted highest.
+	weightedMA := func(end int) float64 {
+		start := end - maWindow
+		if start < 0 {
+			start = 0
+		}
+		var weightedSum, weightTotal float64
+		for i := start; i < end; i++ {
+			// Exponential weights: most recent day (i == end-1) gets weight 1,
+			// each older day is discounted by another factor of 0.7.
+			w := math.Pow(0.7, float64(end-1-i))
+			weightedSum += w * costs[i].dayCost
+			weightTotal += w
+		}
+		if weightTotal == 0 {
+			return 0
+		}
+		return weightedSum / weightTotal
+	}
+
+	// One-step-ahead in-sample fit for accuracy metrics.
+	actual := make([]float64, 0, len(costs)-1)
+	fitted := make([]float64, 0, len(costs)-1)
+	for i := 1; i < len(costs); i++ {
+		actual = append(actual, costs[i].dayCost)
+		fitted = append(fitted, weightedMA(i))
+	}
+
+	base := costs[len(costs)-1].cumulative
+	projected := math.Max(0, weightedMA(len(costs))) // flat projected daily cost
+
+	forecast := &CostForecast{
+		Model:          ForecastModelMovingAverage,
+		GeneratedAt:    time.Now(),
+		ForecastDays:   forecastDays,
+		BaseCost:       base,
+		BaseDate:       time.Now(),
+		HistoricalDays: len(costs),
+		DailyForecasts: make(map[int]float64),
+	}
+
+	cumulative := base
+	for day := 1; day <= forecastDays; day++ {
+		cumulative += projected
+		forecast.DailyForecasts[day] = cumulative
+	}
+
+	setKeyPredictions(forecast)
+	r2, mae, rmse := fitMetrics(actual, fitted)
+	forecast.R2Score = r2
+	forecast.ModelAccuracy = math.Max(0, r2)
+	forecast.MeanAbsoluteError = mae
+	forecast.RootMeanSquaredError = rmse
+	setGrowingConfidence(forecast, rmse)
+
 	return forecast, nil
 }
 
@@ -526,32 +730,30 @@ func (fe *ForecastEngine) generateEnsembleForecast(projectID string, forecastDay
 	}
 
 	// Set specific time point predictions
-	if forecastDays >= 7 {
-		ensemble.Predicted7Days = ensemble.DailyForecasts[7]
-	}
-	if forecastDays >= 14 {
-		ensemble.Predicted14Days = ensemble.DailyForecasts[14]
-	}
-	if forecastDays >= 30 {
-		ensemble.Predicted30Days = ensemble.DailyForecasts[30]
-	}
-	if forecastDays >= 60 {
-		ensemble.Predicted60Days = ensemble.DailyForecasts[60]
-	}
-	if forecastDays >= 90 {
-		ensemble.Predicted90Days = ensemble.DailyForecasts[90]
-	}
+	setKeyPredictions(ensemble)
 
-	// Use linear forecast's confidence intervals as baseline
-	ensemble.Confidence7Days = linearForecast.Confidence7Days
-	ensemble.Confidence30Days = linearForecast.Confidence30Days
-	ensemble.Confidence90Days = linearForecast.Confidence90Days
+	// Blend accuracy metrics with the same weights, falling back to the
+	// linear component's weight when a component is unavailable.
+	blend := func(pick func(*CostForecast) float64) float64 {
+		total := w1
+		val := w1 * pick(linearForecast)
+		if exponentialForecast != nil {
+			val += w2 * pick(exponentialForecast)
+			total += w2
+		}
+		if movingAvgForecast != nil {
+			val += w3 * pick(movingAvgForecast)
+			total += w3
+		}
+		return val / total
+	}
+	ensemble.ModelAccuracy = blend(func(f *CostForecast) float64 { return f.ModelAccuracy })
+	ensemble.MeanAbsoluteError = blend(func(f *CostForecast) float64 { return f.MeanAbsoluteError })
+	ensemble.RootMeanSquaredError = blend(func(f *CostForecast) float64 { return f.RootMeanSquaredError })
+	ensemble.R2Score = blend(func(f *CostForecast) float64 { return f.R2Score })
 
-	// Average model accuracy metrics
-	ensemble.ModelAccuracy = linearForecast.ModelAccuracy
-	ensemble.MeanAbsoluteError = linearForecast.MeanAbsoluteError
-	ensemble.RootMeanSquaredError = linearForecast.RootMeanSquaredError
-	ensemble.R2Score = linearForecast.R2Score
+	// Derive confidence intervals from the blended RMSE, widening with horizon.
+	setGrowingConfidence(ensemble, ensemble.RootMeanSquaredError)
 
 	return ensemble, nil
 }
