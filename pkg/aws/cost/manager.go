@@ -58,6 +58,40 @@ func NewManager(cfg *config.CostControlConfig, awsCfg aws.Config, logger *slog.L
 	return newManagerWithStore(cfg, awsCfg, logger, localStore{})
 }
 
+// NewManagerWithStoreSpec creates a cost manager backed by the budget store
+// named by spec (#246 Phase B). An empty spec, a local path, or a
+// non-s3:// value selects the local store (default, back-compat); an
+// "s3://bucket/prefix" spec selects the S3-backed store with optimistic-
+// concurrency writes and a local write-through cache. ctx is used for the S3
+// client and its requests.
+func NewManagerWithStoreSpec(ctx context.Context, cfg *config.CostControlConfig, awsCfg aws.Config, logger *slog.Logger, spec string) (*Manager, error) {
+	store, err := newStoreForSpec(ctx, spec, awsCfg)
+	if err != nil {
+		return nil, err
+	}
+	return newManagerWithStore(cfg, awsCfg, logger, store)
+}
+
+// newStoreForSpec resolves a store spec to a BudgetStore. Empty/local specs
+// return localStore{}; an s3:// spec returns an s3Store wired to a cached S3
+// client with a local write-through mirror.
+func newStoreForSpec(ctx context.Context, spec string, awsCfg aws.Config) (BudgetStore, error) {
+	isS3, bucket, prefix, err := parseStoreSpec(spec)
+	if err != nil {
+		return nil, err
+	}
+	if !isS3 {
+		return localStore{}, nil
+	}
+	client, err := config.GetOrCreateS3Client(ctx, bucket, awsCfg.Region, "", nil)
+	if err != nil {
+		return nil, fmt.Errorf("create s3 client for budget store: %w", err)
+	}
+	// Mirror to the local store so `budget status` still works offline.
+	mirror := localStore{}
+	return newS3Store(ctx, client, bucket, prefix, &mirror), nil
+}
+
 // newManagerWithStore is the injectable constructor used by tests to supply a
 // custom BudgetStore. Production code uses NewManager.
 func newManagerWithStore(cfg *config.CostControlConfig, awsCfg aws.Config, logger *slog.Logger, store BudgetStore) (*Manager, error) {
