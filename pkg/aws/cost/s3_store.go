@@ -65,10 +65,9 @@ type s3Store struct {
 	// re-GET can union-merge instead of clobbering a concurrent writer's records.
 	lastLoaded *LedgerState
 
-	// loadedGlobalBudget is the raw global_budget blob observed at Load time.
-	// PR1 never sets a global budget; carrying it through keeps a PR2-written
-	// value from being wiped by a PR1 save (forward-compat).
-	loadedGlobalBudget json.RawMessage
+	// loadedGlobalBudget is the global budget observed at Load time, carried
+	// through a Save so a records-only write doesn't wipe it.
+	loadedGlobalBudget *config.GlobalBudget
 }
 
 // s3Token is the concrete payload serialized into the opaque cost.Token. It maps
@@ -112,12 +111,9 @@ type projectDoc struct {
 // globalDoc is the global.json S3 object: the global budget plus records that
 // aren't attributable to a project with its own object.
 type globalDoc struct {
-	Version int          `json:"version"`
-	Records []CostRecord `json:"records,omitempty"`
-	// GlobalBudget is populated in PR2 (persisted global/team budget); kept here
-	// as raw JSON for forward-compat so a PR2-written object round-trips through
-	// a PR1 binary without data loss.
-	GlobalBudget json.RawMessage `json:"global_budget,omitempty"`
+	Version      int                  `json:"version"`
+	Records      []CostRecord         `json:"records,omitempty"`
+	GlobalBudget *config.GlobalBudget `json:"global_budget,omitempty"`
 }
 
 // parseStoreSpec classifies a budget-store location. An empty spec, or any value
@@ -214,6 +210,7 @@ func (s *s3Store) loadFromS3() (LedgerState, Token, error) {
 			state.Records = append(state.Records, gd.Records...)
 			tokenData.Global = etag
 			s.loadedGlobalBudget = gd.GlobalBudget
+			state.GlobalBudget = gd.GlobalBudget
 		}
 	}
 
@@ -272,8 +269,13 @@ func (s *s3Store) Save(state LedgerState, token Token) error {
 		}
 	}
 
-	// Write global object (records + preserved forward-compat global budget blob).
-	gdoc := globalDoc{Version: StoreVersion, Records: globalRecords, GlobalBudget: s.loadedGlobalBudget}
+	// Write global object. Use the caller's GlobalBudget when set; otherwise
+	// carry through whatever we loaded so a records-only save doesn't wipe it.
+	gb := state.GlobalBudget
+	if gb == nil {
+		gb = s.loadedGlobalBudget
+	}
+	gdoc := globalDoc{Version: StoreVersion, Records: globalRecords, GlobalBudget: gb}
 	mineGlobal := recordsForProject(newRecords, "", state.ProjectBudgets)
 	if err := s.saveObject(s.globalKey(), prev.Global, gdoc, mineGlobal); err != nil {
 		return err
@@ -371,7 +373,7 @@ func mergeDoc(doc any, freshBody []byte, mineRecords []CostRecord) ([]byte, erro
 			}
 		}
 		d.Records = unionRecords(fresh.Records, mineRecords)
-		if len(d.GlobalBudget) == 0 {
+		if d.GlobalBudget == nil {
 			d.GlobalBudget = fresh.GlobalBudget
 		}
 		return json.MarshalIndent(d, "", "  ")

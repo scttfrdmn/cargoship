@@ -74,7 +74,10 @@ Examples:
 }
 
 func newBudgetStatusCmd() *cobra.Command {
-	var jsonOutput bool
+	var (
+		jsonOutput bool
+		global     bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "status <project-id>",
@@ -96,15 +99,27 @@ Examples:
 
   # Status as JSON
   cargoship budget status project1 --json
+
+  # Show the org/team-wide budget status
+  cargoship budget status --global
 `,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			projectID := args[0]
-			return runBudgetStatus(cmd.Context(), projectID, jsonOutput)
+			if global {
+				if len(args) != 0 {
+					return fmt.Errorf("--global shows the org-wide budget; do not also pass a project ID")
+				}
+				return runGlobalBudgetStatus(cmd.Context(), jsonOutput)
+			}
+			if len(args) != 1 {
+				return fmt.Errorf("a project ID is required (or use --global for the org-wide budget)")
+			}
+			return runBudgetStatus(cmd.Context(), args[0], jsonOutput)
 		},
 	}
 
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().BoolVar(&global, "global", false, "Show the org/team-wide budget status instead of a project's")
 
 	return cmd
 }
@@ -115,6 +130,7 @@ func newBudgetSetCmd() *cobra.Command {
 		volumeQuota          float64
 		costAlertThreshold   float64
 		volumeAlertThreshold float64
+		global               bool
 	)
 
 	cmd := &cobra.Command{
@@ -144,11 +160,22 @@ Examples:
 
   # Set unlimited
   cargoship budget set project1 --cost 0 --volume 0
+
+  # Set the org/team-wide budget ceiling (across all projects)
+  cargoship budget set --global --cost 10000 --volume 5000
 `,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			projectID := args[0]
-			return runBudgetSet(cmd.Context(), projectID, costBudget, volumeQuota, costAlertThreshold, volumeAlertThreshold)
+			if global {
+				if len(args) != 0 {
+					return fmt.Errorf("--global sets the org-wide budget; do not also pass a project ID")
+				}
+				return runGlobalBudgetSet(cmd.Context(), costBudget, volumeQuota, costAlertThreshold, volumeAlertThreshold)
+			}
+			if len(args) != 1 {
+				return fmt.Errorf("a project ID is required (or use --global for the org-wide budget)")
+			}
+			return runBudgetSet(cmd.Context(), args[0], costBudget, volumeQuota, costAlertThreshold, volumeAlertThreshold)
 		},
 	}
 
@@ -156,6 +183,7 @@ Examples:
 	cmd.Flags().Float64Var(&volumeQuota, "volume", 0, "Maximum volume quota in GB (0 = unlimited)")
 	cmd.Flags().Float64Var(&costAlertThreshold, "cost-alert", 0.8, "Cost alert threshold (0.0-1.0, default 0.8)")
 	cmd.Flags().Float64Var(&volumeAlertThreshold, "volume-alert", 0.75, "Volume alert threshold (0.0-1.0, default 0.75)")
+	cmd.Flags().BoolVar(&global, "global", false, "Set the org/team-wide budget ceiling (across all projects) instead of a per-project budget")
 
 	return cmd
 }
@@ -320,6 +348,61 @@ func runBudgetSet(ctx context.Context, projectID string, costBudget, volumeQuota
 		fmt.Println("   Volume Quota:     unlimited")
 	}
 
+	return nil
+}
+
+// runGlobalBudgetSet sets the org/team-wide budget ceiling (#246 PR2).
+func runGlobalBudgetSet(ctx context.Context, costBudget, volumeQuota, costAlert, volumeAlert float64) error {
+	manager, err := loadCostManager(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load cost manager: %w", err)
+	}
+
+	if err := manager.SetGlobalBudget(costBudget, volumeQuota, costAlert, volumeAlert); err != nil {
+		return fmt.Errorf("failed to set global budget: %w", err)
+	}
+
+	fmt.Println("✅ Global (org/team-wide) budget set")
+	if costBudget > 0 {
+		fmt.Printf("   Cost Budget:      $%.2f (alert at %.0f%%)\n", costBudget, costAlert*100)
+	} else {
+		fmt.Println("   Cost Budget:      unlimited")
+	}
+	if volumeQuota > 0 {
+		fmt.Printf("   Volume Quota:     %.2f GB (alert at %.0f%%)\n", volumeQuota, volumeAlert*100)
+	} else {
+		fmt.Println("   Volume Quota:     unlimited")
+	}
+	return nil
+}
+
+// runGlobalBudgetStatus prints the org/team-wide budget status (#246 PR2).
+func runGlobalBudgetStatus(ctx context.Context, jsonOutput bool) error {
+	manager, err := loadCostManager(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load cost manager: %w", err)
+	}
+
+	status := manager.GetGlobalTeamBudgetStatus()
+	if jsonOutput {
+		data, err := json.MarshalIndent(status, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal status: %w", err)
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+
+	fmt.Printf("📊 Global (org/team-wide) Budget Status\n\n")
+	fmt.Println("=== Cost Budget ===")
+	if status.MaxBudget > 0 {
+		fmt.Printf("  Maximum Budget:    $%.2f\n", status.MaxBudget)
+		fmt.Printf("  Current Spending:  $%.2f\n", status.CurrentSpend)
+		fmt.Printf("  Remaining:         $%.2f\n", status.BudgetRemaining)
+		fmt.Printf("  Usage:             %.1f%%\n", status.BudgetUsed*100)
+	} else {
+		fmt.Println("  No global cost budget set (unlimited)")
+	}
 	return nil
 }
 

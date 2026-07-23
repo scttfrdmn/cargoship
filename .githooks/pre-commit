@@ -144,7 +144,7 @@ run_tests() {
     timeout 120s go test -short -timeout=100s -p=4 -parallel=4 -coverprofile=coverage.out $(go list ./... | grep -v '/examples/') > /dev/null 2>&1
     local project_coverage=0
     if [ -f coverage.out ]; then
-        project_coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+        project_coverage=$(go tool cover -func=coverage.out | grep '^total:' | awk '{print $3}' | sed 's/%//')
     fi
 
     rm -f test_output.tmp

@@ -54,6 +54,31 @@ type S3Config struct {
 	HTTPTransport *HTTPTransportConfig `yaml:"http_transport,omitempty" json:"http_transport,omitempty"`
 }
 
+// GlobalBudget is a persisted organization/team-wide budget ceiling (#246
+// Phase B PR2). It is distinct from a per-project ProjectBudget and from the
+// legacy BudgetPeriods system: it caps aggregate spend/volume across ALL
+// projects and is enforced as a ceiling in addition to any per-project cap.
+// All fields are optional; a zero MaxBudget/MaxVolumeGB means "unlimited" for
+// that dimension.
+type GlobalBudget struct {
+	// MaxBudget is the aggregate cost ceiling in USD across all projects
+	// (0 = unlimited).
+	MaxBudget float64 `yaml:"max_budget,omitempty" json:"max_budget,omitempty"`
+
+	// MaxVolumeGB is the aggregate volume ceiling in GB across all projects
+	// (0 = unlimited).
+	MaxVolumeGB float64 `yaml:"max_volume_gb,omitempty" json:"max_volume_gb,omitempty"`
+
+	// AlertThreshold is the cost alert fraction (0.0-1.0).
+	AlertThreshold float64 `yaml:"alert_threshold,omitempty" json:"alert_threshold,omitempty"`
+
+	// VolumeAlertThreshold is the volume alert fraction (0.0-1.0).
+	VolumeAlertThreshold float64 `yaml:"volume_alert_threshold,omitempty" json:"volume_alert_threshold,omitempty"`
+
+	// Description is an optional label (e.g. a grant or team name).
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
+}
+
 // CostControlConfig holds cost management settings
 type CostControlConfig struct {
 	// DEPRECATED: Maximum monthly budget (USD) - Use BudgetPeriods instead for flexible periods
@@ -81,6 +106,11 @@ type CostControlConfig struct {
 	// budgets are durable and shareable across machines. Overridden by the
 	// `budget --store` flag and the CARGOSHIP_BUDGET_STORE env var.
 	BudgetStoreLocation string `yaml:"budget_store_location,omitempty" json:"budget_store_location,omitempty"`
+
+	// GlobalBudget is the persisted org/team-wide budget ceiling (#246 Phase B
+	// PR2), enforced across all projects in addition to any per-project cap.
+	// Nil means no global budget is set.
+	GlobalBudget *GlobalBudget `yaml:"global_budget,omitempty" json:"global_budget,omitempty"`
 
 	// Enable automatic cost optimization
 	AutoOptimize bool `yaml:"auto_optimize" json:"auto_optimize"`
