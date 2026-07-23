@@ -24,19 +24,32 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/s3optimization"
 )
 
-const (
-	transpTestProfile = "aws"
-	transpTestRegion  = "us-west-2"
-	transpTestBucket  = "cargoship-integration-test"
-	transpTestPrefix  = "transporter-test"
+const transpTestPrefix = "transporter-test"
+
+// Region and bucket are resolved from the standard env knobs so the suite runs
+// both locally (AWS_PROFILE=aws, defaults below) and in CI (creds from the
+// default chain, bucket from CARGOSHIP_TEST_BUCKET).
+var (
+	transpTestRegion = firstNonEmpty(os.Getenv("AWS_REGION"), "us-west-2")
+	transpTestBucket = firstNonEmpty(os.Getenv("CARGOSHIP_TEST_BUCKET"), "cargoship-integration-test")
 )
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
 
 // TestCargoShipTransporterIntegration tests all CargoShip transporters with real AWS S3.
 //
-// This is a REAL-AWS test: it needs the shared "aws" profile, real credentials,
-// and a real bucket. It is not part of the emulator PR job — it self-skips unless
-// CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1 and the profile actually loads. It runs
-// in the nightly real-AWS job. (#238 Phase 5)
+// This is a REAL-AWS test: it needs real credentials and a real bucket. It is
+// not part of the emulator PR job — it self-skips unless
+// CARGOSHIP_ENABLE_S3_INTEGRATION_TESTS=1 and AWS config actually loads. It runs
+// in the scheduled nightly real-AWS workflow (.github/workflows/nightly-aws.yml,
+// #238 Phase 5), and locally via AWS_PROFILE=aws.
 func TestCargoShipTransporterIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -48,13 +61,15 @@ func TestCargoShipTransporterIntegration(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	// Load AWS config (real credentials via the shared profile).
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithSharedConfigProfile(transpTestProfile),
-		config.WithRegion(transpTestRegion),
-	)
+	// Use AWS_PROFILE when set (local dev, e.g. "aws"); otherwise fall back to
+	// the default credential chain (env/OIDC), which is how CI supplies creds.
+	opts := []func(*config.LoadOptions) error{config.WithRegion(transpTestRegion)}
+	if profile := os.Getenv("AWS_PROFILE"); profile != "" {
+		opts = append(opts, config.WithSharedConfigProfile(profile))
+	}
+	cfg, err := config.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
-		t.Skipf("Skipping: real AWS profile %q not available: %v", transpTestProfile, err)
+		t.Skipf("Skipping: AWS config not available: %v", err)
 	}
 
 	s3Client := s3.NewFromConfig(cfg)
