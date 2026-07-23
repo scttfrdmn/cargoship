@@ -208,3 +208,25 @@ func TestManifest(t *testing.T) {
 	vfs := New(m)
 	require.Same(t, m, vfs.Manifest())
 }
+
+// TestNew_AbsolutePathsNoHang guards against the infinite loop where an absolute
+// file path (as stored in direct-upload manifests) caused New's ancestor walk to
+// spin forever at "/" (path.Dir("/") == "/"). Regression for #238 Phase 2.
+func TestNew_AbsolutePathsNoHang(t *testing.T) {
+	m := &manifest.Manifest{
+		Files: []manifest.FileEntry{
+			{Path: "/var/folders/tmp/data/train.bin"},
+			{Path: "/var/folders/tmp/data/test.bin"},
+		},
+	}
+	done := make(chan *VirtualFS, 1)
+	go func() { done <- New(m) }()
+	select {
+	case vfs := <-done:
+		require.NotNil(t, vfs)
+		// The two files share a parent dir; both must be registered.
+		assert.Len(t, vfs.children["/var/folders/tmp/data"], 2)
+	case <-time.After(5 * time.Second):
+		t.Fatal("archivefs.New hung on absolute file paths")
+	}
+}
