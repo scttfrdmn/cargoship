@@ -44,7 +44,8 @@ cargoship cost budget [flags]
 ### Options
 
 ```
-  -h, --help   help for budget
+  -h, --help           help for budget
+      --store string   Budget store location: local (default) or s3://bucket/prefix for a shared, durable store
 ```
 
 ### Options inherited from parent commands

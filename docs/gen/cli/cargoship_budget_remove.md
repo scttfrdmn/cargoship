@@ -31,6 +31,7 @@ cargoship budget remove <project-id> [flags]
       --pprof                 Enable runtime profiling HTTP endpoint at localhost:6060
       --pprof-addr string     Address for runtime profiling HTTP endpoint (default "localhost:6060")
       --profile               Enable performance profiling. This will generate profile files in a temp directory
+      --store string          Budget store location: local (default) or s3://bucket/prefix for a shared, durable store
   -t, --trace                 Enable trace messages in output
   -v, --verbose               Enable verbose output
 ```

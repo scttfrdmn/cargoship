@@ -22,6 +22,9 @@ Examples:
   # Status as JSON
   cargoship budget status project1 --json
 
+  # Show the org/team-wide budget status
+  cargoship budget status --global
+
 
 ```
 cargoship cost budget status <project-id> [flags]
@@ -30,8 +33,9 @@ cargoship cost budget status <project-id> [flags]
 ### Options
 
 ```
-  -h, --help   help for status
-      --json   Output as JSON
+      --global   Show the org/team-wide budget status instead of a project's
+  -h, --help     help for status
+      --json     Output as JSON
 ```
 
 ### Options inherited from parent commands
@@ -43,6 +47,7 @@ cargoship cost budget status <project-id> [flags]
       --pprof-addr string     Address for runtime profiling HTTP endpoint (default "localhost:6060")
       --profile               Enable performance profiling. This will generate profile files in a temp directory
   -r, --region string         AWS region (default "us-west-2")
+      --store string          Budget store location: local (default) or s3://bucket/prefix for a shared, durable store
   -t, --trace                 Enable trace messages in output
   -v, --verbose               Enable verbose output
 ```
