@@ -499,8 +499,35 @@ Examples:
 	summaryCmd.Flags().String("by-dvc-stage", "", "Aggregate costs for this DVC pipeline stage")
 	summaryCmd.Flags().String("git-commit", "", "List costs tagged with this git commit SHA")
 
+	// #261: inspect the opt-in per-upload outcome history (the training corpus).
+	historyCmd := &cobra.Command{
+		Use:   "history",
+		Short: "Show the recorded per-upload outcome history",
+		Long: `Display the durable per-upload outcome history (metadata only).
+
+This history is opt-in and OFF by default. Enable it with the
+CARGOSHIP_UPLOAD_HISTORY environment variable (1, true, or a file path) or the
+cost_control.upload_history_location config key. Each successful upload then
+appends a metadata-only record — dataset shape, chosen parameters, and measured
+outcomes (compression ratio, throughput, cost). No file content, names, or
+paths are recorded.
+
+Examples:
+  # Show the recorded history
+  cargoship cost history
+
+  # As JSON, most recent first
+  cargoship cost history --json`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			limit, _ := cmd.Flags().GetInt("limit")
+			return runCostHistory(cmd, limit, jsonOutput)
+		},
+	}
+	historyCmd.Flags().Int("limit", 20, "Maximum number of records to show (0 = all)")
+
 	// Add subcommands
-	cmd.AddCommand(estimateCmd, uploadCmd, budgetCmd, pricingCmd, reportCmd, projectsCmd, projectCmd, forecastCmd, burnrateCmd, exhaustionCmd, benchmarkCmd, summaryCmd)
+	cmd.AddCommand(estimateCmd, uploadCmd, budgetCmd, pricingCmd, reportCmd, projectsCmd, projectCmd, forecastCmd, burnrateCmd, exhaustionCmd, benchmarkCmd, summaryCmd, historyCmd)
 
 	return cmd
 }
@@ -1633,5 +1660,63 @@ func runComplianceReport(ctx context.Context, region, budgetID, grantNumber, age
 		return nil
 	}
 	fmt.Print(output)
+	return nil
+}
+
+// runCostHistory renders the opt-in per-upload outcome history (#261). When the
+// history is disabled it prints how to enable it rather than erroring, so the
+// command is discoverable.
+func runCostHistory(cmd *cobra.Command, limit int, jsonOutput bool) error {
+	store := cost.NewUploadHistoryStore("")
+	if !store.Enabled() {
+		if jsonOutput {
+			enc := json.NewEncoder(cmd.OutOrStdout())
+			enc.SetIndent("", "  ")
+			return enc.Encode([]cost.UploadOutcome{})
+		}
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Per-upload outcome history is disabled (opt-in).")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Enable it with CARGOSHIP_UPLOAD_HISTORY=1 (or a file path),")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "or set cost_control.upload_history_location in your config.")
+		return nil
+	}
+
+	records, err := store.LoadOutcomes()
+	if err != nil {
+		return fmt.Errorf("load upload history: %w", err)
+	}
+
+	// Show most recent first; apply the limit after reversing.
+	reversed := make([]*cost.UploadOutcome, len(records))
+	for i, r := range records {
+		reversed[len(records)-1-i] = r
+	}
+	if limit > 0 && len(reversed) > limit {
+		reversed = reversed[:limit]
+	}
+
+	if jsonOutput {
+		enc := json.NewEncoder(cmd.OutOrStdout())
+		enc.SetIndent("", "  ")
+		return enc.Encode(reversed)
+	}
+
+	if len(reversed) == 0 {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No upload outcomes recorded yet.")
+		return nil
+	}
+
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "📦 Upload Outcome History (%d record(s), showing %d)\n\n", len(records), len(reversed))
+	for _, r := range reversed {
+		status := "✅"
+		if !r.Success {
+			status = "❌"
+		}
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s %s  %s\n", status, r.Timestamp.Format("2006-01-02 15:04"), r.UploadID)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   %d files, %.2f GB, %d chunks, %d shards, %s L%d\n",
+			r.FileCount, float64(r.TotalBytes)/(1024*1024*1024), r.ChunkCount, r.ShardCount,
+			r.CompressionType, r.CompressionLevel)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   ratio=%.3f, %.1f MB/s, %v, cost=$%.4f\n\n",
+			r.CompressionRatio, r.ThroughputMBps, r.Duration.Round(time.Second), r.Cost)
+	}
 	return nil
 }

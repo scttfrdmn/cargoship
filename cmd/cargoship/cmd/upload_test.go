@@ -3,8 +3,14 @@ package cmd
 import (
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
+	"github.com/scttfrdmn/cargoship/pkg/manifest"
+	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 )
 
 // TestNewUploadCmd_Structure tests the upload command structure (Issue #95)
@@ -224,4 +230,64 @@ func TestUploadCmd_RequiredArguments(t *testing.T) {
 	// Verify Args is set to ExactArgs(2)
 	// We can't directly test cobra.ExactArgs, but we can verify the command has Args set
 	assert.NotNil(t, cmd.Args, "Args validator should be set")
+}
+
+// TestRecordUploadOutcome_Disabled verifies no history is written when opt-in
+// is off (a nil manifest and disabled store must be a clean no-op).
+func TestRecordUploadOutcome_Disabled(t *testing.T) {
+	t.Setenv("CARGOSHIP_UPLOAD_HISTORY", "")
+
+	cmd := &cobra.Command{}
+	var out strings.Builder
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+
+	result := &pipeline.Result{Success: true, UploadID: "u1", TotalBytes: 1000, TotalFiles: 2, TotalChunks: 1}
+	recordUploadOutcome(cmd, "", "STANDARD", "us-west-2", 3, result, nil)
+
+	assert.Empty(t, out.String(), "disabled store should produce no output")
+}
+
+// TestRecordUploadOutcome_AssemblesFromManifest verifies the outcome record is
+// assembled from the pipeline result and manifest, including the metadata-only
+// file-type mix and manifest-sourced compression fields.
+func TestRecordUploadOutcome_AssemblesFromManifest(t *testing.T) {
+	path := t.TempDir() + "/upload_history.json"
+	t.Setenv("CARGOSHIP_UPLOAD_HISTORY", path)
+
+	cmd := &cobra.Command{}
+	var out strings.Builder
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+
+	result := &pipeline.Result{
+		Success: true, UploadID: "up-42", TotalBytes: 2 * 1024 * 1024 * 1024,
+		TotalFiles: 3, TotalChunks: 5, TotalTime: 10 * time.Second,
+	}
+	m := &manifest.Manifest{
+		UploadID: "up-42", ShardCount: 6, TotalChunks: 5, TotalBytes: 2 * 1024 * 1024 * 1024,
+		CompressionType: "zstd", CompressionLevel: 9, CompressionRatio: 0.5,
+		Files: []manifest.FileEntry{
+			{Path: "a/b/file.txt"}, {Path: "c/other.txt"}, {Path: "noext"},
+		},
+	}
+	recordUploadOutcome(cmd, "proj-x", "GLACIER", "us-east-1", 3, result, m)
+
+	store := cost.NewUploadHistoryStore("")
+	got, err := store.LoadOutcomes()
+	assert.NoError(t, err)
+	assert.Len(t, got, 1)
+
+	o := got[0]
+	assert.Equal(t, "up-42", o.UploadID)
+	assert.Equal(t, "proj-x", o.ProjectID)
+	assert.Equal(t, 6, o.ShardCount, "shard count sourced from manifest")
+	assert.Equal(t, 9, o.CompressionLevel, "level sourced from manifest when set")
+	assert.Equal(t, "zstd", o.CompressionType)
+	assert.InDelta(t, 0.5, o.CompressionRatio, 1e-9)
+	assert.Equal(t, int64(1024*1024*1024), o.CompressedBytes, "ratio * total")
+	assert.Equal(t, "GLACIER", o.StorageClass)
+	assert.Equal(t, map[string]int{"txt": 2, "none": 1}, o.FileTypeMix)
+	assert.Greater(t, o.ThroughputMBps, 0.0)
+	assert.True(t, o.Success)
 }

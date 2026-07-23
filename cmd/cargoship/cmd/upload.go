@@ -16,6 +16,7 @@ import (
 	"golang.org/x/term"
 
 	cargoconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
+	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 	"github.com/scttfrdmn/cargoship/pkg/observability/metrics"
 	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
@@ -748,6 +749,11 @@ Examples:
 				)
 			}
 
+			// #261: append a metadata-only outcome record to the opt-in upload
+			// history (the training corpus). Best-effort — the upload already
+			// succeeded, so a telemetry error is a warning, never a failure.
+			recordUploadOutcome(cmd, dvcProject, storageClass, region, compressionLevel, result, pipe.GetManifest())
+
 			// Print newline after progress display (if TUI mode was active)
 			if !quiet && term.IsTerminal(int(os.Stdout.Fd())) {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout())
@@ -950,6 +956,65 @@ func recordUploadCost(ctx context.Context, cmd *cobra.Command, projectID, storag
 		tags,
 	); err != nil {
 		_, _ = fmt.Fprintf(cmd.OutOrStderr(), "⚠️  cost tracking failed: %v\n", err)
+	}
+}
+
+// recordUploadOutcome assembles a metadata-only UploadOutcome from what the
+// completed upload already produced — the pipeline Result and the finalized
+// manifest — and appends it to the opt-in upload history (#261). It is
+// best-effort: the store is a no-op unless the user opted in, and any error is
+// a warning, never a command failure (the upload has already succeeded).
+func recordUploadOutcome(cmd *cobra.Command, projectID, storageClass, region string, compressionLevel int, result *pipeline.Result, m *manifest.Manifest) {
+	store := cost.NewUploadHistoryStore("")
+	if !store.Enabled() || result == nil {
+		return
+	}
+
+	var throughputMBps float64
+	if result.TotalTime > 0 {
+		throughputMBps = float64(result.TotalBytes) / (1024 * 1024) / result.TotalTime.Seconds()
+	}
+
+	outcome := &cost.UploadOutcome{
+		UploadID:         result.UploadID,
+		ProjectID:        projectID,
+		Timestamp:        time.Now(),
+		TotalBytes:       result.TotalBytes,
+		FileCount:        result.TotalFiles,
+		ChunkCount:       result.TotalChunks,
+		CompressionLevel: compressionLevel,
+		StorageClass:     storageClass,
+		Region:           region,
+		Duration:         result.TotalTime,
+		ThroughputMBps:   throughputMBps,
+		ErrorCount:       len(result.Errors),
+		Success:          result.Success,
+	}
+
+	// Prefer the finalized manifest for the measured outcomes and the chosen
+	// parameters; it carries the actual compression ratio, shard count, and the
+	// file list needed for the (metadata-only) type mix.
+	if m != nil {
+		outcome.ShardCount = m.ShardCount
+		outcome.ChunkCount = m.TotalChunks
+		outcome.CompressionType = m.CompressionType
+		if m.CompressionLevel != 0 {
+			outcome.CompressionLevel = m.CompressionLevel
+		}
+		outcome.CompressionRatio = m.CompressionRatio
+		if m.CompressionRatio > 0 {
+			outcome.CompressedBytes = int64(float64(m.TotalBytes) * m.CompressionRatio)
+		}
+		exts := make([]string, 0, len(m.Files))
+		for _, f := range m.Files {
+			exts = append(exts, strings.ToLower(strings.TrimPrefix(filepath.Ext(f.Path), ".")))
+		}
+		outcome.FileTypeMix = cost.FileTypeMixFromExtensions(exts)
+	}
+	// Without a manifest, ShardCount stays 0 (unknown) rather than misreporting.
+
+	if err := store.Append(outcome); err != nil {
+		_, _ = fmt.Fprintf(cmd.OutOrStderr(), "⚠️  upload history not recorded: %v\n", err)
 	}
 }
 

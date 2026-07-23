@@ -112,6 +112,14 @@ type CostControlConfig struct {
 	// Nil means no global budget is set.
 	GlobalBudget *GlobalBudget `yaml:"global_budget,omitempty" json:"global_budget,omitempty"`
 
+	// UploadHistoryLocation opts into a durable, append-only per-upload outcome
+	// history (#261) — the training corpus for future optimization analysis.
+	// Empty (default) means OFF: no telemetry is written. "1"/"true" enables it
+	// at the local default (~/.cargoship/upload_history.json); any other value
+	// is an explicit file path. Overridden by the CARGOSHIP_UPLOAD_HISTORY env
+	// var. Metadata only — no file content, names, or paths are recorded.
+	UploadHistoryLocation string `yaml:"upload_history_location,omitempty" json:"upload_history_location,omitempty"`
+
 	// Enable automatic cost optimization
 	AutoOptimize bool `yaml:"auto_optimize" json:"auto_optimize"`
 

@@ -3,10 +3,12 @@ package cmd
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	cargoconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
+	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
 )
 
 // TestParseSize tests the parseSize helper function
@@ -339,6 +341,7 @@ func TestNewCostCmd_Structure(t *testing.T) {
 		"exhaustion",
 		"benchmark-compare",
 		"summary", // Issue #186: DVC stage / git-commit cost aggregation
+		"history", // Issue #261: per-upload outcome history
 	}
 
 	commands := cmd.Commands()
@@ -565,5 +568,66 @@ func TestExhaustionCmd_Structure(t *testing.T) {
 	}
 	if !strings.Contains(exhaustionCmd.Long, "budget") || !strings.Contains(exhaustionCmd.Long, "exhausted") {
 		t.Error("exhaustion command long description should mention budget exhaustion")
+	}
+}
+
+// TestRunCostHistory_DisabledShowsHint verifies the history command explains how
+// to opt in rather than erroring when the store is disabled.
+func TestRunCostHistory_DisabledShowsHint(t *testing.T) {
+	t.Setenv("CARGOSHIP_UPLOAD_HISTORY", "") // explicitly disabled
+
+	cmd := &cobra.Command{}
+	var out strings.Builder
+	cmd.SetOut(&out)
+
+	if err := runCostHistory(cmd, 20, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out.String(), "disabled") {
+		t.Errorf("expected an opt-in hint, got: %q", out.String())
+	}
+}
+
+// TestRunCostHistory_JSONEmptyWhenDisabled verifies JSON mode emits an empty
+// array (not an error) when disabled, so scripts can consume it uniformly.
+func TestRunCostHistory_JSONEmptyWhenDisabled(t *testing.T) {
+	t.Setenv("CARGOSHIP_UPLOAD_HISTORY", "")
+
+	cmd := &cobra.Command{}
+	var out strings.Builder
+	cmd.SetOut(&out)
+
+	if err := runCostHistory(cmd, 20, true); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != "[]" {
+		t.Errorf("expected empty JSON array, got: %q", got)
+	}
+}
+
+// TestRunCostHistory_RendersRecords verifies enabled+populated output.
+func TestRunCostHistory_RendersRecords(t *testing.T) {
+	path := t.TempDir() + "/upload_history.json"
+	t.Setenv("CARGOSHIP_UPLOAD_HISTORY", path)
+
+	store := cost.NewUploadHistoryStore("")
+	if err := store.Append(&cost.UploadOutcome{
+		UploadID: "abc123", Timestamp: time.Now(), FileCount: 5,
+		TotalBytes: 1024 * 1024 * 1024, CompressionType: "zstd", CompressionLevel: 3,
+		CompressionRatio: 0.4, ThroughputMBps: 100, Success: true,
+	}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	cmd := &cobra.Command{}
+	var out strings.Builder
+	cmd.SetOut(&out)
+
+	if err := runCostHistory(cmd, 20, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "abc123") || !strings.Contains(s, "ratio=0.400") {
+		t.Errorf("expected record details in output, got: %q", s)
 	}
 }

@@ -43,6 +43,8 @@ exposed in two places.
 
 <!-- @include: ../../gen/cli/cargoship_cost_summary.md -->
 
+<!-- @include: ../../gen/cli/cargoship_cost_history.md -->
+
 <!-- @include: ../../gen/cli/cargoship_budget.md -->
 
 <!-- @include: ../../gen/cli/cargoship_budget_status.md -->
