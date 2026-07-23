@@ -21,7 +21,7 @@ internal/testutil 84
 pkg/archivefs 98
 pkg/aws/config 89
 pkg/aws/cost 72
-pkg/aws/costs 18
+pkg/aws/costs 16
 pkg/aws/lifecycle 90
 pkg/aws/metrics 100
 pkg/aws/pricing 90

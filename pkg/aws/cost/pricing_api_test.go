@@ -75,14 +75,26 @@ func TestGetAWSRequestPrice_ScalesToPerThousand(t *testing.T) {
 		products: []string{requestProduct("S3-API-Tier1", "0.0000050000")},
 	})
 	// $0.000005 per request → $0.005 per 1,000.
-	price, err := pm.getAWSRequestPrice(context.Background(), "PUT", "us-east-1")
+	price, err := pm.getAWSRequestPrice(context.Background(), "PUT", config.StorageClassStandard, "us-east-1")
 	require.NoError(t, err)
 	assert.InDelta(t, 0.005, price, 1e-9)
 }
 
+func TestGetAWSRequestPrice_UsesClassGroup(t *testing.T) {
+	// A Glacier PUT must query the S3-API-GIR-Tier1 group, so a fake returning
+	// only that product resolves; a Standard query against the same fake would
+	// too (the fake ignores filters), so assert the price flows through.
+	pm := newTestPricingManager(t, &fakePricingClient{
+		products: []string{requestProduct("S3-API-GIR-Tier1", "0.0000200000")},
+	})
+	price, err := pm.getAWSRequestPrice(context.Background(), "PUT", config.StorageClassGlacier, "us-east-1")
+	require.NoError(t, err)
+	assert.InDelta(t, 0.02, price, 1e-9) // $0.00002/request → $0.02/1,000
+}
+
 func TestGetAWSRequestPrice_UnmappedType(t *testing.T) {
 	pm := newTestPricingManager(t, &fakePricingClient{})
-	_, err := pm.getAWSRequestPrice(context.Background(), "DELETE", "us-east-1")
+	_, err := pm.getAWSRequestPrice(context.Background(), "DELETE", config.StorageClassStandard, "us-east-1")
 	assert.Error(t, err)
 }
 
@@ -137,20 +149,46 @@ func TestS3StorageVolumeType(t *testing.T) {
 }
 
 func TestS3RequestGroup(t *testing.T) {
+	// Standard (and unmodeled classes) use the base group; verb selects the tier.
 	tier1 := []string{"PUT", "POST", "COPY", "LIST"}
 	for _, rt := range tier1 {
-		got, ok := s3RequestGroup(rt)
+		got, ok := s3RequestGroup(rt, config.StorageClassStandard)
 		assert.True(t, ok, "%s should map", rt)
 		assert.Equal(t, "S3-API-Tier1", got, "%s", rt)
 	}
 	tier2 := []string{"GET", "SELECT"}
 	for _, rt := range tier2 {
-		got, ok := s3RequestGroup(rt)
+		got, ok := s3RequestGroup(rt, config.StorageClassStandard)
 		assert.True(t, ok, "%s should map", rt)
 		assert.Equal(t, "S3-API-Tier2", got, "%s", rt)
 	}
-	_, ok := s3RequestGroup("DELETE")
+	_, ok := s3RequestGroup("DELETE", config.StorageClassStandard)
 	assert.False(t, ok, "DELETE has no Tier group (free)")
+
+	// Storage class selects the per-class request group (#252). Verified against
+	// the live Pricing API.
+	classCases := []struct {
+		sc      config.StorageClass
+		wantPut string
+		wantGet string
+	}{
+		{config.StorageClassStandard, "S3-API-Tier1", "S3-API-Tier2"},
+		{config.StorageClassStandardIA, "S3-API-SIA-Tier1", "S3-API-SIA-Tier2"},
+		{config.StorageClassOneZoneIA, "S3-API-ZIA-Tier1", "S3-API-ZIA-Tier2"},
+		{config.StorageClassGlacier, "S3-API-GIR-Tier1", "S3-API-GIR-Tier2"},
+		// Intelligent-Tiering and Deep Archive have no distinct request group;
+		// AWS prices them at the Standard rate.
+		{config.StorageClassIntelligentTiering, "S3-API-Tier1", "S3-API-Tier2"},
+		{config.StorageClassDeepArchive, "S3-API-Tier1", "S3-API-Tier2"},
+	}
+	for _, c := range classCases {
+		put, ok := s3RequestGroup("PUT", c.sc)
+		assert.True(t, ok)
+		assert.Equal(t, c.wantPut, put, "PUT group for %s", c.sc)
+		get, ok := s3RequestGroup("GET", c.sc)
+		assert.True(t, ok)
+		assert.Equal(t, c.wantGet, get, "GET group for %s", c.sc)
+	}
 }
 
 // TestPriceListItem_Parse verifies the Price List product JSON is parsed the way

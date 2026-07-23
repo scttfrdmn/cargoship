@@ -62,17 +62,42 @@ func s3StorageVolumeType(storageClass config.StorageClass) (string, bool) {
 	}
 }
 
-// s3RequestGroup maps a request type to the AWS Price List `group` attribute for
-// the S3 "API Request" product family. PUT/COPY/POST/LIST are Tier1; GET/SELECT
-// and others are Tier2. Verified against the live Pricing API.
-func s3RequestGroup(requestType string) (string, bool) {
+// s3RequestGroup maps a request type and storage class to the AWS Price List
+// `group` attribute for the S3 "API Request" product family. PUT/COPY/POST/LIST
+// are Tier1; GET/SELECT and others are Tier2. Request pricing varies by storage
+// class via a per-class group prefix (#252):
+//
+//	Standard             S3-API-Tier1  / S3-API-Tier2
+//	Standard-IA          S3-API-SIA-Tier1 / S3-API-SIA-Tier2
+//	One Zone-IA          S3-API-ZIA-Tier1 / S3-API-ZIA-Tier2
+//	Glacier Instant Retr S3-API-GIR-Tier1 / S3-API-GIR-Tier2
+//
+// Intelligent-Tiering and Deep Archive have no distinct request group in the
+// API; AWS prices their PUT/GET at the Standard rate, so they map to the base
+// S3-API-Tier{1,2} groups. Group names verified against the live Pricing API
+// (us-east-1).
+func s3RequestGroup(requestType string, storageClass config.StorageClass) (string, bool) {
+	var tier string
 	switch requestType {
 	case "PUT", "POST", "COPY", "LIST":
-		return "S3-API-Tier1", true
+		tier = "Tier1"
 	case "GET", "SELECT":
-		return "S3-API-Tier2", true
+		tier = "Tier2"
 	default:
 		return "", false
+	}
+
+	switch storageClass {
+	case config.StorageClassStandardIA:
+		return "S3-API-SIA-" + tier, true
+	case config.StorageClassOneZoneIA:
+		return "S3-API-ZIA-" + tier, true
+	case config.StorageClassGlacier:
+		return "S3-API-GIR-" + tier, true
+	default:
+		// Standard, Intelligent-Tiering, Deep Archive, and unknown classes use
+		// the base Standard request group.
+		return "S3-API-" + tier, true
 	}
 }
 

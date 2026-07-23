@@ -54,7 +54,7 @@ func (m *MockPricingClient) GetProducts(ctx context.Context, params *pricing.Get
 			createMockS3StorageProduct("General Purpose", "0.023"),
 			createMockS3StorageProduct("Infrequent Access", "0.0125"),
 			createMockDataTransferProduct("0.09"),
-			createMockRequestProduct("PUT", "General Purpose", "0.0005"),
+			createMockRequestProduct("S3-API-Tier1", "0.000005"),
 		},
 	}, nil
 }
@@ -132,13 +132,16 @@ func createMockDataTransferProduct(price string) string {
 	return string(jsonData)
 }
 
-// createMockRequestProduct creates a mock API request product
-func createMockRequestProduct(requestType, storageClass, price string) string {
+// createMockRequestProduct builds a Price List "API Request" product keyed by
+// the `group` attribute — which is how the real API distinguishes request
+// pricing by storage class (e.g. S3-API-GIR-Tier1 = Glacier PUT). The
+// storageClass attribute is empty for this family in the real API (#252).
+func createMockRequestProduct(group, price string) string {
 	product := map[string]interface{}{
 		"product": map[string]interface{}{
 			"attributes": map[string]interface{}{
-				"requestType":   requestType,
-				"storageClass":  storageClass,
+				"group":         group,
+				"storageClass":  "", // empty in the real API for API Request
 				"productFamily": "API Request",
 				"location":      "US East (N. Virginia)",
 			},
@@ -392,34 +395,34 @@ func TestService_extractStorageClassFromRequest(t *testing.T) {
 		expected   string
 	}{
 		{
-			name: "PUT request with General Purpose",
-			attributes: map[string]interface{}{
-				"requestType":  "PUT",
-				"storageClass": "General Purpose",
-			},
-			expected: string(config.StorageClassStandard),
+			name:       "Standard PUT (Tier1)",
+			attributes: map[string]interface{}{"group": "S3-API-Tier1"},
+			expected:   string(config.StorageClassStandard),
 		},
 		{
-			name: "PUT request with Glacier",
-			attributes: map[string]interface{}{
-				"requestType":  "PUT",
-				"storageClass": "Archive",
-			},
-			expected: string(config.StorageClassGlacier),
+			name:       "Standard-IA PUT",
+			attributes: map[string]interface{}{"group": "S3-API-SIA-Tier1"},
+			expected:   string(config.StorageClassStandardIA),
 		},
 		{
-			name: "GET request",
-			attributes: map[string]interface{}{
-				"requestType": "GET",
-			},
-			expected: string(config.StorageClassStandard),
+			name:       "One Zone-IA PUT",
+			attributes: map[string]interface{}{"group": "S3-API-ZIA-Tier1"},
+			expected:   string(config.StorageClassOneZoneIA),
 		},
 		{
-			name: "LIST request",
-			attributes: map[string]interface{}{
-				"requestType": "LIST",
-			},
-			expected: string(config.StorageClassStandard),
+			name:       "Glacier IR PUT",
+			attributes: map[string]interface{}{"group": "S3-API-GIR-Tier1"},
+			expected:   string(config.StorageClassGlacier),
+		},
+		{
+			name:       "GET (Tier2) is skipped — not PUT pricing",
+			attributes: map[string]interface{}{"group": "S3-API-Tier2"},
+			expected:   "",
+		},
+		{
+			name:       "Unmodeled Tier1 group (Express One Zone) is skipped",
+			attributes: map[string]interface{}{"group": "S3-API-XZ-Tier1"},
+			expected:   "",
 		},
 	}
 
@@ -427,7 +430,7 @@ func TestService_extractStorageClassFromRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := service.extractStorageClassFromRequest(tt.attributes)
 			if result != tt.expected {
-				t.Errorf("extractStorageClassFromRequest() = %v, want %v", result, tt.expected)
+				t.Errorf("extractStorageClassFromRequest() = %q, want %q", result, tt.expected)
 			}
 		})
 	}
@@ -804,11 +807,19 @@ func TestService_parseS3RequestProduct(t *testing.T) {
 		expected    map[config.StorageClass]float64
 	}{
 		{
-			name:        "Valid PUT request product",
-			product:     createMockRequestProduct("PUT", "General Purpose", "0.0005"),
+			name:        "Standard PUT product (Tier1)",
+			product:     createMockRequestProduct("S3-API-Tier1", "0.000005"),
 			expectError: false,
 			expected: map[config.StorageClass]float64{
-				config.StorageClassStandard: 0.0005,
+				config.StorageClassStandard: 0.000005,
+			},
+		},
+		{
+			name:        "Glacier PUT product",
+			product:     createMockRequestProduct("S3-API-GIR-Tier1", "0.00002"),
+			expectError: false,
+			expected: map[config.StorageClass]float64{
+				config.StorageClassGlacier: 0.00002,
 			},
 		},
 		{
@@ -818,12 +829,10 @@ func TestService_parseS3RequestProduct(t *testing.T) {
 			expected:    map[config.StorageClass]float64{},
 		},
 		{
-			name:        "Unknown request type",
-			product:     createMockRequestProduct("UNKNOWN", "General Purpose", "0.0005"),
-			expectError: false, // Should default to standard
-			expected: map[config.StorageClass]float64{
-				config.StorageClassStandard: 0.0005,
-			},
+			name:        "GET tier is skipped (not PUT pricing)",
+			product:     createMockRequestProduct("S3-API-Tier2", "0.0000004"),
+			expectError: true, // extractStorageClassFromRequest returns "" -> "unknown request type"
+			expected:    map[config.StorageClass]float64{},
 		},
 	}
 
