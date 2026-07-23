@@ -1,0 +1,46 @@
+{
+  "version": "2.0",
+  "upload_id": "20260102-testfixture",
+  "created_at": "2026-01-02T03:04:05Z",
+  "completed_at": "2026-01-02T03:04:05Z",
+  "source_path": "/src",
+  "hostname": "test-host",
+  "bucket": "test-bucket",
+  "prefix": "archives",
+  "region": "us-east-1",
+  "total_files": 3,
+  "total_bytes": 6144,
+  "total_chunks": 0,
+  "shard_count": 0,
+  "compression_type": "",
+  "compression_level": 0,
+  "compression_ratio": 0,
+  "files": [
+    {
+      "path": "file-000.dat",
+      "size": 2048,
+      "mod_time": "2026-01-02T03:04:05Z",
+      "chunk_id": 0,
+      "shard_id": 0,
+      "s3_key": "archives/uploads/20260102-testfixture/shard-0/chunk-0.tar.zst"
+    },
+    {
+      "path": "file-001.dat",
+      "size": 2048,
+      "mod_time": "2026-01-02T03:04:05Z",
+      "chunk_id": 0,
+      "shard_id": 0,
+      "s3_key": "archives/uploads/20260102-testfixture/shard-0/chunk-0.tar.zst"
+    },
+    {
+      "path": "file-002.dat",
+      "size": 2048,
+      "mod_time": "2026-01-02T03:04:05Z",
+      "chunk_id": 0,
+      "shard_id": 0,
+      "s3_key": "archives/uploads/20260102-testfixture/shard-0/chunk-0.tar.zst"
+    }
+  ],
+  "chunks": [],
+  "shards": []
+}
