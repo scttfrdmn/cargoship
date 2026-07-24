@@ -8,6 +8,8 @@ import (
 	"compress/gzip"
 	"container/list"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -138,17 +140,49 @@ type SelectiveExtractor struct {
 	query    *ManifestQuery
 	s3Client S3Downloader
 	cache    *ChunkCache
+
+	// verify enables restore-time integrity checking: each restored file's
+	// content is hashed and compared to the manifest's recorded checksum, and a
+	// mismatch fails that file rather than writing corrupt bytes (#270). On by
+	// default; disable with SetVerify(false). Files with no recorded checksum
+	// (or a non-sha256 algorithm) are restored without a check.
+	verify bool
 }
 
 // NewSelectiveExtractor creates a SelectiveExtractor. maxCacheSize sets the
 // LRU cache bound in bytes; pass 0 to use DefaultChunkCacheSize (10 GB).
+// Restore-time checksum verification is enabled by default.
 func NewSelectiveExtractor(manifest *Manifest, s3Client S3Downloader, maxCacheSize int64) *SelectiveExtractor {
 	return &SelectiveExtractor{
 		manifest: manifest,
 		query:    NewManifestQuery(manifest),
 		s3Client: s3Client,
 		cache:    NewChunkCache(maxCacheSize),
+		verify:   true,
 	}
+}
+
+// SetVerify toggles restore-time checksum verification. It returns the receiver
+// for chaining. Disabling it restores the pre-#270 behavior (write whatever S3
+// returns); use only when throughput matters more than catching corruption.
+func (se *SelectiveExtractor) SetVerify(v bool) *SelectiveExtractor {
+	se.verify = v
+	return se
+}
+
+// checksumMismatch reports whether restore-time verification is active for this
+// entry and the given content fails it. It returns false (no mismatch) when
+// verification is off, the entry has no recorded checksum, or the manifest's
+// algorithm isn't the sha256 we can recompute.
+func (se *SelectiveExtractor) checksumMismatch(entry *FileEntry, content []byte) bool {
+	if !se.verify || entry.Checksum == "" {
+		return false
+	}
+	if se.manifest.ChecksumAlgorithm != "" && se.manifest.ChecksumAlgorithm != ChecksumAlgorithmSHA256 {
+		return false // unknown algorithm; can't recompute, don't false-fail
+	}
+	sum := sha256.Sum256(content)
+	return hex.EncodeToString(sum[:]) != entry.Checksum
 }
 
 // ChunkKeysForPaths returns the deduplicated set of S3 chunk keys that contain
@@ -322,6 +356,12 @@ func (se *SelectiveExtractor) writeDirectFiles(data []byte, files []*FileEntry, 
 	var restored int
 	var totalBytes int64
 	for _, entry := range files {
+		// #270: never write corrupt bytes. If the downloaded object doesn't
+		// match the recorded checksum, skip it and let the caller count it as
+		// failed rather than restoring a bad file.
+		if se.checksumMismatch(entry, data) {
+			return restored, totalBytes, fmt.Errorf("checksum mismatch for %s: stored object does not match manifest", entry.Path)
+		}
 		outPath := filepath.Join(destDir, filepath.Base(entry.Path))
 		if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
 			return restored, totalBytes, fmt.Errorf("mkdir for %s: %w", outPath, err)
@@ -437,11 +477,37 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 		if mkErr := os.MkdirAll(filepath.Dir(outPath), 0755); mkErr != nil {
 			return restored, totalBytes, fmt.Errorf("mkdir for %s: %w", outPath, mkErr)
 		}
+
+		verifyThis := se.verify && entry.Checksum != "" &&
+			(se.manifest.ChecksumAlgorithm == "" || se.manifest.ChecksumAlgorithm == ChecksumAlgorithmSHA256)
+
+		if verifyThis {
+			// #270: hash the extracted content and only write it if it matches
+			// the manifest, so restore never lands corrupt bytes on disk. The
+			// entry is bounded by its declared size (hdr.Size), and CopyN both
+			// caps reads and detects a truncated entry.
+			buf := make([]byte, 0, hdr.Size)
+			w := bytes.NewBuffer(buf)
+			if _, err := io.CopyN(w, tarReader, hdr.Size); err != nil {
+				return restored, totalBytes, fmt.Errorf("read %s: %w", entry.Path, err)
+			}
+			content := w.Bytes()
+			if se.checksumMismatch(entry, content) {
+				return restored, totalBytes, fmt.Errorf("checksum mismatch for %s: stored data does not match manifest", entry.Path)
+			}
+			if err := os.WriteFile(outPath, content, 0644); err != nil {
+				return restored, totalBytes, fmt.Errorf("write %s: %w", outPath, err)
+			}
+			restored++
+			totalBytes += int64(len(content))
+			continue
+		}
+
 		f, err := os.Create(outPath)
 		if err != nil {
 			return restored, totalBytes, fmt.Errorf("create %s: %w", outPath, err)
 		}
-		written, err := io.Copy(f, tarReader)
+		written, err := io.Copy(f, tarReader) // nosemgrep: go.lang.security.decompression_bomb.potential-dos-via-decompression-bomb -- extracting cargoship's own archive tar stream
 		_ = f.Close()
 		if err != nil {
 			return restored, totalBytes, fmt.Errorf("write %s: %w", outPath, err)

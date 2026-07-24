@@ -32,6 +32,7 @@ func NewRestoreCmd() *cobra.Command {
 		dryRun         bool
 		maxRestoreCost float64
 		restoreDays    int32
+		noVerify       bool
 	)
 
 	cmd := &cobra.Command{
@@ -110,7 +111,7 @@ Examples:
 			fmt.Printf("✅ Manifest loaded: %d files, %d chunks\n\n", m.TotalFiles, m.TotalChunks)
 
 			maxCacheBytes := cacheGB * 1024 * 1024 * 1024
-			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes)
+			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes).SetVerify(!noVerify)
 
 			// Resolve target paths/keys.
 			var targetPaths []string
@@ -284,6 +285,7 @@ Examples:
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be restored without downloading")
 	cmd.Flags().Float64Var(&maxRestoreCost, "max-restore-cost", 0, "Abort if estimated retrieval cost exceeds this USD amount")
 	cmd.Flags().Int32Var(&restoreDays, "restore-days", 7, "Days to keep Glacier restored copy available")
+	cmd.Flags().BoolVar(&noVerify, "no-verify", false, "Skip restore-time checksum verification (faster, but won't detect corrupted stored data)")
 
 	cmd.AddCommand(newRestoreJobsCmd())
 	return cmd

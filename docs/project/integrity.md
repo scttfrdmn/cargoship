@@ -60,6 +60,16 @@ not a pass. Archives written before checksum capture existed (or with
 waved through.
 :::
 
+### Verify on restore, too
+
+`verify --deep` is an explicit audit, but you don't have to remember to run it
+to be protected on the path that matters most. **`cargoship restore` verifies
+each file's checksum as it writes**, and **refuses to write a file whose stored
+bytes don't match the manifest** — it counts that file as failed rather than
+handing you corrupt data. Files with no recorded checksum restore as before.
+Pass `--no-verify` to skip the check when throughput matters more than catching
+corruption.
+
 ## 2. The format is open — you don't need CargoShip to recover
 
 Integrity you can only check with the tool that wrote the data is weak
@@ -118,9 +128,11 @@ Being explicit about the boundaries is part of the model:
   bytes match what was recorded *at upload time*. It cannot vouch for a file
   that was already corrupt on disk before upload — checksum what matters at the
   source if that is a concern.
-- **Not automatic.** Deep verify re-downloads data and costs GET requests and
-  transfer; it is a command you run (or schedule), not a background guarantee.
-  Run it after an upload you care about, and periodically for long-term
+- **Standalone auditing is not automatic.** Restore verifies as it writes (see
+  above), so the recovery path is guarded by default. But the proactive
+  `verify --deep` audit — re-downloading data to catch bitrot *before* you need
+  a restore — costs GET requests and transfer and is a command you run (or
+  schedule), not a background process. Run it periodically for long-term
   archives.
 
 ## Verifying for yourself

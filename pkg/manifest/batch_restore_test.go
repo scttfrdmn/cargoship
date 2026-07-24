@@ -440,3 +440,129 @@ func TestBatchRestore_ChunkedFullURLS3Key(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, fileContent, got)
 }
+
+// --- Failure injection: restore must detect and refuse corrupt data (#270) ---
+
+// TestBatchRestore_Direct_DetectsCorruption verifies restore fails a
+// direct-upload file whose stored object no longer matches the recorded
+// checksum, rather than silently writing the corrupt bytes.
+func TestBatchRestore_Direct_DetectsCorruption(t *testing.T) {
+	good := []byte("the original file content")
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "none",
+		ChecksumAlgorithm: ChecksumAlgorithmSHA256, TotalChunks: 0,
+		Files: []FileEntry{{
+			Path: "/abs/src/file.txt", Size: int64(len(good)),
+			S3Key: "archives/file.txt", Checksum: sha256hex(good),
+		}},
+	}
+	m.TotalFiles = 1
+	// Object in S3 is CORRUPTED (does not match the recorded checksum).
+	client := &mockS3Client{chunks: map[string][]byte{"archives/file.txt": []byte("TAMPERED content!!")}}
+
+	se := NewSelectiveExtractor(m, client, 0)
+	dest := t.TempDir()
+	stats, err := se.BatchRestore(context.Background(), []string{"file.txt"}, dest)
+	require.NoError(t, err) // BatchRestore aggregates per-file failures, not a hard error
+	assert.Equal(t, int64(0), stats.Restored, "corrupt file must not count as restored")
+	assert.Equal(t, int64(1), stats.Failed, "corrupt file must be failed")
+
+	// The corrupt bytes must NOT be on disk.
+	_, statErr := os.Stat(filepath.Join(dest, "file.txt"))
+	assert.True(t, os.IsNotExist(statErr), "corrupt file must not be written to disk")
+}
+
+// TestBatchRestore_Direct_OptOutSkipsVerification confirms SetVerify(false)
+// restores even a mismatching object (opt-out escape hatch).
+func TestBatchRestore_Direct_OptOutSkipsVerification(t *testing.T) {
+	good := []byte("the original file content")
+	tampered := []byte("TAMPERED content!!")
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "none",
+		ChecksumAlgorithm: ChecksumAlgorithmSHA256, TotalChunks: 0,
+		Files: []FileEntry{{Path: "/abs/src/file.txt", Size: int64(len(good)), S3Key: "k", Checksum: sha256hex(good)}},
+	}
+	m.TotalFiles = 1
+	client := &mockS3Client{chunks: map[string][]byte{"k": tampered}}
+
+	se := NewSelectiveExtractor(m, client, 0).SetVerify(false)
+	dest := t.TempDir()
+	stats, err := se.BatchRestore(context.Background(), []string{"file.txt"}, dest)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.Restored, "opt-out restores without verifying")
+	got, _ := os.ReadFile(filepath.Join(dest, "file.txt"))
+	assert.Equal(t, tampered, got)
+}
+
+// TestBatchRestore_Direct_NoChecksumRestores confirms a pre-checksum manifest
+// (no recorded checksum) still restores — verification only guards what it can.
+func TestBatchRestore_Direct_NoChecksumRestores(t *testing.T) {
+	content := []byte("legacy file, no checksum recorded")
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "none", TotalChunks: 0,
+		Files: []FileEntry{{Path: "/abs/src/legacy.txt", Size: int64(len(content)), S3Key: "k"}}, // no Checksum
+	}
+	m.TotalFiles = 1
+	client := &mockS3Client{chunks: map[string][]byte{"k": content}}
+
+	se := NewSelectiveExtractor(m, client, 0)
+	dest := t.TempDir()
+	stats, err := se.BatchRestore(context.Background(), []string{"legacy.txt"}, dest)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.Restored)
+	assert.Equal(t, int64(0), stats.Failed)
+}
+
+// TestBatchRestore_Chunked_DetectsCorruption verifies the chunked path also
+// refuses a file whose extracted content doesn't match the recorded checksum.
+func TestBatchRestore_Chunked_DetectsCorruption(t *testing.T) {
+	good := []byte("chunked original content")
+	tampered := []byte("chunked TAMPERED content")
+	filePath := "/abs/src/report.txt"
+
+	// The chunk actually contains tampered bytes; the manifest records good's hash.
+	chunk := makeTarZst(t, map[string][]byte{filePath: tampered})
+	client := &mockS3Client{chunks: map[string][]byte{"backups/uploads/u/shard-0/chunk-0.tar.zst": chunk}}
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", Prefix: "backups",
+		CompressionType: "zstd", ChecksumAlgorithm: ChecksumAlgorithmSHA256, TotalChunks: 1,
+		Chunks: []ChunkEntry{{ID: 0, S3Key: "backups/uploads/u/shard-0/chunk-0.tar.zst", FileCount: 1, FilePaths: []string{filePath}}},
+		Files:  []FileEntry{{Path: filePath, Size: int64(len(good)), S3Key: "backups/uploads/u/shard-0/chunk-0.tar.zst", Checksum: sha256hex(good)}},
+	}
+	m.TotalFiles = 1
+
+	se := NewSelectiveExtractor(m, client, 0)
+	dest := t.TempDir()
+	stats, err := se.BatchRestore(context.Background(), []string{"report.txt"}, dest)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), stats.Restored, "corrupt chunked file must not restore")
+	assert.Equal(t, int64(1), stats.Failed)
+	_, statErr := os.Stat(filepath.Join(dest, filePath))
+	assert.True(t, os.IsNotExist(statErr), "corrupt chunked file must not be written")
+}
+
+// TestBatchRestore_Chunked_GoodContentVerifies confirms the verifying chunked
+// path still restores correct content byte-for-byte.
+func TestBatchRestore_Chunked_GoodContentVerifies(t *testing.T) {
+	good := []byte("chunked content that matches its checksum")
+	filePath := "/abs/src/ok.txt"
+	chunk := makeTarZst(t, map[string][]byte{filePath: good})
+	client := &mockS3Client{chunks: map[string][]byte{"p/uploads/u/shard-0/chunk-0.tar.zst": chunk}}
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", Prefix: "p",
+		CompressionType: "zstd", ChecksumAlgorithm: ChecksumAlgorithmSHA256, TotalChunks: 1,
+		Chunks: []ChunkEntry{{ID: 0, S3Key: "p/uploads/u/shard-0/chunk-0.tar.zst", FileCount: 1, FilePaths: []string{filePath}}},
+		Files:  []FileEntry{{Path: filePath, Size: int64(len(good)), S3Key: "p/uploads/u/shard-0/chunk-0.tar.zst", Checksum: sha256hex(good)}},
+	}
+	m.TotalFiles = 1
+
+	se := NewSelectiveExtractor(m, client, 0)
+	dest := t.TempDir()
+	stats, err := se.BatchRestore(context.Background(), []string{"ok.txt"}, dest)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.Restored)
+	assert.Equal(t, int64(0), stats.Failed)
+	got, err := os.ReadFile(filepath.Join(dest, filePath))
+	require.NoError(t, err)
+	assert.Equal(t, good, got)
+}
