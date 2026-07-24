@@ -63,6 +63,7 @@ cargoship upload SOURCE_DIR DESTINATION [flags]
       --incremental                      Enable incremental sync: only upload new or changed files
       --interactive                      Enable interactive TUI mode with per-shard progress (Issue #112)
       --kms-key-id string                AWS KMS key ID or ARN for encryption (data chunks encrypted with SSE-KMS)
+      --no-file-checksums                Disable per-file content checksums (faster uploads, but 'verify --deep' can't confirm per-file integrity)
       --optimization                     Enable optimization features (BBR/CUBIC, adaptive staging, BDP) (default true)
       --prev-manifest string             Path to previous manifest JSON (or .json.gz) for incremental sync
       --project string                   Project ID for cost tracking (e.g. 'dvc_cache' for DVC remotes)
