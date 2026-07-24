@@ -400,9 +400,18 @@ func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry,
 		}
 		seen[k] = true
 
+		// Hash exactly the file's declared size via CopyN. The bound guards
+		// against a decompression bomb (a malicious manifest/chunk can't stream
+		// unbounded data through us) and surfaces a truncated entry as a
+		// mismatch. tar.Reader already caps reads at the entry boundary.
 		hasher := sha256.New()
-		if _, err := io.Copy(hasher, tr); err != nil {
-			return nil, fmt.Errorf("hash file %q: %w", hdr.Name, err)
+		if _, err := io.CopyN(hasher, tr, hdr.Size); err != nil {
+			// Short entry (fewer bytes than declared) — record a mismatch and
+			// keep going so the report still covers the remaining files.
+			results = append(results, FileVerifyResult{
+				Path: path, ChunkID: chunk.ID, Expected: exp, Status: ChunkVerifyMismatch,
+			})
+			continue
 		}
 		actual := hex.EncodeToString(hasher.Sum(nil))
 
