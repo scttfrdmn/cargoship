@@ -22,7 +22,12 @@ func ValidateAgainstSchema(manifestJSON []byte) ([]string, error) {
 	if err := json.Unmarshal(SchemaJSON, &schema); err != nil {
 		return nil, fmt.Errorf("parse embedded schema: %w", err)
 	}
-	var doc interface{}
+	// Decoding into interface{} is intentional and required: a schema validator
+	// must inspect an arbitrary, untyped document (including unexpected/extra
+	// fields). Unmarshaling into a typed struct would silently drop exactly the
+	// deviations we exist to detect. The decoded value is only walked/compared,
+	// never used to construct types or drive behavior.
+	var doc interface{} //nolint:gosec // nosemgrep: go.lang.security.deserialization.unsafe-deserialization-interface.go-unsafe-deserialization-interface -- schema validation requires an untyped document; value is only inspected
 	if err := json.Unmarshal(manifestJSON, &doc); err != nil {
 		return nil, fmt.Errorf("parse manifest: %w", err)
 	}
