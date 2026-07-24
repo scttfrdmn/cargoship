@@ -58,6 +58,7 @@ cargoship restore S3_URL OUTPUT_DIR [flags]
   -h, --help                     help for restore
       --json                     Output restore statistics as JSON
       --max-restore-cost float   Abort if estimated retrieval cost exceeds this USD amount
+      --no-verify                Skip restore-time checksum verification (faster, but won't detect corrupted stored data)
   -r, --region string            AWS region (default "us-east-1")
       --restore-days int32       Days to keep Glacier restored copy available (default 7)
       --tier string              Glacier retrieval tier: expedited, standard (default), bulk
