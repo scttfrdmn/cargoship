@@ -27,6 +27,17 @@ All time fields serialize as RFC 3339 / ISO 8601 strings (Go `time.Time`), e.g.
 `2026-07-21T12:34:56Z`.
 :::
 
+::: tip Machine-checkable schema
+A JSON Schema (draft-07) for this manifest ships in the repo at
+[`pkg/manifest/schema.json`](https://github.com/scttfrdmn/cargoship/blob/main/pkg/manifest/schema.json)
+and is embedded as `manifest.SchemaJSON`. It is **drift-checked in CI** against
+the Go structs below (`TestSchemaMatchesStructs`), so the schema, the structs,
+and this page cannot silently diverge. Tooling authors can validate manifests
+against it in any language. An [independent-reader test](https://github.com/scttfrdmn/cargoship/blob/main/pkg/manifest/independent_reader_test.go)
+proves a manifest and a file can be read with only `gzip`, `json`, `tar`, and
+`zstd` — no CargoShip code.
+:::
+
 ## `Manifest` (top level)
 
 ```go
