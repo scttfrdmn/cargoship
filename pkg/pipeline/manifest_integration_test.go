@@ -112,6 +112,15 @@ func TestManifestIntegration_Generation(t *testing.T) {
 	m, err := manifest.FromJSONCompressed(manifestBytes)
 	require.NoError(t, err, "Manifest should deserialize successfully")
 
+	// #274: a REAL uploaded manifest must satisfy the published JSON Schema.
+	// This is the "real output complies with the spec" compliance check —
+	// distinct from the struct↔schema drift test, which only checks shapes.
+	realJSON, err := m.ToJSON()
+	require.NoError(t, err)
+	schemaViolations, err := manifest.ValidateAgainstSchema(realJSON)
+	require.NoError(t, err)
+	assert.Empty(t, schemaViolations, "uploaded manifest must satisfy schema.json; violations: %v", schemaViolations)
+
 	// Verify manifest contents
 	assert.Equal(t, uploadID, m.UploadID, "Upload ID should match")
 	assert.Equal(t, bucket, m.Bucket, "Bucket should match")
