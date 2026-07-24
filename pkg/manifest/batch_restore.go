@@ -366,9 +366,13 @@ func (se *SelectiveExtractor) BatchRestoreByCommit(ctx context.Context, commit, 
 // downloadChunk fetches the S3 object at s3Key from the manifest's bucket and
 // returns its raw bytes.
 func (se *SelectiveExtractor) downloadChunk(ctx context.Context, s3Key string) ([]byte, error) {
+	// Normalize the stored key: some upload paths record ChunkEntry/FileEntry
+	// S3Key as a full URL or a bucket-qualified path (#273), which can't be used
+	// as an object key verbatim. ResolveObjectKey maps all shapes to the real
+	// object key relative to the bucket.
 	out, err := se.s3Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(se.manifest.Bucket),
-		Key:    aws.String(s3Key),
+		Key:    aws.String(ResolveObjectKey(se.manifest.Prefix, se.manifest.Bucket, s3Key)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("S3 GetObject %q: %w", s3Key, err)
