@@ -21,6 +21,11 @@ const (
 	// ManifestVersion is the current manifest format version
 	ManifestVersion = "2.0"
 
+	// ChecksumAlgorithmSHA256 is the hash algorithm recorded in
+	// Manifest.ChecksumAlgorithm for chunk (and per-file) checksums. It matches
+	// the SHA-256 (hex) used by the deduplication index. (#271)
+	ChecksumAlgorithmSHA256 = "sha256"
+
 	// ManifestVersionV1 is the legacy v1.0 manifest format version (backward-compat read-only)
 	ManifestVersionV1 = "1.0"
 
@@ -50,17 +55,18 @@ func NewBuilder(uploadID, sourcePath, bucket, prefix, region string) (*Builder, 
 
 	return &Builder{
 		manifest: &Manifest{
-			Version:    ManifestVersion,
-			UploadID:   uploadID,
-			CreatedAt:  time.Now(),
-			SourcePath: sourcePath,
-			Hostname:   hostname,
-			Bucket:     bucket,
-			Prefix:     prefix,
-			Region:     region,
-			Files:      make([]FileEntry, 0),
-			Chunks:     make([]ChunkEntry, 0),
-			Shards:     make([]ShardEntry, 0),
+			Version:           ManifestVersion,
+			UploadID:          uploadID,
+			CreatedAt:         time.Now(),
+			SourcePath:        sourcePath,
+			Hostname:          hostname,
+			Bucket:            bucket,
+			Prefix:            prefix,
+			Region:            region,
+			ChecksumAlgorithm: ChecksumAlgorithmSHA256,
+			Files:             make([]FileEntry, 0),
+			Chunks:            make([]ChunkEntry, 0),
+			Shards:            make([]ShardEntry, 0),
 		},
 		hostname: hostname,
 	}, nil
@@ -75,29 +81,30 @@ func NewBuilderFromExisting(existing *Manifest) (*Builder, error) {
 
 	// Clone the existing manifest to avoid modifying the original
 	cloned := &Manifest{
-		Version:          existing.Version,
-		UploadID:         existing.UploadID,
-		CreatedAt:        existing.CreatedAt,
-		CompletedAt:      existing.CompletedAt,
-		SourcePath:       existing.SourcePath,
-		Hostname:         hostname, // Use current hostname for resumed portion
-		Bucket:           existing.Bucket,
-		Prefix:           existing.Prefix,
-		Region:           existing.Region,
-		TotalFiles:       existing.TotalFiles,
-		TotalBytes:       existing.TotalBytes,
-		TotalChunks:      existing.TotalChunks,
-		ShardCount:       existing.ShardCount,
-		CompressionType:  existing.CompressionType,
-		CompressionLevel: existing.CompressionLevel,
-		CompressionRatio: existing.CompressionRatio,
-		Files:            append([]FileEntry(nil), existing.Files...),
-		Chunks:           append([]ChunkEntry(nil), existing.Chunks...),
-		Shards:           append([]ShardEntry(nil), existing.Shards...),
-		VersionInfo:      existing.VersionInfo,
-		GitMetadata:      existing.GitMetadata,
-		DVCCompatibility: existing.DVCCompatibility,
-		DVCPipeline:      existing.DVCPipeline,
+		Version:           existing.Version,
+		UploadID:          existing.UploadID,
+		CreatedAt:         existing.CreatedAt,
+		CompletedAt:       existing.CompletedAt,
+		SourcePath:        existing.SourcePath,
+		Hostname:          hostname, // Use current hostname for resumed portion
+		Bucket:            existing.Bucket,
+		Prefix:            existing.Prefix,
+		Region:            existing.Region,
+		TotalFiles:        existing.TotalFiles,
+		TotalBytes:        existing.TotalBytes,
+		TotalChunks:       existing.TotalChunks,
+		ShardCount:        existing.ShardCount,
+		CompressionType:   existing.CompressionType,
+		CompressionLevel:  existing.CompressionLevel,
+		CompressionRatio:  existing.CompressionRatio,
+		ChecksumAlgorithm: existing.ChecksumAlgorithm,
+		Files:             append([]FileEntry(nil), existing.Files...),
+		Chunks:            append([]ChunkEntry(nil), existing.Chunks...),
+		Shards:            append([]ShardEntry(nil), existing.Shards...),
+		VersionInfo:       existing.VersionInfo,
+		GitMetadata:       existing.GitMetadata,
+		DVCCompatibility:  existing.DVCCompatibility,
+		DVCPipeline:       existing.DVCPipeline,
 	}
 
 	return &Builder{
