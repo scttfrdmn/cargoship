@@ -1,10 +1,15 @@
 package pipeline
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"testing"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
 	"github.com/scttfrdmn/cargoship/pkg/compression"
 	"github.com/stretchr/testify/assert"
@@ -542,4 +547,74 @@ func TestArchiverStage_Worker(t *testing.T) {
 		err = stage.Stop()
 		assert.NoError(t, err)
 	})
+}
+
+// TestArchiverStage_Process_NoTruncation is the #275 regression test: it drives
+// a real chunk of multiple files (including highly-compressible content, which
+// exposed the lost-final-flush bug) through Process and asserts every file
+// decodes back to its full declared length with a clean tar EOF. Before the
+// defer-ordering fix, the last file's zstd tail was dropped (short by a block).
+func TestArchiverStage_Process_NoTruncation(t *testing.T) {
+	// Create highly-compressible test files (constant bytes) — the case that
+	// compressed small enough to reveal the truncated final frame.
+	dir := t.TempDir()
+	const nFiles = 5
+	const fileSize = 512 * 1024 // 512KB each
+	var files []chunking.File
+	want := make(map[string]int64)
+	for i := 0; i < nFiles; i++ {
+		content := make([]byte, fileSize)
+		for j := range content {
+			content[j] = byte(i)
+		}
+		path := fmt.Sprintf("%s/file%d.dat", dir, i)
+		require.NoError(t, os.WriteFile(path, content, 0644))
+		files = append(files, chunking.File{Path: path, Size: fileSize})
+		want[path] = fileSize
+	}
+
+	config := &ArchiverConfig{Workers: 2, CompressionType: "zstd"}
+	input := make(chan *Job, 1)
+	output := make(chan *Job, 1)
+	stage, err := NewArchiverStage(config, input, output)
+	require.NoError(t, err)
+	defer func() { _ = stage.Stop() }()
+
+	job := &Job{ID: 0, Chunk: chunking.Chunk{ID: 0, Files: files, TotalSize: nFiles * fileSize}}
+	require.NoError(t, stage.Process(context.Background(), job))
+
+	out := <-output
+	require.NotNil(t, out.Archive)
+
+	// Read the full archive stream, decompress, and confirm every file entry
+	// reads back to its declared size with a clean EOF (no truncation).
+	raw, err := io.ReadAll(out.Archive)
+	require.NoError(t, err)
+	_ = out.Archive.Close()
+
+	dec, err := zstd.NewReader(bytes.NewReader(raw))
+	require.NoError(t, err)
+	defer dec.Close()
+	tr := tar.NewReader(dec)
+
+	got := make(map[string]int64)
+	for {
+		hdr, terr := tr.Next()
+		if terr == io.EOF {
+			break
+		}
+		require.NoError(t, terr, "tar stream must not be truncated")
+		if hdr.Name == ".padding" {
+			continue
+		}
+		n, cerr := io.Copy(io.Discard, tr)
+		require.NoError(t, cerr, "file %q content must not be truncated", hdr.Name)
+		require.Equal(t, hdr.Size, n, "file %q read %d of %d declared bytes", hdr.Name, n, hdr.Size)
+		got[hdr.Name] = n
+	}
+
+	require.Len(t, got, nFiles, "all files must be present in the archive")
+	for path, size := range want {
+		assert.Equal(t, size, got[path], "file %q should be full length", path)
+	}
 }

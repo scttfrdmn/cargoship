@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -206,4 +208,145 @@ func TestDeepVerify_EmptyManifestNotPass(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, res.Passed())
 	assert.Equal(t, 0, res.TotalChunks)
+}
+
+// makeTarZst builds a zstd-compressed tar containing the given name->content
+// entries, for file-level deep-verify tests.
+func makeTarZst(t *testing.T, entries map[string][]byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw, err := zstd.NewWriter(&buf)
+	require.NoError(t, err)
+	tw := tar.NewWriter(zw)
+	for name, content := range entries {
+		require.NoError(t, tw.WriteHeader(&tar.Header{Name: name, Mode: 0644, Size: int64(len(content))}))
+		_, err := tw.Write(content)
+		require.NoError(t, err)
+	}
+	require.NoError(t, tw.Close())
+	require.NoError(t, zw.Close())
+	return buf.Bytes()
+}
+
+// TestVerifyFiles_AllOK verifies per-file checksums match after extraction.
+func TestVerifyFiles_AllOK(t *testing.T) {
+	fileA := []byte("contents of file a")
+	fileB := []byte("contents of file b, longer")
+	chunk := makeTarZst(t, map[string][]byte{"a.txt": fileA, "b.txt": fileB})
+
+	dl := &fakeDownloader{objects: map[string][]byte{"pfx/chunk-0": chunk}}
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "bkt", Prefix: "pfx",
+		CompressionType: "zstd", ChecksumAlgorithm: ChecksumAlgorithmSHA256,
+		Chunks: []ChunkEntry{{ID: 0, S3Key: "chunk-0"}},
+		Files: []FileEntry{
+			{Path: "a.txt", ChunkID: 0, Checksum: sha256hex(fileA)},
+			{Path: "b.txt", ChunkID: 0, Checksum: sha256hex(fileB)},
+		},
+	}
+
+	res, err := NewDeepVerifier(m, dl).VerifyFiles(context.Background())
+	require.NoError(t, err)
+	assert.True(t, res.Passed(), "%+v", res)
+	assert.Equal(t, 2, res.OK)
+	assert.Equal(t, 2, res.TotalFiles)
+}
+
+// TestVerifyFiles_DetectsCorruptedFile flags a file whose content changed even
+// if the surrounding chunk is otherwise readable.
+func TestVerifyFiles_DetectsCorruptedFile(t *testing.T) {
+	good := []byte("the real content")
+	tampered := []byte("the tampered content!!")
+	// Chunk actually stores the tampered bytes; manifest records the good hash.
+	chunk := makeTarZst(t, map[string][]byte{"a.txt": tampered})
+
+	dl := &fakeDownloader{objects: map[string][]byte{"pfx/chunk-0": chunk}}
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "bkt", Prefix: "pfx",
+		CompressionType: "zstd", ChecksumAlgorithm: ChecksumAlgorithmSHA256,
+		Chunks: []ChunkEntry{{ID: 0, S3Key: "chunk-0"}},
+		Files:  []FileEntry{{Path: "a.txt", ChunkID: 0, Checksum: sha256hex(good)}},
+	}
+
+	res, err := NewDeepVerifier(m, dl).VerifyFiles(context.Background())
+	require.NoError(t, err)
+	assert.False(t, res.Passed())
+	assert.Equal(t, 1, res.Mismatched)
+	assert.Equal(t, ChunkVerifyMismatch, res.Files[0].Status)
+}
+
+// TestVerifyFiles_MissingFromChunk flags a manifest file absent from the tar.
+func TestVerifyFiles_MissingFromChunk(t *testing.T) {
+	fileA := []byte("only a is present")
+	chunk := makeTarZst(t, map[string][]byte{"a.txt": fileA})
+
+	dl := &fakeDownloader{objects: map[string][]byte{"pfx/chunk-0": chunk}}
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "bkt", Prefix: "pfx",
+		CompressionType: "zstd", ChecksumAlgorithm: ChecksumAlgorithmSHA256,
+		Chunks: []ChunkEntry{{ID: 0, S3Key: "chunk-0"}},
+		Files: []FileEntry{
+			{Path: "a.txt", ChunkID: 0, Checksum: sha256hex(fileA)},
+			{Path: "b.txt", ChunkID: 0, Checksum: sha256hex([]byte("missing"))},
+		},
+	}
+
+	res, err := NewDeepVerifier(m, dl).VerifyFiles(context.Background())
+	require.NoError(t, err)
+	assert.False(t, res.Passed())
+	assert.Equal(t, 1, res.OK)
+	assert.Equal(t, 1, res.Missing)
+}
+
+// TestVerifyFiles_Unverifiable flags a file with no recorded checksum.
+func TestVerifyFiles_Unverifiable(t *testing.T) {
+	fileA := []byte("content")
+	chunk := makeTarZst(t, map[string][]byte{"a.txt": fileA})
+
+	dl := &fakeDownloader{objects: map[string][]byte{"pfx/chunk-0": chunk}}
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "bkt", Prefix: "pfx",
+		CompressionType: "zstd", ChecksumAlgorithm: ChecksumAlgorithmSHA256,
+		Chunks: []ChunkEntry{{ID: 0, S3Key: "chunk-0"}},
+		Files:  []FileEntry{{Path: "a.txt", ChunkID: 0, Checksum: ""}}, // no checksum
+	}
+
+	res, err := NewDeepVerifier(m, dl).VerifyFiles(context.Background())
+	require.NoError(t, err)
+	assert.False(t, res.Passed())
+	assert.Equal(t, 1, res.Unverifiable)
+}
+
+// TestVerifyFiles_SkipsDuplicates verifies deduplicated files aren't counted
+// (they don't have their own stored bytes).
+func TestVerifyFiles_SkipsDuplicates(t *testing.T) {
+	fileA := []byte("original")
+	chunk := makeTarZst(t, map[string][]byte{"a.txt": fileA})
+	dl := &fakeDownloader{objects: map[string][]byte{"pfx/chunk-0": chunk}}
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "bkt", Prefix: "pfx",
+		CompressionType: "zstd", ChecksumAlgorithm: ChecksumAlgorithmSHA256,
+		Chunks: []ChunkEntry{{ID: 0, S3Key: "chunk-0"}},
+		Files: []FileEntry{
+			{Path: "a.txt", ChunkID: 0, Checksum: sha256hex(fileA)},
+			{Path: "dup.txt", ChunkID: 0, IsDuplicate: true, Checksum: sha256hex(fileA)},
+		},
+	}
+	res, err := NewDeepVerifier(m, dl).VerifyFiles(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 1, res.TotalFiles, "duplicate excluded")
+	assert.True(t, res.Passed())
+}
+
+// TestTarNameToFileKey covers whole-file and split-part name parsing.
+func TestTarNameToFileKey(t *testing.T) {
+	p, part, isPart := tarNameToFileKey("dir/file.bin")
+	assert.Equal(t, "dir/file.bin", p)
+	assert.Equal(t, 0, part)
+	assert.False(t, isPart)
+
+	p, part, isPart = tarNameToFileKey("dir/big.bin.part3")
+	assert.Equal(t, "dir/big.bin", p)
+	assert.Equal(t, 3, part)
+	assert.True(t, isPart)
 }

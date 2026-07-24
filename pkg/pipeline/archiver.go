@@ -3,6 +3,8 @@ package pipeline
 import (
 	"archive/tar"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -479,16 +481,6 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 
 	// Archive creation goroutine
 	go func() {
-		defer func() {
-			_ = pw.Close()
-			// Issue #105: Return encoder to correct pool after work is done
-			if encoder != nil && encoderPool != nil {
-				// Close encoder to flush data, then return to pool
-				_ = encoder.Close()
-				encoderPool.Put(encoder)
-			}
-		}()
-
 		var tw *tar.Writer
 
 		if useCompression {
@@ -506,14 +498,32 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 			atomic.AddInt64(&s.compressionTimeSaved, estimatedTimeSaved)
 		}
 
-		// Close tar writer to flush all data
+		// Close in the correct order so the FULL stream is flushed before the
+		// reader (uploader) sees EOF (#275). Defers run LIFO, so this registers
+		// the close chain that must run bottom-up: (1) flush the tar into the
+		// encoder, (2) flush/close the encoder into the pipe, (3) close the
+		// pipe. Closing pw before the encoder flushes its final zstd frame
+		// truncates the last file — the bug this ordering fixes.
+		defer func() {
+			_ = pw.Close() // (3) runs last: reader gets EOF only after all data
+		}()
+		if useCompression {
+			defer func() {
+				// (2) flush the encoder's final frame into pw, then return it.
+				_ = encoder.Close()
+				if encoderPool != nil {
+					encoderPool.Put(encoder)
+				}
+			}()
+		}
+		// (1) runs first: flush all tar data into the encoder/pipe.
 		defer func() {
 			_ = tw.Close()
 		}()
 
 		// Add all files to archive with parallel I/O optimization
 		var totalSize int64
-		if err := s.addFilesWithParallelIO(tw, job.Chunk.Files, &totalSize); err != nil {
+		if err := s.addFilesWithParallelIO(tw, job, job.Chunk.Files, &totalSize); err != nil {
 			_ = pw.CloseWithError(err)
 			return
 		}
@@ -706,11 +716,11 @@ type fileData struct {
 // addFilesWithParallelIO adds files to archive with parallel I/O optimization
 // Files are read in parallel by a worker pool, but written to tar sequentially
 // to maintain tar format integrity. This provides 4-8x speedup for I/O bound workloads.
-func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, files []chunking.File, totalSize *int64) error {
+func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, job *Job, files []chunking.File, totalSize *int64) error {
 	// For very small file counts, parallel I/O overhead isn't worth it
 	if len(files) < 3 {
 		for _, file := range files {
-			if err := s.addFileToArchiveWithMetadata(tw, file); err != nil {
+			if err := s.addFileToArchiveWithMetadata(tw, job, file); err != nil {
 				return err
 			}
 			*totalSize += file.Size
@@ -850,7 +860,7 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, files []chunking.
 		}
 
 		// Write to tar sequentially (fast, data already in memory)
-		if err := s.addFileToArchiveFromMemoryWithMetadata(tw, fd.File, fd.Info, fd.Data); err != nil {
+		if err := s.addFileToArchiveFromMemoryWithMetadata(tw, job, fd.File, fd.Info, fd.Data); err != nil {
 			close(fileChan)
 			return err
 		}
@@ -878,7 +888,7 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, files []chunking.
 
 // addFileToArchiveWithMetadata adds a file to archive with full metadata support (Phase 5)
 // Supports partial file reads with offset/length for split files
-func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, file chunking.File) error {
+func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, job *Job, file chunking.File) error {
 	// Open file
 	f, err := os.Open(file.Path)
 	if err != nil {
@@ -937,16 +947,47 @@ func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, file chunki
 		return fmt.Errorf("failed to write tar header: %w", err)
 	}
 
-	// Copy file content with length limit (platform-specific zero-copy)
-	if err := s.copyFileToArchive(tw, f, length); err != nil {
-		return fmt.Errorf("failed to write file content: %w", err)
+	// Copy file content with length limit. When per-file checksums are enabled
+	// (#271) we hash the content as it's copied. This routes through a
+	// TeeReader, which bypasses the platform zero-copy (splice/sendfile) path —
+	// an accepted trade for the integrity guarantee, and this small-chunk
+	// (<3 files) branch is not the throughput-critical path (that's the
+	// in-memory parallel path). With checksums off, the fast path is unchanged.
+	if job != nil && s.config.FileChecksums {
+		hasher := sha256.New()
+		if err := s.copyFileToArchivePlain(tw, io.TeeReader(io.LimitReader(f, length), hasher)); err != nil {
+			return fmt.Errorf("failed to write file content: %w", err)
+		}
+		job.SetFileChecksum(fileChecksumKey(file), hex.EncodeToString(hasher.Sum(nil)))
+	} else {
+		if err := s.copyFileToArchive(tw, f, length); err != nil {
+			return fmt.Errorf("failed to write file content: %w", err)
+		}
 	}
 
 	return nil
 }
 
+// copyFileToArchivePlain copies from an arbitrary reader (e.g. a TeeReader used
+// for checksumming) to the tar writer. Unlike copyFileToArchive it can't use
+// the platform zero-copy path because the source isn't a plain *os.File.
+func (s *ArchiverStage) copyFileToArchivePlain(tw *tar.Writer, r io.Reader) error {
+	_, err := io.Copy(tw, r)
+	return err
+}
+
+// fileChecksumKey returns the map key under which a file's (or split part's)
+// content hash is recorded on the job. Whole files key by path; split-file
+// parts key by "path#partIndex" so each part's hash is distinct (#271).
+func fileChecksumKey(file chunking.File) string {
+	if file.TotalParts > 1 {
+		return fmt.Sprintf("%s#%d", file.Path, file.PartIndex)
+	}
+	return file.Path
+}
+
 // addFileToArchiveFromMemoryWithMetadata adds a file to tar from in-memory data with metadata (Phase 5)
-func (s *ArchiverStage) addFileToArchiveFromMemoryWithMetadata(tw *tar.Writer, file chunking.File, info os.FileInfo, data []byte) error {
+func (s *ArchiverStage) addFileToArchiveFromMemoryWithMetadata(tw *tar.Writer, job *Job, file chunking.File, info os.FileInfo, data []byte) error {
 	// Create tar header
 	header, err := tar.FileInfoHeader(info, "")
 	if err != nil {
@@ -980,6 +1021,13 @@ func (s *ArchiverStage) addFileToArchiveFromMemoryWithMetadata(tw *tar.Writer, f
 	// Write data from memory
 	if _, err := tw.Write(data); err != nil {
 		return fmt.Errorf("failed to write file content: %w", err)
+	}
+
+	// #271: the file content is already in memory here, so hashing is a single
+	// extra pass with no additional I/O.
+	if job != nil && s.config.FileChecksums {
+		sum := sha256.Sum256(data)
+		job.SetFileChecksum(fileChecksumKey(file), hex.EncodeToString(sum[:]))
 	}
 
 	return nil

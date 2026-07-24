@@ -77,6 +77,7 @@ func TestManifestIntegration_Generation(t *testing.T) {
 		UploadID:          uploadID,
 		EnableMultiPrefix: true,
 		ShardCount:        4,
+		FileChecksums:     true, // #271: capture per-file content checksums
 	}
 
 	// Create and run pipeline
@@ -157,6 +158,22 @@ func TestManifestIntegration_Generation(t *testing.T) {
 		"deep verify should pass on fresh upload: %d OK, %d mismatched, %d missing, %d unverifiable",
 		deepRes.OK, deepRes.Mismatched, deepRes.Missing, deepRes.Unverifiable)
 	assert.Equal(t, len(m.Chunks), deepRes.OK, "every chunk should verify OK")
+
+	// #271 part 2: per-file content checksums. Every non-duplicate file should
+	// carry a checksum captured during archiving, and file-level deep verify
+	// (extract each file, recompute its hash) should PASS on the fresh upload.
+	for i, f := range m.Files {
+		if f.IsDuplicate {
+			continue
+		}
+		assert.NotEmpty(t, f.Checksum, "file %d (%s) should have a content checksum", i, f.Path)
+		assert.Len(t, f.Checksum, 64, "file %d checksum should be a hex SHA-256", i)
+	}
+	fileRes, err := manifest.NewDeepVerifier(m, s3Client).VerifyFiles(ctx)
+	require.NoError(t, err)
+	assert.True(t, fileRes.Passed(),
+		"file-level deep verify should pass on fresh upload: %d OK, %d mismatched, %d missing, %d unverifiable",
+		fileRes.OK, fileRes.Mismatched, fileRes.Missing, fileRes.Unverifiable)
 
 	// #271: corruption is detected. Overwrite one chunk object with garbage and
 	// confirm deep verify now FAILS with a mismatch on that chunk. Derive the

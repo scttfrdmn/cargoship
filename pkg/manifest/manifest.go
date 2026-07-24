@@ -261,6 +261,33 @@ func (b *Builder) UpdateFileS3Keys(chunkID int, shardID int, s3Key string) {
 	}
 }
 
+// SetFileChecksums records per-file content hashes into the matching FileEntry
+// records for the given chunk (#271). Keys are FileEntry.Path, or "path#part"
+// for split-file parts; a whole-file key sets Checksum on every entry with that
+// path in the chunk, while a "path#part" key sets it on the matching part.
+// Files not present in the map are left unchanged (e.g. checksums disabled).
+func (b *Builder) SetFileChecksums(chunkID int, checksums map[string]string) {
+	if len(checksums) == 0 {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	for i := range b.manifest.Files {
+		f := &b.manifest.Files[i]
+		if f.ChunkID != chunkID {
+			continue
+		}
+		key := f.Path
+		if f.TotalParts > 1 {
+			key = fmt.Sprintf("%s#%d", f.Path, f.PartIndex)
+		}
+		if sum, ok := checksums[key]; ok {
+			f.Checksum = sum
+		}
+	}
+}
+
 // UpdateFileS3KeyByPath updates the S3Key, ShardID, and ChunkID for the single
 // FileEntry whose SourcePath matches path. Used by direct upload mode where each
 // file has its own S3 key (unlike chunk-based mode where all files in a chunk

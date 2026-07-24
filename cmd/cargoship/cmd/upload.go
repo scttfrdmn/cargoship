@@ -584,6 +584,9 @@ Examples:
 				PartialManifestSaveInterval: 30 * time.Second,
 				SourcePath:                  absPath,
 
+				// #271: per-file content checksums (on by default; --no-file-checksums opts out)
+				FileChecksums: func() bool { v, _ := cmd.Flags().GetBool("no-file-checksums"); return !v }(),
+
 				// Cleanup on failure
 				CleanupOnFailure: true,
 
@@ -832,6 +835,7 @@ Examples:
 
 	// Issue #108: Deduplication flag
 	cmd.Flags().Bool("enable-dedup", false, "Enable cross-shard file deduplication (10-30% space savings for redundant datasets)")
+	cmd.Flags().Bool("no-file-checksums", false, "Disable per-file content checksums (faster uploads, but 'verify --deep' can't confirm per-file integrity)")
 
 	// Issue #119: Resume configuration
 	cmd.Flags().BoolVar(&forceRestart, "force-restart", false, "Ignore saved state and start fresh upload (bypasses resume detection)")
