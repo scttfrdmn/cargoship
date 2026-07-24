@@ -383,7 +383,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 			// Update file entries with S3 key and shard ID
 			builder.UpdateFileS3Keys(job.Chunk.ID, shardID, job.S3Key)
 
-			// Add chunk entry
+			// Add chunk entry (#271: record the SHA-256 of the uploaded archive)
 			builder.AddChunk(manifest.ChunkEntry{
 				ID:               job.Chunk.ID,
 				ShardID:          shardID,
@@ -394,6 +394,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 				CompressedSize:   atomic.LoadInt64(&job.ArchiveSize),
 				CreatedAt:        job.StartTime,
 				UploadedAt:       job.EndTime,
+				Checksum:         job.ArchiveChecksum(),
 			})
 
 			// Update shard stats
@@ -440,6 +441,15 @@ func (s *S3MultiPrefixUploaderStage) uploadToS3(ctx context.Context, job *Job) e
 	s3Key := job.S3Key
 	if s.config.Prefix != "" {
 		s3Key = s.config.Prefix + "/" + job.S3Key
+	}
+
+	// #271: wrap the archive stream so we hash the exact bytes uploaded to S3.
+	// Both upload paths (transporter, manager) read job.Archive, so wrapping
+	// here covers both. The digest is finalized once the stream is consumed and
+	// is read into ChunkEntry.Checksum after a successful upload.
+	if job.Archive != nil && job.archiveHasher == nil {
+		job.archiveHasher = newHashingReadCloser(job.Archive)
+		job.Archive = job.archiveHasher
 	}
 
 	// Prepare metadata

@@ -39,6 +39,11 @@ type Manifest struct {
 	CompressionLevel int     `json:"compression_level"` // Compression level used
 	CompressionRatio float64 `json:"compression_ratio"` // Actual compression ratio achieved
 
+	// ChecksumAlgorithm names the hash used for chunk (and per-file) checksums,
+	// e.g. "sha256" (#271). Empty on manifests written before checksum capture
+	// existed; verify --deep treats those as unverifiable rather than assuming.
+	ChecksumAlgorithm string `json:"checksum_algorithm,omitempty"`
+
 	// Encryption (Issue #163)
 	Encryption *EncryptionMetadata `json:"encryption,omitempty"` // Encryption configuration if enabled
 

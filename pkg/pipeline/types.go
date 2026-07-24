@@ -37,6 +37,20 @@ type Job struct {
 	pipeReader *BufferedPipeReader // Reader side of pipe (for pool cleanup)
 	pipeWriter *BufferedPipeWriter // Writer side of pipe (for pool cleanup)
 	pipePool   *BufferedPipePool   // Pool to return pipe to after upload
+
+	// #271: SHA-256 of the compressed archive stream, computed as the uploader
+	// reads job.Archive. Valid only after the upload has consumed the stream;
+	// read via ArchiveChecksum(). Nil when checksum capture isn't wired.
+	archiveHasher *hashingReadCloser
+}
+
+// ArchiveChecksum returns the hex SHA-256 of the uploaded archive stream, or ""
+// if no checksum was captured for this job. Call only after upload completes.
+func (j *Job) ArchiveChecksum() string {
+	if j.archiveHasher == nil {
+		return ""
+	}
+	return j.archiveHasher.Sum()
 }
 
 // Stage represents a pipeline stage

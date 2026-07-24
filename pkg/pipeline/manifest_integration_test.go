@@ -3,6 +3,7 @@
 package pipeline
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -138,6 +139,40 @@ func TestManifestIntegration_Generation(t *testing.T) {
 		assert.Greater(t, chunk.UncompressedSize, int64(0), "Chunk %d should have uncompressed size", i)
 		assert.Greater(t, chunk.CompressedSize, int64(0), "Chunk %d should have compressed size", i)
 	}
+
+	// #271: chunk-level checksum capture. The manifest must record the
+	// algorithm, and every chunk must carry a checksum populated during upload.
+	assert.Equal(t, manifest.ChecksumAlgorithmSHA256, m.ChecksumAlgorithm,
+		"manifest should record the checksum algorithm")
+	for i, chunk := range m.Chunks {
+		assert.NotEmpty(t, chunk.Checksum, "Chunk %d should have a checksum captured on upload", i)
+		assert.Len(t, chunk.Checksum, 64, "Chunk %d checksum should be a hex SHA-256", i)
+	}
+
+	// #271: deep verify should PASS against the freshly-uploaded objects —
+	// re-download each chunk, recompute SHA-256, compare to the manifest.
+	deepRes, err := manifest.NewDeepVerifier(m, s3Client).VerifyChunks(ctx)
+	require.NoError(t, err)
+	assert.True(t, deepRes.Passed(),
+		"deep verify should pass on fresh upload: %d OK, %d mismatched, %d missing, %d unverifiable",
+		deepRes.OK, deepRes.Mismatched, deepRes.Missing, deepRes.Unverifiable)
+	assert.Equal(t, len(m.Chunks), deepRes.OK, "every chunk should verify OK")
+
+	// #271: corruption is detected. Overwrite one chunk object with garbage and
+	// confirm deep verify now FAILS with a mismatch on that chunk. Derive the
+	// object key the same way deep verify does (S3Key may be a full URL).
+	corruptKey := manifest.ResolveObjectKey(m.Prefix, bucket, m.Chunks[0].S3Key)
+	_, err = s3Client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(corruptKey),
+		Body:   bytes.NewReader([]byte("this is not the original archive")),
+	})
+	require.NoError(t, err, "should be able to overwrite chunk object for corruption test")
+
+	corruptRes, err := manifest.NewDeepVerifier(m, s3Client).VerifyChunks(ctx)
+	require.NoError(t, err)
+	assert.False(t, corruptRes.Passed(), "deep verify must fail after a chunk is corrupted")
+	assert.GreaterOrEqual(t, corruptRes.Mismatched, 1, "the corrupted chunk should be flagged as a mismatch")
 
 	// Verify shard statistics
 	totalFilesInShards := int64(0)

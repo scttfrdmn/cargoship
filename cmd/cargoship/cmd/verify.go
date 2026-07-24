@@ -24,6 +24,7 @@ func NewVerifyCmd() *cobra.Command {
 		region   string
 		quick    bool
 		verbose  bool
+		deep     bool
 	)
 
 	cmd := &cobra.Command{
@@ -189,7 +190,18 @@ Exit Codes:
 					fmt.Println()
 				}
 
+				// Deep verification (#271): re-download stored objects and
+				// recompute checksums to confirm the DATA matches the manifest,
+				// not just that the manifest is internally consistent.
+				if deep {
+					if err := runDeepVerify(ctx, s3Client, m, verbose); err != nil {
+						os.Exit(1)
+					}
+					return nil
+				}
+
 				fmt.Printf("✅ All %s files verified successfully\n", humanize.Comma(m.TotalFiles))
+				fmt.Printf("   💡 Run with --deep to re-download and checksum the stored data\n")
 				return nil
 			}
 
@@ -243,6 +255,57 @@ Exit Codes:
 	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region")
 	cmd.Flags().BoolVar(&quick, "quick", false, "Quick validation (metadata only, fast)")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "Show detailed error and warning information")
+	cmd.Flags().BoolVar(&deep, "deep", false, "Deep verification: re-download stored objects and recompute checksums against the manifest (data-level integrity)")
 
 	return cmd
+}
+
+// runDeepVerify re-downloads each chunk object, recomputes its checksum, and
+// compares it to the manifest. It prints a per-chunk report and returns an
+// error if any chunk is corrupted, missing, or unverifiable (#271).
+func runDeepVerify(ctx context.Context, s3Client manifest.S3Downloader, m *manifest.Manifest, verbose bool) error {
+	fmt.Printf("🔬 Deep verification: re-downloading and checksumming stored data...\n")
+	if m.ChecksumAlgorithm == "" {
+		fmt.Printf("⚠️  This manifest predates checksum capture (no algorithm recorded).\n")
+		fmt.Printf("    Deep verify cannot confirm data integrity for it.\n\n")
+	} else {
+		fmt.Printf("   Algorithm: %s | Chunks: %d\n\n", m.ChecksumAlgorithm, len(m.Chunks))
+	}
+
+	verifier := manifest.NewDeepVerifier(m, s3Client)
+	result, err := verifier.VerifyChunks(ctx)
+	if err != nil {
+		fmt.Printf("❌ Deep verification aborted: %v\n", err)
+		return err
+	}
+
+	if verbose || !result.Passed() {
+		for _, c := range result.Chunks {
+			switch c.Status {
+			case manifest.ChunkVerifyOK:
+				if verbose {
+					fmt.Printf("   ✓ chunk %d (%s)\n", c.ChunkID, c.S3Key)
+				}
+			case manifest.ChunkVerifyMismatch:
+				fmt.Printf("   ✗ chunk %d CORRUPTED: expected %s, got %s\n", c.ChunkID, c.Expected, c.Actual)
+			case manifest.ChunkVerifyMissing:
+				fmt.Printf("   ✗ chunk %d MISSING: %s (%s)\n", c.ChunkID, c.S3Key, c.Err)
+			case manifest.ChunkVerifyUnverifiable:
+				fmt.Printf("   ⚠ chunk %d UNVERIFIABLE: no checksum recorded\n", c.ChunkID)
+			}
+		}
+		fmt.Println()
+	}
+
+	fmt.Printf("📊 Deep Verify: %d OK, %d corrupted, %d missing, %d unverifiable (of %d chunks)\n",
+		result.OK, result.Mismatched, result.Missing, result.Unverifiable, result.TotalChunks)
+
+	if result.Passed() {
+		fmt.Printf("✅ Deep verification PASS — all %d chunk objects match the manifest\n", result.TotalChunks)
+		return nil
+	}
+
+	fmt.Printf("❌ Deep verification FAIL\n")
+	return fmt.Errorf("deep verification failed: %d corrupted, %d missing, %d unverifiable",
+		result.Mismatched, result.Missing, result.Unverifiable)
 }
