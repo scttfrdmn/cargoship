@@ -44,6 +44,7 @@ cargoship verify [s3://bucket/prefix/uploads/upload-id] [flags]
 
 ```
   -b, --bucket string      S3 bucket name (or provide S3 URL as argument)
+      --deep               Deep verification: re-download stored objects and recompute checksums against the manifest (data-level integrity)
   -h, --help               help for verify
   -p, --prefix string      S3 prefix for upload (default: empty)
       --quick              Quick validation (metadata only, fast)
