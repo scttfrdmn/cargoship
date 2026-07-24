@@ -300,12 +300,52 @@ func runDeepVerify(ctx context.Context, s3Client manifest.S3Downloader, m *manif
 	fmt.Printf("📊 Deep Verify: %d OK, %d corrupted, %d missing, %d unverifiable (of %d chunks)\n",
 		result.OK, result.Mismatched, result.Missing, result.Unverifiable, result.TotalChunks)
 
-	if result.Passed() {
-		fmt.Printf("✅ Deep verification PASS — all %d chunk objects match the manifest\n", result.TotalChunks)
+	chunksPassed := result.Passed()
+	if chunksPassed {
+		fmt.Printf("✅ Chunk objects PASS — all %d chunk objects match the manifest\n", result.TotalChunks)
+	} else {
+		fmt.Printf("❌ Chunk verification FAIL\n")
+	}
+
+	// File-level verification: extract each file and confirm its content hash.
+	// Proves end-to-end source->restore identity, not just object integrity.
+	fmt.Printf("\n🔬 Verifying per-file content checksums...\n")
+	fileRes, ferr := verifier.VerifyFiles(ctx)
+	if ferr != nil {
+		fmt.Printf("❌ File verification aborted: %v\n", ferr)
+		return ferr
+	}
+
+	if verbose || !fileRes.Passed() {
+		for _, f := range fileRes.Files {
+			switch f.Status {
+			case manifest.ChunkVerifyMismatch:
+				fmt.Printf("   ✗ %s CORRUPTED: expected %s, got %s\n", f.Path, f.Expected, f.Actual)
+			case manifest.ChunkVerifyMissing:
+				fmt.Printf("   ✗ %s MISSING from its chunk\n", f.Path)
+			case manifest.ChunkVerifyUnverifiable:
+				fmt.Printf("   ⚠ %s UNVERIFIABLE: no checksum recorded\n", f.Path)
+			case manifest.ChunkVerifyOK:
+				if verbose {
+					fmt.Printf("   ✓ %s\n", f.Path)
+				}
+			}
+		}
+		fmt.Println()
+	}
+
+	fmt.Printf("📊 File Verify: %d OK, %d corrupted, %d missing, %d unverifiable (of %d files)\n",
+		fileRes.OK, fileRes.Mismatched, fileRes.Missing, fileRes.Unverifiable, fileRes.TotalFiles)
+
+	filesPassed := fileRes.Passed()
+	if chunksPassed && filesPassed {
+		fmt.Printf("✅ Deep verification PASS — %d chunks and %d files match the manifest\n",
+			result.TotalChunks, fileRes.TotalFiles)
 		return nil
 	}
 
 	fmt.Printf("❌ Deep verification FAIL\n")
-	return fmt.Errorf("deep verification failed: %d corrupted, %d missing, %d unverifiable",
-		result.Mismatched, result.Missing, result.Unverifiable)
+	return fmt.Errorf("deep verification failed: chunks(%d corrupted, %d missing, %d unverifiable) files(%d corrupted, %d missing, %d unverifiable)",
+		result.Mismatched, result.Missing, result.Unverifiable,
+		fileRes.Mismatched, fileRes.Missing, fileRes.Unverifiable)
 }

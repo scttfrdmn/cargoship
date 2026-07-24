@@ -1,6 +1,9 @@
 package manifest
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,6 +14,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/klauspost/compress/zstd"
 )
 
 // ChunkVerifyStatus is the outcome of deep-verifying a single chunk object.
@@ -190,4 +194,237 @@ func (dv *DeepVerifier) verifyChunk(ctx context.Context, chunk *ChunkEntry) Chun
 		cr.Status = ChunkVerifyMismatch
 	}
 	return cr
+}
+
+// fileKey identifies a file (or split-file part) for checksum lookup.
+type fileKey struct {
+	path string
+	part int
+}
+
+// FileVerifyResult is the per-file outcome of file-level deep verification.
+type FileVerifyResult struct {
+	Path     string            `json:"path"`
+	ChunkID  int               `json:"chunk_id"`
+	Status   ChunkVerifyStatus `json:"status"` // reuses ok/mismatch/missing/unverifiable
+	Expected string            `json:"expected,omitempty"`
+	Actual   string            `json:"actual,omitempty"`
+}
+
+// FileVerifyResult aggregate.
+type FilesVerifyResult struct {
+	Algorithm    string             `json:"algorithm"`
+	TotalFiles   int                `json:"total_files"`
+	OK           int                `json:"ok"`
+	Mismatched   int                `json:"mismatched"`
+	Missing      int                `json:"missing"`
+	Unverifiable int                `json:"unverifiable"`
+	Files        []FileVerifyResult `json:"files"`
+}
+
+// Passed reports a clean file-level pass: every file hashed and matched.
+func (r *FilesVerifyResult) Passed() bool {
+	return r.Mismatched == 0 && r.Missing == 0 && r.Unverifiable == 0 && r.TotalFiles > 0
+}
+
+// tarNameToFileKey maps a tar entry name back to the key used in the manifest's
+// FileEntry checksum lookup. Split-file parts are stored under "path.partN" in
+// the tar (see archiver), which correspond to FileEntry{Path, PartIndex}. Whole
+// files use the plain path.
+func tarNameToFileKey(tarName string) (path string, partIndex int, isPart bool) {
+	if i := strings.LastIndex(tarName, ".part"); i >= 0 {
+		var p int
+		if _, err := fmt.Sscanf(tarName[i+len(".part"):], "%d", &p); err == nil {
+			return tarName[:i], p, true
+		}
+	}
+	return tarName, 0, false
+}
+
+// VerifyFiles re-downloads each chunk, extracts every file, recomputes its
+// content SHA-256, and compares to FileEntry.Checksum (#271). This is the
+// end-to-end source->restore integrity check: it proves each restored file's
+// bytes match what was recorded at upload, not merely that the chunk object is
+// intact. Files whose FileEntry carries no checksum are reported unverifiable.
+func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, error) {
+	result := &FilesVerifyResult{Algorithm: dv.manifest.ChecksumAlgorithm}
+
+	// Index expected checksums by (path, partIndex).
+	expected := make(map[fileKey]string)
+	for _, f := range dv.manifest.Files {
+		if f.IsDuplicate {
+			continue // deduplicated files aren't stored in a chunk of their own
+		}
+		expected[fileKey{f.Path, f.PartIndex}] = f.Checksum
+		result.TotalFiles++
+	}
+
+	// Group files by chunk so we download each chunk object once.
+	byChunk := make(map[int]bool)
+	for _, f := range dv.manifest.Files {
+		if !f.IsDuplicate {
+			byChunk[f.ChunkID] = true
+		}
+	}
+	chunkIDs := make([]int, 0, len(byChunk))
+	for id := range byChunk {
+		chunkIDs = append(chunkIDs, id)
+	}
+	sort.Ints(chunkIDs)
+
+	seen := make(map[fileKey]bool)
+
+	for _, chunkID := range chunkIDs {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		chunk := dv.chunkByID(chunkID)
+		if chunk == nil {
+			continue
+		}
+		fileResults, err := dv.verifyChunkFiles(ctx, chunk, expected, seen)
+		if err != nil {
+			// Chunk object unreadable: every file in it is missing.
+			for _, f := range dv.manifest.Files {
+				if f.ChunkID == chunkID && !f.IsDuplicate {
+					result.Files = append(result.Files, FileVerifyResult{
+						Path: f.Path, ChunkID: chunkID, Status: ChunkVerifyMissing,
+					})
+					result.Missing++
+				}
+			}
+			continue
+		}
+		for _, fr := range fileResults {
+			switch fr.Status {
+			case ChunkVerifyOK:
+				result.OK++
+			case ChunkVerifyMismatch:
+				result.Mismatched++
+			case ChunkVerifyUnverifiable:
+				result.Unverifiable++
+			}
+			result.Files = append(result.Files, fr)
+		}
+	}
+
+	// Any expected file we never saw in its chunk's tar is missing.
+	for _, f := range dv.manifest.Files {
+		if f.IsDuplicate {
+			continue
+		}
+		k := fileKey{f.Path, f.PartIndex}
+		if !seen[k] {
+			result.Files = append(result.Files, FileVerifyResult{
+				Path: f.Path, ChunkID: f.ChunkID, Status: ChunkVerifyMissing,
+			})
+			result.Missing++
+		}
+	}
+
+	return result, nil
+}
+
+// chunkByID returns the chunk with the given ID, or nil.
+func (dv *DeepVerifier) chunkByID(id int) *ChunkEntry {
+	for i := range dv.manifest.Chunks {
+		if dv.manifest.Chunks[i].ID == id {
+			return &dv.manifest.Chunks[i]
+		}
+	}
+	return nil
+}
+
+// verifyChunkFiles downloads one chunk, walks its tar, and hashes each file
+// entry, comparing to the expected checksums. It marks seen keys so the caller
+// can detect files that never appeared.
+func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry, expected map[fileKey]string, seen map[fileKey]bool) ([]FileVerifyResult, error) {
+	output, err := dv.s3Client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(dv.manifest.Bucket),
+		Key:    aws.String(dv.objectKey(chunk.S3Key)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get chunk object: %w", err)
+	}
+	// Buffer the compressed object before decompressing. The tar/zstd readers
+	// need the complete stream; reading directly from the S3 body can surface a
+	// premature "unexpected EOF" on some endpoints. Chunk objects are bounded
+	// (target sizes are tens of MB), so this stays memory-safe.
+	objectBytes, err := io.ReadAll(output.Body)
+	_ = output.Body.Close()
+	if err != nil {
+		return nil, fmt.Errorf("read chunk object: %w", err)
+	}
+	body := bytes.NewReader(objectBytes)
+
+	var decompressed io.Reader
+	switch dv.manifest.CompressionType {
+	case "zstd", "":
+		dec, err := zstd.NewReader(body)
+		if err != nil {
+			return nil, fmt.Errorf("zstd reader: %w", err)
+		}
+		defer dec.Close()
+		decompressed = dec
+	case "gzip", "gz":
+		gz, err := gzip.NewReader(body)
+		if err != nil {
+			return nil, fmt.Errorf("gzip reader: %w", err)
+		}
+		defer func() { _ = gz.Close() }()
+		decompressed = gz
+	case "none":
+		decompressed = body
+	default:
+		return nil, fmt.Errorf("unsupported compression type: %s", dv.manifest.CompressionType)
+	}
+
+	var results []FileVerifyResult
+	tr := tar.NewReader(decompressed)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("tar read: %w", err)
+		}
+		if hdr.Name == ".padding" {
+			continue // synthetic padding entry, not a real file
+		}
+		path, part, _ := tarNameToFileKey(hdr.Name)
+		k := fileKey{path, part}
+		exp, isExpected := expected[k]
+		if !isExpected {
+			continue // not a manifest file we track (shouldn't happen)
+		}
+		seen[k] = true
+
+		// Hash exactly the file's declared size via CopyN. The bound guards
+		// against a decompression bomb (a malicious manifest/chunk can't stream
+		// unbounded data through us) and surfaces a truncated entry as a
+		// mismatch. tar.Reader already caps reads at the entry boundary.
+		hasher := sha256.New()
+		if _, err := io.CopyN(hasher, tr, hdr.Size); err != nil {
+			// Short entry (fewer bytes than declared) — record a mismatch and
+			// keep going so the report still covers the remaining files.
+			results = append(results, FileVerifyResult{
+				Path: path, ChunkID: chunk.ID, Expected: exp, Status: ChunkVerifyMismatch,
+			})
+			continue
+		}
+		actual := hex.EncodeToString(hasher.Sum(nil))
+
+		fr := FileVerifyResult{Path: path, ChunkID: chunk.ID, Expected: exp, Actual: actual}
+		switch {
+		case exp == "" || dv.manifest.ChecksumAlgorithm == "":
+			fr.Status = ChunkVerifyUnverifiable
+		case actual == exp:
+			fr.Status = ChunkVerifyOK
+		default:
+			fr.Status = ChunkVerifyMismatch
+		}
+		results = append(results, fr)
+	}
+	return results, nil
 }

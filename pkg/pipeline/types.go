@@ -42,6 +42,40 @@ type Job struct {
 	// reads job.Archive. Valid only after the upload has consumed the stream;
 	// read via ArchiveChecksum(). Nil when checksum capture isn't wired.
 	archiveHasher *hashingReadCloser
+
+	// #271: per-file content SHA-256 (hex) captured by the archiver, keyed by
+	// FileEntry.Path. For split files the value is the hash of that part, keyed
+	// by "path#partIndex". Populated only when FileChecksums is enabled; read
+	// into FileEntry.Checksum by the uploader when the chunk is recorded.
+	fileChecksums   map[string]string
+	fileChecksumsMu sync.Mutex
+}
+
+// SetFileChecksum records the content hash for one archived file/part
+// (thread-safe; the archiver writes tar sequentially but this guards against
+// future concurrency). Keyed by path, or "path#part" for split-file parts.
+func (j *Job) SetFileChecksum(key, hexDigest string) {
+	j.fileChecksumsMu.Lock()
+	defer j.fileChecksumsMu.Unlock()
+	if j.fileChecksums == nil {
+		j.fileChecksums = make(map[string]string)
+	}
+	j.fileChecksums[key] = hexDigest
+}
+
+// FileChecksums returns a copy of the captured per-file content hashes, or nil
+// if none were captured (checksum capture disabled).
+func (j *Job) FileChecksums() map[string]string {
+	j.fileChecksumsMu.Lock()
+	defer j.fileChecksumsMu.Unlock()
+	if len(j.fileChecksums) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(j.fileChecksums))
+	for k, v := range j.fileChecksums {
+		out[k] = v
+	}
+	return out
 }
 
 // ArchiveChecksum returns the hex SHA-256 of the uploaded archive stream, or ""
@@ -197,6 +231,12 @@ type PipelineConfig struct {
 	EnableManifest bool   // Enable manifest generation (default: true for real S3)
 	SourcePath     string // Original source path for manifest
 
+	// #271: FileChecksums captures a per-file content SHA-256 during archiving
+	// so `verify --deep` can confirm end-to-end source->restore identity.
+	// On by default; the upload command exposes --no-file-checksums to disable
+	// it for max-throughput bulk uploads.
+	FileChecksums bool
+
 	// Deduplication configuration (Issue #108)
 	EnableDeduplication bool // Enable cross-shard file deduplication (default: false)
 
@@ -350,6 +390,12 @@ type ArchiverConfig struct {
 	EnablePadding        bool    // Enable zero-byte padding to reach target compressed sizes
 	MaxPaddingRatio      float64 // Maximum allowed padding ratio (default: 0.25 = 25%)
 	UseLowEntropyPadding bool    // Use low-entropy (zero-byte) padding (default: true for S3 optimization)
+
+	// #271: FileChecksums enables per-file content hashing during archiving so
+	// FileEntry.Checksum is populated for every file and `verify --deep` can
+	// confirm end-to-end source->restore identity. On by default; disable for
+	// max-throughput bulk uploads (adds a SHA-256 pass over each file's bytes).
+	FileChecksums bool
 }
 
 // UploaderConfig configures the uploader stage

@@ -499,6 +499,8 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 		EnablePadding:        p.config.EnableArchivePadding,
 		MaxPaddingRatio:      p.config.MaxPaddingRatio,
 		UseLowEntropyPadding: true, // S3-optimized zero-byte padding
+		// #271: per-file content checksums (on by default; see PipelineConfig).
+		FileChecksums: p.config.FileChecksums,
 	}
 
 	// Create uploader stage (real S3 or simulated)

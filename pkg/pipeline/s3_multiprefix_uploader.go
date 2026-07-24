@@ -383,6 +383,10 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 			// Update file entries with S3 key and shard ID
 			builder.UpdateFileS3Keys(job.Chunk.ID, shardID, job.S3Key)
 
+			// #271: record per-file content checksums captured during archiving
+			// (no-op when file checksums are disabled).
+			builder.SetFileChecksums(job.Chunk.ID, job.FileChecksums())
+
 			// Add chunk entry (#271: record the SHA-256 of the uploaded archive)
 			builder.AddChunk(manifest.ChunkEntry{
 				ID:               job.Chunk.ID,
