@@ -392,3 +392,51 @@ func TestAllChunkKeys(t *testing.T) {
 	assert.Contains(t, keys, "shard-0/chunk-0.tar.zst")
 	assert.Contains(t, keys, "shard-0/chunk-9.tar.zst")
 }
+
+// TestBatchRestore_ChunkedFullURLS3Key is the regression for the round-trip
+// property test's finding: a chunked manifest whose ChunkEntry.S3Key was stored
+// as a full URL (the #273 wart — some upload managers return result.Location as
+// a URL) must still restore. downloadChunk normalizes the key via
+// ResolveObjectKey; before that fix, BatchRestore failed every file with
+// "chunk not found" / a GetObject miss.
+func TestBatchRestore_ChunkedFullURLS3Key(t *testing.T) {
+	fileContent := []byte("chunked file restored via a full-URL S3 key")
+	filePath := "/abs/src/data/report.txt"
+
+	// The object is stored under the real, prefix-relative key...
+	realKey := "backups/uploads/u1/shard-0/chunk-0.tar.zst"
+	chunk := makeTarZst(t, map[string][]byte{filePath: fileContent})
+	client := &mockS3Client{chunks: map[string][]byte{realKey: chunk}}
+
+	// ...but the manifest records S3Key as a full URL (as an SDK Location may).
+	m := &Manifest{
+		Version:         ManifestVersion,
+		Bucket:          "test-bucket",
+		Prefix:          "backups",
+		CompressionType: "zstd",
+		TotalChunks:     1,
+		Chunks: []ChunkEntry{{
+			ID: 0, ShardID: 0,
+			S3Key:     "http://127.0.0.1:9000/test-bucket/backups/uploads/u1/shard-0/chunk-0.tar.zst",
+			FileCount: 1, FilePaths: []string{filePath},
+		}},
+		Files: []FileEntry{{
+			Path:  filePath,
+			Size:  int64(len(fileContent)),
+			S3Key: "http://127.0.0.1:9000/test-bucket/backups/uploads/u1/shard-0/chunk-0.tar.zst",
+		}},
+	}
+	m.TotalFiles = 1
+
+	se := NewSelectiveExtractor(m, client, 0)
+	dest := t.TempDir()
+	stats, err := se.BatchRestore(context.Background(), []string{"report.txt"}, dest)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.Restored, "should restore despite the full-URL S3Key (failed=%d)", stats.Failed)
+	assert.Zero(t, stats.Failed)
+
+	// Content round-trips byte-for-byte (chunked mode writes under the source path).
+	got, err := os.ReadFile(filepath.Join(dest, filePath))
+	require.NoError(t, err)
+	assert.Equal(t, fileContent, got)
+}
