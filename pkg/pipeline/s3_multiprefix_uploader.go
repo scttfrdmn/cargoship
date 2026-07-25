@@ -482,17 +482,18 @@ func (s *S3MultiPrefixUploaderStage) uploadViaTransporter(ctx context.Context, s
 		Metadata: metadata,
 	}
 
-	// Upload via transporter
-	result, err := s.transporter.Upload(ctx, archive)
+	// Upload via transporter.
+	_, err := s.transporter.Upload(ctx, archive)
 	if err != nil {
 		return fmt.Errorf("transporter upload failed for %s: %w", job.S3Key, err)
 	}
 
-	// Store result
-	if result.Location != "" {
-		job.S3Key = result.Location
-	}
-
+	// #273: do NOT overwrite job.S3Key with result.Location. Location is a full
+	// S3 URL (scheme/host/bucket baked in); job.S3Key is the portable,
+	// prefix-relative key that goes into the manifest and the cleanup list.
+	// Clobbering it made manifests non-portable and broke cleanup (which builds
+	// sibling keys relative to the bucket). The object was written at
+	// Prefix + "/" + job.S3Key, so the relative key is correct as-is.
 	return nil
 }
 
@@ -522,16 +523,13 @@ func (s *S3MultiPrefixUploaderStage) uploadViaManager(ctx context.Context, s3Key
 	input.Body = reader
 
 	// Upload using AWS SDK manager (handles multipart automatically)
-	result, err := s.uploader.Upload(ctx, input)
+	_, err := s.uploader.Upload(ctx, input)
 	if err != nil {
 		return fmt.Errorf("S3 upload failed for %s: %w", job.S3Key, err)
 	}
 
-	// Store upload result in job
-	if result.Location != "" {
-		job.S3Key = result.Location
-	}
-
+	// #273: keep job.S3Key as the portable, prefix-relative key — do not
+	// overwrite it with the SDK's full-URL Location. See uploadViaTransporter.
 	return nil
 }
 

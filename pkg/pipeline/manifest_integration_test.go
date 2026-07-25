@@ -139,6 +139,8 @@ func TestManifestIntegration_Generation(t *testing.T) {
 		assert.NotEmpty(t, file.S3Key, "File %d should have an S3 key", i)
 		assert.GreaterOrEqual(t, file.ShardID, 0, "File %d should have a valid shard ID", i)
 		assert.GreaterOrEqual(t, file.ChunkID, 0, "File %d should have a valid chunk ID", i)
+		// #273: S3Key must be a portable relative key, not a full URL.
+		assert.NotContains(t, file.S3Key, "://", "File %d S3Key must not be a URL (portability): %s", i, file.S3Key)
 	}
 
 	// Verify all chunks have valid metadata
@@ -148,6 +150,8 @@ func TestManifestIntegration_Generation(t *testing.T) {
 		assert.Greater(t, chunk.FileCount, 0, "Chunk %d should contain files", i)
 		assert.Greater(t, chunk.UncompressedSize, int64(0), "Chunk %d should have uncompressed size", i)
 		assert.Greater(t, chunk.CompressedSize, int64(0), "Chunk %d should have compressed size", i)
+		// #273: chunk S3Key must be a portable relative key, not a full URL.
+		assert.NotContains(t, chunk.S3Key, "://", "Chunk %d S3Key must not be a URL (portability): %s", i, chunk.S3Key)
 	}
 
 	// #271: chunk-level checksum capture. The manifest must record the
