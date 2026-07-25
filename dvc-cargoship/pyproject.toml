@@ -51,6 +51,10 @@ constraint-dependencies = [
     "orjson>=3.11.6",
     "urllib3>=2.7.0",
     "dulwich>=1.2.5",
+    # GHSA-6p8h-3wgx-97gf / -fjr4-x663-mwxc / -r9mr-m37c-5fr3 / -94p4-4cq8-9g67
+    # (HIGH): unsafe git-option denylist bypasses + env-var exfiltration. Fixed
+    # in 3.1.55.
+    "gitpython>=3.1.55",
 ]
 
 [tool.setuptools.packages.find]
