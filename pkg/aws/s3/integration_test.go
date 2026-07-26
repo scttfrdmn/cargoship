@@ -82,10 +82,12 @@ func TestMain(m *testing.M) {
 	// Check if real AWS integration is requested
 	if os.Getenv("CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS") == "true" {
 		useRealAWS = true
+		// Use AWS_PROFILE when set (local dev); leave it EMPTY otherwise so the
+		// SDK's default credential chain is used (env vars, OIDC web-identity in
+		// CI). A hardcoded "default" fallback broke the CI lane, which has no
+		// ~/.aws/config — LoadAWSConfig only sets WithSharedConfigProfile when
+		// the profile is non-empty.
 		realAWSProfile = os.Getenv("AWS_PROFILE")
-		if realAWSProfile == "" {
-			realAWSProfile = "default"
-		}
 		realAWSRegion = os.Getenv("AWS_REGION")
 		if realAWSRegion == "" {
 			realAWSRegion = "us-west-2"
