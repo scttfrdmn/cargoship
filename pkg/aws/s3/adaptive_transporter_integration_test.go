@@ -17,9 +17,16 @@ import (
 )
 
 // createSubstrateS3Client returns an S3 client pointed at the in-process Substrate
-// emulator started by TestMain in integration_test.go.
+// emulator started by TestMain in integration_test.go. This helper is
+// emulator-only — in real-AWS mode substrateURL is empty (no emulator is
+// started), which would produce an invalid empty BaseEndpoint. Tests built on
+// it therefore skip against real AWS; the emulator lane covers them, and the
+// real-AWS evidence lives in the pkg/manifest + pkg/pipeline round-trip suites.
 func createSubstrateS3Client(t *testing.T) *s3.Client {
 	t.Helper()
+	if useRealAWS {
+		t.Skip("emulator-only test (uses Substrate BaseEndpoint); skipped in real-AWS mode")
+	}
 	cfg := aws.Config{
 		Region:       "us-east-1",
 		BaseEndpoint: aws.String(substrateURL),
