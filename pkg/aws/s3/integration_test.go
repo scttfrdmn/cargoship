@@ -35,6 +35,7 @@ var (
 	realAWSBucket  string
 	substrateURL   string
 	createdTestBkt bool // true only if THIS run created the bucket (so cleanup may delete it)
+	externalBucket bool // true when CARGOSHIP_TEST_BUCKET was supplied — never delete it
 )
 
 // launchSubstrate starts an in-process Substrate server for use in TestMain
@@ -96,6 +97,12 @@ func TestMain(m *testing.M) {
 		realAWSBucket = os.Getenv("CARGOSHIP_TEST_BUCKET")
 		if realAWSBucket == "" {
 			realAWSBucket = "cargoship-integration-test-" + fmt.Sprintf("%d", time.Now().Unix())
+		} else {
+			// A caller-supplied bucket is shared, provisioned infra — never
+			// delete it in cleanup, whatever CreateBucket returns. (In us-east-1
+			// CreateBucket on your own existing bucket succeeds silently, so we
+			// can't infer "we created it" from that call alone.)
+			externalBucket = true
 		}
 
 		fmt.Printf("Running integration tests against REAL AWS\n")
@@ -208,12 +215,12 @@ func cleanupTestEnvironment() {
 		}
 	}
 
-	// Only delete the bucket if THIS run created it. A pre-existing bucket
-	// (CARGOSHIP_TEST_BUCKET in CI) is shared infra — leave it (its lifecycle
-	// rule expires the objects we just cleaned up anyway), and the least-priv
-	// OIDC role can't DeleteBucket regardless.
-	if !createdTestBkt {
-		fmt.Printf("Leaving pre-existing test bucket in place: %s\n", bucket)
+	// Never delete a caller-supplied bucket (CARGOSHIP_TEST_BUCKET) — it's
+	// shared, provisioned infra. Only delete a bucket THIS run created with an
+	// auto-generated name. (Its objects were just cleaned above; a CI bucket's
+	// lifecycle rule also expires anything left.)
+	if externalBucket || !createdTestBkt {
+		fmt.Printf("Leaving test bucket in place (not created by this run): %s\n", bucket)
 		return
 	}
 	_, err = client.DeleteBucket(ctx, &s3.DeleteBucketInput{
