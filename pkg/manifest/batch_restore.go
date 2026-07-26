@@ -185,6 +185,50 @@ func (se *SelectiveExtractor) checksumMismatch(entry *FileEntry, content []byte)
 	return hex.EncodeToString(sum[:]) != entry.Checksum
 }
 
+// safeRestorePath maps a manifest FileEntry.Path to a destination path under
+// destDir, preserving directory structure while guaranteeing the result stays
+// inside destDir (#282). Manifests store the original source path, which may be
+// absolute (`/abs/src/f`) or, in a crafted/hostile manifest, contain `..`
+// traversal — and filepath.Join(destDir, "/abs") or Join(destDir, "../x")
+// escapes destDir. We strip any volume/leading separator and drop `..`
+// segments so a file always lands within destDir, then verify containment as a
+// belt-and-suspenders check. Both restore paths (direct + chunked) use this, so
+// their output layout is identical and escape-safe.
+func safeRestorePath(destDir, entryPath string) (string, error) {
+	// Normalize to slash form, drop any volume (Windows) and leading slashes.
+	rel := filepath.ToSlash(entryPath)
+	rel = strings.TrimPrefix(rel, filepath.VolumeName(entryPath))
+	rel = strings.TrimLeft(rel, "/")
+
+	// Drop "." and ".." segments so the path can't climb out of destDir.
+	var clean []string
+	for _, seg := range strings.Split(rel, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			continue
+		}
+		clean = append(clean, seg)
+	}
+	if len(clean) == 0 {
+		return "", fmt.Errorf("refusing to restore %q: no safe path components", entryPath)
+	}
+
+	out := filepath.Join(append([]string{destDir}, clean...)...)
+
+	// Belt-and-suspenders: confirm the result is within destDir.
+	absDest, err := filepath.Abs(destDir)
+	if err != nil {
+		return "", err
+	}
+	absOut, err := filepath.Abs(out)
+	if err != nil {
+		return "", err
+	}
+	if absOut != absDest && !strings.HasPrefix(absOut, absDest+string(filepath.Separator)) {
+		return "", fmt.Errorf("refusing to restore %q: path escapes destination", entryPath)
+	}
+	return out, nil
+}
+
 // ChunkKeysForPaths returns the deduplicated set of S3 chunk keys that contain
 // the requested file paths. Unknown paths are silently skipped. Use this to
 // obtain the keys for a Glacier pre-flight check before calling BatchRestore.
@@ -362,7 +406,11 @@ func (se *SelectiveExtractor) writeDirectFiles(data []byte, files []*FileEntry, 
 		if se.checksumMismatch(entry, data) {
 			return restored, totalBytes, fmt.Errorf("checksum mismatch for %s: stored object does not match manifest", entry.Path)
 		}
-		outPath := filepath.Join(destDir, filepath.Base(entry.Path))
+		// #282: preserve directory structure under destDir, escape-safe.
+		outPath, err := safeRestorePath(destDir, entry.Path)
+		if err != nil {
+			return restored, totalBytes, err
+		}
 		if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
 			return restored, totalBytes, fmt.Errorf("mkdir for %s: %w", outPath, err)
 		}
@@ -473,7 +521,11 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 		if !ok {
 			continue
 		}
-		outPath := filepath.Join(destDir, entry.Path)
+		// #282: same escape-safe, structure-preserving layout as the direct path.
+		outPath, err := safeRestorePath(destDir, entry.Path)
+		if err != nil {
+			return restored, totalBytes, err
+		}
 		if mkErr := os.MkdirAll(filepath.Dir(outPath), 0755); mkErr != nil {
 			return restored, totalBytes, fmt.Errorf("mkdir for %s: %w", outPath, mkErr)
 		}

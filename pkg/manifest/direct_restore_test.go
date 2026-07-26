@@ -77,8 +77,9 @@ func TestBatchRestore_DirectUpload_WritesRawFile(t *testing.T) {
 	assert.Equal(t, int64(1), stats.Restored)
 	assert.Equal(t, int64(0), stats.Failed)
 
-	// File written by basename under dest, with the original raw content.
-	got, err := os.ReadFile(filepath.Join(dest, "greeting.txt"))
+	// File written under dest preserving structure (source path minus leading
+	// slash), escape-safe (#282), with the original raw content.
+	got, err := os.ReadFile(filepath.Join(dest, "abs/src/greeting.txt"))
 	require.NoError(t, err)
 	assert.Equal(t, "hello cargoship", string(got))
 }
