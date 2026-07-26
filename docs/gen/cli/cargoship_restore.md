@@ -53,6 +53,7 @@ cargoship restore S3_URL OUTPUT_DIR [flags]
       --dry-run                  Show what would be restored without downloading
       --dvc-stage string         Restore all files produced by this DVC pipeline stage
       --file stringArray         Exact file path(s) to restore (repeatable)
+      --flatten                  Write restored files by basename into the output dir instead of recreating their directory structure
       --git-commit string        Restore all files from this git commit SHA
       --hash string              MD5 content hash of the file to restore
   -h, --help                     help for restore

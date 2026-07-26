@@ -588,9 +588,11 @@ func TestSafeRestorePath(t *testing.T) {
 		{"all traversal -> error", "../../..", ""},
 		{"empty -> error", "", ""},
 	}
+	// No SourcePath, no flatten: exercises the sanitization/containment layer.
+	se := &SelectiveExtractor{manifest: &Manifest{}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := safeRestorePath(dest, tt.entryPath)
+			got, err := se.restorePath(dest, tt.entryPath)
 			if tt.wantRel == "" {
 				assert.Error(t, err, "should reject %q", tt.entryPath)
 				return
@@ -677,4 +679,85 @@ func TestBatchRestore_LayoutParity(t *testing.T) {
 	require.NoError(t, err, "chunked mode should write to the SAME %s", wantRel)
 	assert.Equal(t, content, d)
 	assert.Equal(t, content, c)
+}
+
+// --- #287: dataset-relative default layout + --flatten ---
+
+// TestRestorePath_StripsSourceRoot verifies the default layout is relative to
+// the manifest SourcePath (upload root), not rooted at "/".
+func TestRestorePath_StripsSourceRoot(t *testing.T) {
+	dest := t.TempDir()
+	se := &SelectiveExtractor{manifest: &Manifest{SourcePath: "/home/u/project"}}
+
+	tests := []struct {
+		entry, want string
+	}{
+		{"/home/u/project/data/a.txt", "data/a.txt"}, // under root -> relative
+		{"/home/u/project/top.txt", "top.txt"},       // directly under root
+		{"/home/u/project", "project"},               // the root itself -> basename
+		{"/etc/passwd", "etc/passwd"},                // outside root -> sanitized full
+		{"/home/u/project2/x", "home/u/project2/x"},  // sibling, not under root (no false prefix)
+	}
+	for _, tt := range tests {
+		got, err := se.restorePath(dest, tt.entry)
+		require.NoError(t, err, tt.entry)
+		assert.Equal(t, filepath.Join(dest, filepath.FromSlash(tt.want)), got, "entry %s", tt.entry)
+	}
+}
+
+// TestRestorePath_Flatten verifies flatten mode writes basenames into destDir.
+func TestRestorePath_Flatten(t *testing.T) {
+	dest := t.TempDir()
+	se := (&SelectiveExtractor{manifest: &Manifest{SourcePath: "/home/u/project"}}).SetFlatten(true)
+
+	got, err := se.restorePath(dest, "/home/u/project/data/deep/report.txt")
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(dest, "report.txt"), got)
+}
+
+// TestBatchRestore_SourceRelativeLayout is the end-to-end #287 default: a file
+// uploaded from a source root restores relative to that root.
+func TestBatchRestore_SourceRelativeLayout(t *testing.T) {
+	content := []byte("dataset-relative content")
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "none", TotalChunks: 0,
+		SourcePath: "/data/project",
+		Files:      []FileEntry{{Path: "/data/project/sub/report.txt", Size: int64(len(content)), S3Key: "k"}},
+	}
+	m.TotalFiles = 1
+	client := &mockS3Client{chunks: map[string][]byte{"k": content}}
+
+	dest := t.TempDir()
+	stats, err := NewSelectiveExtractor(m, client, 0).
+		BatchRestore(context.Background(), []string{"report.txt"}, dest)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), stats.Restored)
+
+	// Lands at dest/sub/report.txt (root stripped), NOT dest/data/project/sub/...
+	got, err := os.ReadFile(filepath.Join(dest, "sub/report.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, content, got)
+}
+
+// TestBatchRestore_FlattenLayout is the end-to-end --flatten default: files land
+// at dest/<basename>.
+func TestBatchRestore_FlattenLayout(t *testing.T) {
+	content := []byte("flat content")
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "none", TotalChunks: 0,
+		SourcePath: "/data/project",
+		Files:      []FileEntry{{Path: "/data/project/sub/report.txt", Size: int64(len(content)), S3Key: "k"}},
+	}
+	m.TotalFiles = 1
+	client := &mockS3Client{chunks: map[string][]byte{"k": content}}
+
+	dest := t.TempDir()
+	stats, err := NewSelectiveExtractor(m, client, 0).SetFlatten(true).
+		BatchRestore(context.Background(), []string{"report.txt"}, dest)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), stats.Restored)
+
+	got, err := os.ReadFile(filepath.Join(dest, "report.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, content, got)
 }
