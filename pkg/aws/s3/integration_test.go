@@ -34,6 +34,7 @@ var (
 	realAWSRegion  string
 	realAWSBucket  string
 	substrateURL   string
+	createdTestBkt bool // true only if THIS run created the bucket (so cleanup may delete it)
 )
 
 // launchSubstrate starts an in-process Substrate server for use in TestMain
@@ -151,9 +152,19 @@ func setupTestEnvironment() error {
 
 	_, err := client.CreateBucket(ctx, createInput)
 	if err != nil {
-		return fmt.Errorf("failed to create test bucket %s: %w", bucket, err)
+		// A pre-existing bucket is fine — in CI, CARGOSHIP_TEST_BUCKET is a
+		// dedicated bucket provisioned ahead of time and the OIDC role has no
+		// s3:CreateBucket (least privilege), so CreateBucket returns 403/409.
+		// Only a genuine "can't reach a usable bucket" is fatal, so verify the
+		// bucket is accessible via HeadBucket before giving up.
+		if _, headErr := client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucket)}); headErr == nil {
+			fmt.Printf("Using pre-existing test bucket: %s\n", bucket)
+			return nil
+		}
+		return fmt.Errorf("failed to create or access test bucket %s: %w", bucket, err)
 	}
 
+	createdTestBkt = true
 	fmt.Printf("Created test bucket: %s\n", bucket)
 
 	// Wait for bucket to be ready
@@ -197,7 +208,14 @@ func cleanupTestEnvironment() {
 		}
 	}
 
-	// Delete bucket
+	// Only delete the bucket if THIS run created it. A pre-existing bucket
+	// (CARGOSHIP_TEST_BUCKET in CI) is shared infra — leave it (its lifecycle
+	// rule expires the objects we just cleaned up anyway), and the least-priv
+	// OIDC role can't DeleteBucket regardless.
+	if !createdTestBkt {
+		fmt.Printf("Leaving pre-existing test bucket in place: %s\n", bucket)
+		return
+	}
 	_, err = client.DeleteBucket(ctx, &s3.DeleteBucketInput{
 		Bucket: aws.String(bucket),
 	})
