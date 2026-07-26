@@ -1,47 +1,44 @@
 name: Real-AWS Integration
 
 # Runs the credential-gated real-AWS integration suites against a real S3 bucket
-# in a sandbox account. This is intentionally NOT a PR job — it needs real
-# credentials and mutates a real bucket, so it runs AFTER merge to main (async,
-# off the PR critical path) rather than slowing every pull request. The
-# emulator-based integration job in test.yml already guards PRs credential-free.
+# in a dedicated dev account. This is intentionally NOT a PR job — it needs real
+# credentials and mutates a real bucket, so it runs on a schedule / at release
+# rather than slowing every pull request. The emulator-based integration job in
+# test.yml already guards every PR credential-free.
 #
-# Trigger model (#274 follow-up): change-driven, not calendar-driven. It runs on
-# every push to main so real changes get real-AWS evidence promptly, plus a
-# low-frequency weekly "canary" to catch environmental drift (AWS API/behavior
-# changes, pinned-action rot) even when the code hasn't moved. Manual dispatch
-# stays available.
+# Trigger model: weekly + on release. It does NOT run on every push to main —
+# the emulator lane covers per-change correctness, and real-AWS runs are
+# reserved for (1) a weekly canary that catches environmental drift (AWS
+# API/behavior changes, pinned-action rot) and (2) every release tag, so a
+# published version is always validated against real S3. Manual dispatch stays
+# available for on-demand runs.
 #
 # Credentials are obtained via GitHub OIDC (no long-lived keys). The job is a
 # no-op unless the repository provides the role + bucket, so forks and clones
 # without the secrets configured don't fail:
-#   - secret AWS_NIGHTLY_ROLE_ARN — IAM role to assume via OIDC
-#   - variable AWS_NIGHTLY_REGION — region (defaults to us-west-2)
-#   - variable AWS_NIGHTLY_BUCKET — pre-existing test bucket
+#   - secret AWS_CI_ROLE_ARN   — IAM role to assume via OIDC (dev account)
+#   - variable AWS_CI_REGION   — region (defaults to us-east-1)
+#   - variable AWS_CI_BUCKET   — pre-existing test bucket
+# See #289 for standing up a dedicated cargoship-dev account for this.
 
 on:
-  push:
-    branches: [main]
-    # Skip pushes that can't affect the suite (docs-only, etc.) to avoid
-    # burning a real-AWS run — matches "run on change" without churn.
-    paths:
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - '.github/workflows/real-aws-integration.yml'
   schedule:
     # Weekly canary, Mondays 07:00 UTC — catches environmental drift with no
     # code change (external API/behavior shifts, action rot).
     - cron: '0 7 * * 1'
+  push:
+    # Every release tag — a published version is always validated on real S3.
+    tags:
+      - 'v*'
   workflow_dispatch: {}
 
 permissions:
   id-token: write # required for OIDC role assumption
   contents: read
 
-# Serialize runs: the suite mutates a single shared sandbox bucket, so two
-# concurrent runs (e.g. rapid merges) could corrupt each other's objects. Queue
-# them instead of cancelling, so every merged change still gets verified.
+# Serialize runs: the suite mutates a single shared test bucket, so two
+# concurrent runs (e.g. a release tag landing during the weekly canary) could
+# corrupt each other's objects. Queue instead of cancelling so both complete.
 concurrency:
   group: real-aws-integration
   cancel-in-progress: false
@@ -51,17 +48,17 @@ env:
 
 jobs:
   real-aws:
-    name: Real-AWS integration (sandbox)
+    name: Real-AWS integration (dev account)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Check for AWS role configuration
         id: guard
         env:
-          ROLE_ARN: ${{ secrets.AWS_NIGHTLY_ROLE_ARN }}
+          ROLE_ARN: ${{ secrets.AWS_CI_ROLE_ARN }}
         run: |
           if [ -z "$ROLE_ARN" ]; then
-            echo "AWS_NIGHTLY_ROLE_ARN not set — skipping real-AWS suite (expected on forks)."
+            echo "AWS_CI_ROLE_ARN not set — skipping real-AWS suite (expected on forks)."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
@@ -82,8 +79,8 @@ jobs:
         if: steps.guard.outputs.configured == 'true'
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
-          role-to-assume: ${{ secrets.AWS_NIGHTLY_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_NIGHTLY_REGION || 'us-west-2' }}
+          role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_CI_REGION || 'us-east-1' }}
 
       - name: Download dependencies
         if: steps.guard.outputs.configured == 'true'
@@ -102,6 +99,6 @@ jobs:
           CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS: 'true'
           CARGOSHIP_ENABLE_LARGE_FILE_TESTS: '1'
           CARGOSHIP_QUICK_LARGE_FILE_TEST: 'true'
-          CARGOSHIP_TEST_BUCKET: ${{ vars.AWS_NIGHTLY_BUCKET }}
-          AWS_REGION: ${{ vars.AWS_NIGHTLY_REGION || 'us-west-2' }}
+          CARGOSHIP_TEST_BUCKET: ${{ vars.AWS_CI_BUCKET }}
+          AWS_REGION: ${{ vars.AWS_CI_REGION || 'us-east-1' }}
         run: go test -tags integration ./... -timeout 40m
