@@ -147,6 +147,11 @@ type SelectiveExtractor struct {
 	// default; disable with SetVerify(false). Files with no recorded checksum
 	// (or a non-sha256 algorithm) are restored without a check.
 	verify bool
+
+	// flatten writes each restored file at destDir/<basename> instead of the
+	// default dataset-relative layout (#287). Useful for targeted single-file
+	// restores. Set with SetFlatten(true).
+	flatten bool
 }
 
 // NewSelectiveExtractor creates a SelectiveExtractor. maxCacheSize sets the
@@ -170,6 +175,16 @@ func (se *SelectiveExtractor) SetVerify(v bool) *SelectiveExtractor {
 	return se
 }
 
+// SetFlatten toggles flat restore layout (destDir/<basename> per file) instead
+// of the default dataset-relative layout. Returns the receiver for chaining.
+// Handy for targeted restores where the caller just wants the file(s) in one
+// directory; not recommended for full restores that contain same-named files in
+// different directories (later wins).
+func (se *SelectiveExtractor) SetFlatten(f bool) *SelectiveExtractor {
+	se.flatten = f
+	return se
+}
+
 // checksumMismatch reports whether restore-time verification is active for this
 // entry and the given content fails it. It returns false (no mismatch) when
 // verification is off, the entry has no recorded checksum, or the manifest's
@@ -185,22 +200,26 @@ func (se *SelectiveExtractor) checksumMismatch(entry *FileEntry, content []byte)
 	return hex.EncodeToString(sum[:]) != entry.Checksum
 }
 
-// safeRestorePath maps a manifest FileEntry.Path to a destination path under
-// destDir, preserving directory structure while guaranteeing the result stays
-// inside destDir (#282). Manifests store the original source path, which may be
-// absolute (`/abs/src/f`) or, in a crafted/hostile manifest, contain `..`
-// traversal — and filepath.Join(destDir, "/abs") or Join(destDir, "../x")
-// escapes destDir. We strip any volume/leading separator and drop `..`
-// segments so a file always lands within destDir, then verify containment as a
-// belt-and-suspenders check. Both restore paths (direct + chunked) use this, so
-// their output layout is identical and escape-safe.
-func safeRestorePath(destDir, entryPath string) (string, error) {
-	// Normalize to slash form, drop any volume (Windows) and leading slashes.
-	rel := filepath.ToSlash(entryPath)
+// restorePath maps a manifest FileEntry.Path to a destination path under
+// destDir. By default it lays the file out relative to the manifest's
+// SourcePath (the upload root), so `/home/u/project/data/a.txt` uploaded from
+// root `/home/u/project` restores to `destDir/data/a.txt` — the intuitive,
+// dataset-relative layout for full and targeted restores alike (#287). When
+// se.flatten is set, the file lands at destDir/<basename>. In all cases the
+// result is guaranteed to stay inside destDir (#282): manifests store absolute
+// source paths and a crafted manifest could contain `..`, so leading
+// slashes/volume and `.`/`..` segments are stripped and containment verified.
+func (se *SelectiveExtractor) restorePath(destDir, entryPath string) (string, error) {
+	rel := se.relativeEntryPath(entryPath)
+
+	if se.flatten {
+		rel = filepath.Base(filepath.FromSlash(rel))
+	}
+
+	// Sanitize: slash-normalize, drop volume/leading slash and `.`/`..` segs.
+	rel = filepath.ToSlash(rel)
 	rel = strings.TrimPrefix(rel, filepath.VolumeName(entryPath))
 	rel = strings.TrimLeft(rel, "/")
-
-	// Drop "." and ".." segments so the path can't climb out of destDir.
 	var clean []string
 	for _, seg := range strings.Split(rel, "/") {
 		if seg == "" || seg == "." || seg == ".." {
@@ -227,6 +246,28 @@ func safeRestorePath(destDir, entryPath string) (string, error) {
 		return "", fmt.Errorf("refusing to restore %q: path escapes destination", entryPath)
 	}
 	return out, nil
+}
+
+// relativeEntryPath returns entryPath relative to the manifest's SourcePath (the
+// upload root) when it sits under it; otherwise it returns entryPath unchanged
+// (the sanitizer in restorePath still makes it destDir-safe). This is what makes
+// the default layout dataset-relative rather than rooted at "/".
+func (se *SelectiveExtractor) relativeEntryPath(entryPath string) string {
+	root := se.manifest.SourcePath
+	if root == "" {
+		return entryPath
+	}
+	// Compare in slash form; require a path-segment boundary so "/a/bc" isn't
+	// treated as under root "/a/b".
+	e := filepath.ToSlash(entryPath)
+	r := strings.TrimRight(filepath.ToSlash(root), "/")
+	if e == r {
+		return filepath.Base(e)
+	}
+	if strings.HasPrefix(e, r+"/") {
+		return strings.TrimPrefix(e, r+"/")
+	}
+	return entryPath
 }
 
 // ChunkKeysForPaths returns the deduplicated set of S3 chunk keys that contain
@@ -407,7 +448,7 @@ func (se *SelectiveExtractor) writeDirectFiles(data []byte, files []*FileEntry, 
 			return restored, totalBytes, fmt.Errorf("checksum mismatch for %s: stored object does not match manifest", entry.Path)
 		}
 		// #282: preserve directory structure under destDir, escape-safe.
-		outPath, err := safeRestorePath(destDir, entry.Path)
+		outPath, err := se.restorePath(destDir, entry.Path)
 		if err != nil {
 			return restored, totalBytes, err
 		}
@@ -522,7 +563,7 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 			continue
 		}
 		// #282: same escape-safe, structure-preserving layout as the direct path.
-		outPath, err := safeRestorePath(destDir, entry.Path)
+		outPath, err := se.restorePath(destDir, entry.Path)
 		if err != nil {
 			return restored, totalBytes, err
 		}
