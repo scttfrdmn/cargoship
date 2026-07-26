@@ -97,6 +97,12 @@ jobs:
       # Not yet ./... — real-AWS tests in pkg/aws/cost, pkg/multiregion, and
       # cmd/cargoship/cmd have bit-rotted (bucket/region assumptions, 404s);
       # tracked in #291. Widen the scope as each is fixed.
+      #
+      # -p 1 (serial packages): all suites share the single CARGOSHIP_TEST_BUCKET,
+      # and pkg/aws/s3's cleanup wipes the whole bucket. Running packages in
+      # parallel (the default) lets one package's cleanup delete another's
+      # in-flight objects → spurious NoSuchBucket/missing-object failures. Serial
+      # execution isolates them on the shared bucket.
       - name: Run real-AWS integration tests
         if: steps.guard.outputs.configured == 'true'
         env:
@@ -104,4 +110,4 @@ jobs:
           CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS: 'true'
           CARGOSHIP_TEST_BUCKET: ${{ vars.AWS_CI_BUCKET }}
           AWS_REGION: ${{ vars.AWS_CI_REGION || 'us-east-1' }}
-        run: go test -tags integration ./pkg/manifest/... ./pkg/pipeline/... ./pkg/aws/s3/... -timeout 30m
+        run: go test -tags integration -p 1 ./pkg/manifest/... ./pkg/pipeline/... ./pkg/aws/s3/... -timeout 30m
