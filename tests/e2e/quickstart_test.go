@@ -92,7 +92,12 @@ func TestQuickStart_RoundTrip(t *testing.T) {
 	restoreDir := t.TempDir()
 	runCargoship(t, "restore", uploadURL, restoreDir, "--file", "greeting.txt", "--region", "us-east-1")
 
-	got, err := os.ReadFile(filepath.Join(restoreDir, "greeting.txt"))
+	// Restore preserves the source directory structure under restoreDir
+	// (escape-safe; source path minus leading slash — see #282), so locate the
+	// restored file by basename wherever it landed rather than assuming a flat
+	// layout.
+	restored := findFileByBase(t, restoreDir, "greeting.txt")
+	got, err := os.ReadFile(restored)
 	if err != nil {
 		t.Fatalf("read restored file: %v", err)
 	}
@@ -108,6 +113,29 @@ func writeFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
+}
+
+// findFileByBase walks dir and returns the full path of the first regular file
+// with the given basename, failing if none is found.
+func findFileByBase(t *testing.T, dir, base string) string {
+	t.Helper()
+	var found string
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && filepath.Base(path) == base {
+			found = path
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", dir, err)
+	}
+	if found == "" {
+		t.Fatalf("restored file %q not found under %s", base, dir)
+	}
+	return found
 }
 
 // runCargoship runs the built binary with the given args, failing the test on a

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -467,8 +468,8 @@ func TestBatchRestore_Direct_DetectsCorruption(t *testing.T) {
 	assert.Equal(t, int64(0), stats.Restored, "corrupt file must not count as restored")
 	assert.Equal(t, int64(1), stats.Failed, "corrupt file must be failed")
 
-	// The corrupt bytes must NOT be on disk.
-	_, statErr := os.Stat(filepath.Join(dest, "file.txt"))
+	// The corrupt bytes must NOT be on disk (structure-preserving path, #282).
+	_, statErr := os.Stat(filepath.Join(dest, "abs/src/file.txt"))
 	assert.True(t, os.IsNotExist(statErr), "corrupt file must not be written to disk")
 }
 
@@ -490,7 +491,7 @@ func TestBatchRestore_Direct_OptOutSkipsVerification(t *testing.T) {
 	stats, err := se.BatchRestore(context.Background(), []string{"file.txt"}, dest)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), stats.Restored, "opt-out restores without verifying")
-	got, _ := os.ReadFile(filepath.Join(dest, "file.txt"))
+	got, _ := os.ReadFile(filepath.Join(dest, "abs/src/file.txt"))
 	assert.Equal(t, tampered, got)
 }
 
@@ -565,4 +566,115 @@ func TestBatchRestore_Chunked_GoodContentVerifies(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(dest, filePath))
 	require.NoError(t, err)
 	assert.Equal(t, good, got)
+}
+
+// --- #282: restore layout parity + path-traversal safety ---
+
+// TestSafeRestorePath covers the escape-safe, structure-preserving mapping used
+// by both restore paths.
+func TestSafeRestorePath(t *testing.T) {
+	dest := t.TempDir()
+	tests := []struct {
+		name      string
+		entryPath string
+		wantRel   string // expected path relative to dest ("" = expect error)
+	}{
+		{"relative", "data/a.txt", "data/a.txt"},
+		{"absolute source path", "/abs/src/data/a.txt", "abs/src/data/a.txt"},
+		{"nested", "a/b/c/deep.bin", "a/b/c/deep.bin"},
+		{"dot segments stripped", "a/./b/c.txt", "a/b/c.txt"},
+		{"parent traversal stripped", "../../etc/passwd", "etc/passwd"},
+		{"embedded traversal stripped", "a/../../b/c.txt", "a/b/c.txt"},
+		{"all traversal -> error", "../../..", ""},
+		{"empty -> error", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := safeRestorePath(dest, tt.entryPath)
+			if tt.wantRel == "" {
+				assert.Error(t, err, "should reject %q", tt.entryPath)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, filepath.Join(dest, filepath.FromSlash(tt.wantRel)), got)
+			// Never escapes dest.
+			assert.True(t, got == dest || filepathHasPrefix(got, dest),
+				"%q resolved outside dest: %s", tt.entryPath, got)
+		})
+	}
+}
+
+func filepathHasPrefix(p, dir string) bool {
+	rel, err := filepath.Rel(dir, p)
+	if err != nil || filepath.IsAbs(rel) {
+		return false
+	}
+	// Contained iff the relative path doesn't start with a ".." segment.
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// TestBatchRestore_TraversalIsContained proves a hostile manifest whose
+// FileEntry.Path tries to escape the destination cannot write outside destDir.
+func TestBatchRestore_TraversalIsContained(t *testing.T) {
+	content := []byte("payload")
+	// Manifest claims the file lives at a traversal path.
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "none", TotalChunks: 0,
+		Files: []FileEntry{{Path: "../../../../tmp/evil.txt", Size: int64(len(content)), S3Key: "k"}},
+	}
+	m.TotalFiles = 1
+	client := &mockS3Client{chunks: map[string][]byte{"k": content}}
+
+	se := NewSelectiveExtractor(m, client, 0)
+	dest := t.TempDir()
+	stats, err := se.BatchRestore(context.Background(), []string{"evil.txt"}, dest)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), stats.Restored)
+
+	// It must land inside dest (as tmp/evil.txt), never at the traversal target.
+	got, err := os.ReadFile(filepath.Join(dest, "tmp/evil.txt"))
+	require.NoError(t, err, "file should be contained within dest")
+	assert.Equal(t, content, got)
+}
+
+// TestBatchRestore_LayoutParity confirms direct and chunked modes restore the
+// same logical file to the SAME location under destDir (#282).
+func TestBatchRestore_LayoutParity(t *testing.T) {
+	content := []byte("parity content")
+	srcPath := "/abs/src/dir/report.txt"
+	wantRel := "abs/src/dir/report.txt"
+
+	// Direct manifest.
+	directM := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "none", TotalChunks: 0,
+		Files: []FileEntry{{Path: srcPath, Size: int64(len(content)), S3Key: "obj"}},
+	}
+	directM.TotalFiles = 1
+	directClient := &mockS3Client{chunks: map[string][]byte{"obj": content}}
+	directDest := t.TempDir()
+	_, err := NewSelectiveExtractor(directM, directClient, 0).
+		BatchRestore(context.Background(), []string{srcPath}, directDest)
+	require.NoError(t, err)
+
+	// Chunked manifest with the same file.
+	chunk := makeTarZst(t, map[string][]byte{srcPath: content})
+	chunkedM := &Manifest{
+		Version: ManifestVersion, Bucket: "b", Prefix: "p", CompressionType: "zstd", TotalChunks: 1,
+		Chunks: []ChunkEntry{{ID: 0, S3Key: "p/uploads/u/shard-0/chunk-0.tar.zst", FileCount: 1, FilePaths: []string{srcPath}}},
+		Files:  []FileEntry{{Path: srcPath, Size: int64(len(content)), S3Key: "p/uploads/u/shard-0/chunk-0.tar.zst"}},
+	}
+	chunkedM.TotalFiles = 1
+	chunkedClient := &mockS3Client{chunks: map[string][]byte{"p/uploads/u/shard-0/chunk-0.tar.zst": chunk}}
+	chunkedDest := t.TempDir()
+	_, err = NewSelectiveExtractor(chunkedM, chunkedClient, 0).
+		BatchRestore(context.Background(), []string{srcPath}, chunkedDest)
+	require.NoError(t, err)
+
+	// Both landed at the identical relative location.
+	d, err := os.ReadFile(filepath.Join(directDest, wantRel))
+	require.NoError(t, err, "direct mode should write to %s", wantRel)
+	c, err := os.ReadFile(filepath.Join(chunkedDest, wantRel))
+	require.NoError(t, err, "chunked mode should write to the SAME %s", wantRel)
+	assert.Equal(t, content, d)
+	assert.Equal(t, content, c)
 }
