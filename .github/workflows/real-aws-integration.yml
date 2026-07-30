@@ -86,17 +86,13 @@ jobs:
         if: steps.guard.outputs.configured == 'true'
         run: go mod download
 
-      # Runs the //go:build integration suites that pass against real S3 today:
-      #   - pkg/manifest  — deep verify, batch restore, schema
-      #   - pkg/pipeline  — upload → download → restore round-trip, manifests
-      #   - pkg/aws/s3    — transporter/adaptive S3 paths
-      # These are the trust epic's evidence (#270). Credentials come from the
-      # OIDC step's default chain (no AWS_PROFILE); the bucket from
-      # CARGOSHIP_TEST_BUCKET.
-      #
-      # Not yet ./... — real-AWS tests in pkg/aws/cost, pkg/multiregion, and
-      # cmd/cargoship/cmd have bit-rotted (bucket/region assumptions, 404s);
-      # tracked in #291. Widen the scope as each is fixed.
+      # Runs the whole //go:build integration suite against real S3 (the trust
+      # epic's evidence, #270). Credentials come from the OIDC step's default
+      # chain (no AWS_PROFILE); the bucket from CARGOSHIP_TEST_BUCKET. Suites
+      # that don't touch S3 (or gate on the emulator / other opt-ins) self-skip
+      # — e.g. pkg/multiregion needs multi-region bucket-creating creds and a
+      # coordinator S3 write path (#296), gated behind
+      # CARGOSHIP_ENABLE_MULTIREGION_TESTS.
       #
       # -p 1 (serial packages): all suites share the single CARGOSHIP_TEST_BUCKET,
       # and pkg/aws/s3's cleanup wipes the whole bucket. Running packages in
@@ -110,4 +106,4 @@ jobs:
           CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS: 'true'
           CARGOSHIP_TEST_BUCKET: ${{ vars.AWS_CI_BUCKET }}
           AWS_REGION: ${{ vars.AWS_CI_REGION || 'us-east-1' }}
-        run: go test -tags integration -p 1 ./pkg/manifest/... ./pkg/pipeline/... ./pkg/aws/s3/... -timeout 30m
+        run: go test -tags integration -p 1 ./... -timeout 30m
