@@ -44,6 +44,42 @@ records at upload time, so you can reconstruct exactly the inputs or outputs of 
 pipeline run. See [DVC integration](/reference/commands/dvc) for how stages are
 tracked.
 
+## Integrity: verified as it restores
+
+Restore verifies content **as it writes**. Each file's SHA-256 is recomputed
+from the bytes coming out of the archive and compared against the checksum
+recorded at upload time; on a mismatch CargoShip fails that file rather than
+writing corrupt data to disk. This is on by default and covers both direct and
+chunked storage.
+
+- `--no-verify` skips restore-time verification (faster, but a corrupted stored
+  object would be written out silently). Leave it on unless you have a specific
+  reason not to.
+
+For the guarantee this backs and how to audit it yourself, see the
+[Integrity model](/project/integrity).
+
+## Output layout
+
+By default, restored files are written under `OUTPUT_DIR` with their paths
+reconstructed **relative to the upload root** — so a file uploaded from
+`project/data/train.csv` lands at `OUTPUT_DIR/data/train.csv`. Paths are always
+sanitized and confined to `OUTPUT_DIR` (absolute paths and `..` components can't
+escape it).
+
+- `--flatten` writes each restored file by **basename** directly into
+  `OUTPUT_DIR`, ignoring its directory structure — convenient for pulling a
+  handful of specific files without recreating deep trees. Basenames must be
+  unique across your selection to avoid collisions.
+
+```bash
+# Recreate the directory structure (default)
+cargoship restore s3://my-bucket/.../20260721-a1b2c3 ./out --file data/train.csv
+
+# Drop the file straight into ./out as train.csv
+cargoship restore s3://my-bucket/.../20260721-a1b2c3 ./out --file data/train.csv --flatten
+```
+
 ## Glacier & Deep Archive {#glacier}
 
 When the chunks you want live in Glacier Flexible Retrieval or Deep Archive, they
@@ -136,6 +172,7 @@ flags.
 
 ## See also
 
+- [Integrity model](/project/integrity) — verify-on-restore and the byte-identity claim.
 - [Downloading & extracting](/guides/downloading) — for readable storage classes.
 - [Concepts: restore vs. download](/intro/concepts#restore-vs-download).
 - [Tier-aware storage](/guides/features/tiering) — how files end up in Glacier.

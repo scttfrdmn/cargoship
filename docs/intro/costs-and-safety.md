@@ -28,9 +28,13 @@ See [Estimating costs](/guides/cost/estimate), and set guardrails with
 ## Safety guarantees
 
 - **Nothing is deleted on upload.** Uploading never touches your source files.
-- **Integrity is verifiable.** Every upload records checksums in its manifest;
-  [`cargoship verify`](/guides/verifying) proves the archive matches, and a
-  restore round-trip proves you can get data back.
+- **Integrity is verifiable.** Every upload records per-chunk and per-file
+  SHA-256 checksums. [`cargoship verify --deep`](/guides/verifying) re-downloads
+  the stored bytes and re-hashes them to prove the archive still matches, and
+  [restore verifies each file as it writes](/guides/restoring) so it never hands
+  back corrupt data. Every release is validated against real S3 and ships a
+  [verification report](/project/verification-reports). See the
+  [Integrity model](/project/integrity) for the exact, bounded claim.
 - **Destructive commands require confirmation.** They prompt before acting and
   support `--dry-run` to preview.
 
