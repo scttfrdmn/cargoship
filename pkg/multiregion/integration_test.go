@@ -4,15 +4,19 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	awssdkconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3Types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	awsconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
+	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
 )
 
 // Integration test configuration
@@ -33,18 +37,20 @@ func skipIfNoAWS(t *testing.T) {
 	}
 
 	// These tests provision their OWN buckets in two regions (createTestBucket
-	// with s3:CreateBucket) and then assert real S3 state after a coordinator
-	// upload. They don't fit the shared-single-bucket, least-privilege CI lane,
-	// and the coordinator's real S3 write path needs work before the HeadObject
-	// assertions hold (see #296). Opt in explicitly with
-	// CARGOSHIP_ENABLE_MULTIREGION_TESTS=true once you have multi-region,
-	// bucket-creating credentials.
+	// with s3:CreateBucket) — which the least-privilege CI lane can't do — and
+	// assert real S3 state after coordinator.Upload(), which only SIMULATES the
+	// transfer (executeUploadInRegion is time.After + a synthetic result, by
+	// design: the coordinator is the region-selection brain). The real S3 write
+	// path is exercised by TestMultiRegionS3Transporter_RealUpload above, which
+	// runs on the standard lane. These remain multi-region simulation/failover
+	// tests: opt in with CARGOSHIP_ENABLE_MULTIREGION_TESTS=true when you have
+	// multi-region, bucket-creating credentials. (#296)
 	if os.Getenv("CARGOSHIP_ENABLE_MULTIREGION_TESTS") != "true" {
-		t.Skip("Skipping multi-region integration test: needs multi-region bucket-creating creds and coordinator S3 write path (#296); set CARGOSHIP_ENABLE_MULTIREGION_TESTS=true to run")
+		t.Skip("Skipping multi-region simulation/failover test: needs multi-region bucket-creating creds; set CARGOSHIP_ENABLE_MULTIREGION_TESTS=true (real S3 write path is covered by TestMultiRegionS3Transporter_RealUpload). See #296.")
 	}
 
 	// Check for AWS credentials
-	cfg, err := awsconfig.LoadDefaultConfig(context.Background())
+	cfg, err := awssdkconfig.LoadDefaultConfig(context.Background())
 	if err != nil {
 		t.Skip("Skipping integration test: no AWS credentials available")
 	}
@@ -64,7 +70,7 @@ func skipIfNoAWS(t *testing.T) {
 func createTestBucket(t *testing.T, region string) string {
 	t.Helper()
 
-	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion(region))
+	cfg, err := awssdkconfig.LoadDefaultConfig(context.Background(), awssdkconfig.WithRegion(region))
 	require.NoError(t, err)
 
 	client := s3.NewFromConfig(cfg)
@@ -99,7 +105,7 @@ func createTestBucket(t *testing.T, region string) string {
 func cleanupTestBucket(t *testing.T, bucketName, region string) {
 	t.Helper()
 
-	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion(region))
+	cfg, err := awssdkconfig.LoadDefaultConfig(context.Background(), awssdkconfig.WithRegion(region))
 	if err != nil {
 		t.Logf("Failed to load config for cleanup: %v", err)
 		return
@@ -153,6 +159,101 @@ func createTestFile(t *testing.T, content string) string {
 	})
 
 	return tmpFile.Name()
+}
+
+// skipIfNoSingleBucketAWS gates tests that exercise the REAL S3 write path via
+// MultiRegionS3Transporter against a single pre-provisioned bucket
+// (CARGOSHIP_TEST_BUCKET). Unlike skipIfNoAWS, it does NOT require
+// CARGOSHIP_ENABLE_MULTIREGION_TESTS or bucket-creation rights — it runs on the
+// standard real-AWS CI lane.
+func skipIfNoSingleBucketAWS(t *testing.T) (bucket, region string) {
+	t.Helper()
+	if os.Getenv("CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS") != "true" {
+		t.Skip("Skipping AWS integration test (set CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS=true to enable)")
+	}
+	bucket = os.Getenv("CARGOSHIP_TEST_BUCKET")
+	if bucket == "" {
+		t.Skip("Skipping: CARGOSHIP_TEST_BUCKET not set")
+	}
+	region = os.Getenv("AWS_REGION")
+	if region == "" {
+		region = "us-east-1"
+	}
+	return bucket, region
+}
+
+// TestMultiRegionS3Transporter_RealUpload is the real end-to-end integration
+// test (#296): it drives MultiRegionS3Transporter — coordinator region selection
+// followed by the ACTUAL S3 upload via the per-region AdaptiveTransporter — and
+// verifies the object genuinely lands in S3. (The older simulation-based
+// coordinator tests below assert real S3 state after coordinator.Upload, which
+// only *simulates* the transfer; they stay gated behind
+// CARGOSHIP_ENABLE_MULTIREGION_TESTS. This test exercises the real write path.)
+func TestMultiRegionS3Transporter_RealUpload(t *testing.T) {
+	bucket, region := skipIfNoSingleBucketAWS(t)
+	ctx, cancel := context.WithTimeout(context.Background(), integrationTestTimeout)
+	defer cancel()
+
+	content := "multi-region real-upload integration test payload"
+	key := fmt.Sprintf("multiregion-realupload/%d/payload.txt", time.Now().UnixNano())
+
+	cfg := &MultiRegionS3Config{
+		MultiRegionConfig: &MultiRegionConfig{
+			Enabled:       true,
+			PrimaryRegion: region,
+			Regions: []Region{{
+				Name:        region,
+				Priority:    1,
+				Weight:      100,
+				Status:      RegionStatusHealthy,
+				Capacity:    RegionCapacity{MaxConcurrentUploads: 4, MaxBandwidthMbps: 1000},
+				HealthCheck: HealthCheckConfig{Enabled: false},
+			}},
+			LoadBalancing: LoadBalancingConfig{Strategy: LoadBalancingRoundRobin},
+			Monitoring:    MonitoringConfig{Enabled: false},
+		},
+		S3Config: awsconfig.S3Config{
+			Bucket:             bucket,
+			MultipartChunkSize: 5 * 1024 * 1024,
+			Concurrency:        2,
+		},
+	}
+
+	transporter, err := NewMultiRegionS3Transporter(ctx, cfg, nil)
+	require.NoError(t, err, "construct MultiRegionS3Transporter")
+
+	req := &MultiRegionUploadRequest{
+		Archive: s3transport.Archive{
+			Key:    key,
+			Reader: strings.NewReader(content),
+			Size:   int64(len(content)),
+		},
+		TargetBucket: bucket,
+	}
+
+	result, err := transporter.Upload(ctx, req)
+	require.NoError(t, err, "multi-region upload should succeed")
+	require.NotNil(t, result)
+	assert.Equal(t, region, result.Region)
+
+	// Verify the object ACTUALLY exists in S3 (the assertion the old
+	// coordinator-only test got wrong).
+	verifyCfg, err := awssdkconfig.LoadDefaultConfig(ctx, awssdkconfig.WithRegion(region))
+	require.NoError(t, err)
+	verifyClient := s3.NewFromConfig(verifyCfg)
+	head, err := verifyClient.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	require.NoError(t, err, "uploaded object must exist in S3")
+	assert.Equal(t, int64(len(content)), aws.ToInt64(head.ContentLength))
+
+	// Clean up the object we wrote (bucket is shared/pre-provisioned).
+	t.Cleanup(func() {
+		_, _ = verifyClient.DeleteObject(ctx, &s3.DeleteObjectInput{
+			Bucket: aws.String(bucket), Key: aws.String(key),
+		})
+	})
 }
 
 // TestMultiRegionCoordinatorIntegration tests the full multi-region coordinator with real AWS S3
@@ -256,7 +357,7 @@ func TestMultiRegionCoordinatorIntegration(t *testing.T) {
 	assert.Greater(t, result.Duration, time.Duration(0))
 
 	// Verify upload succeeded by checking S3
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(testRegion1))
+	cfg, err := awssdkconfig.LoadDefaultConfig(ctx, awssdkconfig.WithRegion(testRegion1))
 	require.NoError(t, err)
 
 	client := s3.NewFromConfig(cfg)
@@ -349,7 +450,7 @@ func TestMultiRegionFailoverIntegration(t *testing.T) {
 	assert.Equal(t, testRegion2, result.Region) // Should failover to healthy region
 
 	// Verify upload in the failover region
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(testRegion2))
+	cfg, err := awssdkconfig.LoadDefaultConfig(ctx, awssdkconfig.WithRegion(testRegion2))
 	require.NoError(t, err)
 
 	client := s3.NewFromConfig(cfg)
@@ -454,7 +555,7 @@ func TestMultiRegionLoadBalancingIntegration(t *testing.T) {
 	assert.Greater(t, len(regionCounts), 0, "At least one region should be used")
 
 	// Verify uploads succeeded
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(testRegion1))
+	cfg, err := awssdkconfig.LoadDefaultConfig(ctx, awssdkconfig.WithRegion(testRegion1))
 	require.NoError(t, err)
 
 	client := s3.NewFromConfig(cfg)
@@ -575,7 +676,7 @@ func TestMultiRegionConcurrentUploadsIntegration(t *testing.T) {
 	assert.Equal(t, numUploads, successCount, "All uploads should succeed")
 
 	// Verify uploads in S3
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(testRegion1))
+	cfg, err := awssdkconfig.LoadDefaultConfig(ctx, awssdkconfig.WithRegion(testRegion1))
 	require.NoError(t, err)
 
 	client := s3.NewFromConfig(cfg)
