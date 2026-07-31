@@ -39,7 +39,8 @@ cargoship verify s3://my-bucket/archives/uploads/20260721-a1b2c3
 
 `verify` checks the archive against the checksums recorded in the manifest and
 exits non-zero if anything is missing or corrupt — so it's safe to use in scripts
-and CI. Use `--quick` for a fast metadata-only check.
+and CI. Use `--quick` for a fast metadata-only check, or `--deep` to re-download
+the stored objects and re-hash them for data-level integrity.
 
 ## Restore a file
 

@@ -78,6 +78,22 @@ cargoship upload ./my-data s3://my-bucket/archives/ \
 Data chunks are written with SSE-KMS; `--encrypt-manifest` additionally
 envelope-encrypts the manifest. See [Encryption](/guides/features/encryption).
 
+## Integrity checksums
+
+Every upload records a SHA-256 checksum at two levels: per stored chunk, and
+**per file**. These are what let [`verify --deep`](/guides/verifying) confirm the
+stored bytes still match, and what [restore](/guides/restoring) checks as it
+writes files back. Per-file checksums are **on by default**.
+
+```bash
+# Faster uploads, but verify --deep can no longer confirm per-file integrity
+cargoship upload ./my-data s3://my-bucket/archives/ --no-file-checksums
+```
+
+Only use `--no-file-checksums` when upload speed matters more than per-file
+verifiability; chunk-level checksums are still recorded either way. See the
+[Integrity model](/project/integrity) for what the checksums guarantee.
+
 ## Incremental sync
 
 Upload only what's new or changed since a previous run:
@@ -108,6 +124,8 @@ Then see [Budgets & quotas](/guides/cost/budgets) and
 - **Set a region default** (`AWS_REGION`) or pass `--region` to match your bucket.
 - **Leave shard count on auto** unless benchmarking — it's tuned to your workload.
 - **Turn on `--enable-dedup`** only when you expect duplicate files; it costs a hash pass.
+- **Keep per-file checksums on** (the default) so `verify --deep` and restore can
+  confirm per-file integrity; only add `--no-file-checksums` when speed wins.
 - **Tag `--project`** from day one so cost reporting is meaningful later.
 - **Use `--quiet`** in scripts and cron; keep the progress UI for interactive runs.
 :::

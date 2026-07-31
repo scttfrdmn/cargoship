@@ -47,6 +47,7 @@ cargoship balance s3://my-bucket/archives/uploads/20260721-a1b2c3
 ```bash
 cargoship verify s3://my-bucket/archives/uploads/20260721-a1b2c3
 cargoship verify s3://my-bucket/archives/uploads/20260721-a1b2c3 --quick
+cargoship verify s3://my-bucket/archives/uploads/20260721-a1b2c3 --deep   # re-download & re-hash stored bytes
 # exit 0 = passed, 1 = failed
 ```
 
@@ -56,8 +57,11 @@ cargoship verify s3://my-bucket/archives/uploads/20260721-a1b2c3 --quick
 # Download from a readable storage class
 cargoship download s3://my-bucket/archives/uploads/20260721-a1b2c3 ./out --pattern "*.log"
 
-# Restore specific files (handles Glacier)
+# Restore specific files (handles Glacier; verifies each file as it writes)
 cargoship restore s3://my-bucket/archives/uploads/20260721-a1b2c3 ./out --file data/train.csv
+
+# Flatten restored files into ./out by basename (no directory tree)
+cargoship restore s3://my-bucket/archives/uploads/20260721-a1b2c3 ./out --file data/train.csv --flatten
 
 # Restore from Glacier, wait for thaw, cap the cost
 cargoship restore s3://my-bucket/archives/uploads/20260721-a1b2c3 ./out \
