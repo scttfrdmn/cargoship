@@ -179,6 +179,7 @@ const sidebar = {
         { text: 'Project maturity & compatibility', link: '/project/maturity' },
         { text: 'Security model', link: '/project/security' },
         { text: 'Integrity model', link: '/project/integrity' },
+        { text: 'Verification reports', link: '/project/verification-reports' },
         { text: 'API stability & versioning', link: '/project/versioning' },
         { text: 'Attribution & license', link: '/project/attribution' },
       ],

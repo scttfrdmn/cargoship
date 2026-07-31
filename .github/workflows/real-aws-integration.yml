@@ -34,7 +34,7 @@ on:
 
 permissions:
   id-token: write # required for OIDC role assumption
-  contents: read
+  contents: write # attach the verification report to the release on tag runs
 
 # Serialize runs: the suite mutates a single shared test bucket, so two
 # concurrent runs (e.g. a release tag landing during the weekly canary) could
@@ -106,4 +106,50 @@ jobs:
           CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS: 'true'
           CARGOSHIP_TEST_BUCKET: ${{ vars.AWS_CI_BUCKET }}
           AWS_REGION: ${{ vars.AWS_CI_REGION || 'us-east-1' }}
-        run: go test -tags integration -p 1 ./... -timeout 30m
+        # Tee the verbose output to a log so the verification report is generated
+        # from the exact run that gated the release — no second execution, and
+        # the published numbers can't drift from what actually passed. -v is
+        # required for the VERIFICATION_EVIDENCE markers (t.Logf) to appear.
+        # pipefail (default in bash) makes the step fail if go test fails even
+        # though it's piped through tee.
+        run: |
+          set -o pipefail
+          go test -tags integration -p 1 -v ./... -timeout 30m 2>&1 | tee /tmp/integration.log
+
+      # Turn the transient CI run into durable, dated evidence (#270 leg 3,
+      # sub-issue #5). Always runs — even on failure — so a red release still
+      # publishes an honest FAILED report. The report reflects the log above.
+      - name: Generate verification report
+        if: steps.guard.outputs.configured == 'true' && always()
+        id: report
+        run: |
+          ver="${GITHUB_REF_NAME}"
+          case "$ver" in v*) : ;; *) ver="$(git describe --tags --always)" ;; esac
+          date="$(date -u +%Y-%m-%d)"
+          mkdir -p reports/verification
+          out="reports/verification/${ver}-${date}.md"
+          # Don't let a non-zero report exit (FAILED run) abort the step; we
+          # want the artifact uploaded regardless.
+          bash scripts/ci/verification-report.sh \
+            -i /tmp/integration.log -v "$ver" -d "$date" -c "$GITHUB_SHA" -o "$out" || true
+          echo "path=$out" >> "$GITHUB_OUTPUT"
+          echo "----- verification report -----"
+          cat "$out"
+
+      - name: Upload verification report artifact
+        if: steps.guard.outputs.configured == 'true' && always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verification-report
+          path: ${{ steps.report.outputs.path }}
+          if-no-files-found: warn
+
+      # On release tags, attach the dated report to the GitHub Release so the
+      # published version carries its own standing integrity evidence.
+      - name: Attach report to release
+        if: steps.guard.outputs.configured == 'true' && startsWith(github.ref, 'refs/tags/v') && success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" "${{ steps.report.outputs.path }}" --clobber \
+            || echo "release ${GITHUB_REF_NAME} not found yet — artifact still available in workflow run"

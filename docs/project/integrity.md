@@ -158,6 +158,8 @@ nothing but `sha256sum` and a JSON parser — which is the whole point.
 
 ## See also
 
+- [Verification reports](/project/verification-reports) — dated, per-release
+  evidence this claim held on real S3
 - [`verify` command reference](/reference/commands/inspect)
 - [Archive & Manifest Format Spec](/reference/format/)
 - [Manifest schema](/reference/format/manifest)

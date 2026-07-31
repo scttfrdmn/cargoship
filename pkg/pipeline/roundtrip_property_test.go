@@ -145,6 +145,7 @@ func runRoundTrip(t *testing.T, baseSize int, wantChunked bool) {
 	restoredByBase := indexFilesByBase(t, outDir)
 
 	// Assert byte-identity for each planted file.
+	var totalBytes int
 	for _, want := range corpus {
 		path, ok := restoredByBase[want.base]
 		require.True(t, ok, "restored file not found for %s", want.relPath)
@@ -153,8 +154,19 @@ func runRoundTrip(t *testing.T, baseSize int, wantChunked bool) {
 		assert.Equal(t, want.size, len(got), "size mismatch for %s", want.relPath)
 		assert.Equal(t, want.sum, sha256hex(got),
 			"BYTE MISMATCH after round-trip for %s (integrity invariant failed)", want.relPath)
+		totalBytes += want.size
 	}
 	t.Logf("round-trip OK: %d files byte-identical across upload→restore", len(corpus))
+
+	// Emit a machine-readable evidence marker so the per-release verification
+	// report (scripts/ci/verification-report.sh, #270 leg 3 / sub-issue #5) can
+	// state concrete numbers — files, bytes, and which storage path ran — rather
+	// than just "the suite passed". One line per sub-test; the report sums them.
+	mode := "direct"
+	if wantChunked {
+		mode = "chunked"
+	}
+	t.Logf("VERIFICATION_EVIDENCE mode=%s files=%d bytes=%d chunked=%t", mode, len(corpus), totalBytes, wantChunked)
 }
 
 // indexFilesByBase walks dir and maps each regular file's basename to its full
