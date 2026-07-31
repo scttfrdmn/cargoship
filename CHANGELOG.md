@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-07-31
+
+The **Trust & Verifiability** release (#270). CargoShip's core promise is that
+what you restore is byte-identical to what you uploaded. This release makes that
+claim continuously and independently checkable — a data-level verify, an open
+and drift-checked format, an adversarial round-trip run against real S3 every
+release, and a published dated verification report — rather than an assurance
+you have to take on faith. Along the way this work caught and fixed a data-loss
+bug and a path-traversal bug (see Fixed).
+
+### Added
+- **Data-level `verify --deep` (#271).** `verify` previously only checked that a
+  manifest was internally coherent; it never re-read stored bytes. `--deep` now
+  re-downloads each chunk and recomputes its SHA-256 against the manifest, and
+  extracts and hashes every file, so checksum verification is a first-class
+  PASS/FAIL. Every upload records SHA-256 at two levels: per chunk (the exact
+  stored `.tar.zst` bytes) and per file. Per-file checksums are on by default;
+  opt out with `upload --no-file-checksums`.
+- **Verify-on-restore (#283).** Restore now verifies each file's SHA-256 as it
+  writes and refuses to emit corrupt bytes — it fails the file instead of
+  silently returning whatever S3 handed back. On by default; `restore
+  --no-verify` opts out. Covers both direct and chunked storage paths.
+- **Open, machine-checkable archive format (#274).** A JSON Schema for the
+  manifest (`pkg/manifest/schema.json`, embedded), a struct↔schema drift guard,
+  a dependency-free draft-07 validator that checks the *real* uploaded manifest,
+  version-compat fixtures, and an independent-reader test that parses archives
+  using only the standard library + zstd — proving the format is not locked to
+  CargoShip's own code.
+- **Whole-pipeline round-trip property test (#281).** A deliberately hostile
+  corpus (empty/large files, incompressible and highly-compressible content,
+  deep nesting, unicode / spaces / dotfile names) is uploaded through the real
+  pipeline and restored through the real restore path, then compared
+  byte-for-byte by SHA-256 — across both direct and chunked storage.
+- **Real-AWS integration lane (#279, #290, #291).** The credential-gated
+  integration suite now runs against real S3 in a dedicated `cargoship-dev`
+  account via GitHub OIDC (no long-lived keys), on a weekly canary, on every
+  release tag, and on demand. This is the standing, continuous evidence behind
+  the integrity claim.
+- **Published per-release verification report (#299).** Each release attaches a
+  dated report (`vX.Y.Z-YYYY-MM-DD.md`) to its GitHub Release, stating how many
+  files and bytes round-tripped byte-identical across both storage paths and
+  which integration suites passed on real S3. It is generated from the exact
+  release-gating test run, so the published numbers cannot drift from what
+  actually passed. See the new [Integrity model](https://cargoship.app/project/integrity)
+  and [Verification reports](https://cargoship.app/project/verification-reports)
+  pages.
+- **Dataset-relative restore layout + `--flatten` (#287).** Restores now
+  reconstruct paths relative to the upload root by default; `--flatten` writes
+  basenames into the destination for targeted restores.
+- **Staging performance trend & anomaly analysis (#140).** Trend and anomaly
+  detection over the upload-outcome corpus introduced in v0.15.0.
+
+### Changed
+- Restore writes a consistent, escape-safe layout across direct and chunked
+  modes (#282).
+
+### Fixed
+- **Data-loss in compressed chunks (#275).** The archiver closed its pipe in the
+  wrong order, so the final zstd frame was not flushed and the last file in
+  every compressed chunk was silently truncated. The chunk-level checksum did
+  not catch it; the new per-file verify did. Fixed the close order and added a
+  regression test.
+- **Path traversal on restore (#282).** A manifest entry with an absolute path
+  or `..` components could escape the restore destination directory. Both write
+  paths now sanitize entry paths and verify containment.
+- **Chunked restore of full-URL S3 keys (#281, #273).** Chunked restore passed a
+  stored full-URL key to `GetObject` verbatim and failed every file; manifest
+  S3 keys are now kept portable (prefix-relative), with a defensive normalizer
+  for older manifests.
+- CI: `go.sum` tidied in the library-usage example modules for govulncheck (#285).
+
 ## [0.15.0] - 2026-07-23
 
 ### Added
