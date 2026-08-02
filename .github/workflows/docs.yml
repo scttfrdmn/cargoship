@@ -53,6 +53,15 @@ jobs:
       - name: Resolve latest docs ref
         id: refs
         run: |
+          # Re-fetch tags before resolving. A release pushes the version-bump
+          # commit to main and the tag seconds later, so the main-push run's
+          # checkout can predate the tag by a few seconds and would otherwise
+          # resolve "latest" to the PREVIOUS release — publishing a root tree
+          # one version behind, and reverting the tag run's output if it lands
+          # second. Fetching here makes the result independent of which run
+          # wins the `pages` concurrency group. (v0.17.0 shipped with the root
+          # tree stuck on v0.16.1 for exactly this reason.)
+          git fetch --tags --force origin
           latest_ref="main"
           for tag in $(git tag -l 'v*' --sort=-v:refname); do
             if git cat-file -e "${tag}:docs/.vitepress/config.mts" 2>/dev/null; then
@@ -130,6 +139,14 @@ jobs:
           path: site
 
   deploy:
+    # The github-pages environment uses a custom deployment branch policy, so
+    # every ref that deploys must be allow-listed there or the deploy is
+    # rejected before any step runs ("Tag ... is not allowed to deploy to
+    # github-pages due to environment protection rules"). The policy needs
+    # `main` (branch) AND `v*` (tag); the tag entry was missing, which silently
+    # failed the deploy on v0.16.0, v0.16.1 and v0.17.0. This is repo settings,
+    # not workflow YAML — noted here because nothing in the file reveals it:
+    #   gh api repos/OWNER/REPO/environments/github-pages/deployment-branch-policies
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

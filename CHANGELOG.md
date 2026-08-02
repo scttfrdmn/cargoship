@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-08-02
+
+A docs-infrastructure patch. No changes to the tool itself — same binaries,
+same archive format, same behavior as v0.17.0.
+
+Verifying the v0.17.0 release turned up two reasons cargoship.app was showing
+the wrong version, both of which needed a tag to fix.
+
+### Fixed
+
+- **The docs site advertised v0.13.2.** The VitePress theme hardcoded the
+  release number behind an "update this when cutting a release" comment.
+  Nothing checked it, so it went stale by four releases;
+  `scripts/ci/check-doc-versions.sh` only greps markdown, so a constant in a
+  `.ts` file was outside the guarded set. It now reads
+  `internal/version/version.txt` — the single canonical source (#260) the
+  release process already bumps — so there is no second copy to forget. (#313)
+- **The "these docs track `main`" banner rendered on the released tree too**,
+  where it was misinformation rather than merely stale. It is now gated to the
+  `/dev/` tree.
+- **Release tags could not deploy the docs site at all.** The `github-pages`
+  environment's deployment branch policy allow-listed only `main`, so every
+  tag-triggered run was rejected before its first step ("Tag ... is not allowed
+  to deploy to github-pages due to environment protection rules"). This
+  silently failed on v0.16.0, v0.16.1 and v0.17.0. The policy now includes
+  `v*`, and the reason is documented in `docs.yml` next to the `environment:`
+  key, since nothing in the workflow file reveals a repo-settings dependency.
+- **The root docs tree could publish one release behind.** A release pushes the
+  version-bump commit to `main` and the tag seconds later, so the main-push
+  run's checkout can predate the tag and resolve "latest" to the previous
+  release — and, landing second in the `pages` concurrency group, overwrite the
+  tag run's output. The resolve step now fetches tags first, making the result
+  independent of which run wins the race.
+
 ## [0.17.0] - 2026-08-02
 
 A security release. Asking "do we need more fuzz coverage?" led to a survey of
