@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-08-02
+
+A correctness patch. Extending fuzzing to the trust/integrity surface (#302)
+turned up four ways `verify --deep` and `restore` could resolve a chunk's S3
+object key to the *wrong* object, plus a manifest that violated its own
+published schema. All were in code with passing table tests — the kind of edge
+case invariant fuzzing finds and examples don't.
+
+### Fixed
+- **Object keys containing `://` were destroyed (#302).** `ResolveObjectKey`
+  matched `://` anywhere in a key, so a legitimately-named object (S3 permits
+  `:` in keys) collapsed to the bare prefix and could not be verified or
+  restored. Only a scheme in true scheme position is now treated as a URL.
+- **A trailing slash on the prefix, or a leading slash on the key, addressed a
+  different object (#302).** These produced `prefix//key`, which in S3 is a
+  distinct object from `prefix/key` — so verification looked for something that
+  was never written. `s3://bucket/archives/` is a shape users type.
+- **Key resolution was not idempotent (#302).** A resolved key whose first path
+  segment happened to equal the bucket name had that segment stripped on a
+  second resolve pass, silently dropping a path component.
+- **A URL-shaped key with a leading slash bypassed URL detection entirely
+  (#302),** reaching `GetObject` as a URL rather than a key.
+- **Manifests with an empty `files`, `chunks`, or `shards` collection violated
+  the published schema (#302).** Go marshals a nil slice as `null`, but the
+  schema declares all three as required arrays, so an upload producing no chunks
+  wrote a non-conforming manifest.
+
+### Added
+- **Fuzzing extended to the trust surface (#302).** Three invariant-based fuzz
+  targets: the restore path sanitizer (an accepted path always lands inside the
+  destination — a security boundary), the S3 key resolver (never a URL, always
+  prefix-scoped, idempotent), and a differential check that every manifest
+  CargoShip writes validates against its own published schema. All nine crashing
+  inputs found are committed as permanent regression corpus. A new weekly
+  deep-fuzz workflow runs every target ~40× longer than the per-PR lane.
+
 ## [0.16.0] - 2026-07-31
 
 The **Trust & Verifiability** release (#270). CargoShip's core promise is that
