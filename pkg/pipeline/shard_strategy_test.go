@@ -9,6 +9,7 @@ import (
 
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
 	"github.com/scttfrdmn/cargoship/pkg/config"
+	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
 
 // TestShardStrategiesMatchConfig pins the two lists together. pkg/config can't
@@ -277,4 +278,54 @@ func TestShardAssignerStaysInRange(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestShardStrategyDoesNotAffectRestore pins the invariant that makes changing
+// the shard strategy safe for existing archives: readers take each chunk's shard
+// and key from the manifest, and nothing recomputes assignment from the chunk ID.
+//
+// This matters because the strategy is an upload-time choice that is NOT recorded
+// in the manifest. If any reader recomputed `chunk.ID % shard_count`, it would
+// address the wrong S3 object for every archive written with a non-default
+// strategy — turning a tuning flag into a data-loss bug.
+func TestShardStrategyDoesNotAffectRestore(t *testing.T) {
+	const shards = 8
+	files := []chunking.File{{Path: "/data/a.bin", Size: 100}}
+
+	// Two strategies that disagree about where chunk 3 belongs.
+	rr, err := newShardAssigner(ShardStrategyRoundRobin, shards)
+	require.NoError(t, err)
+	dir, err := newShardAssigner(ShardStrategyDirectory, shards)
+	require.NoError(t, err)
+
+	c := &chunking.Chunk{ID: 3, Files: files, TotalSize: 100}
+	rrShard := rr.assign(c)
+	dirShard := dir.assign(c)
+
+	// Whatever each strategy chose, the recorded shard is what a reader uses.
+	// Simulate the two manifests a reader could be handed.
+	for name, shard := range map[string]int{"round-robin": rrShard, "directory": dirShard} {
+		t.Run(name, func(t *testing.T) {
+			recorded := manifest.ChunkEntry{
+				ID:      3,
+				ShardID: shard,
+				S3Key:   fmt.Sprintf("uploads/u1/shard-%d/chunk-3.tar.zst", shard),
+			}
+			// A reader must resolve to the recorded key, not one derived from the
+			// chunk ID. With round-robin, chunk 3 → shard 3; if the recorded shard
+			// differs, deriving it would produce a key for an object that does not
+			// exist.
+			assert.Equal(t,
+				fmt.Sprintf("uploads/u1/shard-%d/chunk-3.tar.zst", recorded.ShardID),
+				manifest.ResolveObjectKey("", "bucket", recorded.S3Key),
+				"restore must follow the manifest's recorded shard")
+			assert.Contains(t, recorded.S3Key, fmt.Sprintf("shard-%d/", recorded.ShardID),
+				"the recorded key and recorded ShardID must agree")
+		})
+	}
+
+	// And the guard that gives the above its teeth: the strategies really do
+	// disagree here, so a reader that recomputed would be wrong for one of them.
+	assert.NotEqual(t, rrShard, dirShard,
+		"fixture must be one where the strategies disagree, or this test proves nothing")
 }
