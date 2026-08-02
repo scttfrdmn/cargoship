@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	versionpkg "github.com/scttfrdmn/cargoship/internal/version"
 	cargoconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
@@ -87,26 +88,38 @@ func NewUploadCmd() *cobra.Command {
 
 CargoHold divides large datasets into multiple shards for parallel uploads,
 providing:
-- Intelligent shard distribution (hash, size, type, or directory-based)
-- Per-shard compression with configurable levels (zstd)
+- Intelligent shard distribution (round-robin, hash, size, type, or directory)
+- Content-aware zstd compression, with an optional fixed-level override
 - Parallel uploads for maximum throughput
 - Automatic manifest generation for easy restore
-- Progress tracking with per-shard visibility
+- Progress tracking
+
+Shard Count:
+  CargoShip automatically selects between 4 and 32 shards when --shard-count is
+  0 (the default). If automatic selection fails, it falls back to 8.
 
 Shard Strategies:
-  hash      - Hash-based distribution (balanced, default)
-  size      - Size-based distribution (large files in separate shards)
-  type      - File type distribution (group by extension)
-  directory - Directory-based distribution (keep directories together)
+  round-robin - Distribute by chunk order (even shards, cheapest; default)
+  hash        - Hash of chunk contents (stable across runs)
+  size        - Least-loaded shard by bytes (evens out uneven chunk sizes)
+  type        - Group chunks by predominant content type
+  directory   - Group chunks by common directory prefix
+
+Compression:
+  By default CargoShip picks a zstd level per chunk from the content it
+  contains — level 1 for already-compressed data, up to level 9 for source
+  code. Passing --compression-level overrides that and pins every chunk to one
+  level. Note that zstd has only four internal levels, so values map in bands
+  (1-2, 3-5, 6-9, 10+); the effective setting is reported at upload start.
 
 Examples:
-  # Upload with default settings (10 shards, hash strategy, compression level 3)
+  # Upload with defaults (auto shard count, round-robin, content-aware compression)
   cargoship upload /data s3://my-bucket/dataset
 
   # Upload with custom shard count and strategy
   cargoship upload /data s3://my-bucket/dataset --shard-count 20 --shard-strategy size
 
-  # Upload with maximum compression
+  # Pin every chunk to maximum compression (disables content-aware selection)
   cargoship upload /data s3://my-bucket/dataset --compression-level 19
 
   # Quiet mode (no progress display)
@@ -135,15 +148,9 @@ Examples:
 				return fmt.Errorf("invalid destination: %w", err)
 			}
 
-			// Validate shard strategy
-			validStrategies := map[string]bool{
-				"hash":      true,
-				"size":      true,
-				"type":      true,
-				"directory": true,
-			}
-			if !validStrategies[shardStrategy] {
-				return fmt.Errorf("invalid shard-strategy: %s (must be hash, size, type, or directory)", shardStrategy)
+			// Validate shard strategy (#316: the pipeline owns the valid set)
+			if err := pipeline.ValidateShardStrategy(shardStrategy); err != nil {
+				return err
 			}
 
 			// Validate compression level (zstd range: 1-22, recommended: 1-19)
@@ -186,6 +193,15 @@ Examples:
 			absPath, err := filepath.Abs(sourceDir)
 			if err != nil {
 				return fmt.Errorf("failed to resolve path %s: %w", sourceDir, err)
+			}
+
+			// #316: --compression-level is an override, so only an explicitly
+			// passed value reaches the pipeline. Sending the flag's default (3)
+			// unconditionally would pin every chunk to level 3 and switch OFF
+			// content-aware compression for everyone who never touched the flag.
+			effectiveCompressionLevel := 0
+			if cmd.Flags().Changed("compression-level") {
+				effectiveCompressionLevel = compressionLevel
 			}
 
 			// Issue #106: Auto-detect optimal shard count if not specified
@@ -282,12 +298,16 @@ Examples:
 			// Initialize distributed tracing if enabled
 			if enableTracing {
 				tracingConfig := tracing.Config{
-					Enabled:        true,
-					ExporterType:   tracingExporter,
-					Endpoint:       tracingEndpoint,
-					SampleRate:     tracingSampleRate,
-					ServiceName:    "cargoship",
-					ServiceVersion: "v0.6.2",
+					Enabled:      true,
+					ExporterType: tracingExporter,
+					Endpoint:     tracingEndpoint,
+					SampleRate:   tracingSampleRate,
+					ServiceName:  "cargoship",
+					// #318: was hardcoded "v0.6.2", so every trace from every
+					// release since has misreported the build. version.Version
+					// is the canonical source (internal/version/version.txt),
+					// and release.yml verifies it matches the pushed tag.
+					ServiceVersion: "v" + versionpkg.Version,
 				}
 
 				tracerProvider, err := tracing.NewTracerProvider(ctx, tracingConfig)
@@ -569,6 +589,11 @@ Examples:
 				ShardCount:        shardCount,
 				WorkersPerPrefix:  2,
 
+				// #316: shard strategy and compression level now reach the
+				// archiver. Both flags were accepted and discarded before this.
+				ShardStrategy:    shardStrategy,
+				CompressionLevel: effectiveCompressionLevel,
+
 				// Progress tracking
 				EnableProgress:   !quiet,
 				ProgressInterval: 100 * 1000000, // 100ms in nanoseconds
@@ -594,6 +619,10 @@ Examples:
 				EnableDirectUpload:     cmd.Flags().Changed("direct-upload"),
 				ForceDirectUpload:      cmd.Flags().Changed("force-direct-upload"),
 				EnableAutoDirectUpload: true, // Auto-enable when thresholds met
+				// #316: these two were advertised but never read, so the
+				// pipeline always used its own defaults (500MB / 256 workers).
+				DirectUploadThresholdMB: func() int { v, _ := cmd.Flags().GetInt("direct-upload-threshold-mb"); return v }(),
+				DirectUploadWorkers:     func() int { v, _ := cmd.Flags().GetInt("direct-upload-workers"); return v }(),
 
 				// Issue #183: DVC budget integration
 				ProjectID: dvcProject,
@@ -604,9 +633,6 @@ Examples:
 				GitMetadataData: gitMetadataData,
 			}
 
-			// Note: Compression level and shard strategy are not yet implemented in the pipeline
-			// These will be added in future enhancements
-			// For now, we log them for visibility
 			if !quiet {
 				fmt.Printf("🚢 CargoHold Upload Configuration:\n")
 				fmt.Printf("   Source:            %s\n", absPath)
@@ -618,7 +644,15 @@ Examples:
 					fmt.Printf("   Shard Count:       %d (auto-selected)\n", shardCount)
 				}
 				fmt.Printf("   Shard Strategy:    %s\n", shardStrategy)
-				fmt.Printf("   Compression Level: %d (zstd)\n", compressionLevel)
+				// #316: report what compression will actually do. zstd has only
+				// four tiers, so echoing the requested number alone would imply
+				// finer control than exists.
+				if effectiveCompressionLevel != 0 {
+					fmt.Printf("   Compression Level: %d (zstd %s, fixed — content-aware selection off)\n",
+						effectiveCompressionLevel, pipeline.EffectiveZstdTier(effectiveCompressionLevel))
+				} else {
+					fmt.Printf("   Compression Level: content-aware (per chunk, zstd 1-9)\n")
+				}
 				fmt.Printf("   Storage Class:     %s\n\n", storageClass)
 			}
 
@@ -810,11 +844,24 @@ Examples:
 
   See: https://github.com/scttfrdmn/cargoship/issues/168`)
 
-	cmd.Flags().IntVar(&shardCount, "shard-count", 0, "Number of shards for parallel uploads (0=auto, 4-32=manual, default: 0)")
-	cmd.Flags().StringVar(&shardStrategy, "shard-strategy", "hash", "Shard distribution strategy (hash, size, type, directory)")
-	cmd.Flags().IntVar(&compressionLevel, "compression-level", 3, "Zstd compression level (1-22, recommended 1-19)")
+	cmd.Flags().IntVar(&shardCount, "shard-count", 0, "Shards for parallel uploads: 0 auto-selects 4-32 (falls back to 8), or set 4-32 manually")
+	// #316: the default is round-robin because that is what CargoShip has always
+	// done. It was previously labelled "hash" while the code did chunkID % count,
+	// so the advertised default named a strategy that was never implemented.
+	// "hash" now genuinely hashes chunk contents; changing the default would
+	// silently redistribute every user's shards, so it stays opt-in.
+	cmd.Flags().StringVar(&shardStrategy, "shard-strategy", pipeline.ShardStrategyRoundRobin,
+		"Shard distribution strategy (round-robin, hash, size, type, directory)")
+	cmd.Flags().IntVar(&compressionLevel, "compression-level", 3,
+		"Fixed zstd compression level (1-22), overriding per-chunk content-aware selection. Unset = content-aware")
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "Disable progress display")
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "Enable interactive TUI mode with per-shard progress (Issue #112)")
+	// #316: --interactive has never had an implementation on the live upload
+	// path — the TUI it refers to (pkg/pipeline/progress.go) is only reachable
+	// from the ShardCoordinator subsystem, which has no production caller (#325).
+	// Hide it rather than keep advertising an inert flag; it stays accepted so
+	// existing scripts don't break. Unhide when real per-shard progress lands.
+	_ = cmd.Flags().MarkHidden("interactive")
 
 	// v0.6.2: Advanced transporter flags
 	cmd.Flags().StringVar(&transporterType, "transporter", "staging", "S3 transporter type: basic, staging, adaptive, optimized, none")

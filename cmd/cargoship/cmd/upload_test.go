@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
@@ -42,9 +43,81 @@ func TestNewUploadCmd_Structure(t *testing.T) {
 	assert.Equal(t, "us-west-2", cmd.Flags().Lookup("region").DefValue)
 	assert.Equal(t, "STANDARD", cmd.Flags().Lookup("storage-class").DefValue)
 	assert.Equal(t, "0", cmd.Flags().Lookup("shard-count").DefValue) // Issue #106: Auto-select by default
-	assert.Equal(t, "hash", cmd.Flags().Lookup("shard-strategy").DefValue)
+	// #316: the default is round-robin, which is what the archiver has always
+	// actually done. It previously read "hash" while the implementation was
+	// round-robin — and this test passed anyway, which is the point of the
+	// behavioral tests referenced below.
+	assert.Equal(t, pipeline.ShardStrategyRoundRobin, cmd.Flags().Lookup("shard-strategy").DefValue)
 	assert.Equal(t, "3", cmd.Flags().Lookup("compression-level").DefValue)
 	assert.Equal(t, "false", cmd.Flags().Lookup("quiet").DefValue)
+}
+
+// TestUploadCmd_FlagsReachPipelineConfig is the guard for #316: for a decade of
+// commits the assertions above were the *only* coverage these flags had, and they
+// passed while --compression-level, --shard-strategy, --direct-upload-threshold-mb,
+// --direct-upload-workers and --interactive were all accepted and then dropped on
+// the floor. Presence and default assertions cannot detect a flag that does
+// nothing, so this test walks the flag → PipelineConfig path instead.
+//
+// The per-strategy and per-level *behavior* lives in pkg/pipeline
+// (shard_strategy_test.go, archiver_test.go); this only proves the CLI hands the
+// values over.
+func TestUploadCmd_FlagsReachPipelineConfig(t *testing.T) {
+	t.Run("shard strategy is validated against the pipeline's set", func(t *testing.T) {
+		// Every value the flag advertises must be accepted by the assigner that
+		// consumes it. A strategy named in --help but rejected (or silently
+		// ignored) downstream is the #316 defect.
+		for _, s := range pipeline.ShardStrategies() {
+			assert.NoError(t, pipeline.ValidateShardStrategy(s),
+				"upload advertises strategy %q; the pipeline must accept it", s)
+		}
+		assert.Error(t, pipeline.ValidateShardStrategy("balanced"),
+			"an unknown strategy must be rejected at parse time, not ignored at run time")
+	})
+
+	t.Run("compression level is an override, not a floor", func(t *testing.T) {
+		cmd := NewUploadCmd()
+		// Untouched: the pipeline must receive 0 so content-aware selection
+		// stays on. Forwarding the flag's default (3) unconditionally would
+		// pin every chunk to level 3 for every user who never passed the flag.
+		assert.False(t, cmd.Flags().Changed("compression-level"),
+			"a fresh command has not been given the flag")
+
+		require.NoError(t, cmd.Flags().Set("compression-level", "19"))
+		assert.True(t, cmd.Flags().Changed("compression-level"),
+			"Changed() is what distinguishes an explicit 3 from an absent flag")
+		v, err := cmd.Flags().GetInt("compression-level")
+		require.NoError(t, err)
+		assert.Equal(t, 19, v)
+		// 19 is outside the pre-built encoder-pool tiers (1/3/6/9); it must not
+		// be silently downgraded. See TestArchiverStage_CompressionLevelOutOfPoolOverride.
+		assert.Equal(t, "best", pipeline.EffectiveZstdTier(19),
+			"an out-of-tier override must map to the strongest tier, not fall back to 3")
+	})
+
+	t.Run("direct-upload flags are readable ints", func(t *testing.T) {
+		cmd := NewUploadCmd()
+		// These two were defined and never read; upload.go now reads them via
+		// GetInt, so a rename or type change here must break loudly.
+		require.NoError(t, cmd.Flags().Set("direct-upload-threshold-mb", "250"))
+		require.NoError(t, cmd.Flags().Set("direct-upload-workers", "64"))
+
+		threshold, err := cmd.Flags().GetInt("direct-upload-threshold-mb")
+		require.NoError(t, err)
+		assert.Equal(t, 250, threshold)
+
+		workers, err := cmd.Flags().GetInt("direct-upload-workers")
+		require.NoError(t, err)
+		assert.Equal(t, 64, workers)
+	})
+
+	t.Run("interactive is hidden rather than accepted-and-inert", func(t *testing.T) {
+		cmd := NewUploadCmd()
+		f := cmd.Flags().Lookup("interactive")
+		require.NotNil(t, f, "the flag stays defined so existing scripts don't break")
+		assert.True(t, f.Hidden,
+			"--interactive has no live implementation (see #325); it must not be advertised")
+	})
 }
 
 // TestUploadCmd_FlagTypes tests that flags have correct types (Issue #95)
@@ -91,9 +164,9 @@ func TestUploadCmd_HelpText(t *testing.T) {
 			"Help text should mention '%s'", phrase)
 	}
 
-	// Verify shard strategies are documented
-	strategies := []string{"hash", "size", "type", "directory"}
-	for _, strategy := range strategies {
+	// Verify shard strategies are documented. Driven off the pipeline's list, not
+	// a hardcoded copy, so adding a strategy without documenting it fails here.
+	for _, strategy := range pipeline.ShardStrategies() {
 		assert.Contains(t, cmd.Long, strategy,
 			"Help text should document shard strategy '%s'", strategy)
 	}
@@ -215,12 +288,17 @@ func TestUploadCmd_ShardCountRange(t *testing.T) {
 	defaultCount := cmd.Flags().Lookup("shard-count").DefValue
 	assert.Equal(t, "0", defaultCount, "Default shard count should be 0 (auto)")
 
-	// Verify help text mentions valid range and auto mode
+	// Verify help text documents auto mode, the valid range, and the fallback.
+	// #324: the fallback was previously undocumented here and stated three
+	// different ways elsewhere, so a user reading --help couldn't tell what 0
+	// would actually produce.
 	usage := cmd.Flags().Lookup("shard-count").Usage
-	assert.Contains(t, usage, "0=auto",
+	assert.Contains(t, usage, "auto",
 		"Flag usage should document auto mode")
 	assert.Contains(t, usage, "4-32",
 		"Flag usage should document valid range")
+	assert.Contains(t, usage, "8",
+		"Flag usage should document the fallback used when auto-selection fails")
 }
 
 // TestUploadCmd_RequiredArguments tests that command requires 2 arguments (Issue #95)

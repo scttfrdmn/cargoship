@@ -35,26 +35,37 @@ content types that file extensions miss (code in `.bin` files, misnamed or
 extensionless files).
 
 The practical upshot: **leave levels alone and CargoShip already avoids wasting
-CPU on incompressible data**. The `--compression-level` flag below sets the
-ceiling for content that *is* worth compressing.
+CPU on incompressible data**. The `--compression-level` flag below overrides that
+per-chunk choice.
 
-## Choosing a level
+## Overriding the level
 
 ```bash
 cargoship upload ./my-data s3://my-bucket/archives/ --compression-level 9
 ```
 
-`--compression-level` accepts zstd levels 1–22 (1–19 recommended; the default is
-3, tuned for fast, streaming-friendly throughput). Higher levels compress more
-but cost more CPU, and past a point the extra compression is slower to produce
-than the bandwidth it saves.
+`--compression-level` is an **override**, not a ceiling: passing it pins *every*
+chunk to that level and switches content-aware selection off entirely, including
+the back-off on already-compressed data. Omit the flag to keep automatic
+per-chunk selection, which is the recommended default.
+
+It accepts zstd levels 1–22 (1–19 recommended). Higher levels compress more but
+cost more CPU, and past a point the extra compression is slower to produce than
+the bandwidth it saves.
+
+::: warning Levels map to four bands
+Go's zstd implementation exposes four internal levels, so the 1–22 range
+collapses into four distinct behaviors: **1–2**, **3–5**, **6–9**, and **10+**.
+Level 12 and level 19 produce identical output. CargoShip prints the effective
+setting at upload start so you can see which band you landed in.
+:::
 
 | Level | Speed | Ratio | Good for |
 |-------|-------|-------|----------|
-| 1–3 | Fastest | ~2–2.5:1 | Network-bound uploads, mostly-compressed data (default: 3) |
-| 6–9 | Fast | ~3–4:1 | Balanced general use |
-| 12–15 | Slower | ~4–5:1 | Text-heavy data, CPU to spare |
-| 16–19 | Slowest | ~5:1+ | Cold archives you write once |
+| 1–2 | Fastest | ~2–2.5:1 | Network-bound uploads, mostly-compressed data |
+| 3–5 | Fast | ~2.5–3:1 | Streaming-friendly throughput |
+| 6–9 | Slower | ~3–4:1 | Balanced general use, text-heavy data |
+| 10+ | Slowest | ~4:1+ | Cold archives you write once |
 
 ::: tip Total time, not just ratio
 The fastest level isn't always the fastest *upload*. On a slow link a higher
@@ -71,20 +82,23 @@ encrypted blobs — a high level just burns CPU for no gain. A low level keeps t
 pipeline fast:
 
 ```bash
-cargoship upload ./video-library s3://my-bucket/media/ --compression-level 3
+cargoship upload ./video-library s3://my-bucket/media/ --compression-level 1
 ```
 
 Content-aware selection already backs off on recognized incompressible types, so
-this mainly matters when your whole dataset is pre-compressed.
+this mainly matters when your whole dataset is pre-compressed *and* detection
+can't tell — otherwise omitting the flag gets you the same result without pinning
+the level for everything else in the tree.
 
 ## Best practices
 
 ::: tip
-- **Start with the default** — it streams fast and content-aware selection already
-  avoids wasted work on incompressible files.
-- **Raise to 9–15 for text-heavy archives** (logs, code, CSV/JSON) where the ratio
-  pays off.
-- **Keep it low for media and pre-compressed data** — you won't shrink it.
+- **Omit `--compression-level`** — content-aware selection already picks a high
+  level for text and code and backs off on incompressible files. Passing the flag
+  turns that off for the whole upload.
+- **Override to 9+ only for uniformly text-heavy archives** (logs, code,
+  CSV/JSON), where every chunk wants the same high level anyway.
+- **Override to 1 for media and pre-compressed data** — you won't shrink it.
 - **Enable [Magika](/guides/features/magika)** for mixed or misnamed content so
   detection (and level choice) is accurate.
 - **Benchmark for repeated big jobs** — the best level depends on your link speed

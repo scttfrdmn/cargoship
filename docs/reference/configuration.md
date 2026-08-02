@@ -110,7 +110,7 @@ Sharding subsystem — see [Multi-prefix sharding](/guides/features/sharding).
 |-----|------|---------|-------|
 | `enable` | bool | `true` | Use CargoHold sharding. |
 | `shard_count` | int | `10` | Shards (1–100). The `upload` command defaults to adaptive (`--shard-count 0`). |
-| `shard_strategy` | string | `hash` | One of `hash`, `size`, `type`, `directory`. |
+| `shard_strategy` | string | `hash` | One of `round-robin`, `hash`, `size`, `type`, `directory`. |
 | `compression_level` | int | `3` | Zstandard level (1–22). |
 
 ### `magika`

@@ -2,8 +2,9 @@
 
 `cargoship benchmark` measures how different compression algorithms and levels
 perform on your data, so you can trade archive size against CPU time before
-committing to a `--compression-level` for real uploads. It reports compression
-ratio and throughput for gzip, zlib, zstd, lz4, and s2.
+deciding whether to override the automatic level with `--compression-level` on
+real uploads. It reports compression ratio and throughput for gzip, zlib, zstd,
+lz4, and s2.
 
 ```bash
 # Benchmark against generated data of a given size and type

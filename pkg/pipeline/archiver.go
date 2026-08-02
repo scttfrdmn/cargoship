@@ -55,6 +55,15 @@ func NewEncoderPool(size int, level compression.Level) (*EncoderPool, error) {
 }
 
 // convertToZstdLevel converts compression.Level to zstd.EncoderLevel (Issue #105)
+//
+// The four explicit cases are the content-aware tiers from #105 and are kept
+// verbatim: note that 9 maps to SpeedBestCompression, which is NOT what
+// zstd.EncoderLevelFromZstd(9) returns (it yields SpeedBetterCompression, since
+// its bands are <3 / 3-5 / 6-9 / 10+). Delegating all levels to the library
+// would silently weaken source-code compression, so only levels outside the
+// tier set — reachable via an explicit --compression-level override (#316) —
+// fall through to the library's banding. That is still lossy by nature: zstd
+// exposes just four discrete levels, so e.g. 12 and 22 behave identically.
 func convertToZstdLevel(level compression.Level) zstd.EncoderLevel {
 	switch level {
 	case 1: // LevelFastest - images, video, audio, archives
@@ -66,8 +75,18 @@ func convertToZstdLevel(level compression.Level) zstd.EncoderLevel {
 	case 9: // LevelBest - source code
 		return zstd.SpeedBestCompression
 	default:
-		return zstd.SpeedDefault // Fallback to level 3
+		return zstd.EncoderLevelFromZstd(int(level))
 	}
+}
+
+// EffectiveZstdTier names the zstd tier a numeric compression level actually
+// maps to ("fastest", "default", "better", "best").
+//
+// Callers use this to report the effective setting rather than echoing the
+// requested number: zstd has only four tiers, so accepting 1-22 and printing
+// the raw value back would overstate how much control the number carries.
+func EffectiveZstdTier(level int) string {
+	return convertToZstdLevel(compression.Level(level)).String()
 }
 
 // Get retrieves an encoder from the pool (blocks if none available)
@@ -132,6 +151,7 @@ type ArchiverStage struct {
 	outputs           map[string]chan<- *Job // nil = single-output mode (Phase 2)
 	shardCount        int                    // Number of shards (0 = single-output)
 	shardDistribution map[string]*int64      // map[shardName]jobCount for load balancing analysis
+	shardAssigner     *shardAssigner         // #316: implements --shard-strategy
 
 	// Phase 3.3: Archive padding for uniform compressed chunk sizes
 	padder *chunking.ArchivePadder // Archive padder for adding zero-byte padding
@@ -145,12 +165,24 @@ type ArchiverStage struct {
 	paddingBytesAdded    int64 // Total padding bytes added (Phase 3.3)
 }
 
-// createEncoderPools creates encoder pools for common compression levels (Issue #105)
-func createEncoderPools(poolSize int) (map[compression.Level]*EncoderPool, error) {
+// createEncoderPools creates encoder pools for the content-aware compression
+// levels (Issue #105), plus a pool for an explicit override level (#316).
+//
+// override is 0 when no --compression-level was given. A non-zero override
+// outside the {1,3,6,9} tier set gets its own pool so it is honored exactly;
+// without this it would hit the fallback path in Process and silently compress
+// at level 3 instead — the same accepted-but-ignored bug #316 exists to fix.
+func createEncoderPools(poolSize int, override compression.Level) (map[compression.Level]*EncoderPool, error) {
 	encoderPools := make(map[compression.Level]*EncoderPool)
 	levels := []compression.Level{1, 3, 6, 9} // LevelFastest, LevelFast, documents, LevelBest
+	if override != 0 {
+		levels = append(levels, override)
+	}
 
 	for _, level := range levels {
+		if _, exists := encoderPools[level]; exists {
+			continue // override coincides with a tier level
+		}
 		pool, err := NewEncoderPool(poolSize, level)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create encoder pool for level %d: %w", level, err)
@@ -169,7 +201,8 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 
 	// Issue #105: Create multi-level encoder pools for content-aware compression
 	// Pool size = 2× workers to prevent blocking (8 workers × 2 = 16 encoders per level)
-	encoderPools, err := createEncoderPools(config.Workers * 2)
+	// #316: plus a pool for an explicit --compression-level override, if given.
+	encoderPools, err := createEncoderPools(config.Workers*2, compression.Level(config.CompressionLevel))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create encoder pools: %w", err)
 	}
@@ -191,10 +224,22 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 	// Issue #105: Initialize content-aware compressor
 	contentAwareCompressor := compression.NewContentAwareCompressor(nil) // Uses default config
 
+	// #316: single-output mode still stamps a shard into each S3 key, so it
+	// needs an assigner too. ShardCount 0 means the historical 8-shard default.
+	keyShardCount := config.ShardCount
+	if keyShardCount == 0 {
+		keyShardCount = 8
+	}
+	assigner, err := newShardAssigner(config.ShardStrategy, keyShardCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create shard assigner: %w", err)
+	}
+
 	return &ArchiverStage{
 		config:                 config,
 		input:                  input,
 		output:                 output,
+		shardAssigner:          assigner,
 		compressionDetector:    NewCompressionDetector(),
 		encoderPools:           encoderPools,
 		contentAwareCompressor: contentAwareCompressor,
@@ -222,7 +267,8 @@ func NewArchiverStageWithSharding(config *ArchiverConfig, input <-chan *Job, out
 
 	// Issue #105: Create multi-level encoder pools for content-aware compression
 	// Pool size = 2× workers to prevent blocking (8 workers × 2 = 16 encoders per level)
-	encoderPools, err := createEncoderPools(config.Workers * 2)
+	// #316: plus a pool for an explicit --compression-level override, if given.
+	encoderPools, err := createEncoderPools(config.Workers*2, compression.Level(config.CompressionLevel))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create encoder pools: %w", err)
 	}
@@ -240,6 +286,12 @@ func NewArchiverStageWithSharding(config *ArchiverConfig, input <-chan *Job, out
 		shardDist[shardName] = &count
 	}
 
+	// #316: build the chunk→shard assigner named by --shard-strategy.
+	assigner, err := newShardAssigner(config.ShardStrategy, shardCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create shard assigner: %w", err)
+	}
+
 	// Phase 3.3: Initialize archive padder if enabled
 	var padder *chunking.ArchivePadder
 	if config.EnablePadding {
@@ -255,6 +307,7 @@ func NewArchiverStageWithSharding(config *ArchiverConfig, input <-chan *Job, out
 		outputs:                outputs,
 		shardCount:             shardCount,
 		shardDistribution:      shardDist,
+		shardAssigner:          assigner,
 		compressionDetector:    NewCompressionDetector(),
 		encoderPools:           encoderPools,
 		contentAwareCompressor: contentAwareCompressor,
@@ -280,8 +333,10 @@ func (s *ArchiverStage) selectOutput(job *Job) chan<- *Job {
 		return s.output
 	}
 
-	// Multi-output mode (Phase 3.2): shard by chunk ID using fast modulo
-	shardID := job.Chunk.ID % s.shardCount
+	// Multi-output mode (Phase 3.2): assign per --shard-strategy (#316).
+	// Before #316 this was always chunk.ID % shardCount; that behavior is now
+	// the round-robin strategy, which remains the default.
+	shardID := s.shardAssigner.assign(&job.Chunk)
 	shardName := fmt.Sprintf("shard-%d", shardID)
 
 	// Track shard distribution for load balancing analysis
@@ -461,10 +516,19 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 	var encoderPool *EncoderPool
 	var compressionLevel compression.Level
 	if useCompression {
-		compressionLevel = s.analyzeChunkContentTypes(job.Chunk.Files)
+		// #316: an explicit --compression-level pins every chunk and skips
+		// content analysis; 0 keeps the automatic per-chunk behavior (#105).
+		if s.config.CompressionLevel != 0 {
+			compressionLevel = compression.Level(s.config.CompressionLevel)
+		} else {
+			compressionLevel = s.analyzeChunkContentTypes(job.Chunk.Files)
+		}
 
-		// Select encoder pool based on content-aware compression level
-		// Fallback to level 3 (default) if specific pool doesn't exist
+		// Select encoder pool based on the chosen compression level.
+		// createEncoderPools pre-builds the content-aware tiers plus the
+		// override level, so a miss here means an internal inconsistency
+		// rather than an unsupported user value; fall back to level 3 so
+		// archiving still succeeds.
 		pool, exists := s.encoderPools[compressionLevel]
 		if !exists {
 			compressionLevel = 3 // LevelDefault fallback
@@ -595,11 +659,12 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 	// Generate S3 key with upload-ID/shard structure for multi-prefix optimization (Phase 3)
 	// Format: uploads/{upload-id}/shard-{shard_id}/chunk-{chunk_id}.tar.zst
 	// This distributes S3 request load across multiple prefixes (8× request rate capacity)
-	shardCount := s.config.ShardCount
-	if shardCount == 0 {
-		shardCount = 8 // Default: 8 shards
-	}
-	shardID := job.ID % shardCount
+	//
+	// #316: the shard is chosen here, once, by the --shard-strategy assigner, and
+	// then reused for the S3 key, job.ShardID, and selectOutput's channel pick.
+	// Previously the key used job.ID % shardCount while selectOutput separately
+	// computed job.Chunk.ID % shardCount, so the two could disagree.
+	shardID := s.shardAssigner.assign(&job.Chunk)
 	uploadID := s.config.UploadID
 	if uploadID == "" {
 		uploadID = "default" // Fallback for tests without upload ID

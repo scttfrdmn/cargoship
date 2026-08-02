@@ -86,10 +86,13 @@ cargoship sync ./my-data s3://my-bucket/backups/ \
   --storage-class GLACIER_IR
 ```
 
-- `--shard-count` — number of parallel shards, 1–100 (default 10).
-- `--shard-strategy` — `hash` (balanced, default), `size`, `type`, `directory`.
-- `--compression-level` — Zstandard 1–22 (default 3). See
-  [Compression](/guides/features/compression).
+- `--shard-count` — number of parallel shards, 1–100 (default 10). Unlike
+  `upload`, `sync` does not auto-select the count.
+- `--shard-strategy` — `round-robin` (default), `hash`, `size`, `type`,
+  `directory`. See [Sharding](/guides/features/sharding).
+- `--compression-level` — Zstandard 1–22. Passing it **overrides** content-aware
+  per-chunk selection and pins every chunk to that level; omit it to keep
+  automatic selection. See [Compression](/guides/features/compression).
 - `--storage-class` — `STANDARD` (default), `GLACIER_IR`, `DEEP_ARCHIVE`, etc.
   See [Lifecycle & storage classes](/guides/cost/lifecycle).
 - `-q`/`--quiet` — minimal output for cron and scripts.

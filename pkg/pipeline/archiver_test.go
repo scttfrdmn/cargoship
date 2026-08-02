@@ -267,7 +267,7 @@ func TestArchiverStage_AnalyzeChunkContentTypesWithMagika(t *testing.T) {
 // TestCreateEncoderPools tests multi-level encoder pool creation (Issue #105)
 func TestCreateEncoderPools(t *testing.T) {
 	poolSize := 4
-	pools, err := createEncoderPools(poolSize)
+	pools, err := createEncoderPools(poolSize, 0)
 	require.NoError(t, err)
 	require.NotNil(t, pools)
 
@@ -285,6 +285,39 @@ func TestCreateEncoderPools(t *testing.T) {
 	for _, pool := range pools {
 		_ = pool.Close()
 	}
+}
+
+// TestCreateEncoderPoolsWithOverride verifies an explicit --compression-level
+// outside the content-aware tier set gets its own pool (#316). Without this the
+// override would miss the map and Process would silently fall back to level 3 —
+// the accepted-but-ignored behavior #316 exists to remove.
+func TestCreateEncoderPoolsWithOverride(t *testing.T) {
+	t.Run("out-of-tier override gets a pool", func(t *testing.T) {
+		pools, err := createEncoderPools(2, 19)
+		require.NoError(t, err)
+		defer func() {
+			for _, pool := range pools {
+				_ = pool.Close()
+			}
+		}()
+
+		pool, exists := pools[19]
+		require.True(t, exists, "level 19 override must have its own pool, not fall back to 3")
+		assert.Equal(t, compression.Level(19), pool.level)
+		assert.Len(t, pools, 5, "4 content-aware tiers + 1 override")
+	})
+
+	t.Run("override coinciding with a tier does not duplicate", func(t *testing.T) {
+		pools, err := createEncoderPools(2, 9)
+		require.NoError(t, err)
+		defer func() {
+			for _, pool := range pools {
+				_ = pool.Close()
+			}
+		}()
+
+		assert.Len(t, pools, 4, "level 9 is already a tier; no extra pool")
+	})
 }
 
 // TestConvertToZstdLevel tests compression level conversion (Issue #105)
@@ -616,5 +649,190 @@ func TestArchiverStage_Process_NoTruncation(t *testing.T) {
 	require.Len(t, got, nFiles, "all files must be present in the archive")
 	for path, size := range want {
 		assert.Equal(t, size, got[path], "file %q should be full length", path)
+	}
+}
+
+// archiveOnce runs one chunk of source-code-like text through Process and
+// returns the compressed archive bytes plus the level the archiver recorded.
+func archiveOnce(t *testing.T, level int, files []chunking.File, totalSize int64) ([]byte, string) {
+	t.Helper()
+
+	config := &ArchiverConfig{Workers: 1, CompressionType: "zstd", CompressionLevel: level}
+	input := make(chan *Job, 1)
+	output := make(chan *Job, 1)
+	stage, err := NewArchiverStage(config, input, output)
+	require.NoError(t, err)
+	defer func() { _ = stage.Stop() }()
+
+	job := &Job{ID: 0, Chunk: chunking.Chunk{ID: 0, Files: files, TotalSize: totalSize}}
+	require.NoError(t, stage.Process(context.Background(), job))
+
+	out := <-output
+	require.NotNil(t, out.Archive)
+	raw, err := io.ReadAll(out.Archive)
+	require.NoError(t, err)
+	_ = out.Archive.Close()
+
+	return raw, out.Metadata["compression_level"]
+}
+
+// codeFiles writes compressible text files that content-aware detection
+// classifies as source code (level 9).
+func codeFiles(t *testing.T, n int) ([]chunking.File, int64) {
+	t.Helper()
+	dir := t.TempDir()
+
+	// Semi-repetitive text: compressible enough that level differences show up
+	// in output size, but not so uniform that every level produces the same
+	// tiny result.
+	var body []byte
+	for i := 0; i < 4000; i++ {
+		body = append(body, []byte(fmt.Sprintf("func handler%d(w http.ResponseWriter, r *http.Request) { log.Printf(\"%d\") }\n", i, i))...)
+	}
+
+	var files []chunking.File
+	var total int64
+	for i := 0; i < n; i++ {
+		path := fmt.Sprintf("%s/src%d.go", dir, i)
+		require.NoError(t, os.WriteFile(path, body, 0644))
+		files = append(files, chunking.File{Path: path, Size: int64(len(body))})
+		total += int64(len(body))
+	}
+	return files, total
+}
+
+// TestArchiverStage_CompressionLevelOverride is the behavioral test for #316:
+// --compression-level must change what the archiver actually does. Before the
+// fix ArchiverConfig.CompressionLevel was never read, so all three subtests
+// below produced byte-identical output at the content-aware level.
+func TestArchiverStage_CompressionLevelOverride(t *testing.T) {
+	files, total := codeFiles(t, 3)
+
+	fastest, fastestLevel := archiveOnce(t, 1, files, total)
+	best, bestLevel := archiveOnce(t, 9, files, total)
+
+	assert.Equal(t, "1", fastestLevel, "override must be recorded in job metadata")
+	assert.Equal(t, "9", bestLevel)
+	assert.NotEqual(t, fastest, best,
+		"level 1 and level 9 must produce different compressed output")
+	assert.Less(t, len(best), len(fastest),
+		"level 9 must compress source code better than level 1")
+}
+
+// TestArchiverStage_CompressionLevelOutOfPoolOverride covers the trap inside the
+// fix: levels outside the pre-built {1,3,6,9} pools used to fall through to
+// level 3, which would have silently recreated the no-op bug for exactly the
+// values users reach for (--compression-level 19 for cold archival).
+func TestArchiverStage_CompressionLevelOutOfPoolOverride(t *testing.T) {
+	files, total := codeFiles(t, 2)
+
+	_, level19 := archiveOnce(t, 19, files, total)
+	assert.Equal(t, "19", level19,
+		"an out-of-pool override must be honored, not silently downgraded to 3")
+
+	// 19 and 3 land in different zstd tiers, so the bytes must differ too.
+	out19, _ := archiveOnce(t, 19, files, total)
+	out3, _ := archiveOnce(t, 3, files, total)
+	assert.NotEqual(t, out3, out19,
+		"level 19 must not compress identically to the level-3 fallback")
+}
+
+// TestArchiverStage_CompressionLevelAutomaticByDefault guards the other
+// direction: the override must not become a regression that flattens
+// content-aware selection (#105/#30) for users who never pass the flag.
+func TestArchiverStage_CompressionLevelAutomaticByDefault(t *testing.T) {
+	dir := t.TempDir()
+
+	codeBody := []byte("package main\nfunc main() { println(\"hello\") }\n")
+	codePath := dir + "/main.go"
+	require.NoError(t, os.WriteFile(codePath, codeBody, 0644))
+
+	// A .jpg is detected as an image: content-aware picks level 1 for it and
+	// level 9 for source code, so with CompressionLevel 0 the two chunks must
+	// record different levels.
+	imgBody := make([]byte, len(codeBody))
+	imgPath := dir + "/photo.jpg"
+	require.NoError(t, os.WriteFile(imgPath, imgBody, 0644))
+
+	_, codeLevel := archiveOnce(t, 0,
+		[]chunking.File{{Path: codePath, Size: int64(len(codeBody))}}, int64(len(codeBody)))
+	_, imgLevel := archiveOnce(t, 0,
+		[]chunking.File{{Path: imgPath, Size: int64(len(imgBody))}}, int64(len(imgBody)))
+
+	assert.NotEqual(t, codeLevel, imgLevel,
+		"with no override, level must still vary by chunk content (#105)")
+	assert.Equal(t, "9", codeLevel, "source code should still select level 9")
+}
+
+// TestEffectiveZstdTier documents that the advertised 1-22 range collapses onto
+// four zstd tiers, which is why the CLI reports the effective tier rather than
+// echoing the number back.
+func TestEffectiveZstdTier(t *testing.T) {
+	tests := map[int]string{
+		1:  "fastest",
+		2:  "fastest",
+		3:  "default",
+		5:  "default",
+		6:  "better",
+		9:  "best", // #105 tier mapping, not zstd's own banding
+		12: "best",
+		19: "best",
+		22: "best",
+	}
+	for level, want := range tests {
+		assert.Equal(t, want, EffectiveZstdTier(level), "level %d", level)
+	}
+}
+
+// TestArchiverStage_ShardStrategyAffectsS3Key ties the strategy to the observable
+// output: the shard appears in the S3 key and in job.ShardID, and the manifest
+// records ShardID so restore never recomputes assignment.
+func TestArchiverStage_ShardStrategyAffectsS3Key(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/a.txt"
+	require.NoError(t, os.WriteFile(path, []byte("hello"), 0644))
+	files := []chunking.File{{Path: path, Size: 5}}
+
+	run := func(strategy string, chunkID int) (int, string) {
+		config := &ArchiverConfig{
+			Workers: 1, CompressionType: "zstd",
+			ShardCount: 8, ShardStrategy: strategy, UploadID: "test",
+		}
+		input := make(chan *Job, 1)
+		output := make(chan *Job, 1)
+		stage, err := NewArchiverStage(config, input, output)
+		require.NoError(t, err)
+		defer func() { _ = stage.Stop() }()
+
+		job := &Job{ID: chunkID, Chunk: chunking.Chunk{ID: chunkID, Files: files, TotalSize: 5}}
+		require.NoError(t, stage.Process(context.Background(), job))
+		out := <-output
+		_, _ = io.Copy(io.Discard, out.Archive)
+		_ = out.Archive.Close()
+		return out.ShardID, out.S3Key
+	}
+
+	// Round-robin is the historical behavior: the chunk ID picks the shard.
+	for _, id := range []int{0, 1, 2, 3} {
+		shard, key := run(ShardStrategyRoundRobin, id)
+		assert.Equal(t, id, shard, "round-robin: chunk %d of 8 shards → shard %d", id, id)
+		assert.Contains(t, key, fmt.Sprintf("shard-%d/", id),
+			"S3 key and ShardID must agree — they were computed separately before #316")
+	}
+
+	// Hash assigns by content, so four different chunk IDs holding identical
+	// files must all land on ONE shard. Before #316 every strategy resolved to
+	// chunkID %% shardCount, which spreads these across shards 0-3 — so this
+	// assertion is what distinguishes a real hash from the round-robin alias.
+	var hashShards []int
+	for _, id := range []int{0, 1, 2, 3} {
+		shard, key := run(ShardStrategyHash, id)
+		assert.Contains(t, key, fmt.Sprintf("shard-%d/", shard),
+			"S3 key must carry the shard the assigner chose")
+		hashShards = append(hashShards, shard)
+	}
+	for _, got := range hashShards[1:] {
+		assert.Equal(t, hashShards[0], got,
+			"identical content must hash to one shard regardless of chunk ID; got %v", hashShards)
 	}
 }

@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`upload` and `sync` accepted five flags that had no effect.** The CLI parsed
+  them, printed some of them back, and then dropped them before the pipeline ran.
+  A user who passed `--compression-level 19` for a cold archive got the automatic
+  level instead, with nothing to indicate otherwise — following the published
+  guides produced silent non-compliance. All five now do what they say. (#316)
+  - `--compression-level` is an **override**: an explicitly passed value pins
+    every chunk to that level and turns off content-aware per-chunk selection
+    (#105/#30). Omitting the flag keeps the automatic behavior — the flag's
+    default is *not* forwarded, because doing so would have pinned every existing
+    user's uploads to level 3. Levels outside the pre-built encoder tiers (1/3/6/9)
+    now get their own encoder rather than silently falling back to 3. Note that
+    Go's zstd exposes four internal levels, so 1–22 collapses into four bands;
+    the effective setting is printed at upload start.
+  - `--shard-strategy` now implements all of its advertised values. `hash` hashes
+    the chunk's file identities, `size` picks the least-loaded shard by bytes,
+    `type` groups by predominant content type, and `directory` groups by common
+    path prefix. The default is now `round-robin`, which is what the archiver has
+    always actually done — the flag previously *defaulted* to `hash` while
+    behaving as round-robin. Existing archives are unaffected: each chunk's shard
+    is recorded in the manifest, so restore never recomputes assignment.
+  - `--direct-upload-threshold-mb` and `--direct-upload-workers` are now read.
+  - `--interactive` is hidden. Its per-shard TUI exists only in an unreachable
+    subsystem, so it stays defined (scripts passing it won't break) but is no
+    longer advertised. See #325.
+- **A single shard decision.** The S3 key was built from `job.ID % shardCount`
+  while `selectOutput` separately computed `job.Chunk.ID % shardCount`; the two
+  could disagree. The shard is now chosen once and reused for the key,
+  `job.ShardID`, and the output-channel pick. (#316)
+- **`cargoship config --validate` rejected `round-robin`** — the actual default
+  shard strategy — because `pkg/config` carried its own hardcoded strategy list.
+  A cross-package test now pins the two lists together. (#316)
+- **Traces were labeled `v0.6.2` regardless of the running binary.** The tracing
+  service version now comes from `internal/version`, the single canonical source
+  (#260), and defaults to it when unset rather than emitting an unlabeled
+  attribute. (#318)
+- **The ROADMAP body claimed the current release was v0.13.2** and described
+  already-shipped work as upcoming. Version numbers are now stated once at the
+  top of the file and omitted from the body, so the body cannot drift. (#319)
+- **The shard-count default was documented four different ways** — "8 shards",
+  "10 shards", "4–32 adaptive", and an undocumented fallback of 8. Every mention
+  now reads: CargoShip automatically selects between 4 and 32 shards when
+  `--shard-count` is 0 (the default), falling back to 8 if automatic selection
+  fails. (#324)
+
+### Changed
+
+- The archive-layout spec no longer implies readers can recompute a chunk's
+  shard. The strategy is an upload-time choice that is not recorded in the
+  manifest, so readers must take each chunk's shard from the manifest — a reader
+  assuming `chunk.ID % shard_count` addresses the wrong object for any archive
+  written with a non-default strategy. (#316)
+- The weekly dead-code audit now covers `pkg/pipeline`. The flags above were
+  inert because the only code honoring `--compression-level` lived in an
+  unreachable fourth duplicate implementation, and `pkg/pipeline` was outside the
+  audit's filter — the same duplicate-drift mechanism as #308 and #311. (#316)
+
 ## [0.17.1] - 2026-08-02
 
 A docs-infrastructure patch. No changes to the tool itself — same binaries,

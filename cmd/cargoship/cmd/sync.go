@@ -94,6 +94,16 @@ Examples:
 				return fmt.Errorf("invalid S3 URL: %w", err)
 			}
 
+			// #316: now that these flags do something, validate them the way
+			// upload does — an unknown strategy should be a usage error, not a
+			// silent fall-through to the default.
+			if err := pipeline.ValidateShardStrategy(shardStrategy); err != nil {
+				return err
+			}
+			if compressionLevel < 1 || compressionLevel > 22 {
+				return fmt.Errorf("compression-level must be between 1 and 22 (zstd range)")
+			}
+
 			if !quiet {
 				fmt.Printf("🔄 CargoShip Sync: %s → s3://%s/%s\n\n", absPath, bucket, prefix)
 			}
@@ -222,6 +232,19 @@ Examples:
 				EnableManifest:    true,
 				SourcePath:        absPath,
 
+				// #316: sync advertised --shard-strategy and --compression-level
+				// and dropped both, without even upload's printout to hint that
+				// they were inert. --compression-level is an override, so only
+				// an explicitly passed value is forwarded; 0 keeps content-aware
+				// per-chunk selection.
+				ShardStrategy: shardStrategy,
+				CompressionLevel: func() int {
+					if cmd.Flags().Changed("compression-level") {
+						return compressionLevel
+					}
+					return 0
+				}(),
+
 				// Issue #148: Incremental sync configuration
 				IncludeOnlyFiles: includeFiles,
 				SyncType:         syncType,
@@ -271,8 +294,11 @@ Examples:
 
 	cmd.Flags().StringVar(&storageClass, "storage-class", "STANDARD", "S3 storage class (STANDARD, GLACIER_IR, DEEP_ARCHIVE)")
 	cmd.Flags().IntVar(&shardCount, "shard-count", 10, "Number of shards for parallel uploads (1-100)")
-	cmd.Flags().StringVar(&shardStrategy, "shard-strategy", "hash", "Shard distribution strategy (hash, size, type, directory)")
-	cmd.Flags().IntVar(&compressionLevel, "compression-level", 3, "Zstd compression level (1-22, recommended 1-19)")
+	// #316: same wording as upload's flags, which these now share behavior with.
+	cmd.Flags().StringVar(&shardStrategy, "shard-strategy", pipeline.ShardStrategyRoundRobin,
+		"Shard distribution strategy (round-robin, hash, size, type, directory)")
+	cmd.Flags().IntVar(&compressionLevel, "compression-level", 3,
+		"Fixed zstd compression level (1-22), overriding per-chunk content-aware selection. Unset = content-aware")
 	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region")
 	cmd.Flags().BoolVar(&useChecksum, "checksum", false, "Use SHA256 checksum comparison (slower but accurate)")
 	cmd.Flags().BoolVar(&trackDeletes, "track-deletes", false, "Track deleted files in manifest")

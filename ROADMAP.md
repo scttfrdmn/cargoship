@@ -1,6 +1,6 @@
 # CargoShip Roadmap
 
-**Last Updated**: July 2026
+**Last Updated**: August 2026
 **Current Version**: v0.17.1 (Released 2026-08-02)
 
 This is a forward-looking roadmap: it answers "what's next," not "what happened."
@@ -11,24 +11,23 @@ feedback and development progress.
 
 ---
 
-## Current release — v0.13.2
+## Next (in planning)
 
-CI repair and security hardening: multi-scanner security workflow, dependency
-CVE fixes, and the new documentation site. See the [changelog](CHANGELOG.md) for
-details.
+Version numbers are deliberately omitted below (#319): this file describes
+*themes and ordering*, and pinning a number to each one meant the body drifted
+out of date on every release. The version currently released is stated once, at
+the top of this file; what shipped in it is in the [changelog](CHANGELOG.md).
 
-## Next — v0.14.0 (Planning)
-
-Theme: **enterprise budget foundations**. Candidate items (planned/proposed, not
-yet committed to a date):
+Theme: **enterprise budget depth**, building on the durable/shareable budgets
+already shipped. Candidate items (proposed, not committed to a date):
 
 - Multi-grant portfolio management — track multiple concurrent grants/budgets.
 - Hierarchical budget controls — department → lab → project → user inheritance.
 - Advanced burn-rate analytics — predictive spending with seasonality.
 - Budget approval workflows — multi-stage approval for large transfers.
 
-Exact scope will be finalized during planning; some items may land across
-several minor releases.
+Exact scope is finalized during planning; some items may land across several
+minor releases.
 
 ## Near-term (following minor releases)
 
@@ -41,9 +40,10 @@ High-level themes, in rough priority order:
 - **Maturity work** — graduate beta components (DVC integration, distributed
   agents) toward stable; expand test coverage and docs.
 
-## Longer-term — path to v1.0.0
+## Longer-term — path to the first stable release
 
-v1.0.0 is about stability and maturity, not a feature dump:
+The first stable (1.x) release is about stability and maturity, not a feature
+dump:
 
 - **API stabilization** — settle the public Go API package-by-package (today
   it's mixed per `docs/project/maturity.md`) and commit to semver guarantees.

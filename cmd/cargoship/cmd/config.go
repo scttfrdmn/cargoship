@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/dustin/go-humanize"
 	"github.com/scttfrdmn/cargoship/pkg/config"
+	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 	"github.com/spf13/cobra"
 )
 
@@ -294,14 +295,9 @@ func validateConfig(manager *config.Manager, detailed bool) error {
 		fmt.Printf("  ✅ Shard Count: %d\n", cfg.CargoHold.ShardCount)
 	}
 
-	validShardStrategies := []string{"hash", "size", "type", "directory"}
-	shardStrategyValid := false
-	for _, strategy := range validShardStrategies {
-		if cfg.CargoHold.ShardStrategy == strategy {
-			shardStrategyValid = true
-			break
-		}
-	}
+	// #316: single source of truth for the valid set, shared with the
+	// --shard-strategy flag on upload and sync.
+	shardStrategyValid := pipeline.ValidateShardStrategy(cfg.CargoHold.ShardStrategy) == nil
 	if !shardStrategyValid {
 		errors = append(errors, fmt.Sprintf("Invalid shard strategy: %s", cfg.CargoHold.ShardStrategy))
 		fmt.Printf("  ❌ Shard Strategy: %s (invalid)\n", cfg.CargoHold.ShardStrategy)

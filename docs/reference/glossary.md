@@ -35,9 +35,9 @@ commit, or DVC stage ([`cargoship restore`](/guides/restoring)). Contrast with
 
 **Shard** — An S3 key prefix (`shard-0`, `shard-1`, …) that chunks are distributed
 across to parallelize S3 request throughput. The number of shards — the **shard
-count** — is chosen [adaptively](/guides/features/sharding) or set with
-`--shard-count`; distribution is controlled by `--shard-strategy` (hash, size,
-type, directory).
+count** — is chosen [adaptively](/guides/features/sharding) (4–32) or set with
+`--shard-count`; distribution is controlled by `--shard-strategy` (round-robin,
+hash, size, type, directory).
 
 **Storage class / tier** — The S3 storage class an object is written with
 (STANDARD, INTELLIGENT_TIERING, GLACIER, DEEP_ARCHIVE, …). CargoShip can assign
