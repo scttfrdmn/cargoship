@@ -13,7 +13,8 @@ name: Dead Code Audit
 #          honored --compression-level. So the flag was accepted by the CLI and
 #          silently did nothing, because the only implementation was unreachable.
 #          pkg/pipeline was outside this filter, which is why it stayed invisible;
-#          it was added to the filter in #316 (see #325 for the triage).
+#          it was added to the filter in #316 and the subsystem deleted in #325,
+#          which cleared 45 of this package's findings (132 → 87).
 #
 # Neither was caught by the `unused` linter in golangci-lint, which only sees
 # unexported symbols. `deadcode` does whole-program reachability from the real
