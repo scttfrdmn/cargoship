@@ -73,11 +73,20 @@ check_test_categories() {
         fi
     fi
     
-    # Files with LocalStack or external service dependencies should have integration tags
-    if grep -q "LocalStack\|localstack\|4566\|docker" "$file"; then
-        if ! head -5 "$file" | grep -q "//go:build integration"; then
-            log_warning "$file: Integration test missing '//go:build integration' tag"
-            issues=$((issues + 1))
+    # Tests that depend on the S3 emulator should be excluded from the default
+    # build. Previously this grepped for LocalStack/port 4566/docker — none of
+    # which any test has mentioned since integration tests moved to the
+    # in-process Substrate emulator, so the check could never fire.
+    #
+    # integration/e2e/benchmark tags all exclude a file from the default build. A
+    # runtime t.Skip() on an opt-in env var also counts: real-AWS tests are
+    # required to self-skip rather than hide behind a tag.
+    if grep -q "emulator\." "$file"; then
+        if ! head -5 "$file" | grep -qE "//go:build (integration|e2e|benchmark)"; then
+            if ! grep -q "t\.Skip" "$file"; then
+                log_warning "$file: Integration test needs a build tag (integration/e2e/benchmark) or a runtime t.Skip() guard"
+                issues=$((issues + 1))
+            fi
         fi
     fi
     

@@ -101,15 +101,16 @@ run_linting() {
 
 # Run tests with coverage
 run_tests() {
-    log_info "Running tests with coverage analysis (excluding LocalStack integration tests)..."
-    
-    # Export environment variables to skip slow/flaky tests
-    export SKIP_LOCALSTACK=1
-    export SKIP_INTEGRATION=1
-    
-    # Run tests with timeout, EXCLUDING LocalStack integration tests for speed
-    # Skip integration tests requiring Docker/LocalStack for fast pre-commit validation
-    # Integration tests should run in CI where Docker is guaranteed available
+    log_info "Running tests with coverage analysis (short mode; integration tests excluded)..."
+
+    # Integration tests are excluded by BUILD TAG, not by an env var: they sit
+    # behind `-tags integration` and this command doesn't pass it. `-short` also
+    # trims the slow in-package tests. There is deliberately nothing to export —
+    # SKIP_LOCALSTACK/SKIP_INTEGRATION used to be set here and were read by
+    # nothing, which made the exclusion look configurable when it wasn't.
+    #
+    # There is no LocalStack any more either: integration tests run against the
+    # in-process Substrate emulator (no Docker), so CI runs them credential-free.
     # Use -p=4 to limit parallel packages and -parallel=4 to limit concurrent tests per package
     # This reduces memory pressure while still maintaining reasonable speed
     # Exclude examples directory from coverage (they're demos, not production code)
@@ -335,10 +336,22 @@ check_test_quality() {
                 fi
             fi
             
-            # Check for LocalStack tests without integration tags
-            if grep -q "LocalStack\|localstack\|4566" "$test_file" 2>/dev/null; then
-                if ! head -5 "$test_file" | grep -q "//go:build integration"; then
-                    quality_issues+=("$test_file: Integration test missing '//go:build integration' tag")
+            # Check for integration tests without the build tag that gates them.
+            # This used to grep for LocalStack/port 4566, which no test has
+            # mentioned since the switch to the in-process Substrate emulator —
+            # so the check could never fire. It now looks for what integration
+            # tests actually use: the emulator, or real-AWS opt-in env vars.
+            # Any of integration/e2e/benchmark counts as gated — all three are
+            # excluded from the default build, which is what matters here.
+            #
+            # A runtime t.Skip() on an opt-in env var counts too: real-AWS tests
+            # are required to self-skip rather than hide behind a tag, so they
+            # compile in the default build on purpose (pkg/multiregion does this).
+            if grep -q "emulator\." "$test_file" 2>/dev/null; then
+                if ! head -5 "$test_file" | grep -qE "//go:build (integration|e2e|benchmark)"; then
+                    if ! grep -q "t\.Skip" "$test_file"; then
+                        quality_issues+=("$test_file: Integration test needs a build tag (integration/e2e/benchmark) or a runtime t.Skip() guard")
+                    fi
                 fi
             fi
             
