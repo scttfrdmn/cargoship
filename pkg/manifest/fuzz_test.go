@@ -289,7 +289,11 @@ func FuzzResolveObjectKey(f *testing.F) {
 		// bucket-qualified key or a key with a top-level "bucket" directory —
 		// and no resolver can be idempotent over an ambiguous encoding. With a
 		// prefix (the real-world case) the ambiguity disappears.
-		ambiguous := prefix == "" && bucket != "" && strings.HasPrefix(got, bucket+"/")
+		// Test the NORMALIZED prefix: "/" and "" are the same prefix to the
+		// resolver, so checking the raw value here let a genuinely-ambiguous
+		// case through the guard and report a false idempotence failure.
+		ambiguous := strings.Trim(prefix, "/") == "" && bucket != "" &&
+			strings.HasPrefix(got, bucket+"/")
 		if again := ResolveObjectKey(prefix, bucket, got); !ambiguous && again != got {
 			t.Fatalf("not idempotent: prefix=%q bucket=%q s3Key=%q -> %q -> %q",
 				prefix, bucket, s3Key, got, again)
