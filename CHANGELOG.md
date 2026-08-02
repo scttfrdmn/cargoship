@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **The dead shard subsystem** — `ShardCoordinator`, `ShardPipeline`,
+  `ShardProgressRenderer`, and `CalculateIntelligentShardCount` — 1,504 lines of
+  non-test code with no production caller, plus the 3,353 lines of tests and two
+  benchmark files that exercised only it. This was the fourth abandoned duplicate
+  of the same shape as #308 and #311, and the reason v0.18.0's flags looked
+  implemented but weren't: it was the only code in the repo that honored a
+  compression level, so the flags pointed at an implementation nothing reached.
+  With `--compression-level` now handled by the live archiver (#316), the
+  subsystem held no remaining capability. (#325)
+  - `ShardProgressRenderer` was assessed for salvage rather than assumed dead,
+    since it is the per-shard TUI `--interactive` would need. It is not
+    salvageable as-is: it takes a `*ShardCoordinator`, reads a per-shard stats
+    breakdown the live `Progress` struct does not have, and calls
+    `Pause()`/`Resume()`/`IsPaused()`, which exist nowhere outside the deleted
+    code. Driving it from the live pipeline means building per-shard progress and
+    pause/resume first — a feature, not a salvage. `--interactive` stays hidden
+    until that exists.
+  - `pkg/pipeline`'s coverage floor drops 57 → 56 in `.coverage-baseline`. The
+    deleted code carried more test lines than implementation lines, so removing
+    it lowers the package ratio without making anything less tested; the reason
+    is recorded in the baseline file. The weekly dead-code audit over
+    `pkg/pipeline` goes from 132 findings to 87 — the 45 this subsystem
+    contributed. The remainder is a pre-existing backlog of unreachable
+    accessors on live types, which is a separate question.
+- **`scripts/integration-test.sh`** — 332 lines built entirely around LocalStack
+  and port 4566, with no caller anywhere and last touched before the migration to
+  the in-process Substrate emulator. It documented a test setup that no longer
+  exists. This completes the LocalStack cleanup begun in v0.18.0, which removed
+  the stale references from the live pre-commit gates. (#325)
+
 ## [0.18.0] - 2026-08-02
 
 **CLI contract honesty.** An external review flagged that `cargoship upload`

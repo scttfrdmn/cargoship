@@ -9,6 +9,13 @@
 # which is the case in CI; a local run WITH magika reports ~92%. Do not `--update`
 # this file from a machine with magika installed, or the detection floor will be
 # raised to a value CI can't meet.
+#
+# pkg/pipeline was lowered 57 → 56 in #325, the one deliberate lowering so far.
+# Deleting the dead shard subsystem removed 1,504 non-test lines that carried
+# 3,353 lines of tests — above-average coverage — so the package ratio fell even
+# though nothing became less tested. Lowered by hand rather than with --update,
+# which is monotonic and never lowers (and, per the note above, must not be run
+# on a machine with magika installed).
 cmd/cargoship 60
 cmd/cargoship-cost 57
 cmd/cargoship-launch 49
@@ -45,7 +52,7 @@ pkg/monitoring 39
 pkg/multiregion 72
 pkg/observability/metrics 79
 pkg/observability/tracing 65
-pkg/pipeline 57
+pkg/pipeline 56
 pkg/profiling 0
 pkg/progress 99
 pkg/repl 41
