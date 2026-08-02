@@ -108,6 +108,31 @@ The integrity mechanisms are exercised on every change, not just at release:
 - The deep-verify path is tested against **deliberately corrupted** objects —
   the test suite confirms that flipping a byte in storage makes `verify --deep`
   fail loudly. Detecting corruption is the guarantee; the tests prove it detects.
+- The format and verification code is **fuzzed** — see below.
+
+### Fuzzing the trust surface
+
+Hand-written tests cover the cases someone thought of. Fuzzing covers the ones
+nobody did, which is exactly where integrity bugs hide: a manifest is external
+input, and the code that parses it, resolves S3 keys from it, and turns its
+recorded paths into local filenames is all reachable from data CargoShip did not
+author.
+
+So those functions are fuzzed against **invariants**, not just for crashes:
+
+| Target | Invariant |
+| --- | --- |
+| Restore path sanitizer | An accepted path always lands **inside** the destination directory. A violation is a [path traversal](/project/security), not a wrong answer. |
+| S3 key resolver | A resolved key is never a URL, is always prefix-scoped, and resolving twice changes nothing. |
+| Schema validator | Any manifest CargoShip writes validates against its own [published schema](/reference/format/manifest). |
+| Manifest (de)serializers | Arbitrary bytes never panic; a parsed manifest re-serializes byte-identically. |
+
+Every pull request runs a short burst against each target; a weekly lane runs
+them roughly 40× longer. Every crashing input ever found is committed to the
+repository as permanent regression corpus, so a fixed bug is re-tested on every
+run forever. This has already found real defects that tests missed — including a
+resolver that destroyed any object key containing `://` in a filename, and
+manifests being written in a shape the published schema rejected.
 
 ## What CargoShip does **not** promise
 

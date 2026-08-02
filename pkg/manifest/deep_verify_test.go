@@ -171,6 +171,19 @@ func TestResolveObjectKey(t *testing.T) {
 		{"bucket-qualified", "myprefix", "b", "b/myprefix/uploads/u/chunk-0", "myprefix/uploads/u/chunk-0"},
 		{"full URL", "myprefix", "cargoship-test", "http://127.0.0.1:9000/cargoship-test/myprefix/uploads/u/chunk-0", "myprefix/uploads/u/chunk-0"},
 		{"https URL no prefix", "", "b", "https://s3.amazonaws.com/b/uploads/u/chunk-0", "uploads/u/chunk-0"},
+		// S3 permits ':' in object keys, so a "://" that isn't in scheme
+		// position is part of the key and must survive. Previously the whole
+		// key collapsed to the bare prefix. Found by FuzzResolveObjectKey.
+		{"colon-slash-slash inside key", "pfx", "b", "pfx/uploads/u/weird://name.txt", "pfx/uploads/u/weird://name.txt"},
+		{"empty scheme is not a URL", "pfx", "b", "://nohost", "pfx/://nohost"},
+		// Slashes around a prefix are not significant, but "pfx//key" is a
+		// different S3 object than "pfx/key". Found by FuzzResolveObjectKey.
+		{"trailing slash on prefix", "pfx/", "b", "uploads/u/chunk-0", "pfx/uploads/u/chunk-0"},
+		{"leading slash on key", "pfx", "b", "/uploads/u/chunk-0", "pfx/uploads/u/chunk-0"},
+		// A resolved key whose first segment equals the bucket name must not have
+		// that segment eaten on a second resolve pass. Found by FuzzResolveObjectKey.
+		{"prefix-scoped key shadowing bucket name", "b/x", "b", "b/x/chunk-0", "b/x/chunk-0"},
+		{"URL with a leading slash", "pfx", "b", "/http://host/b/pfx/uploads/u/c-0", "pfx/uploads/u/c-0"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
