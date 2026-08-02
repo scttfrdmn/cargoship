@@ -205,7 +205,7 @@ func (e *Extractor) extractFiles(ctx context.Context, tarReader *tar.Reader) err
 // extractFile extracts a single file from the tar archive
 func (e *Extractor) extractFile(tarReader *tar.Reader, header *tar.Header) error {
 	// Construct output path
-	outputPath := filepath.Join(e.config.OutputDir, header.Name)
+	outputPath := filepath.Join(e.config.OutputDir, header.Name) // #nosec G305 -- containment is verified immediately below
 
 	// Security: prevent path traversal attacks
 	if !strings.HasPrefix(outputPath, filepath.Clean(e.config.OutputDir)+string(os.PathSeparator)) {
@@ -292,7 +292,7 @@ func (e *Extractor) createSymlink(path string, header *tar.Header) error {
 	}
 
 	// Resolve what the symlink would point to and ensure it stays inside OutputDir.
-	resolvedTarget := filepath.Join(filepath.Dir(path), header.Linkname)
+	resolvedTarget := filepath.Join(filepath.Dir(path), header.Linkname) // #nosec G305 -- containment is verified immediately below
 	outputDir := filepath.Clean(e.config.OutputDir) + string(os.PathSeparator)
 	if !strings.HasPrefix(filepath.Clean(resolvedTarget)+string(os.PathSeparator), outputDir) {
 		return fmt.Errorf("symlink target %q escapes extraction directory", header.Linkname)

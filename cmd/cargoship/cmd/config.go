@@ -485,7 +485,11 @@ func editConfig() error {
 
 	fmt.Printf("Opening %s with %s...\n", configPath, editor)
 
-	// Execute editor
+	// Execute editor. The command is the user's own $EDITOR/$VISUAL, resolved
+	// via exec.LookPath above, and the only argument is CargoShip's own config
+	// path — the "taint" is the invoking user's environment, and they could run
+	// the editor directly anyway.
+	// #nosec G702,G204 -- launches the user's configured editor by design
 	cmd := exec.Command(editor, configPath) // nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- launches user-configured  by design
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout

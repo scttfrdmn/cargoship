@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -248,6 +249,18 @@ func (se *SelectiveExtractor) restorePath(destDir, entryPath string) (string, er
 	return out, nil
 }
 
+// restoreModTime stamps a restored file with the modification time the manifest
+// recorded at upload. Archival restores should reproduce the source tree, not
+// the time of the restore. A failure here is deliberately non-fatal: the file
+// content is already correct on disk, and refusing the restore over a timestamp
+// would be worse than an imprecise timestamp. (#311)
+func restoreModTime(path string, modTime time.Time) {
+	if modTime.IsZero() {
+		return
+	}
+	_ = os.Chtimes(path, modTime, modTime)
+}
+
 // relativeEntryPath returns entryPath relative to the manifest's SourcePath (the
 // upload root) when it sits under it; otherwise it returns entryPath unchanged
 // (the sanitizer in restorePath still makes it destDir-safe). This is what makes
@@ -458,6 +471,7 @@ func (se *SelectiveExtractor) writeDirectFiles(data []byte, files []*FileEntry, 
 		if err := os.WriteFile(outPath, data, 0644); err != nil {
 			return restored, totalBytes, fmt.Errorf("write %s: %w", outPath, err)
 		}
+		restoreModTime(outPath, entry.ModTime)
 		restored++
 		totalBytes += int64(len(data))
 	}
@@ -591,6 +605,7 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 			if err := os.WriteFile(outPath, content, 0644); err != nil {
 				return restored, totalBytes, fmt.Errorf("write %s: %w", outPath, err)
 			}
+			restoreModTime(outPath, entry.ModTime)
 			restored++
 			totalBytes += int64(len(content))
 			continue
@@ -605,6 +620,7 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 		if err != nil {
 			return restored, totalBytes, fmt.Errorf("write %s: %w", outPath, err)
 		}
+		restoreModTime(outPath, entry.ModTime)
 		restored++
 		totalBytes += written
 	}

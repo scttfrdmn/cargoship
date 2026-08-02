@@ -1,0 +1,106 @@
+name: Dead Code Audit
+
+# Unreachable code is where bugs go to hide. CargoShip has now been bitten twice
+# by the same mechanism: a second implementation of an operation stops being
+# called, stops being reviewed, and quietly misses every fix the live copy gets.
+#
+#   #308 — manifest.Extractor still carried the #282 path traversal, unfixed,
+#          on a code path with no non-test caller.
+#   #311 — download's own tar loop carried a THIRD copy of it, and had also
+#          missed verify-on-restore (#283) and the #287 layout.
+#
+# Neither was caught by the `unused` linter in golangci-lint, which only sees
+# unexported symbols. `deadcode` does whole-program reachability from the real
+# entry points, so an exported-but-uncalled function shows up.
+#
+# NON-BLOCKING, and scoped, on purpose:
+#   * Whole-repo deadcode reports ~1800 findings — unusable as a gate. Scoped to
+#     the trust packages (manifest/restore/archivefs/glacier) it's ~35, which a
+#     human can actually read.
+#   * Run WITHOUT `-test`. That's the important flag choice: in `-test` mode,
+#     code reachable from its own tests counts as live, and extract.go had
+#     passing tests — so `-test` mode would have reported ZERO findings for the
+#     exact bug this job exists to surface.
+#   * The consequence of omitting `-test` is that genuinely test-only code
+#     (fuzz-target subjects like ValidateAgainstSchema, helper APIs kept for
+#     library consumers) also appears. That's expected noise, not a defect.
+#     Read the report; don't delete on sight.
+#
+# The question to ask of each entry: is this reachable by anyone, and if not, is
+# there a live copy of it elsewhere that has diverged?
+
+on:
+  schedule:
+    - cron: '0 9 * * 1' # Mondays 09:00 UTC — after the mutation run, off the PR path
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: 'Regexp of package paths to report on (deadcode -filter)'
+        default: '^github.com/scttfrdmn/cargoship/pkg/(manifest|restore|archivefs|glacier)'
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: '1.26'
+  DEFAULT_FILTER: '^github.com/scttfrdmn/cargoship/pkg/(manifest|restore|archivefs|glacier)'
+
+jobs:
+  deadcode:
+    name: Dead code audit (weekly, non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install deadcode
+        run: go install golang.org/x/tools/cmd/deadcode@latest
+
+      - name: Run deadcode
+        env:
+          # Route the workflow input through env rather than interpolating
+          # ${{ github.event.inputs }} into the script directly — inline
+          # interpolation of github-context data in a run: step is a shell
+          # injection vector (Semgrep enforces this repo-wide).
+          INPUT_FILTER: ${{ github.event.inputs.filter }}
+        run: |
+          set -u
+          filter="$INPUT_FILTER"
+          [ -z "$filter" ] && filter="$DEFAULT_FILTER"
+          mkdir -p deadcode-results
+          # Never fail the job: the report is the deliverable.
+          deadcode -filter "$filter" ./... > deadcode-results/report.txt 2>&1 || true
+          wc -l < deadcode-results/report.txt > deadcode-results/count.txt
+
+      - name: Summarize
+        if: always()
+        run: |
+          count=$(cat deadcode-results/count.txt 2>/dev/null || echo 0)
+          {
+            echo "## Dead code audit — ${count} unreachable function(s)"
+            echo ""
+            echo "Whole-program reachability from the real entry points, scoped to the trust packages, run **without** \`-test\`."
+            echo ""
+            echo "For each entry ask: **is there a live copy of this elsewhere that has diverged?** That is the #308 / #311 failure mode — an uncalled duplicate that silently missed a security fix the live copy received."
+            echo ""
+            echo "Expected noise: code reachable only from tests (fuzz-target subjects, e.g. \`ValidateAgainstSchema\`) and API kept for library consumers. Read before deleting."
+            echo ""
+            echo '```'
+            cat deadcode-results/report.txt 2>/dev/null || echo '(no report)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: deadcode-report
+          path: deadcode-results/
+          retention-days: 30
