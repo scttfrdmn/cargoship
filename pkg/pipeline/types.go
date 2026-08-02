@@ -225,7 +225,12 @@ type PipelineConfig struct {
 
 	// #316: ShardStrategy chooses how the archiver assigns chunks to S3 prefix
 	// shards: "round-robin", "hash", "size", "type", or "directory".
-	// Empty means "round-robin". Only meaningful with EnableArchiverSharding.
+	// Empty means "round-robin".
+	//
+	// This applies in every mode, not just EnableArchiverSharding: the archiver
+	// bakes the chosen shard into each chunk's S3 key, and the router only
+	// re-reads it from there. With EnableArchiverSharding it additionally picks
+	// the output channel.
 	ShardStrategy string
 
 	// Phase 3.3: Compressed-aware chunking with adaptive sizing and padding
