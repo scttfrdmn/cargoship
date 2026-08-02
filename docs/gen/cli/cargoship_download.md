@@ -46,7 +46,9 @@ cargoship download S3_URL OUTPUT_DIR [flags]
 ```
       --dry-run          Show what would be downloaded without actually downloading
       --files strings    Comma-separated list of exact file paths to download
+      --flatten          Write downloaded files by basename into the output dir instead of recreating their directory structure
   -h, --help             help for download
+      --no-verify        Skip restore-time checksum verification (faster, but won't detect corrupted stored data)
       --pattern string   Filter files by glob pattern (e.g., '*.log')
   -r, --region string    AWS region (default "us-west-2")
       --shard-ids ints   Comma-separated list of shard IDs to download (0-7)

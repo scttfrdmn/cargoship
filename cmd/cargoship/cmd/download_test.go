@@ -249,3 +249,35 @@ func TestDownloadCmd_UsageOutput(t *testing.T) {
 	assert.Contains(t, usage, "--files", "Usage should list files flag")
 	assert.Contains(t, usage, "--shard-ids", "Usage should list shard-ids flag")
 }
+
+// TestDownloadCmd_SafetyFlagParity pins download's safety surface to restore's.
+// download used to carry its own tar-extraction loop that bypassed the shared
+// SelectiveExtractor, and so silently lacked verify-on-restore (#283) and the
+// dataset-relative layout (#287) that restore had. Both commands now route
+// through the same extractor, so they must expose the same controls over it —
+// if one grows a flag the other doesn't, they have diverged again. (#311)
+func TestDownloadCmd_SafetyFlagParity(t *testing.T) {
+	dl := NewDownloadCmd()
+	rs := NewRestoreCmd()
+
+	for _, name := range []string{"no-verify", "flatten"} {
+		t.Run(name, func(t *testing.T) {
+			d := dl.Flags().Lookup(name)
+			require.NotNil(t, d, "download must expose --%s", name)
+			r := rs.Flags().Lookup(name)
+			require.NotNil(t, r, "restore must expose --%s", name)
+			// Same default, so the same command line means the same thing.
+			assert.Equal(t, r.DefValue, d.DefValue,
+				"--%s default differs between download and restore", name)
+		})
+	}
+}
+
+// TestDownloadCmd_VerifiesByDefault asserts integrity checking is opt-out, not
+// opt-in: a download that silently writes corrupt bytes is worse than a slow
+// one. (#283 / #311)
+func TestDownloadCmd_VerifiesByDefault(t *testing.T) {
+	f := NewDownloadCmd().Flags().Lookup("no-verify")
+	require.NotNil(t, f)
+	assert.Equal(t, "false", f.DefValue, "verification must be on by default")
+}

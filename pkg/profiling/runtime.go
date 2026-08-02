@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	_ "net/http/pprof" // Register pprof handlers
+	// #nosec G108 -- pprof handlers are registered on DefaultServeMux by this
+	// import, but nothing serves DefaultServeMux: they are only reachable via
+	// the profiler's own mux below, which is started solely by the opt-in
+	// `--pprof` flag and binds localhost:6060 by default.
+	_ "net/http/pprof"
 	"time"
 )
 

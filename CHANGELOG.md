@@ -7,11 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Path traversal in `cargoship download` on chunked archives (#311).**
+  `download` carried its own tar-extraction loop that joined the untrusted tar
+  `header.Name` onto the output directory with no containment check, so a
+  crafted archive could write outside the destination. This was a third copy of
+  the #282 traversal — the first was fixed in `SelectiveExtractor`, the second
+  deleted with the dead `manifest.Extractor` (#308) — and the only live one.
+  `download` now routes both storage layouts through `SelectiveExtractor`, and
+  the duplicate loop is gone.
+- **`download` did not verify checksums or preserve restore layout (#311).**
+  Because it never went through the shared extractor, `download` also missed
+  verify-on-restore (#283) — it would write corrupt bytes where `restore`
+  refuses to — and the dataset-relative layout (#287), so the two commands
+  disagreed on where files landed. They now behave identically and expose the
+  same `--no-verify` and `--flatten` controls.
+
+### Added
+- **Restore preserves modification times (#311).** Both `restore` and
+  `download` now stamp each restored file with the mtime recorded in the
+  manifest, across direct and chunked storage. Previously only `download`'s
+  now-removed loop did this, and only for chunked archives.
+- **`gosec` runs in CI (#311).** A static-analysis pass over the Go source, in
+  the Security workflow alongside govulncheck, gitleaks, Trivy, and Semgrep.
+  Its first run is what found the traversal above.
+- **Weekly dead-code audit.** A non-blocking scheduled `deadcode` report over
+  the trust packages, so unreachable code — which is where the #308 and #311
+  traversals survived unfixed — surfaces on its own.
+
 ### Removed
 - **The superseded `manifest.Extractor` API (#308).** `pkg/manifest/extract.go`
   held the original selective-extraction implementation from #93. It had no
   non-test caller — every restore path (`restore`, `download`, `browse`,
-  `shell`, the TUI) goes through `SelectiveExtractor` — and it carried an
+  `shell`, the TUI) reaches `SelectiveExtractor` — and it carried an
   unfixed copy of the #282 path traversal: `getOutputPath` joined an untrusted
   tar `header.Name` onto the output directory with no containment check.
   Deleted rather than patched, so there is one extraction path and one

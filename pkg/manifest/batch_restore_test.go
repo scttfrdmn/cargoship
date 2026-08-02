@@ -761,3 +761,105 @@ func TestBatchRestore_FlattenLayout(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, content, got)
 }
+
+// --- #311: chunked-mode containment and mtime preservation ---
+
+// TestBatchRestore_ChunkedTraversalIsContained is the chunked-storage twin of
+// TestBatchRestore_TraversalIsContained. `download` carried its own tar loop for
+// this path that joined the untrusted tar header name straight onto the output
+// directory (#311); this pins the shared path's guard so a future caller can't
+// reintroduce the escape.
+func TestBatchRestore_ChunkedTraversalIsContained(t *testing.T) {
+	content := []byte("chunked payload")
+	evil := "../../../../tmp/evil-chunked.txt"
+	chunk := makeTarZst(t, map[string][]byte{evil: content})
+
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "zstd", TotalChunks: 1,
+		Chunks: []ChunkEntry{{ID: 0, S3Key: "c0", FileCount: 1, FilePaths: []string{evil}}},
+		Files:  []FileEntry{{Path: evil, Size: int64(len(content)), S3Key: "c0"}},
+	}
+	m.TotalFiles = 1
+	client := &mockS3Client{chunks: map[string][]byte{"c0": chunk}}
+
+	dest := t.TempDir()
+	stats, err := NewSelectiveExtractor(m, client, 0).
+		BatchRestore(context.Background(), []string{evil}, dest)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), stats.Restored)
+
+	// Sanitized to a contained path, not the traversal target.
+	got, err := os.ReadFile(filepath.Join(dest, "tmp", "evil-chunked.txt"))
+	require.NoError(t, err, "file should be contained within dest")
+	assert.Equal(t, content, got)
+	assert.True(t, filepathHasPrefix(filepath.Join(dest, "tmp", "evil-chunked.txt"), dest))
+}
+
+// TestBatchRestore_PreservesModTime checks restore reproduces the source tree's
+// modification times rather than stamping the time of the restore. An archival
+// tool that loses mtimes has lost metadata the manifest recorded. Covers both
+// storage layouts (#311).
+func TestBatchRestore_PreservesModTime(t *testing.T) {
+	content := []byte("timestamped")
+	// Truncated to whole seconds: tar and some filesystems don't keep sub-second
+	// resolution, so comparing at second granularity is what's portable.
+	want := time.Date(2019, 3, 14, 15, 9, 26, 0, time.UTC)
+
+	t.Run("direct", func(t *testing.T) {
+		m := &Manifest{
+			Version: ManifestVersion, Bucket: "b", CompressionType: "none", TotalChunks: 0,
+			Files: []FileEntry{{Path: "a.txt", Size: int64(len(content)), S3Key: "obj", ModTime: want}},
+		}
+		m.TotalFiles = 1
+		client := &mockS3Client{chunks: map[string][]byte{"obj": content}}
+		dest := t.TempDir()
+		_, err := NewSelectiveExtractor(m, client, 0).
+			BatchRestore(context.Background(), []string{"a.txt"}, dest)
+		require.NoError(t, err)
+
+		fi, err := os.Stat(filepath.Join(dest, "a.txt"))
+		require.NoError(t, err)
+		assert.WithinDuration(t, want, fi.ModTime(), time.Second)
+	})
+
+	t.Run("chunked", func(t *testing.T) {
+		chunk := makeTarZst(t, map[string][]byte{"a.txt": content})
+		m := &Manifest{
+			Version: ManifestVersion, Bucket: "b", CompressionType: "zstd", TotalChunks: 1,
+			Chunks: []ChunkEntry{{ID: 0, S3Key: "c0", FileCount: 1, FilePaths: []string{"a.txt"}}},
+			Files:  []FileEntry{{Path: "a.txt", Size: int64(len(content)), S3Key: "c0", ModTime: want}},
+		}
+		m.TotalFiles = 1
+		client := &mockS3Client{chunks: map[string][]byte{"c0": chunk}}
+		dest := t.TempDir()
+		_, err := NewSelectiveExtractor(m, client, 0).
+			BatchRestore(context.Background(), []string{"a.txt"}, dest)
+		require.NoError(t, err)
+
+		fi, err := os.Stat(filepath.Join(dest, "a.txt"))
+		require.NoError(t, err)
+		assert.WithinDuration(t, want, fi.ModTime(), time.Second)
+	})
+}
+
+// TestBatchRestore_ZeroModTimeLeavesFileAlone confirms a manifest with no
+// recorded ModTime doesn't get stamped with the zero time (year 1), which some
+// filesystems reject outright.
+func TestBatchRestore_ZeroModTimeLeavesFileAlone(t *testing.T) {
+	content := []byte("no mtime")
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "none", TotalChunks: 0,
+		Files: []FileEntry{{Path: "a.txt", Size: int64(len(content)), S3Key: "obj"}},
+	}
+	m.TotalFiles = 1
+	client := &mockS3Client{chunks: map[string][]byte{"obj": content}}
+	dest := t.TempDir()
+	_, err := NewSelectiveExtractor(m, client, 0).
+		BatchRestore(context.Background(), []string{"a.txt"}, dest)
+	require.NoError(t, err)
+
+	fi, err := os.Stat(filepath.Join(dest, "a.txt"))
+	require.NoError(t, err)
+	assert.False(t, fi.ModTime().IsZero(), "should keep the write time, not stamp year 1")
+	assert.True(t, fi.ModTime().Year() > 2000, "got %s", fi.ModTime())
+}

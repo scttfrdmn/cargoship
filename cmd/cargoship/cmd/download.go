@@ -1,22 +1,17 @@
 package cmd
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/dustin/go-humanize"
-	"github.com/klauspost/compress/zstd"
 	"github.com/spf13/cobra"
 
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
@@ -32,6 +27,8 @@ func NewDownloadCmd() *cobra.Command {
 		verbose  bool
 		dryRun   bool
 		workers  int
+		noVerify bool
+		flatten  bool
 	)
 
 	cmd := &cobra.Command{
@@ -165,60 +162,37 @@ Examples:
 			fmt.Printf("📦 Selected %d files (%s uncompressed)\n\n",
 				len(filesToDownload), humanize.Bytes(uint64(totalSize)))
 
-			// Direct-upload manifests have no chunks: each file is its own S3
-			// object (not a tar.zst chunk), so the chunk-download path below can't
-			// extract them. Route through the shared SelectiveExtractor, which
-			// handles direct-upload restore (writing raw object bytes). Mirrors the
-			// restore command's fix. (#228 / #238 Phase 2)
-			if m.TotalChunks == 0 {
+			// Step 3: Report the chunk fan-in, and for a dry run stop here.
+			// Chunked manifests pack many files per S3 object, so the interesting
+			// number is how many objects have to be fetched; direct-upload
+			// manifests (TotalChunks == 0) store one object per file.
+			if m.TotalChunks > 0 {
+				chunkFiles := make(map[int][]manifest.FileEntry)
+				for _, file := range filesToDownload {
+					chunkFiles[file.ChunkID] = append(chunkFiles[file.ChunkID], file)
+				}
+
+				fmt.Printf("🎯 Need to download %d chunks (out of %d total)\n\n", len(chunkFiles), m.TotalChunks)
+
 				if dryRun {
-					fmt.Println("🔍 Dry run - would download (direct-upload objects):")
-					for _, file := range filesToDownload {
-						fmt.Printf("    - %s (%s)\n", file.Path, humanize.Bytes(uint64(file.Size)))
+					fmt.Println("🔍 Dry run - would download:")
+					for chunkID, files := range chunkFiles {
+						chunk := findChunk(m, chunkID)
+						if chunk != nil {
+							fmt.Printf("\n  Chunk %d (s3://%s/%s, %s compressed):\n",
+								chunkID, bucket, chunk.S3Key, humanize.Bytes(uint64(chunk.CompressedSize)))
+							for _, file := range files {
+								fmt.Printf("    - %s (%s)\n", file.Path, humanize.Bytes(uint64(file.Size)))
+							}
+						}
 					}
 					fmt.Printf("\nTotal: %d files, %s\n", len(filesToDownload), humanize.Bytes(uint64(totalSize)))
 					return nil
 				}
-				if err := os.MkdirAll(outputDir, 0755); err != nil {
-					return fmt.Errorf("failed to create output directory: %w", err)
-				}
-				targets := make([]string, len(filesToDownload))
-				for i, file := range filesToDownload {
-					targets[i] = file.Path
-				}
-				extractor := manifest.NewSelectiveExtractor(m, s3Client, 0)
-				stats, err := extractor.BatchRestore(ctx, targets, outputDir)
-				if err != nil {
-					return fmt.Errorf("failed to download direct-upload files: %w", err)
-				}
-				fmt.Printf("✅ Downloaded %d files (%s) — %d failed\n",
-					stats.Restored, humanize.Bytes(uint64(stats.Bytes)), stats.Failed)
-				if stats.Failed > 0 {
-					return fmt.Errorf("%d file(s) failed to download", stats.Failed)
-				}
-				return nil
-			}
-
-			// Step 3: Group files by chunk to minimize chunk downloads
-			chunkFiles := make(map[int][]manifest.FileEntry)
-			for _, file := range filesToDownload {
-				chunkFiles[file.ChunkID] = append(chunkFiles[file.ChunkID], file)
-			}
-
-			fmt.Printf("🎯 Need to download %d chunks (out of %d total)\n\n", len(chunkFiles), m.TotalChunks)
-
-			// Dry run - just show what would be downloaded
-			if dryRun {
-				fmt.Println("🔍 Dry run - would download:")
-				for chunkID, files := range chunkFiles {
-					chunk := findChunk(m, chunkID)
-					if chunk != nil {
-						fmt.Printf("\n  Chunk %d (s3://%s/%s, %s compressed):\n",
-							chunkID, bucket, chunk.S3Key, humanize.Bytes(uint64(chunk.CompressedSize)))
-						for _, file := range files {
-							fmt.Printf("    - %s (%s)\n", file.Path, humanize.Bytes(uint64(file.Size)))
-						}
-					}
+			} else if dryRun {
+				fmt.Println("🔍 Dry run - would download (direct-upload objects):")
+				for _, file := range filesToDownload {
+					fmt.Printf("    - %s (%s)\n", file.Path, humanize.Bytes(uint64(file.Size)))
 				}
 				fmt.Printf("\nTotal: %d files, %s\n", len(filesToDownload), humanize.Bytes(uint64(totalSize)))
 				return nil
@@ -229,56 +203,42 @@ Examples:
 				return fmt.Errorf("failed to create output directory: %w", err)
 			}
 
-			// Step 5: Download and extract chunks
+			// Step 5: Download and extract through the shared SelectiveExtractor.
+			//
+			// Both storage layouts go through the same extractor. `download`
+			// used to carry its own tar loop for the chunked case, which joined
+			// the untrusted tar header name onto the output directory with no
+			// containment check — a live copy of the #282 path traversal — and,
+			// because it was never routed through the shared code, also missed
+			// verify-on-restore (#283) and the dataset-relative layout (#287).
+			// One extraction path, one sanitizer. (#311)
 			startTime := time.Now()
-			extractedCount := 0
-			var extractedSize int64
-
-			for chunkID, chunkFileList := range chunkFiles {
-				chunk := findChunk(m, chunkID)
-				if chunk == nil {
-					fmt.Printf("⚠️  Warning: chunk %d not found in manifest\n", chunkID)
-					continue
-				}
-
-				fmt.Printf("📥 Downloading chunk %d/%d: %s (%s)\n",
-					chunkID+1, len(chunkFiles), chunk.S3Key, humanize.Bytes(uint64(chunk.CompressedSize)))
-
-				// Download chunk from S3
-				chunkResult, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
-					Bucket: aws.String(bucket),
-					Key:    aws.String(chunk.S3Key),
-				})
-				if err != nil {
-					fmt.Printf("❌ Failed to download chunk %d: %v\n", chunkID, err)
-					continue
-				}
-
-				// Extract files from chunk
-				extracted, size, err := extractFilesFromChunk(chunkResult.Body, chunkFileList, outputDir, m.CompressionType, verbose)
-				if err != nil {
-					fmt.Printf("❌ Failed to extract chunk %d: %v\n", chunkID, err)
-					_ = chunkResult.Body.Close()
-					continue
-				}
-
-				_ = chunkResult.Body.Close()
-				extractedCount += extracted
-				extractedSize += size
-
-				fmt.Printf("✅ Extracted %d files (%s) from chunk %d\n\n", extracted, humanize.Bytes(uint64(size)), chunkID)
+			targets := make([]string, len(filesToDownload))
+			for i, file := range filesToDownload {
+				targets[i] = file.Path
+			}
+			extractor := manifest.NewSelectiveExtractor(m, s3Client, 0).
+				SetVerify(!noVerify).
+				SetFlatten(flatten)
+			stats, err := extractor.BatchRestore(ctx, targets, outputDir)
+			if err != nil {
+				return fmt.Errorf("failed to download files: %w", err)
 			}
 
 			duration := time.Since(startTime)
-			throughput := float64(extractedSize) / duration.Seconds() / 1024 / 1024 // MB/s
+			throughput := float64(stats.Bytes) / duration.Seconds() / 1024 / 1024 // MB/s
 
 			fmt.Printf("✅ Download complete!\n")
-			fmt.Printf("   Files extracted: %d files\n", extractedCount)
-			fmt.Printf("   Data size: %s\n", humanize.Bytes(uint64(extractedSize)))
+			fmt.Printf("   Files extracted: %d files\n", stats.Restored)
+			fmt.Printf("   Chunks downloaded: %d\n", stats.ChunksDownloaded)
+			fmt.Printf("   Data size: %s\n", humanize.Bytes(uint64(stats.Bytes)))
 			fmt.Printf("   Duration: %s\n", duration.Round(time.Millisecond))
 			fmt.Printf("   Throughput: %.2f MB/s\n", throughput)
 			fmt.Printf("   Output directory: %s\n", outputDir)
 
+			if stats.Failed > 0 {
+				return fmt.Errorf("%d file(s) failed to download", stats.Failed)
+			}
 			return nil
 		},
 	}
@@ -290,6 +250,8 @@ Examples:
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "Show verbose output (list each file as extracted)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be downloaded without actually downloading")
 	cmd.Flags().IntVar(&workers, "workers", 4, "Number of parallel download workers (future use)")
+	cmd.Flags().BoolVar(&noVerify, "no-verify", false, "Skip restore-time checksum verification (faster, but won't detect corrupted stored data)")
+	cmd.Flags().BoolVar(&flatten, "flatten", false, "Write downloaded files by basename into the output dir instead of recreating their directory structure")
 
 	return cmd
 }
@@ -338,105 +300,4 @@ func findChunk(m *manifest.Manifest, chunkID int) *manifest.ChunkEntry {
 		}
 	}
 	return nil
-}
-
-// extractFilesFromChunk extracts selected files from a compressed tar archive
-func extractFilesFromChunk(reader io.Reader, filesToExtract []manifest.FileEntry, outputDir, compressionType string, verbose bool) (int, int64, error) {
-	// Build a map of files to extract for fast lookup
-	fileMap := make(map[string]manifest.FileEntry)
-	for _, file := range filesToExtract {
-		fileMap[file.Path] = file
-	}
-
-	// Decompress based on compression type
-	var decompressor io.Reader
-
-	switch compressionType {
-	case "zstd":
-		decoder, err := zstd.NewReader(reader)
-		if err != nil {
-			return 0, 0, fmt.Errorf("failed to create zstd decoder: %w", err)
-		}
-		defer decoder.Close()
-		decompressor = decoder
-
-	case "gzip":
-		decoder, err := gzip.NewReader(reader)
-		if err != nil {
-			return 0, 0, fmt.Errorf("failed to create gzip decoder: %w", err)
-		}
-		defer func() { _ = decoder.Close() }()
-		decompressor = decoder
-
-	default:
-		return 0, 0, fmt.Errorf("unsupported compression type: %s", compressionType)
-	}
-
-	// Extract files from tar archive
-	tarReader := tar.NewReader(decompressor)
-	extractedCount := 0
-	var extractedSize int64
-
-	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			break // End of archive
-		}
-		if err != nil {
-			return extractedCount, extractedSize, fmt.Errorf("failed to read tar header: %w", err)
-		}
-
-		// Check if this file should be extracted
-		fileEntry, shouldExtract := fileMap[header.Name]
-		if !shouldExtract {
-			continue
-		}
-
-		// Create output file path
-		outputPath := filepath.Join(outputDir, header.Name)
-
-		// Create parent directories
-		if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
-			return extractedCount, extractedSize, fmt.Errorf("failed to create directory for %s: %w", header.Name, err)
-		}
-
-		// Extract file
-		switch header.Typeflag {
-		case tar.TypeReg:
-			// Regular file
-			outFile, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
-			if err != nil {
-				return extractedCount, extractedSize, fmt.Errorf("failed to create file %s: %w", outputPath, err)
-			}
-
-			written, err := io.Copy(outFile, tarReader) // nosemgrep: go.lang.security.decompression_bomb.potential-dos-via-decompression-bomb -- extracting cargoship's own archive tar stream
-			_ = outFile.Close()
-			if err != nil {
-				return extractedCount, extractedSize, fmt.Errorf("failed to extract file %s: %w", header.Name, err)
-			}
-
-			// Restore modification time
-			if err := os.Chtimes(outputPath, time.Now(), fileEntry.ModTime); err != nil {
-				// Non-fatal, just warn
-				if verbose {
-					fmt.Printf("⚠️  Warning: failed to restore mod time for %s: %v\n", header.Name, err)
-				}
-			}
-
-			extractedCount++
-			extractedSize += written
-
-			if verbose {
-				fmt.Printf("  ✓ %s (%s)\n", header.Name, humanize.Bytes(uint64(written)))
-			}
-
-		case tar.TypeDir:
-			// Directory
-			if err := os.MkdirAll(outputPath, os.FileMode(header.Mode)); err != nil {
-				return extractedCount, extractedSize, fmt.Errorf("failed to create directory %s: %w", outputPath, err)
-			}
-		}
-	}
-
-	return extractedCount, extractedSize, nil
 }
