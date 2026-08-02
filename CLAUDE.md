@@ -72,6 +72,12 @@ Tests automatically create and clean up test buckets. Use custom bucket name via
 - Branch naming: `feat/`, `fix/`, `refactor/` prefixes
 - PR per feature/fix; link to issue
 - Close issues via commit message: `Fixes #123`, `Closes #123`
+- **Wait on CI with a watch, never a `sleep` poll.** Use
+  `gh pr checks <pr> --watch --fail-fast` or `gh run watch <id> --exit-status`,
+  backgrounded, so completion wakes you. A full check set takes ~5-8 min (the
+  fuzz burst and race detector are the long tails), so any fixed sleep either
+  wastes wall-clock or wakes early and needs another poll. Same rule for
+  anything with a native wait (`wait`, `--follow`, `--wait`).
 
 ## Pre-commit Checks
 - Run before every commit: `gofmt`, `go vet`, `staticcheck`
