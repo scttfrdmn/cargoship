@@ -128,28 +128,81 @@ func (dv *DeepVerifier) VerifyChunks(ctx context.Context) (*DeepVerifyResult, er
 // only when the key doesn't already contain it. Exported so callers that need
 // the real object location (e.g. tests, tooling) resolve it identically.
 func ResolveObjectKey(prefix, bucket, s3Key string) string {
-	key := s3Key
+	// Drop leading slashes. S3 treats "prefix//key" and "prefix/key" as distinct
+	// objects, so a key stored with a leading "/" would resolve to an object that
+	// doesn't exist. Done first so the scheme check below sees the scheme in
+	// leading position. Found by FuzzResolveObjectKey.
+	key := strings.TrimLeft(s3Key, "/")
 
-	// Strip a scheme://host/ prefix if S3Key was stored as a full URL.
-	if i := strings.Index(key, "://"); i >= 0 {
-		rest := key[i+3:]
-		if slash := strings.Index(rest, "/"); slash >= 0 {
-			key = rest[slash+1:] // drop host, keep path
-		} else {
-			key = ""
+	// Strip a scheme://host/ prefix if S3Key was stored as a full URL. Only a
+	// "://" in true scheme position counts: S3 permits ':' in object keys, so
+	// matching "://" anywhere would mangle a legitimate key (a file named
+	// "weird://name.txt" once resolved to just the bare prefix). Looped, with a
+	// re-trim each pass, so a doubly-wrapped URL can't leave a scheme behind.
+	// Found by FuzzResolveObjectKey.
+	for {
+		i := strings.Index(key, "://")
+		if i <= 0 || !isURLScheme(key[:i]) {
+			break
 		}
+		rest := key[i+3:]
+		slash := strings.Index(rest, "/")
+		if slash < 0 {
+			key = ""
+			break
+		}
+		key = strings.TrimLeft(rest[slash+1:], "/") // drop host, keep path
 	}
 
-	// Strip a leading "bucket/" if present.
+	// The prefix is trimmed of surrounding slashes: a manifest written from a
+	// user-typed "s3://bucket/archives/" carries a trailing slash, and joining
+	// naively would yield "archives//key" — a different object in S3. Found by
+	// FuzzResolveObjectKey.
+	prefix = strings.Trim(prefix, "/")
+
+	// An already prefix-scoped key is the resolved form; return it untouched.
+	// Testing this BEFORE the bucket strip is what makes resolution idempotent:
+	// otherwise a resolved key whose leading segment happens to equal the bucket
+	// name would have that segment stripped on a second pass, silently dropping a
+	// path component. Found by FuzzResolveObjectKey.
+	if prefix != "" && (key == prefix || strings.HasPrefix(key, prefix+"/")) {
+		return key
+	}
+
+	// Strip a leading "bucket/" if present, then re-trim: stripping the bucket
+	// can expose another leading slash ("bucket//key" -> "/key").
 	if bucket != "" {
-		key = strings.TrimPrefix(key, bucket+"/")
+		key = strings.TrimLeft(strings.TrimPrefix(key, bucket+"/"), "/")
 	}
 
 	// Prepend the manifest Prefix unless it's already there (or empty).
-	if prefix != "" && !strings.HasPrefix(key, prefix+"/") {
+	if prefix != "" && key != prefix && !strings.HasPrefix(key, prefix+"/") {
 		key = prefix + "/" + key
 	}
 	return key
+}
+
+// isURLScheme reports whether s is a plausible URI scheme per RFC 3986:
+// ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ). Anything else preceding a "://"
+// is part of an object key, not a scheme.
+func isURLScheme(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
+			// always allowed
+		case i == 0:
+			return false // must start with a letter
+		case c >= '0' && c <= '9', c == '+', c == '-', c == '.':
+			// allowed after the first character
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // objectKey resolves a chunk key against this manifest's prefix/bucket.

@@ -1,0 +1,133 @@
+name: Fuzz (deep)
+
+# Long-running fuzzing over the trust/integrity surface, deliberately OFF the PR
+# critical path. The "Fuzz (short burst)" job in test.yml guards every pull
+# request with ~500k executions per target; this lane runs the same targets for
+# roughly 40x longer, which is where the deeper crashers actually live.
+#
+# Why a separate lane rather than a longer PR job: fuzzing finds new inputs
+# sublinearly, so the marginal value of minutes 5-60 is real but nowhere near
+# worth adding an hour to every PR. Splitting keeps PR feedback fast while still
+# accumulating coverage over time. Same reasoning as real-aws-integration.yml.
+#
+# When this lane finds a crasher it uploads the minimized input as an artifact.
+# The fix workflow is: download it into testdata/fuzz/<Target>/, confirm it fails
+# as a unit test, fix the bug, and commit the input as permanent regression
+# corpus (it then runs on every PR forever, via `go test`).
+#
+# Targets cover the format/verification surface hardened by the trust epic
+# (#270): the restore path sanitizer (a security boundary — #282 was a real
+# traversal), the S3 key resolver (#273/#281), the schema validator (#274), and
+# the manifest (de)serializers. See #302.
+
+on:
+  schedule:
+    # Weekly, Mondays 05:00 UTC — before the real-AWS canary at 07:00 so a
+    # format-level crasher surfaces before the integration lane runs.
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: 'Executions per target (a COUNT, e.g. 20000000x — not a duration)'
+        required: false
+        default: '20000000x'
+
+permissions:
+  contents: read
+
+# Serialize: two concurrent deep runs would just duplicate work. Don't cancel an
+# in-progress run — a partially completed fuzz session still has value, and a
+# crasher found late is the whole point.
+concurrency:
+  group: fuzz-deep
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: '1.26'
+
+jobs:
+  fuzz-deep:
+    name: Deep fuzz (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    strategy:
+      # One job per package so a crasher in one target doesn't cut short the
+      # fuzzing of unrelated targets.
+      fail-fast: false
+      matrix:
+        include:
+          - package: ./pkg/manifest/
+            name: manifest
+            targets: >-
+              FuzzFromJSON FuzzFromJSONAuto FuzzManifestRoundTrip FuzzParseS3URL
+              FuzzRestorePath FuzzResolveObjectKey FuzzValidateAgainstSchema
+          - package: ./pkg/chunking/
+            name: chunking
+            targets: FuzzCreateChunks
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      # Budget is an execution COUNT, not a wall-clock duration. A duration
+      # -fuzztime lets the fuzzing coordinator race its own deadline on a
+      # contended runner and fail with a spurious "context deadline exceeded"
+      # rather than a real crasher (#266). A count has no time-based context, so
+      # that flake cannot occur. The job timeout above is the real wall-clock cap.
+      #
+      # `|| true` per target, with failures accumulated: one crashing target must
+      # not stop the others from running, but the job must still fail at the end.
+      # Inputs reach the script through env, never via ${{ }} interpolation into
+      # run: — a dispatch input is untrusted and would otherwise be a shell
+      # injection into the runner. BUDGET is additionally format-checked so it
+      # can't smuggle extra go-test flags.
+      - name: Fuzz ${{ matrix.name }} targets
+        id: fuzz
+        env:
+          PKG: ${{ matrix.package }}
+          TARGETS: ${{ matrix.targets }}
+          BUDGET: ${{ github.event.inputs.fuzztime || '20000000x' }}
+        run: |
+          set -uo pipefail
+          if ! printf '%s' "$BUDGET" | grep -Eq '^[0-9]+x$'; then
+            echo "::error::fuzztime must be an execution count like 20000000x, got: $BUDGET"
+            exit 1
+          fi
+          failed=""
+          # Word-split TARGETS deliberately: it is a space-separated list.
+          for target in $TARGETS; do
+            echo "::group::$PKG $target ($BUDGET)"
+            if ! go test "$PKG" -run '^$' -fuzz "^${target}$" -fuzztime "$BUDGET"; then
+              echo "::error::fuzz target $target failed — see the uploaded corpus artifact"
+              failed="$failed $target"
+            fi
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "failed=$failed" >> "$GITHUB_OUTPUT"
+            echo "Crashers found in:$failed"
+            exit 1
+          fi
+
+      # Any crasher Go finds is written to testdata/fuzz/<Target>/. Upload it so
+      # the input can be committed as regression corpus — without this the
+      # minimized reproducer dies with the runner.
+      - name: Upload crasher corpus
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fuzz-crashers-${{ matrix.name }}
+          path: |
+            pkg/**/testdata/fuzz/**
+          if-no-files-found: warn
+          retention-days: 30

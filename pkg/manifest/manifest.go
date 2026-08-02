@@ -322,9 +322,25 @@ func (b *Builder) Build() *Manifest {
 	return b.manifest
 }
 
-// ToJSON serializes the manifest to JSON
+// ToJSON serializes the manifest to JSON.
+//
+// The files, chunks, and shards collections are always emitted as JSON arrays,
+// never null: the published schema declares them required with type "array", and
+// encoding/json renders a nil slice as null. A manifest with an empty section
+// (e.g. an upload that produced no chunks) would otherwise be written in a shape
+// the format's own schema rejects. Found by FuzzValidateAgainstSchema.
 func (m *Manifest) ToJSON() ([]byte, error) {
-	return json.MarshalIndent(m, "", "  ")
+	out := *m
+	if out.Files == nil {
+		out.Files = []FileEntry{}
+	}
+	if out.Chunks == nil {
+		out.Chunks = []ChunkEntry{}
+	}
+	if out.Shards == nil {
+		out.Shards = []ShardEntry{}
+	}
+	return json.MarshalIndent(&out, "", "  ")
 }
 
 // ToJSONCompressed serializes the manifest to gzip-compressed JSON

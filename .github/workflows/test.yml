@@ -115,7 +115,8 @@ jobs:
       # committed seed corpus (which the -short jobs already execute as unit
       # tests). -fuzz runs one target per package invocation, so iterate. Kept
       # brief to stay on the PR critical path; the corpus grows over time via
-      # developers running longer local sessions. (#238 Phase 4)
+      # developers running longer local sessions and the weekly deep lane in
+      # fuzz-deep.yml, which runs the same targets for ~40x longer. (#238 Phase 4)
       #
       # Budget is an execution COUNT, not a wall-clock duration: a duration
       # -fuzztime lets the fuzzing coordinator race its own deadline on a
@@ -133,7 +134,9 @@ jobs:
               echo "::endgroup::"
             done
           }
-          fuzz_pkg ./pkg/manifest/ FuzzFromJSON FuzzFromJSONAuto FuzzManifestRoundTrip FuzzParseS3URL
+          fuzz_pkg ./pkg/manifest/ \
+            FuzzFromJSON FuzzFromJSONAuto FuzzManifestRoundTrip FuzzParseS3URL \
+            FuzzRestorePath FuzzResolveObjectKey FuzzValidateAgainstSchema
           fuzz_pkg ./pkg/chunking/ FuzzCreateChunks
 
   lint:
