@@ -100,21 +100,33 @@ here is for understanding and for tools that scan a bucket without a manifest.
 
 ## Shard assignment
 
-A chunk's shard is a deterministic function of its ID:
+A chunk's shard is a deterministic function of the chunk, chosen by
+`--shard-strategy`. The default, `round-robin`, uses the chunk's ID:
 
 ```go
-shardID := job.ID % shardCount
+shardID := chunk.ID % shardCount
 ```
 
-Chunks round-robin across shards. With the default 8 shards, chunk 0 → shard 0,
-chunk 1 → shard 1, …, chunk 8 → shard 0, and so on. Each shard is an independent
-S3 key prefix, which is what lets uploads and restores parallelize S3 request
-throughput rather than serializing through one prefix.
+so chunk 0 → shard 0, chunk 1 → shard 1, …, chunk 8 → shard 0 with 8 shards. The
+other strategies (`hash`, `size`, `type`, `directory`) derive the shard from the
+chunk's contents, sizes, or paths instead — see
+[Sharding](/guides/features/sharding). Each shard is an independent S3 key
+prefix, which is what lets uploads and restores parallelize S3 request throughput
+rather than serializing through one prefix.
 
-The shard count is chosen adaptively (4–32) from the workload's file count, size,
-and the machine's resources, or set manually with `--shard-count`. The value
-used for an upload is recorded in the manifest's `shard_count` field, and every
-shard is enumerated in the `shards` array. See
+::: warning Readers must not recompute assignment
+The strategy is an **upload-time** choice and is not recorded in the manifest.
+Every chunk's actual shard is recorded in its `ChunkEntry` (and in the `shards`
+array), so readers must take the shard from the manifest rather than recomputing
+it. A reader that assumes `chunk.ID % shard_count` will address the wrong object
+for any archive written with a non-default strategy.
+:::
+
+CargoShip automatically selects between 4 and 32 shards when `--shard-count` is 0
+(the default), from the workload's file count, size, and the machine's resources;
+if automatic selection fails it falls back to 8. The value used for an upload is
+recorded in the manifest's `shard_count` field, and every shard is enumerated in
+the `shards` array. See
 [Why sharding matters](/intro/how-it-works#why-sharding-matters).
 
 ## Per-object S3 metadata

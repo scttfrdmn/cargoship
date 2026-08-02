@@ -5,11 +5,33 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 )
+
+// validShardStrategies is the accepted set for cargohold.shard_strategy.
+//
+// #316: this mirrors pipeline.ShardStrategies(). It is duplicated rather than
+// imported because pkg/pipeline already imports pkg/config, so the dependency
+// can only go one way. TestShardStrategiesMatchConfig in pkg/pipeline asserts
+// the two stay identical — before #316 this list omitted "round-robin", so a
+// config file naming the actual default strategy was rejected.
+var validShardStrategies = map[string]bool{
+	"round-robin": true,
+	"hash":        true,
+	"size":        true,
+	"type":        true,
+	"directory":   true,
+}
+
+// ValidShardStrategies returns the accepted cargohold.shard_strategy values in
+// a stable order, for error messages and for cross-package parity checks.
+func ValidShardStrategies() []string {
+	return []string{"round-robin", "hash", "size", "type", "directory"}
+}
 
 // Config represents the complete CargoShip configuration
 type Config struct {
@@ -340,15 +362,9 @@ func (m *Manager) validateConfig() error {
 		return fmt.Errorf("cargohold.shard_count must be between 1 and 100")
 	}
 
-	validShardStrategies := map[string]bool{
-		"hash":      true,
-		"size":      true,
-		"type":      true,
-		"directory": true,
-	}
-
 	if !validShardStrategies[m.config.CargoHold.ShardStrategy] {
-		return fmt.Errorf("invalid cargohold.shard_strategy: %s (valid: hash, size, type, directory)", m.config.CargoHold.ShardStrategy)
+		return fmt.Errorf("invalid cargohold.shard_strategy: %s (valid: %s)",
+			m.config.CargoHold.ShardStrategy, strings.Join(ValidShardStrategies(), ", "))
 	}
 
 	if m.config.CargoHold.CompressionLevel < 1 || m.config.CargoHold.CompressionLevel > 22 {

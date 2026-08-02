@@ -44,7 +44,7 @@ Nothing is written to local disk in between; data streams straight to S3.
 |------|------------------|
 | `--region us-east-1` | Match your bucket's region (or set `AWS_REGION`). |
 | `--storage-class INTELLIGENT_TIERING` | Let S3 tier cold data automatically. |
-| `--compression-level 9` | Trade CPU for smaller objects on compressible data. |
+| `--compression-level 9` | Pin every chunk to one level, replacing [content-aware selection](/guides/features/compression). |
 | `--shard-count 16` | Override the [adaptive shard count](/guides/features/sharding). |
 | `--project my-study` | Tag spend for [budgets & cost reports](/guides/cost/budgets). |
 | `--quiet` | Suppress the progress display (good for scripts/logs). |

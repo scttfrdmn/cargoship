@@ -8,26 +8,38 @@ Upload a directory to S3 using CargoHold's intelligent sharding system.
 
 CargoHold divides large datasets into multiple shards for parallel uploads,
 providing:
-- Intelligent shard distribution (hash, size, type, or directory-based)
-- Per-shard compression with configurable levels (zstd)
+- Intelligent shard distribution (round-robin, hash, size, type, or directory)
+- Content-aware zstd compression, with an optional fixed-level override
 - Parallel uploads for maximum throughput
 - Automatic manifest generation for easy restore
-- Progress tracking with per-shard visibility
+- Progress tracking
+
+Shard Count:
+  CargoShip automatically selects between 4 and 32 shards when --shard-count is
+  0 (the default). If automatic selection fails, it falls back to 8.
 
 Shard Strategies:
-  hash      - Hash-based distribution (balanced, default)
-  size      - Size-based distribution (large files in separate shards)
-  type      - File type distribution (group by extension)
-  directory - Directory-based distribution (keep directories together)
+  round-robin - Distribute by chunk order (even shards, cheapest; default)
+  hash        - Hash of chunk contents (stable across runs)
+  size        - Least-loaded shard by bytes (evens out uneven chunk sizes)
+  type        - Group chunks by predominant content type
+  directory   - Group chunks by common directory prefix
+
+Compression:
+  By default CargoShip picks a zstd level per chunk from the content it
+  contains — level 1 for already-compressed data, up to level 9 for source
+  code. Passing --compression-level overrides that and pins every chunk to one
+  level. Note that zstd has only four internal levels, so values map in bands
+  (1-2, 3-5, 6-9, 10+); the effective setting is reported at upload start.
 
 Examples:
-  # Upload with default settings (10 shards, hash strategy, compression level 3)
+  # Upload with defaults (auto shard count, round-robin, content-aware compression)
   cargoship upload /data s3://my-bucket/dataset
 
   # Upload with custom shard count and strategy
   cargoship upload /data s3://my-bucket/dataset --shard-count 20 --shard-strategy size
 
-  # Upload with maximum compression
+  # Pin every chunk to maximum compression (disables content-aware selection)
   cargoship upload /data s3://my-bucket/dataset --compression-level 19
 
   # Quiet mode (no progress display)
@@ -43,7 +55,7 @@ cargoship upload SOURCE_DIR DESTINATION [flags]
 ```
       --auto-tier                        Enable automatic storage tier selection based on file access time
   -b, --bucket string                    S3 bucket name (or use s3:// URL in DESTINATION)
-      --compression-level int            Zstd compression level (1-22, recommended 1-19) (default 3)
+      --compression-level int            Fixed zstd compression level (1-22), overriding per-chunk content-aware selection. Unset = content-aware (default 3)
       --congestion-control string        Congestion control algorithm: bbr, cubic, auto (default "auto")
       --direct-upload                    Enable direct upload mode (bypasses archiving/compression for small files)
       --direct-upload-threshold-mb int   Max total size in MB for auto direct upload (default: 500) (default 500)
@@ -61,7 +73,6 @@ cargoship upload SOURCE_DIR DESTINATION [flags]
       --git-metadata                     Embed Git repository metadata (commit, branch, tag, remote) in the manifest
   -h, --help                             help for upload
       --incremental                      Enable incremental sync: only upload new or changed files
-      --interactive                      Enable interactive TUI mode with per-shard progress (Issue #112)
       --kms-key-id string                AWS KMS key ID or ARN for encryption (data chunks encrypted with SSE-KMS)
       --no-file-checksums                Disable per-file content checksums (faster uploads, but 'verify --deep' can't confirm per-file integrity)
       --optimization                     Enable optimization features (BBR/CUBIC, adaptive staging, BDP) (default true)
@@ -70,8 +81,8 @@ cargoship upload SOURCE_DIR DESTINATION [flags]
       --prometheus-addr string           Prometheus metrics HTTP address (e.g., :9090)
       --quiet                            Disable progress display
   -r, --region string                    AWS region (default "us-west-2")
-      --shard-count int                  Number of shards for parallel uploads (0=auto, 4-32=manual, default: 0)
-      --shard-strategy string            Shard distribution strategy (hash, size, type, directory) (default "hash")
+      --shard-count int                  Shards for parallel uploads: 0 auto-selects 4-32 (falls back to 8), or set 4-32 manually
+      --shard-strategy string            Shard distribution strategy (round-robin, hash, size, type, directory) (default "round-robin")
       --storage-class string             S3 storage class (STANDARD, INTELLIGENT_TIERING, GLACIER, etc.) (default "STANDARD")
       --tag stringArray                  Custom tag in key=value format, repeatable (e.g. --tag dvc_cache=true --tag env=prod)
       --tier-archive-days int            Days since access to consider 'archive' (DEEP_ARCHIVE) (default 180)

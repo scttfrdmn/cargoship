@@ -44,8 +44,9 @@ cap how cold anything goes. See [Tier-aware storage](/guides/features/tiering).
 
 ## Sharding & compression
 
-The [shard count is adaptive](/guides/features/sharding) by default (4–32). Override it,
-or pick a distribution strategy:
+CargoShip [automatically selects](/guides/features/sharding) between 4 and 32
+shards when `--shard-count` is 0 (the default); if automatic selection fails, it
+falls back to 8. Override it, or pick a distribution strategy:
 
 ```bash
 cargoship upload ./my-data s3://my-bucket/archives/ \
@@ -53,10 +54,12 @@ cargoship upload ./my-data s3://my-bucket/archives/ \
   --compression-level 9
 ```
 
-- `--shard-strategy` — `hash` (balanced, default), `size`, `type`, `directory`.
-- `--compression-level` — Zstandard 1–22 (higher = smaller + more CPU).
-  CargoShip still skips re-compressing already-compressed content. See
-  [Compression](/guides/features/compression).
+- `--shard-strategy` — `round-robin` (default), `hash`, `size`, `type`,
+  `directory`. See [Sharding](/guides/features/sharding).
+- `--compression-level` — Zstandard 1–22 (higher = smaller + more CPU). This
+  **overrides** content-aware selection and pins every chunk to one level,
+  including chunks CargoShip would otherwise leave nearly uncompressed. Omit it
+  to keep per-chunk selection. See [Compression](/guides/features/compression).
 
 ## Deduplication
 

@@ -33,8 +33,9 @@ chunks (see [split-file records](/reference/format/split-files)).
 
 An S3 key **prefix** (`shard-0`, `shard-1`, …) that chunks are distributed across
 to parallelize S3 request throughput. The number of shards — the **shard count** —
-is chosen [adaptively](/guides/features/sharding) or set with `--shard-count`.
-Distribution is controlled by `--shard-strategy` (hash, size, type, directory).
+is chosen [adaptively](/guides/features/sharding) (4–32) or set with
+`--shard-count`. Distribution is controlled by `--shard-strategy`
+(round-robin, hash, size, type, directory).
 
 ## CargoHold
 

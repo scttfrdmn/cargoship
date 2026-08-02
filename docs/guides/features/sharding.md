@@ -39,6 +39,9 @@ get real parallelism) and never more than 32 (past which coordination overhead
 outweighs the gain). It also targets a minimum number of chunks per shard so
 shards stay balanced rather than lopsided.
 
+If automatic selection fails — an unreadable source tree, for example —
+CargoShip falls back to **8** shards and says so.
+
 ```bash
 # Adaptive — recommended
 cargoship upload ./my-data s3://my-bucket/archives/
@@ -64,15 +67,22 @@ almost always matches or beats a hand-picked number.
 
 ## Distribution strategies
 
-`--shard-strategy` controls *which* files go to *which* shard. The default,
-`hash`, keeps shards evenly sized; the others suit specific access patterns.
+`--shard-strategy` controls *which* chunks go to *which* shard. The default,
+`round-robin`, spreads chunks evenly by order; the others suit specific access
+patterns.
 
 | Strategy | Behavior | Use when |
 |----------|----------|----------|
-| `hash` (default) | Even, balanced distribution | General purpose — start here |
-| `size` | Large files isolated into their own shards | Mixed file sizes; keeps big files from unbalancing shards |
-| `type` | Groups files by extension / content type | You'll later download by kind (all `.log`, all `.csv`) |
-| `directory` | Keeps directory trees together in a shard | You'll download or restore by subtree |
+| `round-robin` (default) | Chunk *n* → shard *n mod count* | General purpose — evenest spread by count, no bookkeeping |
+| `hash` | Shard chosen from a hash of the chunk's file paths and sizes | You want assignment to depend on content rather than scan order |
+| `size` | Each chunk goes to the least-loaded shard by bytes | Chunk sizes vary a lot and you want byte-balanced shards |
+| `type` | Groups chunks by predominant content type | You'll later download by kind (all logs, all CSVs) |
+| `directory` | Groups chunks by common directory prefix | You'll download or restore by subtree |
+
+Every strategy is deterministic for a given chunk, and the shard each chunk
+landed on is recorded in the manifest — so restore follows the manifest and
+never recomputes assignment. Changing strategy cannot make an existing archive
+unreadable.
 
 ```bash
 cargoship upload ./my-data s3://my-bucket/archives/ \
@@ -87,8 +97,8 @@ or directory means retrieving a subset touches fewer chunks.
 ::: tip
 - **Leave `--shard-count` on auto** unless you're benchmarking — it's tuned to your
   workload and hardware.
-- **Keep `hash`** for general uploads; reach for `size` only when a few huge files
-  are unbalancing shards.
+- **Keep `round-robin`** for general uploads; reach for `size` only when a few huge
+  chunks are unbalancing shards.
 - **Match strategy to retrieval**: `type` or `directory` if you'll download
   subsets by kind or subtree later.
 - **Scale up (24–32) for TB-scale jobs on fast links**; the ceiling exists because

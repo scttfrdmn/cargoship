@@ -218,6 +218,21 @@ type PipelineConfig struct {
 	// Phase 3.2: Archiver-level sharding (eliminates router bottleneck)
 	EnableArchiverSharding bool // If true, archiver shards directly to per-prefix channels (no router)
 
+	// #316: CompressionLevel is an explicit override of content-aware compression.
+	// 0 (the default) keeps per-chunk automatic selection (#105/#30); any other
+	// value pins every chunk to that level and skips content analysis entirely.
+	CompressionLevel int
+
+	// #316: ShardStrategy chooses how the archiver assigns chunks to S3 prefix
+	// shards: "round-robin", "hash", "size", "type", or "directory".
+	// Empty means "round-robin".
+	//
+	// This applies in every mode, not just EnableArchiverSharding: the archiver
+	// bakes the chosen shard into each chunk's S3 key, and the router only
+	// re-reads it from there. With EnableArchiverSharding it additionally picks
+	// the output channel.
+	ShardStrategy string
+
 	// Phase 3.3: Compressed-aware chunking with adaptive sizing and padding
 	EnableCompressedAwareChunking bool    // Enable compression-aware chunking (default: true)
 	EnableArchivePadding          bool    // Enable padding to reach target sizes (default: true)
@@ -377,14 +392,26 @@ type ScannerConfig struct {
 
 // ArchiverConfig configures the archiver stage
 type ArchiverConfig struct {
-	Workers          int
+	Workers int
+
+	// CompressionLevel overrides content-aware per-chunk compression (#316).
+	// 0 means automatic: analyze each chunk's predominant content type and pick
+	// a level from it (#105/#30). Any other value pins every chunk to that
+	// level and skips the analysis. Note that Go's zstd exposes only four
+	// discrete levels, so many int values collapse onto the same behavior —
+	// see EffectiveCompressionLevel.
 	CompressionLevel int
-	CompressionType  string // "gzip", "zstd", "bzip2"
-	BufferSize       int
+
+	CompressionType string // "gzip", "zstd", "bzip2"
+	BufferSize      int
 
 	// Multi-prefix optimization (Phase 3)
 	UploadID   string // Unique identifier for this upload session (format: {timestamp}-{random})
 	ShardCount int    // Number of S3 prefix shards for parallel uploads (default: 8)
+
+	// ShardStrategy selects the chunk→shard assignment function (#316).
+	// One of "round-robin" (default), "hash", "size", "type", "directory".
+	ShardStrategy string
 
 	// Phase 3.3: Archive padding for uniform compressed chunk sizes
 	EnablePadding        bool    // Enable zero-byte padding to reach target compressed sizes

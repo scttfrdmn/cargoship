@@ -103,8 +103,10 @@ cargoship upload /data/project-2024 s3://my-bucket/project-2024 --shard-count 16
 - **Zero-disk streaming pipeline** — files stream from disk through compression
   to S3 with no local staging; memory stays bounded to `chunk_size × workers`.
 - **Multi-prefix sharding** — chunks are distributed across S3 prefixes, so
-  request-rate capacity scales with the shard count (up to ~8× with the default
-  8 shards). See [sharding](https://cargoship.app/guides/features/sharding).
+  request-rate capacity scales with the shard count. CargoShip automatically
+  selects between 4 and 32 shards when `--shard-count` is 0 (the default); if
+  automatic selection fails, it falls back to 8. See
+  [sharding](https://cargoship.app/guides/features/sharding).
 - **Content-aware compression** — zstd compresses text and code well and skips
   already-compressed data. See [compression](https://cargoship.app/guides/features/compression).
 - **Cost and budget controls** — estimate spend before uploading and enforce

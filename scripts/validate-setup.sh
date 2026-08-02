@@ -191,7 +191,7 @@ check_network() {
     log_info "Checking network connectivity..."
     
     if ! ping -c 1 8.8.8.8 &> /dev/null; then
-        log_warning "No internet connectivity - LocalStack only mode"
+        log_warning "No internet connectivity - offline mode (emulator-backed tests only; real-AWS tests will skip)"
         return 0
     fi
     

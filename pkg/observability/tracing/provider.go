@@ -11,12 +11,18 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+
+	"github.com/scttfrdmn/cargoship/internal/version"
 )
 
 // Config holds configuration for OpenTelemetry tracing
 type Config struct {
-	ServiceName    string  // Name of the service (e.g., "cargoship")
-	ServiceVersion string  // Version of the service (e.g., "v0.6.2")
+	ServiceName string // Name of the service (e.g., "cargoship")
+
+	// ServiceVersion labels every emitted span. Empty means "use the binary's
+	// own version" (#318) — a hardcoded literal here silently mislabels traces
+	// for every release after the one it was written in.
+	ServiceVersion string
 	ExporterType   string  // "stdout", "otlp", or "none"
 	Endpoint       string  // Collector endpoint for OTLP (e.g., "localhost:4317")
 	SampleRate     float64 // Sampling rate (0.0 to 1.0, default 1.0 = 100%)
@@ -32,6 +38,12 @@ func NewTracerProvider(ctx context.Context, cfg Config) (*sdktrace.TracerProvide
 	// Default sample rate to 100% if not specified
 	if cfg.SampleRate == 0 {
 		cfg.SampleRate = 1.0
+	}
+
+	// #318: fall back to the single version source rather than emitting an
+	// unlabeled service.version attribute.
+	if cfg.ServiceVersion == "" {
+		cfg.ServiceVersion = "v" + version.Version
 	}
 
 	// Create resource with service information

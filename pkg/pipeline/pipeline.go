@@ -495,6 +495,10 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 		BufferSize:      64 * 1024, // 64KB
 		UploadID:        p.config.UploadID,
 		ShardCount:      p.config.ShardCount,
+		// #316: honor --compression-level and --shard-strategy. Both were
+		// accepted by the CLI and dropped here before this was wired.
+		CompressionLevel: p.config.CompressionLevel,
+		ShardStrategy:    p.config.ShardStrategy,
 		// Phase 3.3: Archive padding configuration
 		EnablePadding:        p.config.EnableArchivePadding,
 		MaxPaddingRatio:      p.config.MaxPaddingRatio,

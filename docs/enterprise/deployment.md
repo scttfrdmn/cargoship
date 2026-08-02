@@ -74,11 +74,11 @@ The main levers are compression level and network-matched concurrency.
 
 - **Many small files** — group aggressively, high compression:
   `--compression-level 9`.
-- **Mixed dataset** — defaults are tuned for this; tag `--project` for cost
-  tracking.
-- **Few large / already-compressed files** — use a fast level:
-  `--compression-level 3` (CargoShip skips re-compressing compressed content
-  anyway).
+- **Mixed dataset** — omit `--compression-level` entirely. Content-aware
+  selection picks per chunk, which a single pinned level cannot; tag `--project`
+  for cost tracking.
+- **Few large / already-compressed files** — pin a fast level:
+  `--compression-level 1`.
 
 Match parallelism to your uplink: residential broadband wants a small shard count,
 a datacenter link can drive many. See [Performance tuning](/guides/features/optimization).

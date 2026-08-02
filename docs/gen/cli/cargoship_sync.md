@@ -46,14 +46,14 @@ cargoship sync SOURCE_DIR S3_URL [flags]
 
 ```
       --checksum                Use SHA256 checksum comparison (slower but accurate)
-      --compression-level int   Zstd compression level (1-22, recommended 1-19) (default 3)
+      --compression-level int   Fixed zstd compression level (1-22), overriding per-chunk content-aware selection. Unset = content-aware (default 3)
       --dry-run                 Show what would be synced without uploading
       --force                   Force full sync (ignore previous manifest)
   -h, --help                    help for sync
   -q, --quiet                   Quiet mode (minimal output)
   -r, --region string           AWS region (default "us-west-2")
       --shard-count int         Number of shards for parallel uploads (1-100) (default 10)
-      --shard-strategy string   Shard distribution strategy (hash, size, type, directory) (default "hash")
+      --shard-strategy string   Shard distribution strategy (round-robin, hash, size, type, directory) (default "round-robin")
       --storage-class string    S3 storage class (STANDARD, GLACIER_IR, DEEP_ARCHIVE) (default "STANDARD")
       --track-deletes           Track deleted files in manifest
 ```
