@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-02
+
+A security release. Asking "do we need more fuzz coverage?" led to a survey of
+the parse/path surface, and that survey — not a new fuzz target — found **two
+more copies of the #282 path traversal**. One was dead code, deleted (#308). The
+other was **live**, on the default `cargoship download` path for every chunked
+archive (#311), where it had also silently missed verify-on-restore and the
+dataset-relative restore layout.
+
+Both had the same cause: a duplicate implementation of an operation that stopped
+being called, and so stopped receiving fixes the live copy got. So this release
+also adds the two scanners that catch that class — `gosec` (which is what found
+#311) and a weekly dead-code audit — and a flag-parity test that fails if
+`download` and `restore` diverge again.
+
+Removing `manifest.Extractor` drops exported API, which is why this is a minor
+rather than a patch. Every pinned GitHub Action also moved off the deprecated
+Node 20 runtime.
+
 ### Fixed
 - **Path traversal in `cargoship download` on chunked archives (#311).**
   `download` carried its own tar-extraction loop that joined the untrusted tar
@@ -47,6 +66,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `NewExtractor`, `Extract`, `EstimateExtractCost`, `ListExtractableFiles`,
   `ExtractRequest`, `ExtractResult`. `S3Downloader` is unchanged and moved to
   `pkg/manifest/s3.go`.
+
+### Changed
+- **Every pinned GitHub Action is on the Node 24 runtime (#305, #307).** Node 20
+  is deprecated on GitHub-hosted runners. All 15 pins were bumped, still
+  SHA-pinned with the exact patch version recorded in a trailing comment. Two
+  changes were more than a version bump: `codecov-action` v7 dropped the
+  singular `file:` input for `files:` — left alone, coverage upload becomes a
+  silent no-op — and `upload-pages-artifact`, though composite, wrapped a
+  Node 20 action internally.
 
 ## [0.16.1] - 2026-08-02
 
