@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **The superseded `manifest.Extractor` API (#308).** `pkg/manifest/extract.go`
+  held the original selective-extraction implementation from #93. It had no
+  non-test caller — every restore path (`restore`, `download`, `browse`,
+  `shell`, the TUI) goes through `SelectiveExtractor` — and it carried an
+  unfixed copy of the #282 path traversal: `getOutputPath` joined an untrusted
+  tar `header.Name` onto the output directory with no containment check.
+  Deleted rather than patched, so there is one extraction path and one
+  sanitizer instead of two that can drift apart. Removed: `Extractor`,
+  `NewExtractor`, `Extract`, `EstimateExtractCost`, `ListExtractableFiles`,
+  `ExtractRequest`, `ExtractResult`. `S3Downloader` is unchanged and moved to
+  `pkg/manifest/s3.go`.
+
 ## [0.16.1] - 2026-08-02
 
 A correctness patch. Extending fuzzing to the trust/integrity surface (#302)
