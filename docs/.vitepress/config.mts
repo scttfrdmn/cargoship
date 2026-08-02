@@ -15,6 +15,14 @@ const DOCS_BASE = process.env.DOCS_BASE || '/'
 const DOCS_VERSION_LABEL = process.env.DOCS_VERSION_LABEL || 'latest'
 const IS_DEV_TREE = DOCS_BASE === '/dev/'
 
+// Read the release version from the single canonical source (PR #260) — the same
+// file the release process bumps and check-doc-versions.sh enforces — and inject
+// it into the browser bundle via `define` (below). The theme used to hardcode
+// this with an "update when cutting a release" comment and went stale by four
+// releases, because nothing checked it.
+const LATEST_RELEASE =
+  'v' + fs.readFileSync(path.resolve(__dirname, '../../internal/version/version.txt'), 'utf-8').trim()
+
 // One global sidebar (keyed on '/') applied to every page, so the whole site
 // reads as a single progressive-disclosure path: Introduction → Get Started →
 // Tutorials → Core Workflows → Cost & Budget → Features → DVC → Configuration →
@@ -221,6 +229,15 @@ export default defineConfig({
 
   // Set per deploy: '/' for the latest tree, '/dev/' for the unreleased tree.
   base: DOCS_BASE,
+
+  // Values the theme needs but can't compute: it is compiled into the browser
+  // bundle, so it has no filesystem and no process.env.
+  vite: {
+    define: {
+      __CARGOSHIP_VERSION__: JSON.stringify(LATEST_RELEASE),
+      __CARGOSHIP_IS_DEV_TREE__: JSON.stringify(IS_DEV_TREE),
+    },
+  },
 
   // Emit sitemap.xml for search + AI indexers (VitePress only generates it when
   // a hostname is set). Only the latest (root) tree is indexed; the dev tree is
