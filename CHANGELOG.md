@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-02
+
+**CLI contract honesty.** An external review flagged that `cargoship upload`
+advertised behavioral controls that never reached the pipeline. Verifying it
+found the scope wider than reported — five flags across two commands, plus a
+config-file path that rejected its own default.
+
+The stakes are what make this a release rather than a cleanup: a rejected flag
+is an inconvenience, but an accepted flag that silently does nothing means a
+user who ran `--compression-level 19` for cold archival believed they got it and
+did not. The published guides taught these flags, so following the
+documentation produced silent non-compliance.
+
+The root cause was not forgetfulness. The flags were wired to a **fourth
+abandoned duplicate implementation** — a complete second sharded-upload
+subsystem in `pkg/pipeline` with no production caller, which was the only code
+in the repo that honored a compression level. Same mechanism as #308 and #311:
+a second copy stops being called, stops being reviewed, and silently misses
+every fix the live copy receives. The dead-code audit that would have caught it
+did not cover `pkg/pipeline`; it does now. The subsystem's own removal is
+tracked in #325.
+
+Every test added here was verified to fail against the pre-fix code, by
+stashing the fix and watching it go red. Asserting coverage without that step
+is how the previous duplicates stayed invisible: the old tests checked that
+`--shard-strategy` *defaulted to* `hash`, which passed whether or not the flag
+did anything.
+
+No archive-format change; existing archives restore identically.
+
 ### Fixed
 
 - **`upload` and `sync` accepted five flags that had no effect.** The CLI parsed
