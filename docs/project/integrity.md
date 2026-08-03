@@ -104,7 +104,12 @@ The integrity mechanisms are exercised on every change, not just at release:
 - Emulator-based round-trip tests (upload → download → verify) run on every PR,
   credential-free.
 - A real-AWS integration lane runs the same round-trip against a real S3 bucket
-  on merge to main (plus a weekly canary for environmental drift).
+  on **every release tag** — so a published version is always validated against
+  real S3, and the result is published as a
+  [verification report](/project/verification-reports). A weekly canary runs the
+  same lane to catch environmental drift between releases. It deliberately does
+  *not* run per-PR: it needs real credentials and mutates a shared bucket, and
+  the emulator lane above already guards every change.
 - The deep-verify path is tested against **deliberately corrupted** objects —
   the test suite confirms that flipping a byte in storage makes `verify --deep`
   fail loudly. Detecting corruption is the guarantee; the tests prove it detects.
@@ -180,6 +185,14 @@ sha256sum path/to/restored/file
 If step 3's digest matches the `checksum` recorded for that file in the
 manifest, the file is byte-identical to what was uploaded. That check depends on
 nothing but `sha256sum` and a JSON parser — which is the whole point.
+
+And you don't have to take the claim on faith for a given release either. The
+same round trip is run against real S3 before each version ships, and the result
+is published: for **v0.18.0**, 20 files / 61.01 MB round-tripped byte-identical
+across both the direct and chunked paths, with 0 byte-identity failures and 45/45
+integration suites passing —
+[read the report](https://github.com/scttfrdmn/cargoship/releases/download/v0.18.0/v0.18.0-2026-08-02.md)
+or see [all published reports](/project/verification-reports#published-reports).
 
 ## See also
 

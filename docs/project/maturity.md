@@ -6,6 +6,25 @@ stable, what is still evolving, and what guarantees you can (and can't) rely on 
 so you can judge it against your own risk tolerance. For the semantic-versioning
 rules behind these levels, see [API stability & versioning](/project/versioning).
 
+## What the levels mean
+
+**Stable** means the interface and archive format are intended for continued use
+and are protected by release-gating verification against real S3. It does not
+imply a commercial support SLA or a long production history.
+
+That distinction is deliberate. Stable paths *have* had consequential defects
+found in them — v0.16.1 and v0.17.0 fixed last-file truncation in compressed
+chunks and a path traversal on the default `download` path. What the label
+promises is not that no bug will be found; it is that the path is covered by the
+release gate, that a fix ships, and that the format keeps its compatibility
+guarantee. Every release's verification evidence is published — see
+[verification reports](/project/verification-reports#published-reports).
+
+**Beta** means functional and used, but the command surface, configuration, or
+wire format may change between minor releases (documented per release).
+**Experimental** means a capability exists in the library but is not wired into
+the CLI, or has not been exercised enough to rely on.
+
 ## Component maturity
 
 | Capability | Status | What that means |
@@ -48,3 +67,9 @@ Reasonable if you: pin a specific release, rely on the **stable** components, ke
 features as opt-in. The archive format's portability — plain `tar.zst` objects
 plus a documented JSON manifest — means your data isn't hostage to the tool even
 if you stop using it.
+
+Judge the claim on the evidence rather than the label:
+[per-release verification reports](/project/verification-reports#published-reports)
+record what round-tripped byte-identical on real S3 for each published version,
+and the [integrity model](/project/integrity) explains how to reproduce it
+yourself.

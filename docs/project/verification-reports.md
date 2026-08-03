@@ -27,11 +27,31 @@ Crucially, the report is generated from the **exact test run that gated the
 release** — not a separate, later run — so the published numbers cannot drift
 from what actually passed.
 
-## Where to find them
+## Published reports
 
-- **Attached to each [GitHub Release](https://github.com/scttfrdmn/cargoship/releases)**
-  as `vX.Y.Z-YYYY-MM-DD.md`.
-- Also produced by the weekly canary run (as a workflow artifact) to catch
+Every report below is linked directly — you should not have to dig through
+release assets to find the evidence.
+
+| Version | Date | Files | Bytes | Paths | Suites | Result | Report |
+|---------|------|-------|-------|-------|--------|--------|--------|
+| v0.18.0 | 2026-08-02 | 20 | 61.01 MB | direct, chunked | 45 / 0 | ✅ Passed | [`v0.18.0-2026-08-02.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.18.0/v0.18.0-2026-08-02.md) |
+| v0.17.1 | 2026-08-02 | 20 | 61.01 MB | direct, chunked | 45 / 0 | ✅ Passed | [`v0.17.1-2026-08-02.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.17.1/v0.17.1-2026-08-02.md) |
+| v0.17.0 | 2026-08-02 | 20 | 61.01 MB | direct, chunked | 45 / 0 | ✅ Passed | [`v0.17.0-2026-08-02.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.17.0/v0.17.0-2026-08-02.md) |
+| v0.16.1 | 2026-08-02 | 20 | 61.01 MB | direct, chunked | 45 / 0 | ✅ Passed | [`v0.16.1-2026-08-02.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.16.1/v0.16.1-2026-08-02.md) |
+| v0.16.0 | 2026-07-31 | 20 | 61.01 MB | direct, chunked | 45 / 0 | ✅ Passed | [`v0.16.0-2026-07-31.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.16.0/v0.16.0-2026-07-31.md) |
+
+*Files* = round-tripped byte-identical; *Suites* = integration suites
+passed / failed against real S3. Reports begin at v0.16.0, the release that
+introduced the lane; earlier versions have no published report.
+
+The corpus is fixed, so the file and byte counts are expected to be identical
+across releases — what each row attests is that *that build* preserved them. A
+change in those numbers means the corpus changed, not that more was proven.
+
+- Reports are also **attached to each
+  [GitHub Release](https://github.com/scttfrdmn/cargoship/releases)** as
+  `vX.Y.Z-YYYY-MM-DD.md`.
+- The weekly canary produces one too (as a workflow artifact) to catch
   environmental drift between releases, even with no code change.
 
 ## What a report does and does not establish

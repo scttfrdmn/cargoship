@@ -109,7 +109,39 @@ for f in "${root_md[@]}"; do
   done < <(grep -oE '\]\([^)]+\)' "$f" | sed -E 's/^\]\(//; s/\)$//')
 done
 
+# --- Check 4: the published-reports table covers every released version --------
+#
+# docs/project/verification-reports.md hand-lists each release's report with a
+# direct asset URL. That table is the evidence the maturity and integrity pages
+# point at, so a release that lands without a row silently weakens the claim.
+# Every CHANGELOG release from FIRST_REPORT_VERSION onward must appear.
+#
+# Only the *presence* of a row is checked, not the metrics — the numbers come
+# from the release run and can't be validated offline.
+
+reports_doc="docs/project/verification-reports.md"
+# The release that introduced the real-AWS verification lane. Versions before
+# this have no published report and are documented as such.
+first_report_version="0.16.0"
+
+if [ -f "$reports_doc" ] && [ -f CHANGELOG.md ]; then
+  # Released versions, newest first, excluding [Unreleased].
+  mapfile -t released < <(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md \
+    | sed -E 's/^## \[//; s/\]$//')
+
+  for v in "${released[@]}"; do
+    # Skip anything older than the first report (string-safe numeric compare).
+    lowest="$(printf '%s\n%s\n' "$v" "$first_report_version" | sort -V | head -1)"
+    [ "$lowest" = "$first_report_version" ] || continue
+
+    if ! grep -qE "^\| v${v//./\\.} " "$reports_doc"; then
+      echo "::error file=$reports_doc::no published-reports row for v$v; add it with the report's direct asset URL (see the table in that file)"
+      fail=1
+    fi
+  done
+fi
+
 if [ "$fail" -eq 0 ]; then
-  echo "✅ doc-consistency: version declarations match ${version_file:+$(tr -d '[:space:]' < "$version_file")}; no denylisted tokens; local links resolve."
+  echo "✅ doc-consistency: version declarations match ${version_file:+$(tr -d '[:space:]' < "$version_file")}; no denylisted tokens; local links resolve; verification-report table covers all releases."
 fi
 exit $fail
