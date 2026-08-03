@@ -29,24 +29,25 @@ through your workstation.
     └───────────┘                               └───────────┘
 ```
 
-Each ghost ship runs independently. There is no hub, and nothing listens for
-inbound connections except the local metrics endpoint.
+Each ghost ship runs independently. There is no hub, and **nothing listens for
+inbound connections at all** — `ghost-ship` binds no port.
 
 ## Components
 
-### 1. Ghost Ship (`pkg/launch/ghost_ship.go`)
+### Ghost Ship (`pkg/launch/ghost_ship.go`)
 - **Purpose**: Autonomous archival agent running on a remote NAS
 - **Features**:
   - Rule-based file discovery and archival
   - S3 optimization integration (BBR/CUBIC)
-  - File watching and pattern matching
+  - Periodic directory scanning and pattern matching
   - Configurable storage classes and retention
 
-### 2. Launch Agent (`pkg/launch/agent.go`)
-- **Purpose**: Manages ghost ship lifecycle and job processing
-- **Features**:
-  - Health monitoring and reporting
-  - Job processing coordination
+A ghost ship discovers files by **polling** each watch path on `scan_interval`,
+not by subscribing to filesystem events. The separate "launch agent"
+(`pkg/launch/agent.go`) documented here previously was a parallel, unreachable
+implementation of the same job and was removed in
+[#347](https://github.com/scttfrdmn/cargoship/issues/347); `ghost-ship` never
+used it.
 
 ## Usage Example
 
@@ -69,10 +70,14 @@ docker run -d \
 
 ### Monitor Operations
 
-Each ghost ship exposes Prometheus metrics on its own metrics port:
+A ghost ship reports status by **logging** it on `report_interval`; it serves no
+metrics or health endpoint. An earlier version of this page showed a
+`curl .../metrics` command for a port that has never been bound — see
+[#348](https://github.com/scttfrdmn/cargoship/issues/348), which tracks the same
+claim still present in the Docker development environment.
 
 ```bash
-curl http://astrapi.local:9090/metrics | grep cargoship_
+docker logs cargoship-ghost-ship
 ```
 
 Uploads land in your bucket like any other CargoShip run, so the ordinary

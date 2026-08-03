@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING: `pkg/launch`'s abandoned agent surface is gone** — `Agent`,
+  `LocalArchiver`, `FileWatcher` and `AstrapiLauncher`, along with `AgentConfig`,
+  `AgentStatus`, `AgentState`, `ArchiveJob`, `ArchiveConfig`, `HealthConfig`,
+  `ArchivalTask`, `FileEvent`, `LaunchRequest`, `LaunchResponse` and
+  `ResourceUsage`. `deadcode` reported **57 unreachable functions across four of
+  the package's five files**, reachable from no `cmd/` entry point. (#347)
+  - This is the **sixth abandoned duplicate**, after #308, #311, #316, #325 and
+    #340. `Agent` and `AstrapiLauncher` were each a parallel implementation of
+    what `GhostShip` does — watch paths, archive to S3 — sitting beside the one
+    that actually runs. `cmd/ghost-ship` calls `NewGhostShip`, never `NewAgent`.
+  - **A leaked OS handle on the only path that ships.** `NewGhostShip`
+    constructed an `fsnotify` watcher, assigned it, and never read the field
+    again — holding an inotify/kqueue handle plus a 1000-element channel for the
+    process lifetime while `GhostShip` discovered files by polling on
+    `ScanInterval` instead. Both the field and the construction are gone;
+    `github.com/fsnotify/fsnotify` drops to an indirect dependency.
+  - `GhostShip.GetJobs` is removed. It became unreachable in **#340** — the
+    deleted controller was its only caller — and was the sole dead function in
+    `ghost_ship.go`.
+  - `TestResults` and `NetworkUtilization` are **kept** and moved to a new
+    `types.go` with `WatchPath` and `JobState`. They were declared beside the
+    astrapi launcher but are built directly by `cmd/cargoship-test`, so only the
+    launcher's methods were ever dead.
+  - **Autonomous archival is deferred, not retired.** `GhostShip` and
+    `cmd/ghost-ship` stay, and this is the surface a future revival builds on —
+    which is why the deletion came with the first tests `GhostShip` has ever had,
+    rather than leaving the surviving code at 0% while the dead code was the
+    tested part. They cover rule matching, brace expansion, candidate scanning,
+    config defaulting and status derivation: the logic that decides what gets
+    uploaded and, with `DeleteAfterArchive`, what gets removed afterwards.
+    Package coverage goes 0% → 29% on a floor of 12.
+
 ## [0.20.0] - 2026-08-03
 
 **Attack surface reduction.** An external security audit rated the *repository*
