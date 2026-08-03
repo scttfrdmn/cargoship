@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-08-03
+
+**Attack surface reduction.** An external security audit rated the *repository*
+D / 4.5 while rating the *shipped CLI* B− / 7.2, on the strength of one finding:
+an HTTP service that executed arbitrary commands with no authentication at all.
+Eight findings were reported; all eight held on verification, and the audit's
+central mitigating claim — that the controller code did not ship — turned out to
+be wrong. The released CLI imported `pkg/controller` directly, so the
+authentication bypass was reachable from the release artifact. Three further
+defects the audit did not report were found in the same code.
+
+The response was deletion, not hardening. The subsystem was unfinished
+scaffolding — eight empty handler bodies, four "Implementation would" comments,
+connection handlers that logged and returned — so there was no defined behavior
+to secure; hardening it would have produced a well-guarded stub. Everything
+network-facing goes: `cargoship controller`, `cargoship webui`, the
+`cargoship-launch` agent, `pkg/controller`, `pkg/launch/central_controller.go`,
+and the ghost ship's outbound WebSocket client. Three direct dependencies leave
+with them. CargoShip now has **no network-facing authentication surface**: it
+accepts no remote commands and dials nothing outside AWS.
+
+This is the fifth abandoned duplicate found in this repo, after #308, #311, #316
+and #325, and by far the most expensive — the audit's worst finding is what
+leaving one in the tree eventually costs. `pkg/launch` has been added to the
+`deadcode` filter.
+
+The one finding that reached users is fixed rather than deleted: `restore` and
+`extract` checked destination containment lexically, which stops a hostile
+*path* but not a hostile *destination*, so a pre-existing symlink in the
+destination directory was followed. Both now write through `os.Root` and refuse
+symlinked parents. `pkg/manifest` had traversal tests but not one symlink test,
+which is why this survived #282; each new test was watched failing against the
+pre-fix tree.
+
+**Breaking:** two shipped subcommands and several exported `pkg/launch`
+identifiers are gone. Ghost ships are unaffected — they were built to archive
+autonomously and never required a controller.
+
 ### Removed
 
 - **BREAKING: the distributed controller subsystem is gone** — `cargoship

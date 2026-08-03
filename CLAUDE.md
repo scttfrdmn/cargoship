@@ -3,7 +3,7 @@
 ## Project Context
 CargoShip is a high-performance S3 upload optimization tool for large-scale data transfers with advanced staging, compression, chunking, and multi-region capabilities.
 
-**Current Version**: v0.19.0 (Released 2026-08-03)
+**Current Version**: v0.20.0 (Released 2026-08-03)
 
 ## Response Style
 - Concise by default. No explanations unless asked.
