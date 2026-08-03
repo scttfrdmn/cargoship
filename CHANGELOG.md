@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-08-03
+
+**Dead Surface & Provenance.** Removes the last abandoned duplicate in
+`pkg/launch`, repairs the Docker deployment images (none of which CI had ever
+built), and makes releases verifiable: `checksums.txt` is now signed with cosign
+keyless and every archive ships an SPDX SBOM.
+
 ### Added
 
 - **Releases are signed, and ship an SBOM.** `checksums.txt` is now signed with
