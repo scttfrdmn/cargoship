@@ -65,6 +65,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`restore` and `extract` no longer write through a symlink in the destination**
+  (#341). Both checked containment lexically — `filepath.Join` then a
+  `strings.HasPrefix` against the destination — which stops a hostile *path*
+  (`../evil`, fixed in #282) but cannot see a hostile *destination*. If the
+  destination directory already contained `cache -> /elsewhere`, the entry
+  `cache/config.txt` passed every check and the OS followed the link, writing
+  outside the destination and truncating whatever it found. (CWE-59)
+  - Every write now goes through an `os.Root` opened on the destination, so each
+    path component is re-validated at open time. This replaces the check-then-write
+    `os.Lstat` walk originally planned: that pattern is racy by construction — it
+    can confirm a parent is a real directory and have it swapped for a symlink
+    before the write lands. `os.Root` closes the race rather than narrowing it, and
+    is portable across every target goreleaser builds.
+  - `os.Root` alone was not sufficient. It refuses a symlink leaving the root, but
+    one pointing to another path *inside* it is still followed, so
+    `dest/cache -> real` silently diverted `cache/config.txt` into `real/`. Parent
+    components are now walked one at a time and any symlink refused, so a restored
+    path means what it says. In `pkg/extraction` that also closes a two-entry
+    archive attack needing no pre-existing state: plant `link -> real` (a legal
+    relative symlink), then write `link/payload.txt`.
+  - A refused file is counted in `RestoreStats.Failed`, which the CLI already turns
+    into a non-zero exit (#336) — so a withheld file cannot read as a clean restore.
+  - **The test gap is the finding.** `pkg/manifest` had traversal tests but not one
+    symlink test, which is why this survived #282. Added: symlinked parent,
+    symlinked leaf, and in-root symlinked parent, across both storage layouts;
+    the `pkg/extraction` equivalents plus the planted-symlink case; and an
+    end-to-end test driving the real binary, which asserts the exit code as well
+    as containment. Each was watched failing against the pre-fix tree. Controls
+    that pin the ordinary path — a pre-existing *real* directory in the
+    destination must stay writable — accompany each, so a fix that simply refused
+    everything could not pass.
+
+
 - **`SECURITY.md` no longer advertises a version that has not shipped for six
   releases** (#342). Its supported-versions table claimed `0.13.x` while 0.19.0
   was current, telling users a version they were not running was the supported one

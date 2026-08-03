@@ -231,3 +231,73 @@ func splitUploadURL(t *testing.T, url string) (bucket, uploadID string) {
 	uploadID = url[idx+len("/uploads/"):]
 	return bucket, uploadID
 }
+
+// TestRestore_RefusesSymlinkedDestination is the binary-level form of #341: the
+// destination directory already contains a symlink pointing outside itself, as
+// could be left by any process with write access there. The restore must refuse
+// and exit non-zero, and nothing may appear at the link target.
+//
+// The unit tests in pkg/manifest pin the write helpers; this pins the contract a
+// user actually experiences, including the exit code — a refusal reported only in
+// stats but exiting 0 would look like a successful restore.
+func TestRestore_RefusesSymlinkedDestination(t *testing.T) {
+	url := uploadTree(t, "symlink-dest-e2e", map[string]string{
+		"cache/config.txt": "original payload\n",
+	})
+
+	base := t.TempDir()
+	dest := filepath.Join(base, "dest")
+	outside := filepath.Join(base, "outside")
+	for _, d := range []string{dest, outside} {
+		if err := os.MkdirAll(d, 0755); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+	if err := os.Symlink(outside, filepath.Join(dest, "cache")); err != nil {
+		t.Skipf("symlinks unavailable on this platform: %v", err)
+	}
+
+	out, err := runCargoshipAllowErr(t, "restore", url, dest, "--file", "config.txt", "--region", "us-east-1")
+
+	if escaped := filepath.Join(outside, "config.txt"); !fileMissing(t, escaped) {
+		t.Fatalf("restore escaped the destination: wrote through a symlink to %s\n%s", escaped, out)
+	}
+	if err == nil {
+		t.Fatalf("restore into a symlinked destination exited 0; it must fail\n%s", out)
+	}
+}
+
+// TestRestore_CleanDestinationStillWorks is the companion control: the same
+// archive into an untouched destination must still round-trip byte-identically,
+// confirming the containment work did not break the ordinary path.
+func TestRestore_CleanDestinationStillWorks(t *testing.T) {
+	want := "original payload\n"
+	url := uploadTree(t, "clean-dest-e2e", map[string]string{
+		"cache/config.txt": want,
+	})
+
+	dest := t.TempDir()
+	runCargoship(t, "restore", url, dest, "--file", "config.txt", "--region", "us-east-1")
+
+	got, err := os.ReadFile(findFileByBase(t, dest, "config.txt"))
+	if err != nil {
+		t.Fatalf("read restored file: %v", err)
+	}
+	if string(got) != want {
+		t.Fatalf("restored content mismatch:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// fileMissing reports whether path does not exist, failing on any other error so
+// a permission problem is not silently read as "nothing escaped".
+func fileMissing(t *testing.T, path string) bool {
+	t.Helper()
+	_, err := os.Lstat(path)
+	if err == nil {
+		return false
+	}
+	if !os.IsNotExist(err) {
+		t.Fatalf("lstat %s: %v", path, err)
+	}
+	return true
+}
