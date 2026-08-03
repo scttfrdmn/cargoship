@@ -34,6 +34,7 @@ release assets to find the evidence.
 
 | Version | Date | Files | Bytes | Paths | Suites | Result | Report |
 |---------|------|-------|-------|-------|--------|--------|--------|
+| v0.19.0 | 2026-08-03 | — | — | — | — | ⏳ Run in progress | pending |
 | v0.18.0 | 2026-08-02 | 20 | 61.01 MB | direct, chunked | 45 / 0 | ✅ Passed | [`v0.18.0-2026-08-02.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.18.0/v0.18.0-2026-08-02.md) |
 | v0.17.1 | 2026-08-02 | 20 | 61.01 MB | direct, chunked | 45 / 0 | ✅ Passed | [`v0.17.1-2026-08-02.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.17.1/v0.17.1-2026-08-02.md) |
 | v0.17.0 | 2026-08-02 | 20 | 61.01 MB | direct, chunked | 45 / 0 | ✅ Passed | [`v0.17.0-2026-08-02.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.17.0/v0.17.0-2026-08-02.md) |
@@ -43,6 +44,14 @@ release assets to find the evidence.
 *Files* = round-tripped byte-identical; *Suites* = integration suites
 passed / failed against real S3. Reports begin at v0.16.0, the release that
 introduced the lane; earlier versions have no published report.
+
+A row reading **⏳ Run in progress** means the tag was just pushed and the
+real-AWS lane has not finished. The row is added with the release commit rather
+than after the fact, so a release can never be published without its evidence
+being accounted for — but the numbers are deliberately left blank until the run
+produces them, because they come from that run and cannot be known in advance.
+If a row stays pending, the run has not passed and the release should be
+treated as unverified.
 
 The corpus is fixed, so the file and byte counts are expected to be identical
 across releases — what each row attests is that *that build* preserved them. A

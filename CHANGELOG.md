@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-03
+
+**Assurance depth.** An external review scored the project 8.9/10 and asked for
+depth rather than breadth: prove the promises already made instead of adding new
+ones. The work was meant to be verification — qualify an overstated maturity
+label, pin each recent defect with a fixture, and check that archives written by
+*older releases* still read. The last of those found four live data defects in
+`restore`, which is why this is a release and not a test-only chore.
+
+The mechanism is the point. Every other test in the repo writes and reads with
+the same build, which proves self-consistency — not the backward readability
+archival users depend on. Reading archives produced by real v0.14.0–v0.18.0
+binaries broke that symmetry, and the asymmetry is what exposed the bugs: a
+prefixed chunked archive that could not be restored at all, a copied archive
+whose `verify --deep` certified bytes it never read, `restore` exiting 0 when
+every file failed, and a truncated entry landing on disk as a short file with a
+success exit code.
+
+All four had passing tests beforehand. Each passed **vacuously**, for a different
+reason — a fixture that set no prefix, an e2e that restored by basename, a
+partially-tolerant API whose `err == nil` was read as success, and an `io.Copy`
+that cannot distinguish a truncated tar entry from EOF. The lesson carried
+forward from #308/#311/#325 holds: a test not watched failing against the broken
+code is not known to test anything.
+
+Two are severe for a backup tool. A green exit code on a total restore failure is
+what deletes someone's only copy, since restore is overwhelmingly scripted; and
+an integrity check that reports a copy as intact while reading the original is
+the one thing such a check must never do.
+
+No archive-format change. Archives written by every release from v0.14.0 onward
+restore identically — now with a committed corpus that says so on every CI run.
+
 ### Added
 
 - **Cross-version archive readability tests** — the format spec promises manifest
@@ -109,6 +142,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the in-process Substrate emulator. It documented a test setup that no longer
   exists. This completes the LocalStack cleanup begun in v0.18.0, which removed
   the stale references from the live pre-commit gates. (#325)
+
+### Changed
+
+- **"Stable" on the maturity page is now defined rather than implied.** It read
+  as "battle-tested in production for years," which is not what it meant and not
+  what the record supports — v0.16.1 and v0.17.0 fixed a last-file truncation and
+  a path traversal in paths labelled stable. It now states what it does mean: the
+  interface and format are intended for continued use and are protected by
+  release-gating verification against real S3, not that a commercial SLA or long
+  production history exists. Beta and experimental are defined too. The published
+  verification reports are also listed in one table with direct asset URLs and
+  linked from the two places the byte-identity claim is actually made, so a reader
+  wanting proof no longer has to open a release and scroll through its assets. A
+  new check in `scripts/ci/check-doc-versions.sh` fails if a release lands without
+  a row. Also corrected an overstatement found while doing this: `integrity.md`
+  said the real-AWS lane runs on merge to main. It does not, and deliberately so —
+  it needs real credentials and mutates a shared bucket, so it runs weekly, on
+  release tags, and on dispatch. (#320)
+
+### Testing & CI
+
+- **A committed fixture per v0.16/v0.17 defect, each verified against the
+  pre-fix code.** All nine were audited; seven were already pinned behaviorally
+  and were confirmed to fail by actually reverting the fix, not assumed. The two
+  that were not covered now are. Nil-slice manifests had lived only inside a fuzz
+  differential with no named test — the new one asserts the **raw JSON** carries
+  arrays, which matters because a round trip through `Manifest` hides the
+  violation (`null` and `[]` both unmarshal to an empty-reading slice). (#321)
+  - #311 gets a *structural* guard rather than a behavioral one, because it was a
+    duplicate extraction loop: no test of the shared extractor could have caught
+    it, since the vulnerable code never called the shared extractor. What made it
+    invisible was that a new tar loop could appear without the containment
+    question being re-asked. `internal/audit/tarloop_test.go` inventories every
+    non-test `tar.NewReader` site with the reason each is safe and fails on an
+    unlisted one — verified against the pre-fix tree, where it flags the exact
+    file that carried the traversal. A second test rejects stale entries so the
+    allowlist cannot overstate its coverage.
+- **The `performance` and `benchmark` test suites did not compile**, and had not
+  for an unknown length of time. No CI lane set either tag, and absence of a
+  signal reads exactly like success. `performance` called helpers defined only
+  behind `//go:build integration` — two tags that are never set together, so the
+  caller could never see the callee; those helpers moved to a file tagged
+  `integration || performance`. `benchmark` called `Options()` on an `interface{}`
+  field that has no methods. Both are repaired, and
+  `scripts/ci/check-build-tags.sh` now runs `go vet` for every custom tag as a CI
+  job. The tag list is **derived** from `//go:build` lines rather than hardcoded,
+  so a new tag is covered the moment it appears — a hardcoded list would rot the
+  same way these files did. It immediately found a third unbuilt tag the issue had
+  not mentioned (`benchmarks`, plural, distinct from `benchmark`). These suites
+  need real credentials to *run*, so the check only compiles them; compiling is
+  the part that was regressing. This is the build-tag analogue of the
+  #308/#311/#325 duplicate-drift pattern: code nothing compiles stops tracking
+  reality. (#329)
 
 ## [0.18.0] - 2026-08-02
 
