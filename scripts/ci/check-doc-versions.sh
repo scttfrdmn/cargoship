@@ -141,7 +141,30 @@ if [ -f "$reports_doc" ] && [ -f CHANGELOG.md ]; then
   done
 fi
 
+# --- Check 5: SECURITY.md's supported-versions table tracks the current line ---
+#
+# The table names the minor line that receives security fixes. It drifted silently
+# across six releases (it advertised 0.13.x while 0.19.0 shipped), telling users
+# their supported version was unsupported and vice versa — the one table in the
+# repo where being wrong is itself a security problem. (#342)
+#
+# Deliberately checks the MINOR line, not the patch: 0.19.1 is still "0.19.x", so
+# a patch release must not require editing this file.
+
+if [ -f SECURITY.md ] && [ -n "${ver:-}" ]; then
+  minor="${ver%.*}" # 0.19.0 -> 0.19
+  want_supported="| ${minor}.x  | :white_check_mark: |"
+  want_unsupported="| < ${minor}  | :x: |"
+
+  for needle in "$want_supported" "$want_unsupported"; do
+    if ! grep -qF "$needle" SECURITY.md; then
+      echo "::error file=SECURITY.md::supported-versions table is stale; expected a row \"$needle\" (current line ${minor}.x, from $version_file = $ver)"
+      fail=1
+    fi
+  done
+fi
+
 if [ "$fail" -eq 0 ]; then
-  echo "✅ doc-consistency: version declarations match ${version_file:+$(tr -d '[:space:]' < "$version_file")}; no denylisted tokens; local links resolve; verification-report table covers all releases."
+  echo "✅ doc-consistency: version declarations match ${version_file:+$(tr -d '[:space:]' < "$version_file")}; no denylisted tokens; local links resolve; verification-report table covers all releases; SECURITY.md supported line current."
 fi
 exit $fail
