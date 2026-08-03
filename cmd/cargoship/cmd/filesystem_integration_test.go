@@ -3,6 +3,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -476,6 +477,55 @@ func (s *IntegrationTestSuite) FileExists(path string) bool {
 	return err == nil
 }
 
+// runTool runs a command from an explicit argv. Paths reach the tool verbatim,
+// so a TempDir containing a space or a shell metacharacter is not word-split
+// (#351 — these helpers used to build a string for "sh -c").
+func (s *IntegrationTestSuite) runTool(what string, argv ...string) {
+	s.t.Helper()
+	output, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
+	if err != nil {
+		s.t.Fatalf("Failed to %s: %v\nCommand: %v\nOutput: %s", what, err, argv, output)
+	}
+}
+
+// runPipeline runs producer | consumer without a shell, wiring the two together
+// with an os.Pipe. Only the zstd formats need a pipeline; every other format is
+// a single command that runTool handles.
+func (s *IntegrationTestSuite) runPipeline(what string, producer, consumer []string) {
+	s.t.Helper()
+
+	pr, pw, err := os.Pipe()
+	require.NoError(s.t, err, "Failed to open pipe to %s", what)
+
+	prod := exec.Command(producer[0], producer[1:]...)
+	prod.Stdout = pw
+	var prodErr bytes.Buffer
+	prod.Stderr = &prodErr
+
+	cons := exec.Command(consumer[0], consumer[1:]...)
+	cons.Stdin = pr
+	var consErr bytes.Buffer
+	cons.Stderr = &consErr
+
+	require.NoError(s.t, prod.Start(), "Failed to start %v", producer)
+	require.NoError(s.t, cons.Start(), "Failed to start %v", consumer)
+
+	// Both children hold their own descriptors now. The parent has to drop its
+	// copies or the consumer never sees EOF and the pipeline deadlocks.
+	require.NoError(s.t, pw.Close())
+	require.NoError(s.t, pr.Close())
+
+	prodWaitErr := prod.Wait()
+	consWaitErr := cons.Wait()
+
+	if prodWaitErr != nil {
+		s.t.Fatalf("Failed to %s: %v in %v\nStderr: %s", what, prodWaitErr, producer, prodErr.String())
+	}
+	if consWaitErr != nil {
+		s.t.Fatalf("Failed to %s: %v in %v\nStderr: %s", what, consWaitErr, consumer, consErr.String())
+	}
+}
+
 // CreateArchive creates an archive from a directory using CargoShip
 func (s *IntegrationTestSuite) CreateArchive(sourceDir, format string) string {
 	archiveName := fmt.Sprintf("test-archive-%d.%s", time.Now().Unix(), format)
@@ -483,23 +533,20 @@ func (s *IntegrationTestSuite) CreateArchive(sourceDir, format string) string {
 
 	// Use tar command directly for simplicity
 	// In a real test, we'd use CargoShip's archive creation
-	var cmd string
+	what := "create archive " + format
 	switch format {
 	case "tar":
-		cmd = fmt.Sprintf("tar -cf %s -C %s .", archivePath, sourceDir)
+		s.runTool(what, "tar", "-cf", archivePath, "-C", sourceDir, ".")
 	case "tar.gz":
-		cmd = fmt.Sprintf("tar -czf %s -C %s .", archivePath, sourceDir)
+		s.runTool(what, "tar", "-czf", archivePath, "-C", sourceDir, ".")
 	case "tar.zst":
-		cmd = fmt.Sprintf("tar -c -C %s . | zstd -o %s", sourceDir, archivePath)
+		s.runPipeline(what,
+			[]string{"tar", "-c", "-C", sourceDir, "."},
+			[]string{"zstd", "-o", archivePath})
 	case "tar.bz2":
-		cmd = fmt.Sprintf("tar -cjf %s -C %s .", archivePath, sourceDir)
+		s.runTool(what, "tar", "-cjf", archivePath, "-C", sourceDir, ".")
 	default:
 		s.t.Fatalf("Unsupported archive format: %s", format)
-	}
-
-	output, err := exec.Command("sh", "-c", cmd).CombinedOutput()
-	if err != nil {
-		s.t.Fatalf("Failed to create archive %s: %v\nOutput: %s", format, err, output)
 	}
 
 	s.t.Logf("Created archive: %s (format: %s)", archiveName, format)
@@ -513,23 +560,20 @@ func (s *IntegrationTestSuite) ExtractArchive(archivePath string) string {
 	require.NoError(s.t, err, "Failed to create extract directory")
 
 	// Detect format from file extension
-	var cmd string
+	const what = "extract archive"
 	switch {
 	case strings.HasSuffix(archivePath, ".tar.gz"):
-		cmd = fmt.Sprintf("tar -xzf %s -C %s", archivePath, extractDir)
+		s.runTool(what, "tar", "-xzf", archivePath, "-C", extractDir)
 	case strings.HasSuffix(archivePath, ".tar.zst"):
-		cmd = fmt.Sprintf("zstd -d -c %s | tar -x -C %s", archivePath, extractDir)
+		s.runPipeline(what,
+			[]string{"zstd", "-d", "-c", archivePath},
+			[]string{"tar", "-x", "-C", extractDir})
 	case strings.HasSuffix(archivePath, ".tar.bz2"):
-		cmd = fmt.Sprintf("tar -xjf %s -C %s", archivePath, extractDir)
+		s.runTool(what, "tar", "-xjf", archivePath, "-C", extractDir)
 	case strings.HasSuffix(archivePath, ".tar"):
-		cmd = fmt.Sprintf("tar -xf %s -C %s", archivePath, extractDir)
+		s.runTool(what, "tar", "-xf", archivePath, "-C", extractDir)
 	default:
 		s.t.Fatalf("Unsupported archive format: %s", archivePath)
-	}
-
-	output, err := exec.Command("sh", "-c", cmd).CombinedOutput()
-	if err != nil {
-		s.t.Fatalf("Failed to extract archive: %v\nOutput: %s", err, output)
 	}
 
 	s.t.Logf("Extracted archive to: %s", extractDir)
@@ -1884,9 +1928,10 @@ func TestIntegration_CorruptedArchive(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("Corrupted archive by truncating to 50%% size")
 
-	// Try to extract corrupted archive
-	extractCmd := fmt.Sprintf("tar -xf %s -C %s 2>&1", corruptedPath, suite.TempDir)
-	output, extractErr := exec.Command("sh", "-c", extractCmd).CombinedOutput()
+	// Try to extract corrupted archive. Explicit argv rather than a shell command
+	// string, so a TempDir containing a space does not word-split (#351) and turn
+	// this into a false pass — the assertion below only requires *an* error.
+	output, extractErr := exec.Command("tar", "-xf", corruptedPath, "-C", suite.TempDir).CombinedOutput()
 
 	// Verify extraction fails
 	require.Error(t, extractErr, "Extraction should fail on corrupted archive")
