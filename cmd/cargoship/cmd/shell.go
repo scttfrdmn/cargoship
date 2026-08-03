@@ -111,7 +111,9 @@ func runArchiveShell(ctx context.Context, s3URL, region string, cacheGB int64) e
 	fmt.Printf("✅ Manifest loaded: %d files, %d chunks\n\n", m.TotalFiles, m.TotalChunks)
 
 	maxCacheBytes := cacheGB * 1024 * 1024 * 1024
-	se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes)
+	// SetBucket: fetch from where the manifest was read, not the bucket name
+	// baked into it at upload time (#335).
+	se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes).SetBucket(bucket)
 	vfs := archivefs.New(m)
 
 	sh := &archiveShell{

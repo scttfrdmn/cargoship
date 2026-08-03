@@ -71,11 +71,37 @@ func (r *DeepVerifyResult) Passed() bool {
 type DeepVerifier struct {
 	manifest *Manifest
 	s3Client S3Downloader
+
+	// bucket overrides the bucket objects are fetched from; empty means use
+	// manifest.Bucket. See SetBucket (#335).
+	bucket string
 }
 
 // NewDeepVerifier creates a deep verifier for a manifest.
 func NewDeepVerifier(m *Manifest, s3Client S3Downloader) *DeepVerifier {
 	return &DeepVerifier{manifest: m, s3Client: s3Client}
+}
+
+// SetBucket overrides the bucket chunk objects are fetched from — normally the
+// bucket the manifest was just read from. Passing "" keeps the manifest's own
+// recorded bucket. Returns the receiver for chaining.
+//
+// This matters more for verification than for restore: a deep verify against a
+// copied archive that silently read the ORIGINAL bucket would report the copy as
+// intact while never having touched a byte of it, which is the one thing an
+// integrity check must not do (#335).
+func (dv *DeepVerifier) SetBucket(bucket string) *DeepVerifier {
+	dv.bucket = bucket
+	return dv
+}
+
+// objectBucket returns the bucket to fetch from: the explicit override when set,
+// otherwise the manifest's recorded bucket.
+func (dv *DeepVerifier) objectBucket() string {
+	if dv.bucket != "" {
+		return dv.bucket
+	}
+	return dv.manifest.Bucket
 }
 
 // VerifyChunks re-downloads every chunk object, recomputes its SHA-256, and
@@ -221,7 +247,7 @@ func (dv *DeepVerifier) verifyChunk(ctx context.Context, chunk *ChunkEntry) Chun
 	}
 
 	output, err := dv.s3Client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(dv.manifest.Bucket),
+		Bucket: aws.String(dv.objectBucket()),
 		Key:    aws.String(dv.objectKey(chunk.S3Key)),
 	})
 	if err != nil {
@@ -393,7 +419,7 @@ func (dv *DeepVerifier) chunkByID(id int) *ChunkEntry {
 // can detect files that never appeared.
 func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry, expected map[fileKey]string, seen map[fileKey]bool) ([]FileVerifyResult, error) {
 	output, err := dv.s3Client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(dv.manifest.Bucket),
+		Bucket: aws.String(dv.objectBucket()),
 		Key:    aws.String(dv.objectKey(chunk.S3Key)),
 	})
 	if err != nil {

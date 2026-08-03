@@ -153,6 +153,16 @@ type SelectiveExtractor struct {
 	// default dataset-relative layout (#287). Useful for targeted single-file
 	// restores. Set with SetFlatten(true).
 	flatten bool
+
+	// bucket overrides the bucket objects are fetched from. Empty means use
+	// manifest.Bucket, which is the historical behavior.
+	//
+	// The manifest records the bucket it was written to, so an archive copied or
+	// replicated elsewhere carried a stale name and every fetch went to the
+	// ORIGINAL bucket — silently, since the caller had already been asked for a
+	// bucket in the S3 URL and had no reason to think it was ignored (#335). Set
+	// with SetBucket to the bucket the manifest was actually read from.
+	bucket string
 }
 
 // NewSelectiveExtractor creates a SelectiveExtractor. maxCacheSize sets the
@@ -174,6 +184,28 @@ func NewSelectiveExtractor(manifest *Manifest, s3Client S3Downloader, maxCacheSi
 func (se *SelectiveExtractor) SetVerify(v bool) *SelectiveExtractor {
 	se.verify = v
 	return se
+}
+
+// SetBucket overrides the bucket objects are fetched from, for callers that know
+// where the archive actually lives — normally the bucket the manifest was just
+// read from. Passing "" keeps the manifest's own recorded bucket.
+//
+// Without this, a copied, replicated, or renamed archive fetches from the bucket
+// baked in at upload time: the restore either 404s or, worse, succeeds against a
+// stale original that the user believed they had moved away from (#335).
+// Returns the receiver for chaining.
+func (se *SelectiveExtractor) SetBucket(bucket string) *SelectiveExtractor {
+	se.bucket = bucket
+	return se
+}
+
+// objectBucket returns the bucket to fetch from: the explicit override when set,
+// otherwise the manifest's recorded bucket.
+func (se *SelectiveExtractor) objectBucket() string {
+	if se.bucket != "" {
+		return se.bucket
+	}
+	return se.manifest.Bucket
 }
 
 // SetFlatten toggles flat restore layout (destDir/<basename> per file) instead
@@ -533,7 +565,7 @@ func (se *SelectiveExtractor) downloadChunk(ctx context.Context, s3Key string) (
 	// as an object key verbatim. ResolveObjectKey maps all shapes to the real
 	// object key relative to the bucket.
 	out, err := se.s3Client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(se.manifest.Bucket),
+		Bucket: aws.String(se.objectBucket()),
 		Key:    aws.String(se.resolveKey(s3Key)),
 	})
 	if err != nil {

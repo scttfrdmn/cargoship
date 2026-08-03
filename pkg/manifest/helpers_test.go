@@ -21,17 +21,34 @@ import (
 
 // mockS3Client serves object bytes from an in-memory map, keyed by S3 key. It
 // records the keys it was asked for so tests can assert WHICH object was
-// fetched, not merely that the fetch succeeded (#334).
+// fetched, not merely that the fetch succeeded (#334), and the buckets so they
+// can assert WHERE it was fetched from (#335).
+//
+// When onlyBucket is set, a request for any other bucket fails the way a real
+// missing/foreign bucket would — that is what lets a test prove the fetch went
+// to the intended bucket rather than the one recorded in the manifest.
 type mockS3Client struct {
-	chunks    map[string][]byte // S3 key -> compressed tar data
-	mu        sync.Mutex
-	requested []string
+	chunks     map[string][]byte // S3 key -> compressed tar data
+	onlyBucket string            // when set, requests to other buckets fail
+	mu         sync.Mutex
+	requested  []string
+	buckets    []string
 }
 
 func (m *mockS3Client) GetObject(ctx context.Context, input *s3.GetObjectInput, opts ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	bucket := ""
+	if input.Bucket != nil {
+		bucket = *input.Bucket
+	}
+
 	m.mu.Lock()
 	m.requested = append(m.requested, *input.Key)
+	m.buckets = append(m.buckets, bucket)
 	m.mu.Unlock()
+
+	if m.onlyBucket != "" && bucket != m.onlyBucket {
+		return nil, fmt.Errorf("NoSuchBucket: %s", bucket)
+	}
 
 	data, ok := m.chunks[*input.Key]
 	if !ok {
@@ -41,6 +58,21 @@ func (m *mockS3Client) GetObject(ctx context.Context, input *s3.GetObjectInput, 
 	return &s3.GetObjectOutput{
 		Body: io.NopCloser(bytes.NewReader(data)),
 	}, nil
+}
+
+// requestedBuckets returns the deduplicated set of buckets GetObject addressed.
+func (m *mockS3Client) requestedBuckets() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	seen := make(map[string]struct{}, len(m.buckets))
+	var out []string
+	for _, b := range m.buckets {
+		if _, ok := seen[b]; !ok {
+			seen[b] = struct{}{}
+			out = append(out, b)
+		}
+	}
+	return out
 }
 
 // requestedKeys returns the deduplicated set of keys GetObject was called with.

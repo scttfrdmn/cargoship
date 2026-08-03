@@ -36,6 +36,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A copied, replicated, or renamed archive read from its original location.**
+  Every restore and verify path resolved objects against the bucket recorded
+  *inside* the manifest at upload time, never the bucket the manifest was just
+  read out of — so `cargoship restore s3://archive-copy/…` loaded the manifest
+  from `archive-copy` and then fetched every chunk from the original bucket,
+  silently, having been handed a bucket it ignored. The 404 is the benign case:
+  the dangerous one is a `verify --deep` that reports the copy as intact while
+  never touching a byte of it, which is the one thing an integrity check must not
+  do. `SelectiveExtractor` and `DeepVerifier` now take a `SetBucket` override, and
+  every command wires the bucket it parsed from the user's URL. Omitting the
+  override keeps the manifest's own bucket, so embedders are unaffected. `browse`
+  also picked up the #336 exit-code fix, which it had missed. (#335)
 - **Restoring any prefixed chunked archive by exact path failed outright** with
   `glacier pre-flight check failed: ... HeadObject ... 404`. Manifests record
   `S3Key` relative to `manifest.Prefix`, and the download path resolved it

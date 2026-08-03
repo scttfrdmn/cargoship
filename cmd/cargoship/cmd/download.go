@@ -218,6 +218,7 @@ Examples:
 				targets[i] = file.Path
 			}
 			extractor := manifest.NewSelectiveExtractor(m, s3Client, 0).
+				SetBucket(bucket). // where the manifest actually came from (#335)
 				SetVerify(!noVerify).
 				SetFlatten(flatten)
 			stats, err := extractor.BatchRestore(ctx, targets, outputDir)

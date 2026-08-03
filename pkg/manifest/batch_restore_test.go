@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1073,4 +1075,89 @@ func TestBatchRestore_ZeroModTimeLeavesFileAlone(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, fi.ModTime().IsZero(), "should keep the write time, not stamp year 1")
 	assert.True(t, fi.ModTime().Year() > 2000, "got %s", fi.ModTime())
+}
+
+// ---------------------------------------------------------------------------
+// #335: objects were fetched from the bucket recorded IN the manifest, never
+// from the bucket the manifest was read out of. An archive copied, replicated,
+// or renamed therefore fetched from its original location — silently, since the
+// caller had supplied a bucket in the S3 URL and had no reason to think it was
+// ignored. Worst case is not the 404: it is a restore or a deep verify that
+// SUCCEEDS against the stale original the user believed they had moved away
+// from, certifying a copy nobody read.
+// ---------------------------------------------------------------------------
+
+// buildMovedArchive returns a prefixed manifest whose recorded Bucket is stale,
+// plus a client that serves the objects ONLY from the bucket the archive was
+// actually moved to.
+func buildMovedArchive(t *testing.T) (*Manifest, *mockS3Client, string) {
+	t.Helper()
+	const newBucket = "archive-copy"
+
+	m := buildPrefixedManifest()
+	m.Bucket = "original-bucket" // stale: where it was first uploaded
+
+	client := &mockS3Client{chunks: make(map[string][]byte), onlyBucket: newBucket}
+	for _, chunk := range m.Chunks {
+		var files []FileEntry
+		for _, fe := range m.Files {
+			if fe.ChunkID == chunk.ID {
+				files = append(files, fe)
+			}
+		}
+		client.chunks[ResolveObjectKey(m.Prefix, m.Bucket, chunk.S3Key)] = buildZstdTar(t, files)
+	}
+	return m, client, newBucket
+}
+
+func TestBatchRestore_FetchesFromOverriddenBucket(t *testing.T) {
+	m, client, newBucket := buildMovedArchive(t)
+
+	se := NewSelectiveExtractor(m, client, 0).SetBucket(newBucket)
+	stats, err := se.BatchRestore(context.Background(), []string{"data/file-000.bin"}, t.TempDir())
+	require.NoError(t, err)
+	require.Zero(t, stats.Failed, "restore must read from the bucket it was pointed at")
+	assert.Equal(t, int64(1), stats.Restored)
+
+	assert.Equal(t, []string{newBucket}, client.requestedBuckets(),
+		"objects must come from the bucket the manifest was read from, not the stale name inside it")
+}
+
+// TestBatchRestore_UnsetBucketKeepsManifestBucket pins the default. Callers that
+// never call SetBucket must behave exactly as before — the override is opt-in, so
+// it cannot change what existing embedders do.
+func TestBatchRestore_UnsetBucketKeepsManifestBucket(t *testing.T) {
+	m, client, _ := buildMovedArchive(t)
+	client.onlyBucket = m.Bucket // serve only from the manifest's own bucket
+
+	se := NewSelectiveExtractor(m, client, 0)
+	stats, err := se.BatchRestore(context.Background(), []string{"data/file-000.bin"}, t.TempDir())
+	require.NoError(t, err)
+	require.Zero(t, stats.Failed)
+
+	assert.Equal(t, []string{m.Bucket}, client.requestedBuckets(),
+		"with no override the manifest's recorded bucket must still be used")
+}
+
+// TestDeepVerify_DoesNotCertifyABucketItNeverRead is the assertion that matters
+// most. A deep verify is a claim about specific bytes in a specific place; if it
+// reads the original bucket while the user asked about a copy, it certifies data
+// it never touched. That is the one thing an integrity check must not do.
+func TestDeepVerify_DoesNotCertifyABucketItNeverRead(t *testing.T) {
+	m, client, newBucket := buildMovedArchive(t)
+	m.ChecksumAlgorithm = ChecksumAlgorithmSHA256
+	for i := range m.Chunks {
+		key := ResolveObjectKey(m.Prefix, m.Bucket, m.Chunks[i].S3Key)
+		sum := sha256.Sum256(client.chunks[key])
+		m.Chunks[i].Checksum = hex.EncodeToString(sum[:])
+	}
+
+	dv := NewDeepVerifier(m, client).SetBucket(newBucket)
+	result, err := dv.VerifyChunks(context.Background())
+	require.NoError(t, err)
+	assert.True(t, result.Passed(),
+		"deep verify must read the bucket it was pointed at (ok=%d missing=%d mismatched=%d)",
+		result.OK, result.Missing, result.Mismatched)
+	assert.Equal(t, []string{newBucket}, client.requestedBuckets(),
+		"deep verify must not certify bytes it read from a different bucket")
 }
