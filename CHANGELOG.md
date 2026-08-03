@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **The gitleaks binary is now checksum-verified before it runs** (#342). The
+  secret-scanning job piped `curl` straight into `tar`, executing whatever the URL
+  served — a tampered release asset or a MITM would have run in CI with repository
+  access, inside the job whose purpose is to catch leaked secrets. The tarball's
+  SHA-256 is now pinned and checked before extraction, keeping the deliberate
+  choice of the MIT-licensed binary over the wrapper action, which requires a paid
+  license for organizations. The pinned digest was cross-checked against the
+  release's own published `checksums.txt` rather than a single local download.
+  Auditing the rest of CI found no other unverified download.
+
+### Fixed
+
+- **`SECURITY.md` no longer advertises a version that has not shipped for six
+  releases** (#342). Its supported-versions table claimed `0.13.x` while 0.19.0
+  was current, telling users a version they were not running was the supported one
+  — in the one table in the repo where being wrong is itself a security problem.
+  Corrected to `0.19.x`, and `scripts/ci/check-doc-versions.sh` now gates it as a
+  fifth check, so it cannot drift again. The check targets the *minor* line, so a
+  patch release does not require editing the file.
+  - The doc-consistency workflow's path filter did not include
+    `internal/version/version.txt`, so a release that bumped only the canonical
+    version would have skipped this gate at exactly the moment the tables went
+    stale. Added.
+
 ## [0.19.0] - 2026-08-03
 
 **Assurance depth.** An external review scored the project 8.9/10 and asked for
