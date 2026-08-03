@@ -1,15 +1,18 @@
 package manifest
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -394,6 +397,98 @@ func TestAllChunkKeys(t *testing.T) {
 	assert.Contains(t, keys, "shard-0/chunk-9.tar.zst")
 }
 
+// ---------------------------------------------------------------------------
+// #334: the chunk-key accessors feed a Glacier pre-flight HeadObject, so they
+// must return the key that actually addresses an object.
+//
+// Every test above runs against build100FileManifest, which sets NO Prefix — so
+// the raw and resolved forms are identical and the missing normalization cannot
+// show up. Real uploads to `s3://bucket/archives` record S3Key relative to the
+// prefix, the pre-flight HeadObject 404s on the raw value, and the restore
+// aborts with "glacier pre-flight check failed". These use a prefixed manifest,
+// which is what the fixture should have had all along.
+// ---------------------------------------------------------------------------
+
+// buildPrefixedManifest mirrors what a real chunked upload to
+// s3://test-bucket/archives writes: S3Key values relative to Prefix.
+func buildPrefixedManifest() *Manifest {
+	m := build100FileManifest()
+	m.Prefix = "archives"
+	for i := range m.Chunks {
+		m.Chunks[i].S3Key = "uploads/batch-test-001/" + m.Chunks[i].S3Key
+	}
+	for i := range m.Files {
+		m.Files[i].S3Key = "uploads/batch-test-001/" + m.Files[i].S3Key
+	}
+	return m
+}
+
+func TestChunkKeysForPaths_ResolvesAgainstPrefix(t *testing.T) {
+	se := NewSelectiveExtractor(buildPrefixedManifest(), &mockS3Client{}, 0)
+
+	keys := se.ChunkKeysForPaths([]string{"data/file-000.bin"})
+
+	// Must be the real object key. Without the prefix this is a 404.
+	assert.Equal(t, []string{"archives/uploads/batch-test-001/shard-0/chunk-0.tar.zst"}, keys)
+}
+
+func TestAllChunkKeys_ResolvesAgainstPrefix(t *testing.T) {
+	se := NewSelectiveExtractor(buildPrefixedManifest(), &mockS3Client{}, 0)
+
+	for _, key := range se.AllChunkKeys() {
+		assert.True(t, strings.HasPrefix(key, "archives/"),
+			"chunk key %q is not prefix-resolved; a pre-flight HeadObject on it would 404", key)
+	}
+}
+
+// TestChunkKeysForPaths_MatchesDownloadedKeys is the property that matters: the
+// keys the pre-flight check verifies must be the keys the restore then fetches.
+// Asserting the resolved string alone would still allow the two paths to drift;
+// this pins them to each other.
+func TestChunkKeysForPaths_MatchesDownloadedKeys(t *testing.T) {
+	m := buildPrefixedManifest()
+	client := &mockS3Client{chunks: make(map[string][]byte)}
+	for _, chunk := range m.Chunks {
+		var files []FileEntry
+		for _, fe := range m.Files {
+			if fe.ChunkID == chunk.ID {
+				files = append(files, fe)
+			}
+		}
+		// Key the mock by the RESOLVED key — that is where the object lives.
+		client.chunks[ResolveObjectKey(m.Prefix, m.Bucket, chunk.S3Key)] = buildZstdTar(t, files)
+	}
+	se := NewSelectiveExtractor(m, client, 0)
+
+	targets := []string{"data/file-000.bin", "data/file-050.bin"}
+	preflight := se.ChunkKeysForPaths(targets)
+
+	stats, err := se.BatchRestore(context.Background(), targets, t.TempDir())
+	require.NoError(t, err)
+	require.Zero(t, stats.Failed)
+
+	sort.Strings(preflight)
+	fetched := client.requestedKeys()
+	sort.Strings(fetched)
+	assert.Equal(t, preflight, fetched,
+		"pre-flight checked %v but restore fetched %v", preflight, fetched)
+}
+
+// TestChunkKeysForPaths_ResolvesBasenameTargets covers the second half of #334:
+// the pre-flight used exact-match lookup while BatchRestore falls back to
+// basename/suffix matching (#228). A basename target therefore yielded zero
+// keys, the Glacier check silently verified nothing, and the restore proceeded
+// — so the documented `--file greeting.txt` ergonomic had no Glacier protection
+// at all. That vacuous pass is why the e2e round-trip never caught the 404.
+func TestChunkKeysForPaths_ResolvesBasenameTargets(t *testing.T) {
+	se := NewSelectiveExtractor(buildPrefixedManifest(), &mockS3Client{}, 0)
+
+	keys := se.ChunkKeysForPaths([]string{"file-000.bin"})
+
+	assert.Equal(t, []string{"archives/uploads/batch-test-001/shard-0/chunk-0.tar.zst"}, keys,
+		"a basename target must yield the chunk BatchRestore would download, not nothing")
+}
+
 // TestBatchRestore_ChunkedFullURLS3Key is the regression for the round-trip
 // property test's finding: a chunked manifest whose ChunkEntry.S3Key was stored
 // as a full URL (the #273 wart — some upload managers return result.Location as
@@ -440,6 +535,122 @@ func TestBatchRestore_ChunkedFullURLS3Key(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(dest, filePath))
 	require.NoError(t, err)
 	assert.Equal(t, fileContent, got)
+}
+
+// ---------------------------------------------------------------------------
+// #337: a truncated chunk must not yield a short file that looks complete.
+// ---------------------------------------------------------------------------
+
+// makeTruncatedTarZst builds a chunk whose tar stream is cut off mid-entry,
+// reproducing what v0.14.0/v0.15.0 wrote under #275 (the final zstd frame was
+// never flushed, so the last file in each chunk is short). Written by hand
+// rather than by mutating a good archive so the truncation is exact and the test
+// does not depend on compression internals.
+func makeTruncatedTarZst(t *testing.T, name string, content []byte, keep int) []byte {
+	t.Helper()
+	require.Less(t, keep, len(content), "keep must be a real truncation")
+
+	var raw bytes.Buffer
+	tw := tar.NewWriter(&raw)
+	// Header declares the FULL size; only `keep` bytes of body follow. That
+	// mismatch is exactly the on-disk shape of the bug.
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: name, Mode: 0644, Size: int64(len(content))}))
+	_, err := tw.Write(content)
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
+
+	// Cut the uncompressed tar mid-body, then compress the fragment.
+	full := raw.Bytes()
+	cut := full[:512+keep] // 512-byte tar header + partial body
+
+	var out bytes.Buffer
+	zw, err := zstd.NewWriter(&out)
+	require.NoError(t, err)
+	_, err = zw.Write(cut)
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+	return out.Bytes()
+}
+
+// TestBatchRestore_TruncatedChunk_NoChecksum is the #337 regression.
+//
+// The manifest records NO per-file checksum — the case for every archive written
+// before #270, which is precisely the set that carries the #275 truncation bug.
+// That combination sends the restore down the unverified extract path, where
+// io.Copy cannot distinguish a truncated entry from EOF and so returned success
+// after writing a short file.
+func TestBatchRestore_TruncatedChunk_NoChecksum(t *testing.T) {
+	filePath := "/abs/src/big.bin"
+	content := bytes.Repeat([]byte("cargoship"), 4096) // 36864 bytes
+	const kept = 20000
+
+	chunk := makeTruncatedTarZst(t, filePath, content, kept)
+	client := &mockS3Client{chunks: map[string][]byte{"p/chunk-0.tar.zst": chunk}}
+
+	m := &Manifest{
+		Version:         ManifestVersion,
+		Bucket:          "b",
+		Prefix:          "p",
+		CompressionType: "zstd",
+		TotalChunks:     1,
+		TotalFiles:      1,
+		Chunks: []ChunkEntry{{
+			ID: 0, S3Key: "chunk-0.tar.zst",
+			FileCount: 1, FilePaths: []string{filePath},
+		}},
+		// No Checksum and no ChecksumAlgorithm: pre-#270 manifest shape.
+		Files: []FileEntry{{Path: filePath, Size: int64(len(content)), S3Key: "chunk-0.tar.zst"}},
+	}
+
+	se := NewSelectiveExtractor(m, client, 0)
+	dest := t.TempDir()
+	stats, err := se.BatchRestore(context.Background(), []string{filePath}, dest)
+	require.NoError(t, err, "BatchRestore itself is fault-tolerant; it counts the failure")
+
+	assert.Zero(t, stats.Restored, "a truncated file must not count as restored")
+	assert.Equal(t, int64(1), stats.Failed)
+
+	// The decisive assertion: nothing short left behind. A missing file is a
+	// correct, loud outcome; a short one that looks complete is not.
+	if got, readErr := os.ReadFile(filepath.Join(dest, filePath)); readErr == nil {
+		t.Errorf("restore left a truncated file on disk: %d bytes, manifest declares %d",
+			len(got), len(content))
+	}
+}
+
+// TestBatchRestore_TruncatedChunk_WithChecksum confirms the verified path was
+// already safe, so the #337 fix closed a gap rather than moving one.
+func TestBatchRestore_TruncatedChunk_WithChecksum(t *testing.T) {
+	filePath := "/abs/src/big.bin"
+	content := bytes.Repeat([]byte("cargoship"), 4096)
+
+	chunk := makeTruncatedTarZst(t, filePath, content, 20000)
+	client := &mockS3Client{chunks: map[string][]byte{"p/chunk-0.tar.zst": chunk}}
+
+	m := &Manifest{
+		Version:           ManifestVersion,
+		Bucket:            "b",
+		Prefix:            "p",
+		CompressionType:   "zstd",
+		ChecksumAlgorithm: ChecksumAlgorithmSHA256,
+		TotalChunks:       1,
+		TotalFiles:        1,
+		Chunks: []ChunkEntry{{
+			ID: 0, S3Key: "chunk-0.tar.zst",
+			FileCount: 1, FilePaths: []string{filePath},
+		}},
+		Files: []FileEntry{{Path: filePath, Size: int64(len(content)), S3Key: "chunk-0.tar.zst", Checksum: sha256hex(content)}},
+	}
+
+	se := NewSelectiveExtractor(m, client, 0)
+	dest := t.TempDir()
+	stats, err := se.BatchRestore(context.Background(), []string{filePath}, dest)
+	require.NoError(t, err)
+	assert.Zero(t, stats.Restored)
+	assert.Equal(t, int64(1), stats.Failed)
+
+	_, readErr := os.ReadFile(filepath.Join(dest, filePath))
+	assert.Error(t, readErr, "verified path must not write a truncated file either")
 }
 
 // --- Failure injection: restore must detect and refuse corrupt data (#270) ---
