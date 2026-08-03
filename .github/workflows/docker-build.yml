@@ -1,0 +1,133 @@
+name: Docker Build
+
+# The images in docker/ are ghost ship deployments — autonomous NAS archival,
+# built and shipped by hand to a QNAP (see scripts/deploy-astrapi.sh). Nothing in
+# CI ever built them, and that is exactly why all three rotted into an
+# unbuildable state:
+#
+#   * every Dockerfile pinned `golang:1.23-alpine` while go.mod moved to
+#     `go >= 1.26.0`, so all three failed at `go build` with
+#     "go.mod requires go >= 1.26.0 (running go 1.23.12; GOTOOLCHAIN=local)"
+#   * Dockerfile.ghost-ship put the binary in /root (mode 0700, root-owned) and
+#     then switched to USER cargoship — the container could not start
+#   * a phantom EXPOSE 9090 / HEALTHCHECK curl /health described an endpoint that
+#     has never existed in any version of ghost-ship (#348)
+#
+# A version bump in go.mod is a routine change that silently broke every
+# deployment artifact. This job makes that loud.
+#
+# BLOCKING, and it does more than build: it runs each image. A build proves the
+# Go code compiles; only starting the container catches the permission and config
+# path defects above, which are invisible to `docker build`.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docker/**'
+      - '.dockerignore'
+      - 'go.mod'
+      - 'go.sum'
+      - 'cmd/ghost-ship/**'
+      - 'cmd/cargoship-test/**'
+      - 'configs/**'
+      - 'Makefile'
+      - '.github/workflows/docker-build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docker/**'
+      - '.dockerignore'
+      - 'go.mod'
+      - 'go.sum'
+      - 'cmd/ghost-ship/**'
+      - 'cmd/cargoship-test/**'
+      - 'configs/**'
+      - 'Makefile'
+      - '.github/workflows/docker-build.yml'
+  # The images also depend on pkg/ and internal/, which are far too broad to use
+  # as a paths filter without running this on nearly every PR. Weekly catches
+  # drift from that direction.
+  schedule:
+    - cron: '0 10 * * 1' # Mondays 10:00 UTC, after the dead-code audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Deployment images build and start
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      # One job rather than a matrix: Dockerfile.astrapi and Dockerfile.qnap have
+      # byte-identical builder stages through `go mod download`, so building them
+      # in the same job reuses those layers instead of paying for them twice.
+      - name: Build all deployment images
+        run: make docker-build
+
+      - name: Build context stays small
+        run: |
+          set -euo pipefail
+          # A missing or over-broad .dockerignore is a silent regression: builds
+          # keep working, they just ship the whole tree to the daemon. Before
+          # .dockerignore existed the context was 667 MB — .git 304 MB,
+          # docs/node_modules 98 MB, a stale 98 MB binary in bin/.
+          #
+          # Copy the honored context into a throwaway image and `du` it from the
+          # inside. Two things that look easier are both wrong: BuildKit's
+          # "transferring context" line only counts what a COPY actually asks
+          # for, and `docker image inspect --format {{.Size}}` reports compressed
+          # bytes on a containerd-backed store, so a size delta reads as 0 MB.
+          printf 'FROM alpine:3.18\nCOPY . /ctx/\n' > /tmp/ctx-probe.Dockerfile
+          docker build -q -f /tmp/ctx-probe.Dockerfile -t cargoship:ctx-probe . >/dev/null
+          kb=$(docker run --rm --entrypoint du cargoship:ctx-probe -sk /ctx | cut -f1)
+          mb=$(( kb / 1024 ))
+          echo "Build context: ${mb} MB (${kb} KB)" >> "$GITHUB_STEP_SUMMARY"
+          docker run --rm --entrypoint ls cargoship:ctx-probe /ctx
+          # Generous ceiling — the honored context is ~4 MB of Go source. This
+          # catches an accidental deletion of .dockerignore, not normal growth.
+          if [ "$mb" -gt 64 ]; then
+            echo "::error::build context is ${mb} MB; check .dockerignore"
+            exit 1
+          fi
+
+      - name: Each image starts and reaches the archival loop
+        run: |
+          set -euo pipefail
+          # A ghost ship needs a config to sail; configs/astrapi ships a real one.
+          config="$PWD/configs/astrapi/ghost-ship-production.yaml"
+          for img in ghost-ship astrapi qnap; do
+            echo "::group::cargoship:$img"
+            # No AWS credentials here, so the ship cannot upload — but it must
+            # still load its config, construct, launch, and stop gracefully on
+            # SIGTERM. That path exercises the uid-1000 permissions and the CMD
+            # config path, neither of which `docker build` can check.
+            log=$(mktemp)
+            timeout --signal=TERM 25 docker run --rm \
+              -v "$config:/etc/cargoship/ghost_ship.yaml:ro" \
+              "cargoship:$img" >"$log" 2>&1 || true
+            cat "$log"
+            echo "::endgroup::"
+
+            grep -q 'Ghost ship launched successfully' "$log" \
+              || { echo "::error::cargoship:$img never reached the archival loop"; exit 1; }
+            grep -q 'stopped gracefully' "$log" \
+              || { echo "::error::cargoship:$img did not shut down gracefully"; exit 1; }
+            # The removed healthcheck must not come back by accident.
+            if docker inspect --format '{{.Config.Healthcheck}}' "cargoship:$img" | grep -qv '^<nil>$'; then
+              echo "::error::cargoship:$img declares a HEALTHCHECK; ghost-ship serves no HTTP (#348)"
+              exit 1
+            fi
+            if [ -n "$(docker inspect --format '{{range $p, $_ := .Config.ExposedPorts}}{{$p}} {{end}}' "cargoship:$img")" ]; then
+              echo "::error::cargoship:$img EXPOSEs a port; ghost-ship binds nothing (#348)"
+              exit 1
+            fi
+          done
+
+      - name: Compose file is valid
+        run: docker compose -f docker/docker-compose.astrapi.yml config >/dev/null

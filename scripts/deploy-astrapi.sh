@@ -88,18 +88,14 @@ deploy_to_astrapi() {
     log_info "Deploying to astrapi NAS..."
     
     # Create deployment directory on astrapi
-    ssh "$ASTRAPI_USER@$ASTRAPI_HOST" "mkdir -p /volume1/docker/cargoship/{results,prometheus,grafana,config}"
-    
-    # Copy configuration files
+    ssh "$ASTRAPI_USER@$ASTRAPI_HOST" "mkdir -p /volume1/docker/cargoship/results"
+
+    # Copy configuration files. astrapi-config.yaml lands beside the compose
+    # file because the compose file bind-mounts it as ./astrapi-config.yaml.
     log_info "Copying configuration files..."
-    scp docker/astrapi-config.yaml "$ASTRAPI_USER@$ASTRAPI_HOST:/volume1/docker/cargoship/config/"
+    scp docker/astrapi-config.yaml "$ASTRAPI_USER@$ASTRAPI_HOST:/volume1/docker/cargoship/"
     scp docker/docker-compose.astrapi.yml "$ASTRAPI_USER@$ASTRAPI_HOST:/volume1/docker/cargoship/docker-compose.yml"
-    
-    # Copy Prometheus configuration if it exists
-    if [[ -f "docker/prometheus.yml" ]]; then
-        scp docker/prometheus.yml "$ASTRAPI_USER@$ASTRAPI_HOST:/volume1/docker/cargoship/"
-    fi
-    
+
     # Save and transfer the Docker image
     log_info "Transferring Docker image to astrapi..."
     docker save "$DOCKER_REGISTRY:$IMAGE_TAG" | ssh "$ASTRAPI_USER@$ASTRAPI_HOST" "docker load"
@@ -127,14 +123,12 @@ verify_deployment() {
         exit 1
     fi
     
-    # Test API endpoint
-    if curl -f -s "http://$ASTRAPI_HOST:8080/health" > /dev/null; then
-        log_success "API endpoint is responding"
-    else
-        log_error "API endpoint is not responding"
-        exit 1
-    fi
-    
+    # No endpoint to probe: a ghost ship binds no port. The Launch API on :8080
+    # was removed in #340 and the :9090 metrics endpoint never existed (#348), so
+    # the container log is the health signal.
+    log_info "Recent ghost ship log:"
+    ssh "$ASTRAPI_USER@$ASTRAPI_HOST" "docker logs --tail 20 cargoship-astrapi-ghost-ship"
+
     # Show service status
     log_info "Service status:"
     ssh "$ASTRAPI_USER@$ASTRAPI_HOST" "docker-compose -f /volume1/docker/cargoship/docker-compose.yml ps"
@@ -176,7 +170,7 @@ create_test_runner() {
 
 set -euo pipefail
 
-CONTAINER_NAME="cargoship-astrapi-launch"
+CONTAINER_NAME="cargoship-astrapi-ghost-ship"
 TEST_TYPE="${1:-performance}"
 
 # Colors
@@ -320,7 +314,7 @@ case "$COMMAND" in
         create_test_runner
         verify_deployment
         log_success "Deployment completed successfully!"
-        log_info "Access the API at: http://$ASTRAPI_HOST:8080"
+        log_info "Follow the ghost ship with: ssh $ASTRAPI_USER@$ASTRAPI_HOST 'docker logs -f cargoship-astrapi-ghost-ship'"
         log_info "Run tests with: ssh $ASTRAPI_USER@$ASTRAPI_HOST '/volume1/docker/cargoship/run-test.sh'"
         ;;
     build)
