@@ -72,6 +72,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - No behaviour change: the pinned digest is what `:latest` resolved to when it
     was taken, and the engine scans cleanly from it.
 
+- **Dependabot's config had been invalid since July 2025, so no configured
+  dependency update had ever run.** An invalid `security:` group (`dependency-type:
+  "all"`, `update-types: ["security"]` — neither is legal for a group) made
+  Dependabot **reject the entire file**, and it rejects all of it or none of it.
+  None of the three declared ecosystems (`gomod`, `github-actions`, `docker`) ever
+  produced a version-update PR. (#366)
+  - Found while fixing #358: changing the docker `directory:` caused Dependabot to
+    re-parse the file for the first time in a year. It only validates on change, so
+    a config that had never worked was indistinguishable from one that did.
+  - Security PRs kept arriving throughout, which is what disguised it — those come
+    from a **separate mechanism** that works with an unparseable config and ignores
+    `groups:` entirely. Every Dependabot PR this repo has received was a security
+    update, in ecosystems and directories the config does not even declare. **No
+    `github-actions` PR has ever existed**, which is consistent with the Node 20
+    action debt in #305/#307 having to be cleared by hand and with the floating
+    `semgrep/semgrep` image never being flagged.
+  - Removed rather than corrected: `security` is not an update-type, so the group
+    was a no-op in intent as well as in syntax.
+
 ## [0.21.0] - 2026-08-03
 
 **Dead Surface & Provenance.** Removes the last abandoned duplicate in
