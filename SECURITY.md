@@ -8,8 +8,8 @@ backported.
 
 | Version | Supported |
 | ------- | --------- |
-| 0.13.x  | :white_check_mark: |
-| < 0.13  | :x: |
+| 0.19.x  | :white_check_mark: |
+| < 0.19  | :x: |
 
 Always run the [latest release](https://github.com/scttfrdmn/cargoship/releases/latest).
 
@@ -69,8 +69,9 @@ nothing accepts remote commands and nothing dials a non-AWS endpoint. Two
 listeners remain, both **off by default and opt-in per invocation**: the pprof
 endpoint (`--pprof`, defaulting to `localhost:6060` via `--pprof-addr`) and the
 Prometheus metrics endpoint (`--prometheus-addr`, unset). Neither is
-authenticated, so bind them to a loopback address only. Grant only the S3 (and optional KMS) permissions
-the workflow needs — see [AWS setup](https://cargoship.app/start/aws-setup).
+authenticated, so bind them to a loopback address only. Grant only the S3 (and
+optional KMS) permissions the workflow needs — see
+[AWS setup](https://cargoship.app/start/aws-setup).
 
 ## User best practices
 

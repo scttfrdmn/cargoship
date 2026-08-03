@@ -10,6 +10,9 @@ on:
       - 'ROADMAP.md'
       - 'CLAUDE.md'
       - 'docs/**'
+      # The canonical version source: a release bump touching only this file would
+      # otherwise skip this workflow at exactly the moment the doc tables go stale.
+      - 'internal/version/version.txt'
       - 'scripts/ci/check-doc-versions.sh'
       - '.github/workflows/doc-consistency.yml'
   pull_request:
@@ -21,6 +24,9 @@ on:
       - 'ROADMAP.md'
       - 'CLAUDE.md'
       - 'docs/**'
+      # The canonical version source: a release bump touching only this file would
+      # otherwise skip this workflow at exactly the moment the doc tables go stale.
+      - 'internal/version/version.txt'
       - 'scripts/ci/check-doc-versions.sh'
       - '.github/workflows/doc-consistency.yml'
 
