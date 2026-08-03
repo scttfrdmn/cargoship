@@ -2,8 +2,8 @@
 
 Running CargoShip in production — CI/CD, EC2, cron, or a scheduled batch host.
 This covers the IAM policy, system sizing, credential setup, workload-based
-tuning, and a go-live checklist. For distributed agents on NAS hardware, see
-[Launch agents](/enterprise/launch-agent) and [ghost-ship](/enterprise/ghost-ship).
+tuning, and a go-live checklist. For autonomous archival on NAS hardware, see
+[ghost-ship](/enterprise/ghost-ship).
 
 ## IAM permissions
 

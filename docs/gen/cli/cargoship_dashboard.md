@@ -40,7 +40,7 @@ cargoship dashboard [flags]
   cargoship dashboard --view costs
 
   # Launch with agent context
-  cargoship --context=controller dashboard
+  cargoship --context=agent dashboard
 ```
 
 ### Options
@@ -55,7 +55,7 @@ cargoship dashboard [flags]
 ### Options inherited from parent commands
 
 ```
-      --context string        Override execution context (local, agent, controller, repl)
+      --context string        Override execution context (local, agent, repl)
       --memory-limit string   Set a memory limit for the run. This will slow things down, but will less likely to OOM in certain situations. Avoid this unless you are having memory issues.
       --pprof                 Enable runtime profiling HTTP endpoint at localhost:6060
       --pprof-addr string     Address for runtime profiling HTTP endpoint (default "localhost:6060")

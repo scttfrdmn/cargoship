@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING: the distributed controller subsystem is gone** — `cargoship
+  controller`, `cargoship webui`, the `cargoship-launch` agent binary, the
+  `cargoship-launch`/`controller`/`launch-server` commands, `pkg/controller`, and
+  `pkg/launch/central_controller.go`. An external security audit found
+  unauthenticated remote command execution in `cmd/launch-server` and an
+  authentication bypass in `pkg/controller`; the subsystem was removed rather than
+  hardened. (#340)
+  - **It shipped.** The audit judged `pkg/controller` dormant because
+    `cmd/controller` used `pkg/launch` instead — but the released CLI imported
+    `pkg/controller` directly, from `NewControllerCmd()` and `webuiCmd` in
+    `root.go`. `controller` and `webui` both appeared in `cargoship --help`, so
+    the auth bypass was reachable from the release artifact. `cmd/launch-server`,
+    which carried the RCE, was never built by anything and was in no release.
+  - **Hardening it would have secured nothing.** It was unfinished scaffolding:
+    eight empty handler bodies, four "Implementation would" comments, connection
+    handlers that logged and returned. There was no defined behavior to secure.
+  - Three defects the audit did not report died with it: the agent auth token was
+    logged in cleartext at two sites (against this repo's own standing rule), the
+    bearer-token comparison was not constant-time, and an empty configured token
+    disabled auth for every REST route — a fail-open default, latent only because
+    both entry points rejected a blank token.
+  - **This is the fifth abandoned duplicate** in this repo, after #308, #311, #316
+    and #325, and by far the most expensive. `pkg/launch` has been added to the
+    `deadcode` filter; `pkg/pipeline`'s absence from that filter is exactly why
+    #325 stayed invisible.
+  - A **live defect** the audit did not mention, fixed here too: the `controller`
+    execution context (`pkg/context`) is applied by the shipped CLI at every
+    startup, and would have filtered the command set down to a command that no
+    longer exists. A stale cached context now self-heals with a warning.
+  - Two direct dependencies go with it: `github.com/golang-jwt/jwt/v5` and
+    `github.com/gorilla/mux` were used by nothing else, so this is a real
+    supply-chain reduction as well as an attack-surface one.
+  - **Ghost ships are unaffected** — they were built to archive autonomously and
+    never required a controller. `controller_url`, `auth_token` and `tls_config`
+    in a ghost-ship config configured only that connection and now have no effect,
+    as do the previously documented `CARGOSHIP_AGENT_*`,
+    `CARGOSHIP_CONTROLLER_URL`, `CARGOSHIP_WATCH_PATHS` and
+    `CARGOSHIP_DESTINATION` variables, which were read only by `cargoship-launch`.
+
 ## [0.19.0] - 2026-08-03
 
 **Assurance depth.** An external review scored the project 8.9/10 and asked for

@@ -16,14 +16,17 @@
 # though nothing became less tested. Lowered by hand rather than with --update,
 # which is monotonic and never lowers (and, per the note above, must not be run
 # on a machine with magika installed).
+#
+# #340 dropped four entries — cmd/launch-server, cmd/controller,
+# cmd/cargoship-launch and pkg/controller — with the distributed-agent surface
+# they floored. Removal only ever raises the project number here: all four sat
+# below the 56% floor. Stale entries would not have failed --check (it WARNs on
+# a baseline package it can't measure) but they would have hidden that fact.
 cmd/cargoship 60
 cmd/cargoship-cost 57
-cmd/cargoship-launch 49
 cmd/cargoship-test 0
 cmd/cargoship/cmd 22
-cmd/controller 17
 cmd/ghost-ship 0
-cmd/launch-server 0
 internal/testutil 84
 pkg/archivefs 98
 pkg/aws/config 89
@@ -38,7 +41,6 @@ pkg/chunking 82
 pkg/compression 92
 pkg/config 92
 pkg/context 40
-pkg/controller 39
 pkg/detection 34
 pkg/encryption 82
 pkg/errors 99

@@ -42,7 +42,7 @@ The dashboard adapts based on your current context and available features.`,
   cargoship dashboard --view costs
 
   # Launch with agent context
-  cargoship --context=controller dashboard`,
+  cargoship --context=agent dashboard`,
 		RunE: runDashboard,
 	}
 
@@ -124,8 +124,6 @@ func getDashboardType(ctx contextpkg.ExecutionContext) tui.DashboardType {
 	case contextpkg.ContextLocal:
 		return tui.DashboardOverview
 	case contextpkg.ContextAgent:
-		return tui.DashboardAgents
-	case contextpkg.ContextController:
 		return tui.DashboardAgents
 	case contextpkg.ContextREPL:
 		return tui.DashboardOverview

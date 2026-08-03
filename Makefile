@@ -13,7 +13,6 @@ help: ## Show this help message
 build: ## Build CargoShip binaries
 	@echo "🔨 Building CargoShip..."
 	go build -o bin/cargoship cmd/cargoship/main.go
-	go build -o bin/cargoship-launch cmd/cargoship-launch/main.go
 	@echo "✅ Build complete"
 
 build-release: ## Build release binaries with optimization

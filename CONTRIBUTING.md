@@ -150,7 +150,7 @@ func TestFeature(t *testing.T) {
 - **`pkg/compression/`** - Compression (zstd and others)
 - **`pkg/manifest/`** - Manifest read/write, query, and extraction
 - **`pkg/aws/s3/`** - S3 upload transporters and Glacier restore
-- **`pkg/controller/`** / **`pkg/launch/`** - Distributed agent coordination
+- **`pkg/launch/`** - Ghost-ship agents (autonomous NAS-side archival)
 - **`pkg/tui/`** - Terminal user interface
 
 ### Adding New Features

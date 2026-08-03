@@ -117,15 +117,14 @@ max_concurrent_jobs: 5
 worker_pool_size: 3
 scan_interval: "5m"      # Scan directories every 5 minutes
 
-# Controller Integration - connect to central CargoShip controller
-controller_url: "wss://cargoship-controller.local:8080"
-auth_token: "${CARGOSHIP_AUTH_TOKEN}"
-tls_config:
-  enabled: true
-  insecure_skip_verify: false
-  cert_file: "/etc/cargoship/client.crt"
-  key_file: "/etc/cargoship/client.key"
-  ca_file: "/etc/cargoship/ca.crt"
+# Controller Integration — REMOVED in v0.20.0.
+#
+# CargoShip no longer ships a controller to connect to: the central controller,
+# `cargoship webui`, and the `cargoship-launch` agent binary were removed in
+# v0.20.0 (https://github.com/scttfrdmn/cargoship/issues/340). Leave
+# `controller_url` unset; a ghost ship archives autonomously without it, which is
+# how it was always designed to run. `auth_token` and `tls_config` configured only
+# that connection and have no other effect.
 
 # Monitoring and Reporting
 reporting_enabled: true

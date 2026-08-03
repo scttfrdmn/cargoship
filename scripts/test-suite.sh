@@ -12,15 +12,10 @@ TEST_RESULTS_DIR="$PROJECT_ROOT/test-results"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 # Test environment configuration
-LOCAL_CONTROLLER_URL="http://localhost:8080"
 LOCAL_GHOST_SHIP_1_URL="http://localhost:9091"
 LOCAL_GHOST_SHIP_2_URL="http://localhost:9092"
 ASTRAPI_HOST="${ASTRAPI_HOST:-astrapi.local}"
 ASTRAPI_USER="${ASTRAPI_USER:-admin}"
-
-# Authentication tokens
-CONTROLLER_TOKEN="${CARGOSHIP_CONTROLLER_TOKEN:-dev-controller-token-123}"
-ADMIN_TOKEN="${CARGOSHIP_ADMIN_TOKEN:-dev-admin-token-456}"
 
 # Colors
 RED='\033[0;31m'
@@ -156,38 +151,19 @@ test_local_environment() {
     docker-compose ps | grep -q "Up"
   ' 10
   
-  # Test 2: Controller health check
-  run_test "controller_health" '
-    wait_for_service "Controller" "'"$LOCAL_CONTROLLER_URL"'/health"
-  ' 60
-  
-  # Test 3: Ghost Ship 1 health check  
+  # Test 2: Ghost Ship 1 health check
   run_test "ghost_ship_1_health" '
     wait_for_service "Ghost Ship 1" "'"$LOCAL_GHOST_SHIP_1_URL"'/health"
   ' 60
   
-  # Test 4: Ghost Ship 2 health check
+  # Test 3: Ghost Ship 2 health check
   run_test "ghost_ship_2_health" '
     wait_for_service "Ghost Ship 2" "'"$LOCAL_GHOST_SHIP_2_URL"'/health"
   ' 60
-  
-  # Test 5: LocalStack S3 connectivity
+
+  # Test 4: LocalStack S3 connectivity
   run_test "localstack_s3_connectivity" '
     aws --endpoint-url=http://localhost:4566 s3 ls > /dev/null 2>&1
-  ' 15
-  
-  # Test 6: Controller API authentication
-  run_test "controller_api_auth" '
-    response=$(curl -s -w "%{http_code}" -H "Authorization: Bearer '"$CONTROLLER_TOKEN"'" "'"$LOCAL_CONTROLLER_URL"'/api/v1/status")
-    echo "$response" | grep -q "200$"
-  ' 10
-  
-  # Test 7: WebSocket connectivity
-  run_test "websocket_connectivity" '
-    timeout 10 bash -c "
-      echo \"test\" | wscat -c \"ws://localhost:8080/api/v1/agents/connect\" \
-        -H \"Authorization: Bearer '"$CONTROLLER_TOKEN"'\" --wait 5 > /dev/null 2>&1
-    "
   ' 15
 }
 
@@ -195,13 +171,7 @@ test_local_environment() {
 test_integration() {
   log_info "🔗 Testing Integration Scenarios"
   
-  # Test 1: Ghost ship registration with controller
-  run_test "ghost_ship_registration" '
-    response=$(curl -s -H "Authorization: Bearer '"$ADMIN_TOKEN"'" "'"$LOCAL_CONTROLLER_URL"'/api/v1/ghostships")
-    echo "$response" | jq -e ".ghost_ships | length > 0" > /dev/null
-  ' 15
-  
-  # Test 2: File archival workflow
+  # Test 1: File archival workflow
   run_test "file_archival_workflow" '
     # Create test file
     mkdir -p '"$PROJECT_ROOT"'/docker/development/test-data/nas-1/documents
@@ -214,31 +184,10 @@ test_integration() {
     aws --endpoint-url=http://localhost:4566 s3 ls s3://cargoship-dev-bucket-1/ | grep -q "test-"
   ' 120
   
-  # Test 3: Job assignment via controller
-  run_test "controller_job_assignment" '
-    job_id="test-job-$(date +%s)"
-    response=$(curl -s -X POST \
-      -H "Authorization: Bearer '"$ADMIN_TOKEN"'" \
-      -H "Content-Type: application/json" \
-      -d "{
-        \"job_id\": \"$job_id\",
-        \"type\": \"archive\",
-        \"path\": \"/data/public/documents/*.txt\",
-        \"destination\": \"controller-jobs/\",
-        \"storage_class\": \"STANDARD\"
-      }" \
-      "'"$LOCAL_CONTROLLER_URL"'/api/v1/ghostships/dev-ghost-ship-1/assign")
-    
-    echo "$response" | jq -e ".success == true" > /dev/null
-  ' 20
-  
-  # Test 4: Metrics collection
+  # Test 2: Metrics collection
   run_test "metrics_collection" '
-    # Check controller metrics
-    curl -s "'"$LOCAL_CONTROLLER_URL"'/metrics" | grep -q "cargoship_"
-    
-    # Check ghost ship metrics
     curl -s "'"$LOCAL_GHOST_SHIP_1_URL"'/metrics" | grep -q "cargoship_"
+    curl -s "'"$LOCAL_GHOST_SHIP_2_URL"'/metrics" | grep -q "cargoship_"
   ' 15
 }
 
@@ -427,8 +376,6 @@ Options:
 Environment Variables:
     ASTRAPI_HOST            astrapi hostname (default: astrapi.local)
     ASTRAPI_USER            astrapi SSH user (default: admin)
-    CARGOSHIP_CONTROLLER_TOKEN  Controller API token
-    CARGOSHIP_ADMIN_TOKEN       Admin API token
 
 Examples:
     $0 local                        # Run local tests

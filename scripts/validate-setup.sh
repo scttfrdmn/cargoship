@@ -60,13 +60,10 @@ check_project_structure() {
     log_info "Checking project structure..."
     
     local required_files=(
-        "pkg/launch/central_controller.go"
         "pkg/launch/ghost_ship.go"
         "pkg/launch/agent.go"
-        "cmd/controller/main.go"
         "cmd/ghost-ship/main.go"
         "cmd/cargoship-test/main.go"
-        "docker/Dockerfile.controller"
         "docker/Dockerfile.ghost-ship"
         "docker/Dockerfile.astrapi"
         "docker/development/docker-compose.yml"
@@ -223,7 +220,6 @@ main() {
         echo "     ./scripts/test-suite.sh --generate-data local"
         echo "  3. View dashboards:"
         echo "     - Grafana: http://localhost:3000 (admin/admin123)"
-        echo "     - Controller: http://localhost:8080"
         echo "     - Prometheus: http://localhost:9093"
     else
         log_error "❌ $failed checks failed. Please fix the issues above."

@@ -18,13 +18,9 @@ docker-compose up -d
 
 # Start with testing profile
 docker-compose --profile testing up -d
-
-# Start with load testing
-docker-compose --profile load-testing up -d
 ```
 
 **Components**:
-- Central Controller (port 8080)
 - 2 Ghost Ships (ports 9091, 9092)
 - LocalStack (S3 simulation, port 4566)
 - Prometheus (metrics, port 9093)
@@ -52,21 +48,7 @@ docker-compose --profile load-testing up -d
 
 ### Phase 1: Component Testing (Local Docker)
 
-#### 1.1 Controller Testing
-```bash
-# Test controller startup and health
-curl http://localhost:8080/health
-
-# Test authentication
-curl -H "Authorization: Bearer dev-controller-token-123" \
-  http://localhost:8080/api/v1/status
-
-# Test WebSocket connectivity
-wscat -c ws://localhost:8080/api/v1/agents/connect \
-  -H "Authorization: Bearer dev-ghost-token-111"
-```
-
-#### 1.2 Ghost Ship Testing
+#### 1.1 Ghost Ship Testing
 ```bash
 # Check ghost ship health
 curl http://localhost:9091/health  # Ghost Ship 1
@@ -79,7 +61,7 @@ aws --endpoint-url=http://localhost:4566 s3 ls
 docker exec cargoship-ghost-ship-1 ls -la /data/public/
 ```
 
-#### 1.3 Integration Testing
+#### 1.2 Integration Testing
 ```bash
 # Run integration test suite
 docker-compose --profile testing run --rm integration-tests
@@ -105,39 +87,9 @@ aws --endpoint-url=http://localhost:4566 s3 ls s3://cargoship-dev-bucket-1/
 aws --endpoint-url=http://localhost:4566 s3 ls s3://cargoship-dev-bucket-2/
 ```
 
-#### 2.2 Controller-Ghost Ship Communication
-```bash
-# Test job assignment via controller API
-curl -X POST \
-  -H "Authorization: Bearer dev-admin-token-456" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "job_id": "test-job-001",
-    "type": "archive",
-    "path": "/data/public/documents/*.pdf",
-    "destination": "manual-jobs/",
-    "storage_class": "STANDARD"
-  }' \
-  http://localhost:8080/api/v1/ghostships/dev-ghost-ship-1/assign
-
-# Monitor job progress
-curl -H "Authorization: Bearer dev-admin-token-456" \
-  http://localhost:8080/api/v1/ghostships/dev-ghost-ship-1/jobs
-```
-
 ### Phase 3: Performance Testing (Local Docker)
 
-#### 3.1 Load Testing
-```bash
-# Run K6 load tests
-docker-compose --profile load-testing run --rm load-tester
-
-# Test concurrent file operations
-docker exec cargoship-test-data-generator \
-  /scripts/generate-load.sh --files=100 --concurrent=10
-```
-
-#### 3.2 Resource Monitoring
+#### 3.1 Resource Monitoring
 ```bash
 # View metrics in Grafana
 open http://localhost:3000  # admin/admin123
@@ -151,17 +103,9 @@ curl 'http://localhost:9093/api/v1/query?query=cargoship_bytes_archived_total'
 
 #### 4.1 Environment Setup
 ```bash
-# Deploy controller (if not running locally)
-docker run -d \
-  --name cargoship-controller \
-  -p 8080:8080 \
-  -v /etc/cargoship:/etc/cargoship:ro \
-  cargoship:controller
-
 # Deploy ghost ship to astrapi.local
 ./scripts/launch-ghost-ship.sh \
   --target astrapi.local \
-  --controller ws://your-controller-host:8080 \
   --id astrapi-production-ghost \
   launch
 ```
@@ -211,10 +155,6 @@ curl -H "Authorization: Bearer invalid-token" \
 
 #### 5.2 Fault Tolerance Testing
 ```bash
-# Test controller disconnection
-docker stop cargoship-controller
-# Ghost ship should continue autonomous operation
-
 # Test network interruption
 # Simulate network partition
 sudo iptables -A INPUT -s astrapi.local -j DROP
@@ -254,12 +194,9 @@ scp test-files/* admin@astrapi.local:/volume1/Public/CargoShip-Test/docs/
 ## Validation Criteria
 
 ### Functional Tests
-- [ ] Controller starts and serves API
-- [ ] Ghost ships connect to controller
-- [ ] WebSocket communication works
+- [ ] Ghost ships start in autonomous mode
 - [ ] File discovery and pattern matching
 - [ ] S3 uploads complete successfully
-- [ ] Job assignment and progress tracking
 - [ ] Health monitoring and reporting
 
 ### Performance Tests
@@ -270,8 +207,6 @@ scp test-files/* admin@astrapi.local:/volume1/Public/CargoShip-Test/docs/
 - [ ] Network utilization >80% of available bandwidth
 
 ### Integration Tests
-- [ ] Multi-ghost ship coordination
-- [ ] Controller failover handling
 - [ ] S3 error recovery
 - [ ] Configuration updates
 - [ ] Log aggregation and monitoring
@@ -288,7 +223,6 @@ scp test-files/* admin@astrapi.local:/volume1/Public/CargoShip-Test/docs/
 ### Log Locations
 ```bash
 # Local development
-docker logs cargoship-controller-dev
 docker logs cargoship-ghost-ship-1
 docker logs cargoship-ghost-ship-2
 
@@ -298,16 +232,12 @@ ssh admin@astrapi.local 'cat /volume1/docker/cargoship-ghost/logs/ghost-ship.log
 ```
 
 ### Metrics Endpoints
-- Controller: http://localhost:8080/metrics
 - Ghost Ship 1: http://localhost:9091/metrics  
 - Ghost Ship 2: http://localhost:9092/metrics
 - Prometheus: http://localhost:9093/metrics
 
 ### Debugging Commands
 ```bash
-# Check WebSocket connections
-ss -tulpn | grep :8080
-
 # Verify S3 connectivity
 aws s3 ls --endpoint-url=http://localhost:4566
 

@@ -38,7 +38,6 @@ func TestGetPrompt(t *testing.T) {
 	}{
 		{context.ContextLocal, "cargoship> "},
 		{context.ContextAgent, "agent> "},
-		{context.ContextController, "controller> "},
 		{context.ContextREPL, "repl> "},
 	}
 
@@ -148,15 +147,13 @@ func TestGetAvailableCommands(t *testing.T) {
 	shell := NewShell(rootCmd, logger)
 
 	tests := []struct {
-		context       context.ExecutionContext
-		hasCreate     bool
-		hasConfig     bool
-		hasController bool
+		context   context.ExecutionContext
+		hasCreate bool
+		hasConfig bool
 	}{
-		{context.ContextLocal, true, true, true},
-		{context.ContextAgent, false, true, false},
-		{context.ContextController, false, true, true},
-		{context.ContextREPL, true, true, true},
+		{context.ContextLocal, true, true},
+		{context.ContextAgent, false, true},
+		{context.ContextREPL, true, true},
 	}
 
 	for _, tt := range tests {
@@ -165,7 +162,7 @@ func TestGetAvailableCommands(t *testing.T) {
 
 			assert.Equal(t, tt.hasCreate, commands["create"])
 			assert.Equal(t, tt.hasConfig, commands["config"])
-			assert.Equal(t, tt.hasController, commands["controller"])
+			assert.False(t, commands["controller"], "the controller command was removed in v0.20.0 (#340)")
 		})
 	}
 }

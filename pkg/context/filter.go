@@ -64,9 +64,6 @@ func (cf *CommandFilter) GetContextDescription(ctx ExecutionContext) string {
 	case ContextAgent:
 		return "Agent operations: configuration management, monitoring, and status reporting"
 
-	case ContextController:
-		return "Controller operations: agent management, job coordination, and monitoring dashboards"
-
 	case ContextREPL:
 		return "Interactive mode: all commands available with enhanced discovery and help"
 
@@ -119,7 +116,6 @@ func (cf *CommandFilter) getContextCommands(ctx ExecutionContext) map[string]boo
 			"context":   true,
 
 			// Infrastructure (can be started from local)
-			"controller":  true,
 			"travelagent": true,
 			"shell":       true,
 
@@ -149,24 +145,6 @@ func (cf *CommandFilter) getContextCommands(ctx ExecutionContext) map[string]boo
 			"man":    true,
 		}
 
-	case ContextController:
-		return map[string]bool{
-			// Controller operations
-			"controller": true,
-			"context":    true,
-
-			// Monitoring and management
-			"metrics": true,
-			"config":  true,
-
-			// Interactive mode
-			"shell": true,
-
-			// Documentation
-			"schema": true,
-			"man":    true,
-		}
-
 	case ContextREPL:
 		// REPL mode provides access to all commands through interactive discovery
 		return map[string]bool{
@@ -182,7 +160,6 @@ func (cf *CommandFilter) getContextCommands(ctx ExecutionContext) map[string]boo
 			"metrics":     true,
 			"retier":      true,
 			"context":     true,
-			"controller":  true,
 			"travelagent": true,
 			"shell":       true,
 			"schema":      true,

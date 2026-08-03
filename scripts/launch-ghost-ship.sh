@@ -9,8 +9,6 @@ set -euo pipefail
 TARGET_HOST="${TARGET_HOST:-astrapi.local}"
 TARGET_USER="${TARGET_USER:-admin}"
 GHOST_SHIP_ID="${GHOST_SHIP_ID:-$(hostname)-ghost-$(date +%s)}"
-CONTROLLER_URL="${CONTROLLER_URL:-wss://localhost:8080}"
-AUTH_TOKEN="${CARGOSHIP_AUTH_TOKEN:-}"
 CONFIG_FILE="${CONFIG_FILE:-examples/launch/ghost_ship_config.yaml}"
 
 # Colors for output
@@ -62,7 +60,6 @@ Options:
     -t, --target HOST       Target NAS host (default: astrapi.local)
     -u, --user USER         SSH user for target NAS (default: admin)
     -i, --id ID             Ghost ship ID (default: auto-generated)
-    -c, --controller URL    Controller WebSocket URL (default: wss://localhost:8080)
     -f, --config FILE       Configuration file (default: examples/launch/ghost_ship_config.yaml)
     -v, --verbose           Enable verbose output
 
@@ -70,8 +67,6 @@ Environment Variables:
     TARGET_HOST             Target NAS hostname
     TARGET_USER             SSH user for target NAS
     GHOST_SHIP_ID           Ghost ship identifier
-    CONTROLLER_URL          Controller WebSocket URL
-    CARGOSHIP_AUTH_TOKEN    Authentication token
 
 Examples:
     $0 launch                                    # Launch on astrapi.local
@@ -110,11 +105,6 @@ check_prerequisites() {
         exit 1
     fi
     
-    # Check if auth token is set
-    if [[ -z "$AUTH_TOKEN" ]]; then
-        log_warning "CARGOSHIP_AUTH_TOKEN not set - ghost ship will run in standalone mode"
-    fi
-    
     log_success "Prerequisites check passed"
 }
 
@@ -130,16 +120,8 @@ build_config() {
     # Update configuration with runtime values
     sed -i.bak \
         -e "s/id: .*/id: \"${GHOST_SHIP_ID}\"/" \
-        -e "s|controller_url: .*|controller_url: \"${CONTROLLER_URL}\"|" \
         "$temp_config"
-    
-    # Add auth token if provided
-    if [[ -n "$AUTH_TOKEN" ]]; then
-        sed -i.bak \
-            -e "s/auth_token: .*/auth_token: \"${AUTH_TOKEN}\"/" \
-            "$temp_config"
-    fi
-    
+
     echo "$temp_config"
 }
 
@@ -183,7 +165,6 @@ deploy_ghost_ship() {
     
     log_success "Ghost ship deployed successfully!"
     log_launch "👻 Ghost Ship ID: $GHOST_SHIP_ID"
-    log_launch "📡 Controller: $CONTROLLER_URL"
     log_launch "🎯 Target: $TARGET_HOST"
 }
 
@@ -221,7 +202,6 @@ services:
       - CARGOSHIP_METRICS_ENABLED=true
       - CARGOSHIP_CONFIG_FILE=/etc/cargoship/ghost_ship.yaml
       - GOMAXPROCS=0
-      - CARGOSHIP_AUTH_TOKEN=${AUTH_TOKEN}
     
     command: >
       ghost-ship 
@@ -238,7 +218,6 @@ services:
     
     labels:
       - "cargoship.ghost.id=${GHOST_SHIP_ID}"
-      - "cargoship.ghost.controller=${CONTROLLER_URL}"
       - "cargoship.service=ghost-ship"
 
   # Optional: Prometheus metrics collector
@@ -358,10 +337,6 @@ while [[ $# -gt 0 ]]; do
             GHOST_SHIP_ID="$2"
             shift 2
             ;;
-        -c|--controller)
-            CONTROLLER_URL="$2"
-            shift 2
-            ;;
         -f|--config)
             CONFIG_FILE="$2"
             shift 2
@@ -398,7 +373,6 @@ case "$COMMAND" in
     launch)
         log_launch "Launching ghost ship: $GHOST_SHIP_ID"
         log_launch "Target: $TARGET_HOST"
-        log_launch "Controller: $CONTROLLER_URL"
         echo
         check_prerequisites
         deploy_ghost_ship

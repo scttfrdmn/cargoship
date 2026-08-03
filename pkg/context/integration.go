@@ -16,7 +16,7 @@ func EnhanceRootCommand(cmd *cobra.Command, logger *slog.Logger) {
 	cmd.Long = originalLong + "\n\n" + getContextHelpText()
 
 	// Add context flag for explicit context switching
-	cmd.PersistentFlags().String("context", "", "Override execution context (local, agent, controller, repl)")
+	cmd.PersistentFlags().String("context", "", "Override execution context (local, agent, repl)")
 
 	// Add pre-run hook to handle context
 	originalPreRun := cmd.PersistentPreRun
@@ -69,7 +69,6 @@ func getContextHelpText() string {
   Available contexts:
     local      - Local filesystem operations and archive creation
     agent      - Launch agent monitoring and management
-    controller - Controller operations and agent coordination
     repl       - Interactive shell mode with command discovery
   
   Use 'cargoship context' to view or change the current context.
@@ -82,7 +81,7 @@ func handleContextFlag(contextStr string, logger *slog.Logger) error {
 
 	// Validate context
 	if !isValidContext(targetContext) {
-		return fmt.Errorf("invalid context '%s'. Valid contexts: local, agent, controller, repl", contextStr)
+		return fmt.Errorf("invalid context '%s'. Valid contexts: local, agent, repl", contextStr)
 	}
 
 	manager := NewManager(logger)
@@ -134,7 +133,6 @@ func getAvailableCommands(ctx ExecutionContext) map[string]bool {
 			"context":   true,
 
 			// Infrastructure (can start from local)
-			"controller":  true,
 			"travelagent": true,
 
 			// Utilities
@@ -156,21 +154,6 @@ func getAvailableCommands(ctx ExecutionContext) map[string]bool {
 			"man":     true,
 		}
 
-	case ContextController:
-		return map[string]bool{
-			// Controller operations
-			"controller": true,
-			"context":    true,
-
-			// Monitoring and management
-			"metrics": true,
-			"config":  true,
-
-			// Utilities
-			"schema": true,
-			"man":    true,
-		}
-
 	case ContextREPL:
 		// REPL mode has access to all commands through interactive discovery
 		return map[string]bool{
@@ -186,7 +169,6 @@ func getAvailableCommands(ctx ExecutionContext) map[string]bool {
 			"metrics":     true,
 			"retier":      true,
 			"context":     true,
-			"controller":  true,
 			"travelagent": true,
 			"agent":       true,
 			"schema":      true,
@@ -216,8 +198,6 @@ func GetContextPrompt(logger *slog.Logger) string {
 		return "cargoship> "
 	case ContextAgent:
 		return "agent> "
-	case ContextController:
-		return "controller> "
 	case ContextREPL:
 		return "repl> "
 	default:
@@ -228,12 +208,8 @@ func GetContextPrompt(logger *slog.Logger) string {
 // DetectContextFromEnvironment attempts to detect context from environment variables
 func DetectContextFromEnvironment() ExecutionContext {
 	// Check for common environment variables that indicate context
-	if os.Getenv("CARGOSHIP_AGENT_MODE") != "" || os.Getenv("CARGOSHIP_CONTROLLER_URL") != "" {
+	if os.Getenv("CARGOSHIP_AGENT_MODE") != "" {
 		return ContextAgent
-	}
-
-	if os.Getenv("CARGOSHIP_CONTROLLER_MODE") != "" {
-		return ContextController
 	}
 
 	if os.Getenv("CARGOSHIP_REPL_MODE") != "" {

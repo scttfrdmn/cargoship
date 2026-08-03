@@ -2,36 +2,6 @@
 # This provides a complete local testing environment for the launch/ghost ship architecture
 
 services:
-  # Central Controller - coordinates ghost ships
-  cargoship-controller:
-    build:
-      context: ../..
-      dockerfile: docker/Dockerfile.controller
-    container_name: cargoship-controller-dev
-    ports:
-      - "8080:8080"    # Main API
-      - "9090:9090"    # Metrics
-    volumes:
-      - ./config/controller.yaml:/etc/cargoship/controller.yaml:ro
-      - ./certs:/etc/cargoship/certs:ro
-      - controller-logs:/var/log/cargoship
-    environment:
-      - CARGOSHIP_LOG_LEVEL=debug
-      - CARGOSHIP_CONFIG_FILE=/etc/cargoship/controller.yaml
-      - CARGOSHIP_CONTROLLER_TOKEN=dev-controller-token-123
-      - CARGOSHIP_ADMIN_TOKEN=dev-admin-token-456
-    networks:
-      - cargoship-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    depends_on:
-      - prometheus
-      - substrate
-
   # Ghost Ship 1 - simulates astrapi.local
   ghost-ship-1:
     build:
@@ -57,7 +27,6 @@ services:
     networks:
       - cargoship-net
     depends_on:
-      - cargoship-controller
       - substrate
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
@@ -91,7 +60,6 @@ services:
     networks:
       - cargoship-net
     depends_on:
-      - cargoship-controller
       - substrate
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
@@ -181,7 +149,6 @@ services:
       - ./test-results:/test-results
       - ./test-data:/test-data:ro
     environment:
-      - CONTROLLER_URL=http://cargoship-controller:8080
       - GHOST_SHIP_1_URL=http://ghost-ship-1:9090
       - GHOST_SHIP_2_URL=http://ghost-ship-2:9090
       - SUBSTRATE_URL=http://substrate:4566
@@ -189,28 +156,11 @@ services:
     networks:
       - cargoship-net
     depends_on:
-      - cargoship-controller
       - ghost-ship-1
       - ghost-ship-2
       - substrate
     profiles:
       - testing
-
-  # Load Testing - performance validation
-  load-tester:
-    image: loadimpact/k6:latest
-    container_name: cargoship-load-tester
-    volumes:
-      - ./tests/load:/scripts:ro
-      - ./test-results:/results
-    environment:
-      - CONTROLLER_URL=http://cargoship-controller:8080
-    networks:
-      - cargoship-net
-    depends_on:
-      - cargoship-controller
-    profiles:
-      - load-testing
 
 networks:
   cargoship-net:
@@ -220,7 +170,6 @@ networks:
         - subnet: 172.20.0.0/16
 
 volumes:
-  controller-logs:
   ghost-ship-1-logs:
   ghost-ship-2-logs:
   ghost-ship-1-work:

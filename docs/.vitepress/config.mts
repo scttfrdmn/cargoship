@@ -171,10 +171,7 @@ const sidebar = {
       collapsed: true,
       items: [
         { text: 'Overview', link: '/enterprise/' },
-        { text: 'Launch agents', link: '/enterprise/launch-agent' },
-        { text: 'Controller', link: '/enterprise/controller' },
         { text: 'ghost-ship', link: '/enterprise/ghost-ship' },
-        { text: 'Web UI', link: '/enterprise/webui' },
         { text: 'Deployment guide', link: '/enterprise/deployment' },
         { text: 'QNAP / NAS deployment', link: '/enterprise/qnap' },
       ],

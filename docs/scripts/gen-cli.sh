@@ -10,8 +10,9 @@
 #
 # The fragments are @included by the hand-written pages under reference/commands/.
 # `cargoship mddocs` already omits hidden (man, mddocs) and unregistered
-# (performance) commands. We additionally drop controller/webui — those are
-# documented in the Distributed/Enterprise section, not the core reference.
+# (performance) commands. Every remaining command belongs in the core reference —
+# the controller/webui exclusions were dropped in #340 with the commands
+# themselves.
 #
 # Usage: docs/scripts/gen-cli.sh [output-dir]   (default: docs/gen/cli)
 set -euo pipefail
@@ -28,14 +29,8 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 ( cd "$REPO_ROOT" && go run ./cmd/cargoship mddocs "$TMP_DIR" )
 
-# Commands documented elsewhere (Enterprise section) — drop from core reference.
-EXCLUDE=(cargoship_controller.md cargoship_webui.md)
-
 for f in "$TMP_DIR"/*.md; do
   base="$(basename "$f")"
-  for ex in "${EXCLUDE[@]}"; do
-    [ "$base" = "$ex" ] && continue 2
-  done
   # Sanitize for VitePress:
   #  - stop at the volatile SEE ALSO block (sibling-file links that don't resolve
   #    as VitePress routes) and drop the "Auto generated ... on <date>" footer

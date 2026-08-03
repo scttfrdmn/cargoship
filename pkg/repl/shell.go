@@ -107,8 +107,6 @@ func (s *Shell) getPrompt() string {
 		return "cargoship> "
 	case context.ContextAgent:
 		return "agent> "
-	case context.ContextController:
-		return "controller> "
 	case context.ContextREPL:
 		return "repl> "
 	default:
@@ -322,7 +320,7 @@ func (s *Shell) handleContextCommand(args []string) {
 	case "switch", "sw":
 		if len(args) < 2 {
 			fmt.Println("Usage: context switch <context>")
-			fmt.Println("Available contexts: local, agent, controller, repl")
+			fmt.Println("Available contexts: local, agent, repl")
 			return
 		}
 
@@ -377,7 +375,7 @@ func (s *Shell) getAvailableCommands(ctx context.ExecutionContext) map[string]bo
 			"create": true, "analyze": true, "find": true, "tree": true,
 			"estimate": true, "wizard": true, "benchmark": true,
 			"config": true, "lifecycle": true, "metrics": true, "retier": true,
-			"context": true, "controller": true, "travelagent": true,
+			"context": true, "travelagent": true,
 			"schema": true, "man": true, "mddocs": true,
 		}
 
@@ -387,19 +385,13 @@ func (s *Shell) getAvailableCommands(ctx context.ExecutionContext) map[string]bo
 			"schema": true, "man": true,
 		}
 
-	case context.ContextController:
-		return map[string]bool{
-			"controller": true, "context": true, "metrics": true,
-			"config": true, "schema": true, "man": true,
-		}
-
 	case context.ContextREPL:
 		// REPL has access to all commands
 		return map[string]bool{
 			"create": true, "analyze": true, "find": true, "tree": true,
 			"estimate": true, "wizard": true, "benchmark": true,
 			"config": true, "lifecycle": true, "metrics": true, "retier": true,
-			"context": true, "controller": true, "travelagent": true,
+			"context": true, "travelagent": true,
 			"schema": true, "man": true, "mddocs": true,
 		}
 

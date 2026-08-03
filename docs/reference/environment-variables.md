@@ -35,34 +35,24 @@ See [AWS setup & credentials](/start/aws-setup) for the minimal IAM policy.
 
 ## CargoShip variables
 
-::: warning Most CARGOSHIP_* variables are for agents, not everyday uploads
-The variables CargoShip reads explicitly are used almost entirely by the
-distributed **launch agent** and **controller** (see
-[Distributed / Enterprise](/enterprise/)). For normal `cargoship upload` work,
-prefer flags or the [configuration file](/reference/configuration) — see the
-caveat on config-key variables below.
+::: warning Few CARGOSHIP_* variables are read explicitly
+For normal `cargoship upload` work, prefer flags or the
+[configuration file](/reference/configuration) — see the caveat on config-key
+variables below.
+
+The `CARGOSHIP_AGENT_*`, `CARGOSHIP_WATCH_PATHS`, `CARGOSHIP_DESTINATION`, and
+`CARGOSHIP_CONTROLLER_URL` variables previously documented here were read only by
+the `cargoship-launch` binary, which was **removed in v0.20.0** along with the
+controller ([#340](https://github.com/scttfrdmn/cargoship/issues/340)). Setting
+them now has no effect.
 :::
 
-### Agent & controller
-
-Read by the launch-agent binary and controller wiring:
+### Distributed agents
 
 | Variable | Purpose |
 |----------|---------|
-| `CARGOSHIP_AGENT_ID` | Agent identity. |
-| `CARGOSHIP_AGENT_NAME` | Agent display name. |
-| `CARGOSHIP_AGENT_DESCRIPTION` | Agent description. |
-| `CARGOSHIP_CONTROLLER_URL` | Controller endpoint the agent connects to. |
-| `CARGOSHIP_AUTH_TOKEN` | Auth token for agent ↔ controller / web UI. |
-| `CARGOSHIP_WATCH_PATHS` | Paths the agent watches for new data. |
-| `CARGOSHIP_PATTERNS` | Include patterns for watched files. |
-| `CARGOSHIP_EXCLUDE_PATTERNS` | Exclude patterns for watched files. |
-| `CARGOSHIP_CHECK_INTERVAL` | Agent poll interval. |
-| `CARGOSHIP_MIN_AGE_DAYS` | Minimum file age before an agent archives it. |
-| `CARGOSHIP_DESTINATION` | Default S3 destination for the agent. |
-| `CARGOSHIP_STORAGE_CLASS` | Default storage class for the agent. |
-| `CARGOSHIP_COMPRESSION` | Compression setting for the agent. |
 | `CARGOSHIP_TLS_INSECURE` | Disable TLS verification (development only; logs a loud warning). |
+| `AWS_PROFILE` | Credential profile a ghost ship uses for S3. |
 
 ### Execution-context detection
 
@@ -71,7 +61,6 @@ Force the [execution context](/guides/config/contexts) instead of auto-detecting
 | Variable | Effect |
 |----------|--------|
 | `CARGOSHIP_AGENT_MODE` | Run as an agent. |
-| `CARGOSHIP_CONTROLLER_MODE` | Run as a controller. |
 | `CARGOSHIP_REPL_MODE` | Run in REPL context. |
 
 ### Config-key variables (limited)

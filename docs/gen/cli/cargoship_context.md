@@ -7,10 +7,9 @@ Manage CargoShip execution context
 Manage CargoShip execution context to control which commands are available.
 
 Context determines the operational mode:
-- local:      Local filesystem operations and archive creation
-- agent:      Launch agent monitoring and management
-- controller: Controller operations and agent coordination
-- repl:       Interactive shell mode with command discovery
+- local: Local filesystem operations and archive creation
+- agent: Launch agent monitoring and management
+- repl:  Interactive shell mode with command discovery
 
 The current context is cached in ~/.cargoship-context and persists between sessions.
 
@@ -24,8 +23,8 @@ cargoship context [flags]
   # Show current context
   cargoship context
 
-  # Switch to controller context
-  cargoship context switch controller
+  # Switch to agent context
+  cargoship context switch agent
 
   # List available contexts
   cargoship context list
@@ -46,7 +45,7 @@ cargoship context [flags]
 ### Options inherited from parent commands
 
 ```
-      --context string        Override execution context (local, agent, controller, repl)
+      --context string        Override execution context (local, agent, repl)
       --memory-limit string   Set a memory limit for the run. This will slow things down, but will less likely to OOM in certain situations. Avoid this unless you are having memory issues.
       --pprof                 Enable runtime profiling HTTP endpoint at localhost:6060
       --pprof-addr string     Address for runtime profiling HTTP endpoint (default "localhost:6060")

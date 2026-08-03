@@ -37,7 +37,7 @@ the CLI, or has not been exercised enough to rely on.
 | **DVC integration** | **Beta** | The Go `dvc` commands and Python plugin work; command surface and metadata may change between minor releases (changes are documented per release). |
 | **Magika AI file detection** | **Beta / opt-in** | Requires `pip install magika`; degrades gracefully when absent. |
 | **Multi-region** | **Experimental** | A library capability in `pkg/multiregion`, **not** wired into `cargoship upload` today — see the [multi-region note](/guides/features/multi-region). Use `--region` + sharding for in-region parallelism. |
-| **Distributed agents / controller / ghost-ship** | **Beta** | Functional; configuration and wire formats may change. See [Distributed / Enterprise](/enterprise/). |
+| **Ghost-ship agents** | **Beta** | Functional; configuration and wire formats may change. The central controller, `cargoship-launch` agent and `webui` were **removed in v0.20.0** — see [Distributed / Enterprise](/enterprise/). |
 | **Public Go API** | **Mixed** | Stability is per-package — some packages are stable, others beta. See [API stability](/project/versioning#stability-levels-for-the-go-library). |
 
 ## Guarantees
@@ -56,7 +56,7 @@ the CLI, or has not been exercised enough to rely on.
 
 - **No support SLA.** Issues and vulnerability reports are handled best-effort by
   a small team — there is no contractual response or resolution time.
-- **No recovery-time objective** for the distributed/agent components.
+- **No recovery-time objective** for the ghost-ship agents.
 - **Pre-1.0 API churn.** Beta and experimental components may change shape between
   minor releases; pin a version if you need stability.
 
