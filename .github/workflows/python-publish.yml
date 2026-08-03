@@ -131,6 +131,6 @@ jobs:
 
       - name: Publish to PyPI
         # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag -- Docker action: its image is FROM ghcr.io/...:${GITHUB_ACTION_REF}, so a commit SHA yields "manifest unknown". The immutable release tag is the correct pin here.
-        uses: pypa/gh-action-pypi-publish@v1.14.0
+        uses: pypa/gh-action-pypi-publish@v1.14.1
         with:
           packages-dir: dist/
