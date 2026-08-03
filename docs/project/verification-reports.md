@@ -34,7 +34,7 @@ release assets to find the evidence.
 
 | Version | Date | Files | Bytes | Paths | Suites | Result | Report |
 |---------|------|-------|-------|-------|--------|--------|--------|
-| v0.21.0 | 2026-08-03 | — | — | direct, chunked | — | ⏳ Run in progress | _pending_ |
+| v0.21.0 | 2026-08-03 | 20 | 61.01 MB | direct, chunked | 43 / 0 | ✅ Passed | [`v0.21.0-2026-08-03.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.21.0/v0.21.0-2026-08-03.md) |
 | v0.20.0 | 2026-08-03 | 20 | 61.01 MB | direct, chunked | 43 / 0 | ✅ Passed | [`v0.20.0-2026-08-03.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.20.0/v0.20.0-2026-08-03.md) |
 | v0.19.0 | 2026-08-03 | 20 | 61.01 MB | direct, chunked | 46 / 0 | ✅ Passed | [`v0.19.0-2026-08-03.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.19.0/v0.19.0-2026-08-03.md) |
 | v0.18.0 | 2026-08-02 | 20 | 61.01 MB | direct, chunked | 45 / 0 | ✅ Passed | [`v0.18.0-2026-08-02.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.18.0/v0.18.0-2026-08-02.md) |
@@ -65,8 +65,11 @@ tag, so adding or deleting a package moves it. It rose at v0.19.0 (45 → 46) wh
 surface covered, not more of the byte-identity claim proven. It fell at v0.20.0
 (46 → 43) when `pkg/controller`, `cmd/controller` and `cmd/cargoship-launch` were
 deleted with the distributed subsystem ([#340](https://github.com/scttfrdmn/cargoship/issues/340))
-— less code to cover, not less coverage. A drop that does *not* correspond to a
-deletion would mean a suite stopped running, which is a regression.
+— less code to cover, not less coverage. It held at 43 across v0.21.0 even though
+[#347](https://github.com/scttfrdmn/cargoship/issues/347) deleted 57 functions,
+which is the expected behaviour: the count tracks *packages*, and `pkg/launch`
+survived. A drop that does *not* correspond to a deletion would mean a suite
+stopped running, which is a regression.
 
 - Reports are also **attached to each
   [GitHub Release](https://github.com/scttfrdmn/cargoship/releases)** as
