@@ -44,14 +44,15 @@ The `CARGOSHIP_AGENT_*`, `CARGOSHIP_WATCH_PATHS`, `CARGOSHIP_DESTINATION`, and
 `CARGOSHIP_CONTROLLER_URL` variables previously documented here were read only by
 the `cargoship-launch` binary, which was **removed in v0.20.0** along with the
 controller ([#340](https://github.com/scttfrdmn/cargoship/issues/340)). Setting
-them now has no effect.
+them now has no effect. `CARGOSHIP_TLS_INSECURE` went the same way: it relaxed
+certificate checks on the agent's outbound controller connection only, and
+nothing reads it now.
 :::
 
 ### Distributed agents
 
 | Variable | Purpose |
 |----------|---------|
-| `CARGOSHIP_TLS_INSECURE` | Disable TLS verification (development only; logs a loud warning). |
 | `AWS_PROFILE` | Credential profile a ghost ship uses for S3. |
 
 ### Execution-context detection

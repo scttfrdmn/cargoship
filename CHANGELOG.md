@@ -38,15 +38,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     execution context (`pkg/context`) is applied by the shipped CLI at every
     startup, and would have filtered the command set down to a command that no
     longer exists. A stale cached context now self-heals with a warning.
-  - Two direct dependencies go with it: `github.com/golang-jwt/jwt/v5` and
-    `github.com/gorilla/mux` were used by nothing else, so this is a real
-    supply-chain reduction as well as an attack-surface one.
+  - Three direct dependencies go with it: `github.com/golang-jwt/jwt/v5`,
+    `github.com/gorilla/mux` and `github.com/gorilla/websocket` were used by
+    nothing else, so this is a real supply-chain reduction as well as an
+    attack-surface one.
+  - **The agent's outbound half went too.** Deleting the server left
+    `pkg/launch/controller.go` — a live WebSocket *client*. A ghost ship with
+    `controller_url` set still dialed out, sent `Authorization: Bearer <token>`,
+    and dispatched `job_assign`, `job_cancel`, `config_update` and `shutdown` from
+    whatever answered. Nothing in the project served that endpoint anymore, so the
+    only reachable peer was one an attacker stood up; removing the server without
+    the client would have left the inbound command path intact and undocumented.
   - **Ghost ships are unaffected** — they were built to archive autonomously and
     never required a controller. `controller_url`, `auth_token` and `tls_config`
-    in a ghost-ship config configured only that connection and now have no effect,
-    as do the previously documented `CARGOSHIP_AGENT_*`,
-    `CARGOSHIP_CONTROLLER_URL`, `CARGOSHIP_WATCH_PATHS` and
-    `CARGOSHIP_DESTINATION` variables, which were read only by `cargoship-launch`.
+    are no longer read at all, nor is `CARGOSHIP_TLS_INSECURE`, which relaxed
+    certificate checks on that connection alone. The previously documented
+    `CARGOSHIP_AGENT_*`, `CARGOSHIP_CONTROLLER_URL`, `CARGOSHIP_WATCH_PATHS` and
+    `CARGOSHIP_DESTINATION` variables were read only by `cargoship-launch` and
+    likewise have no effect.
+  - `launch.AgentConfig` and `launch.GhostShipConfig` lose their `ControllerURL`,
+    `AuthToken` and `TLSConfig` fields, and `launch.TLSConfig`,
+    `launch.ControllerConnection`, `launch.MessageType` and the `MsgType*`
+    constants are gone — a breaking change for anyone importing `pkg/launch`
+    directly. `launch.NewAgent` no longer requires a controller URL or auth token,
+    so a config that only watches paths is now valid.
 
 ## [0.19.0] - 2026-08-03
 

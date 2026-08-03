@@ -10,8 +10,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// validAgentConfig returns the minimum config NewAgent accepts. Since #340
+// removed the controller connection, that minimum is an ID and one watch path —
+// no controller URL and no auth token.
+func validAgentConfig() *AgentConfig {
+	return &AgentConfig{
+		ID:   "test-agent",
+		Name: "Test Agent",
+		WatchPaths: []WatchPath{
+			{
+				Path:      "/tmp",
+				Recursive: true,
+				MinAge:    time.Hour,
+			},
+		},
+		Archive: ArchiveConfig{
+			Destination:   "s3://test-bucket",
+			StorageClass:  "standard",
+			MaxConcurrent: 1,
+		},
+		ScanInterval: 5 * time.Minute,
+	}
+}
+
 func TestNewAgent(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	noWatchPaths := validAgentConfig()
+	noWatchPaths.WatchPaths = nil
+
+	noID := validAgentConfig()
+	noID.ID = ""
 
 	tests := []struct {
 		name    string
@@ -24,34 +53,18 @@ func TestNewAgent(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "missing required fields",
-			config: &AgentConfig{
-				ID: "test-agent",
-				// Missing ControllerURL, AuthToken
-			},
+			name:    "missing ID",
+			config:  noID,
 			wantErr: true,
 		},
 		{
-			name: "valid config",
-			config: &AgentConfig{
-				ID:            "test-agent",
-				Name:          "Test Agent",
-				ControllerURL: "wss://localhost:8080",
-				AuthToken:     "test-token",
-				WatchPaths: []WatchPath{
-					{
-						Path:      "/tmp",
-						Recursive: true,
-						MinAge:    time.Hour,
-					},
-				},
-				Archive: ArchiveConfig{
-					Destination:   "s3://test-bucket",
-					StorageClass:  "standard",
-					MaxConcurrent: 1,
-				},
-				ScanInterval: 5 * time.Minute,
-			},
+			name:    "missing watch paths",
+			config:  noWatchPaths,
+			wantErr: true,
+		},
+		{
+			name:    "valid config needs no controller URL or auth token",
+			config:  validAgentConfig(),
 			wantErr: false,
 		},
 	}
@@ -75,27 +88,7 @@ func TestNewAgent(t *testing.T) {
 func TestAgentLifecycle(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	config := &AgentConfig{
-		ID:            "test-agent",
-		Name:          "Test Agent",
-		ControllerURL: "wss://localhost:8080",
-		AuthToken:     "test-token",
-		WatchPaths: []WatchPath{
-			{
-				Path:      "/tmp",
-				Recursive: true,
-				MinAge:    time.Hour,
-			},
-		},
-		Archive: ArchiveConfig{
-			Destination:   "s3://test-bucket",
-			StorageClass:  "standard",
-			MaxConcurrent: 1,
-		},
-		ScanInterval: 5 * time.Minute,
-	}
-
-	agent, err := NewAgent(config, logger)
+	agent, err := NewAgent(validAgentConfig(), logger)
 	require.NoError(t, err)
 	require.NotNil(t, agent)
 
@@ -107,9 +100,64 @@ func TestAgentLifecycle(t *testing.T) {
 	// Test GetJobs (should be empty initially)
 	jobs := agent.GetJobs()
 	assert.Empty(t, jobs)
+}
 
-	// Note: We can't easily test Start() without a real controller
-	// This would require integration tests with mock WebSocket server
+// TestAgentStartReachesReady covers what was previously untestable: before #340
+// Start() dialed a controller, so the old test noted it "can't easily test
+// Start() without a real controller". With no controller to wait on, the agent
+// is operational the moment its watcher and job processor are running.
+func TestAgentStartReachesReady(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	config := validAgentConfig()
+	config.HealthCheck = HealthConfig{Enabled: true, ReportInterval: time.Hour}
+
+	agent, err := NewAgent(config, logger)
+	require.NoError(t, err)
+
+	require.NoError(t, agent.Start())
+	assert.Equal(t, AgentStateReady, agent.GetStatus().State)
+
+	// Starting twice must be refused — Start() requires the starting state.
+	assert.Error(t, agent.Start())
+
+	require.NoError(t, agent.Stop())
+	assert.Equal(t, AgentStateStopping, agent.GetStatus().State)
+}
+
+func TestAgentUpdateStatus(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	agent, err := NewAgent(validAgentConfig(), logger)
+	require.NoError(t, err)
+
+	agent.updateStatus(AgentStateError, "disk full")
+	status := agent.GetStatus()
+	assert.Equal(t, AgentStateError, status.State)
+	assert.Equal(t, "disk full", status.LastError)
+
+	// An empty message must not clear the previous error.
+	agent.updateStatus(AgentStateWorking, "")
+	status = agent.GetStatus()
+	assert.Equal(t, AgentStateWorking, status.State)
+	assert.Equal(t, "disk full", status.LastError)
+}
+
+func TestAgentGetJobsReturnsCopies(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	agent, err := NewAgent(validAgentConfig(), logger)
+	require.NoError(t, err)
+
+	agent.jobs["job-1"] = &ArchiveJob{ID: "job-1", State: JobStatePending}
+
+	jobs := agent.GetJobs()
+	require.Contains(t, jobs, "job-1")
+	jobs["job-1"].State = JobStateFailed
+
+	assert.Equal(t, JobStatePending, agent.jobs["job-1"].State,
+		"GetJobs must hand out copies, not pointers into the agent's map")
+	assert.Equal(t, 1, agent.GetStatus().ActiveJobs)
 }
 
 func TestValidateAgentConfig(t *testing.T) {
@@ -121,43 +169,22 @@ func TestValidateAgentConfig(t *testing.T) {
 		{
 			name: "missing ID",
 			config: &AgentConfig{
-				ControllerURL: "wss://localhost:8080",
-				AuthToken:     "token",
-			},
-			wantErr: true,
-		},
-		{
-			name: "missing controller URL",
-			config: &AgentConfig{
-				ID:        "test",
-				AuthToken: "token",
-			},
-			wantErr: true,
-		},
-		{
-			name: "missing auth token",
-			config: &AgentConfig{
-				ID:            "test",
-				ControllerURL: "wss://localhost:8080",
+				WatchPaths: []WatchPath{{Path: "/tmp"}},
 			},
 			wantErr: true,
 		},
 		{
 			name: "missing watch paths",
 			config: &AgentConfig{
-				ID:            "test",
-				ControllerURL: "wss://localhost:8080",
-				AuthToken:     "token",
-				WatchPaths:    []WatchPath{},
+				ID:         "test",
+				WatchPaths: []WatchPath{},
 			},
 			wantErr: true,
 		},
 		{
 			name: "valid config",
 			config: &AgentConfig{
-				ID:            "test",
-				ControllerURL: "wss://localhost:8080",
-				AuthToken:     "token",
+				ID: "test",
 				WatchPaths: []WatchPath{
 					{Path: "/tmp"},
 				},

@@ -89,13 +89,6 @@ max_concurrent_jobs: 3
 worker_pool_size: 2
 scan_interval: "30s"     # Frequent scanning for development
 
-# Controller Integration
-controller_url: "ws://cargoship-controller:8080"
-auth_token: "dev-ghost-token-111"
-tls_config:
-  enabled: false         # Disabled for local development
-  insecure_skip_verify: true
-
 # Monitoring and Reporting
 reporting_enabled: true
 report_interval: "30s"   # Frequent reporting for development

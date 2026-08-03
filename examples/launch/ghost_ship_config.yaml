@@ -119,12 +119,12 @@ scan_interval: "5m"      # Scan directories every 5 minutes
 
 # Controller Integration — REMOVED in v0.20.0.
 #
-# CargoShip no longer ships a controller to connect to: the central controller,
-# `cargoship webui`, and the `cargoship-launch` agent binary were removed in
-# v0.20.0 (https://github.com/scttfrdmn/cargoship/issues/340). Leave
-# `controller_url` unset; a ghost ship archives autonomously without it, which is
-# how it was always designed to run. `auth_token` and `tls_config` configured only
-# that connection and have no other effect.
+# CargoShip no longer ships a controller, and a ghost ship no longer contains a
+# client for one: the central controller, `cargoship webui`, the
+# `cargoship-launch` agent binary, and the agent's outbound WebSocket client were
+# all removed in v0.20.0 (https://github.com/scttfrdmn/cargoship/issues/340).
+# `controller_url`, `auth_token` and `tls_config` are no longer read at all — a
+# ghost ship archives autonomously, which is how it was always designed to run.
 
 # Monitoring and Reporting
 reporting_enabled: true
