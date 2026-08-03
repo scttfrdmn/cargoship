@@ -76,9 +76,13 @@ updates:
     allow:
       - dependency-type: "direct"
 
-  # Docker dependency updates (if any Dockerfiles exist)
+  # Docker base-image updates. Scoped to /docker, where the Dockerfiles actually
+  # live: this was "/" and therefore watched nothing, which is part of why an
+  # end-of-support Alpine 3.18 base survived in three images (#358). Bases are now
+  # digest-pinned, so this is the mechanism that proposes moving those pins —
+  # without it, pinning would mean freezing.
   - package-ecosystem: "docker"
-    directory: "/"
+    directory: "/docker"
     schedule:
       interval: "weekly"
       day: "saturday"

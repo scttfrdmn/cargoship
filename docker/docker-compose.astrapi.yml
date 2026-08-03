@@ -22,9 +22,18 @@ services:
     # after it and the ship would sail with its built-in defaults.
     command: ["--config", "/etc/cargoship/ghost_ship.yaml", "--log-level", "info"]
 
-    # Host networking for maximum upload throughput. Safe here precisely because
-    # the ghost ship listens on nothing.
-    network_mode: host
+    # No host networking (#358). The previous comment here justified it as "safe
+    # because the ghost ship listens on nothing" — which answers the wrong
+    # question. Nothing needs to reach *in*; the risk is what the container can
+    # reach *out* to. `network_mode: host` puts it on the host's loopback, so
+    # anything bound to 127.0.0.1 on the NAS — admin UIs, databases, other
+    # containers' debug endpoints — becomes reachable from this process. A
+    # compromised archival agent should not inherit that.
+    #
+    # The claimed benefit was upload throughput, which does not hold up: this
+    # container makes outbound HTTPS connections to S3, and bridge networking
+    # costs a NAT hop that is immaterial next to a WAN round-trip. Default bridge
+    # networking is used instead, which needs no configuration here.
 
     # Resource limits optimized for astrapi
     deploy:

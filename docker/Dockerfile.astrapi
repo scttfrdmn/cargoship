@@ -3,7 +3,7 @@
 #
 # A ghost ship archives autonomously and binds no port, so this image exposes
 # nothing and has no HTTP healthcheck. Status goes to the container log.
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -35,23 +35,34 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     ./cmd/cargoship-test
 
 # Final runtime image
-FROM alpine:3.18
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
 # Install runtime dependencies for astrapi operations.
 #
-# aws-cli and bash are used by astrapi-startup.sh; the rest are for interactive
-# network diagnosis on the NAS, which is what this image is for. curl and
-# inotify-tools are gone with the features that needed them — the healthcheck
-# (#348) and the FileWatcher deleted in #347.
+# Only what the image needs to run: ca-certificates to reach S3 over TLS, tzdata
+# for local timestamps, aws-cli and bash for astrapi-startup.sh's preflight
+# checks.
+#
+# htop, iftop, tcpdump and netcat-openbsd were here for interactive diagnosis on
+# the NAS and are gone (#358). A ghost ship is an outbound-only archival agent, so
+# on this image a packet sniffer and an arbitrary-connection tool are worth more
+# to an attacker who lands in the container than to the operator — and the
+# operator can always `docker run --rm -it` a throwaway toolbox alongside it, or
+# `apk add` at debug time. Keeping them installed makes every deployment carry the
+# risk so that the rare debugging session is marginally faster.
+#
+# Note `nc` still resolves: /usr/bin/nc is a busybox symlink in Alpine's base
+# image, not something installed here. Removing busybox is not an option, so this
+# is a floor set by the base image rather than a leftover — dropping
+# netcat-openbsd removes the full-featured implementation, not the applet.
+#
+# curl and inotify-tools are gone with the features that needed them — the
+# healthcheck (#348) and the FileWatcher deleted in #347.
 RUN apk add --no-cache \
     ca-certificates \
     tzdata \
     aws-cli \
     bash \
-    htop \
-    iftop \
-    tcpdump \
-    netcat-openbsd \
     && rm -rf /var/cache/apk/*
 
 # Create non-root user for security

@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Container hygiene: the deployment images ran on an end-of-support base, and
+  three more container artifacts sat outside every CI lane.** From an external
+  security re-review of v0.21.0 (CSH-021). No exploitable CVE was identified;
+  these are hardening and drift fixes. (#358)
+  - **All three runtimes moved from `alpine:3.18` (end of support) to
+    `alpine:3.24`, digest-pinned**, as is the `golang:1.26-alpine` builder. Worth
+    stating plainly, because it is the counter-intuitive part: **a vulnerability
+    scan cannot detect this defect.** `alpine:3.18` scans with *zero*
+    HIGH/CRITICAL findings even with `--ignore-unfixed` off. End-of-support is a
+    support-date fact, not a CVE-count fact — the danger is that future CVEs never
+    get patched. The new image scans therefore set `TRIVY_EXIT_ON_EOL`, which is
+    the check that actually catches it.
+  - **`Dockerfile.synology`, `docker-compose.synology.yml` and
+    `docker-compose.qnap.yml` are deleted from the repository root.** All three
+    were unreferenced by any Makefile target, script, doc or workflow, dated to a
+    single 2025 commit, and still carried every defect #348 removed from
+    `docker/` — including the `golang:1.23-alpine` builder that cannot build a
+    `go >= 1.26.0` module. #348 missed them because it audited the `docker/`
+    directory rather than enumerating container artifacts by pattern. A CI step
+    now enumerates by pattern (`git ls-files | grep -iE 'Dockerfile|compose'`) and
+    fails on any outside `docker/`, since the workflow's `docker/**` path filter
+    means such a file triggers no build at all.
+  - **Diagnostic tools removed from the astrapi and QNAP runtimes** — `tcpdump`,
+    `iftop`, `htop`, `netcat-openbsd`. A ghost ship is an outbound-only archival
+    agent; a packet sniffer in it is worth more to an attacker who lands inside
+    the container than to an operator, who can attach a throwaway toolbox
+    container or `apk add` at debug time. (`nc` still resolves — `/usr/bin/nc` is
+    a busybox symlink in Alpine's base image, so this removes the full-featured
+    implementation, not the applet.)
+  - **`network_mode: host` removed from `docker-compose.astrapi.yml`.** The
+    comment defending it argued the ghost ship listens on nothing, which answers
+    the wrong question: the risk is not inbound but what a compromised container
+    can reach *out* to. Host networking puts it on the NAS's loopback, exposing
+    admin UIs and other containers' debug endpoints. The claimed throughput
+    benefit does not survive scrutiny for outbound HTTPS to S3.
+  - **The three built images are now scanned with Trivy** (`scan-type: image`,
+    HIGH/CRITICAL, blocking). `security.yml` only ever scanned the source tree in
+    `fs`/`config` mode, which cannot see OS packages inside an image — which is
+    how the EOL base survived unnoticed.
+  - **Dependabot's docker ecosystem pointed at `/`, where no Dockerfile lives**,
+    so it watched nothing; it now points at `/docker`. That is part of why Alpine
+    3.18 survived, and it is what makes digest pinning sustainable rather than
+    freezing.
+
 ## [0.21.0] - 2026-08-03
 
 **Dead Surface & Provenance.** Removes the last abandoned duplicate in
