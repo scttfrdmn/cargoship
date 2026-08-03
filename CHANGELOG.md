@@ -91,6 +91,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed rather than corrected: `security` is not an update-type, so the group
     was a no-op in intent as well as in syntax.
 
+- **Releases were published *before* their provenance was verified; the release
+  is now assembled as a draft, verified, and only then promoted.** From the
+  external security re-review of v0.21.0 (CSH-023, Low). The signature check
+  #349 added ran after `goreleaser release` had already made the artifacts
+  public, so a broken provenance chain could only be reported retroactively —
+  a strange property for a check whose purpose is to prevent shipping
+  unverifiable artifacts. (#360)
+  - **The verification step now downloads the assets back from the draft**
+    instead of checking the local `dist/` directory. Verifying `dist/` proves the
+    signing step worked; it does *not* prove the uploaded bytes are the same
+    bytes. A truncated or mis-mapped upload would pass a `dist/`-only check and
+    still hand users an artifact that fails `cosign verify-blob`. Round-tripping
+    through the API closes that gap, and it is only possible while the release is
+    a draft.
+  - `sha256sum --check --ignore-missing` skips the signature bundle, which is not
+    itself listed in `checksums.txt` — but it would just as happily skip
+    *everything* and still exit 0 if a rename ever desynchronised the names. The
+    step now counts verified digests against the line count of `checksums.txt`
+    and fails on a mismatch.
+  - **`packages: write` removed from the workflow's permissions.** Nothing in
+    this release publishes to a package registry: `.goreleaser.yml` has no
+    `dockers:`/`kos:`/`nfpms:` stanza, and the Homebrew tap and Scoop bucket push
+    to separate repositories with their own PATs. Least privilege matters more
+    than usual here, because the same permission block argues for *widening*
+    scope with `id-token: write` — an argument only as strong as the claim that
+    everything else in the list is justified.
+  - Two assumptions about goreleaser were checked rather than trusted, and both
+    were **wrong**; the first design was built on them and discarded. There is no
+    `goreleaser publish` or `goreleaser continue` subcommand — `goreleaser
+    publish --help` prints the *release* help, because the root command falls
+    through, exactly as it does for a nonsense subcommand. And
+    `release.skip_upload: true` does not make a second `release` run leave the
+    GitHub release alone: verified with a dummy token, the log shows `skipped
+    http upload` and then `release creation failed … POST /repos/…/releases`,
+    i.e. it skips only the **assets** and still creates or replaces the release.
+    With `mode: replace` that would have deleted and re-uploaded the assets whose
+    signature was just verified — turning a safety measure into the thing that
+    breaks the release.
+  - The Homebrew tap and Scoop bucket therefore still publish in the draft run.
+    That is safe because a formula is correct independently of draft state: it
+    pins `releases/download/<tag>/…` URLs and the tag is fixed before the
+    workflow starts, so those URLs simply begin resolving on promotion. The
+    failure mode is a brief 404 for anyone running `brew install` inside the
+    verification window — and if verification fails, a formula pointing at a
+    release that was never published is a far better outcome than the previous
+    behaviour, where the artifacts themselves were already public.
+  - **Honest limit:** the draft → verify → promote sequence cannot be exercised
+    without actually publishing a release, so it gets its first real run on the
+    next release tag. Every part testable in isolation was tested.
+
 ## [0.21.0] - 2026-08-03
 
 **Dead Surface & Provenance.** Removes the last abandoned duplicate in

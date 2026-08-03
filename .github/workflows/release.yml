@@ -16,9 +16,15 @@ on:
 # The token is scoped to this job, expires in minutes, and grants no repository
 # write access of its own. It is declared here rather than at job level because
 # this workflow has exactly one job.
+# `packages: write` used to be here and is gone (#360): nothing in this release
+# publishes to a package registry. `.goreleaser.yml` has no dockers:/kos:/nfpms:
+# stanza (the dockers: block is commented out), and brews:/scoops: push to
+# separate repositories with their own PATs rather than GITHUB_TOKEN. Least
+# privilege matters more than usual right here, because the block above argues for
+# *widening* permissions with id-token: write — an argument that is only as strong
+# as the claim that everything else in this list is justified.
 permissions:
   contents: write
-  packages: write
   id-token: write
 
 jobs:
@@ -59,46 +65,123 @@ jobs:
       - name: Install syft
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
 
-      - name: Run GoReleaser
+      # `--draft` (#360). The release is assembled but NOT public until the
+      # verification step below passes, so a broken provenance chain cannot reach
+      # users at all — previously the verify step ran after publication and could
+      # only report a bad release retroactively, which is a strange property for a
+      # check whose purpose is to prevent shipping unverifiable artifacts.
+      #
+      # Passed as a flag rather than `release.draft: true` in .goreleaser.yml on
+      # purpose: a local `goreleaser release` should not silently produce drafts,
+      # and this way the draft state lives next to the step that clears it.
+      #
+      # The Homebrew tap and Scoop bucket still publish in THIS run, which is a
+      # deliberate choice rather than an oversight. Deferring them to a second
+      # goreleaser invocation after promotion does not work, and I checked rather
+      # than assumed:
+      #
+      #   * there is no `goreleaser publish` or `goreleaser continue` subcommand —
+      #     `goreleaser publish --help` prints the *release* help, because the root
+      #     command falls through, exactly as it does for a nonsense subcommand
+      #   * `release.skip_upload: true` does NOT make a second `release` run leave
+      #     the GitHub release alone. Verified with a dummy token: the log shows
+      #     "skipped http upload" and then "release creation failed … POST
+      #     /repos/…/releases", i.e. it skips only the ASSETS and still creates or
+      #     replaces the release. With `mode: replace` that would delete and
+      #     re-upload the assets whose signature was just verified — turning a
+      #     safety measure into the thing that breaks the release
+      #
+      # Publishing the taps here is safe because the formula is correct
+      # independently of draft state: it pins `releases/download/<tag>/…` URLs, and
+      # the tag is fixed before this workflow starts. Those URLs simply begin
+      # resolving when the release is promoted seconds later. The failure mode is a
+      # brief 404 for anyone who runs `brew install` inside the verification window,
+      # not a wrong formula — and if verification fails, a formula pointing at a
+      # release that was never published is a far better outcome than the previous
+      # behaviour, where the artifacts themselves were already public.
+      - name: Run GoReleaser (draft)
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: '~> v2'
-          args: release --clean
+          args: release --clean --draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           SCOOP_BUCKET_GITHUB_TOKEN: ${{ secrets.SCOOP_BUCKET_GITHUB_TOKEN }}
 
-      # Verify what we just published, the way a user would — same command, same
-      # identity flags documented in SECURITY.md. A signature nobody has verified
-      # is an assumption, and this is the cheapest possible place to find out that
-      # the identity or issuer string is wrong: right after producing it, rather
-      # than from a user who cannot verify a release.
+      # Verify the release the way a user would — same command and identity flags
+      # documented in SECURITY.md. A signature nobody has verified is an
+      # assumption, and this is the cheapest place to discover a wrong identity or
+      # issuer string: before anyone can download it.
       #
-      # Also re-checks the digests, which is the step that makes one signature
-      # meaningful for every artifact: checksums.txt is what got signed, so if it
-      # verifies AND its digests match, the whole release is covered.
-      - name: Verify the published signature and digests
+      # Downloads the assets back from the draft rather than verifying `dist/`
+      # (#360). Verifying the local build directory proves the signing step worked;
+      # it does NOT prove that what landed on the release is the same bytes. A
+      # truncated or mis-mapped upload would pass a dist/-only check and still hand
+      # users an artifact that fails `cosign verify-blob`. Round-tripping through
+      # the API closes that gap, and it is only possible because the release is
+      # still a draft.
+      #
+      # Re-checking the digests is what makes one signature cover everything:
+      # checksums.txt is the signed file, so if it verifies AND its digests match
+      # the downloaded artifacts, the whole release is covered.
+      - name: Verify the draft's published assets before promoting
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
           EXPECTED_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/release.yml@${{ github.ref }}
         run: |
           set -euo pipefail
-          cd dist
+          rm -rf verify && mkdir verify && cd verify
+          # `gh release download` reaches draft releases with contents: write.
+          gh release download "$TAG" --clobber
           cosign verify-blob \
             --bundle checksums.txt.sigstore.json \
             --certificate-identity "$EXPECTED_IDENTITY" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             checksums.txt
-          # Ignore the SBOM/signature lines sha256sum cannot see and check the rest.
-          sha256sum --check --ignore-missing checksums.txt
+          # --ignore-missing skips the signature bundle, which is not itself listed
+          # in checksums.txt. Guard against that silently ignoring EVERYTHING: if a
+          # rename ever desynchronised the names, --check would report "0 checked"
+          # and still exit 0.
+          checked=$(sha256sum --check --ignore-missing checksums.txt | grep -c ': OK$')
+          expected=$(grep -c . checksums.txt)
+          echo "verified ${checked}/${expected} digests from the published assets"
+          if [ "$checked" -ne "$expected" ]; then
+            echo "::error::checksums.txt lists ${expected} artifacts but only ${checked} were verified"
+            exit 1
+          fi
           {
             echo "### Release provenance"
             echo ""
-            echo "\`checksums.txt\` signed and verified against:"
+            echo "Assets downloaded back from the draft release and verified against:"
             echo ""
             echo '```'
             echo "$EXPECTED_IDENTITY"
             echo '```'
             echo ""
-            echo "Digests re-checked; $(grep -c 'sbom.json' checksums.txt) SBOM(s) attached."
+            echo "${checked}/${expected} digests confirmed; $(grep -c 'sbom.json' checksums.txt) SBOM(s) attached."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Only now is the release public. Everything above can fail without a user
+      # ever seeing an unverifiable artifact, which is the entire point of #360.
+      #
+      # `prerelease: auto` in .goreleaser.yml already marked the draft as a
+      # prerelease if the tag has a suffix; --draft=false alone does not touch that
+      # flag, so the distinction survives promotion.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # --verify-tag: refuse to publish if the tag somehow is not on the
+          # remote. It always is here (this workflow triggers on a tag push), which
+          # is why promotion cannot invent a release for a tag nobody pushed.
+          gh release edit "$TAG" --draft=false --verify-tag
+          state=$(gh release view "$TAG" --json isDraft,isPrerelease -q '"draft=\(.isDraft) prerelease=\(.isPrerelease)"')
+          echo "published: $state"
+          case "$state" in
+            draft=false*) ;;
+            *) echo "::error::release $TAG is still a draft after promotion"; exit 1 ;;
+          esac
