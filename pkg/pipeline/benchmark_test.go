@@ -592,10 +592,12 @@ func BenchmarkPipeline_LargeFiles_100_56GB(b *testing.B) {
 		// Cleanup AWS SDK HTTP connections (Issue #65)
 		// Close idle connections to prevent goroutine leaks in goleak tests
 		// This is only necessary when running benchmarks with -cpuprofile flag
-		if config.S3Client != nil {
+		// Read Options() off the concrete client rather than config.S3Client,
+		// which is an interface{} field and has no methods.
+		if s3Client != nil {
 			// Access the underlying HTTP client from the AWS SDK client
 			// The S3 client wraps an HTTP client that maintains persistent connections
-			if httpClient, ok := config.S3Client.Options().HTTPClient.(*http.Client); ok {
+			if httpClient, ok := s3Client.Options().HTTPClient.(*http.Client); ok {
 				httpClient.CloseIdleConnections()
 				b.Logf("Closed AWS SDK HTTP idle connections")
 			}
