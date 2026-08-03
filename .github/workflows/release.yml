@@ -5,9 +5,21 @@ on:
     tags:
       - 'v*.*.*'
 
+# id-token: write is the one that deserves a second look — it lets this job mint
+# a short-lived OIDC token asserting its own identity. Keyless signing needs it:
+# cosign exchanges that token with Fulcio for a signing certificate, which is what
+# ties the signature to *this workflow in this repository* rather than to a key
+# somebody could steal. The alternative is a long-lived private key in a secret,
+# which is a worse trade — it can leak, has to be rotated, and proves only
+# possession rather than provenance.
+#
+# The token is scoped to this job, expires in minutes, and grants no repository
+# write access of its own. It is declared here rather than at job level because
+# this workflow has exactly one job.
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 jobs:
   goreleaser:
@@ -37,6 +49,16 @@ jobs:
           fi
           echo "tag ${GITHUB_REF_NAME} matches version.txt (v${file})"
 
+      # cosign signs checksums.txt (see the signs: stanza in .goreleaser.yml) and
+      # syft generates a per-archive SBOM. Both are invoked BY goreleaser, so they
+      # must be on PATH before it runs — a missing binary fails the release after
+      # the artifacts are already built.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
@@ -46,3 +68,37 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           SCOOP_BUCKET_GITHUB_TOKEN: ${{ secrets.SCOOP_BUCKET_GITHUB_TOKEN }}
+
+      # Verify what we just published, the way a user would — same command, same
+      # identity flags documented in SECURITY.md. A signature nobody has verified
+      # is an assumption, and this is the cheapest possible place to find out that
+      # the identity or issuer string is wrong: right after producing it, rather
+      # than from a user who cannot verify a release.
+      #
+      # Also re-checks the digests, which is the step that makes one signature
+      # meaningful for every artifact: checksums.txt is what got signed, so if it
+      # verifies AND its digests match, the whole release is covered.
+      - name: Verify the published signature and digests
+        env:
+          EXPECTED_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/release.yml@${{ github.ref }}
+        run: |
+          set -euo pipefail
+          cd dist
+          cosign verify-blob \
+            --bundle checksums.txt.sigstore.json \
+            --certificate-identity "$EXPECTED_IDENTITY" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            checksums.txt
+          # Ignore the SBOM/signature lines sha256sum cannot see and check the rest.
+          sha256sum --check --ignore-missing checksums.txt
+          {
+            echo "### Release provenance"
+            echo ""
+            echo "\`checksums.txt\` signed and verified against:"
+            echo ""
+            echo '```'
+            echo "$EXPECTED_IDENTITY"
+            echo '```'
+            echo ""
+            echo "Digests re-checked; $(grep -c 'sbom.json' checksums.txt) SBOM(s) attached."
+          } >> "$GITHUB_STEP_SUMMARY"

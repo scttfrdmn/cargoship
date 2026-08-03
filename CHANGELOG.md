@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Releases are signed, and ship an SBOM.** `checksums.txt` is now signed with
+  **cosign keyless signing** (OIDC), and each archive gets an SPDX SBOM from syft.
+  Verification is documented in
+  [SECURITY.md](SECURITY.md#verifying-a-release). (#349)
+  - `checksums.txt` on its own proved neither origin nor much else: it is
+    published by the same job, over the same channel, as the artifacts it attests,
+    so whoever could alter one could alter both. It answered "did this download
+    corrupt?", not "did the CargoShip project build this?" The signature binds it
+    to the release workflow's own identity, and since every artifact's SHA-256 is
+    *in* that file, **one signature covers the whole release** — verified: the
+    signed `checksums.txt` covers all 10 artifacts (5 archives + 5 SBOMs).
+  - **Keyless, so there is no private key to leak or rotate.** cosign trades the
+    workflow's short-lived OIDC token for a Fulcio certificate and logs the
+    signature in Rekor. This requires adding `id-token: write` to `release.yml` —
+    a deliberate permissions widening, called out in a comment there. The token is
+    job-scoped, expires in minutes, and grants no repository write access; the
+    alternative, a long-lived key in a secret, proves only possession rather than
+    provenance.
+  - **cosign v3 removed `--output-signature` and `--output-certificate`**, so the
+    widely-copied goreleaser recipe for this no longer works. The Sigstore
+    *bundle* (`checksums.txt.sigstore.json`) is now the keyless output format —
+    one file carrying signature, certificate and transparency-log proof.
+  - **The release job verifies its own output** with the same command SECURITY.md
+    gives users, then re-checks the digests. A signature nobody has verified is an
+    assumption; this catches a wrong identity or issuer string immediately rather
+    than via a user who cannot verify a release.
+  - SBOMs are generated before checksums, so they are covered by the signature
+    too. 124 Go modules catalogued per archive — directly useful for answering
+    "was this release affected?" when a transitive CVE lands.
+
 ### Removed
 
 - **BREAKING: `pkg/launch`'s abandoned agent surface is gone** — `Agent`,

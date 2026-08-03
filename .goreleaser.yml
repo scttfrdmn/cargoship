@@ -55,6 +55,43 @@ checksum:
   name_template: 'checksums.txt'
   algorithm: sha256
 
+# Provenance: who built this, not just "did it download intact".
+#
+# checksums.txt on its own proves neither. It is published by the same job, over
+# the same channel, as the artifacts it attests — so whoever can alter one can
+# alter both. The signature below binds checksums.txt to the GitHub Actions
+# workflow identity that produced it, and because every artifact's SHA-256 is
+# *in* that file, one signature covers the whole release.
+#
+# Keyless (OIDC), so there is no long-lived private key to manage, rotate or
+# leak: cosign exchanges the workflow's short-lived OIDC token for a Fulcio
+# certificate and records the signature in the Rekor transparency log. That needs
+# `id-token: write` on the release job — see .github/workflows/release.yml.
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    # cosign v3 removed --output-signature / --output-certificate. The Sigstore
+    # bundle is now the only keyless output format: one JSON file carrying the
+    # signature, the Fulcio certificate and the Rekor inclusion proof. Recipes
+    # that still pass --output-signature are written for cosign v2 and fail here.
+    signature: '${artifact}.sigstore.json'
+    output: true
+    args:
+      - sign-blob
+      - '--bundle=${signature}'
+      - '${artifact}'
+      # Non-interactive: fail rather than open a browser OIDC flow if the ambient
+      # token is missing. Without this a misconfigured job hangs until timeout.
+      - '--yes'
+
+# Dependency inventory per release. Worth having on its own terms, but
+# specifically useful here: transitive CVEs land in this project between releases
+# often enough that "which version of X did v0.20.0 ship?" is a question we
+# actually have to answer (see the govulncheck and Trivy history).
+sboms:
+  - id: archive
+    artifacts: archive
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
