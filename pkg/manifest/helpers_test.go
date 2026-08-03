@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -18,12 +19,20 @@ import (
 // the restore tests that still use them are in batch_restore_test.go and
 // direct_restore_test.go.
 
-// mockS3Client serves object bytes from an in-memory map, keyed by S3 key.
+// mockS3Client serves object bytes from an in-memory map, keyed by S3 key. It
+// records the keys it was asked for so tests can assert WHICH object was
+// fetched, not merely that the fetch succeeded (#334).
 type mockS3Client struct {
-	chunks map[string][]byte // S3 key -> compressed tar data
+	chunks    map[string][]byte // S3 key -> compressed tar data
+	mu        sync.Mutex
+	requested []string
 }
 
 func (m *mockS3Client) GetObject(ctx context.Context, input *s3.GetObjectInput, opts ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	m.mu.Lock()
+	m.requested = append(m.requested, *input.Key)
+	m.mu.Unlock()
+
 	data, ok := m.chunks[*input.Key]
 	if !ok {
 		return nil, fmt.Errorf("key not found: %s", *input.Key)
@@ -32,6 +41,21 @@ func (m *mockS3Client) GetObject(ctx context.Context, input *s3.GetObjectInput, 
 	return &s3.GetObjectOutput{
 		Body: io.NopCloser(bytes.NewReader(data)),
 	}, nil
+}
+
+// requestedKeys returns the deduplicated set of keys GetObject was called with.
+func (m *mockS3Client) requestedKeys() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	seen := make(map[string]struct{}, len(m.requested))
+	var out []string
+	for _, k := range m.requested {
+		if _, ok := seen[k]; !ok {
+			seen[k] = struct{}{}
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // createMockChunks builds a zstd-compressed tar per manifest chunk, keyed by the

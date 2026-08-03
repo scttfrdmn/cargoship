@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Restoring any prefixed chunked archive by exact path failed outright** with
+  `glacier pre-flight check failed: ... HeadObject ... 404`. Manifests record
+  `S3Key` relative to `manifest.Prefix`, and the download path resolved it
+  through `ResolveObjectKey` while the Glacier pre-flight `HeadObject` used the
+  raw value — so the pre-flight 404'd on an object that was present and
+  accessible. Both paths now resolve through one helper. Two independent reasons
+  the existing tests missed this: the unit fixture set no `Prefix` at all, and
+  the e2e quickstart restores by basename, which made the pre-flight check
+  vacuous rather than passing. `ChunkKeysForPaths` also resolved targets with
+  exact match while `BatchRestore` uses basename/suffix fallback (#228), so the
+  two disagreed about which chunks a restore would even touch. (#334)
+- **`restore` exited 0 when every requested file failed.** `BatchRestore` is
+  deliberately partially tolerant — it counts a per-file failure and continues
+  rather than aborting — so `err == nil` even on total failure, and the command
+  printed `✅ Restore complete!` above `Files failed: 2`. This is the worst
+  failure mode the tool has: restore is overwhelmingly scripted
+  (`cargoship restore … && rm -rf ./local`), so a green exit code on an empty
+  restore is what deletes someone's only copy. The exit code now agrees with the
+  numbers printed beside it, and a partial restore is an error too. (#336)
+- **A truncated archive restored as a silently-incomplete file with a success
+  exit code.** The unverified extract path used `io.Copy`, for which a tar entry
+  cut short mid-stream is indistinguishable from EOF: it returns nil having
+  written short. It now uses `io.CopyN` bounded by the manifest's declared size,
+  reports the shortfall, and removes the partial file — an absent file is a
+  correct, loud outcome; a short one that looks complete is not. This is the path
+  taken when no per-file checksum was recorded, which is precisely the case for
+  archives written before #270 — and v0.14.0/v0.15.0, which carry the #275
+  truncation bug, are exactly those. The archives most likely to be truncated
+  took the one path that could not notice. (#337)
+
 ### Removed
 
 - **The dead shard subsystem** — `ShardCoordinator`, `ShardPipeline`,

@@ -286,17 +286,28 @@ func (se *SelectiveExtractor) relativeEntryPath(entryPath string) string {
 // ChunkKeysForPaths returns the deduplicated set of S3 chunk keys that contain
 // the requested file paths. Unknown paths are silently skipped. Use this to
 // obtain the keys for a Glacier pre-flight check before calling BatchRestore.
+//
+// Keys are returned in RESOLVED form — the real object key within the bucket,
+// as downloadChunk would fetch it. Manifests record S3Key relative to the
+// manifest Prefix, so the raw value addresses no object in a prefixed archive
+// and a pre-flight HeadObject on it 404s (#334).
+//
+// Targets are resolved with the same matching BatchRestore uses, so the keys
+// returned describe exactly what a subsequent restore will download. Resolving
+// them differently is how the pre-flight check came to silently pass on
+// basename targets while the restore itself succeeded on a different set (#334).
 func (se *SelectiveExtractor) ChunkKeysForPaths(paths []string) []string {
 	seen := make(map[string]struct{})
 	var keys []string
 	for _, p := range paths {
-		entry := se.query.FindFile(p)
+		entry := se.resolveEntry(p)
 		if entry == nil {
 			continue
 		}
-		if _, ok := seen[entry.S3Key]; !ok {
-			seen[entry.S3Key] = struct{}{}
-			keys = append(keys, entry.S3Key)
+		key := se.resolveKey(entry.S3Key)
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			keys = append(keys, key)
 		}
 	}
 	return keys
@@ -322,14 +333,22 @@ func (se *SelectiveExtractor) ChunkKeysForCommit(commit string) []string {
 	return se.ChunkKeysForPaths(paths)
 }
 
-// AllChunkKeys returns the S3 keys for every chunk in the manifest. Use this
-// for a full-archive Glacier pre-flight check.
+// AllChunkKeys returns the resolved S3 object keys for every chunk in the
+// manifest. Use this for a full-archive Glacier pre-flight check. As with
+// ChunkKeysForPaths, keys are resolved rather than raw (#334).
 func (se *SelectiveExtractor) AllChunkKeys() []string {
 	keys := make([]string, 0, len(se.manifest.Chunks))
 	for _, c := range se.manifest.Chunks {
-		keys = append(keys, c.S3Key)
+		keys = append(keys, se.resolveKey(c.S3Key))
 	}
 	return keys
+}
+
+// resolveKey maps a manifest-recorded S3Key to the object key within the
+// manifest's bucket. Single place so the pre-flight and download paths cannot
+// drift apart again (#334).
+func (se *SelectiveExtractor) resolveKey(s3Key string) string {
+	return ResolveObjectKey(se.manifest.Prefix, se.manifest.Bucket, s3Key)
 }
 
 // ExtractFileByHash locates a file by its MD5 ContentHash and extracts it to
@@ -515,7 +534,7 @@ func (se *SelectiveExtractor) downloadChunk(ctx context.Context, s3Key string) (
 	// object key relative to the bucket.
 	out, err := se.s3Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(se.manifest.Bucket),
-		Key:    aws.String(ResolveObjectKey(se.manifest.Prefix, se.manifest.Bucket, s3Key)),
+		Key:    aws.String(se.resolveKey(s3Key)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("S3 GetObject %q: %w", s3Key, err)
@@ -615,9 +634,28 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 		if err != nil {
 			return restored, totalBytes, fmt.Errorf("create %s: %w", outPath, err)
 		}
-		written, err := io.Copy(f, tarReader) // nosemgrep: go.lang.security.decompression_bomb.potential-dos-via-decompression-bomb -- extracting cargoship's own archive tar stream
+		// #337: CopyN, not Copy. A tar entry cut short mid-stream is
+		// indistinguishable from EOF to io.Copy, which returns nil having
+		// written a short file — so a truncated archive restored as a
+		// silently-incomplete file with a success exit code. CopyN is bounded by
+		// the declared size and returns io.EOF when the entry ends early.
+		//
+		// This is the path taken when no per-file checksum was recorded, which
+		// is precisely the case for archives written before #270 — and v0.14.0 /
+		// v0.15.0, which carry the #275 truncation bug, are exactly those. The
+		// archives most likely to be truncated took the one path that could not
+		// notice.
+		written, err := io.CopyN(f, tarReader, hdr.Size) // nosemgrep: go.lang.security.decompression_bomb.potential-dos-via-decompression-bomb -- bounded by the manifest's declared size
 		_ = f.Close()
 		if err != nil {
+			// Remove the partial file. An absent file is a correct, loud
+			// outcome; a short one that looks complete is not.
+			_ = os.Remove(outPath)
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				return restored, totalBytes, fmt.Errorf(
+					"truncated archive: %s declares %d bytes but the stored chunk ended after %d",
+					entry.Path, hdr.Size, written)
+			}
 			return restored, totalBytes, fmt.Errorf("write %s: %w", outPath, err)
 		}
 		restoreModTime(outPath, entry.ModTime)

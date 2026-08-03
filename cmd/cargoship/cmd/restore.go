@@ -252,13 +252,26 @@ Examples:
 				return fmt.Errorf("restore failed: %w", err)
 			}
 
+			// #336: BatchRestore is deliberately partially tolerant — it counts a
+			// failure and carries on rather than aborting, so err == nil even
+			// when nothing was restored. Reporting that as success is the worst
+			// failure mode this tool has: restore is overwhelmingly scripted
+			// (`cargoship restore ... && rm -rf ./local`), so a green exit code
+			// on an empty restore is what deletes someone's only copy. The exit
+			// code has to agree with the numbers printed beside it.
 			if jsonOutput {
 				fmt.Printf(`{"restored":%d,"failed":%d,"bytes":%d,"chunks_downloaded":%d,"retrieval_cost_usd":%.4f}`+"\n",
 					stats.Restored, stats.Failed, stats.Bytes, stats.ChunksDownloaded, report.EstimatedCostUSD)
-				return nil
+				return restoreOutcomeError(stats)
 			}
 
-			fmt.Printf("✅ Restore complete!\n")
+			// No success banner when nothing came back — a total failure should
+			// not read as a completed restore.
+			if stats.Restored > 0 {
+				fmt.Printf("✅ Restore complete!\n")
+			} else {
+				fmt.Printf("❌ Restore failed: no files were restored\n")
+			}
 			fmt.Printf("   Files restored:    %d\n", stats.Restored)
 			if stats.Failed > 0 {
 				fmt.Printf("   Files failed:      %d\n", stats.Failed)
@@ -270,7 +283,7 @@ Examples:
 			}
 			fmt.Printf("   Output directory:  %s\n", outputDir)
 
-			return nil
+			return restoreOutcomeError(stats)
 		},
 	}
 
@@ -291,4 +304,19 @@ Examples:
 
 	cmd.AddCommand(newRestoreJobsCmd())
 	return cmd
+}
+
+// restoreOutcomeError converts restore statistics into the command's error
+// result, so the exit code reflects what actually happened. BatchRestore counts
+// per-file failures and continues rather than returning an error, so without
+// this a restore that produced nothing exits 0. (#336)
+func restoreOutcomeError(stats *manifest.RestoreStats) error {
+	if stats.Failed == 0 {
+		return nil
+	}
+	if stats.Restored == 0 {
+		return fmt.Errorf("restore failed: 0 of %d file(s) restored", stats.Failed)
+	}
+	return fmt.Errorf("restore incomplete: %d of %d file(s) failed",
+		stats.Failed, stats.Restored+stats.Failed)
 }
