@@ -45,12 +45,20 @@ updates:
         update-types:
           - "minor"
           - "patch"
-      security:
-        patterns:
-          - "*"
-        dependency-type: "all"
-        update-types:
-          - "security"
+      # There was a third group here, `security:`, with `dependency-type: "all"`
+      # and `update-types: ["security"]`. Both values are invalid for a group —
+      # `dependency-type` accepts only production/development, and `update-types`
+      # only major/minor/patch — and **Dependabot rejects the entire file on a
+      # parse error**, so no configured update in any ecosystem here had ever run
+      # (#366). It was introduced with the file in July 2025 and stayed invisible
+      # because Dependabot only re-validates when the file changes; the docker
+      # `directory:` edit in #358 is what finally triggered a re-parse.
+      #
+      # It is not fixable, only removable: `security` is not an update-type.
+      # Security updates are a separate Dependabot mechanism that ignores
+      # `groups:` entirely and always groups per advisory — which is why security
+      # PRs kept arriving from this repo while version updates never did, and why
+      # the group was a no-op in intent as well as in syntax.
 
   # GitHub Actions workflow dependency updates
   - package-ecosystem: "github-actions"

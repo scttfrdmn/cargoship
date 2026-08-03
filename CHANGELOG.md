@@ -52,6 +52,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     so it watched nothing; it now points at `/docker`. That is part of why Alpine
     3.18 survived, and it is what makes digest pinning sustainable rather than
     freezing.
+- **The Semgrep SAST job ran a floating container image; it is now
+  digest-pinned.** From the external security re-review of v0.21.0 (CSH-022,
+  Low). `security.yml` declared `image: semgrep/semgrep` with no tag at all —
+  i.e. `:latest` — so whatever the registry served that morning ran in a job with
+  the repository checked out. Every *action* in this repo is already SHA-pinned;
+  this was the one image the runner pulled on our behalf, and therefore the one
+  supply-chain input that pinning did not cover. (#359)
+  - Pinned to the **multi-arch index digest** so it resolves on amd64 and arm64
+    runners, with the version in a trailing comment, matching the convention used
+    for actions. The comment is documentation and not a constraint: verified that
+    `semgrep/semgrep:1.100.0@sha256:bdf7013b…` runs **1.171.0**, because Docker
+    resolves the digest and ignores the tag. A `:tag@sha256:` form would have
+    implied the tag was enforced when it is not.
+  - **This pins the engine, not the ruleset.** `--config=auto` fetches rules from
+    the Semgrep registry at scan time, so findings can still change between runs
+    without the pin moving. Worth stating rather than claiming a reproducibility
+    the change does not deliver.
+  - No behaviour change: the pinned digest is what `:latest` resolved to when it
+    was taken, and the engine scans cleanly from it.
+
+- **Dependabot's config had been invalid since July 2025, so no configured
+  dependency update had ever run.** An invalid `security:` group (`dependency-type:
+  "all"`, `update-types: ["security"]` — neither is legal for a group) made
+  Dependabot **reject the entire file**, and it rejects all of it or none of it.
+  None of the three declared ecosystems (`gomod`, `github-actions`, `docker`) ever
+  produced a version-update PR. (#366)
+  - Found while fixing #358: changing the docker `directory:` caused Dependabot to
+    re-parse the file for the first time in a year. It only validates on change, so
+    a config that had never worked was indistinguishable from one that did.
+  - Security PRs kept arriving throughout, which is what disguised it — those come
+    from a **separate mechanism** that works with an unparseable config and ignores
+    `groups:` entirely. Every Dependabot PR this repo has received was a security
+    update, in ecosystems and directories the config does not even declare. **No
+    `github-actions` PR has ever existed**, which is consistent with the Node 20
+    action debt in #305/#307 having to be cleared by hand and with the floating
+    `semgrep/semgrep` image never being flagged.
+  - Removed rather than corrected: `security` is not an update-type, so the group
+    was a no-op in intent as well as in syntax.
 
 ## [0.21.0] - 2026-08-03
 
