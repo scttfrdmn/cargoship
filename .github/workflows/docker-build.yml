@@ -83,7 +83,7 @@ jobs:
           # "transferring context" line only counts what a COPY actually asks
           # for, and `docker image inspect --format {{.Size}}` reports compressed
           # bytes on a containerd-backed store, so a size delta reads as 0 MB.
-          printf 'FROM alpine:3.18\nCOPY . /ctx/\n' > /tmp/ctx-probe.Dockerfile
+          printf 'FROM alpine:3.24\nCOPY . /ctx/\n' > /tmp/ctx-probe.Dockerfile
           docker build -q -f /tmp/ctx-probe.Dockerfile -t cargoship:ctx-probe . >/dev/null
           kb=$(docker run --rm --entrypoint du cargoship:ctx-probe -sk /ctx | cut -f1)
           mb=$(( kb / 1024 ))
@@ -131,3 +131,73 @@ jobs:
 
       - name: Compose file is valid
         run: docker compose -f docker/docker-compose.astrapi.yml config >/dev/null
+
+      # #348 audited docker/ because that is where the images were believed to
+      # live. Three more sat at the repo root — Dockerfile.synology and two NAS
+      # compose files — in no CI lane at all, still carrying every defect #348
+      # removed, and the external re-review found them (#358).
+      #
+      # The path filters above are the reason that was invisible: a container
+      # artifact outside docker/ triggers nothing. This step enumerates by pattern
+      # instead of by expected directory, so a new one outside docker/ fails here
+      # rather than rotting for a release or two.
+      - name: No container artifacts outside docker/
+        run: |
+          set -euo pipefail
+          stray=$(git ls-files \
+            | grep -iE '(^|/)(Dockerfile[^/]*|docker-compose[^/]*\.ya?ml|compose\.ya?ml)$' \
+            | grep -v '^docker/' || true)
+          if [ -n "$stray" ]; then
+            echo "::error::container artifacts outside docker/ are in no build lane (#358):"
+            echo "$stray"
+            exit 1
+          fi
+          echo "No stray container artifacts."
+
+      # The images were never scanned. security.yml runs Trivy in `fs` and
+      # `config` mode against the source tree, which cannot see the OS packages
+      # inside a built image — which is exactly how an end-of-support Alpine 3.18
+      # base sat in three runtimes unnoticed until an external review (#358).
+      #
+      # TRIVY_EXIT_ON_EOL is the part that actually catches that, and it is not
+      # redundant with the severity gate. Verified: `alpine:3.18` scans with ZERO
+      # HIGH/CRITICAL findings even with --ignore-unfixed off, so a vulnerability
+      # scan alone would have passed the EOL base happily — which matches the
+      # review finding no specific exploitable CVE. What makes an unsupported base
+      # dangerous is that future CVEs never get patched, and that is a support-date
+      # fact, not a CVE-count fact. `alpine:3.24` exits 0, `alpine:3.18` exits 1.
+      #
+      # Bases are digest-pinned, so a new CVE in the base surfaces here as a
+      # failure rather than silently arriving on the next rebuild.
+      - name: Scan built images for OS package vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: cargoship:ghost-ship
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+        env:
+          TRIVY_EXIT_ON_EOL: 1
+
+      - name: Scan astrapi image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: cargoship:astrapi
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+        env:
+          TRIVY_EXIT_ON_EOL: 1
+
+      - name: Scan qnap image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: cargoship:qnap
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+        env:
+          TRIVY_EXIT_ON_EOL: 1

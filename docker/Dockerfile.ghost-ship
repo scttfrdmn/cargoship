@@ -5,7 +5,7 @@
 # inbound connections, so there is nothing to EXPOSE and no HTTP endpoint to
 # health-check. Status goes to the container log (see runStatusReporter) — read
 # it with `docker logs`.
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
 
 # Install dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -29,7 +29,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ghost-ship ./cmd/
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o cargoship-test ./cmd/cargoship-test
 
 # Final stage
-FROM alpine:latest
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
 # Install required packages. ca-certificates is needed to reach S3 over TLS;
 # nothing else is. curl was here only for the removed healthcheck, and
