@@ -32,7 +32,8 @@ docker save cargoship:nas-amd64 > /tmp/cargoship-nas-amd64.tar
 ```bash
 ssh user@nas.local "mkdir -p ~/cargoship"
 scp /tmp/cargoship-nas-amd64.tar user@nas.local:~/cargoship/
-scp docker/nas-config.yaml user@nas.local:~/cargoship/
+# Start from the shipped template and edit its watch paths, rules and bucket.
+scp configs/astrapi/ghost-ship-production.yaml user@nas.local:~/cargoship/nas-config.yaml
 ```
 
 ### 3. Load the image on the NAS
@@ -51,10 +52,16 @@ ssh user@nas.local "/share/ZFS530_DATA/.qpkg/container-station/bin/docker run -d
   -e AWS_DEFAULT_REGION=us-west-2 \
   -v /volume1/research-data:/volume1/research-data:ro \
   -v ~/cargoship/nas-config.yaml:/etc/cargoship/ghost_ship.yaml:ro \
-  -v ~/.aws:/root/.aws:ro \
+  -v ~/.aws:/home/cargoship/.aws:ro \
   --restart unless-stopped \
   cargoship:nas-amd64"
 ```
+
+::: tip Mount credentials at the container user's home, not `/root`
+The image runs as uid 1000, whose home is `/home/cargoship`. `/root` is mode 0700
+owned by root, so a `-v ~/.aws:/root/.aws:ro` mount is present but unreadable and
+the SDK reports no credentials.
+:::
 
 ### 5. Verify
 
@@ -71,6 +78,8 @@ ssh user@nas.local "/share/ZFS530_DATA/.qpkg/container-station/bin/docker logs -
 | S3 301 `PermanentRedirect` | Region mismatch — set `AWS_DEFAULT_REGION` to the bucket's region. |
 | `docker: command not found` | Use the full Container Station path shown above. |
 | Permission denied on `.aws` | Fix credential file perms: `chmod 600 ~/.aws/credentials`. |
+| Credentials mounted but not found | Mounted at `/root/.aws`? The container is uid 1000 — use `/home/cargoship/.aws`. |
+| Looking for a metrics or health endpoint | There isn't one. A ghost ship binds no port; `docker logs` is the status channel. |
 | Volume mount failures | Ensure the host directories exist and are accessible. |
 
 ## Security notes
@@ -80,6 +89,5 @@ ssh user@nas.local "/share/ZFS530_DATA/.qpkg/container-station/bin/docker logs -
 
 ## See also
 
-- [ghost-ship](/enterprise/ghost-ship).
 - [ghost-ship](/enterprise/ghost-ship).
 - [Deployment guide](/enterprise/deployment).

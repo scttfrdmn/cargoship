@@ -1,0 +1,28 @@
+# Build context for the images in docker/.
+#
+# Allowlist, not deny-list. Without this file the context is 667 MB — .git alone
+# is 304 MB, docs/node_modules 98 MB, and bin/ ships a stale 98 MB binary — all
+# of it transferred to the daemon on every build and none of it needed to compile
+# ghost-ship or cargoship-test.
+#
+# If a new Dockerfile needs another path, add it here. The docker-build CI lane
+# will fail loudly rather than silently building against a truncated tree.
+*
+
+# Go module definition — the first COPY in every Dockerfile
+!go.mod
+!go.sum
+
+# Source. cmd, internal, and pkg are the complete dependency closure of both
+# binaries (`go list -deps ./cmd/ghost-ship ./cmd/cargoship-test`).
+!cmd/
+!internal/
+!pkg/
+
+# Config templates copied into the runtime image
+!configs/
+
+# Never needed at build time, and re-excluded here so a future `!pkg/**` style
+# widening cannot pull them in.
+**/*_test.go
+**/testdata/

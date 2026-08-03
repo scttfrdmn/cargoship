@@ -1,6 +1,9 @@
 # CargoShip Ghost Ship for astrapi.local QNAP NAS
 # Optimized for autonomous archival operations
-FROM golang:1.23-alpine AS builder
+#
+# A ghost ship archives autonomously and binds no port, so this image exposes
+# nothing and has no HTTP healthcheck. Status goes to the container log.
+FROM golang:1.26-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -34,13 +37,16 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 # Final runtime image
 FROM alpine:3.18
 
-# Install runtime dependencies for astrapi operations
+# Install runtime dependencies for astrapi operations.
+#
+# aws-cli and bash are used by astrapi-startup.sh; the rest are for interactive
+# network diagnosis on the NAS, which is what this image is for. curl and
+# inotify-tools are gone with the features that needed them — the healthcheck
+# (#348) and the FileWatcher deleted in #347.
 RUN apk add --no-cache \
     ca-certificates \
     tzdata \
-    curl \
     aws-cli \
-    inotify-tools \
     bash \
     htop \
     iftop \
@@ -119,21 +125,19 @@ RUN echo '#!/bin/bash' > /usr/local/bin/astrapi-startup.sh && \
 
 RUN chmod +x /usr/local/bin/astrapi-startup.sh
 
-# Set environment variables optimized for astrapi
+# Set environment variables optimized for astrapi.
+#
+# CARGOSHIP_CONFIG_FILE is read by astrapi-startup.sh above, not by ghost-ship
+# itself, which takes flags only. CARGOSHIP_METRICS_PORT and
+# CARGOSHIP_NETWORK_OPTIMIZE are gone: no Go code in the repo reads either.
 ENV GOMAXPROCS=0 \
     GOGC=100 \
-    CARGOSHIP_LOG_LEVEL=info \
     CARGOSHIP_CONFIG_FILE=/etc/cargoship/ghost_ship.yaml \
-    CARGOSHIP_METRICS_PORT=9090 \
-    CARGOSHIP_NETWORK_OPTIMIZE=true \
     AWS_DEFAULT_REGION=us-east-1
 
-# Expose metrics port
-EXPOSE 9090
-
-# Health check optimized for astrapi
-HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
-    CMD curl -f http://localhost:9090/health || exit 1
+# No EXPOSE and no HEALTHCHECK: ghost-ship binds no port and serves no HTTP, so
+# a curl-based healthcheck could only ever fail and mark this container
+# unhealthy. Status goes to the container log — `docker logs`. (#348)
 
 # Switch to non-root user
 USER cargoship

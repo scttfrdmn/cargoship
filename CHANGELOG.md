@@ -43,6 +43,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Docker deployment images build again, and CI now proves it.** All three
+  images in `docker/` were unbuildable and none of them had ever been built by
+  CI, which is why the rot went unnoticed. (#348)
+  - **Every Dockerfile pinned `golang:1.23-alpine` while `go.mod` requires
+    `go >= 1.26.0`**, so all three failed at `go build` with
+    `running go 1.23.12; GOTOOLCHAIN=local`. A routine toolchain bump had
+    silently broken every deployment artifact.
+  - **A metrics endpoint that has never existed.** All three Dockerfiles carried
+    `EXPOSE 9090` and `HEALTHCHECK curl -f http://localhost:9090/health`, and the
+    compose file a `:8080/health` probe. `ghost-ship` binds no port and serves no
+    HTTP — so the healthcheck could only ever fail, marking the container
+    unhealthy after `retries` and sending anyone debugging it hunting for a
+    regression in an endpoint that was never implemented. `curl` is dropped from
+    the runtime images with it, as is `inotify-tools` — that was for the
+    `FileWatcher` deleted in #347.
+  - **`Dockerfile.ghost-ship` could not start at all**: it copied the binary into
+    `/root`, which is mode 0700 owned by root, then switched to `USER cargoship`
+    (uid 1000). `WORKDIR` moves to `/opt/cargoship`, which the image now chowns.
+  - **The compose file discarded every flag it passed.** Its `command:` re-named
+    the binary as the first argument, and Go's `flag` package stops parsing at
+    the first non-flag argument — so `-config` and `-log-level` were silently
+    ignored and the ship sailed on built-in defaults. It also mounted AWS
+    credentials at `/root/.aws`, unreadable by uid 1000, and named
+    `/etc/cargoship/config.yaml` where the volume mounts `ghost_ship.yaml`.
+  - **Seven `CARGOSHIP_*` environment variables read by no code in the repo**
+    (`METRICS_ENABLED`, `NETWORK_OPTIMIZE`, `BBR`, `CUBIC`, `PREDICTIVE_MODE`,
+    `MAX_CONNECTIONS`, `BUFFER_SIZE`) are gone from the compose file; those
+    settings belong under `optimization_config` in the mounted YAML. The
+    `prometheus` and `grafana` services go too — they scraped the phantom
+    endpoint and bind-mounted a `prometheus.yml` and `grafana-dashboards/` that
+    are not in this repo.
+  - **`docker/development/` is deleted.** Its compose stack built
+    `Dockerfile.test-data-generator` and `Dockerfile.integration-tests`, neither
+    of which exists; mounted four missing paths; and its Prometheus config still
+    scraped `localstack:4566` after that service was renamed. Integration tests
+    run against the in-process Substrate emulator and need no containers.
+    `scripts/test-suite.sh` and `scripts/validate-setup.sh` go with it — the
+    latter already failed, requiring `pkg/launch/agent.go`, deleted in #347.
+  - **`make docker-build` ran `docker build -t cargoship:latest .`** against a
+    root `Dockerfile` that does not exist. It now builds all three real images,
+    and `docker-scan` scans them.
+  - **New `.dockerignore`**, an allowlist. The build context was **667 MB** —
+    `.git` 304 MB, `docs/node_modules` 98 MB, a stale 98 MB binary in `bin/` —
+    all transferred to the daemon on every build. It is now 4 MB of Go source.
+  - **The QNAP guide told you to mount credentials where the container cannot
+    read them.** `docs/enterprise/qnap.md` used `-v ~/.aws:/root/.aws:ro`, but the
+    image runs as uid 1000 and `/root` is mode 0700 owned by root — verified
+    directly: uid 1000 reads `/home/cargoship/.aws/credentials` and cannot read
+    `/root/.aws/credentials`. The mount is present and silently unreadable, so the
+    SDK just reports no credentials. It also told you to `scp
+    docker/nas-config.yaml`, which does not exist; it now points at the shipped
+    `configs/astrapi/ghost-ship-production.yaml` template. Two troubleshooting
+    rows added, including one for the metrics endpoint people go looking for.
+  - **New blocking `docker-build` workflow.** It builds all three images, then
+    *runs* each one: a build proves the Go compiles, but only starting the
+    container catches the `/root` permission and config-path defects above. Each
+    image must reach the archival loop and shut down gracefully on `SIGTERM`, and
+    the job fails if any image reintroduces a `HEALTHCHECK` or an `EXPOSE`, or if
+    the build context exceeds 64 MB.
 - **The integration harness no longer shells out with unquoted paths**, so a
   `TMPDIR` containing a space (or any shell metacharacter) runs the suite instead
   of failing 13 tests in `cmd/cargoship/cmd`. `CreateArchive`, `ExtractArchive`

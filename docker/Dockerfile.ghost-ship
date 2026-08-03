@@ -1,5 +1,11 @@
 # CargoShip Ghost Ship Dockerfile
-FROM golang:1.23-alpine AS builder
+#
+# A ghost ship archives autonomously: it polls its watch paths, matches files
+# against archival rules, and uploads to S3. It binds no port and accepts no
+# inbound connections, so there is nothing to EXPOSE and no HTTP endpoint to
+# health-check. Status goes to the container log (see runStatusReporter) — read
+# it with `docker logs`.
+FROM golang:1.26-alpine AS builder
 
 # Install dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -25,22 +31,21 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o cargoship-test ./
 # Final stage
 FROM alpine:latest
 
-# Install required packages
-RUN apk --no-cache add \
-    ca-certificates \
-    curl \
-    aws-cli \
-    inotify-tools \
-    bash
+# Install required packages. ca-certificates is needed to reach S3 over TLS;
+# nothing else is. curl was here only for the removed healthcheck, and
+# inotify-tools for the FileWatcher deleted in #347 — a ghost ship polls.
+RUN apk --no-cache add ca-certificates
 
-# Create app directory
-WORKDIR /root/
+# Create app directory. Not /root — the container runs as USER cargoship below,
+# and /root is mode 0700 owned by root, so the binary would be unreachable.
+WORKDIR /opt/cargoship
 
 # Copy binaries from builder stage
 COPY --from=builder /app/ghost-ship .
 COPY --from=builder /app/cargoship-test /usr/local/bin/
 
-# Copy configuration templates
+# Copy configuration templates. These land under /etc/cargoship/astrapi/; mount
+# your own config over the path named in CMD.
 COPY --from=builder /app/configs /etc/cargoship/
 
 # Create directories for logs, data, and temporary files
@@ -50,17 +55,13 @@ RUN mkdir -p \
     /tmp/cargoship \
     /data/public
 
-# Expose metrics port
-EXPOSE 9090
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:9090/health || exit 1
-
-# Set default environment variables
-ENV CARGOSHIP_LOG_LEVEL=info
-ENV CARGOSHIP_CONFIG_FILE=/etc/cargoship/ghost_ship.yaml
-ENV CARGOSHIP_METRICS_PORT=9090
+# No EXPOSE and no HEALTHCHECK: ghost-ship serves no HTTP. A curl-based
+# healthcheck could only ever fail, which after `retries` marks the container
+# unhealthy and sends anyone debugging it looking for a regression in an endpoint
+# that never existed (#348).
+#
+# Configuration is passed as flags in CMD below; ghost-ship reads no environment
+# variables of its own. AWS_DEFAULT_REGION is consumed by the AWS SDK.
 ENV AWS_DEFAULT_REGION=us-west-2
 
 # Create non-root user for security
@@ -68,10 +69,13 @@ RUN addgroup -g 1000 cargoship && \
     adduser -u 1000 -G cargoship -s /bin/sh -D cargoship
 
 # Set ownership
-RUN chown -R cargoship:cargoship /var/log/cargoship /var/lib/cargoship /tmp/cargoship
+RUN chown -R cargoship:cargoship \
+    /var/log/cargoship /var/lib/cargoship /tmp/cargoship /opt/cargoship
 
 # Switch to non-root user
 USER cargoship
 
-# Run the ghost ship
+# Run the ghost ship. No config ships at this path — mount one over it:
+#   docker run -v ./my-ghost-ship.yaml:/etc/cargoship/ghost_ship.yaml:ro ...
+# See configs/astrapi/ghost-ship-production.yaml for a starting point.
 CMD ["./ghost-ship", "--config", "/etc/cargoship/ghost_ship.yaml", "--log-level", "info"]

@@ -222,13 +222,26 @@ clean: ## Clean build artifacts
 	@echo "✅ Clean complete"
 
 # Container targets
-docker-build: ## Build Docker image
-	@echo "🐳 Building Docker image..."
-	docker build -t cargoship:latest .
+#
+# There is no root Dockerfile — every image lives in docker/ and is a ghost ship
+# deployment (autonomous NAS archival). This target used to run
+# `docker build -t cargoship:latest .`, which could never have worked.
+DOCKER_IMAGES := ghost-ship astrapi qnap
 
-docker-scan: ## Scan Docker image for vulnerabilities
-	@echo "🔒 Scanning Docker image..."
-	trivy image cargoship:latest
+docker-build: ## Build all deployment images in docker/
+	@echo "🐳 Building deployment images..."
+	@for img in $(DOCKER_IMAGES); do \
+		echo "  → cargoship:$$img"; \
+		docker build -f docker/Dockerfile.$$img -t cargoship:$$img . || exit 1; \
+	done
+	@echo "✅ Images built: $(DOCKER_IMAGES)"
+
+docker-scan: docker-build ## Scan deployment images for vulnerabilities
+	@echo "🔒 Scanning deployment images..."
+	@for img in $(DOCKER_IMAGES); do \
+		echo "  → cargoship:$$img"; \
+		trivy image --exit-code 1 --severity HIGH,CRITICAL cargoship:$$img || exit 1; \
+	done
 
 # Deployment targets
 deploy-check: security test lint ## Pre-deployment validation

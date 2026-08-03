@@ -1,20 +1,31 @@
-# Docker Compose for CargoShip Astrapi Test Environment
-# Optimized for high-performance S3 testing on astrapi NAS
-
-version: '3.8'
+# Docker Compose for CargoShip on the astrapi QNAP NAS
+#
+# One service: a ghost ship. It polls its watch paths, archives what matches its
+# rules, and uploads to S3. It binds no port and accepts no inbound connections,
+# so there is nothing to publish, nothing to health-check over HTTP, and nothing
+# for Prometheus to scrape. Status goes to the container log:
+#
+#   docker logs -f cargoship-astrapi-ghost-ship
 
 services:
-  cargoship-ghost-ship: # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service -- deployment template; service writes to mounted volumes (archives/TSDB/dashboards), read-only root not applicable
+  cargoship-ghost-ship: # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service -- deployment template; the ghost ship writes archives to a mounted volume, read-only root not applicable
     build:
       context: ..
       dockerfile: docker/Dockerfile.astrapi
     image: cargoship:astrapi-latest
     container_name: cargoship-astrapi-ghost-ship
-    command: ["/usr/local/bin/ghost-ship", "-config", "/etc/cargoship/config.yaml", "-log-level", "info"]
-    
-    # Network configuration for maximum performance
+
+    # Flags only — the image entrypoint is astrapi-startup.sh, which execs
+    # ghost-ship with whatever is here appended. Do NOT name the binary again:
+    # Go's flag package stops parsing at the first non-flag argument, so a
+    # leading "/usr/local/bin/ghost-ship" would silently discard every flag
+    # after it and the ship would sail with its built-in defaults.
+    command: ["--config", "/etc/cargoship/ghost_ship.yaml", "--log-level", "info"]
+
+    # Host networking for maximum upload throughput. Safe here precisely because
+    # the ghost ship listens on nothing.
     network_mode: host
-    
+
     # Resource limits optimized for astrapi
     deploy:
       resources:
@@ -24,135 +35,58 @@ services:
         reservations:
           memory: 4G
           cpus: '2'
-    
-    # Environment variables
+
+    # Environment variables.
+    #
+    # ghost-ship reads no CARGOSHIP_* variables — it takes flags, and its tuning
+    # comes from the mounted config file. The CARGOSHIP_METRICS_ENABLED /
+    # NETWORK_OPTIMIZE / BBR / CUBIC / PREDICTIVE_MODE / MAX_CONNECTIONS /
+    # BUFFER_SIZE settings that used to be listed here were read by no code in
+    # the repo; set them under optimization_config in astrapi-config.yaml instead.
     environment:
       - GOMAXPROCS=4
       - GOGC=100
-      - CARGOSHIP_LOG_LEVEL=info
-      - CARGOSHIP_METRICS_ENABLED=true
-      - CARGOSHIP_NETWORK_OPTIMIZE=true
-      - CARGOSHIP_BBR_ENABLED=true
-      - CARGOSHIP_CUBIC_ENABLED=true
-      - CARGOSHIP_PREDICTIVE_MODE=true
-      - CARGOSHIP_MAX_CONNECTIONS=200
-      - CARGOSHIP_BUFFER_SIZE=134217728
       - AWS_PROFILE=aws
       - AWS_DEFAULT_REGION=us-east-1
-    
+
     # Volume mounts for genomics data access and AWS credentials
     volumes:
       # Genomics training data directory
       - /volume1/genomics_training:/volume1/genomics_training:ro
-      
-      # AWS credentials (adjust path for astrapi)
-      - /volume1/homes/admin/.aws:/root/.aws:ro
-      
-      # Ghost ship configuration
+
+      # AWS credentials. Mounted at the *container user's* home, not /root: the
+      # image runs as uid 1000, whose HOME is /home/cargoship, and /root is mode
+      # 0700 owned by root — the SDK could never have read a /root/.aws mount.
+      - /volume1/homes/admin/.aws:/home/cargoship/.aws:ro
+
+      # Ghost ship configuration. The container path must match --config above.
       - ./astrapi-config.yaml:/etc/cargoship/ghost_ship.yaml:ro
-    
-    # Port mappings (when not using host networking)
-    # ports:
-    #   - "8080:8080"  # Launch API
-    #   - "9090:9090"  # Metrics
-    
-    # Health check
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    
+
+      # Somewhere to stage archives before upload
+      - /volume1/docker/cargoship/results:/results:rw
+
+    # No ports and no healthcheck: ghost-ship binds nothing, so a curl-based
+    # healthcheck could only ever fail and mark this container unhealthy. The
+    # commented-out "Launch API" on :8080 was removed in #340; the :9090 metrics
+    # endpoint never existed at all (#348). Likewise no prometheus or grafana
+    # service — they scraped that phantom endpoint and mounted a prometheus.yml
+    # and grafana-dashboards/ that are not in this repo.
+
     # Restart policy
     restart: unless-stopped
-    
+
     # Security settings
     security_opt:
       - no-new-privileges:true
-    
-    # User namespace (if not running as root)
-    # user: "1000:1000"
-    
+
     # Logging configuration
     logging:
       driver: "json-file"
       options:
         max-size: "100m"
         max-file: "3"
-    
+
     # Labels for container management
     labels:
       - "com.cargoship.service=ghost-ship"
       - "com.cargoship.environment=astrapi-production"
-      - "com.cargoship.version=1.0.0"
-
-  # Optional: Prometheus for metrics collection
-  prometheus: # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service -- deployment template; service writes to mounted volumes (archives/TSDB/dashboards), read-only root not applicable
-    image: prom/prometheus:latest
-    container_name: cargoship-prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--web.enable-lifecycle'
-    ports:
-      - "9091:9090"
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - /volume1/docker/cargoship/prometheus:/prometheus:rw
-    security_opt:
-      - no-new-privileges:true
-    restart: unless-stopped
-    profiles:
-      - monitoring
-
-  # Optional: Grafana for visualization
-  grafana: # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service -- deployment template; service writes to mounted volumes (archives/TSDB/dashboards), read-only root not applicable
-    image: grafana/grafana:latest
-    container_name: cargoship-grafana
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=cargoship
-    ports:
-      - "3000:3000"
-    volumes:
-      - /volume1/docker/cargoship/grafana:/var/lib/grafana:rw
-      - ./grafana-dashboards:/etc/grafana/provisioning/dashboards:ro
-    security_opt:
-      - no-new-privileges:true
-    restart: unless-stopped
-    profiles:
-      - monitoring
-
-# Networks (if not using host networking)
-networks:
-  cargoship:
-    driver: bridge
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.20.0.0/16
-
-# Volumes for persistent data
-volumes:
-  cargoship-results:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /volume1/docker/cargoship/results
-  
-  cargoship-prometheus:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /volume1/docker/cargoship/prometheus
-  
-  cargoship-grafana:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /volume1/docker/cargoship/grafana
