@@ -23,6 +23,11 @@
 # below the 56% floor. Stale entries would not have failed --check (it WARNs on
 # a baseline package it can't measure) but they would have hidden that fact.
 #
+# #347 then raised pkg/launch 12 -> 29: deleting the dead Agent/LocalArchiver/
+# FileWatcher/AstrapiLauncher surface removed 57 unreachable funcs, and the
+# GhostShip code that remains — the only part cmd/ghost-ship reaches — got its
+# first tests. Autonomous archival is deferred rather than retired, so the
+# surviving surface is the one worth covering.
 # #340 also raised pkg/launch 5 -> 12: deleting the outbound controller client
 # removed the package's single largest block of untestable code (a WebSocket dial
 # no unit test could exercise), and Start() became testable once it no longer
@@ -52,7 +57,7 @@ pkg/errors 99
 pkg/extraction 85
 pkg/gpg 88
 pkg/ioutils 53
-pkg/launch 12
+pkg/launch 29
 pkg/manifest 75
 pkg/migration 0
 pkg/monitoring 39

@@ -36,7 +36,6 @@ type GhostShip struct {
 	logger *slog.Logger
 
 	// Core components
-	watcher     *FileWatcher
 	transporter interface{}
 
 	// State management
@@ -211,13 +210,10 @@ func NewGhostShip(config *GhostShipConfig, logger *slog.Logger) (*GhostShip, err
 		},
 	}
 
-	// Initialize file watcher
-	watcher, err := NewFileWatcher(config.WatchPaths, logger)
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("failed to create file watcher: %w", err)
-	}
-	ghost.watcher = watcher
+	// A ghost ship discovers files by polling on ScanInterval (see
+	// performFileScan), not by subscribing to filesystem events. It previously
+	// also constructed an fsnotify watcher here and never read it again, holding
+	// an OS handle for the process lifetime for nothing (#347).
 
 	// Initialize S3 transporter with optimization
 	transporter, err := ghost.createOptimizedTransporter(ctx)
@@ -316,20 +312,6 @@ func (gs *GhostShip) GetStatus() GhostShipStatus {
 	status.WatchedPaths = len(gs.config.WatchPaths)
 
 	return status
-}
-
-// GetJobs returns all current archival jobs
-func (gs *GhostShip) GetJobs() map[string]*ArchivalJob {
-	gs.mu.RLock()
-	defer gs.mu.RUnlock()
-
-	jobs := make(map[string]*ArchivalJob)
-	for id, job := range gs.activeJobs {
-		jobCopy := *job
-		jobs[id] = &jobCopy
-	}
-
-	return jobs
 }
 
 // runFileScanner continuously scans for files matching archival rules
