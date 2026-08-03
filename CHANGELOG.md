@@ -52,6 +52,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     so it watched nothing; it now points at `/docker`. That is part of why Alpine
     3.18 survived, and it is what makes digest pinning sustainable rather than
     freezing.
+- **The Semgrep SAST job ran a floating container image; it is now
+  digest-pinned.** From the external security re-review of v0.21.0 (CSH-022,
+  Low). `security.yml` declared `image: semgrep/semgrep` with no tag at all —
+  i.e. `:latest` — so whatever the registry served that morning ran in a job with
+  the repository checked out. Every *action* in this repo is already SHA-pinned;
+  this was the one image the runner pulled on our behalf, and therefore the one
+  supply-chain input that pinning did not cover. (#359)
+  - Pinned to the **multi-arch index digest** so it resolves on amd64 and arm64
+    runners, with the version in a trailing comment, matching the convention used
+    for actions. The comment is documentation and not a constraint: verified that
+    `semgrep/semgrep:1.100.0@sha256:bdf7013b…` runs **1.171.0**, because Docker
+    resolves the digest and ignores the tag. A `:tag@sha256:` form would have
+    implied the tag was enforced when it is not.
+  - **This pins the engine, not the ruleset.** `--config=auto` fetches rules from
+    the Semgrep registry at scan time, so findings can still change between runs
+    without the pin moving. Worth stating rather than claiming a reproducibility
+    the change does not deliver.
+  - No behaviour change: the pinned digest is what `:latest` resolved to when it
+    was taken, and the engine scans cleanly from it.
 
 ## [0.21.0] - 2026-08-03
 

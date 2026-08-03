@@ -121,8 +121,26 @@ jobs:
   semgrep:
     name: Semgrep SAST
     runs-on: ubuntu-latest
+    # Digest-pinned, like every action in this repo (#359). This was
+    # `semgrep/semgrep` with no tag at all, i.e. floating `:latest`: whatever the
+    # registry served that morning got to run in the job with the repository
+    # checked out. That is the one image in the repo the runner pulls on our
+    # behalf, so it was also the one supply-chain input the action pinning did not
+    # cover.
+    #
+    # The digest is the multi-arch index digest, so it resolves on both amd64 and
+    # arm64 runners. The version in the comment is documentation, not a
+    # constraint — verified: pulling `semgrep/semgrep:1.100.0@sha256:bdf7013b…`
+    # runs 1.171.0, because Docker resolves the digest and ignores the tag. Hence
+    # the comment form used for actions rather than a `:tag@sha256:` that would
+    # imply the tag is enforced.
+    #
+    # This pins the *engine*, not the ruleset: `--config=auto` below fetches rules
+    # from the Semgrep registry at scan time, so findings can still change between
+    # runs without this line moving. Dependabot's docker ecosystem is scoped to
+    # /docker and does not watch workflow files, so bumping this is manual.
     container:
-      image: semgrep/semgrep
+      image: semgrep/semgrep@sha256:bdf7013b2c3634a487671158da77c554f531742326b543a9464d2adf6c433ac8 # 1.171.0
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       # Enforcing: fails the build on findings. Triaged false-positives are
