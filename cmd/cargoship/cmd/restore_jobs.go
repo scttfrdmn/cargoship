@@ -239,7 +239,9 @@ The job must be in 'ready' status (run 'restore jobs check' first if unsure).`,
 			}
 
 			maxCacheBytes := cacheGB * 1024 * 1024 * 1024
-			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes)
+			// SetBucket: fetch from the bucket in the job's own S3 URL, not the
+			// one recorded in the manifest (#335).
+			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes).SetBucket(bucket)
 
 			fmt.Printf("🚀 Restoring files to %s…\n", job.OutputDir)
 

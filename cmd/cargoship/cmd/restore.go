@@ -112,7 +112,13 @@ Examples:
 			fmt.Printf("✅ Manifest loaded: %d files, %d chunks\n\n", m.TotalFiles, m.TotalChunks)
 
 			maxCacheBytes := cacheGB * 1024 * 1024 * 1024
-			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes).SetVerify(!noVerify).SetFlatten(flatten)
+			// SetBucket: fetch from the bucket the manifest was just read from,
+			// not the stale name recorded inside it, so a copied or replicated
+			// archive restores from where it actually is (#335).
+			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes).
+				SetBucket(bucket).
+				SetVerify(!noVerify).
+				SetFlatten(flatten)
 
 			// Resolve target paths/keys.
 			var targetPaths []string

@@ -120,7 +120,11 @@ Examples:
 			}
 
 			maxCacheBytes := cacheGB * 1024 * 1024 * 1024
-			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes)
+			// SetBucket: fetch from the bucket this manifest was just read from,
+			// not the one recorded inside it. Without it the Glacier pre-flight
+			// below checks `bucket` while the download goes somewhere else — the
+			// same split that made #334 undetectable. (#335)
+			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes).SetBucket(bucket)
 
 			// Glacier pre-flight check on the chunks needed for selected files.
 			restoreTier := s3pkg.RestoreTier(tier)
@@ -168,7 +172,13 @@ Examples:
 				return fmt.Errorf("restore failed: %w", err)
 			}
 
-			fmt.Printf("✅ Restore complete!\n")
+			// Same exit-code contract as `restore` (#336): BatchRestore counts
+			// per-file failures and continues, so err == nil on total failure.
+			if stats.Restored > 0 {
+				fmt.Printf("✅ Restore complete!\n")
+			} else {
+				fmt.Printf("❌ Restore failed: no files were restored\n")
+			}
 			fmt.Printf("   Files restored:    %d\n", stats.Restored)
 			if stats.Failed > 0 {
 				fmt.Printf("   Files failed:      %d\n", stats.Failed)
@@ -178,7 +188,7 @@ Examples:
 				fmt.Printf("   Retrieval cost:    $%.4f USD\n", report.EstimatedCostUSD)
 			}
 			fmt.Printf("   Output directory:  %s\n", destDir)
-			return nil
+			return restoreOutcomeError(stats)
 		},
 	}
 
