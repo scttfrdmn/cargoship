@@ -41,6 +41,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     uploaded and, with `DeleteAfterArchive`, what gets removed afterwards.
     Package coverage goes 0% → 29% on a floor of 12.
 
+### Fixed
+
+- **The integration harness no longer shells out with unquoted paths**, so a
+  `TMPDIR` containing a space (or any shell metacharacter) runs the suite instead
+  of failing 13 tests in `cmd/cargoship/cmd`. `CreateArchive`, `ExtractArchive`
+  and the corrupted-archive test each built a command *string* and handed it to
+  `sh -c`, so the shell word-split the path — `tar: could not chdir to
+  '/Volumes/External'`. All three now use explicit argv, with an `os.Pipe` for
+  the two zstd formats that genuinely pipeline; the other six were being handed
+  to a shell for no reason. Test-only; no product code and no behaviour under
+  test changes. (#351)
+  - The corrupted-archive case was the one that mattered beyond convenience: it
+    asserts only that extraction returns *an* error, so a path-quoting failure
+    satisfied the assertion for the wrong reason.
+
 ## [0.20.0] - 2026-08-03
 
 **Attack surface reduction.** An external security audit rated the *repository*
