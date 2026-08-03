@@ -87,6 +87,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **New `.dockerignore`**, an allowlist. The build context was **667 MB** —
     `.git` 304 MB, `docs/node_modules` 98 MB, a stale 98 MB binary in `bin/` —
     all transferred to the daemon on every build. It is now 4 MB of Go source.
+  - **The QNAP guide told you to mount credentials where the container cannot
+    read them.** `docs/enterprise/qnap.md` used `-v ~/.aws:/root/.aws:ro`, but the
+    image runs as uid 1000 and `/root` is mode 0700 owned by root — verified
+    directly: uid 1000 reads `/home/cargoship/.aws/credentials` and cannot read
+    `/root/.aws/credentials`. The mount is present and silently unreadable, so the
+    SDK just reports no credentials. It also told you to `scp
+    docker/nas-config.yaml`, which does not exist; it now points at the shipped
+    `configs/astrapi/ghost-ship-production.yaml` template. Two troubleshooting
+    rows added, including one for the metrics endpoint people go looking for.
   - **New blocking `docker-build` workflow.** It builds all three images, then
     *runs* each one: a build proves the Go compiles, but only starting the
     container catches the `/root` permission and config-path defects above. Each
