@@ -132,6 +132,57 @@ func TestValidateAgainstSchema_OptionalNullBlocks(t *testing.T) {
 	assert.Empty(t, violations, "nullable optional blocks should validate: %v", violations)
 }
 
+// TestValidateAgainstSchema_EmptyCollectionsAreArrays is the named regression
+// test for the nil-slice defect FuzzValidateAgainstSchema found (#302/#303).
+//
+// The schema declares files, chunks, and shards required with type "array", but
+// encoding/json renders a nil slice as `null`. An upload that produced no chunks
+// (e.g. everything routed to the direct path) therefore wrote a manifest in a
+// shape the format's own published schema rejects — a document CargoShip emitted
+// and a conforming third-party reader would refuse. `ToJSON` normalizes the nil
+// slices to empty arrays; this pins that.
+//
+// The fuzz target checks this as a differential invariant over generated input;
+// this states it as a readable case, so the guarantee is legible in the test
+// suite rather than implicit in a corpus file.
+func TestValidateAgainstSchema_EmptyCollectionsAreArrays(t *testing.T) {
+	// A manifest with every collection left nil — the shape a no-chunk upload
+	// produces. Built directly rather than through Builder, which pre-populates.
+	m := &Manifest{
+		Version:           ManifestVersion,
+		UploadID:          "20260802-empty",
+		SourcePath:        "/tmp/src",
+		Bucket:            "example-bucket",
+		Prefix:            "backups",
+		Region:            "us-east-1",
+		CreatedAt:         time.Unix(1_700_000_000, 0).UTC(),
+		ChecksumAlgorithm: ChecksumAlgorithmSHA256,
+	}
+	require.Nil(t, m.Files, "precondition: Files is nil")
+	require.Nil(t, m.Chunks, "precondition: Chunks is nil")
+	require.Nil(t, m.Shards, "precondition: Shards is nil")
+
+	data, err := m.ToJSON()
+	require.NoError(t, err)
+
+	// The wire form must carry arrays, never null. Asserted on the raw JSON: a
+	// round trip through Manifest would hide the difference, since both `null`
+	// and `[]` unmarshal to a slice that reads as empty.
+	var obj map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(data, &obj))
+	for _, field := range []string{"files", "chunks", "shards"} {
+		raw, ok := obj[field]
+		require.True(t, ok, "%q must be present, not omitted", field)
+		assert.Equal(t, "[]", string(raw), "%q must serialize as an empty array, not null", field)
+	}
+
+	violations, err := ValidateAgainstSchema(data)
+	require.NoError(t, err)
+	assert.Empty(t, violations,
+		"a manifest with no files/chunks/shards must still satisfy the published schema: %s",
+		violationsJoined(violations))
+}
+
 func violationsJoined(v []string) string {
 	out := ""
 	for _, s := range v {
