@@ -18,17 +18,16 @@ func NewContextCmd() *cobra.Command {
 		Long: `Manage CargoShip execution context to control which commands are available.
 
 Context determines the operational mode:
-- local:      Local filesystem operations and archive creation
-- agent:      Launch agent monitoring and management  
-- controller: Controller operations and agent coordination
-- repl:       Interactive shell mode with command discovery
+- local: Local filesystem operations and archive creation
+- agent: Launch agent monitoring and management
+- repl:  Interactive shell mode with command discovery
 
 The current context is cached in ~/.cargoship-context and persists between sessions.`,
 		Example: `  # Show current context
   cargoship context
 
-  # Switch to controller context
-  cargoship context switch controller
+  # Switch to agent context
+  cargoship context switch agent
 
   # List available contexts
   cargoship context list
@@ -71,13 +70,12 @@ func newContextSwitchCmd() *cobra.Command {
 		Long: `Switch to a different execution context.
 
 Available contexts:
-- local:      Local filesystem operations and archive creation
-- agent:      Launch agent monitoring and management
-- controller: Controller operations and agent coordination
-- repl:       Interactive shell mode with command discovery`,
+- local: Local filesystem operations and archive creation
+- agent: Launch agent monitoring and management
+- repl:  Interactive shell mode with command discovery`,
 		Example: `  cargoship context switch local
-  cargoship context switch controller
-  cargoship context switch agent`,
+  cargoship context switch agent
+  cargoship context switch repl`,
 		Args: cobra.ExactArgs(1),
 		RunE: switchContext,
 	}
@@ -263,12 +261,6 @@ func showContextTips(ctx context.ExecutionContext) {
 		fmt.Println("   cargoship agent status")
 		fmt.Println("   cargoship agent logs")
 		fmt.Println("   cargoship agent config reload")
-
-	case context.ContextController:
-		fmt.Println("💡 Controller context tips:")
-		fmt.Println("   cargoship controller agents list")
-		fmt.Println("   cargoship controller jobs status")
-		fmt.Println("   cargoship controller dashboard")
 
 	case context.ContextREPL:
 		fmt.Println("💡 REPL context tips:")

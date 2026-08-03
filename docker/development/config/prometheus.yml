@@ -9,17 +9,6 @@ rule_files:
   # - "second_rules.yml"
 
 scrape_configs:
-  # CargoShip Central Controller
-  - job_name: 'cargoship-controller'
-    static_configs:
-      - targets: ['cargoship-controller:9090']
-        labels:
-          service: 'controller'
-          environment: 'development'
-    metrics_path: '/metrics'
-    scrape_interval: 10s
-    scrape_timeout: 5s
-
   # Ghost Ship 1 (astrapi simulation)
   - job_name: 'ghost-ship-1'
     static_configs:

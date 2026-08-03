@@ -51,7 +51,7 @@ cargoship cost budget set <project-id> [flags]
 ### Options inherited from parent commands
 
 ```
-      --context string        Override execution context (local, agent, controller, repl)
+      --context string        Override execution context (local, agent, repl)
       --json                  Output as JSON
       --memory-limit string   Set a memory limit for the run. This will slow things down, but will less likely to OOM in certain situations. Avoid this unless you are having memory issues.
       --pprof                 Enable runtime profiling HTTP endpoint at localhost:6060

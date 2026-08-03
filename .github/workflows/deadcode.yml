@@ -15,6 +15,12 @@ name: Dead Code Audit
 #          pkg/pipeline was outside this filter, which is why it stayed invisible;
 #          it was added to the filter in #316 and the subsystem deleted in #325,
 #          which cleared 45 of this package's findings (132 → 87).
+#   #340 — a FIFTH, and the most expensive: the distributed controller subsystem.
+#          An external security audit — not this workflow — found unauthenticated
+#          RCE in cmd/launch-server and an auth bypass in pkg/controller. Both
+#          were unfinished scaffolding nobody was reviewing, and pkg/controller
+#          was reachable from the shipped CLI. Deleted rather than hardened;
+#          pkg/launch (which keeps the agent/ghost-ship code) joined this filter.
 #
 # Neither was caught by the `unused` linter in golangci-lint, which only sees
 # unexported symbols. `deadcode` does whole-program reachability from the real
@@ -22,9 +28,10 @@ name: Dead Code Audit
 #
 # NON-BLOCKING, and scoped, on purpose:
 #   * Whole-repo deadcode reports ~1800 findings — unusable as a gate. Scoped to
-#     the trust packages (manifest/restore/archivefs/glacier) plus pipeline it's
-#     a few hundred, dominated by pipeline's own backlog; still readable, and
-#     that backlog is the point rather than noise to be filtered away.
+#     the trust packages (manifest/restore/archivefs/glacier) plus pipeline and
+#     launch it's a few hundred, dominated by pipeline's own backlog; still
+#     readable, and that backlog is the point rather than noise to be filtered
+#     away.
 #   * Run WITHOUT `-test`. That's the important flag choice: in `-test` mode,
 #     code reachable from its own tests counts as live, and extract.go had
 #     passing tests — so `-test` mode would have reported ZERO findings for the
@@ -44,14 +51,14 @@ on:
     inputs:
       filter:
         description: 'Regexp of package paths to report on (deadcode -filter)'
-        default: '^github.com/scttfrdmn/cargoship/pkg/(manifest|restore|archivefs|glacier|pipeline)'
+        default: '^github.com/scttfrdmn/cargoship/pkg/(manifest|restore|archivefs|glacier|pipeline|launch)'
 
 permissions:
   contents: read
 
 env:
   GO_VERSION: '1.26'
-  DEFAULT_FILTER: '^github.com/scttfrdmn/cargoship/pkg/(manifest|restore|archivefs|glacier|pipeline)'
+  DEFAULT_FILTER: '^github.com/scttfrdmn/cargoship/pkg/(manifest|restore|archivefs|glacier|pipeline|launch)'
 
 jobs:
   deadcode:

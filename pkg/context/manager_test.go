@@ -65,16 +65,16 @@ func TestContextSwitching(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, ContextAgent, manager.Current())
 
-	// Switch to controller context
-	err = manager.SwitchTo(ContextController)
+	// Switch to repl context
+	err = manager.SwitchTo(ContextREPL)
 	assert.NoError(t, err)
-	assert.Equal(t, ContextController, manager.Current())
+	assert.Equal(t, ContextREPL, manager.Current())
 
 	// Invalid context should fail
 	err = manager.SwitchTo("invalid")
 	assert.Error(t, err)
-	// Should remain in controller context
-	assert.Equal(t, ContextController, manager.Current())
+	// Should remain in repl context
+	assert.Equal(t, ContextREPL, manager.Current())
 }
 
 func TestContextPersistence(t *testing.T) {
@@ -87,7 +87,7 @@ func TestContextPersistence(t *testing.T) {
 	manager1 := NewManager(logger)
 	manager1.contextFile = contextFile
 
-	err := manager1.SwitchTo(ContextController)
+	err := manager1.SwitchTo(ContextAgent)
 	require.NoError(t, err)
 
 	// Create second manager (simulating new CLI invocation)
@@ -97,8 +97,8 @@ func TestContextPersistence(t *testing.T) {
 	// Should load the same context
 	ctx, err := manager2.Load()
 	require.NoError(t, err)
-	assert.Equal(t, ContextController, ctx.Current)
-	assert.Equal(t, ContextController, manager2.Current())
+	assert.Equal(t, ContextAgent, ctx.Current)
+	assert.Equal(t, ContextAgent, manager2.Current())
 }
 
 func TestEndpointManagement(t *testing.T) {
@@ -120,14 +120,6 @@ func TestEndpointManagement(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "ws://agent.example.com:8080", manager.GetEndpoint())
 
-	// Switch to controller context and set endpoint
-	err = manager.SwitchTo(ContextController)
-	require.NoError(t, err)
-
-	err = manager.SetEndpoint("ws://controller.example.com:8080")
-	assert.NoError(t, err)
-	assert.Equal(t, "ws://controller.example.com:8080", manager.GetEndpoint())
-
 	// Local context shouldn't support endpoints
 	err = manager.SwitchTo(ContextLocal)
 	require.NoError(t, err)
@@ -145,7 +137,6 @@ func TestContextValidation(t *testing.T) {
 	}{
 		{"valid local", ContextLocal, true},
 		{"valid agent", ContextAgent, true},
-		{"valid controller", ContextController, true},
 		{"valid repl", ContextREPL, true},
 		{"invalid empty", "", false},
 		{"invalid unknown", "unknown", false},
@@ -212,7 +203,7 @@ func TestReset(t *testing.T) {
 	manager.contextFile = filepath.Join(tempDir, ".cargoship-context")
 
 	// Create and switch context
-	err := manager.SwitchTo(ContextController)
+	err := manager.SwitchTo(ContextAgent)
 	require.NoError(t, err)
 
 	// Verify file exists
@@ -237,7 +228,6 @@ func TestGetAvailableContexts(t *testing.T) {
 	expected := []ExecutionContext{
 		ContextLocal,
 		ContextAgent,
-		ContextController,
 		ContextREPL,
 	}
 
@@ -251,7 +241,6 @@ func TestFormatContext(t *testing.T) {
 	}{
 		{ContextLocal, "Local filesystem operations and archive creation"},
 		{ContextAgent, "Launch agent monitoring and management"},
-		{ContextController, "Controller operations and agent coordination"},
 		{ContextREPL, "Interactive shell mode with command discovery"},
 		{"unknown", "Unknown context"},
 	}

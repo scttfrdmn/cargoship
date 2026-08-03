@@ -81,5 +81,5 @@ ssh user@nas.local "/share/ZFS530_DATA/.qpkg/container-station/bin/docker logs -
 ## See also
 
 - [ghost-ship](/enterprise/ghost-ship).
-- [Launch agents](/enterprise/launch-agent).
+- [ghost-ship](/enterprise/ghost-ship).
 - [Deployment guide](/enterprise/deployment).

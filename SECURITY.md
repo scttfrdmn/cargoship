@@ -61,10 +61,17 @@ detail:
   mechanism.
 
 Operational controls: uploads use the standard AWS credential chain (CargoShip
-stores no credentials of its own); distributed agent/controller connections
-require an auth token and support TLS; browser-facing WebSocket upgraders enforce
-a same-origin check. Grant only the S3 (and optional KMS) permissions the
-workflow needs — see [AWS setup](https://cargoship.app/start/aws-setup).
+stores no credentials of its own). As of v0.20.0 CargoShip has **no
+network-facing authentication surface**: the distributed controller, `cargoship
+webui`, the `cargoship-launch` agent, and the ghost-ship controller client were
+all removed ([#340](https://github.com/scttfrdmn/cargoship/issues/340)), so
+nothing accepts remote commands and nothing dials a non-AWS endpoint. Two
+listeners remain, both **off by default and opt-in per invocation**: the pprof
+endpoint (`--pprof`, defaulting to `localhost:6060` via `--pprof-addr`) and the
+Prometheus metrics endpoint (`--prometheus-addr`, unset). Neither is
+authenticated, so bind them to a loopback address only. Grant only the S3 (and
+optional KMS) permissions the workflow needs — see
+[AWS setup](https://cargoship.app/start/aws-setup).
 
 ## User best practices
 
@@ -73,5 +80,5 @@ workflow needs — see [AWS setup](https://cargoship.app/start/aws-setup).
   if you use `--kms-key-id`.
 - Use `--kms-key-id` and `--encrypt-manifest` for sensitive datasets.
 - Prefer the credential chain (profiles, roles, SSO) over long-lived access keys.
-- For distributed mode, set an explicit auth token and enable TLS whenever the
-  controller is reachable beyond localhost.
+- For ghost ships on a NAS, scope the credentials that agent uses to the prefix it
+  archives to; it needs no inbound network access.

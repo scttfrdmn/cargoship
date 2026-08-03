@@ -1,54 +1,35 @@
 # Distributed / Enterprise
 
-Most of CargoShip is a single command you run on one machine. The distributed
-mode is for a different problem: archiving research data that lives on NAS boxes,
-file servers, and compute nodes across a lab or department, without pulling it all
-back to one host first. It layers a few coordinated pieces on top of the same
-upload engine.
+Most of CargoShip is a single command you run on one machine. Distributed mode is
+for a different problem: archiving research data that lives on NAS boxes and file
+servers around a lab, without pulling it all back to one host first.
 
-## The pieces
+Today that means one thing — **ghost ships**: autonomous agents deployed to a
+remote NAS (QNAP, Synology) that continuously monitor local paths, apply archival
+rules, and upload straight to S3, with no data round-trip. Each runs
+independently. See [ghost-ship](/enterprise/ghost-ship).
 
-- **Launch agents** — lightweight, containerized CargoShip agents that run on your
-  own infrastructure, watch directories, and archive completed datasets directly to
-  S3. They operate headlessly and connect to a controller over TLS. See
-  [Launch agents](/enterprise/launch-agent).
+::: warning Central coordination was removed in v0.20.0
+Earlier versions also shipped a central controller, a `cargoship-launch` agent
+binary, and a `cargoship webui` dashboard for managing a fleet from one place.
+That subsystem was never finished — most of its request handlers were empty — and
+a security audit found an authentication bypass in it, so it was removed rather
+than hardened. See [issue #340](https://github.com/scttfrdmn/cargoship/issues/340).
 
-- **Ghost ships** — autonomous agents deployed to remote NAS devices (QNAP,
-  Synology) that continuously monitor local files and upload them straight to the
-  cloud — no data round-trip — while staying coordinated centrally. See
-  [ghost-ship](/enterprise/ghost-ship).
-
-- **Controller** — the central coordination hub. Agents connect to it over an
-  authenticated WebSocket; it tracks health, assigns jobs, and gives you one place
-  to monitor the fleet. See [Controller](/enterprise/controller).
-
-- **Web UI** — a browser dashboard for monitoring and managing agents, served by
-  `cargoship webui`. See [Web UI](/enterprise/webui).
+If you used `cargoship controller`, `cargoship webui`, or `cargoship-launch`,
+they no longer exist. Ghost ships are unaffected: they were built to archive
+autonomously and never required a controller to function.
+:::
 
 ## When you need it
 
-Reach for distributed mode when data is spread across multiple machines and you
-want continuous, rule-based archival with central visibility. For a one-off or
-scripted upload from a single host, plain [`cargoship upload`](/guides/uploading)
-is all you need.
-
-## Getting started
-
-Agents connect to a controller with two environment variables:
-
-```bash
-CARGOSHIP_CONTROLLER_URL=wss://controller.example.com:8080
-CARGOSHIP_AUTH_TOKEN=your-secure-token
-CARGOSHIP_DESTINATION=s3://research-archive
-```
-
-Communication is TLS-encrypted (WSS) and token-authenticated; agents keep
-archiving autonomously even when the controller is temporarily offline.
+Reach for a ghost ship when data sits on a NAS that you want archiving itself,
+continuously, on rules you set once. For a one-off or scripted upload from a
+single host, plain [`cargoship upload`](/guides/uploading) is all you need.
 
 ## See also
 
-- [Launch agents](/enterprise/launch-agent).
-- [ghost-ship](/enterprise/ghost-ship).
-- [Controller](/enterprise/controller) · [Web UI](/enterprise/webui).
-- [Deployment guide](/enterprise/deployment) · [QNAP / NAS deployment](/enterprise/qnap).
+- [ghost-ship](/enterprise/ghost-ship) — configuration and archival rules.
+- [QNAP / NAS deployment](/enterprise/qnap) — step-by-step deployment.
+- [Deployment guide](/enterprise/deployment) — production CargoShip on a server.
 - [Execution contexts](/guides/config/contexts).

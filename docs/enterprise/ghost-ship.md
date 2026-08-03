@@ -2,10 +2,8 @@
 
 A ghost ship is an autonomous CargoShip agent deployed to a remote NAS (QNAP or
 Synology) that continuously monitors local files and archives them directly to S3
-— no data round-trip through a central host. It keeps working even when the
-[controller](/enterprise/controller) is offline, and reports status back over a
-secure WebSocket when connected. Think of it as a [launch agent](/enterprise/launch-agent)
-tuned for fully independent, rule-based operation on a NAS.
+— no data round-trip through a central host. It runs fully independently: no
+central coordinator is involved, and archival continues on its own schedule.
 
 ## How it works
 
@@ -34,7 +32,6 @@ watch_paths:
 
 max_concurrent_jobs: 4
 scan_interval: "5m"
-controller_url: "wss://controller.local:8080"
 ```
 
 ## Deployment
@@ -65,8 +62,8 @@ with `--platform linux/amd64` to avoid exec-format errors.
 
 ## Security
 
-- TLS-encrypted (WSS) communication with token authentication.
 - Runs as a non-root user; data and AWS credentials are mounted read-only.
+- Outbound HTTPS to S3 only; a ghost ship opens no listening port.
 - Optional server-side encryption for archived files.
 
 ## Monitoring
@@ -79,6 +76,4 @@ docker logs cargoship-ghost-container --tail 20
 ## See also
 
 - [Distributed / Enterprise overview](/enterprise/).
-- [Launch agents](/enterprise/launch-agent).
 - [QNAP / NAS deployment](/enterprise/qnap) — step-by-step QNAP guide.
-- [Controller](/enterprise/controller).

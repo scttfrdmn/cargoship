@@ -2,7 +2,6 @@ package launch
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -39,7 +38,6 @@ type GhostShip struct {
 	// Core components
 	watcher     *FileWatcher
 	transporter interface{}
-	controller  *ControllerConnection
 
 	// State management
 	status     GhostShipStatus
@@ -73,11 +71,6 @@ type GhostShipConfig struct {
 	// Performance settings
 	MaxConcurrentJobs int `json:"max_concurrent_jobs" yaml:"max_concurrent_jobs"`
 	WorkerPoolSize    int `json:"worker_pool_size" yaml:"worker_pool_size"`
-
-	// Controller integration
-	ControllerURL string     `json:"controller_url" yaml:"controller_url"`
-	AuthToken     string     `json:"auth_token" yaml:"auth_token"`
-	TLSConfig     *TLSConfig `json:"tls_config" yaml:"tls_config"`
 
 	// Monitoring and reporting
 	ReportingEnabled bool          `json:"reporting_enabled" yaml:"reporting_enabled"`
@@ -234,32 +227,11 @@ func NewGhostShip(config *GhostShipConfig, logger *slog.Logger) (*GhostShip, err
 	}
 	ghost.transporter = transporter
 
-	// Initialize controller connection if configured
-	if config.ControllerURL != "" {
-		agentConfig := &AgentConfig{
-			ID:            config.ID,
-			Name:          config.Name,
-			Description:   config.Description,
-			ControllerURL: config.ControllerURL,
-			AuthToken:     config.AuthToken,
-			TLSConfig:     config.TLSConfig,
-			WatchPaths:    config.WatchPaths,
-		}
-
-		controller, err := NewControllerConnection(agentConfig, logger)
-		if err != nil {
-			cancel()
-			return nil, fmt.Errorf("failed to create controller connection: %w", err)
-		}
-		ghost.controller = controller
-	}
-
 	ghost.logger.Info("Ghost ship created successfully",
 		"name", config.Name,
 		"watch_paths", len(config.WatchPaths),
 		"archival_rules", len(config.ArchivalRules),
-		"optimization_enabled", config.OptimizationConfig != nil,
-		"controller_enabled", ghost.controller != nil)
+		"optimization_enabled", config.OptimizationConfig != nil)
 
 	return ghost, nil
 }
@@ -292,12 +264,6 @@ func (gs *GhostShip) Launch() error {
 	// Start health monitor
 	gs.wg.Add(1)
 	go gs.runHealthMonitor()
-
-	// Start controller connection if configured
-	if gs.controller != nil {
-		gs.wg.Add(1)
-		go gs.runControllerConnection()
-	}
 
 	gs.status.State = GhostShipStateRunning
 	gs.status.LastActivity = time.Now()
@@ -407,7 +373,7 @@ func (gs *GhostShip) runJobProcessor() {
 	}
 }
 
-// runStatusReporter periodically reports status to controller
+// runStatusReporter periodically logs ghost ship status
 func (gs *GhostShip) runStatusReporter() {
 	defer gs.wg.Done()
 
@@ -956,176 +922,10 @@ func (gs *GhostShip) generateS3Key(filePath, ruleName string) string {
 func (gs *GhostShip) reportStatus() {
 	status := gs.GetStatus()
 
-	// Report to controller if connected
-	if gs.controller != nil {
-		statusUpdate := StatusUpdate{
-			State:         AgentState(status.State),
-			ActiveJobs:    status.ActiveJobs,
-			CompletedJobs: status.CompletedJobs,
-			FailedJobs:    status.FailedJobs,
-			BytesArchived: status.TotalBytesArchived,
-			Uptime:        status.Uptime,
-			LastError:     status.LastError,
-		}
-
-		if err := gs.controller.SendMessage(MsgTypeStatusUpdate, statusUpdate); err != nil {
-			gs.logger.Warn("Failed to send status update to controller", "error", err)
-		}
-	}
-
 	gs.logger.Debug("Ghost ship status",
 		"state", status.State,
 		"active_jobs", status.ActiveJobs,
 		"completed_jobs", status.CompletedJobs)
-}
-
-// runControllerConnection manages the connection to the central controller
-func (gs *GhostShip) runControllerConnection() {
-	defer gs.wg.Done()
-
-	gs.logger.Info("Starting controller connection for ghost ship")
-
-	for {
-		select {
-		case <-gs.ctx.Done():
-			return
-		default:
-			if err := gs.controller.Connect(gs.ctx); err != nil {
-				gs.logger.Error("Failed to connect to controller", "error", err)
-				gs.mu.Lock()
-				gs.status.State = GhostShipStateError
-				gs.status.LastError = fmt.Sprintf("Controller connection failed: %v", err)
-				gs.mu.Unlock()
-
-				// Retry after delay
-				select {
-				case <-time.After(30 * time.Second):
-					continue
-				case <-gs.ctx.Done():
-					return
-				}
-			}
-
-			gs.mu.Lock()
-			if gs.status.State == GhostShipStateError {
-				gs.status.State = GhostShipStateRunning
-				gs.status.LastError = ""
-			}
-			gs.mu.Unlock()
-
-			// Handle messages from controller
-			gs.controller.HandleMessages(gs.ctx, gs.handleControllerMessage)
-		}
-	}
-}
-
-// handleControllerMessage processes messages from the central controller
-func (gs *GhostShip) handleControllerMessage(message []byte) error {
-	var msg ControllerMessage
-	if err := json.Unmarshal(message, &msg); err != nil {
-		return fmt.Errorf("failed to unmarshal controller message: %w", err)
-	}
-
-	gs.logger.Debug("Received message from controller",
-		"type", msg.Type,
-		"message_id", msg.ID)
-
-	switch msg.Type {
-	case MsgTypeJobAssign:
-		return gs.handleJobAssignment(msg.Data)
-	case MsgTypeJobCancel:
-		return gs.handleJobCancellation(msg.Data)
-	case MsgTypeConfigUpdate:
-		return gs.handleConfigUpdate(msg.Data)
-	case MsgTypeShutdown:
-		gs.logger.Info("Received shutdown command from controller")
-		go func() {
-			if err := gs.Stop(); err != nil {
-				gs.logger.Error("Error during shutdown", "error", err)
-			}
-		}()
-		return nil
-	case MsgTypePing:
-		// Respond with pong
-		return gs.controller.SendMessage(MsgTypeHeartbeat, nil)
-	default:
-		gs.logger.Warn("Unknown message type from controller", "type", msg.Type)
-	}
-
-	return nil
-}
-
-// handleJobAssignment processes job assignments from controller
-func (gs *GhostShip) handleJobAssignment(data json.RawMessage) error {
-	var assignment JobAssignment
-	if err := json.Unmarshal(data, &assignment); err != nil {
-		return fmt.Errorf("failed to unmarshal job assignment: %w", err)
-	}
-
-	gs.logger.Info("Received job assignment from controller",
-		"job_id", assignment.JobID,
-		"type", assignment.Type,
-		"path", assignment.Path)
-
-	// Create archival rule for this assignment
-	rule := ArchivalRule{
-		Name:         fmt.Sprintf("controller-job-%s", assignment.JobID),
-		Description:  "Job assigned by central controller",
-		PathPattern:  assignment.Path,
-		Destination:  assignment.Destination,
-		StorageClass: assignment.StorageClass,
-		Priority:     assignment.Priority,
-		Enabled:      true,
-	}
-
-	// Find matching files and create job
-	candidates, err := gs.findArchivalCandidates(rule)
-	if err != nil {
-		return fmt.Errorf("failed to find candidates for job: %w", err)
-	}
-
-	for _, candidate := range candidates {
-		job := gs.createArchivalJob(candidate, rule)
-		job.ID = assignment.JobID // Use controller-assigned ID
-
-		gs.mu.Lock()
-		gs.activeJobs[job.ID] = job
-		gs.mu.Unlock()
-
-		gs.logger.Info("Queued controller-assigned job",
-			"job_id", job.ID,
-			"file", candidate)
-	}
-
-	return nil
-}
-
-// handleJobCancellation processes job cancellations from controller
-func (gs *GhostShip) handleJobCancellation(data json.RawMessage) error {
-	var cancelReq struct {
-		JobID string `json:"job_id"`
-	}
-	if err := json.Unmarshal(data, &cancelReq); err != nil {
-		return fmt.Errorf("failed to unmarshal job cancellation: %w", err)
-	}
-
-	gs.logger.Info("Received job cancellation from controller", "job_id", cancelReq.JobID)
-
-	gs.mu.Lock()
-	if job, exists := gs.activeJobs[cancelReq.JobID]; exists {
-		job.State = JobStateCancelled
-		job.Error = "Cancelled by controller"
-	}
-	gs.mu.Unlock()
-
-	return nil
-}
-
-// handleConfigUpdate processes configuration updates from controller
-func (gs *GhostShip) handleConfigUpdate(data json.RawMessage) error {
-	gs.logger.Info("Received configuration update from controller")
-	// Implementation would update ghost ship configuration
-	return nil
 }
 
 func (gs *GhostShip) performHealthCheck() {

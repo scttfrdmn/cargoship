@@ -126,14 +126,6 @@ component_management:
       statuses:
         - type: project
           target: 70%
-    
-    - component_id: "controller"
-      name: "Controller"
-      paths:
-        - pkg/controller/
-      statuses:
-        - type: project
-          target: 60%
 
 # Profiling and performance tracking
 profiling:

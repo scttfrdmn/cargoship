@@ -16,9 +16,6 @@ type Agent struct {
 	config *AgentConfig
 	logger *slog.Logger
 
-	// Communication
-	controller *ControllerConnection
-
 	// File watching and archival
 	watcher  *FileWatcher
 	archiver *LocalArchiver
@@ -41,11 +38,6 @@ type AgentConfig struct {
 	Name        string `json:"name" yaml:"name"`
 	Description string `json:"description" yaml:"description"`
 
-	// Controller connection
-	ControllerURL string     `json:"controller_url" yaml:"controller_url"`
-	AuthToken     string     `json:"auth_token" yaml:"auth_token"`
-	TLSConfig     *TLSConfig `json:"tls_config" yaml:"tls_config"`
-
 	// File watching
 	WatchPaths   []WatchPath   `json:"watch_paths" yaml:"watch_paths"`
 	ScanInterval time.Duration `json:"scan_interval" yaml:"scan_interval"`
@@ -56,17 +48,6 @@ type AgentConfig struct {
 	// Health and monitoring
 	HealthCheck HealthConfig `json:"health_check" yaml:"health_check"`
 	LogLevel    string       `json:"log_level" yaml:"log_level"`
-}
-
-// TLSConfig holds TLS configuration for secure communication.
-// Certificate validation is always enabled. To use a custom CA, set CAFile.
-// InsecureSkipVerify is intentionally not exposed; override only via the
-// CARGOSHIP_TLS_INSECURE=true environment variable in development environments.
-type TLSConfig struct {
-	Enabled  bool   `json:"enabled" yaml:"enabled"`
-	CertFile string `json:"cert_file" yaml:"cert_file"`
-	KeyFile  string `json:"key_file" yaml:"key_file"`
-	CAFile   string `json:"ca_file" yaml:"ca_file"`
 }
 
 // WatchPath defines a directory to watch for archival
@@ -117,13 +98,11 @@ type AgentStatus struct {
 type AgentState string
 
 const (
-	AgentStateStarting     AgentState = "starting"
-	AgentStateConnecting   AgentState = "connecting"
-	AgentStateReady        AgentState = "ready"
-	AgentStateWorking      AgentState = "working"
-	AgentStateError        AgentState = "error"
-	AgentStateDisconnected AgentState = "disconnected"
-	AgentStateStopping     AgentState = "stopping"
+	AgentStateStarting AgentState = "starting"
+	AgentStateReady    AgentState = "ready"
+	AgentStateWorking  AgentState = "working"
+	AgentStateError    AgentState = "error"
+	AgentStateStopping AgentState = "stopping"
 )
 
 // ArchiveJob represents a single archival job
@@ -181,13 +160,6 @@ func NewAgent(config *AgentConfig, logger *slog.Logger) (*Agent, error) {
 	// Initialize components
 	var err error
 
-	// Create controller connection
-	agent.controller, err = NewControllerConnection(config, logger)
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("failed to create controller connection: %w", err)
-	}
-
 	// Create file watcher
 	agent.watcher, err = NewFileWatcher(config.WatchPaths, logger)
 	if err != nil {
@@ -204,7 +176,6 @@ func NewAgent(config *AgentConfig, logger *slog.Logger) (*Agent, error) {
 
 	agent.logger.Info("Launch agent created successfully",
 		"name", config.Name,
-		"controller_url", config.ControllerURL,
 		"watch_paths", len(config.WatchPaths))
 
 	return agent, nil
@@ -221,10 +192,6 @@ func (a *Agent) Start() error {
 
 	a.logger.Info("Starting launch agent")
 
-	// Start controller connection
-	a.wg.Add(1)
-	go a.runControllerConnection()
-
 	// Start file watcher
 	a.wg.Add(1)
 	go a.runFileWatcher()
@@ -239,7 +206,8 @@ func (a *Agent) Start() error {
 	a.wg.Add(1)
 	go a.runJobProcessor()
 
-	a.status.State = AgentStateConnecting
+	// No controller to connect to — the agent is immediately operational.
+	a.status.State = AgentStateReady
 	a.status.LastSeen = time.Now()
 
 	a.logger.Info("Launch agent started successfully")
@@ -300,38 +268,6 @@ func (a *Agent) GetJobs() map[string]*ArchiveJob {
 	}
 
 	return jobs
-}
-
-// runControllerConnection manages the connection to the CargoShip controller
-func (a *Agent) runControllerConnection() {
-	defer a.wg.Done()
-
-	a.logger.Info("Starting controller connection")
-
-	for {
-		select {
-		case <-a.ctx.Done():
-			return
-		default:
-			if err := a.controller.Connect(a.ctx); err != nil {
-				a.logger.Error("Failed to connect to controller", "error", err)
-				a.updateStatus(AgentStateError, fmt.Sprintf("Controller connection failed: %v", err))
-
-				// Retry after delay
-				select {
-				case <-time.After(30 * time.Second):
-					continue
-				case <-a.ctx.Done():
-					return
-				}
-			}
-
-			a.updateStatus(AgentStateReady, "")
-
-			// Handle messages from controller
-			a.controller.HandleMessages(a.ctx, a.handleControllerMessage)
-		}
-	}
 }
 
 // runFileWatcher monitors filesystem for files to archive
@@ -402,20 +338,12 @@ func (a *Agent) updateStatus(state AgentState, errorMsg string) {
 	}
 }
 
-func (a *Agent) handleControllerMessage(message []byte) error {
-	// Handle incoming messages from controller
-	// This will include job assignments, configuration updates, etc.
-	a.logger.Debug("Received message from controller", "size", len(message))
-	return nil
-}
-
 func (a *Agent) scanForFiles() {
 	// Scan watched directories for files to archive
 	a.logger.Debug("Scanning for files to archive")
 }
 
 func (a *Agent) reportHealth() {
-	// Report health status to controller
 	status := a.GetStatus()
 	a.logger.Debug("Reporting health status", "state", status.State, "active_jobs", status.ActiveJobs)
 }
@@ -428,14 +356,6 @@ func (a *Agent) processJobs() {
 func validateAgentConfig(config *AgentConfig) error {
 	if config.ID == "" {
 		return fmt.Errorf("agent ID cannot be empty")
-	}
-
-	if config.ControllerURL == "" {
-		return fmt.Errorf("controller URL cannot be empty")
-	}
-
-	if config.AuthToken == "" {
-		return fmt.Errorf("auth token cannot be empty")
 	}
 
 	if len(config.WatchPaths) == 0 {

@@ -7,17 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Security
+### Removed
 
-- **The gitleaks binary is now checksum-verified before it runs** (#342). The
-  secret-scanning job piped `curl` straight into `tar`, executing whatever the URL
-  served — a tampered release asset or a MITM would have run in CI with repository
-  access, inside the job whose purpose is to catch leaked secrets. The tarball's
-  SHA-256 is now pinned and checked before extraction, keeping the deliberate
-  choice of the MIT-licensed binary over the wrapper action, which requires a paid
-  license for organizations. The pinned digest was cross-checked against the
-  release's own published `checksums.txt` rather than a single local download.
-  Auditing the rest of CI found no other unverified download.
+- **BREAKING: the distributed controller subsystem is gone** — `cargoship
+  controller`, `cargoship webui`, the `cargoship-launch` agent binary, the
+  `cargoship-launch`/`controller`/`launch-server` commands, `pkg/controller`, and
+  `pkg/launch/central_controller.go`. An external security audit found
+  unauthenticated remote command execution in `cmd/launch-server` and an
+  authentication bypass in `pkg/controller`; the subsystem was removed rather than
+  hardened. (#340)
+  - **It shipped.** The audit judged `pkg/controller` dormant because
+    `cmd/controller` used `pkg/launch` instead — but the released CLI imported
+    `pkg/controller` directly, from `NewControllerCmd()` and `webuiCmd` in
+    `root.go`. `controller` and `webui` both appeared in `cargoship --help`, so
+    the auth bypass was reachable from the release artifact. `cmd/launch-server`,
+    which carried the RCE, was never built by anything and was in no release.
+  - **Hardening it would have secured nothing.** It was unfinished scaffolding:
+    eight empty handler bodies, four "Implementation would" comments, connection
+    handlers that logged and returned. There was no defined behavior to secure.
+  - Three defects the audit did not report died with it: the agent auth token was
+    logged in cleartext at two sites (against this repo's own standing rule), the
+    bearer-token comparison was not constant-time, and an empty configured token
+    disabled auth for every REST route — a fail-open default, latent only because
+    both entry points rejected a blank token.
+  - **This is the fifth abandoned duplicate** in this repo, after #308, #311, #316
+    and #325, and by far the most expensive. `pkg/launch` has been added to the
+    `deadcode` filter; `pkg/pipeline`'s absence from that filter is exactly why
+    #325 stayed invisible.
+  - A **live defect** the audit did not mention, fixed here too: the `controller`
+    execution context (`pkg/context`) is applied by the shipped CLI at every
+    startup, and would have filtered the command set down to a command that no
+    longer exists. A stale cached context now self-heals with a warning.
+  - Three direct dependencies go with it: `github.com/golang-jwt/jwt/v5`,
+    `github.com/gorilla/mux` and `github.com/gorilla/websocket` were used by
+    nothing else, so this is a real supply-chain reduction as well as an
+    attack-surface one.
+  - **The agent's outbound half went too.** Deleting the server left
+    `pkg/launch/controller.go` — a live WebSocket *client*. A ghost ship with
+    `controller_url` set still dialed out, sent `Authorization: Bearer <token>`,
+    and dispatched `job_assign`, `job_cancel`, `config_update` and `shutdown` from
+    whatever answered. Nothing in the project served that endpoint anymore, so the
+    only reachable peer was one an attacker stood up; removing the server without
+    the client would have left the inbound command path intact and undocumented.
+  - **Ghost ships are unaffected** — they were built to archive autonomously and
+    never required a controller. `controller_url`, `auth_token` and `tls_config`
+    are no longer read at all, nor is `CARGOSHIP_TLS_INSECURE`, which relaxed
+    certificate checks on that connection alone. The previously documented
+    `CARGOSHIP_AGENT_*`, `CARGOSHIP_CONTROLLER_URL`, `CARGOSHIP_WATCH_PATHS` and
+    `CARGOSHIP_DESTINATION` variables were read only by `cargoship-launch` and
+    likewise have no effect.
+  - `launch.AgentConfig` and `launch.GhostShipConfig` lose their `ControllerURL`,
+    `AuthToken` and `TLSConfig` fields, and `launch.TLSConfig`,
+    `launch.ControllerConnection`, `launch.MessageType` and the `MsgType*`
+    constants are gone — a breaking change for anyone importing `pkg/launch`
+    directly. `launch.NewAgent` no longer requires a controller URL or auth token,
+    so a config that only watches paths is now valid.
 
 ### Fixed
 
@@ -32,6 +76,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `internal/version/version.txt`, so a release that bumped only the canonical
     version would have skipped this gate at exactly the moment the tables went
     stale. Added.
+
+### Security
+
+- **The gitleaks binary is now checksum-verified before it runs** (#342). The
+  secret-scanning job piped `curl` straight into `tar`, executing whatever the URL
+  served — a tampered release asset or a MITM would have run in CI with repository
+  access, inside the job whose purpose is to catch leaked secrets. The tarball's
+  SHA-256 is now pinned and checked before extraction, keeping the deliberate
+  choice of the MIT-licensed binary over the wrapper action, which requires a paid
+  license for organizations. The pinned digest was cross-checked against the
+  release's own published `checksums.txt` rather than a single local download.
+  Auditing the rest of CI found no other unverified download.
 
 ## [0.19.0] - 2026-08-03
 

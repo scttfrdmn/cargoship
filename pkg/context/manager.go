@@ -16,10 +16,9 @@ import (
 type ExecutionContext string
 
 const (
-	ContextLocal      ExecutionContext = "local"      // Local filesystem operations
-	ContextAgent      ExecutionContext = "agent"      // Launch agent environment
-	ContextController ExecutionContext = "controller" // Controller management
-	ContextREPL       ExecutionContext = "repl"       // Interactive shell mode
+	ContextLocal ExecutionContext = "local" // Local filesystem operations
+	ContextAgent ExecutionContext = "agent" // Launch agent environment
+	ContextREPL  ExecutionContext = "repl"  // Interactive shell mode
 )
 
 // ContextInfo holds context state information
@@ -28,7 +27,6 @@ type ContextInfo struct {
 	LastUsed      time.Time        `json:"last_used"`
 	Version       string           `json:"version"`
 	AgentEndpoint string           `json:"agent_endpoint,omitempty"`
-	ControllerURL string           `json:"controller_url,omitempty"`
 	WorkingDir    string           `json:"working_dir,omitempty"`
 }
 
@@ -166,7 +164,7 @@ func (m *Manager) Current() ExecutionContext {
 	return ctx.Current
 }
 
-// SetEndpoint updates the connection endpoint for agent/controller contexts
+// SetEndpoint updates the connection endpoint for the agent context
 func (m *Manager) SetEndpoint(endpoint string) error {
 	if m.current == nil {
 		if _, err := m.Load(); err != nil {
@@ -177,8 +175,6 @@ func (m *Manager) SetEndpoint(endpoint string) error {
 	switch m.current.Current {
 	case ContextAgent:
 		m.current.AgentEndpoint = endpoint
-	case ContextController:
-		m.current.ControllerURL = endpoint
 	default:
 		return fmt.Errorf("endpoints not applicable for context: %s", m.current.Current)
 	}
@@ -186,7 +182,7 @@ func (m *Manager) SetEndpoint(endpoint string) error {
 	return m.Save()
 }
 
-// GetEndpoint returns the current endpoint for agent/controller contexts
+// GetEndpoint returns the current endpoint for the agent context
 func (m *Manager) GetEndpoint() string {
 	if m.current == nil {
 		return ""
@@ -195,8 +191,6 @@ func (m *Manager) GetEndpoint() string {
 	switch m.current.Current {
 	case ContextAgent:
 		return m.current.AgentEndpoint
-	case ContextController:
-		return m.current.ControllerURL
 	default:
 		return ""
 	}
@@ -249,7 +243,7 @@ func (m *Manager) createDefaultContext() (*ContextInfo, error) {
 // isValidContext validates if a context string is valid
 func isValidContext(ctx ExecutionContext) bool {
 	switch ctx {
-	case ContextLocal, ContextAgent, ContextController, ContextREPL:
+	case ContextLocal, ContextAgent, ContextREPL:
 		return true
 	default:
 		return false
@@ -261,7 +255,6 @@ func GetAvailableContexts() []ExecutionContext {
 	return []ExecutionContext{
 		ContextLocal,
 		ContextAgent,
-		ContextController,
 		ContextREPL,
 	}
 }
@@ -273,8 +266,6 @@ func FormatContext(ctx ExecutionContext) string {
 		return "Local filesystem operations and archive creation"
 	case ContextAgent:
 		return "Launch agent monitoring and management"
-	case ContextController:
-		return "Controller operations and agent coordination"
 	case ContextREPL:
 		return "Interactive shell mode with command discovery"
 	default:
