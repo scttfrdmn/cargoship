@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Three HIGH Python advisories fixed in `dvc-cargoship`** by raising floors in
+  `constraint-dependencies` and re-locking: `cryptography` 49.0.0 → 50.0.0,
+  `aiohttp` 3.14.1 → 3.14.3, `gitpython` 3.1.56 → 3.1.57. Also clears three
+  mediums picked up along the way.
+  - `cryptography` GHSA-g6cj-pr64-35w5 — PKCS#7 `EnvelopedData` decryption leaks
+    a Bleichenbacher oracle through distinguishable errors and timing.
+  - `aiohttp` GHSA-cq5v-8q36-5273 — out-of-bounds heap read in the C HTTP
+    response parser's error path on a malformed chunked response; plus request
+    smuggling via WebSocket upgrade (GHSA-mfx4-hv73-q22v) and compressed frames
+    accepted without negotiated `permessage-deflate` (GHSA-mq44-7p77-q5h7).
+  - `gitpython` GHSA-3f7w-8rr8-f37f — unguarded git-option forwarding in
+    `IndexFile.checkout()` and `TagReference.create()`; plus a denylist that
+    omitted `--add-file`/`--add-virtual-file` (GHSA-539m-9xh6-q6rr). This is the
+    **third** round of the same bug class in as many months, which is the
+    argument for the floor: without it the resolver walks straight back onto a
+    vulnerable version.
+  - Worth recording that **Trivy would not have caught any of these.** Its
+    HIGH/CRITICAL gate on `dvc-cargoship/uv.lock` reports only a long-known
+    diskcache MEDIUM, with a DB refreshed the same day — verified it parses all
+    112 packages and reads the right versions, so this is advisory-DB lag, not a
+    scan misconfiguration. The Dependabot alerts are what surfaced them, which is
+    a concrete argument for keeping both mechanisms rather than treating the
+    blocking one as sufficient.
 - **Container hygiene: the deployment images ran on an end-of-support base, and
   three more container artifacts sat outside every CI lane.** From an external
   security re-review of v0.21.0 (CSH-021). No exploitable CVE was identified;
