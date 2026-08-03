@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -286,11 +287,143 @@ func (se *SelectiveExtractor) restorePath(destDir, entryPath string) (string, er
 // the time of the restore. A failure here is deliberately non-fatal: the file
 // content is already correct on disk, and refusing the restore over a timestamp
 // would be worse than an imprecise timestamp. (#311)
-func restoreModTime(path string, modTime time.Time) {
+func restoreModTime(root *os.Root, relPath string, modTime time.Time) {
 	if modTime.IsZero() {
 		return
 	}
-	_ = os.Chtimes(path, modTime, modTime)
+	_ = root.Chtimes(relPath, modTime, modTime)
+}
+
+// destRoot opens destDir as an os.Root, the containment boundary every restore
+// write goes through (#341).
+//
+// restorePath's own check is LEXICAL — it strips volume names, leading slashes
+// and `.`/`..` segments and confirms the joined result is textually under
+// destDir. That closes the crafted-manifest traversal of #282, but neither
+// filepath.Abs nor filepath.Clean resolves symlinks, so a lexically-contained
+// path can still escape the *filesystem* when a component inside destDir is a
+// pre-existing symlink pointing elsewhere (CWE-59). With
+// `destDir/cache -> /etc`, an ordinary entry `cache/passwd` passes containment
+// and the OS follows the link. The hostile input is the destination's shape, not
+// the manifest — a world-writable staging dir, a shared scratch mount, or an
+// unpacked tarball that shipped its own symlinks is enough.
+//
+// os.Root resolves every component with openat(2) relative to a held directory
+// descriptor and refuses any component that leaves the root. That also closes
+// the TOCTOU window a check-then-write approach leaves open: a `Lstat` walk can
+// verify a parent is a real directory and have it replaced with a symlink before
+// the write lands, whereas os.Root re-validates at each open. It is the standard
+// library's answer to exactly this class, and it behaves consistently across all
+// the platforms goreleaser builds (linux, darwin, windows).
+func destRoot(destDir string) (*os.Root, error) {
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return nil, fmt.Errorf("create destination directory: %w", err)
+	}
+	root, err := os.OpenRoot(destDir)
+	if err != nil {
+		return nil, fmt.Errorf("open destination directory: %w", err)
+	}
+	return root, nil
+}
+
+// destRelPath converts the absolute output path restorePath produced back into a
+// slash-separated path relative to destDir, for use with os.Root's methods
+// (which take root-relative names). restorePath has already guaranteed lexical
+// containment, so a failure here means a caller passed mismatched paths.
+func destRelPath(destDir, outPath string) (string, error) {
+	rel, err := filepath.Rel(destDir, outPath)
+	if err != nil {
+		return "", fmt.Errorf("relativize %q against %q: %w", outPath, destDir, err)
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("refusing to restore %q: path escapes destination", outPath)
+	}
+	return filepath.ToSlash(rel), nil
+}
+
+// prepareParents creates the parent directories of relPath inside root, walking
+// one component at a time and refusing any that already exists as a symlink. An
+// ordinary pre-existing directory is reused as usual.
+//
+// root.MkdirAll would not be enough. os.Root refuses a symlink that leaves the
+// root — the escape this issue is about — but a symlink pointing to another path
+// *inside* destDir is still followed, so `dest/cache -> real` would silently
+// divert `cache/config.txt` into `real/`. That is a correctness failure rather
+// than an escape: a restore must reproduce the paths the manifest recorded.
+func prepareParents(root *os.Root, relPath string) error {
+	dir := path.Dir(relPath)
+	if dir == "." || dir == "/" || dir == "" {
+		return nil
+	}
+	var cur string
+	for _, comp := range strings.Split(dir, "/") {
+		if comp == "" || comp == "." {
+			continue
+		}
+		if cur == "" {
+			cur = comp
+		} else {
+			cur += "/" + comp
+		}
+
+		fi, err := root.Lstat(cur)
+		if err == nil {
+			if fi.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("refusing to restore under %s: path component is a symlink", cur)
+			}
+			if !fi.IsDir() {
+				return fmt.Errorf("refusing to restore under %s: path component is not a directory", cur)
+			}
+			continue
+		}
+		if err := root.Mkdir(cur, 0755); err != nil && !os.IsExist(err) {
+			return fmt.Errorf("mkdir %s: %w", cur, err)
+		}
+	}
+	return nil
+}
+
+// createContained opens relPath for writing inside root, refusing to write
+// through a symlink at the leaf.
+//
+// os.Root alone already refuses a leaf symlink that points outside the root —
+// that is the escape this issue is about. The extra Lstat rejects a leaf symlink
+// pointing *inside* the root too, because a restore should write the file it was
+// asked to write rather than through whatever link happens to sit at that path.
+// That second case is a correctness guard, not a containment one, and it carries
+// an unavoidable TOCTOU window (the link could be introduced between the Lstat
+// and the open). The containment guarantee does not depend on it: os.Root
+// re-validates every component at open time, so even if the race is won the
+// write still cannot leave destDir. O_NOFOLLOW would close the window but is not
+// portable — it is absent on Windows, which goreleaser builds.
+//
+// O_TRUNC preserves the existing overwrite behavior for real files.
+func createContained(root *os.Root, relPath string) (*os.File, error) {
+	if fi, err := root.Lstat(relPath); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("refusing to restore %s: destination path is a symlink", relPath)
+	}
+	f, err := root.OpenFile(relPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("create %s: %w", relPath, err)
+	}
+	return f, nil
+}
+
+// writeContained writes data to relPath inside root with the same symlink
+// refusal as createContained.
+func writeContained(root *os.Root, relPath string, data []byte) error {
+	f, err := createContained(root, relPath)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("write %s: %w", relPath, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("write %s: %w", relPath, err)
+	}
+	return nil
 }
 
 // relativeEntryPath returns entryPath relative to the manifest's SourcePath (the
@@ -426,9 +559,13 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 		chunkMap[key].files = append(chunkMap[key].files, entry)
 	}
 
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return nil, fmt.Errorf("create destination directory: %w", err)
+	// #341: every write below goes through this root, so a symlinked component
+	// inside destDir is refused rather than followed.
+	root, err := destRoot(destDir)
+	if err != nil {
+		return nil, err
 	}
+	defer func() { _ = root.Close() }()
 
 	// Direct-upload manifests have no chunks: each file was stored as its own S3
 	// object (the object at FileEntry.S3Key IS the raw file, not a tar.zst chunk).
@@ -450,7 +587,7 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 
 		if directMode {
 			// One S3 object == one file; write the raw bytes.
-			restored, written, err := se.writeDirectFiles(data, grp.files, destDir)
+			restored, written, err := se.writeDirectFiles(data, grp.files, root, destDir)
 			stats.Restored += int64(restored)
 			stats.Bytes += written
 			if err != nil {
@@ -459,7 +596,7 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 			continue
 		}
 
-		restored, written, err := se.extractFromChunkData(data, grp.files, destDir)
+		restored, written, err := se.extractFromChunkData(data, grp.files, root, destDir)
 		stats.Restored += int64(restored)
 		stats.Bytes += written
 		if err != nil {
@@ -501,7 +638,7 @@ func (se *SelectiveExtractor) resolveEntry(target string) *FileEntry {
 // writeDirectFiles writes direct-upload objects (raw file bytes, one object per
 // file) to destDir. The output path is the file's basename (manifests may store
 // an absolute source path; we never write outside destDir). (Issue #228)
-func (se *SelectiveExtractor) writeDirectFiles(data []byte, files []*FileEntry, destDir string) (int, int64, error) {
+func (se *SelectiveExtractor) writeDirectFiles(data []byte, files []*FileEntry, root *os.Root, destDir string) (int, int64, error) {
 	var restored int
 	var totalBytes int64
 	for _, entry := range files {
@@ -516,13 +653,19 @@ func (se *SelectiveExtractor) writeDirectFiles(data []byte, files []*FileEntry, 
 		if err != nil {
 			return restored, totalBytes, err
 		}
-		if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
-			return restored, totalBytes, fmt.Errorf("mkdir for %s: %w", outPath, err)
+		// #341: resolve through the root so a symlinked parent or leaf inside
+		// destDir is refused instead of followed.
+		rel, err := destRelPath(destDir, outPath)
+		if err != nil {
+			return restored, totalBytes, err
 		}
-		if err := os.WriteFile(outPath, data, 0644); err != nil {
-			return restored, totalBytes, fmt.Errorf("write %s: %w", outPath, err)
+		if err := prepareParents(root, rel); err != nil {
+			return restored, totalBytes, err
 		}
-		restoreModTime(outPath, entry.ModTime)
+		if err := writeContained(root, rel, data); err != nil {
+			return restored, totalBytes, err
+		}
+		restoreModTime(root, rel, entry.ModTime)
 		restored++
 		totalBytes += int64(len(data))
 	}
@@ -582,7 +725,7 @@ func (se *SelectiveExtractor) downloadChunk(ctx context.Context, s3Key string) (
 // extractFromChunkData decompresses data (a compressed tar archive) and writes
 // the requested files to destDir. Returns the count of files written and total
 // bytes written.
-func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEntry, destDir string) (int, int64, error) {
+func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEntry, root *os.Root, destDir string) (int, int64, error) {
 	want := make(map[string]*FileEntry, len(files))
 	for _, f := range files {
 		want[f.Path] = f
@@ -632,8 +775,13 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 		if err != nil {
 			return restored, totalBytes, err
 		}
-		if mkErr := os.MkdirAll(filepath.Dir(outPath), 0755); mkErr != nil {
-			return restored, totalBytes, fmt.Errorf("mkdir for %s: %w", outPath, mkErr)
+		// #341: same root-relative, symlink-refusing write as the direct path.
+		rel, err := destRelPath(destDir, outPath)
+		if err != nil {
+			return restored, totalBytes, err
+		}
+		if mkErr := prepareParents(root, rel); mkErr != nil {
+			return restored, totalBytes, mkErr
 		}
 
 		verifyThis := se.verify && entry.Checksum != "" &&
@@ -653,18 +801,18 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 			if se.checksumMismatch(entry, content) {
 				return restored, totalBytes, fmt.Errorf("checksum mismatch for %s: stored data does not match manifest", entry.Path)
 			}
-			if err := os.WriteFile(outPath, content, 0644); err != nil {
-				return restored, totalBytes, fmt.Errorf("write %s: %w", outPath, err)
+			if err := writeContained(root, rel, content); err != nil {
+				return restored, totalBytes, err
 			}
-			restoreModTime(outPath, entry.ModTime)
+			restoreModTime(root, rel, entry.ModTime)
 			restored++
 			totalBytes += int64(len(content))
 			continue
 		}
 
-		f, err := os.Create(outPath)
+		f, err := createContained(root, rel)
 		if err != nil {
-			return restored, totalBytes, fmt.Errorf("create %s: %w", outPath, err)
+			return restored, totalBytes, err
 		}
 		// #337: CopyN, not Copy. A tar entry cut short mid-stream is
 		// indistinguishable from EOF to io.Copy, which returns nil having
@@ -682,7 +830,7 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 		if err != nil {
 			// Remove the partial file. An absent file is a correct, loud
 			// outcome; a short one that looks complete is not.
-			_ = os.Remove(outPath)
+			_ = root.Remove(rel)
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				return restored, totalBytes, fmt.Errorf(
 					"truncated archive: %s declares %d bytes but the stored chunk ended after %d",
@@ -690,7 +838,7 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 			}
 			return restored, totalBytes, fmt.Errorf("write %s: %w", outPath, err)
 		}
-		restoreModTime(outPath, entry.ModTime)
+		restoreModTime(root, rel, entry.ModTime)
 		restored++
 		totalBytes += written
 	}
