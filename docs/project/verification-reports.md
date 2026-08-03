@@ -34,7 +34,7 @@ release assets to find the evidence.
 
 | Version | Date | Files | Bytes | Paths | Suites | Result | Report |
 |---------|------|-------|-------|-------|--------|--------|--------|
-| v0.20.0 | 2026-08-03 |  |  |  |  | ⏳ Run in progress |  |
+| v0.20.0 | 2026-08-03 | 20 | 61.01 MB | direct, chunked | 43 / 0 | ✅ Passed | [`v0.20.0-2026-08-03.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.20.0/v0.20.0-2026-08-03.md) |
 | v0.19.0 | 2026-08-03 | 20 | 61.01 MB | direct, chunked | 46 / 0 | ✅ Passed | [`v0.19.0-2026-08-03.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.19.0/v0.19.0-2026-08-03.md) |
 | v0.18.0 | 2026-08-02 | 20 | 61.01 MB | direct, chunked | 45 / 0 | ✅ Passed | [`v0.18.0-2026-08-02.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.18.0/v0.18.0-2026-08-02.md) |
 | v0.17.1 | 2026-08-02 | 20 | 61.01 MB | direct, chunked | 45 / 0 | ✅ Passed | [`v0.17.1-2026-08-02.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.17.1/v0.17.1-2026-08-02.md) |
@@ -58,10 +58,14 @@ The corpus is fixed, so the file and byte counts are expected to be identical
 across releases — what each row attests is that *that build* preserved them. A
 change in those numbers means the corpus changed, not that more was proven.
 
-The *suite* count can move, and did at v0.19.0 (45 → 46): it counts Go packages
-run under the `integration` tag, so adding a package adds a row. Here it was
-`internal/audit`, the structural tar-loop guard added in #321. That is more
-surface covered, not more of the byte-identity claim proven.
+The *suite* count can move: it counts Go packages run under the `integration`
+tag, so adding or deleting a package moves it. It rose at v0.19.0 (45 → 46) when
+`internal/audit`, the structural tar-loop guard from #321, was added — more
+surface covered, not more of the byte-identity claim proven. It fell at v0.20.0
+(46 → 43) when `pkg/controller`, `cmd/controller` and `cmd/cargoship-launch` were
+deleted with the distributed subsystem ([#340](https://github.com/scttfrdmn/cargoship/issues/340))
+— less code to cover, not less coverage. A drop that does *not* correspond to a
+deletion would mean a suite stopped running, which is a regression.
 
 - Reports are also **attached to each
   [GitHub Release](https://github.com/scttfrdmn/cargoship/releases)** as
