@@ -16,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -26,22 +25,10 @@ import (
 
 const transpTestPrefix = "transporter-test"
 
-// Region and bucket are resolved from the standard env knobs so the suite runs
-// both locally (AWS_PROFILE=aws, defaults below) and in CI (creds from the
-// default chain, bucket from CARGOSHIP_TEST_BUCKET).
-var (
-	transpTestRegion = firstNonEmpty(os.Getenv("AWS_REGION"), "us-west-2")
-	transpTestBucket = firstNonEmpty(os.Getenv("CARGOSHIP_TEST_BUCKET"), "cargoship-integration-test")
-)
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
-}
+// transpTestRegion, ensureTestBucket, and cleanupTestObjects live in
+// real_aws_helpers_test.go, tagged `integration || performance` so the
+// performance-tagged suites in this package can reach them too (#329).
+var transpTestBucket = firstNonEmpty(os.Getenv("CARGOSHIP_TEST_BUCKET"), "cargoship-integration-test")
 
 // TestCargoShipTransporterIntegration tests all CargoShip transporters with real AWS S3.
 //
@@ -759,44 +746,5 @@ func testMultipleConcurrentUploads(t *testing.T, ctx context.Context, s3Client *
 	for i := 0; i < numUploads; i++ {
 		testKey := fmt.Sprintf("%s/concurrent-test-%d-%d.txt", transpTestPrefix, startTime.Unix(), i)
 		transporter.DeleteObject(ctx, testKey)
-	}
-}
-
-// Helper functions
-
-func ensureTestBucket(ctx context.Context, s3Client *s3.Client, bucket string) error {
-	_, err := s3Client.HeadBucket(ctx, &s3.HeadBucketInput{
-		Bucket: aws.String(bucket),
-	})
-
-	if err == nil {
-		return nil
-	}
-
-	_, err = s3Client.CreateBucket(ctx, &s3.CreateBucketInput{
-		Bucket: aws.String(bucket),
-		CreateBucketConfiguration: &types.CreateBucketConfiguration{
-			LocationConstraint: types.BucketLocationConstraint(transpTestRegion),
-		},
-	})
-
-	return err
-}
-
-func cleanupTestObjects(ctx context.Context, s3Client *s3.Client, bucket, prefix string) {
-	result, err := s3Client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
-		Bucket: aws.String(bucket),
-		Prefix: aws.String(prefix),
-	})
-
-	if err != nil {
-		return
-	}
-
-	for _, obj := range result.Contents {
-		s3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    obj.Key,
-		})
 	}
 }
