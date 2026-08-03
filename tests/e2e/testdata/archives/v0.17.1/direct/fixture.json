@@ -1,0 +1,21 @@
+{
+  "version": "v0.17.1",
+  "layout": "direct",
+  "upload_id": "20260803-18c894c7",
+  "prefix": "archives",
+  "manifest_key": "archives/uploads/20260803-18c894c7/manifest.json.gz",
+  "files": [
+    {
+      "manifest_path": "/var/folders/nn/qc8dm2b954jbyvcwk0v79ync0000gn/T/TestGenerateArchiveFixturesv0.17.1direct3458771628/001/data.bin",
+      "base": "data.bin",
+      "sha256": "5ab775379b00e0ca28b6ee8c0b71b2e54307875de77c156356740d946a181be6",
+      "size": 4096
+    },
+    {
+      "manifest_path": "/var/folders/nn/qc8dm2b954jbyvcwk0v79ync0000gn/T/TestGenerateArchiveFixturesv0.17.1direct3458771628/001/notes.txt",
+      "base": "notes.txt",
+      "sha256": "66c47963ad4a0786773e952b84a4915068ac3e86616336318e5f981a860bea96",
+      "size": 34
+    }
+  ]
+}

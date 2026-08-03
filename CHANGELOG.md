@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Cross-version archive readability tests** — the format spec promises manifest
+  v2.0 with v1.0 still readable, and the maturity page tells users their archives
+  do not become unreadable on upgrade. Every other test in the repo writes and
+  reads with the same build, which proves self-consistency, not the backward
+  readability archival users actually depend on. `tests/e2e/crossversion_test.go`
+  now serves committed archive fixtures back from the emulator and restores them
+  with current code, asserting byte-identity. (#322)
+  - Fixtures are captured from **actual released binaries** (v0.14.0 through
+    v0.18.0, both the direct and chunked layouts) via
+    `scripts/gen-archive-fixtures.sh`, not reconstructed by the current writer. A
+    reconstruction shares today's bugs and would pass vacuously; generating from
+    the real binary is the only reason this test can catch a format regression.
+  - Each fixture records the file paths **verbatim from the old binary's own
+    manifest** rather than deriving them. Releases through v0.18.0 record an
+    absolute source path, so the recorded string looks odd committed to a repo —
+    but `restore --file` matches against it, and deriving it would bake today's
+    assumption about path shape into the test whose purpose is to notice when
+    that shape changes.
+  - v0.14.0/v0.15.0 chunked archives are marked writer-corrupt: those releases
+    shipped #275 (unflushed final zstd frame), so the last file in every chunk is
+    genuinely truncated in the stored object and no reader could return it. They
+    are kept and tested under a different, stronger assertion — that current code
+    refuses to hand back a file which looks complete and is not. This independent
+    rediscovery of #275 from real binaries is what surfaced #337 and #336 below.
+
 ### Fixed
 
 - **Restoring any prefixed chunked archive by exact path failed outright** with

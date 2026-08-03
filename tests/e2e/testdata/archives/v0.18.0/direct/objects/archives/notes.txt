@@ -1,0 +1,1 @@
+cross-version fixture: plain text
