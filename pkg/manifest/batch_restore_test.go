@@ -1161,3 +1161,257 @@ func TestDeepVerify_DoesNotCertifyABucketItNeverRead(t *testing.T) {
 	assert.Equal(t, []string{newBucket}, client.requestedBuckets(),
 		"deep verify must not certify bytes it read from a different bucket")
 }
+
+// ---------------------------------------------------------------------------
+// #341: symlinked parents in the destination
+// ---------------------------------------------------------------------------
+
+// The #282 containment check in restorePath is LEXICAL: it strips volume names,
+// leading slashes and `.`/`..` segments, then confirms the joined result is
+// textually under destDir. filepath.Abs and filepath.Clean do not resolve
+// symlinks, so a path that is lexically contained can still be *filesystem*
+// escaping when a component of destDir's interior is a pre-existing symlink to
+// somewhere else (CWE-59). A restore into an attacker-prepared destination —
+// a world-writable staging dir, a shared scratch mount, an unpacked tarball
+// that shipped its own symlinks — writes through the link.
+//
+// These tests operate on the destination side, not the manifest side. The
+// manifest paths below are entirely ordinary; the hostile input is the
+// destination's shape.
+
+// symlinkTestDest builds a destination directory in which `linkName` is a
+// symlink pointing at an outside directory, and returns (destDir, outsideDir).
+func symlinkTestDest(t *testing.T, linkName string) (string, string) {
+	t.Helper()
+	base := t.TempDir()
+	dest := filepath.Join(base, "dest")
+	outside := filepath.Join(base, "outside")
+	require.NoError(t, os.MkdirAll(dest, 0o755))
+	require.NoError(t, os.MkdirAll(outside, 0o755))
+	if err := os.Symlink(outside, filepath.Join(dest, linkName)); err != nil {
+		t.Skipf("symlinks unavailable on this platform: %v", err)
+	}
+	return dest, outside
+}
+
+// assertNoEscape fails when anything was written through the symlink into the
+// outside directory. It is the assertion that matters: bytes landing outside
+// destDir is the finding.
+func assertNoEscape(t *testing.T, outside, name string) {
+	t.Helper()
+	escaped := filepath.Join(outside, name)
+	if _, err := os.Lstat(escaped); err == nil {
+		t.Fatalf("restore escaped the destination: wrote through a symlinked parent to %s", escaped)
+	}
+}
+
+// assertRefused pins the other half of the contract: the refusal must be
+// *reported*, not swallowed. BatchRestore deliberately counts per-file failures
+// and continues instead of returning an error (a partial restore should finish),
+// so the signal is stats.Failed — which the CLI's restoreOutcomeError turns into
+// a nonzero exit code (#336). Silently skipping the file would leave a user
+// believing a restore succeeded when a file was withheld, which is why
+// Failed==1 matters here as much as the containment itself.
+func assertRefused(t *testing.T, stats *RestoreStats, err error) {
+	t.Helper()
+	require.NoError(t, err, "a refused file is a per-file failure, not a fatal error")
+	require.NotNil(t, stats)
+	assert.Equal(t, int64(0), stats.Restored, "nothing should have been restored")
+	assert.Equal(t, int64(1), stats.Failed, "the refused file must be counted as failed")
+}
+
+// TestBatchRestore_SymlinkedParentDirect proves the direct-storage path refuses
+// to write through a symlinked parent directory in the destination.
+func TestBatchRestore_SymlinkedParentDirect(t *testing.T) {
+	dest, outside := symlinkTestDest(t, "cache")
+
+	content := []byte("direct payload")
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "none", TotalChunks: 0,
+		SourcePath: "/src",
+		Files:      []FileEntry{{Path: "/src/cache/config.txt", Size: int64(len(content)), S3Key: "k"}},
+	}
+	m.TotalFiles = 1
+	client := &mockS3Client{chunks: map[string][]byte{"k": content}}
+
+	stats, err := NewSelectiveExtractor(m, client, 0).
+		BatchRestore(context.Background(), []string{"config.txt"}, dest)
+
+	assertNoEscape(t, outside, "config.txt")
+	assertRefused(t, stats, err)
+}
+
+// TestBatchRestore_SymlinkedParentChunked is the chunked-storage twin: the two
+// storage layouts have separate write sites (writeDirectFiles vs the tar loop),
+// so a fix applied to only one leaves the other escapable.
+func TestBatchRestore_SymlinkedParentChunked(t *testing.T) {
+	dest, outside := symlinkTestDest(t, "cache")
+
+	content := []byte("chunked payload")
+	srcPath := "/src/cache/config.txt"
+	chunk := makeTarZst(t, map[string][]byte{srcPath: content})
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "zstd", TotalChunks: 1,
+		SourcePath: "/src",
+		Chunks:     []ChunkEntry{{ID: 0, S3Key: "c0", FileCount: 1, FilePaths: []string{srcPath}}},
+		Files:      []FileEntry{{Path: srcPath, Size: int64(len(content)), S3Key: "c0"}},
+	}
+	m.TotalFiles = 1
+	client := &mockS3Client{chunks: map[string][]byte{"c0": chunk}}
+
+	stats, err := NewSelectiveExtractor(m, client, 0).
+		BatchRestore(context.Background(), []string{srcPath}, dest)
+
+	assertNoEscape(t, outside, "config.txt")
+	assertRefused(t, stats, err)
+}
+
+// TestBatchRestore_SymlinkedLeafDirect covers the leaf case: the destination
+// already contains a symlink AT the path being restored. Writing through it
+// truncates and overwrites the link target, which is a file outside destDir.
+func TestBatchRestore_SymlinkedLeafDirect(t *testing.T) {
+	base := t.TempDir()
+	dest := filepath.Join(base, "dest")
+	require.NoError(t, os.MkdirAll(dest, 0o755))
+	outsideFile := filepath.Join(base, "victim.txt")
+	require.NoError(t, os.WriteFile(outsideFile, []byte("original"), 0o644))
+	if err := os.Symlink(outsideFile, filepath.Join(dest, "config.txt")); err != nil {
+		t.Skipf("symlinks unavailable on this platform: %v", err)
+	}
+
+	content := []byte("attacker content")
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "none", TotalChunks: 0,
+		SourcePath: "/src",
+		Files:      []FileEntry{{Path: "/src/config.txt", Size: int64(len(content)), S3Key: "k"}},
+	}
+	m.TotalFiles = 1
+	client := &mockS3Client{chunks: map[string][]byte{"k": content}}
+
+	stats, err := NewSelectiveExtractor(m, client, 0).
+		BatchRestore(context.Background(), []string{"config.txt"}, dest)
+
+	got, rerr := os.ReadFile(outsideFile)
+	require.NoError(t, rerr)
+	assert.Equal(t, []byte("original"), got,
+		"restore overwrote a file outside destDir through a symlinked leaf")
+	assertRefused(t, stats, err)
+}
+
+// TestBatchRestore_SymlinkedLeafChunked is the chunked twin of the leaf case.
+func TestBatchRestore_SymlinkedLeafChunked(t *testing.T) {
+	base := t.TempDir()
+	dest := filepath.Join(base, "dest")
+	require.NoError(t, os.MkdirAll(dest, 0o755))
+	outsideFile := filepath.Join(base, "victim.txt")
+	require.NoError(t, os.WriteFile(outsideFile, []byte("original"), 0o644))
+	if err := os.Symlink(outsideFile, filepath.Join(dest, "config.txt")); err != nil {
+		t.Skipf("symlinks unavailable on this platform: %v", err)
+	}
+
+	content := []byte("attacker content")
+	srcPath := "/src/config.txt"
+	chunk := makeTarZst(t, map[string][]byte{srcPath: content})
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "zstd", TotalChunks: 1,
+		SourcePath: "/src",
+		Chunks:     []ChunkEntry{{ID: 0, S3Key: "c0", FileCount: 1, FilePaths: []string{srcPath}}},
+		Files:      []FileEntry{{Path: srcPath, Size: int64(len(content)), S3Key: "c0"}},
+	}
+	m.TotalFiles = 1
+	client := &mockS3Client{chunks: map[string][]byte{"c0": chunk}}
+
+	stats, err := NewSelectiveExtractor(m, client, 0).
+		BatchRestore(context.Background(), []string{srcPath}, dest)
+
+	got, rerr := os.ReadFile(outsideFile)
+	require.NoError(t, rerr)
+	assert.Equal(t, []byte("original"), got,
+		"restore overwrote a file outside destDir through a symlinked leaf (chunked)")
+	assertRefused(t, stats, err)
+}
+
+// TestBatchRestore_OrdinaryRestoreStillWorks is the control: the containment
+// hardening must not break a normal restore into a clean destination, including
+// creating nested directories that don't exist yet.
+func TestBatchRestore_OrdinaryRestoreStillWorks(t *testing.T) {
+	content := []byte("ordinary content")
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "none", TotalChunks: 0,
+		SourcePath: "/src",
+		Files:      []FileEntry{{Path: "/src/a/b/c/report.txt", Size: int64(len(content)), S3Key: "k"}},
+	}
+	m.TotalFiles = 1
+	client := &mockS3Client{chunks: map[string][]byte{"k": content}}
+
+	dest := t.TempDir()
+	stats, err := NewSelectiveExtractor(m, client, 0).
+		BatchRestore(context.Background(), []string{"report.txt"}, dest)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), stats.Restored)
+
+	got, err := os.ReadFile(filepath.Join(dest, "a/b/c/report.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, content, got)
+}
+
+// TestBatchRestore_RealDirInDestStillWorks pins the distinction that matters:
+// an ordinary (non-symlink) directory that already exists in the destination is
+// fine to write into. A fix that rejected all pre-existing parents would pass
+// the escape tests above while breaking every incremental restore.
+func TestBatchRestore_RealDirInDestStillWorks(t *testing.T) {
+	dest := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dest, "cache"), 0o755))
+
+	content := []byte("into an existing real dir")
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "none", TotalChunks: 0,
+		SourcePath: "/src",
+		Files:      []FileEntry{{Path: "/src/cache/config.txt", Size: int64(len(content)), S3Key: "k"}},
+	}
+	m.TotalFiles = 1
+	client := &mockS3Client{chunks: map[string][]byte{"k": content}}
+
+	stats, err := NewSelectiveExtractor(m, client, 0).
+		BatchRestore(context.Background(), []string{"config.txt"}, dest)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), stats.Restored)
+
+	got, err := os.ReadFile(filepath.Join(dest, "cache/config.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, content, got)
+}
+
+// TestBatchRestore_InRootSymlinkedParent covers the case os.Root does NOT catch
+// on its own: a symlinked parent whose target is *inside* destDir. os.Root only
+// refuses links that leave the root, so this one is still followed — the file
+// lands somewhere other than the path the manifest named. That is a correctness
+// bug rather than an escape, and the same gap the extractor's parent walk closes.
+func TestBatchRestore_InRootSymlinkedParent(t *testing.T) {
+	base := t.TempDir()
+	dest := filepath.Join(base, "dest")
+	real := filepath.Join(dest, "real")
+	require.NoError(t, os.MkdirAll(real, 0o755))
+	// A *relative* target is the point: os.Root rejects an absolute symlink
+	// outright, so an absolute link here would pass for the wrong reason.
+	if err := os.Symlink("real", filepath.Join(dest, "cache")); err != nil {
+		t.Skipf("symlinks unavailable on this platform: %v", err)
+	}
+
+	content := []byte("payload")
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "b", CompressionType: "none", TotalChunks: 0,
+		SourcePath: "/src",
+		Files:      []FileEntry{{Path: "/src/cache/config.txt", Size: int64(len(content)), S3Key: "k"}},
+	}
+	m.TotalFiles = 1
+	client := &mockS3Client{chunks: map[string][]byte{"k": content}}
+
+	stats, err := NewSelectiveExtractor(m, client, 0).
+		BatchRestore(context.Background(), []string{"config.txt"}, dest)
+
+	if _, statErr := os.Lstat(filepath.Join(real, "config.txt")); statErr == nil {
+		t.Fatal("restore followed an in-root symlinked parent: file landed in real/, not cache/")
+	}
+	assertRefused(t, stats, err)
+}
