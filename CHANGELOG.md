@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-08-03
+
+**Container Hygiene.** Every finding in this release came from outside: an
+external security re-review of v0.21.0 (CSH-021/022/023) plus Dependabot's own
+alert feed. Nothing here is a new feature — it is the supply chain and the
+release pipeline, which is where the last three releases kept finding that the
+*checks themselves* were the weak part. Three of the five items are cases where
+an automated guard existed and was quietly doing nothing: an EOL base image no
+scanner flags, a Dependabot config invalid for a year, and a signature verified
+only after publication.
+
 ### Security
 
 - **Three HIGH Python advisories fixed in `dvc-cargoship`** by raising floors in
