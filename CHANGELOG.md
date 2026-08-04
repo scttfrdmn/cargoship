@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-08-04
+
+**Key Material & Contracts.** Two breaking changes, both closing a gap between
+what CargoShip documented and what it did. `create keys` wrote an **unencrypted**
+private key and defaulted its destination to `$TMPDIR` — plaintext key material
+in a directory that, on the shared HPC systems CargoShip targets, is often a
+cleanup-policy-governed shared filesystem. And every failure exited **`3`**, a
+code in no documentation, so a caller could not distinguish a mistyped flag from a
+transfer that genuinely failed.
+
+The theme continues v0.22.0's: the interesting failures are in the guards, not the
+features. A `--type` flag was accepted and ignored. A test leaked a private key
+into `$TMPDIR` on every run. `goreleaser check` had never run in CI, so a
+deprecated stanza sat in the release config across six releases — and the same
+stanza had been publishing the **wrong software licence** the whole time. A perf
+test asserted an ordering between two loops whose margin narrows to 4% under load,
+so it failed in CI and never locally.
+
 ### Security
 
 - **GPG private keys are now encrypted at rest, and no longer default to
@@ -47,7 +65,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   four ecosystems.
 
 ### Fixed
-
 - **`TestPerformance_CompetitorComparison` no longer races two loops against each
   other** ([#383](https://github.com/scttfrdmn/cargoship/issues/383)). It asserted
   that basic round-robin out-throughputs CargoShip's region selection, comparing
@@ -109,6 +126,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   untracked `os.MkdirTemp` that nothing cleaned up — 16 had accumulated on one
   machine. Now uses `t.TempDir()`.
 
+- **Git provenance in the manifest could describe the wrong repository.**
+  `pkg/manifest.gitRun` invoked `git -C <dir>` with the process environment
+  inherited unchanged, but `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` **override
+  `-C`** — and git exports them to everything it spawns. So running CargoShip
+  from a git hook, an alias, or `git bisect run` recorded the commit, branch, tag
+  and dirty flag of whatever repository git had exported, not the directory being
+  archived. The manifest is a trust artifact, so a plausible-but-wrong commit is
+  worse than an absent one: it looks authoritative. `gitRun` now strips the eight
+  location-overriding `GIT_*` variables so `-C` alone decides.
+  Found the hard way — the same defect in `pkg/manifest/git_test.go` and
+  `internal/audit/tarloop_test.go` meant that running the suite under the
+  pre-commit hook (which is a hook, so `GIT_DIR` is set) had the test helper's
+  `git init`/`git commit` operate on the **real checkout**, landing a stray
+  "initial commit" and flipping `core.bare`. Both test helpers now filter the
+  environment too. Regression test included: two temp repos, `GIT_DIR` aimed at
+  the decoy, asserting the archived directory wins — it fails against the
+  unfixed `gitRun` by reporting the decoy's SHA.
+- **Nested modules no longer break on a root dependency bump.** The modules under
+  `examples/library-usage/` and `benchmarks/` `replace` the root module, so their
+  `// indirect` pins have to track root `go.mod` — but Dependabot watches only
+  `/` for gomod, so it never updates them. Bumping `klauspost/compress`,
+  `prometheus/client_golang`, or the aws-sdk group left four example modules
+  unresolvable. New `scripts/ci/check-nested-modules.sh`, wired into the test
+  workflow, checks this directly and names the directories to `go mod tidy`.
+  Previously the only lane that noticed was **govulncheck**, which surfaced it as
+  `loading packages: err: … go: updates to go.mod needed` — a vulnerability check
+  failing for a reason unrelated to vulnerabilities, on modules containing no
+  product code, on exactly the dependency PRs where a red X is most likely to be
+  dismissed as noise. Also tidied a pre-existing stale `require` in
+  `benchmarks/cargohold/go.mod` (it pinned `cargoship v0.6.0` under a `replace`
+  that made the version meaningless).
+
 ### Changed
 
 - **`cargoship create keys` writes to the current directory by default**, not an
@@ -120,8 +169,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   out from under its owner. The command also now refuses to overwrite an existing
   `private.key`/`public.key` rather than replacing it silently, since a replaced
   private key is unrecoverable.
-
-### Changed
 
 - **Dependency bumps from the first working Dependabot run** ([#366](https://github.com/scttfrdmn/cargoship/issues/366)
   fixed a config that had been invalid since July 2025, so this is the first
@@ -164,48 +211,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The migration itself remains open as #384, and deliberately so: the successor
   is **pre-1.0 (v0.3.9)** and has no `BufferProvider` equivalent for the 64 MB
   pool from Issue #34 Phase 2.2, so it needs real-AWS round-trip validation.
-
-### Fixed
-
-- **Git provenance in the manifest could describe the wrong repository.**
-  `pkg/manifest.gitRun` invoked `git -C <dir>` with the process environment
-  inherited unchanged, but `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` **override
-  `-C`** — and git exports them to everything it spawns. So running CargoShip
-  from a git hook, an alias, or `git bisect run` recorded the commit, branch, tag
-  and dirty flag of whatever repository git had exported, not the directory being
-  archived. The manifest is a trust artifact, so a plausible-but-wrong commit is
-  worse than an absent one: it looks authoritative. `gitRun` now strips the eight
-  location-overriding `GIT_*` variables so `-C` alone decides.
-  Found the hard way — the same defect in `pkg/manifest/git_test.go` and
-  `internal/audit/tarloop_test.go` meant that running the suite under the
-  pre-commit hook (which is a hook, so `GIT_DIR` is set) had the test helper's
-  `git init`/`git commit` operate on the **real checkout**, landing a stray
-  "initial commit" and flipping `core.bare`. Both test helpers now filter the
-  environment too. Regression test included: two temp repos, `GIT_DIR` aimed at
-  the decoy, asserting the archived directory wins — it fails against the
-  unfixed `gitRun` by reporting the decoy's SHA.
-- **Nested modules no longer break on a root dependency bump.** The modules under
-  `examples/library-usage/` and `benchmarks/` `replace` the root module, so their
-  `// indirect` pins have to track root `go.mod` — but Dependabot watches only
-  `/` for gomod, so it never updates them. Bumping `klauspost/compress`,
-  `prometheus/client_golang`, or the aws-sdk group left four example modules
-  unresolvable. New `scripts/ci/check-nested-modules.sh`, wired into the test
-  workflow, checks this directly and names the directories to `go mod tidy`.
-  Previously the only lane that noticed was **govulncheck**, which surfaced it as
-  `loading packages: err: … go: updates to go.mod needed` — a vulnerability check
-  failing for a reason unrelated to vulnerabilities, on modules containing no
-  product code, on exactly the dependency PRs where a red X is most likely to be
-  dismissed as noise. Also tidied a pre-existing stale `require` in
-  `benchmarks/cargohold/go.mod` (it pinned `cargoship v0.6.0` under a `replace`
-  that made the version meaningless).
-
-### Known issues
-
-- **[#383](https://github.com/scttfrdmn/cargoship/issues/383)** —
-  `TestPerformance_CompetitorComparison` asserts a strict ordering between two
-  in-memory loops measured at millions of ops/sec, so it fails under CPU
-  contention. Found during this work and confirmed pre-existing on `main`, not
-  caused by any dependency change.
 
 ## [0.22.0] - 2026-08-03
 
