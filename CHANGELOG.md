@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **`postcss` 8.5.21 → 8.5.25** in `docs/` (GHSA-fxqj-rqcc-2cmp, moderate): an
+  attacker-controlled `sourceMappingURL` can read arbitrary `.map` files when
+  `from` is unset — an incomplete fix of GHSA-6g55-p6wh-862q. Development-scope
+  and transitive via VitePress (`vitepress` → `vite`/`@vue/compiler-sfc`), so it
+  affects the docs build only, never a shipped artifact. This clears the **last
+  open Dependabot alert on the repository**; the count is now zero across all
+  four ecosystems.
+
 ### Changed
 
 - **Dependency bumps from the first working Dependabot run** ([#366](https://github.com/scttfrdmn/cargoship/issues/366)
