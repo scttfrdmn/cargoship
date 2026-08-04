@@ -42,6 +42,14 @@ jobs:
       - name: Check all build tags compile
         run: bash scripts/ci/check-build-tags.sh
 
+      # The modules under examples/library-usage/ and benchmarks/ `replace` the
+      # root, so a root dependency bump has to be propagated into their indirect
+      # pins. Dependabot watches only `/` for gomod, so it never does that — and
+      # the only lane that used to notice was govulncheck, which reported it as a
+      # confusing "loading packages" error on a module holding no product code.
+      - name: Check nested modules resolve against root
+        run: bash scripts/ci/check-nested-modules.sh
+
   e2e-quickstart:
     name: Quick Start E2E (emulator)
     runs-on: ubuntu-latest
