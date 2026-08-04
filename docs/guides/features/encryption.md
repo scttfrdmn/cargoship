@@ -84,15 +84,95 @@ history, in `ps` output, and in CI logs that echo command lines.
 `--no-passphrase` generates an unencrypted private key. Anyone who can read the
 file can decrypt every archive it protects. Use it only where the file itself is
 already protected by something else, and never on a shared filesystem.
-
-**Keys generated before v0.23.0 were always unencrypted**, and CargoShip wrote
-them to a temporary directory by default. If you are holding a key pair from an
-earlier version, treat the private key as unprotected: move it somewhere safe,
-or generate and distribute a replacement.
 :::
 
 Existing `private.key` / `public.key` files are never overwritten — the command
 fails instead, because a replaced private key cannot be recovered.
+
+### Rotating a key generated before v0.23.0 {#rotating-pre-v0230-keys}
+
+**Every private key CargoShip generated before v0.23.0 is unencrypted**, and by
+default it was written into a temporary directory (`$TMPDIR`) rather than a
+location you chose. Two consequences worth being blunt about:
+
+- The passphrase option existed but was never applied, so supplying one did not
+  protect the key. There was no way to get a protected key out of those versions.
+- On multi-user systems `$TMPDIR` is often a shared filesystem, so the file may
+  have been readable by others, and may also have been deleted from under you by
+  a cleanup job.
+
+No upgrade can fix a file already on disk. Rotation is a manual step.
+
+#### What rotation does and does not achieve
+
+Archives are encrypted to the **public** key; the private key only decrypts. So:
+
+| | Effect of rotating |
+|---|---|
+| Archives you upload *after* rotating | Protected by the new key. |
+| Archives already uploaded with the old key | **Still decryptable with the old private key.** A new key cannot retroactively protect them. |
+
+If an old private key may have been exposed, treat every archive encrypted to it
+as exposed too. Rotating limits future damage; it does not undo past exposure.
+To actually protect that existing data, re-encrypt it to the new key (download,
+then re-upload with the new `--public-key`) and delete the old objects — or, if
+the data is still sensitive enough to warrant it, treat it as disclosed.
+
+#### Steps
+
+1. **Find the old keys.** They are likely still in your temp directory:
+
+   ```bash
+   ls -la "${TMPDIR:-/tmp}"/gpg-keys*
+   ```
+
+2. **Generate a replacement**, into a directory you choose, with a passphrase:
+
+   ```bash
+   mkdir -p ~/keys/cargoship && cd ~/keys/cargoship
+   cargoship create keys --name "Data Archive" --email archive@example.com
+   ```
+
+3. **Confirm the new private key is actually encrypted.** Ask `gpg` what is in
+   the packets:
+
+   ```bash
+   gpg --list-packets private.key | grep -i protection
+   ```
+
+   A protected key reports something like `iter+salt S2K, algo: 9, SHA1
+   protection` and `skey[2]: [v4 protected]`. **Empty output means the key is
+   not encrypted.**
+
+   ::: warning Do not grep the key file for "ENCRYPTED"
+   An armored PGP private key has no plaintext marker saying whether it is
+   protected — the `BEGIN PGP PRIVATE KEY BLOCK` armor header is byte-for-byte
+   identical either way. Searching the file for words like `ENCRYPTED` or
+   `Passphrase` returns no match even for a correctly protected key, so it will
+   tell you a safe key is unsafe. Only a tool that parses the packets, as in the
+   command above, can answer this.
+   :::
+
+4. **Distribute the new public key** to whoever uploads on your behalf, and
+   update any `--public-key` arguments.
+
+5. **Re-encrypt anything that still matters**, per the table above.
+
+6. **Destroy the old private keys** once you are certain nothing you still need
+   is encrypted only to them. On macOS and Linux:
+
+   ```bash
+   rm -rf "${TMPDIR:-/tmp}"/gpg-keys*
+   ```
+
+   Deleting a file does not reliably erase it from an SSD. If the key protected
+   data you would report as breached, use full-disk-encryption key destruction or
+   physical media destruction rather than `rm`.
+
+::: tip Verify before you delete
+Do step 6 last. If an archive you still need is encrypted only to the old key,
+destroying that key destroys your access to the archive.
+:::
 
 ## KMS or GPG?
 
