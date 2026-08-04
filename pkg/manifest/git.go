@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -93,6 +94,7 @@ func gitRun(ctx context.Context, dir string, args ...string) (string, error) {
 	cmdArgs = append(cmdArgs, args...)
 
 	cmd := exec.CommandContext(ctx, "git", cmdArgs...)
+	cmd.Env = gitCleanEnv()
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = nil // intentionally discard
@@ -101,4 +103,43 @@ func gitRun(ctx context.Context, dir string, args ...string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(stdout.String()), nil
+}
+
+// gitEnvOverrides are the environment variables that make git ignore `-C dir`
+// and operate on a different repository. Git exports them to every process it
+// spawns, so any tool invoked from a hook or an alias inherits them.
+var gitEnvOverrides = []string{
+	"GIT_DIR",
+	"GIT_WORK_TREE",
+	"GIT_INDEX_FILE",
+	"GIT_OBJECT_DIRECTORY",
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+	"GIT_COMMON_DIR",
+	"GIT_PREFIX",
+	"GIT_CEILING_DIRECTORIES",
+}
+
+// gitCleanEnv returns the current environment with git's repository-location
+// overrides removed, so `-C dir` alone decides which repository is inspected.
+//
+// Without this, GIT_DIR wins over -C: running CargoShip from a git hook, an
+// alias, or `git bisect run` would attribute the manifest's provenance to
+// whatever repository git had exported rather than the directory being
+// archived — recording a commit and branch that never contained the data. The
+// manifest is a trust artifact, so a plausible-but-wrong value is worse than
+// an absent one.
+func gitCleanEnv() []string {
+	env := os.Environ()
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		key := kv
+		if i := strings.IndexByte(kv, '='); i >= 0 {
+			key = kv[:i]
+		}
+		if slices.Contains(gitEnvOverrides, key) {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }
