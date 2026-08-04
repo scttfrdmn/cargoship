@@ -9,7 +9,7 @@ cargoship create [flags]
 ### Options
 
 ```
-  -d, --destination string   Directory to write files in to. If not specified, we'll use an auto generated temp dir
+  -d, --destination string   Directory to write files in to. Defaults to the current directory
   -h, --help                 help for create
 ```
 

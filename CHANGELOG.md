@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **GPG private keys are now encrypted at rest, and no longer default to
+  `$TMPDIR`** ([#399](https://github.com/scttfrdmn/cargoship/issues/399),
+  [#398](https://github.com/scttfrdmn/cargoship/issues/398)). `KeyOpts.Passphrase`
+  had been declared since the field was introduced but was **read nowhere in the
+  repo** — `NewKeyPair` never called `Lock()`, so every private key
+  `cargoship create keys` ever produced was plaintext PGP key material.
+  Confirmed on a generated key (`IsLocked() == false`), not inferred from the
+  code. `cargoship create keys` now prompts for a passphrase (or reads
+  `CARGOSHIP_GPG_PASSPHRASE`) and refuses to generate an unprotected key without
+  an explicit `--no-passphrase`. There is deliberately no `--passphrase` flag: a
+  flag value lands in shell history, `ps` output, and CI logs.
+
+  **If you generated a key pair with an earlier version, its private key is
+  unencrypted.** No code change can retroactively protect a file already on
+  disk — move it somewhere safe, or generate and distribute a replacement.
+
 - **`postcss` 8.5.21 → 8.5.25** in `docs/` (GHSA-fxqj-rqcc-2cmp, moderate): an
   attacker-controlled `sourceMappingURL` can read arbitrary `.map` files when
   `from` is unset — an incomplete fix of GHSA-6g55-p6wh-862q. Development-scope
@@ -16,6 +32,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   affects the docs build only, never a shipped artifact. This clears the **last
   open Dependabot alert on the repository**; the count is now zero across all
   four ecosystems.
+
+### Fixed
+
+- **`cargoship create keys --type x25519` silently produced an RSA key.** The
+  `--type` flag was registered, documented, and completion-enabled, but never
+  copied into `KeyOpts`, so the key type was always the `rsa` default. Found
+  while fixing [#399](https://github.com/scttfrdmn/cargoship/issues/399); a flag
+  that is accepted and ignored is worse than one that is rejected.
+- **The `pkg/gpg` test suite leaked a private key into `$TMPDIR` on every run**
+  ([#398](https://github.com/scttfrdmn/cargoship/issues/398)).
+  `TestNewKeyFilesWithPair` passed `""` as the destination, which returned an
+  untracked `os.MkdirTemp` that nothing cleaned up — 16 had accumulated on one
+  machine. Now uses `t.TempDir()`.
+
+### Changed
+
+- **`cargoship create keys` writes to the current directory by default**, not an
+  auto-generated temp dir ([#399](https://github.com/scttfrdmn/cargoship/issues/399)).
+  **Breaking** for anyone parsing the logged path instead of passing
+  `--destination`. `$TMPDIR` was the wrong default twice over: it held plaintext
+  key material, and on the shared HPC systems CargoShip targets it is often a
+  shared filesystem with an undocumented cleanup policy that can delete the key
+  out from under its owner. The command also now refuses to overwrite an existing
+  `private.key`/`public.key` rather than replacing it silently, since a replaced
+  private key is unrecoverable.
 
 ### Changed
 
