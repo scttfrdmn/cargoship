@@ -34,6 +34,24 @@ func buildVersionInfo() string {
 	return versionInfo
 }
 
+// reportAndCode logs err, unless the command already reported it itself, and
+// returns the process exit code for it: 1 for a command that ran and failed, 2
+// for a malformed invocation. This used to be a flat 3 for both, which is
+// outside the documented range and gave scripts no way to tell them apart.
+//
+// It is split out of main because main calls os.Exit and so cannot be tested.
+func reportAndCode(err error) int {
+	if err == nil {
+		return cmd.ExitOK
+	}
+	// A silent error means the command already printed its own diagnostics
+	// (verify, for one) and wants the exit code only.
+	if !cmd.IsSilent(err) {
+		slog.Error("error executing command, quitting", "error", err)
+	}
+	return cmd.ExitCode(err)
+}
+
 func main() {
 	// We are pushing all the usage to Stdout instead of Stderr. I would
 	// like to eventually get this back to stderr, however currently that
@@ -41,8 +59,7 @@ func main() {
 	// stdout. Hopefully cobra will be able to have multiple outputs at some
 	// point
 	err := cmd.NewRootCmdWithVersion(os.Stdout, buildVersionInfo()).ExecuteContext(context.Background())
-	if err != nil {
-		slog.Error("error executing command, quitting", "error", err)
-		os.Exit(3)
+	if code := reportAndCode(err); code != cmd.ExitOK {
+		os.Exit(code)
 	}
 }

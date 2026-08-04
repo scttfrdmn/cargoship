@@ -142,6 +142,7 @@ const sidebar = {
         { text: 'Destructive operations', link: '/reference/commands/destructive' },
         { text: 'Diagnostics & utilities', link: '/reference/commands/diagnostics' },
         { text: 'Global flags', link: '/reference/commands/global-flags' },
+        { text: 'Exit codes', link: '/reference/exit-codes' },
         { text: 'Environment variables', link: '/reference/environment-variables' },
         { text: 'Configuration schema', link: '/reference/configuration' },
         { text: 'CargoShip vs. other tools', link: '/reference/comparison' },
