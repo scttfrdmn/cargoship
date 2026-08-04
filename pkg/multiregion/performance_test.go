@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -486,8 +487,32 @@ func TestPerformance_CompetitorComparison(t *testing.T) {
 		// It should maintain reasonable throughput despite additional complexity
 		assert.Greater(t, cargoshipResult.OperationsPerSec, float64(1000),
 			"CargoShip should maintain reasonable throughput (>1000 ops/sec)")
-		assert.Greater(t, basicResult.OperationsPerSec, cargoshipResult.OperationsPerSec,
-			"Basic round-robin should be faster due to simplicity")
+		assert.Greater(t, basicResult.OperationsPerSec, float64(1000),
+			"Basic round-robin should maintain reasonable throughput (>1000 ops/sec)")
+
+		// There is deliberately NO assertion that basic round-robin is faster
+		// than CargoShip (#383). It used to assert exactly that, and it is not a
+		// claim a single sample can support:
+		//
+		//   - Both figures are millions of ops/sec from tight in-memory loops
+		//     with no I/O; both report 0.00ms latency, i.e. the operations are
+		//     too fast to measure at the resolution being compared.
+		//   - The two sides are not even shaped alike. BenchmarkCargoShipSelection
+		//     runs at concurrency 10 while BenchmarkBasicRoundRobin is one
+		//     sequential loop, so the assertion required a 1-goroutine loop to
+		//     out-throughput a 10-goroutine one.
+		//   - Measured over 30 back-to-back rounds, the basic/CargoShip ratio
+		//     ranged 1.51x–10.34x idle and 1.04x–9.50x under CPU contention. It
+		//     holds by a wide margin on an idle machine and by 4% on a loaded
+		//     one, which is why it inverted on CI and in full-suite runs rather
+		//     than in isolation.
+		//
+		// Per-operation overhead is a real thing to track, but it needs repeated
+		// samples and a tolerance, which is what Benchmark* with -benchtime is
+		// for — not a pass/fail assert in a correctness suite. The existing
+		// perf-regression lane is non-blocking for the same reason.
+		t.Logf("basic/cargoship throughput ratio: %.2fx (informational; not asserted, see #383)",
+			basicResult.OperationsPerSec/cargoshipResult.OperationsPerSec)
 	})
 
 	t.Run("failover vs no-failover", func(t *testing.T) {
@@ -703,6 +728,51 @@ func BenchmarkRegionSelection(b *testing.B) {
 		}
 	})
 }
+
+// BenchmarkBasicRoundRobinSelection is the counterpart to
+// BenchmarkRegionSelection: the same operation with none of CargoShip's
+// health-checking, latency-tracking, or load-balancing logic.
+//
+// This is where the "does the extra machinery cost much?" question belongs
+// (#383). A TestPerformance_CompetitorComparison subtest used to answer it by
+// racing the two implementations once and asserting an ordering, which inverted
+// under CPU contention. Running both benchmarks gives a ratio from repeated
+// samples that can be compared with judgement:
+//
+//	go test -run '^$' -bench 'BenchmarkRegionSelection|BenchmarkBasicRoundRobinSelection' \
+//	  -benchtime 2s ./pkg/multiregion/
+//
+// It is deliberately not wired into a pass/fail gate. Both use b.RunParallel so
+// the comparison is like-for-like, which the original assertion was not — it
+// pitted a concurrency-10 loop against a sequential one.
+func BenchmarkBasicRoundRobinSelection(b *testing.B) {
+	config := createValidMultiRegionConfig()
+	regions := config.Regions
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		// Counter and sink are per-goroutine on purpose. A shared atomic counter
+		// and a single package-level sink measured 150 ns/op against
+		// BenchmarkRegionSelection's 13 ns/op — i.e. the harness's own
+		// cache-line contention, not the indexing being benchmarked, and it made
+		// the "simpler" implementation look 11x slower. The real round-robin
+		// state in a sequential caller is a plain local, so this matches it.
+		counter := 0
+		var sink Region
+		for pb.Next() {
+			sink = regions[counter%len(regions)]
+			counter++
+		}
+		// Publish once, outside the timed loop's hot path, so the compiler cannot
+		// eliminate the indexing as a dead store.
+		roundRobinSink.Store(&sink)
+	})
+}
+
+// roundRobinSink defeats dead-store elimination in
+// BenchmarkBasicRoundRobinSelection without putting a contended write inside the
+// measured loop.
+var roundRobinSink atomic.Pointer[Region]
 
 func BenchmarkFailoverDetection(b *testing.B) {
 	config := createValidMultiRegionConfig()
