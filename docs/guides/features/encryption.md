@@ -146,10 +146,11 @@ the data is still sensitive enough to warrant it, treat it as disclosed.
 
    ::: warning Do not grep the key file for "ENCRYPTED"
    An armored PGP private key has no plaintext marker saying whether it is
-   protected — the `-----BEGIN PGP PRIVATE KEY BLOCK-----` header is identical
-   either way. Searching the file for words like `ENCRYPTED` or `Passphrase`
-   returns no match even for a correctly protected key, so it will tell you a
-   safe key is unsafe. Only a tool that parses the packets can answer this.
+   protected — the `BEGIN PGP PRIVATE KEY BLOCK` armor header is byte-for-byte
+   identical either way. Searching the file for words like `ENCRYPTED` or
+   `Passphrase` returns no match even for a correctly protected key, so it will
+   tell you a safe key is unsafe. Only a tool that parses the packets, as in the
+   command above, can answer this.
    :::
 
 4. **Distribute the new public key** to whoever uploads on your behalf, and
