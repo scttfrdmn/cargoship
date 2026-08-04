@@ -48,6 +48,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`TestPerformance_CompetitorComparison` no longer races two loops against each
+  other** ([#383](https://github.com/scttfrdmn/cargoship/issues/383)). It asserted
+  that basic round-robin out-throughputs CargoShip's region selection, comparing
+  two single samples of millions of ops/sec from in-memory loops that both report
+  `0.00ms` latency. The sides weren't even shaped alike — CargoShip's helper runs
+  at concurrency 10 against a sequential loop — so the assertion required a
+  1-goroutine loop to beat a 10-goroutine one. Measured across 30 rounds the
+  ratio spanned 1.51x–10.34x idle and 1.04x–9.50x under load: true by a wide
+  margin on an idle machine, by 4% on a busy one, which is why it failed in CI and
+  full-suite runs but never in isolation. The ordering assertion is gone (the
+  throughput floors, which catch real regressions, stay), and the overhead
+  comparison moved to `BenchmarkBasicRoundRobinSelection` alongside the existing
+  `BenchmarkRegionSelection`, where repeated samples make it meaningful: 1.73
+  ns/op vs ~13 ns/op, stable to ±1%.
+
 - **The Homebrew formula and Scoop manifest declared the wrong license.** Both
   said `MIT`; the project is Apache-2.0 (`LICENSE`). Every published formula has
   carried the wrong value, including the tap as it stands today — it will correct
