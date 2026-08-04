@@ -48,6 +48,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Homebrew formula and Scoop manifest declared the wrong license.** Both
+  said `MIT`; the project is Apache-2.0 (`LICENSE`). Every published formula has
+  carried the wrong value, including the tap as it stands today — it will correct
+  itself on the next release. No code change, but a licensing statement is not a
+  cosmetic field.
+
+- **`.goreleaser.yml` is now validated on every PR**
+  ([#381](https://github.com/scttfrdmn/cargoship/issues/381)). `release.yml` pins
+  goreleaser to `~> v2`, so an upstream minor release can remove a property that
+  only warns today — and with no lane running `goreleaser check`, the first sign
+  would have been a **failed release on an already-pushed tag**. A deprecated
+  `brews:` sat in the config across six releases for exactly that reason. The new
+  check distinguishes a deprecation (schedulable; allowlisted with an issue and a
+  reason) from a hard config error (always fatal), so accepting one is a
+  reviewable edit rather than a silence.
+
 - **Exit codes now follow the documented `0`/`1`/`2` convention**
   ([#401](https://github.com/scttfrdmn/cargoship/issues/401)). Every failure —
   runtime error, unknown flag, missing required flag, wrong argument count — used
