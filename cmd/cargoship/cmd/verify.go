@@ -195,7 +195,11 @@ Exit Codes:
 				// not just that the manifest is internally consistent.
 				if deep {
 					if err := runDeepVerify(ctx, s3Client, m, bucket, verbose); err != nil {
-						os.Exit(1)
+						// runDeepVerify prints its own per-file diagnostics, so
+						// report failure by exit code alone. Returning instead of
+						// calling os.Exit lets PersistentPostRun close the CPU
+						// profile when --profile is set.
+						return ErrSilent
 					}
 					return nil
 				}
@@ -243,9 +247,9 @@ Exit Codes:
 			}
 			fmt.Println()
 
-			// Exit with error code
-			os.Exit(1)
-			return nil // Never reached, but required for compilation
+			// The failed checks are already printed above; report failure through
+			// the exit code without a duplicate error line.
+			return ErrSilent
 		},
 	}
 

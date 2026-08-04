@@ -117,6 +117,10 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 	// cmd.SetContext(context.WithValue(context.Background(), inventory.LogWriterKey, lo))
 	cmd.SetOut(lo)
 
+	// Mark flag-parse failures as usage errors so main can exit 2 rather than
+	// lumping them in with runtime failures.
+	attachUsageClassifier(cmd)
+
 	return cmd
 }
 

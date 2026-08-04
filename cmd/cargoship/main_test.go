@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"log/slog"
 	"os"
 	"testing"
 
@@ -146,6 +149,41 @@ func TestNewRootCmdWithVersion(t *testing.T) {
 	output := buf.String()
 	if output == "" {
 		t.Error("Version command should produce output")
+	}
+}
+
+// TestReportAndCode covers the mapping main() applies to the error returned by
+// command execution. main() itself calls os.Exit and so can't be tested; this is
+// the part that decides what it exits with.
+func TestReportAndCode(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		wantCode int
+		wantLog  bool
+	}{
+		{"success", nil, cmd.ExitOK, false},
+		{"runtime failure", errors.New("bucket not found"), cmd.ExitError, true},
+		{"usage error", fmt.Errorf("%w: --bucket is required", cmd.ErrUsage), cmd.ExitUsage, true},
+		{"cobra usage wording", errors.New(`unknown command "nope" for "cargoship"`), cmd.ExitUsage, true},
+		// A silent error is still a failure, but the command already printed its
+		// own diagnostics, so main must not log a second line over them.
+		{"silent failure", cmd.ErrSilent, cmd.ExitError, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logged bytes.Buffer
+			orig := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+			defer slog.SetDefault(orig)
+
+			if got := reportAndCode(tt.err); got != tt.wantCode {
+				t.Errorf("reportAndCode(%v) = %d, want %d", tt.err, got, tt.wantCode)
+			}
+			if gotLog := logged.Len() > 0; gotLog != tt.wantLog {
+				t.Errorf("logged = %v, want %v (output: %q)", gotLog, tt.wantLog, logged.String())
+			}
+		})
 	}
 }
 

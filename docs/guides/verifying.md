@@ -104,6 +104,12 @@ sibling commands, you can address the upload with an S3 URL or with
 |------|---------|
 | `0`  | All checks passed |
 | `1`  | Verification failed (errors found) |
+| `2`  | Bad invocation — unknown flag, missing argument |
+
+A failed check is `1`, not `2`: the command ran correctly and the answer was
+"this archive does not match". `2` means the command line itself was wrong, so
+retrying it will not help. See [Exit codes](/reference/exit-codes) for the
+CLI-wide contract.
 
 That makes it a drop-in step in scripts, cron, and CI pipelines:
 

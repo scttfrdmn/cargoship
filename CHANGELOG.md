@@ -48,6 +48,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Exit codes now follow the documented `0`/`1`/`2` convention**
+  ([#401](https://github.com/scttfrdmn/cargoship/issues/401)). Every failure —
+  runtime error, unknown flag, missing required flag, wrong argument count — used
+  to exit **`3`**, a code that appears in no documentation and gave callers no way
+  to tell a malformed command line from a command that ran and failed. Now `1`
+  means it ran and failed, `2` means the invocation was wrong, so a retry loop can
+  treat `2` as fatal. Documented in
+  [Exit codes](https://cargoship.app/reference/exit-codes).
+
+  `verify` previously reached its documented `1` only by calling `os.Exit(1)`
+  mid-command, which skipped `PersistentPostRun` and so left the CPU profile file
+  unclosed under `--profile`. It now returns normally and cleanup runs.
+
+  `cargoship create <unknown>` returned the entire multi-line usage block as an
+  error *message*, which the logger emitted as one quoted line; it now reports the
+  unknown subcommand in one line and exits `2`.
+
+  **Breaking for scripts that check for `3`** — check `1` and `2` instead.
+
 - **`cargoship create keys --type x25519` silently produced an RSA key.** The
   `--type` flag was registered, documented, and completion-enabled, but never
   copied into `KeyOpts`, so the key type was always the `rsa` default. Found
