@@ -31,6 +31,17 @@ updates:
       # Ignore patch updates for stable dependencies
       - dependency-name: "github.com/aws/aws-sdk-go-v2*"
         update-types: ["version-update:semver-patch"]
+      # Held deliberately at v1.17.82 (#384). v1.22.35 is where AWS annotated
+      # the Uploader API `Deprecated: superceded by feature/s3/transfermanager`,
+      # which becomes 11 blocking SA1019 in pkg/aws/s3 + pkg/pipeline — the
+      # upload path. Every other module in the aws-sdk group bumps normally;
+      # only this one is pinned, so the group keeps flowing.
+      #
+      # Do NOT lift this to take a routine bump. Lift it only as part of #384's
+      # migration: the successor is pre-1.0 (v0.3.9) and has no BufferProvider
+      # equivalent for the 64MB pool from Issue #34 Phase 2.2, so it needs
+      # real-AWS round-trip validation, not a version change.
+      - dependency-name: "github.com/aws/aws-sdk-go-v2/feature/s3/manager"
     groups:
       aws-sdk:
         patterns:

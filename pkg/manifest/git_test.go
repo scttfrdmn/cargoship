@@ -22,8 +22,33 @@ func skipIfNoGit(t *testing.T) {
 // gitEnv returns environment variables that prevent test git commands from
 // reading the user's global or system config, and supply mandatory identity
 // fields required by git commit.
+//
+// The inherited environment is FILTERED, not just appended to. Git exports
+// GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE to the processes it spawns, so when
+// this suite runs from inside a hook (the pre-commit hook runs `go test`), every
+// `git` call below would ignore cmd.Dir and operate on the REAL repository
+// instead of the test's temp dir. That is not a fussy hygiene point: it made
+// initRepo's `git commit` land a stray "initial commit" on the checked-out
+// branch and flipped the real repo's core.bare, while the tests reported
+// confusing assertion failures about the wrong branch and a remote URL that
+// "shouldn't exist on a fresh repo".
 func gitEnv() []string {
-	return append(os.Environ(),
+	// Drop anything git might have exported that would redirect these commands
+	// at another repository. cmd.Dir is the only thing that should decide which
+	// repo is touched.
+	inherited := os.Environ()
+	filtered := make([]string, 0, len(inherited)+7)
+	for _, kv := range inherited {
+		switch strings.SplitN(kv, "=", 2)[0] {
+		case "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+			"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_PREFIX",
+			"GIT_CEILING_DIRECTORIES":
+			continue
+		}
+		filtered = append(filtered, kv)
+	}
+
+	return append(filtered,
 		"GIT_CONFIG_GLOBAL=/dev/null",
 		"GIT_CONFIG_SYSTEM=/dev/null",
 		"GIT_AUTHOR_NAME=CargoShip Test",
@@ -43,6 +68,17 @@ func mustGit(t *testing.T, dir string, args ...string) string {
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "git %v failed: %s", args, out)
 	return strings.TrimSpace(string(out))
+}
+
+// commitFile writes name with the given content inside dir and commits it,
+// returning the new HEAD SHA. Used when a test needs two repos whose commits
+// are guaranteed to differ.
+func commitFile(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+	mustGit(t, dir, "add", ".")
+	mustGit(t, dir, "commit", "-m", "add "+name)
+	return mustGit(t, dir, "rev-parse", "HEAD")
 }
 
 // initRepo creates a new git repo in dir with one committed file and returns
@@ -281,4 +317,42 @@ func TestExtractGitMetadata_CommitIsFull40Chars(t *testing.T) {
 				"commit SHA must be lowercase hex: got %q", string(c))
 		}
 	}
+}
+
+// TestExtractGitMetadata_IgnoresAmbientGitDir pins the fix for a real incident:
+// GIT_DIR (which git exports to everything it spawns, including `go test` run
+// from a hook) used to override `git -C dir`, so metadata was attributed to the
+// exported repository instead of the directory being archived.
+//
+// That matters beyond test hygiene. The manifest is a trust artifact — a commit
+// and branch that never contained the data is worse than no provenance at all,
+// because it looks authoritative. This test asserts the archived directory wins.
+func TestExtractGitMetadata_IgnoresAmbientGitDir(t *testing.T) {
+	skipIfNoGit(t)
+
+	// Two unrelated repos: one we archive, one we point GIT_DIR at. Their commits
+	// must differ, so give each a distinct file — initRepo alone commits identical
+	// content, which hashes to the same SHA when both land in the same second.
+	target := t.TempDir()
+	initRepo(t, target)
+	targetCommit := commitFile(t, target, "target.txt", "archived repository")
+
+	decoy := t.TempDir()
+	initRepo(t, decoy)
+	decoyCommit := commitFile(t, decoy, "decoy.txt", "repository named by GIT_DIR")
+
+	require.NotEqual(t, targetCommit, decoyCommit, "repos must differ for this to prove anything")
+
+	// Point the ambient environment at the decoy, exactly as a git hook would.
+	t.Setenv("GIT_DIR", filepath.Join(decoy, ".git"))
+	t.Setenv("GIT_WORK_TREE", decoy)
+	t.Setenv("GIT_INDEX_FILE", filepath.Join(decoy, ".git", "index"))
+
+	meta, err := ExtractGitMetadata(target)
+	require.NoError(t, err)
+
+	assert.Equal(t, targetCommit, meta.Commit,
+		"metadata must describe the directory passed in, not the repo in GIT_DIR")
+	assert.NotEqual(t, decoyCommit, meta.Commit,
+		"ambient GIT_DIR must not redirect provenance to another repository")
 }

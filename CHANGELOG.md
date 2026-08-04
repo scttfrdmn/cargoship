@@ -36,9 +36,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cellbuf 0.0.13 does not compile against it. Bumping colorprofile alone fails
   the build in seven CI lanes. Verified beyond compiling: the TUI tests pass and
   styled `--help` output still renders.
+- **The aws-sdk group, unblocked by holding one module back**
+  ([#384](https://github.com/scttfrdmn/cargoship/issues/384), unblocks
+  [#370](https://github.com/scttfrdmn/cargoship/pull/370)). Nineteen of the
+  twenty modules move — notably `service/s3` 1.97.3 → 1.106.0, `config` 1.29.17 →
+  1.32.31, `credentials` 1.17.70 → 1.19.30, `service/sts` 1.34.0 → 1.45.0,
+  `service/pricing` 1.34.5 → 1.44.3, `aws-sdk-go-v2` 1.41.5 → 1.43.3 and
+  `smithy-go` 1.24.2 → 1.27.6. **`feature/s3/manager` stays at v1.17.82**, now
+  pinned explicitly in both `go.mod` and `.github/dependabot.yml`.
+  v1.22.35 is where AWS annotated the Uploader API `Deprecated: superceded by
+  feature/s3/transfermanager`, which becomes 11 blocking `SA1019` findings in
+  `pkg/aws/s3` and `pkg/pipeline` — the upload path, where a silent behaviour
+  change corrupts archives rather than failing loudly. Measured both ways:
+  golangci-lint reports 11 issues with the bump and 0 without, so the breakage is
+  purely version-triggered.
+  Holding one module rather than the whole group means the security-relevant
+  `service/s3`/`credentials`/`smithy-go` updates ship now instead of waiting on a
+  migration. The tradeoff is explicit: this pairs `manager` v1.17.82 (which
+  declares `service/s3` v1.82.0) against v1.106.0, a combination AWS does not
+  test. Validated rather than assumed — full build, `go vet` under all five build
+  tags, 0 lint issues, govulncheck clean, `-short` suite, all 43 integration
+  suites, the e2e lane, and the race detector on both affected packages.
+  The migration itself remains open as #384, and deliberately so: the successor
+  is **pre-1.0 (v0.3.9)** and has no `BufferProvider` equivalent for the 64 MB
+  pool from Issue #34 Phase 2.2, so it needs real-AWS round-trip validation.
 
 ### Fixed
 
+- **Git provenance in the manifest could describe the wrong repository.**
+  `pkg/manifest.gitRun` invoked `git -C <dir>` with the process environment
+  inherited unchanged, but `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` **override
+  `-C`** — and git exports them to everything it spawns. So running CargoShip
+  from a git hook, an alias, or `git bisect run` recorded the commit, branch, tag
+  and dirty flag of whatever repository git had exported, not the directory being
+  archived. The manifest is a trust artifact, so a plausible-but-wrong commit is
+  worse than an absent one: it looks authoritative. `gitRun` now strips the eight
+  location-overriding `GIT_*` variables so `-C` alone decides.
+  Found the hard way — the same defect in `pkg/manifest/git_test.go` and
+  `internal/audit/tarloop_test.go` meant that running the suite under the
+  pre-commit hook (which is a hook, so `GIT_DIR` is set) had the test helper's
+  `git init`/`git commit` operate on the **real checkout**, landing a stray
+  "initial commit" and flipping `core.bare`. Both test helpers now filter the
+  environment too. Regression test included: two temp repos, `GIT_DIR` aimed at
+  the decoy, asserting the archived directory wins — it fails against the
+  unfixed `gitRun` by reporting the decoy's SHA.
 - **Nested modules no longer break on a root dependency bump.** The modules under
   `examples/library-usage/` and `benchmarks/` `replace` the root module, so their
   `// indirect` pins have to track root `go.mod` — but Dependabot watches only
@@ -56,13 +97,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Known issues
 
-- **The aws-sdk group bump ([#370](https://github.com/scttfrdmn/cargoship/pull/370))
-  is held**, tracked as [#384](https://github.com/scttfrdmn/cargoship/issues/384):
-  it moves `feature/s3/manager` past the point where the upload API was
-  deprecated in favour of `feature/s3/transfermanager`, producing 11 blocking
-  `SA1019` findings across `pkg/aws/s3` and `pkg/pipeline`. That is the upload
-  path, so it wants a deliberate migration validated against real S3, not a
-  version bump that quiets a linter.
 - **[#383](https://github.com/scttfrdmn/cargoship/issues/383)** —
   `TestPerformance_CompetitorComparison` asserts a strict ordering between two
   in-memory loops measured at millions of ops/sec, so it fails under CPU

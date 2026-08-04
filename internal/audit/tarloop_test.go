@@ -46,6 +46,7 @@ func TestTarReaderSitesAreReviewed(t *testing.T) {
 	// git grep so the search respects .gitignore and only covers tracked source.
 	cmd := exec.Command("git", "grep", "-l", "tar.NewReader", "--", "*.go")
 	cmd.Dir = root
+	cmd.Env = auditGitEnv() // see auditGitEnv: GIT_DIR would override cmd.Dir
 	out, err := cmd.Output()
 	require.NoError(t, err, "git grep for tar.NewReader failed")
 
@@ -92,7 +93,32 @@ func TestTarLoopAllowlistHasNoStaleEntries(t *testing.T) {
 func repoRoot(t *testing.T) string {
 	t.Helper()
 
-	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	cmd.Env = auditGitEnv()
+	out, err := cmd.Output()
 	require.NoError(t, err, "not in a git repository")
 	return strings.TrimSpace(string(out))
+}
+
+// auditGitEnv strips git's repository-location overrides from the inherited
+// environment. Git exports GIT_DIR and friends to processes it spawns, and the
+// pre-commit hook runs `go test` — so without this, `rev-parse --show-toplevel`
+// and the `git grep` below resolve against whatever repo git had exported rather
+// than the tree under test. That produced two failures whose messages pointed
+// nowhere near the cause ("git grep for tar.NewReader failed", and an
+// allowlisted file reported as nonexistent at a path with internal/audit
+// wrongly prefixed).
+func auditGitEnv() []string {
+	env := os.Environ()
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		switch strings.SplitN(kv, "=", 2)[0] {
+		case "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+			"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_PREFIX",
+			"GIT_CEILING_DIRECTORIES":
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }
