@@ -56,8 +56,17 @@ if ! command -v goreleaser >/dev/null 2>&1; then
   exit 1
 fi
 
-output="$(goreleaser check 2>&1)"
+# NO_COLOR is set because goreleaser colourises when it detects CI, which puts
+# ANSI escapes *inside* the deprecation line — between "DEPRECATED:" and the
+# property name. Parsing that yielded an empty name, so the property matched
+# nothing in the allowlist and the lane failed on its own known-good config.
+# Belt and braces: the escapes are also stripped below, and an empty name is
+# rejected explicitly, so this cannot silently degrade again if NO_COLOR stops
+# being honoured.
+output="$(NO_COLOR=1 goreleaser check 2>&1)"
 status=$?
+# shellcheck disable=SC2001 # a character-class sed is clearer here than ${//}
+output="$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g')"
 echo "$output"
 echo
 
@@ -84,10 +93,14 @@ fi
 # Exit 2: valid, but deprecated properties are in use. Extract which ones. The
 # line looks like:
 #   • DEPRECATED:  brews  should not be used anymore, check https://...
+# `+` not `*`: a zero-length match would produce an empty property name that
+# matches nothing in the allowlist, failing the lane with a blank name in the
+# message — which is exactly what the ANSI escapes above caused.
 mapfile -t found < <(
   echo "$output" \
-    | grep -o 'DEPRECATED:[[:space:]]*[A-Za-z0-9_.]*' \
+    | grep -o 'DEPRECATED:[[:space:]]*[A-Za-z0-9_.]\{1,\}' \
     | sed 's/DEPRECATED:[[:space:]]*//' \
+    | grep -v '^$' \
     | sort -u
 )
 
