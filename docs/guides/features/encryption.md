@@ -60,11 +60,39 @@ cargoship create keys --name "Data Archive" --email archive@example.com
 | `--bits` | RSA key length | `4096` |
 | `--name` | Name attached to the key | — |
 | `--email` | Email attached to the key | — |
-| `-d, --destination` | Directory to write the key files (inherited) | auto temp dir |
+| `--no-passphrase` | Generate an **unencrypted** private key | `false` |
+| `-d, --destination` | Directory to write the key files (inherited) | current directory |
 
 This writes a private/public key pair you can use to encrypt archives for a
 specific recipient, independent of any cloud KMS. `x25519` produces smaller,
 modern keys; `rsa` at 4096 bits maximizes compatibility.
+
+### Passphrase protection
+
+The private key is encrypted with a passphrase. You'll be prompted for it, or
+you can set `CARGOSHIP_GPG_PASSPHRASE` for non-interactive use:
+
+```bash
+export CARGOSHIP_GPG_PASSPHRASE='...'
+cargoship create keys --name "Data Archive" --email archive@example.com
+```
+
+There is deliberately no `--passphrase` flag — a flag value ends up in shell
+history, in `ps` output, and in CI logs that echo command lines.
+
+::: warning `--no-passphrase` writes plaintext key material
+`--no-passphrase` generates an unencrypted private key. Anyone who can read the
+file can decrypt every archive it protects. Use it only where the file itself is
+already protected by something else, and never on a shared filesystem.
+
+**Keys generated before v0.23.0 were always unencrypted**, and CargoShip wrote
+them to a temporary directory by default. If you are holding a key pair from an
+earlier version, treat the private key as unprotected: move it somewhere safe,
+or generate and distribute a replacement.
+:::
+
+Existing `private.key` / `public.key` files are never overwritten — the command
+fails instead, because a replaced private key cannot be recovered.
 
 ## KMS or GPG?
 

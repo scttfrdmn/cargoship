@@ -10,10 +10,11 @@ import (
 
 func TestNewKeyPair(t *testing.T) {
 	gotKp, err := NewKeyPair(&KeyOpts{
-		Name:    "test",
-		Email:   "user@localhost",
-		KeyType: "rsa",
-		Bits:    1024,
+		Name:       "test",
+		Email:      "user@localhost",
+		KeyType:    "rsa",
+		Bits:       1024,
+		Passphrase: []byte("test-passphrase"),
 	})
 	require.NoError(t, err)
 	require.IsType(t, &KeyPair{}, gotKp)
@@ -49,14 +50,18 @@ func TestNewKeyPairErrors(t *testing.T) {
 
 func TestNewKeyFilesWithPair(t *testing.T) {
 	gotKp, err := NewKeyPair(&KeyOpts{
-		Name:    "test",
-		Email:   "user@localhost",
-		KeyType: "rsa",
-		Bits:    1024,
+		Name:       "test",
+		Email:      "user@localhost",
+		KeyType:    "rsa",
+		Bits:       1024,
+		Passphrase: []byte("test-passphrase"),
 	})
 	require.NoError(t, err)
 	require.IsType(t, &KeyPair{}, gotKp)
-	got, err := NewKeyFilesWithPair(gotKp, "")
+	// An explicit destination, not "": passing "" used to hand back an untracked
+	// os.MkdirTemp that nothing cleaned up, so every run of this test left a
+	// private key behind in $TMPDIR forever (#398).
+	got, err := NewKeyFilesWithPair(gotKp, t.TempDir())
 	require.NoError(t, err)
 	require.Equal(t, 2, len(got))
 }
@@ -176,9 +181,10 @@ func TestKeyType_String_InvalidValue(t *testing.T) {
 
 func TestNewKeyPair_X25519(t *testing.T) {
 	kp, err := NewKeyPair(&KeyOpts{
-		Name:    "test",
-		Email:   "test@example.com",
-		KeyType: "x25519",
+		Name:       "test",
+		Email:      "test@example.com",
+		KeyType:    "x25519",
+		Passphrase: []byte("test-passphrase"),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, kp)
@@ -189,8 +195,9 @@ func TestNewKeyPair_X25519(t *testing.T) {
 func TestNewKeyPair_DefaultValues(t *testing.T) {
 	// Test default RSA key type and 4096 bit size
 	kp, err := NewKeyPair(&KeyOpts{
-		Name:  "test",
-		Email: "test@example.com",
+		Name:       "test",
+		Email:      "test@example.com",
+		Passphrase: []byte("test-passphrase"),
 		// KeyType defaults to "rsa", Bits should default to 4096
 	})
 	require.NoError(t, err)
@@ -201,10 +208,11 @@ func TestNewKeyPair_DefaultValues(t *testing.T) {
 
 func TestNewKeyFilesWithPair_SpecifiedDest(t *testing.T) {
 	kp, err := NewKeyPair(&KeyOpts{
-		Name:    "test",
-		Email:   "test@example.com",
-		KeyType: "rsa",
-		Bits:    1024,
+		Name:       "test",
+		Email:      "test@example.com",
+		KeyType:    "rsa",
+		Bits:       1024,
+		Passphrase: []byte("test-passphrase"),
 	})
 	require.NoError(t, err)
 
@@ -222,9 +230,10 @@ func TestNewKeyFilesWithPair_SpecifiedDest(t *testing.T) {
 func TestNewKeyPair_InvalidKeyType(t *testing.T) {
 	// The crypto library doesn't error on invalid key types, it uses defaults
 	kp, err := NewKeyPair(&KeyOpts{
-		Name:    "test",
-		Email:   "test@example.com",
-		KeyType: "invalid",
+		Name:       "test",
+		Email:      "test@example.com",
+		KeyType:    "invalid",
+		Passphrase: []byte("test-passphrase"),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, kp)
@@ -236,20 +245,22 @@ func TestNewKeyPair_InvalidKeyType(t *testing.T) {
 func TestNewKeyPair_EdgeCaseBits(t *testing.T) {
 	// Test with minimum RSA key size
 	kp, err := NewKeyPair(&KeyOpts{
-		Name:    "test",
-		Email:   "test@example.com",
-		KeyType: "rsa",
-		Bits:    1024,
+		Name:       "test",
+		Email:      "test@example.com",
+		KeyType:    "rsa",
+		Bits:       1024,
+		Passphrase: []byte("test-passphrase"),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, kp)
 
 	// Test with larger key size
 	kp, err = NewKeyPair(&KeyOpts{
-		Name:    "test",
-		Email:   "test@example.com",
-		KeyType: "rsa",
-		Bits:    2048,
+		Name:       "test",
+		Email:      "test@example.com",
+		KeyType:    "rsa",
+		Bits:       2048,
+		Passphrase: []byte("test-passphrase"),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, kp)
@@ -258,10 +269,11 @@ func TestNewKeyPair_EdgeCaseBits(t *testing.T) {
 // Test NewKeyFilesWithPair error handling
 func TestNewKeyFilesWithPair_ErrorHandling(t *testing.T) {
 	kp, err := NewKeyPair(&KeyOpts{
-		Name:    "test",
-		Email:   "test@example.com",
-		KeyType: "rsa",
-		Bits:    1024,
+		Name:       "test",
+		Email:      "test@example.com",
+		KeyType:    "rsa",
+		Bits:       1024,
+		Passphrase: []byte("test-passphrase"),
 	})
 	require.NoError(t, err)
 

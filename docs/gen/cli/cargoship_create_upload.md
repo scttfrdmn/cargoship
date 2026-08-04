@@ -63,7 +63,7 @@ cargoship create upload SOURCE_DIR... [flags]
 
 ```
       --context string        Override execution context (local, agent, repl)
-  -d, --destination string    Directory to write files in to. If not specified, we'll use an auto generated temp dir
+  -d, --destination string    Directory to write files in to. Defaults to the current directory
       --memory-limit string   Set a memory limit for the run. This will slow things down, but will less likely to OOM in certain situations. Avoid this unless you are having memory issues.
       --pprof                 Enable runtime profiling HTTP endpoint at localhost:6060
       --pprof-addr string     Address for runtime profiling HTTP endpoint (default "localhost:6060")

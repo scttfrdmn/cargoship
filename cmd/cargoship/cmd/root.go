@@ -74,7 +74,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 	// Create stuff
 	createCmd := NewCreateCmd()
 
-	createCmd.PersistentFlags().StringP("destination", "d", "", "Directory to write files in to. If not specified, we'll use an auto generated temp dir")
+	createCmd.PersistentFlags().StringP("destination", "d", "", "Directory to write files in to. Defaults to the current directory")
 	if oerr := createCmd.MarkPersistentFlagDirname("destination"); oerr != nil {
 		panic(oerr)
 	}
