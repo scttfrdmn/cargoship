@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Dependency bumps from the first working Dependabot run** ([#366](https://github.com/scttfrdmn/cargoship/issues/366)
+  fixed a config that had been invalid since July 2025, so this is the first
+  batch of configured version updates this repo has ever received). Merged after
+  auditing each: `golang.org/x/sync` 0.21.0 → 0.22.0, `klauspost/cpuid/v2`
+  2.3.0 → 2.4.0, `go.yaml.in/yaml/v3` 3.0.4 → 3.0.5, `ncruces/go-strftime`
+  0.1.9 → 1.0.0, `olekukonko/errors` (pseudo-version) → 1.3.0,
+  `prometheus/common` 0.48.0 → 0.70.1, `prometheus/client_golang` 1.19.0 →
+  1.24.1, `klauspost/compress` 1.18.0 → 1.19.1, `charmbracelet/colorprofile`
+  0.3.1 → 0.4.3. The two major bumps (`go-strftime`, `olekukonko/errors`) are
+  transitive-only with zero direct imports, so neither crosses an API we call.
+- **`charmbracelet/x/cellbuf` 0.0.13 → 0.0.15**, required *with* the
+  `colorprofile` bump rather than independently: colorprofile 0.4.3 drags
+  `x/ansi` 0.9.3 → 0.11.6, which changed the `ansi.Style` API (`Italic()` gained
+  a parameter, `SlowBlink`/`DoubleUnderline`/`CurlyUnderline` moved), and
+  cellbuf 0.0.13 does not compile against it. Bumping colorprofile alone fails
+  the build in seven CI lanes. Verified beyond compiling: the TUI tests pass and
+  styled `--help` output still renders.
+
+### Fixed
+
+- **Nested modules no longer break on a root dependency bump.** The modules under
+  `examples/library-usage/` and `benchmarks/` `replace` the root module, so their
+  `// indirect` pins have to track root `go.mod` — but Dependabot watches only
+  `/` for gomod, so it never updates them. Bumping `klauspost/compress`,
+  `prometheus/client_golang`, or the aws-sdk group left four example modules
+  unresolvable. New `scripts/ci/check-nested-modules.sh`, wired into the test
+  workflow, checks this directly and names the directories to `go mod tidy`.
+  Previously the only lane that noticed was **govulncheck**, which surfaced it as
+  `loading packages: err: … go: updates to go.mod needed` — a vulnerability check
+  failing for a reason unrelated to vulnerabilities, on modules containing no
+  product code, on exactly the dependency PRs where a red X is most likely to be
+  dismissed as noise. Also tidied a pre-existing stale `require` in
+  `benchmarks/cargohold/go.mod` (it pinned `cargoship v0.6.0` under a `replace`
+  that made the version meaningless).
+
+### Known issues
+
+- **The aws-sdk group bump ([#370](https://github.com/scttfrdmn/cargoship/pull/370))
+  is held**, tracked as [#384](https://github.com/scttfrdmn/cargoship/issues/384):
+  it moves `feature/s3/manager` past the point where the upload API was
+  deprecated in favour of `feature/s3/transfermanager`, producing 11 blocking
+  `SA1019` findings across `pkg/aws/s3` and `pkg/pipeline`. That is the upload
+  path, so it wants a deliberate migration validated against real S3, not a
+  version bump that quiets a linter.
+- **[#383](https://github.com/scttfrdmn/cargoship/issues/383)** —
+  `TestPerformance_CompetitorComparison` asserts a strict ordering between two
+  in-memory loops measured at millions of ops/sec, so it fails under CPU
+  contention. Found during this work and confirmed pre-existing on `main`, not
+  caused by any dependency change.
+
 ## [0.22.0] - 2026-08-03
 
 **Container Hygiene.** Every finding in this release came from outside: an

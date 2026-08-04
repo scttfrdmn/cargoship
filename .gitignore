@@ -18,6 +18,9 @@ manpages/
 bin/cargoship
 bin/cargoship-*
 *.test
+# `go build ./...` inside the nested benchmark module drops its binary here,
+# named after the module directory.
+/benchmarks/cargohold/cargohold
 
 # Coverage files and reports
 *.out
