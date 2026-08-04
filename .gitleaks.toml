@@ -11,6 +11,17 @@ description = "Docs examples and test fixtures contain placeholder secrets, not 
 paths = [
   '''.*\.md$''',              # documentation examples (Bearer YOUR_TOKEN, sample UUIDs, ...)
   '''docs/vhs/.*\.tape$''',   # VHS demo scripts with placeholder credentials
-  '''pkg/testdata/.*''',      # test fixtures (e.g. fakey-private.key)
+  # Narrowed from a blanket pkg/testdata/.* allowlist. That entry existed to
+  # silence gitleaks on an unused plaintext fakey-private.key, and it would have
+  # silenced the scanner on any future private key dropped in the same tree.
+  # fakey-public.key is a public half; publishing it is the point.
+  '''pkg/testdata/fakey-public\.key$''',
+  # fakey-private.key is GONE from the tree, but the CI lane scans full history
+  # (fetch-depth: 0) and it is still in two 2022 commits. This entry covers those
+  # only. It was a GopenPGP test fixture that never protected real data, so a
+  # history rewrite on a public repo is not warranted; if that file name ever
+  # comes back as a real key, delete this line rather than widening it.
+  '''pkg/testdata/fakey-private\.key$''',
+  '''pkg/testdata/(archives|external-data|fake-dir|inventories|limit-dir|overflow-queue|validations|viper-enabled-target)/.*''',
   '''.*_test\.go$''',
 ]

@@ -23,7 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **If you generated a key pair with an earlier version, its private key is
   unencrypted.** No code change can retroactively protect a file already on
-  disk — move it somewhere safe, or generate and distribute a replacement.
+  disk. Note also that archives are encrypted to the *public* key, so a new key
+  pair does not protect data already uploaded — anyone holding the old private
+  key can still decrypt it. See
+  [Rotating a key generated before v0.23.0](https://cargoship.app/guides/features/encryption#rotating-pre-v0230-keys)
+  for the full procedure, including what rotation does and does not achieve.
+
+- **Removed an unused plaintext private key from the repository.**
+  `pkg/testdata/fakey-private.key` was a 2022 GopenPGP test fixture that nothing
+  referenced; its only mention anywhere was a `.gitleaks.toml` entry allowlisting
+  all of `pkg/testdata/` so the secret scanner would not flag it. That blanket
+  suppression is now narrowed to specific paths, so a private key added to that
+  tree in future fails the scan instead of being silently ignored. The fixture
+  never protected real data, so its two 2022 commits are allowlisted by exact
+  path rather than rewriting public history.
 
 - **`postcss` 8.5.21 → 8.5.25** in `docs/` (GHSA-fxqj-rqcc-2cmp, moderate): an
   attacker-controlled `sourceMappingURL` can read arbitrary `.map` files when
