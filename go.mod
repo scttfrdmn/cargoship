@@ -23,7 +23,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/google/uuid v1.6.0
-	github.com/klauspost/compress v1.18.0
+	github.com/klauspost/compress v1.19.1
 	github.com/lucasb-eyer/go-colorful v1.2.0
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/muesli/mango-cobra v1.2.0
