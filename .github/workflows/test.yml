@@ -196,6 +196,41 @@ jobs:
           version: v2.10.1
           args: --timeout=10m
 
+  # Validate the release config on every PR (#381). release.yml pins goreleaser
+  # to '~> v2', so a property deprecated today can be REMOVED by an upstream
+  # minor release on its own schedule — and without this lane the first sign of
+  # that is a failed release on an already-pushed tag. The wrapper distinguishes
+  # a deprecation (schedulable, allowlisted with a reason) from a hard config
+  # error (never acceptable); see its header.
+  goreleaser-config:
+    name: Release Config Valid
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # goreleaser resolves `builds:` against the module, so Go must be present.
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # Installed via the action rather than a curl|tar so the download is
+      # verified, matching how release.yml obtains it. The pinned major must
+      # track release.yml's `version:` — a lane checking a different goreleaser
+      # than the one that releases would be worse than no lane.
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: '~> v2'
+          install-only: true
+
+      - name: Check .goreleaser.yml
+        run: bash scripts/ci/check-goreleaser-config.sh
+
   # Security scanning (govulncheck, gitleaks, trivy, semgrep) lives in
   # security.yml. Removed the duplicate govulncheck-only job here.
 

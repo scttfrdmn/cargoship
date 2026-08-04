@@ -172,6 +172,12 @@ release:
     _Built with ❤️ using [GoReleaser](https://goreleaser.com)_
 
 # Homebrew tap
+#
+# Still `brews:` (a formula), not `homebrew_casks:`, deliberately — see #381 and
+# the header of scripts/ci/check-goreleaser-config.sh, which allowlists this one
+# deprecation. Short version: casks propagate macOS quarantine, our darwin
+# binaries are not notarized, and a quarantined release binary is SIGKILLed by
+# Gatekeeper. Migrating before notarization would break `brew install` on macOS.
 brews:
   - repository:
       owner: scttfrdmn
@@ -180,7 +186,9 @@ brews:
     directory: Formula
     homepage: https://github.com/scttfrdmn/cargoship
     description: High-performance S3 upload tool with intelligent sharding and compression
-    license: MIT
+    # The repo is Apache-2.0 (see LICENSE). This said MIT, so every published
+    # formula has declared the wrong license — including the live tap today.
+    license: Apache-2.0
     skip_upload: auto
     test: |
       system "#{bin}/cargoship", "--version"
@@ -195,7 +203,8 @@ scoops:
       token: "{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}"
     homepage: https://github.com/scttfrdmn/cargoship
     description: High-performance S3 upload tool with intelligent sharding and compression
-    license: MIT
+    # Apache-2.0, matching LICENSE — this also said MIT.
+    license: Apache-2.0
     skip_upload: auto
 
 # Docker images (optional - can be added later)
