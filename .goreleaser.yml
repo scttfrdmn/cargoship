@@ -92,6 +92,61 @@ sboms:
   - id: archive
     artifacts: archive
 
+# Sign and notarize the darwin binaries with an Apple Developer ID (#381).
+#
+# Without this, our darwin artifacts are `adhoc,linker-signed` only. That is fine
+# until the file carries `com.apple.quarantine` — which anything downloaded by a
+# browser or a cask does — at which point Gatekeeper does not warn, it
+# **SIGKILLs the process**: rc=137, no output, no diagnostic. Measured on the
+# published v0.22.0 darwin_arm64 binary. A tool whose failure mode is "killed
+# with no message" is indistinguishable from a corrupt download.
+#
+# This is also the prerequisite for migrating `brews:` to `homebrew_casks:`:
+# casks propagate quarantine, formulae do not, so the migration had to wait for
+# notarization or `brew install` would have broken on macOS. Notarize first,
+# migrate second — deliberately two separate changes, so that if notarization is
+# misconfigured we find out while formulae are still serving users.
+#
+# Runs on ubuntu-latest, not a macOS runner: goreleaser uses `quill`, a pure-Go
+# Mach-O signer, rather than Apple's `codesign`. Verified against 2.17.1 — this
+# is OSS goreleaser, not Pro (confirmed by running it: it fails on a bad
+# certificate, not on a licence check).
+#
+# Ordering matters and is goreleaser's, not ours: build → **sign & notarize** →
+# archives → checksums. So the archive contains the signed binary, and the
+# signature is covered by the cosign-signed checksums.txt like everything else.
+# Verified by running a release with this stanza present.
+notarize:
+  macos:
+    # `enabled` is a template, not a literal `true`: a fork or a local
+    # `goreleaser release --snapshot` has no certificate, and a hard `true` would
+    # fail their build at the signing step. Gating on the secret being present
+    # means the pipe skips cleanly when it cannot run, and runs whenever the
+    # material exists. The tag-time release always has it — see release.yml.
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids:
+        - cargoship
+      sign:
+        # Base64-encoded .p12 holding the Developer ID Application certificate
+        # and its private key. Base64 because a secret has to survive being an
+        # environment variable; goreleaser decodes it.
+        certificate: '{{ .Env.MACOS_SIGN_P12 }}'
+        password: '{{ .Env.MACOS_SIGN_PASSWORD }}'
+      notarize:
+        # App Store Connect API key (Issuer ID + Key ID + base64 .p8). An API key
+        # is used rather than an Apple ID and app-specific password because it is
+        # scoped, revocable independently of the account, and carries no password
+        # that unlocks anything else.
+        issuer_id: '{{ .Env.MACOS_NOTARY_ISSUER_ID }}'
+        key_id: '{{ .Env.MACOS_NOTARY_KEY_ID }}'
+        key: '{{ .Env.MACOS_NOTARY_KEY }}'
+        # Wait for Apple to return a verdict rather than submitting and moving on.
+        # A release that ships an unnotarized binary because the submission was
+        # still queued is the exact failure this stanza exists to prevent, and
+        # the draft→verify→promote flow means waiting costs only wall-clock.
+        wait: true
+        timeout: 30m
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 

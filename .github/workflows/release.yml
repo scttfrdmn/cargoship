@@ -13,9 +13,13 @@ on:
 # which is a worse trade — it can leak, has to be rotated, and proves only
 # possession rather than provenance.
 #
-# The token is scoped to this job, expires in minutes, and grants no repository
-# write access of its own. It is declared here rather than at job level because
-# this workflow has exactly one job.
+# The token expires in minutes and grants no repository write access of its own.
+# It is declared on the `goreleaser` JOB rather than workflow-wide (#381): this
+# workflow used to have exactly one job, which made workflow-level scoping
+# equivalent, but the notarization and publish jobs neither sign nor need to
+# assert an identity. Granting them a signing token would be unnecessary
+# privilege for no benefit.
+#
 # `packages: write` used to be here and is gone (#360): nothing in this release
 # publishes to a package registry. `.goreleaser.yml` has no dockers:/kos:/nfpms:
 # stanza (the dockers: block is commented out), and brews:/scoops: push to
@@ -23,13 +27,19 @@ on:
 # privilege matters more than usual right here, because the block above argues for
 # *widening* permissions with id-token: write — an argument that is only as strong
 # as the claim that everything else in this list is justified.
+#
+# contents: write stays workflow-level: all three jobs need it (draft creation,
+# downloading the draft's assets, promotion).
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # Only this job runs cosign, so only this job can mint an OIDC token.
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -99,6 +109,40 @@ jobs:
       # not a wrong formula — and if verification fails, a formula pointing at a
       # release that was never published is a far better outcome than the previous
       # behaviour, where the artifacts themselves were already public.
+      # A release must not silently ship unnotarized darwin binaries. The
+      # `notarize:` stanza is gated on `isEnvSet "MACOS_SIGN_P12"` so that forks
+      # and local snapshot builds work without credentials — which means a
+      # missing or misnamed secret here would make goreleaser skip signing and
+      # still report success. That is the one failure mode this whole change
+      # exists to prevent, so assert the material is present before building.
+      # (Deliberately not `if:` on the step — a skipped step is invisible in the
+      # summary, whereas this fails the release with a named cause.)
+      - name: Verify macOS signing material is present
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in MACOS_SIGN_P12 MACOS_SIGN_PASSWORD MACOS_NOTARY_ISSUER_ID \
+                      MACOS_NOTARY_KEY_ID MACOS_NOTARY_KEY; do
+            # Indirect expansion, so the VALUE is never echoed — only the name.
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::${#missing[@]} macOS signing secret(s) missing: ${missing[*]}"
+            echo "Without these, goreleaser skips notarization and the darwin"
+            echo "binaries ship adhoc-signed — Gatekeeper SIGKILLs those under"
+            echo "quarantine. See the notarize: stanza in .goreleaser.yml."
+            exit 1
+          fi
+          echo "all 5 macOS signing secrets are present"
+
       - name: Run GoReleaser (draft)
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
@@ -108,6 +152,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           SCOOP_BUCKET_GITHUB_TOKEN: ${{ secrets.SCOOP_BUCKET_GITHUB_TOKEN }}
+          # Consumed by the notarize: stanza in .goreleaser.yml. The .p12 and the
+          # .p8 are base64 so they survive as environment variables; goreleaser
+          # decodes both. Never logged — goreleaser masks them, and the check
+          # above prints names only.
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
 
       # Verify the release the way a user would — same command and identity flags
       # documented in SECURITY.md. A signature nobody has verified is an
@@ -163,6 +216,54 @@ jobs:
             echo "${checked}/${expected} digests confirmed; $(grep -c 'sbom.json' checksums.txt) SBOM(s) attached."
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Prove the darwin artifacts are actually notarized, before promotion (#381).
+  #
+  # A separate job because this is the one thing that CANNOT run on ubuntu:
+  # codesign, spctl and the quarantine bit are macOS-only. It downloads the
+  # draft's real artifacts rather than inspecting dist/ — same reasoning as the
+  # provenance step above. Inspecting the build directory proves the signing step
+  # ran; only the published archive proves users get a signed binary.
+  #
+  # This gates `publish`, so a release that would be SIGKILLed on a user's Mac
+  # never becomes public.
+  notarization:
+    needs: goreleaser
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Both darwin architectures. arm64 is what most Macs run now; x86_64 still
+      # ships, and signing is per-binary, so one being correct says nothing about
+      # the other.
+      - name: Verify darwin binaries are signed and notarized
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          # Execute the quarantined binary, not just inspect its metadata. Safe to
+          # enable here and off by default locally: an unnotarized binary raises a
+          # Gatekeeper popup, which is noise on a jobless runner and jarring on a
+          # developer's desktop.
+          QUARANTINE_PROBE: '1'
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          rm -rf notarize-check && mkdir notarize-check && cd notarize-check
+          for arch in arm64 x86_64; do
+            asset="cargoship_${version}_darwin_${arch}.tar.gz"
+            echo "::group::$asset"
+            gh release download "$TAG" --pattern "$asset" --clobber
+            rm -f cargoship
+            tar xzf "$asset" cargoship
+            bash ../scripts/ci/check-macos-notarization.sh ./cargoship
+            echo "::endgroup::"
+          done
+
+  publish:
+    needs: notarization
+    runs-on: ubuntu-latest
+    steps:
       # Only now is the release public. Everything above can fail without a user
       # ever seeing an unverifiable artifact, which is the entire point of #360.
       #
