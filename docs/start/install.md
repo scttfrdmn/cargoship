@@ -67,6 +67,35 @@ sudo mv cargoship-darwin-amd64 /usr/local/bin/cargoship
 
 :::
 
+## macOS: signing and Gatekeeper
+
+From **v0.24.0** the macOS binaries are signed with an Apple Developer ID and
+notarized by Apple, so they run from a download with no extra steps.
+
+**Earlier versions were not.** They carried only an ad-hoc signature, and macOS
+attaches a `com.apple.quarantine` attribute to anything a browser downloads.
+Gatekeeper's response to a quarantined, un-notarized binary is not a warning
+dialog — it **kills the process outright**, with no output. If you are on
+v0.23.0 or older and `cargoship` appears to do nothing at all, that is what
+happened. Either upgrade, or clear the attribute yourself:
+
+```bash
+xattr -d com.apple.quarantine /usr/local/bin/cargoship
+```
+
+Installing via Homebrew or `go install` avoids this on any version: neither path
+sets the quarantine attribute.
+
+You can confirm a binary is signed and notarized:
+
+```bash
+codesign -dvvv $(which cargoship) 2>&1 | grep Authority
+# Authority=Developer ID Application: ...
+
+spctl -a -vvv -t install $(which cargoship)
+# source=Notarized Developer ID
+```
+
 ## Docker
 
 Run CargoShip in a container without installing anything locally. Mount your data
