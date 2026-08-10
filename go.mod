@@ -13,8 +13,8 @@ require (
 	// the Uploader API in favour of feature/s3/transfermanager, which is 11
 	// blocking SA1019 on the upload path. Bump only via the #384 migration.
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.82
-	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.45.3
-	github.com/aws/aws-sdk-go-v2/service/kms v1.49.4
+	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.66.2
+	github.com/aws/aws-sdk-go-v2/service/kms v1.55.3
 	github.com/aws/aws-sdk-go-v2/service/pricing v1.44.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.106.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.45.0

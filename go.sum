@@ -35,8 +35,8 @@ github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.34 h1:9faHsnqxJ1vDvB4wMZ
 github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.34/go.mod h1:Yp6nIyejpa23nzlB/LhT63KTla9Jdi06nv/HH/OkAH8=
 github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.32 h1:0MrUL35H/Y4kdFfItoR5jCgtDQ4Z/8LudAoIHRfA4hE=
 github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.32/go.mod h1:2tNZkuWz54arj8mHVf+8Y7cKkcD8Wr/fBpENgEXpjLc=
-github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.45.3 h1:Nn3qce+OHZuMj/edx4its32uxedAmquCDxtZkrdeiD4=
-github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.45.3/go.mod h1:aqsLGsPs+rJfwDBwWHLcIV8F7AFcikFTPLwUD4RwORQ=
+github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.66.2 h1:gB90d8G1wI5cWTky4P/FfMZov2iXTryUBeU/sSipFTU=
+github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.66.2/go.mod h1:Wka5y0GBbGFTRQqpJy1lJiexNgvHaA7QUVOhNySlLSw=
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.13 h1:mbRIur/BiHK6SKPjoBIXSE/hJ6g6JGRLuxQy1jGjlN4=
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.13/go.mod h1:ITg9em2KbJx1s0y4aqRX5OYWG6HBZ5TVR//OdpEZ2CQ=
 github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.24 h1:mdPwDQPqxlw9Sc62Nt15yjEcARaDbPXkjRYtXsUripo=
@@ -45,8 +45,8 @@ github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.31 h1:w2SIhW92
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.31/go.mod h1:wAhpCQbkov+IcvjozJbd2xRCoZybUEHNkcFunssNACg=
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.32 h1:jWXtZdCnhXa9sGFixRaU2AxT4DIVse9HS4E2f+/KwV0=
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.32/go.mod h1:9JS1UpfVvyD/ZPX8GsKb/Pq8scEM+7GP5fqh9SwH7po=
-github.com/aws/aws-sdk-go-v2/service/kms v1.49.4 h1:2gom8MohxN0SnhHZBYAC4S8jHG+ENEnXjyJ5xKe3vLc=
-github.com/aws/aws-sdk-go-v2/service/kms v1.49.4/go.mod h1:HO31s0qt0lso/ADvZQyzKs8js/ku0fMHsfyXW8OPVYc=
+github.com/aws/aws-sdk-go-v2/service/kms v1.55.3 h1:qS073F+cSl7QKstrm3Jb8D/XkKBWZ4zHdmRG/cmHLoU=
+github.com/aws/aws-sdk-go-v2/service/kms v1.55.3/go.mod h1:l1gMRJ4UawrC6rpVWRz39pZxlyHID0VIS/YEEiLi4E8=
 github.com/aws/aws-sdk-go-v2/service/pricing v1.44.3 h1:FlwRvZDV5BHa8v0BCPW8+Za26HobkVYWiuw5aOs/hq8=
 github.com/aws/aws-sdk-go-v2/service/pricing v1.44.3/go.mod h1:pmcZWdMf109OWwzIQ7qax7B3BLnuhf6z39+6L3UorEM=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.106.0 h1:7QZWVJZWzHivHWIa+5TELLaBBkbuoj0GPwQtMlJ0sqk=
