@@ -1,0 +1,20 @@
+# Anti-theater allowlist — known, TRACKED fake/stub behaviour in production code.
+# Each line is a path glob whose theater markers check-no-theater.sh tolerates.
+# The gate still blocks NEW theater in every other file. Removing a line here is
+# the "wired for real or deleted" done-signal. Every entry MUST cite an issue.
+#
+# Burn-down inventory (2026-09 advertised-vs-wired audit):
+
+# #424 — congestion control is inert: applyOptimizations is a log-only stub and
+# getPerformanceMetrics returns hardcoded 4.6x / 78.3% / 25%. Removed when the
+# real BBR pacing (branch feat/424-wire-congestion-control) is wired in.
+pkg/s3optimization/optimizer.go
+
+# TUI dashboard returns mock data (fetchDataCmd), tied to the controller/agent
+# APIs deleted in v0.20.0. Pending the TUI rebuild-or-remove decision.
+pkg/tui/essential_functions.go
+
+# Aspirational "would be replaced with actual ML model" comment on a rule-based
+# compression heuristic that is itself real (the audit confirmed the fallback
+# works). Kept until the ML selector is either built or the comment dropped.
+pkg/staging/adaptive_compression_selector.go
