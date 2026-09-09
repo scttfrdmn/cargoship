@@ -56,8 +56,8 @@ jobs:
       - name: Check for new theater (stubbed/fabricated behaviour)
         run: bash scripts/ci/check-no-theater.sh
 
-      # Reachability guard: the simulated/roadmap subsystems (pkg/multiregion,
-      # pkg/monitoring) must not be silently wired into the shipped CLI.
+      # Reachability guard: the simulated/roadmap subsystem pkg/multiregion must
+      # not be silently wired into the shipped CLI.
       - name: Check no simulated/roadmap packages reach the CLI
         run: bash scripts/ci/check-no-dead-imports.sh
 

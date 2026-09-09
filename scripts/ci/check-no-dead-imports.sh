@@ -20,7 +20,6 @@ cd "$(git rev-parse --show-toplevel)" || exit 2
 # one for real means removing it here in the same change.
 FORBIDDEN=(
   "github.com/scttfrdmn/cargoship/pkg/multiregion"  # roadmap; simulated coordinator/health/failover (audit 2026-09)
-  "github.com/scttfrdmn/cargoship/pkg/monitoring"   # dead; simulated CPU/mem/net, no prod consumer (audit 2026-09)
 )
 
 module="$(go list -m 2>/dev/null)"

@@ -60,7 +60,6 @@ pkg/ioutils 53
 pkg/launch 29
 pkg/manifest 75
 pkg/migration 0
-pkg/monitoring 39
 pkg/multiregion 72
 pkg/observability/metrics 79
 pkg/observability/tracing 65
