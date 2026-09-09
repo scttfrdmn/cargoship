@@ -1,7 +1,7 @@
 # CargoShip Makefile
 # Provides common development tasks including comprehensive security scanning
 
-.PHONY: help build test test-unit test-integration test-performance test-e2e test-all test-leak-check test-quality test-benchmark bench-s3 lint security audit install-tools clean docker
+.PHONY: help build test test-unit test-integration test-performance test-e2e test-all test-leak-check test-quality test-benchmark bench-s3 lint security audit install-tools clean docker torture
 
 # Default target
 help: ## Show this help message
@@ -133,6 +133,11 @@ test-e2e: ## Run end-to-end tests (full system validation)
 	@echo "🎯 Running end-to-end tests..."
 	go test -tags=e2e -timeout=900s ./...
 	@echo "✅ End-to-end tests passed"
+
+torture: ## Byte-exact round-trip torture tests on the emulator (selectable: make torture RUN=large_multipart)
+	@echo "🌀 Running torture round-trips (emulator)$(if $(RUN), — RUN=$(RUN))..."
+	go test -tags "integration torture" -run 'TestTorture$(if $(RUN),/$(RUN))' -timeout 30m -count=1 ./pkg/pipeline/
+	@echo "✅ Torture round-trips passed"
 
 test-all: test-unit test-integration test-performance test-e2e ## Run all test categories
 	@echo "🎉 All tests passed!"
