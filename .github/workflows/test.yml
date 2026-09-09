@@ -50,6 +50,12 @@ jobs:
       - name: Check nested modules resolve against root
         run: bash scripts/ci/check-nested-modules.sh
 
+      # Anti-theater ratchet (#424 audit): fail on NEW stub/mock/fabricated-metric
+      # markers in production code. Known, tracked instances are allowlisted in
+      # scripts/ci/theater-allowlist.txt and burn down as each is wired or deleted.
+      - name: Check for new theater (stubbed/fabricated behaviour)
+        run: bash scripts/ci/check-no-theater.sh
+
   e2e-quickstart:
     name: Quick Start E2E (emulator)
     runs-on: ubuntu-latest
