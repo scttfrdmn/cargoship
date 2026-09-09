@@ -221,40 +221,31 @@ Examples:
 				includeFiles = append(includeFiles, file.Path)
 			}
 
-			pipelineConfig := &pipeline.PipelineConfig{
-				S3Bucket:          bucket,
-				S3Prefix:          prefix,
-				S3Region:          region,
-				S3StorageClass:    storageClass,
-				EnableMultiPrefix: true,
-				ShardCount:        shardCount,
-				WorkersPerPrefix:  2,
-				EnableManifest:    true,
-				SourcePath:        absPath,
-
-				// #316: sync advertised --shard-strategy and --compression-level
-				// and dropped both, without even upload's printout to hint that
-				// they were inert. --compression-level is an override, so only
-				// an explicitly passed value is forwarded; 0 keeps content-aware
-				// per-chunk selection.
-				ShardStrategy: shardStrategy,
-				CompressionLevel: func() int {
-					if cmd.Flags().Changed("compression-level") {
-						return compressionLevel
-					}
-					return 0
-				}(),
-
-				// Issue #148: Incremental sync configuration
-				IncludeOnlyFiles: includeFiles,
-				SyncType:         syncType,
-				PreviousUploadID: func() string {
-					if previousManifest != nil {
-						return previousManifest.UploadID
-					}
-					return ""
-				}(),
+			// #316: --compression-level is an override, so only an explicitly
+			// passed value is forwarded; 0 keeps content-aware per-chunk selection.
+			effectiveCompression := 0
+			if cmd.Flags().Changed("compression-level") {
+				effectiveCompression = compressionLevel
 			}
+			previousUploadID := ""
+			if previousManifest != nil {
+				previousUploadID = previousManifest.UploadID
+			}
+
+			pipelineConfig := newSyncPipelineConfig(syncPipelineParams{
+				bucket:           bucket,
+				prefix:           prefix,
+				region:           region,
+				storageClass:     storageClass,
+				shardCount:       shardCount,
+				shardStrategy:    shardStrategy,
+				compressionLevel: effectiveCompression,
+				sourcePath:       absPath,
+				includeFiles:     includeFiles,
+				syncType:         syncType,
+				previousUploadID: previousUploadID,
+				s3Client:         s3Client,
+			})
 
 			pipe, err := pipeline.NewPipeline(pipelineConfig)
 			if err != nil {
@@ -307,6 +298,56 @@ Examples:
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Quiet mode (minimal output)")
 
 	return cmd
+}
+
+// syncPipelineParams carries the already-resolved inputs for a sync upload.
+type syncPipelineParams struct {
+	bucket           string
+	prefix           string
+	region           string
+	storageClass     string
+	shardStrategy    string
+	sourcePath       string
+	previousUploadID string
+	syncType         string
+	shardCount       int
+	compressionLevel int
+	includeFiles     []string
+	s3Client         *s3.Client
+}
+
+// newSyncPipelineConfig builds the pipeline config for `cargoship sync`.
+//
+// #425: this MUST set UseRealS3 + S3Client. Without them NewPipeline defaults
+// UseRealS3 to false, which silently selects the simulated read-and-discard
+// uploader and skips the manifest — so sync would report success while
+// transferring nothing. Extracted from the command closure so a test can assert
+// the real-upload fields are set (the closure itself is not unit-testable).
+func newSyncPipelineConfig(p syncPipelineParams) *pipeline.PipelineConfig {
+	return &pipeline.PipelineConfig{
+		S3Bucket:          p.bucket,
+		S3Prefix:          p.prefix,
+		S3Region:          p.region,
+		S3StorageClass:    p.storageClass,
+		EnableMultiPrefix: true,
+		ShardCount:        p.shardCount,
+		WorkersPerPrefix:  2,
+		EnableManifest:    true,
+		SourcePath:        p.sourcePath,
+
+		// Real S3 upload — see the #425 note above.
+		UseRealS3: true,
+		S3Client:  p.s3Client,
+
+		// #316: forwarded sync flags.
+		ShardStrategy:    p.shardStrategy,
+		CompressionLevel: p.compressionLevel,
+
+		// #148: incremental sync configuration.
+		IncludeOnlyFiles: p.includeFiles,
+		SyncType:         p.syncType,
+		PreviousUploadID: p.previousUploadID,
+	}
 }
 
 // downloadLatestManifest attempts to download the latest manifest for a source path (Issue #148)
