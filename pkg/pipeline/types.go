@@ -242,6 +242,11 @@ type PipelineConfig struct {
 	// Chunking configuration
 	ChunkingConfig *chunking.ChunkingConfig
 
+	// Issue #30: Magika AI file-type detection (optional; nil = disabled). Passed
+	// through to the scanner stage's ScannerConfig.MagikaConfig — without this
+	// plumbing the scanner never receives it and Magika never runs.
+	MagikaConfig *config.MagikaConfig
+
 	// Manifest configuration
 	EnableManifest bool   // Enable manifest generation (default: true for real S3)
 	SourcePath     string // Original source path for manifest

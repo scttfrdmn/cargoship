@@ -246,6 +246,8 @@ Examples:
 				previousUploadID: previousUploadID,
 				s3Client:         s3Client,
 			})
+			// Issue #30: AI file-type detection, if configured.
+			pipelineConfig.MagikaConfig = magikaConfigFromViper()
 
 			pipe, err := pipeline.NewPipeline(pipelineConfig)
 			if err != nil {

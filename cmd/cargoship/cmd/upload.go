@@ -603,6 +603,10 @@ Examples:
 				ArchiveBufferSize: 100,
 				ResultBufferSize:  200,
 
+				// Issue #30: AI file-type detection (nil unless the config has a
+				// `magika:` block), threaded through to the scanner.
+				MagikaConfig: magikaConfigFromViper(),
+
 				// Manifest generation
 				EnableManifest:              true,
 				EnablePartialManifest:       true,
