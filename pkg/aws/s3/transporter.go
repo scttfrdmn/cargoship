@@ -141,6 +141,15 @@ func (t *Transporter) Upload(ctx context.Context, archive Archive) (*UploadResul
 
 // optimizeStorageClass selects the optimal storage class based on archive characteristics
 func (t *Transporter) optimizeStorageClass(archive Archive) types.StorageClass {
+	// An explicitly requested class is a decision the caller already made, so it
+	// wins over both the configured default and the heuristics below (which are
+	// for archives that express an intent via AccessPattern/RetentionDays rather
+	// than naming a class). Without this, a per-object StorageClass is silently
+	// ignored on this path while OptimizedTransporter honours it — see #352.
+	if archive.StorageClass != "" {
+		return types.StorageClass(archive.StorageClass)
+	}
+
 	// Use configured default if no optimization criteria
 	if archive.AccessPattern == "" && archive.RetentionDays == 0 {
 		return types.StorageClass(t.config.StorageClass)

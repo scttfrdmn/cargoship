@@ -151,6 +151,36 @@ func TestOptimizeStorageClass(t *testing.T) {
 			},
 			expectedStorage: types.StorageClassStandard,
 		},
+		{
+			// #352: an explicitly requested class must win over the config
+			// default. The config here is STANDARD, so a naive fallback would
+			// return STANDARD and drop the caller's GLACIER request.
+			name: "explicit storage class overrides config default",
+			archive: Archive{
+				StorageClass: awsconfig.StorageClassGlacier,
+			},
+			expectedStorage: types.StorageClassGlacier,
+		},
+		{
+			// #352: an explicit class must also win over the access-pattern
+			// heuristics. AccessPattern "rare" would otherwise force GLACIER;
+			// the caller asked for STANDARD_IA and gets it.
+			name: "explicit storage class overrides access-pattern heuristic",
+			archive: Archive{
+				StorageClass:  awsconfig.StorageClassStandardIA,
+				AccessPattern: "rare",
+			},
+			expectedStorage: types.StorageClassStandardIa,
+		},
+		{
+			// Guard the fallback: no explicit class still uses the config
+			// default, so honouring StorageClass didn't break the common path.
+			name: "empty storage class falls back to config default",
+			archive: Archive{
+				StorageClass: "",
+			},
+			expectedStorage: types.StorageClassStandard,
+		},
 	}
 
 	for _, tt := range tests {
