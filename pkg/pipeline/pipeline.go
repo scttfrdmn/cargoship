@@ -412,20 +412,29 @@ func (p *Pipeline) shouldUseDirectUpload(fileCount int64, totalSize int64) bool 
 }
 
 // startStages initializes and starts all pipeline stages
+// buildScannerConfig derives the scanner stage config from the pipeline config.
+// Extracted from startStages so the plumbing is unit-testable — in particular
+// MagikaConfig (#30), which the scanner needs to run AI file-type detection and
+// which was previously never set, so Magika never ran regardless of user config.
+func buildScannerConfig(cfg *PipelineConfig, rootPath string) *ScannerConfig {
+	return &ScannerConfig{
+		RootPath:                   rootPath,
+		Workers:                    cfg.ScannerWorkers,
+		IncludeOnlyFiles:           cfg.IncludeOnlyFiles,              // Issue #148: Incremental sync file filtering
+		UseCompressedAwareChunking: cfg.EnableCompressedAwareChunking, // Phase 3.3
+		ChunkTargetSizeMB:          cfg.ForceChunkSizeMB,              // Phase 3.3
+		ChunkingConfig:             cfg.ChunkingConfig,                // Phase 5: Pass chunking config
+		TierSelector:               cfg.TierSelector,                  // Issue #164: Tier-aware chunking
+		TierChunkingStrategy:       cfg.TierChunkingStrategy,          // Issue #164: Tier chunking strategy
+		MagikaConfig:               cfg.MagikaConfig,                  // Issue #30: AI file-type detection
+	}
+}
+
 func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 	var err error
 
 	// Create scanner stage
-	scannerConfig := &ScannerConfig{
-		RootPath:                   rootPath,
-		Workers:                    p.config.ScannerWorkers,
-		IncludeOnlyFiles:           p.config.IncludeOnlyFiles,              // Issue #148: Incremental sync file filtering
-		UseCompressedAwareChunking: p.config.EnableCompressedAwareChunking, // Phase 3.3
-		ChunkTargetSizeMB:          p.config.ForceChunkSizeMB,              // Phase 3.3
-		ChunkingConfig:             p.config.ChunkingConfig,                // Phase 5: Pass chunking config
-		TierSelector:               p.config.TierSelector,                  // Issue #164: Tier-aware chunking
-		TierChunkingStrategy:       p.config.TierChunkingStrategy,          // Issue #164: Tier chunking strategy
-	}
+	scannerConfig := buildScannerConfig(p.config, rootPath)
 	p.scanner, err = NewScannerStage(scannerConfig, p.chunkChan, p) // Pass pipeline reference for manifest tracking
 	if err != nil {
 		return fmt.Errorf("failed to create scanner: %w", err)

@@ -235,6 +235,9 @@ func createPipelineRunE(cmd *cobra.Command, args []string) error {
 		S3StorageClass:  storageClass,
 		S3PartSize:      64 * 1024 * 1024, // 64MB parts
 
+		// Issue #30: AI file-type detection, if configured.
+		MagikaConfig: magikaConfigFromViper(),
+
 		// Multi-prefix optimization (Phase 3)
 		EnableMultiPrefix: true,
 		ShardCount:        shardCount,
