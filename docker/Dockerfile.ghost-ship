@@ -5,7 +5,7 @@
 # inbound connections, so there is nothing to EXPOSE and no HTTP endpoint to
 # health-check. Status goes to the container log (see runStatusReporter) — read
 # it with `docker logs`.
-FROM golang:1.26-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
+FROM golang:1.26-alpine@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628 AS builder
 
 # Install dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -31,10 +31,16 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o cargoship-test ./
 # Final stage
 FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
+# Upgrade base packages first: the pinned alpine:3.24 snapshot ships openssl
+# (libcrypto3/libssl3) 3.5.7-r0, which Trivy flags HIGH; 3.5.8-r0 is already in
+# the v3.24 branch even though the image predates it. `apk upgrade` pulls it and
+# any later base-package security fixes at build time, so a lagging base image
+# digest doesn't strand a known-fixed CVE in the shipped image.
+#
 # Install required packages. ca-certificates is needed to reach S3 over TLS;
 # nothing else is. curl was here only for the removed healthcheck, and
 # inotify-tools for the FileWatcher deleted in #347 — a ghost ship polls.
-RUN apk --no-cache add ca-certificates
+RUN apk upgrade --no-cache && apk --no-cache add ca-certificates
 
 # Create app directory. Not /root — the container runs as USER cargoship below,
 # and /root is mode 0700 owned by root, so the binary would be unreachable.

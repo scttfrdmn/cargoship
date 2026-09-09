@@ -3,7 +3,7 @@
 #
 # A ghost ship archives autonomously and binds no port, so this image exposes
 # nothing and has no HTTP healthcheck. Status goes to the container log.
-FROM golang:1.26-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
+FROM golang:1.26-alpine@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628 AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -55,7 +55,12 @@ FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec4
 #
 # curl and inotify-tools are gone with the features that needed them — the
 # healthcheck (#348) and the FileWatcher deleted in #347.
-RUN apk add --no-cache \
+#
+# `apk upgrade` first: the pinned alpine:3.24 snapshot ships openssl 3.5.7-r0
+# (Trivy HIGH); 3.5.8-r0 is already in the v3.24 branch, so upgrading at build
+# time clears it and any later base-package fixes despite the lagging digest.
+RUN apk upgrade --no-cache \
+    && apk add --no-cache \
     ca-certificates \
     tzdata \
     aws-cli \
