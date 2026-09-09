@@ -349,13 +349,17 @@ func (c *Compressor) compressGzip(src io.Reader, dst io.Writer) (int64, error) {
 	defer c.gzipWriterPool.Put(w)
 
 	w.Reset(dst)
-	defer func() { _ = w.Close() }()
 
 	written, err := ioutils.CopyOptimized(w, src)
 	if err != nil {
+		_ = w.Close()
 		return 0, err
 	}
 
+	// Close exactly once — see the note in compressLZ4 (#397). The current
+	// gzip/zlib/s2 readers tolerate the trailing bytes a repeated Close() emits,
+	// but that same double-close is what a dependency bump turned into a hard
+	// decode failure for lz4, so it is removed here too.
 	return written, w.Close()
 }
 
@@ -375,13 +379,17 @@ func (c *Compressor) compressZlib(src io.Reader, dst io.Writer) (int64, error) {
 	defer c.zlibWriterPool.Put(w)
 
 	w.Reset(dst)
-	defer func() { _ = w.Close() }()
 
 	written, err := ioutils.CopyOptimized(w, src)
 	if err != nil {
+		_ = w.Close()
 		return 0, err
 	}
 
+	// Close exactly once — see the note in compressLZ4 (#397). The current
+	// gzip/zlib/s2 readers tolerate the trailing bytes a repeated Close() emits,
+	// but that same double-close is what a dependency bump turned into a hard
+	// decode failure for lz4, so it is removed here too.
 	return written, w.Close()
 }
 
@@ -421,13 +429,17 @@ func (c *Compressor) compressS2(src io.Reader, dst io.Writer) (int64, error) {
 	defer c.s2WriterPool.Put(w)
 
 	w.Reset(dst)
-	defer func() { _ = w.Close() }()
 
 	written, err := ioutils.CopyOptimized(w, src)
 	if err != nil {
+		_ = w.Close()
 		return 0, err
 	}
 
+	// Close exactly once — see the note in compressLZ4 (#397). The current
+	// gzip/zlib/s2 readers tolerate the trailing bytes a repeated Close() emits,
+	// but that same double-close is what a dependency bump turned into a hard
+	// decode failure for lz4, so it is removed here too.
 	return written, w.Close()
 }
 
@@ -446,13 +458,18 @@ func (c *Compressor) compressLZ4(src io.Reader, dst io.Writer) (int64, error) {
 	defer c.lz4WriterPool.Put(w)
 
 	w.Reset(dst)
-	defer func() { _ = w.Close() }()
 
 	written, err := ioutils.CopyOptimized(w, src)
 	if err != nil {
+		_ = w.Close()
 		return 0, err
 	}
 
+	// Close exactly once. A repeated Close() on an lz4/v4 Writer writes a second
+	// end-of-frame marker; since v4.1.23 the Reader treats those trailing bytes as
+	// the start of a new frame and fails the whole read with "lz4: bad magic
+	// number" (v4.1.22 and earlier silently tolerated them). A deferred Close()
+	// alongside this one would reintroduce that. See #397.
 	return written, w.Close()
 }
 

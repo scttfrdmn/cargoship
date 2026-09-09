@@ -1,10 +1,47 @@
 package compression
 
 import (
+	"errors"
 	"io"
 	"strings"
 	"testing"
 )
+
+// failWriter fails every write, used to drive the compress error paths.
+type failWriter struct{}
+
+func (failWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
+
+// TestCompressor_CompressWriteError checks that a failing destination surfaces
+// an error rather than being swallowed, covering the error path where the writer
+// is closed before returning (#397).
+func TestCompressor_CompressWriteError(t *testing.T) {
+	for _, algo := range []Algorithm{AlgorithmGzip, AlgorithmZlib, AlgorithmS2, AlgorithmZstd, AlgorithmLZ4} {
+		t.Run(string(algo), func(t *testing.T) {
+			comp, err := NewCompressor(algo, LevelFast)
+			if err != nil {
+				t.Fatalf("NewCompressor(%s) error = %v", algo, err)
+			}
+			src := strings.NewReader(strings.Repeat("payload", 4096))
+			var n int64
+			switch algo {
+			case AlgorithmGzip:
+				n, err = comp.compressGzip(src, failWriter{})
+			case AlgorithmZlib:
+				n, err = comp.compressZlib(src, failWriter{})
+			case AlgorithmS2:
+				n, err = comp.compressS2(src, failWriter{})
+			case AlgorithmZstd:
+				n, err = comp.compressZstd(src, failWriter{})
+			case AlgorithmLZ4:
+				n, err = comp.compressLZ4(src, failWriter{})
+			}
+			if err == nil {
+				t.Errorf("%s: expected an error writing to a failing destination, got nil (n=%d)", algo, n)
+			}
+		})
+	}
+}
 
 func TestNewCompressor(t *testing.T) {
 	tests := []struct {
