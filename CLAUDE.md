@@ -1,7 +1,7 @@
 # CargoShip Development with Claude Code
 
 ## Project Context
-CargoShip is a high-performance S3 upload optimization tool for large-scale data transfers with advanced staging, compression, chunking, and multi-region capabilities.
+CargoShip is a high-performance S3 upload optimization tool for large-scale data transfers with advanced staging, compression, and chunking. (Multi-region is an experimental/roadmap library, not a shipping upload feature — see the Multi-Region section.)
 
 **Current Version**: v0.23.0 (Released 2026-08-04)
 
@@ -157,8 +157,14 @@ magika:
 
 Magika enhances detection by identifying content types that extensions miss (e.g., code in .bin files, misnamed files without extensions).
 
-### Multi-Region (pkg/multiregion/)
-Advanced load balancing, health checking, and automatic failover for S3 uploads.
+### Multi-Region (pkg/multiregion/) — EXPERIMENTAL / ROADMAP
+A library in `pkg/multiregion` providing building blocks for region-aware load
+balancing, health checking, and failover. **Not wired into `cargoship upload`** —
+the CLI uploads to a single `--region`; the coordinator/health/failover paths are
+simulated and reached only by internal tooling. Kept as a roadmap item; do not
+describe it as a shipping feature. See `docs/guides/features/multi-region.md` and
+`docs/project/maturity.md` (marked Experimental). The `check-no-dead-imports`
+guard keeps it off the CLI until it's genuinely wired.
 
 ## CLI Commands Reference
 
