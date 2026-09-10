@@ -61,8 +61,12 @@ Force the [execution context](/guides/config/contexts) instead of auto-detecting
 
 | Variable | Effect |
 |----------|--------|
-| `CARGOSHIP_AGENT_MODE` | Run as an agent. |
 | `CARGOSHIP_REPL_MODE` | Run in REPL context. |
+
+`CARGOSHIP_AGENT_MODE` was read here to select the `agent` context, which was
+removed with the agent/controller runtime in v0.20.0
+([#340](https://github.com/scttfrdmn/cargoship/issues/340)); nothing reads it
+now.
 
 ### Config-key variables (limited)
 

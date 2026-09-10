@@ -61,9 +61,6 @@ func (cf *CommandFilter) GetContextDescription(ctx ExecutionContext) string {
 	case ContextLocal:
 		return "Full CargoShip functionality: archive creation, analysis, configuration, and infrastructure management"
 
-	case ContextAgent:
-		return "Agent operations: configuration management, monitoring, and status reporting"
-
 	case ContextREPL:
 		return "Interactive mode: all commands available with enhanced discovery and help"
 
@@ -100,10 +97,7 @@ func (cf *CommandFilter) getContextCommands(ctx ExecutionContext) map[string]boo
 			// Core archive operations
 			"create":   true,
 			"analyze":  true,
-			"find":     true,
-			"tree":     true,
 			"estimate": true,
-			"wizard":   true,
 
 			// File operations
 			"benchmark": true,
@@ -112,59 +106,30 @@ func (cf *CommandFilter) getContextCommands(ctx ExecutionContext) map[string]boo
 			"config":    true,
 			"lifecycle": true,
 			"metrics":   true,
-			"retier":    true,
 			"context":   true,
-
-			// Infrastructure (can be started from local)
-			"travelagent": true,
-			"shell":       true,
-
-			// Utilities and documentation
-			"schema": true,
-			"man":    true,
-			"mddocs": true,
-		}
-
-	case ContextAgent:
-		return map[string]bool{
-			// Agent-specific operations (future commands)
-			"agent": true, // Future: agent status, logs, config reload
-
-			// Configuration management
-			"config":  true,
-			"context": true,
-
-			// Monitoring
-			"metrics": true,
 
 			// Interactive mode
 			"shell": true,
 
-			// Documentation
-			"schema": true,
+			// Utilities and documentation
 			"man":    true,
+			"mddocs": true,
 		}
 
 	case ContextREPL:
 		// REPL mode provides access to all commands through interactive discovery
 		return map[string]bool{
-			"create":      true,
-			"analyze":     true,
-			"find":        true,
-			"tree":        true,
-			"estimate":    true,
-			"wizard":      true,
-			"benchmark":   true,
-			"config":      true,
-			"lifecycle":   true,
-			"metrics":     true,
-			"retier":      true,
-			"context":     true,
-			"travelagent": true,
-			"shell":       true,
-			"schema":      true,
-			"man":         true,
-			"mddocs":      true,
+			"create":    true,
+			"analyze":   true,
+			"estimate":  true,
+			"benchmark": true,
+			"config":    true,
+			"lifecycle": true,
+			"metrics":   true,
+			"context":   true,
+			"shell":     true,
+			"man":       true,
+			"mddocs":    true,
 		}
 
 	default:

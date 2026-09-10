@@ -68,7 +68,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&runtimeProfile, "pprof", false, "Enable runtime profiling HTTP endpoint at localhost:6060")
 	cmd.PersistentFlags().String("pprof-addr", "localhost:6060", "Address for runtime profiling HTTP endpoint")
 	cmd.PersistentFlags().String("memory-limit", "", "Set a memory limit for the run. This will slow things down, but will less likely to OOM in certain situations. Avoid this unless you are having memory issues.")
-	cmd.PersistentFlags().String("context", "", "Override execution context (local, agent, repl)")
+	cmd.PersistentFlags().String("context", "", "Override execution context (local, repl)")
 	cmd.SetVersionTemplate("{{ .Version }}\n")
 
 	// Create stuff

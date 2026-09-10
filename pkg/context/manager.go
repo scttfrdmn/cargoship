@@ -17,7 +17,6 @@ type ExecutionContext string
 
 const (
 	ContextLocal ExecutionContext = "local" // Local filesystem operations
-	ContextAgent ExecutionContext = "agent" // Launch agent environment
 	ContextREPL  ExecutionContext = "repl"  // Interactive shell mode
 )
 
@@ -164,7 +163,9 @@ func (m *Manager) Current() ExecutionContext {
 	return ctx.Current
 }
 
-// SetEndpoint updates the connection endpoint for the agent context
+// SetEndpoint updates the connection endpoint for the current context.
+// No remaining context supports endpoints, so this always returns an error;
+// the method is retained for API stability.
 func (m *Manager) SetEndpoint(endpoint string) error {
 	if m.current == nil {
 		if _, err := m.Load(); err != nil {
@@ -172,28 +173,13 @@ func (m *Manager) SetEndpoint(endpoint string) error {
 		}
 	}
 
-	switch m.current.Current {
-	case ContextAgent:
-		m.current.AgentEndpoint = endpoint
-	default:
-		return fmt.Errorf("endpoints not applicable for context: %s", m.current.Current)
-	}
-
-	return m.Save()
+	return fmt.Errorf("endpoints not applicable for context: %s", m.current.Current)
 }
 
-// GetEndpoint returns the current endpoint for the agent context
+// GetEndpoint returns the current endpoint. No remaining context supports
+// endpoints, so this always returns an empty string.
 func (m *Manager) GetEndpoint() string {
-	if m.current == nil {
-		return ""
-	}
-
-	switch m.current.Current {
-	case ContextAgent:
-		return m.current.AgentEndpoint
-	default:
-		return ""
-	}
+	return ""
 }
 
 // IsFirstRun checks if this is the first time CargoShip is being run
@@ -243,7 +229,7 @@ func (m *Manager) createDefaultContext() (*ContextInfo, error) {
 // isValidContext validates if a context string is valid
 func isValidContext(ctx ExecutionContext) bool {
 	switch ctx {
-	case ContextLocal, ContextAgent, ContextREPL:
+	case ContextLocal, ContextREPL:
 		return true
 	default:
 		return false
@@ -254,7 +240,6 @@ func isValidContext(ctx ExecutionContext) bool {
 func GetAvailableContexts() []ExecutionContext {
 	return []ExecutionContext{
 		ContextLocal,
-		ContextAgent,
 		ContextREPL,
 	}
 }
@@ -264,8 +249,6 @@ func FormatContext(ctx ExecutionContext) string {
 	switch ctx {
 	case ContextLocal:
 		return "Local filesystem operations and archive creation"
-	case ContextAgent:
-		return "Launch agent monitoring and management"
 	case ContextREPL:
 		return "Interactive shell mode with command discovery"
 	default:

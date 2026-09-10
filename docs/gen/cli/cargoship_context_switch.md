@@ -8,7 +8,6 @@ Switch to a different execution context.
 
 Available contexts:
 - local: Local filesystem operations and archive creation
-- agent: Launch agent monitoring and management
 - repl:  Interactive shell mode with command discovery
 
 ```
@@ -19,7 +18,6 @@ cargoship context switch <context> [flags]
 
 ```
   cargoship context switch local
-  cargoship context switch agent
   cargoship context switch repl
 ```
 
@@ -32,7 +30,7 @@ cargoship context switch <context> [flags]
 ### Options inherited from parent commands
 
 ```
-      --context string        Override execution context (local, agent, repl)
+      --context string        Override execution context (local, repl)
       --memory-limit string   Set a memory limit for the run. This will slow things down, but will less likely to OOM in certain situations. Avoid this unless you are having memory issues.
       --pprof                 Enable runtime profiling HTTP endpoint at localhost:6060
       --pprof-addr string     Address for runtime profiling HTTP endpoint (default "localhost:6060")
