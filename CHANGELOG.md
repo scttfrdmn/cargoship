@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.2] - 2026-09-10
+
+**Restore the real-AWS verification lane.** No user-facing behavior change — this
+patch fixes the CI/test issue that turned the per-release real-AWS verification
+lane red for v0.24.0 and v0.24.1, so releases once again carry an attached,
+green verification report.
+
+### Fixed
+
+- **Real-AWS verification lane failed on the CloudWatch metrics tests**
+  ([#459](https://github.com/scttfrdmn/cargoship/issues/459)). The metrics
+  integration tests routed the CloudWatch client at the in-process Substrate
+  emulator, whose CloudWatch emulation doesn't implement the `rpc-v2-cbor`
+  protocol current AWS SDKs use — so every call failed to deserialize once the
+  SDK moved to CBOR. The tests now exercise **real** CloudWatch (gated on the
+  real-AWS integration flag) and skip in the emulator-only lane; the CI role was
+  granted least-privilege CloudWatch permissions. Filed
+  [scttfrdmn/substrate#785](https://github.com/scttfrdmn/substrate/issues/785)
+  for the missing emulator support. The upload/restore/verify data path was never
+  affected.
+
 ## [0.24.1] - 2026-09-10
 
 **Restore & verify correctness, found dog-fooding a real backup.** Backing up a
