@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-09-10
+
+**Restore & verify correctness, found dog-fooding a real backup.** Backing up a
+real, mixed-compressibility directory surfaced bugs that the homogeneous test
+corpora never could — because a mixed upload produces both compressed
+(`.tar.zst`) and plain (`.tar`) chunks under a single manifest, a case the
+synthetic corpora didn't create.
+
+### Fixed
+
+- **Files in plain `.tar` chunks of a mixed upload were unrestorable**
+  ([#452](https://github.com/scttfrdmn/cargoship/issues/452)). Restore and
+  `verify --deep` chose the decompressor from the manifest's top-level
+  `compression_type` ("zstd"), so they wrapped a zstd reader around a plain tar
+  and recovered nothing. They now decode each chunk by its **key extension** —
+  the authoritative per-chunk signal the format spec documents — falling back to
+  the manifest type only for an extensionless key. Verified on real S3: a file
+  that failed to restore now round-trips byte-identical.
+- **`verify --deep` failed on multi-shard uploads**
+  ([#455](https://github.com/scttfrdmn/cargoship/issues/455)). Chunk IDs are
+  unique only within a shard, so a multi-prefix upload writes repeated
+  `ChunkEntry.ID`s. Verify keyed on the ID alone — flagging bogus "duplicate
+  chunk" errors and resolving files against the wrong chunk object. It now keys
+  on the `(ShardID, ID)` composite. (Restore was already safe — it groups by the
+  unique S3 key.)
+- **`verify --deep` false "compressed size exceeds uncompressed" warnings**
+  ([#453](https://github.com/scttfrdmn/cargoship/issues/453)). Since 0.24.0
+  records the true compressed size, a plain `.tar` chunk's stored size
+  legitimately exceeds its raw file-byte sum (tar headers + padding); this is no
+  longer flagged for uncompressed chunks.
+
 ## [0.24.0] - 2026-09-10
 
 **Trust & Verification.** This release is the outcome of a project-wide audit of
