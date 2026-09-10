@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"runtime/debug"
@@ -17,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithy "github.com/aws/smithy-go"
 	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
@@ -196,23 +198,31 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 				config.S3Prefix,
 				config.ResumeUploadID,
 			)
-			if downloadErr != nil {
+			switch {
+			case downloadErr == nil:
+				// Create builder from existing manifest
+				builder, err = manifest.NewBuilderFromExisting(partialManifest)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create builder from existing manifest: %w", err)
+				}
+				// Override UploadID with the resumed upload ID
+				config.UploadID = config.ResumeUploadID
+				fmt.Printf("📦 Resuming upload %s (%d files, %d chunks already uploaded)\n",
+					config.ResumeUploadID, len(partialManifest.Files), len(partialManifest.Chunks))
+			case isNoSuchKeyErr(downloadErr):
+				// #119: no saved progress in S3 — the run was interrupted before
+				// the first partial-manifest save, or already completed. Resume as
+				// a fresh upload under the resume ID rather than failing hard.
+				fmt.Printf("📦 No saved progress for %s in S3 — starting a fresh upload.\n", config.ResumeUploadID)
+				config.UploadID = config.ResumeUploadID
+				config.ResumeMode = false
+			default:
 				return nil, fmt.Errorf("failed to download partial manifest for resume: %w", downloadErr)
 			}
+		}
 
-			// Create builder from existing manifest
-			builder, err = manifest.NewBuilderFromExisting(partialManifest)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create builder from existing manifest: %w", err)
-			}
-
-			// Override UploadID with the resumed upload ID
-			config.UploadID = config.ResumeUploadID
-
-			fmt.Printf("📦 Resuming upload %s (%d files, %d chunks already uploaded)\n",
-				config.ResumeUploadID, len(partialManifest.Files), len(partialManifest.Chunks))
-		} else {
-			// Normal mode - create new manifest builder
+		if builder == nil {
+			// Normal mode (or resume with no saved progress) - create new builder
 			builder, err = manifest.NewBuilder(
 				config.UploadID,
 				config.SourcePath,
@@ -412,6 +422,24 @@ func (p *Pipeline) shouldUseDirectUpload(fileCount int64, totalSize int64) bool 
 }
 
 // startStages initializes and starts all pipeline stages
+// isNoSuchKeyErr reports whether err is an S3 "object not found" (NoSuchKey /
+// NotFound / 404). Used to treat a missing partial manifest as "no saved
+// progress" during resume (#119) rather than a hard failure.
+func isNoSuchKeyErr(err error) bool {
+	var nsk *types.NoSuchKey
+	if errors.As(err, &nsk) {
+		return true
+	}
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case "NoSuchKey", "NotFound", "404":
+			return true
+		}
+	}
+	return false
+}
+
 // buildScannerConfig derives the scanner stage config from the pipeline config.
 // Extracted from startStages so the plumbing is unit-testable — in particular
 // MagikaConfig (#30), which the scanner needs to run AI file-type detection and
