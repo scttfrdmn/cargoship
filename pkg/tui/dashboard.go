@@ -1,473 +1,342 @@
-// Package tui provides terminal user interface components for CargoShip
+// Package tui provides terminal user interface components for CargoShip.
 package tui
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	contextpkg "github.com/scttfrdmn/cargoship/pkg/context"
+	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
+	"github.com/scttfrdmn/cargoship/pkg/resume"
 )
 
-// DashboardType represents different dashboard interfaces
+// DashboardType selects which view the dashboard opens on.
 type DashboardType int
 
 const (
-	DashboardOverview    DashboardType = iota // Main overview dashboard
-	DashboardArchival                         // Data archival operations
-	DashboardInventory                        // Inventory management
-	DashboardCosts                            // Cost analysis and optimization
-	DashboardAgents                           // Agent management
-	DashboardConfig                           // Configuration management
-	DashboardLogs                             // Logs and monitoring
-	DashboardMultiRegion                      // Multi-region monitoring and management
+	// DashboardOverview is a real summary of recorded spend and in-progress uploads.
+	DashboardOverview DashboardType = iota
+	// DashboardCosts shows the recorded cost breakdown and budget status.
+	DashboardCosts
+	// DashboardUploads lists in-progress / resumable uploads.
+	DashboardUploads
 )
 
-// Dashboard represents a TUI dashboard
+// CostProvider is the subset of *cost.Manager the dashboard reads. It is an
+// interface so the dashboard degrades gracefully when the cost manager cannot be
+// built, and so the view logic can be exercised with a fake in tests.
+type CostProvider interface {
+	GetReporter() *cost.CostReporter
+	GetBudgetStatus() map[string]interface{}
+}
+
+// Dashboard is a read-only Bubble Tea dashboard over CargoShip's real local
+// data: the recorded cost ledger (pkg/aws/cost) and in-progress upload state
+// (pkg/resume). It fabricates nothing and performs no live bucket scans — when a
+// source has no data it says so rather than showing invented numbers.
 type Dashboard struct {
-	dashboardType  DashboardType
-	contextManager *contextpkg.Manager
-	logger         *slog.Logger
+	ctx     context.Context
+	cost    CostProvider // nil when the cost manager is unavailable
+	logger  *slog.Logger
+	refresh time.Duration
 
-	// Navigation
-	currentView    DashboardType
-	navigationTabs []string
-	selectedTab    int
+	tabs        []string
+	currentView DashboardType
 
-	// UI components - Agent Management
-	agentTable table.Model
-	jobsTable  table.Model
+	// Fetched data.
+	summary    *cost.CostSummary
+	budget     map[string]interface{}
+	uploads    []*resume.UploadState
+	fetchErr   error
+	lastUpdate time.Time
 
-	// UI components - Archival Operations
-	archivalQueue table.Model
-	estimateTable table.Model
-	surveyResults table.Model
+	// Widgets.
+	costTable   table.Model
+	uploadTable table.Model
 
-	// UI components - Inventory Management
-	inventoryTree table.Model
-	searchResults table.Model
-	restoreQueue  table.Model
-
-	// UI components - Cost Analysis
-	costBreakdown table.Model
-	optimizations table.Model
-	budgetChart   table.Model
-
-	// UI components - Configuration
-	configTable  table.Model
-	profilesList table.Model
-
-	// UI components - Multi-region
-	regionOverviewTable table.Model
-	regionHealthTable   table.Model
-	regionMetricsTable  table.Model
-	failoverStatusTable table.Model
-
-	// Data
-	agents         []AgentInfo
-	jobs           []JobInfo
-	metrics        SystemMetrics
-	archivalJobs   []ArchivalJob
-	inventoryItems []InventoryItem
-	// costData        CostAnalysis // TODO: Implement cost analysis integration
-	configurations []ConfigItem
-
-	// Multi-region data
-	regionStatus         map[string]RegionStatusInfo
-	globalMetrics        GlobalMetricsInfo
-	regionUpdateInterval time.Duration
-
-	// State
-	focused        int
-	lastUpdate     time.Time
-	updateInterval time.Duration
-
-	// Styling
-	baseStyle      lipgloss.Style
-	focusedStyle   lipgloss.Style
+	// Styles.
 	titleStyle     lipgloss.Style
 	tabStyle       lipgloss.Style
 	activeTabStyle lipgloss.Style
+	helpStyle      lipgloss.Style
+	errStyle       lipgloss.Style
 }
 
-// AgentInfo represents agent status information for display
-type AgentInfo struct {
-	ID         string
-	Name       string
-	Status     string
-	Endpoint   string
-	Jobs       int
-	Throughput string
-	LastSeen   time.Time
-	Progress   float64
-}
-
-// JobInfo represents job information for display
-type JobInfo struct {
-	ID        string
-	AgentID   string
-	Type      string
-	Path      string
-	Status    string
-	Progress  float64
-	StartTime time.Time
-	Size      string
-	Rate      string
-}
-
-// SystemMetrics represents system performance metrics
-type SystemMetrics struct {
-	TotalAgents     int
-	ActiveJobs      int
-	CompletedJobs   int64
-	FailedJobs      int64
-	TotalThroughput string
-	Uptime          time.Duration
-	MemoryUsage     string
-	CPUUsage        float64
-	StorageUsed     string
-	MonthlySpend    string
-	ProjectedCost   string
-}
-
-// ArchivalJob represents an archival operation
-type ArchivalJob struct {
-	ID            string
-	Source        string
-	Destination   string
-	Status        string
-	Progress      float64
-	StartTime     time.Time
-	EstimatedCost string
-	StorageClass  string
-	Size          string
-	Rate          string
-}
-
-// InventoryItem represents an inventory item
-type InventoryItem struct {
-	Path         string
-	Type         string
-	Size         string
-	LastModified time.Time
-	StorageClass string
-	Cost         string
-	Metadata     map[string]string
-}
-
-// CostAnalysis represents cost analysis data
-type CostAnalysis struct {
-	CurrentSpend   string
-	ProjectedSpend string
-	Optimizations  []CostOptimization
-	Breakdown      []CostBreakdownItem
-	Budget         BudgetInfo
-}
-
-// CostOptimization represents a cost optimization suggestion
-type CostOptimization struct {
-	Type            string
-	Description     string
-	PotentialSaving string
-	Impact          string
-	Effort          string
-}
-
-// CostBreakdownItem represents a cost breakdown item
-type CostBreakdownItem struct {
-	Category   string
-	Amount     string
-	Percentage float64
-	Trend      string
-}
-
-// BudgetInfo represents budget information
-type BudgetInfo struct {
-	Monthly   string
-	Used      string
-	Remaining string
-	DaysLeft  int
-}
-
-// ConfigItem represents a configuration item
-type ConfigItem struct {
-	Key         string
-	Value       string
-	Type        string
-	Description string
-	Default     string
-	Source      string
-}
-
-// RegionStatusInfo represents real-time region status information
-type RegionStatusInfo struct {
-	Name           string
-	Status         string // healthy, degraded, unhealthy, offline
-	Priority       int
-	Weight         int
-	LastChecked    time.Time
-	Health         RegionHealthInfo
-	Metrics        RegionMetricsInfo
-	FailoverTarget string
-	InFailover     bool
-}
-
-// RegionHealthInfo represents health check information for a region
-type RegionHealthInfo struct {
-	OverallHealthy       bool
-	SuccessRate          float64
-	ConsecutiveSuccesses int64
-	ConsecutiveFailures  int64
-	LastHealthCheck      time.Time
-	HealthCheckLatency   time.Duration
-	FailureReasons       []string
-}
-
-// RegionMetricsInfo represents operational metrics for a region
-type RegionMetricsInfo struct {
-	AverageLatency     time.Duration
-	Throughput         string
-	ErrorRate          float64
-	ActiveUploads      int64
-	SuccessfulUploads  int64
-	FailedUploads      int64
-	CPUUtilization     float64
-	MemoryUtilization  float64
-	StorageUtilization float64
-	BandwidthUsage     string
-	LastUpdated        time.Time
-}
-
-// GlobalMetricsInfo represents system-wide multi-region metrics
-type GlobalMetricsInfo struct {
-	TotalRegions         int
-	HealthyRegions       int
-	RegionAvailability   float64
-	GlobalThroughput     string
-	AverageLatency       time.Duration
-	TotalUploads         int64
-	GlobalErrorRate      float64
-	SystemHealthScore    float64
-	TotalCost            string
-	EstimatedMonthlyCost string
-	LastUpdated          time.Time
-}
-
-// FailoverOperation represents an active or recent failover operation
-type FailoverOperation struct {
-	ID            string
-	FromRegion    string
-	ToRegion      string
-	Strategy      string // immediate, graceful, manual
-	Status        string // initiated, in_progress, completed, failed
-	StartTime     time.Time
-	CompletedTime time.Time
-	Duration      time.Duration
-	Reason        string
-	TriggerType   string // automatic, manual
-	Success       bool
-	ErrorMessage  string
-}
-
-// NewDashboard creates a new TUI dashboard
-func NewDashboard(dashboardType DashboardType, logger *slog.Logger) *Dashboard {
-	contextManager := contextpkg.NewManager(logger)
-
-	// Initialize navigation tabs
-	navigationTabs := []string{
-		"🏠 Overview", "📦 Archive", "📋 Inventory",
-		"💰 Costs", "🤖 Agents", "⚙️ Config", "📝 Logs", "🌐 Multi-Region",
+// NewDashboard builds a dashboard. costProvider may be nil (the Costs/Overview
+// spend figures then report as unavailable while Uploads still works). initial
+// selects the opening view; refresh is the data refresh cadence (a sane default
+// is applied when non-positive).
+func NewDashboard(ctx context.Context, costProvider CostProvider, initial DashboardType, refresh time.Duration, logger *slog.Logger) *Dashboard {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if refresh <= 0 {
+		refresh = 5 * time.Second
 	}
 
-	// Initialize styling
-	baseStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240"))
-
-	focusedStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("69"))
-
-	tabStyle := lipgloss.NewStyle().
-		Padding(0, 1).
-		Foreground(lipgloss.Color("252")).
-		Background(lipgloss.Color("238"))
-
-	activeTabStyle := lipgloss.NewStyle().
-		Padding(0, 1).
-		Foreground(lipgloss.Color("15")).
-		Background(lipgloss.Color("69")).
-		Bold(true)
-
-	titleStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("86")).
-		Background(lipgloss.Color("235")).
-		Padding(0, 1)
-
-	// Initialize tables
-	agentTable := createAgentTable()
-	jobsTable := createJobsTable()
+	costTable := table.New(
+		table.WithColumns([]table.Column{
+			{Title: "Storage Class", Width: 40},
+			{Title: "Cost (USD)", Width: 16},
+		}),
+		table.WithFocused(true),
+		table.WithHeight(12),
+	)
+	uploadTable := table.New(
+		table.WithColumns([]table.Column{
+			{Title: "Upload ID", Width: 26},
+			{Title: "Source", Width: 26},
+			{Title: "Destination", Width: 30},
+			{Title: "Progress", Width: 10},
+			{Title: "Age", Width: 12},
+		}),
+		table.WithFocused(true),
+		table.WithHeight(12),
+	)
 
 	return &Dashboard{
-		dashboardType:        dashboardType,
-		currentView:          DashboardOverview,
-		navigationTabs:       navigationTabs,
-		selectedTab:          0,
-		contextManager:       contextManager,
-		logger:               logger.With("component", "tui-dashboard"),
-		agentTable:           agentTable,
-		jobsTable:            jobsTable,
-		archivalQueue:        createArchivalTable(),
-		estimateTable:        createEstimateTable(),
-		surveyResults:        createSurveyTable(),
-		inventoryTree:        createInventoryTable(),
-		searchResults:        createSearchTable(),
-		restoreQueue:         createRestoreTable(),
-		costBreakdown:        createCostBreakdownTable(),
-		optimizations:        createOptimizationTable(),
-		budgetChart:          createBudgetTable(),
-		configTable:          createConfigTable(),
-		profilesList:         createProfilesTable(),
-		regionOverviewTable:  createRegionOverviewTable(),
-		regionHealthTable:    createRegionHealthTable(),
-		regionMetricsTable:   createRegionMetricsTable(),
-		failoverStatusTable:  createFailoverStatusTable(),
-		regionStatus:         make(map[string]RegionStatusInfo),
-		globalMetrics:        GlobalMetricsInfo{}, // Will be populated by fetchMockGlobalMetrics
-		updateInterval:       time.Second * 2,
-		regionUpdateInterval: time.Second * 5,
-		baseStyle:            baseStyle,
-		focusedStyle:         focusedStyle,
-		titleStyle:           titleStyle,
-		tabStyle:             tabStyle,
-		activeTabStyle:       activeTabStyle,
+		ctx:            ctx,
+		cost:           costProvider,
+		logger:         logger.With("component", "tui-dashboard"),
+		refresh:        refresh,
+		currentView:    initial,
+		tabs:           []string{"🏠 Overview", "💰 Costs", "📦 Uploads"},
+		costTable:      costTable,
+		uploadTable:    uploadTable,
+		titleStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Background(lipgloss.Color("235")).Padding(0, 1),
+		tabStyle:       lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("252")).Background(lipgloss.Color("238")),
+		activeTabStyle: lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("15")).Background(lipgloss.Color("69")).Bold(true),
+		helpStyle:      lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(1, 0, 0, 0),
+		errStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color("203")),
 	}
 }
 
-// Run starts the TUI dashboard
+// Run starts the dashboard program.
 func (d *Dashboard) Run() error {
-	d.logger.Info("Starting TUI dashboard", "type", d.dashboardType)
-
-	// Create Bubble Tea program
-	p := tea.NewProgram(d, tea.WithAltScreen())
-
-	// Run the program
-	_, err := p.Run()
-	if err != nil {
+	if _, err := tea.NewProgram(d, tea.WithAltScreen()).Run(); err != nil {
 		return fmt.Errorf("failed to run TUI dashboard: %w", err)
 	}
-
-	d.logger.Info("TUI dashboard stopped")
 	return nil
 }
 
-// Init implements tea.Model
-func (d *Dashboard) Init() tea.Cmd {
-	return tea.Batch(
-		d.tickCmd(),
-		d.fetchDataCmd(),
-	)
+// dataMsg carries a refreshed snapshot of the real data sources.
+type dataMsg struct {
+	summary *cost.CostSummary
+	budget  map[string]interface{}
+	uploads []*resume.UploadState
+	err     error
 }
 
-// Update implements tea.Model
-func (d *Dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
+type tickMsg time.Time
 
+// Init implements tea.Model.
+func (d *Dashboard) Init() tea.Cmd {
+	return tea.Batch(d.fetch(), d.tick())
+}
+
+func (d *Dashboard) tick() tea.Cmd {
+	return tea.Tick(d.refresh, func(t time.Time) tea.Msg { return tickMsg(t) })
+}
+
+// fetch reads the real data sources off the UI goroutine.
+func (d *Dashboard) fetch() tea.Cmd {
+	ctx, cp := d.ctx, d.cost
+	return func() tea.Msg {
+		msg := dataMsg{}
+		// In-progress / resumable uploads (local, no AWS calls).
+		if states, err := resume.ListStates(); err == nil {
+			msg.uploads = states
+		} else {
+			msg.err = err
+		}
+		// Recorded cost ledger + budget (local store; no live pricing calls).
+		if cp != nil {
+			msg.budget = cp.GetBudgetStatus()
+			if summary, err := cp.GetReporter().GenerateReport(ctx, "month"); err == nil {
+				msg.summary = summary
+			}
+			// A report error (e.g. no records yet) is not fatal — Costs shows an
+			// honest empty state.
+		}
+		return msg
+	}
+}
+
+// Update implements tea.Model.
+func (d *Dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "q", "ctrl+c", "esc":
 			return d, tea.Quit
-
-		case "tab", "right":
-			d.selectedTab = (d.selectedTab + 1) % len(d.navigationTabs)
-			d.currentView = DashboardType(d.selectedTab)
-
-		case "shift+tab", "left":
-			d.selectedTab = (d.selectedTab - 1 + len(d.navigationTabs)) % len(d.navigationTabs)
-			d.currentView = DashboardType(d.selectedTab)
-
-		case "up":
-			if d.focused > 0 {
-				d.focused--
-			}
-
-		case "down":
-			d.focused = (d.focused + 1) % 3
-
+		case "tab", "right", "l":
+			d.currentView = (d.currentView + 1) % DashboardType(len(d.tabs))
+		case "shift+tab", "left", "h":
+			d.currentView = (d.currentView - 1 + DashboardType(len(d.tabs))) % DashboardType(len(d.tabs))
+		case "1":
+			d.currentView = DashboardOverview
+		case "2":
+			d.currentView = DashboardCosts
+		case "3":
+			d.currentView = DashboardUploads
 		case "r":
-			// Force refresh
-			cmds = append(cmds, d.fetchDataCmd())
-
-		case "enter":
-			// Handle enter key for current focused item
-			cmds = append(cmds, d.handleEnterCmd())
-
-		case "1", "2", "3", "4", "5", "6", "7":
-			// Quick navigation to tabs
-			if tabIndex := int(msg.String()[0] - '1'); tabIndex < len(d.navigationTabs) {
-				d.selectedTab = tabIndex
-				d.currentView = DashboardType(tabIndex)
-			}
+			return d, d.fetch()
 		}
-
 	case tickMsg:
-		cmds = append(cmds, d.tickCmd())
-		if time.Since(d.lastUpdate) >= d.updateInterval {
-			cmds = append(cmds, d.fetchDataCmd())
-		}
-
-	case dataUpdateMsg:
-		d.updateData(msg)
+		return d, tea.Batch(d.fetch(), d.tick())
+	case dataMsg:
+		d.summary = msg.summary
+		d.budget = msg.budget
+		d.uploads = msg.uploads
+		d.fetchErr = msg.err
 		d.lastUpdate = time.Now()
+		d.costTable.SetRows(costRows(msg.summary))
+		d.uploadTable.SetRows(uploadRows(msg.uploads))
+		return d, nil
 	}
 
-	return d, tea.Batch(cmds...)
+	// Route table navigation to the focused view's table.
+	var cmd tea.Cmd
+	switch d.currentView {
+	case DashboardCosts:
+		d.costTable, cmd = d.costTable.Update(msg)
+	case DashboardUploads:
+		d.uploadTable, cmd = d.uploadTable.Update(msg)
+	}
+	return d, cmd
 }
 
-// View implements tea.Model
+// View implements tea.Model.
 func (d *Dashboard) View() string {
-	// Render navigation tabs
-	var tabs []string
-	for i, tab := range d.navigationTabs {
-		if i == d.selectedTab {
-			tabs = append(tabs, d.activeTabStyle.Render(tab))
+	var tabs string
+	for i, name := range d.tabs {
+		if DashboardType(i) == d.currentView {
+			tabs += d.activeTabStyle.Render(name)
 		} else {
-			tabs = append(tabs, d.tabStyle.Render(tab))
+			tabs += d.tabStyle.Render(name)
 		}
 	}
+	header := d.titleStyle.Render("CargoShip Dashboard")
 
-	header := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
-
-	// Render content based on current view
-	var content string
+	var body string
 	switch d.currentView {
 	case DashboardOverview:
-		content = d.renderOverviewDashboard()
-	case DashboardArchival:
-		content = d.renderArchivalDashboard()
-	case DashboardInventory:
-		content = d.renderInventoryDashboard()
+		body = d.renderOverview()
 	case DashboardCosts:
-		content = d.renderCostsDashboard()
-	case DashboardAgents:
-		content = d.renderAgentsDashboard()
-	case DashboardConfig:
-		content = d.renderConfigDashboard()
-	case DashboardLogs:
-		content = d.renderLogsDashboard()
-	case DashboardMultiRegion:
-		content = d.renderMultiRegionDashboard()
-	default:
-		content = d.renderOverviewDashboard()
+		body = d.renderCosts()
+	case DashboardUploads:
+		body = d.renderUploads()
 	}
 
-	// Add help text
-	helpText := d.renderHelpText()
+	help := d.helpStyle.Render("tab/1-3 switch · r refresh · q quit")
+	if !d.lastUpdate.IsZero() {
+		help = d.helpStyle.Render(fmt.Sprintf("tab/1-3 switch · r refresh · q quit · updated %s ago", time.Since(d.lastUpdate).Round(time.Second)))
+	}
+	return fmt.Sprintf("%s\n%s\n\n%s\n%s", header, tabs, body, help)
+}
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, content, helpText)
+func (d *Dashboard) renderOverview() string {
+	spend, haveSpend := budgetFloat(d.budget, "current_spend")
+	if !haveSpend && d.summary != nil {
+		spend, haveSpend = d.summary.TotalCost, true
+	}
+	used, haveUsed := budgetFloat(d.budget, "budget_used")
+
+	spendLine := "  This month's spend:  (no cost data recorded yet — run an upload)"
+	if haveSpend {
+		spendLine = fmt.Sprintf("  This month's spend:  $%.2f", spend)
+	}
+	budgetLine := "  Budget used:         (no budget configured)"
+	if haveUsed {
+		budgetLine = fmt.Sprintf("  Budget used:         %.1f%%", used)
+	}
+	uploadsLine := fmt.Sprintf("  In-progress uploads: %d", len(d.uploads))
+
+	out := "Overview\n\n" + spendLine + "\n" + budgetLine + "\n" + uploadsLine
+	if d.cost == nil {
+		out += "\n\n  " + d.errStyle.Render("cost manager unavailable (check AWS config) — Uploads still works")
+	}
+	return out
+}
+
+func (d *Dashboard) renderCosts() string {
+	if d.cost == nil {
+		return "Costs\n\n  " + d.errStyle.Render("cost manager unavailable (check AWS config)")
+	}
+	out := "Costs — recorded spend this month, by storage class\n\n" + d.costTable.View()
+	if max, ok := budgetFloat(d.budget, "max_budget"); ok && max > 0 {
+		spend, _ := budgetFloat(d.budget, "current_spend")
+		rem, _ := budgetFloat(d.budget, "budget_remaining")
+		out += fmt.Sprintf("\n\n  Budget: $%.2f spent of $%.2f (remaining $%.2f)", spend, max, rem)
+	}
+	return out
+}
+
+func (d *Dashboard) renderUploads() string {
+	body := "Uploads — in-progress / resumable (resume with: cargoship resume <id>)\n\n" + d.uploadTable.View()
+	if d.fetchErr != nil {
+		body += "\n\n  " + d.errStyle.Render("could not read upload state: "+d.fetchErr.Error())
+	}
+	return body
+}
+
+// costRows maps a cost summary's per-storage-class spend into table rows. A nil
+// or empty summary yields a single honest "no data" row rather than fabricated
+// figures.
+func costRows(summary *cost.CostSummary) []table.Row {
+	if summary == nil || len(summary.ByStorageClass) == 0 {
+		return []table.Row{{"(no cost data recorded yet — run an upload)", ""}}
+	}
+	classes := make([]string, 0, len(summary.ByStorageClass))
+	for class := range summary.ByStorageClass {
+		classes = append(classes, class)
+	}
+	sort.Strings(classes)
+
+	rows := make([]table.Row, 0, len(classes)+1)
+	for _, class := range classes {
+		rows = append(rows, table.Row{class, fmt.Sprintf("$%.2f", summary.ByStorageClass[class])})
+	}
+	rows = append(rows, table.Row{"TOTAL", fmt.Sprintf("$%.2f", summary.TotalCost)})
+	return rows
+}
+
+// uploadRows maps in-progress upload states into table rows. An empty slice
+// yields a single honest "none" row.
+func uploadRows(states []*resume.UploadState) []table.Row {
+	if len(states) == 0 {
+		return []table.Row{{"(no in-progress uploads)", "", "", "", ""}}
+	}
+	rows := make([]table.Row, 0, len(states))
+	for _, s := range states {
+		dest := fmt.Sprintf("s3://%s/%s", s.Bucket, s.Prefix)
+		rows = append(rows, table.Row{
+			s.UploadID,
+			s.SourceDir,
+			dest,
+			fmt.Sprintf("%.0f%%", s.Progress()),
+			s.Age().Round(time.Second).String(),
+		})
+	}
+	return rows
+}
+
+// budgetFloat reads a float64 value from the budget-status map, reporting whether
+// it was present and of the expected type.
+func budgetFloat(m map[string]interface{}, key string) (float64, bool) {
+	if m == nil {
+		return 0, false
+	}
+	v, ok := m[key]
+	if !ok {
+		return 0, false
+	}
+	f, ok := v.(float64)
+	return f, ok
 }

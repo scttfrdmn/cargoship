@@ -1,29 +1,24 @@
 ## cargoship dashboard
 
-Launch comprehensive CargoShip TUI dashboard
+Launch the CargoShip TUI dashboard
 
 ### Synopsis
 
-Launch the comprehensive CargoShip terminal user interface dashboard.
+Launch the CargoShip terminal dashboard — a read-only view over your real
+local data. It fabricates nothing; when a source has no data it says so.
 
-The TUI provides a full-featured interface with multiple views:
-- 🏠 Overview: System status, storage usage, and quick stats
-- 📦 Archive: Data archival operations, cost estimates, and survey results
-- 📋 Inventory: Browse archived data, search, and restore operations
-- 💰 Costs: Cost analysis, optimization suggestions, and budget tracking
-- 🤖 Agents: Launch agent management and monitoring (when available)
-- ⚙️ Config: Configuration management and profiles
-- 📝 Logs: System logs and monitoring (coming soon)
+Views:
+- 🏠 Overview: this month's recorded spend, budget used, in-progress uploads
+- 💰 Costs:    recorded spend this month by storage class, plus budget status
+- 📦 Uploads:  in-progress / resumable uploads and their progress
+
+Data comes from the local cost ledger (see 'cargoship cost') and local upload
+state (see 'cargoship resume'); the dashboard makes no live bucket scans. To
+browse and restore archived data interactively, use 'cargoship browse'.
 
 Navigation:
-  Tab/→ ←       - Switch between dashboard views
-  1-7           - Quick jump to specific view
-  ↑↓            - Focus different sections within view
-  Enter         - Select/activate focused item
-  R             - Force refresh data
-  Q/Ctrl+C      - Exit dashboard
-
-The dashboard adapts based on your current context and available features.
+  Tab / ← →   Switch view      1-3   Jump to a view
+  ↑ ↓         Move in a table   R     Refresh now      Q / Ctrl+C   Quit
 
 ```
 cargoship dashboard [flags]
@@ -32,24 +27,17 @@ cargoship dashboard [flags]
 ### Examples
 
 ```
-  # Launch dashboard with overview
   cargoship dashboard
-
-  # Launch with specific view
-  cargoship dashboard --view archive
   cargoship dashboard --view costs
-
-  # Launch with agent context
-  cargoship --context=agent dashboard
+  cargoship dashboard --refresh 10s
 ```
 
 ### Options
 
 ```
   -h, --help               help for dashboard
-      --mock-data          Use mock data for testing (development only)
-      --refresh duration   Override refresh interval (e.g., 5s, 1m)
-      --view string        Initial dashboard view (overview, archive, inventory, costs, agents, config, logs) (default "overview")
+      --refresh duration   Data refresh interval (e.g. 5s, 1m; default 5s)
+      --view string        Initial view (overview, costs, uploads) (default "overview")
 ```
 
 ### Options inherited from parent commands
