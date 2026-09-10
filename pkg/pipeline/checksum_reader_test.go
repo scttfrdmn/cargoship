@@ -25,10 +25,27 @@ func TestHashingReadCloser_HashesStreamedBytes(t *testing.T) {
 	assert.NoError(t, h.Close())
 
 	assert.Equal(t, hex.EncodeToString(want[:]), h.Sum())
+	// BytesRead is the true compressed size — the exact bytes streamed to S3.
+	assert.Equal(t, int64(len(data)), h.BytesRead())
 }
 
 func TestHashingReadCloser_NilPassthrough(t *testing.T) {
 	assert.Nil(t, newHashingReadCloser(nil))
+}
+
+// TestJob_ArchiveCompressedSize verifies the accessor is 0 without a hasher and
+// the exact streamed byte count once one is attached and consumed (the value
+// that replaces the uncompressed-total estimate in ChunkEntry.CompressedSize).
+func TestJob_ArchiveCompressedSize(t *testing.T) {
+	j := &Job{}
+	assert.Equal(t, int64(0), j.ArchiveCompressedSize(), "no hasher => 0")
+
+	data := bytes.Repeat([]byte("z"), 4096)
+	j.archiveHasher = newHashingReadCloser(io.NopCloser(bytes.NewReader(data)))
+	j.Archive = j.archiveHasher
+	_, err := io.Copy(io.Discard, j.Archive)
+	require.NoError(t, err)
+	assert.Equal(t, int64(len(data)), j.ArchiveCompressedSize())
 }
 
 func TestHashingReadCloser_EmptyStream(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 type hashingReadCloser struct {
 	rc     io.ReadCloser
 	hasher hash.Hash
+	n      int64 // total bytes read = the true compressed archive size (#353/CompressedSize)
 }
 
 // newHashingReadCloser wraps rc so that reads feed a SHA-256 hasher. Passing a
@@ -33,8 +34,16 @@ func (h *hashingReadCloser) Read(p []byte) (int, error) {
 	n, err := h.rc.Read(p)
 	if n > 0 {
 		_, _ = h.hasher.Write(p[:n])
+		h.n += int64(n)
 	}
 	return n, err
+}
+
+// BytesRead returns the total number of bytes read through the wrapper. Once the
+// stream is fully consumed (after upload), this is the object's true compressed
+// size — the exact byte count PUT to S3.
+func (h *hashingReadCloser) BytesRead() int64 {
+	return h.n
 }
 
 // Close closes the underlying stream.
