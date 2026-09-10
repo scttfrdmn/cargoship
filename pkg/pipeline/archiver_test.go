@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -693,10 +695,14 @@ func TestArchiverStage_Process_Frames(t *testing.T) {
 	require.Greater(t, len(frames), 1, "small frame size must cut multiple frames")
 	require.Len(t, out.FileArchiveOffsets(), nFiles)
 
-	// Frames tile the compressed object contiguously and cover it entirely.
+	// Frames tile the compressed object contiguously, cover it entirely, and each
+	// carries a correct per-frame content checksum (#439).
 	var next int64
 	for i, f := range frames {
 		assert.Equal(t, next, f.CompressedOffset, "frame %d must be contiguous", i)
+		require.NotEmpty(t, f.Checksum, "frame %d must carry a checksum", i)
+		want := sha256.Sum256(raw[f.CompressedOffset : f.CompressedOffset+f.CompressedSize])
+		assert.Equal(t, hex.EncodeToString(want[:]), f.Checksum, "frame %d checksum must match its bytes", i)
 		next += f.CompressedSize
 	}
 	assert.Equal(t, int64(len(raw)), next, "frames must cover the whole object")

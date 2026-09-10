@@ -3,6 +3,8 @@ package pipeline
 import (
 	"archive/tar"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"testing"
 
 	"github.com/klauspost/compress/zstd"
@@ -17,7 +19,7 @@ import (
 // goroutine does: tw → cwU → encoder → cwC → buf.
 func newTestFramer(t *testing.T, buf *bytes.Buffer, frameSize int64) *framer {
 	t.Helper()
-	cwC := &countingWriter{w: buf}
+	cwC := &countingWriter{w: buf, h: sha256.New()}
 	enc, err := zstd.NewWriter(cwC)
 	require.NoError(t, err)
 	cwU := &countingWriter{w: enc}
@@ -60,10 +62,14 @@ func TestFramerCutsFramesAndRecordsOffsets(t *testing.T) {
 	offsets := job.FileArchiveOffsets()
 	require.Len(t, offsets, len(files))
 
-	// Frames tile the compressed stream contiguously and cover the whole object.
+	// Frames tile the compressed stream contiguously and cover the whole object,
+	// and each carries a correct per-frame content checksum (#439).
 	var next int64
+	obj := buf.Bytes()
 	for i, fe := range fr.frames {
 		assert.Equal(t, next, fe.CompressedOffset, "frame %d must start where the previous ended", i)
+		want := sha256.Sum256(obj[fe.CompressedOffset : fe.CompressedOffset+fe.CompressedSize])
+		assert.Equal(t, hex.EncodeToString(want[:]), fe.Checksum, "frame %d checksum must match its compressed bytes", i)
 		next += fe.CompressedSize
 	}
 	assert.Equal(t, int64(buf.Len()), next, "frames must cover the whole object")

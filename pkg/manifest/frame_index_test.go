@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -56,11 +58,15 @@ func buildStdlibFramedChunk(t *testing.T, entries []framedFile, frameSize int64)
 	var frameStartU, frameStartC int64
 
 	appendFrame := func() {
+		// #439: per-frame checksum over the frame's compressed bytes (what a
+		// ranged GET returns), mirroring the archiver's framer.
+		sum := sha256.Sum256(out.Bytes()[frameStartC:cwC.n])
 		frames = append(frames, FrameEntry{
 			CompressedOffset:   frameStartC,
 			CompressedSize:     cwC.n - frameStartC,
 			UncompressedOffset: frameStartU,
 			UncompressedSize:   cwU.n - frameStartU,
+			Checksum:           hex.EncodeToString(sum[:]),
 		})
 	}
 
@@ -252,6 +258,50 @@ func TestDeepVerifyFrameIndex(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, fres.Passed(), "a wrong archive_offset must fail file verify")
 	assert.Positive(t, fres.Mismatched)
+
+	// Wrong per-frame checksum (#439): fails the chunk check even though the
+	// bytes and the whole-object checksum are intact.
+	badFrame := framedManifest(key, files, frames, offsets)
+	badFrame.ChecksumAlgorithm = ChecksumAlgorithmSHA256
+	badFrame.Chunks[0].Checksum = sha256hexIndep(chunkBytes)
+	badFrame.Chunks[0].Frames[0].Checksum = "deadbeef"
+	res2, err := NewDeepVerifier(badFrame, dl).SetBucket("test-bucket").VerifyChunks(context.Background())
+	require.NoError(t, err)
+	assert.False(t, res2.Passed(), "a wrong per-frame checksum must fail chunk verify")
+}
+
+// TestFrameChecksumCatchesTamperedRange proves the #439 protection: when a
+// (hostile or corrupt) backend serves changed bytes for a frame's range, the
+// reader rejects them via the per-frame checksum BEFORE decoding, rather than
+// trusting the ETag — so nothing corrupt is written.
+func TestFrameChecksumCatchesTamperedRange(t *testing.T) {
+	files := []framedFile{
+		{"d/a", bytes.Repeat([]byte("a"), 20000)},
+		{"d/b", bytes.Repeat([]byte("b"), 20000)},
+		{"d/c", bytes.Repeat([]byte("c"), 20000)},
+	}
+	key := "backups/uploads/20260910-frame/shard-0/chunk-0.tar.zst"
+	chunkBytes, frames, offsets := buildStdlibFramedChunk(t, files, 16*1024)
+	require.NotEmpty(t, frames[0].Checksum, "helper must record per-frame checksums")
+	m := framedManifest(key, files, frames, offsets)
+
+	// Corrupt one byte inside file c's frame in the served object; leave the
+	// manifest (and its frame checksum) intact — the endpoint is lying.
+	cFrame := findFrame(frames, offsets["d/c"], int64(len(files[2].content)))
+	require.NotNil(t, cFrame)
+	tampered := append([]byte(nil), chunkBytes...)
+	tampered[cFrame.CompressedOffset+cFrame.CompressedSize-1] ^= 0xFF
+
+	dl := &rangeDownloader{object: tampered, honorRange: true}
+	se := NewSelectiveExtractor(m, dl, 0).SetBucket("test-bucket")
+
+	dest := t.TempDir()
+	stats, err := se.BatchRestore(context.Background(), []string{"d/c"}, dest)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), stats.Restored, "tampered frame must not be restored")
+	assert.Equal(t, int64(1), stats.Failed)
+	_, statErr := os.Stat(filepath.Join(dest, "d", "c"))
+	assert.True(t, os.IsNotExist(statErr), "no corrupt file should be written")
 }
 
 // TestSelectiveExtractorFrameRestoreRangeIgnored proves the reader still restores

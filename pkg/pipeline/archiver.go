@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"runtime"
@@ -23,16 +24,21 @@ import (
 // countingWriter counts the bytes written through it, forwarding to w. It is the
 // byte-offset source for the format-2.1 frame index (#436): one instance wraps
 // the tar stream (uncompressed offsets), another wraps the pipe (compressed
-// offsets). Only the single archive goroutine writes through it, so it needs no
-// locking.
+// offsets). When h is set (the compressed side), it also hashes the bytes so the
+// framer can record a per-frame content checksum (#439). Only the single archive
+// goroutine writes through it, so it needs no locking.
 type countingWriter struct {
 	w io.Writer
 	n int64
+	h hash.Hash // optional: per-frame content hash of the compressed bytes (#439)
 }
 
 func (c *countingWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
 	c.n += int64(n)
+	if c.h != nil {
+		_, _ = c.h.Write(p[:n])
+	}
 	return n, err
 }
 
@@ -80,14 +86,7 @@ func (f *framer) maybeCut() error {
 	if err := f.encoder.Close(); err != nil { // write this frame's epilogue into cwC→pw
 		return fmt.Errorf("close zstd frame: %w", err)
 	}
-	f.frames = append(f.frames, manifest.FrameEntry{
-		CompressedOffset:   f.frameStartC,
-		CompressedSize:     f.cwC.n - f.frameStartC,
-		UncompressedOffset: f.frameStartU,
-		UncompressedSize:   f.cwU.n - f.frameStartU,
-	})
-	f.frameStartC = f.cwC.n
-	f.frameStartU = f.cwU.n
+	f.appendFrame()
 	f.encoder.Reset(f.cwC) // begin the next independent frame on the same pipe
 	return nil
 }
@@ -98,12 +97,29 @@ func (f *framer) finalize() {
 	if !f.active() {
 		return
 	}
+	f.appendFrame()
+}
+
+// appendFrame records the current frame (the span since the last cut) and, when
+// the compressed-side hasher is present, its per-frame content checksum (#439),
+// then advances the frame-start marks and resets the hasher for the next frame.
+// The compressed-frame bytes are complete in cwC at every call site (after an
+// encoder.Close), so the sum covers exactly the bytes a ranged GET returns.
+func (f *framer) appendFrame() {
+	sum := ""
+	if f.cwC.h != nil {
+		sum = hex.EncodeToString(f.cwC.h.Sum(nil))
+		f.cwC.h.Reset()
+	}
 	f.frames = append(f.frames, manifest.FrameEntry{
 		CompressedOffset:   f.frameStartC,
 		CompressedSize:     f.cwC.n - f.frameStartC,
 		UncompressedOffset: f.frameStartU,
 		UncompressedSize:   f.cwU.n - f.frameStartU,
+		Checksum:           sum,
 	})
+	f.frameStartC = f.cwC.n
+	f.frameStartU = f.cwU.n
 }
 
 // EncoderPool manages a pool of reusable zstd encoders
@@ -640,9 +656,9 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 		var fr *framer
 
 		if useCompression {
-			// cwC counts compressed bytes into the pipe; cwU counts the
-			// uncompressed tar position. tw → cwU → encoder → cwC → pw.
-			cwC := &countingWriter{w: pw}
+			// cwC counts (and hashes, #439) compressed bytes into the pipe; cwU
+			// counts the uncompressed tar position. tw → cwU → encoder → cwC → pw.
+			cwC := &countingWriter{w: pw, h: sha256.New()}
 			encoder.Reset(cwC)
 			cwU := &countingWriter{w: encoder}
 			tw = tar.NewWriter(cwU)

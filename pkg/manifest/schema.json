@@ -108,7 +108,8 @@
         "compressed_offset": { "type": "integer" },
         "compressed_size": { "type": "integer" },
         "uncompressed_offset": { "type": "integer" },
-        "uncompressed_size": { "type": "integer" }
+        "uncompressed_size": { "type": "integer" },
+        "checksum": { "type": "string", "description": "SHA-256 (hex) of the frame's compressed bytes, for incremental ranged verification (#439)." }
       }
     },
     "shardEntry": {
