@@ -41,6 +41,13 @@ type ScannerStage struct {
 	jobsProcessed  int64
 	bytesProcessed int64
 
+	// chunkIDSeq allocates globally-unique chunk IDs across batches. The chunker
+	// numbers chunks 0..k-1 within each batch, and batches are processed
+	// concurrently; without a global sequence, chunk IDs (and therefore the
+	// "chunk-{id}" S3 keys) collide across batches and later chunk objects
+	// overwrite earlier ones in S3, silently losing data on restore.
+	chunkIDSeq int64
+
 	// Error from run() method
 	runError error
 
@@ -391,6 +398,20 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 	return fileChan, errChan
 }
 
+// assignGlobalChunkIDs rewrites batch-local chunk IDs (0..k-1) to a contiguous
+// range of globally-unique IDs, reserved atomically so concurrently-processed
+// batches never collide. This keeps every chunk's "chunk-{id}" S3 key unique and
+// each FileEntry.ChunkID consistent with the job that carries it.
+func (s *ScannerStage) assignGlobalChunkIDs(chunks []chunking.Chunk) {
+	if len(chunks) == 0 {
+		return
+	}
+	base := atomic.AddInt64(&s.chunkIDSeq, int64(len(chunks))) - int64(len(chunks))
+	for i := range chunks {
+		chunks[i].ID = int(base) + i
+	}
+}
+
 // processBatch processes a batch of files into chunks
 func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, totalSize int64) error {
 	// Issue #30: Run Magika batch detection if enabled
@@ -414,6 +435,7 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 			return fmt.Errorf("failed to create compressed-aware chunks: %w", err)
 		}
 		chunks = result.Chunks
+		s.assignGlobalChunkIDs(chunks) // unique IDs/keys across concurrent batches
 
 		// Log chunking decision
 		fmt.Printf("Phase 3.3: Created %d chunks with %dMB target (total: %.2f GB compressed)\n",
@@ -485,6 +507,7 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 		if err != nil {
 			return fmt.Errorf("failed to group files into chunks: %w", err)
 		}
+		s.assignGlobalChunkIDs(chunks) // unique IDs/keys across concurrent batches
 
 		// Send chunks without target sizes
 		for i := range chunks {
