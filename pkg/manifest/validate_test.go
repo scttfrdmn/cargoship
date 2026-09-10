@@ -231,7 +231,11 @@ func TestValidator_ChunkCountMismatch(t *testing.T) {
 // TestValidator_DuplicateChunkID tests duplicate chunk detection (Issue #91)
 func TestValidator_DuplicateChunkID(t *testing.T) {
 	m := createValidManifest()
-	m.Chunks[1].ID = 0 // Duplicate ID
+	// #455: chunk identity is (ShardID, ID) — a duplicate means both match, since
+	// IDs legitimately repeat across shards. Make chunk[1] a true duplicate of
+	// chunk[0].
+	m.Chunks[1].ShardID = m.Chunks[0].ShardID
+	m.Chunks[1].ID = m.Chunks[0].ID
 	validator := NewValidator(m)
 
 	result := validator.Validate()

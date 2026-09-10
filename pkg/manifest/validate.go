@@ -232,18 +232,21 @@ func (v *Validator) validateChunkConsistency(result *ValidationResult) {
 		valid = false
 	}
 
-	// Validate each chunk
-	chunkIDsSeen := make(map[int]bool)
+	// Validate each chunk. #455: chunk IDs are unique only WITHIN a shard, not
+	// across a multi-prefix upload — the identity is (ShardID, ID) (see
+	// chunkIdent). Keying the duplicate check on ID alone flagged every
+	// multi-shard manifest as having "duplicate" chunks. Key on the composite.
+	chunkIDsSeen := make(map[chunkIdent]bool)
 	for i, chunk := range v.manifest.Chunks {
-		// Check for duplicate chunk IDs
-		if chunkIDsSeen[chunk.ID] {
+		ident := chunkIdent{chunk.ShardID, chunk.ID}
+		if chunkIDsSeen[ident] {
 			result.AddError(fmt.Sprintf("chunk[%d].id", i),
 				"unique",
-				fmt.Sprintf("%d (duplicate)", chunk.ID),
-				fmt.Sprintf("Duplicate chunk ID %d", chunk.ID))
+				fmt.Sprintf("shard %d / id %d (duplicate)", chunk.ShardID, chunk.ID),
+				fmt.Sprintf("Duplicate chunk (shard %d, id %d)", chunk.ShardID, chunk.ID))
 			valid = false
 		}
-		chunkIDsSeen[chunk.ID] = true
+		chunkIDsSeen[ident] = true
 
 		// Check shard ID is valid
 		if chunk.ShardID < 0 || chunk.ShardID >= v.manifest.ShardCount {
