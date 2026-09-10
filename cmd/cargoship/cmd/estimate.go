@@ -312,8 +312,9 @@ func outputTable(estimate *costs.CostEstimate, parallelOpt *s3.PrefixOptimizatio
 		)
 	}
 
-	// Transfer costs
-	fmt.Printf("\n🌐 Data Transfer Cost: $%.2f (one-time)\n", estimate.TransferCosts.Standard)
+	// Transfer + request costs. #451: S3 data transfer IN is free, so upload
+	// incurs no transfer charge — the one-time upload cost is the PUT requests.
+	fmt.Printf("\n🌐 Upload Data Transfer: $%.2f (S3 ingress is free)\n", estimate.TransferCosts.Standard)
 	fmt.Printf("📋 Request Costs: $%.2f (one-time)\n", estimate.RequestCosts.Standard)
 
 	// Summary
