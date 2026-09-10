@@ -286,6 +286,16 @@ func TestEstimateArchives(t *testing.T) {
 		t.Error("TotalAnnualCost should be 12x TotalMonthlyCost")
 	}
 
+	// #451: S3 upload/ingress is free — the estimate must not bill transfer for
+	// the upload, and the one-time upload cost is the PUT request cost alone.
+	if estimate.TransferCosts.Total != 0 {
+		t.Errorf("Expected upload transfer cost = 0 (S3 ingress is free), got %v", estimate.TransferCosts.Total)
+	}
+	if estimate.TotalUploadCost != estimate.RequestCosts.Standard {
+		t.Errorf("Expected TotalUploadCost = RequestCosts.Standard (%v), got %v",
+			estimate.RequestCosts.Standard, estimate.TotalUploadCost)
+	}
+
 	// Timestamp should be recent
 	if time.Since(estimate.CalculatedAt) > time.Minute {
 		t.Error("CalculatedAt timestamp should be recent")

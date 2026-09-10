@@ -104,7 +104,12 @@ func (c *Calculator) EstimateArchives(ctx context.Context, archives []s3.Archive
 		config.StorageClassDeepArchive,
 	} {
 		storageCost := c.calculateStorageCost(ctx, estimate.TotalSizeGB, storageClass)
-		transferCost := c.calculateTransferCost(ctx, estimate.TotalSizeGB)
+		// #451: S3 data transfer IN (upload/ingress) is FREE — only storage,
+		// requests, and transfer OUT (egress/retrieval) are billed. The upload
+		// estimate must not charge for ingress; egress is modeled separately for
+		// the retrieval path (calculateRestoreCost). The one-time upload cost is
+		// the PUT request cost alone.
+		transferCost := 0.0
 		requestCost := c.calculateRequestCost(ctx, len(archives), storageClass)
 
 		switch storageClass {
