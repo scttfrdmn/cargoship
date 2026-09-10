@@ -25,6 +25,10 @@ wire format may change between minor releases (documented per release).
 **Experimental** means a capability exists in the library but is not wired into
 the CLI, or has not been exercised enough to rely on.
 
+For capabilities that are **not** in CargoShip — those removed (some because they
+were non-functional or simulated) or deferred, and what a real version would
+take — see the [roadmap](/project/roadmap). Nothing there is a shipping feature.
+
 ## Component maturity
 
 | Capability | Status | What that means |
