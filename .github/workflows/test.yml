@@ -61,6 +61,13 @@ jobs:
       - name: Check no simulated/roadmap packages reach the CLI
         run: bash scripts/ci/check-no-dead-imports.sh
 
+      # Capability-verification guard: every evidence token in the capability
+      # matrix (docs/project/verification.md) must resolve to a real test/guard/
+      # command/report, and invocations of removed commands must not reappear in
+      # the user docs — so "does what it says" can't drift from its proof.
+      - name: Check capability matrix evidence resolves
+        run: bash scripts/ci/check-capabilities.sh
+
   e2e-quickstart:
     name: Quick Start E2E (emulator)
     runs-on: ubuntu-latest
