@@ -487,26 +487,34 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 		result.TotalFiles++
 	}
 
-	// Group files by chunk so we download each chunk object once.
-	byChunk := make(map[int]bool)
+	// Group files by chunk so we download each chunk object once. #455: key by
+	// the (ShardID, ChunkID) composite, not ChunkID alone — chunk IDs are unique
+	// only within a shard, so an ID-keyed lookup collapses distinct chunks across
+	// shards and resolves the wrong object.
+	byChunk := make(map[chunkIdent]bool)
 	for _, f := range dv.manifest.Files {
 		if !f.IsDuplicate {
-			byChunk[f.ChunkID] = true
+			byChunk[chunkIdent{f.ShardID, f.ChunkID}] = true
 		}
 	}
-	chunkIDs := make([]int, 0, len(byChunk))
-	for id := range byChunk {
-		chunkIDs = append(chunkIDs, id)
+	idents := make([]chunkIdent, 0, len(byChunk))
+	for k := range byChunk {
+		idents = append(idents, k)
 	}
-	sort.Ints(chunkIDs)
+	sort.Slice(idents, func(i, j int) bool {
+		if idents[i].shard != idents[j].shard {
+			return idents[i].shard < idents[j].shard
+		}
+		return idents[i].id < idents[j].id
+	})
 
 	seen := make(map[fileKey]bool)
 
-	for _, chunkID := range chunkIDs {
+	for _, ident := range idents {
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		chunk := dv.chunkByID(chunkID)
+		chunk := dv.chunkByIdent(ident)
 		if chunk == nil {
 			continue
 		}
@@ -514,9 +522,9 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 		if err != nil {
 			// Chunk object unreadable: every file in it is missing.
 			for _, f := range dv.manifest.Files {
-				if f.ChunkID == chunkID && !f.IsDuplicate {
+				if f.ShardID == ident.shard && f.ChunkID == ident.id && !f.IsDuplicate {
 					result.Files = append(result.Files, FileVerifyResult{
-						Path: f.Path, ChunkID: chunkID, Status: ChunkVerifyMissing,
+						Path: f.Path, ChunkID: f.ChunkID, Status: ChunkVerifyMissing,
 					})
 					result.Missing++
 				}
@@ -553,10 +561,16 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 	return result, nil
 }
 
-// chunkByID returns the chunk with the given ID, or nil.
-func (dv *DeepVerifier) chunkByID(id int) *ChunkEntry {
+// chunkIdent is a chunk's unique identity: (ShardID, ID). Chunk IDs repeat
+// across shards in a multi-prefix upload, so ID alone is not unique (#455).
+type chunkIdent struct {
+	shard, id int
+}
+
+// chunkByIdent returns the chunk with the given (ShardID, ID), or nil.
+func (dv *DeepVerifier) chunkByIdent(ident chunkIdent) *ChunkEntry {
 	for i := range dv.manifest.Chunks {
-		if dv.manifest.Chunks[i].ID == id {
+		if dv.manifest.Chunks[i].ShardID == ident.shard && dv.manifest.Chunks[i].ID == ident.id {
 			return &dv.manifest.Chunks[i]
 		}
 	}
