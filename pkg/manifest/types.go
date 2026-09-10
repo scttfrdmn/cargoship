@@ -44,6 +44,13 @@ type Manifest struct {
 	// existed; verify --deep treats those as unverifiable rather than assuming.
 	ChecksumAlgorithm string `json:"checksum_algorithm,omitempty"`
 
+	// FormatFeatures lists optional format-2.1 capabilities present in this
+	// manifest, e.g. "frames" when chunks carry a random-access frame index
+	// (#436). Absent/empty means none; readers must ignore features they do not
+	// recognize. It is advisory — the presence of the underlying fields
+	// (ChunkEntry.Frames, FileEntry.ArchiveOffset) is authoritative.
+	FormatFeatures []string `json:"format_features,omitempty"`
+
 	// Encryption (Issue #163)
 	Encryption *EncryptionMetadata `json:"encryption,omitempty"` // Encryption configuration if enabled
 
@@ -216,6 +223,15 @@ type FileEntry struct {
 	PartIndex  int   `json:"part_index,omitempty"`  // Part index for split files (0 = not split)
 	TotalParts int   `json:"total_parts,omitempty"` // Total parts if split (0 or 1 = not split)
 
+	// ArchiveOffset is the byte offset of this file's data within the chunk's
+	// uncompressed tar stream (format 2.1, #436). It is the position right after
+	// the tar header (the first data byte), so a random-access reader can locate
+	// the file without a tar walk: find the frame covering this offset (see
+	// ChunkEntry.Frames), decode that one frame, then slice at
+	// ArchiveOffset-frame.UncompressedOffset for Size (or Length, when split)
+	// bytes. Zero and absent on chunks written without a frame index.
+	ArchiveOffset int64 `json:"archive_offset,omitempty"`
+
 	// Optional metadata
 	Checksum    string            `json:"checksum,omitempty"`     // SHA256 checksum (optional)
 	ContentHash string            `json:"content_hash,omitempty"` // MD5 hex digest for DVC compatibility (Issue #172)
@@ -252,6 +268,31 @@ type ChunkEntry struct {
 
 	// Checksums
 	Checksum string `json:"checksum,omitempty"` // SHA256 of compressed archive
+
+	// Frames is the random-access frame index for this chunk (format 2.1, #436).
+	// When the chunk's zstd stream was written as multiple independent frames
+	// (one per --frame-size boundary), each FrameEntry maps a byte range of the
+	// compressed object to its uncompressed tar span. Absent/nil means the chunk
+	// is a single continuous frame (the pre-2.1 layout) and must be read whole.
+	Frames []FrameEntry `json:"frames,omitempty"`
+}
+
+// FrameEntry maps one independent zstd frame within a chunk object to the tar
+// bytes it decodes to (format 2.1, #436). Frames tile the chunk object: they are
+// contiguous in the compressed stream (CompressedOffset ascending, no gaps) and
+// in the uncompressed tar stream, and every file lies entirely within one frame.
+type FrameEntry struct {
+	// CompressedOffset is the byte offset of this frame within the compressed
+	// chunk object (the start of the zstd frame magic). A random-access reader
+	// issues a ranged GET of [CompressedOffset, CompressedOffset+CompressedSize).
+	CompressedOffset int64 `json:"compressed_offset"`
+	// CompressedSize is the frame's length in compressed bytes.
+	CompressedSize int64 `json:"compressed_size"`
+	// UncompressedOffset is the byte offset of this frame's first byte within the
+	// chunk's uncompressed tar stream.
+	UncompressedOffset int64 `json:"uncompressed_offset"`
+	// UncompressedSize is the frame's length after decompression.
+	UncompressedSize int64 `json:"uncompressed_size"`
 }
 
 // ShardEntry represents a shard (S3 prefix) in the manifest

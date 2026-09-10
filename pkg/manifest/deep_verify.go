@@ -258,7 +258,16 @@ func (dv *DeepVerifier) verifyChunk(ctx context.Context, chunk *ChunkEntry) Chun
 	defer func() { _ = output.Body.Close() }()
 
 	hasher := sha256.New()
-	n, err := io.Copy(hasher, output.Body)
+	// #436: when the chunk carries a frame index, verify in the same streaming
+	// pass that the zstd frame magic appears at each recorded frame offset — no
+	// extra download and no buffering of the (possibly large) object.
+	var magic *frameMagicWriter
+	dst := io.Writer(hasher)
+	if len(chunk.Frames) > 0 {
+		magic = newFrameMagicWriter(chunk.Frames)
+		dst = io.MultiWriter(hasher, magic)
+	}
+	n, err := io.Copy(dst, output.Body)
 	if err != nil {
 		cr.Status = ChunkVerifyMissing
 		cr.Err = fmt.Sprintf("read object: %v", err)
@@ -267,12 +276,124 @@ func (dv *DeepVerifier) verifyChunk(ctx context.Context, chunk *ChunkEntry) Chun
 	cr.SizeGot = n
 	cr.Actual = hex.EncodeToString(hasher.Sum(nil))
 
-	if cr.Actual == chunk.Checksum {
-		cr.Status = ChunkVerifyOK
-	} else {
+	if cr.Actual != chunk.Checksum {
 		cr.Status = ChunkVerifyMismatch
+		return cr
 	}
+
+	// #436: the bytes matched; now confirm the frame index is well-formed —
+	// frames tile the object contiguously and each begins with the zstd magic.
+	if len(chunk.Frames) > 0 {
+		if ferr := validateFrameTiling(chunk.Frames, n); ferr != nil {
+			cr.Status = ChunkVerifyMismatch
+			cr.Err = ferr.Error()
+			return cr
+		}
+		if magic.err != nil {
+			cr.Status = ChunkVerifyMismatch
+			cr.Err = magic.err.Error()
+			return cr
+		}
+	}
+
+	cr.Status = ChunkVerifyOK
 	return cr
+}
+
+// countingReader counts the bytes read through it, so a tar walk can report the
+// uncompressed offset of each entry's data for the archive_offset check (#436).
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
+}
+
+// zstdFrameMagic is the 4-byte magic number that begins every zstd frame.
+var zstdFrameMagic = []byte{0x28, 0xB5, 0x2F, 0xFD}
+
+// frameMagicWriter verifies, as a chunk object streams through it, that the zstd
+// frame magic appears at each recorded frame's CompressedOffset (#436). It
+// collects the four magic bytes for one frame at a time and tolerates a magic
+// that straddles two Write calls. Frames must be sorted by CompressedOffset.
+type frameMagicWriter struct {
+	frames []FrameEntry
+	pos    int64  // absolute stream offset of the next byte to be written
+	idx    int    // index of the frame whose magic we're still collecting
+	got    []byte // magic bytes collected so far for frames[idx]
+	err    error
+}
+
+func newFrameMagicWriter(frames []FrameEntry) *frameMagicWriter {
+	sorted := make([]FrameEntry, len(frames))
+	copy(sorted, frames)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].CompressedOffset < sorted[j].CompressedOffset })
+	return &frameMagicWriter{frames: sorted, got: make([]byte, 0, 4)}
+}
+
+func (w *frameMagicWriter) Write(p []byte) (int, error) {
+	if w.err == nil {
+		w.scan(p)
+	}
+	w.pos += int64(len(p))
+	return len(p), nil
+}
+
+func (w *frameMagicWriter) scan(p []byte) {
+	for w.idx < len(w.frames) {
+		off := w.frames[w.idx].CompressedOffset
+		start := off + int64(len(w.got)) // absolute position of the next magic byte we need
+		rel := start - w.pos
+		if rel < 0 {
+			w.err = fmt.Errorf("frame %d offset %d precedes the stream position", w.idx, off)
+			return
+		}
+		if rel >= int64(len(p)) {
+			return // the bytes we need are in a later buffer
+		}
+		take := int64(4 - len(w.got))
+		if avail := int64(len(p)) - rel; avail < take {
+			take = avail
+		}
+		w.got = append(w.got, p[rel:rel+take]...)
+		if len(w.got) < 4 {
+			return // wait for the rest in the next buffer
+		}
+		if !bytes.Equal(w.got, zstdFrameMagic) {
+			w.err = fmt.Errorf("frame %d at offset %d does not begin with the zstd frame magic", w.idx, off)
+			return
+		}
+		w.got = w.got[:0]
+		w.idx++
+	}
+}
+
+// validateFrameTiling checks that the frame index covers the whole object with
+// no gaps or overlaps: frames sorted by CompressedOffset start at 0, are
+// contiguous, and end exactly at the object size (#436).
+func validateFrameTiling(frames []FrameEntry, objectSize int64) error {
+	sorted := make([]FrameEntry, len(frames))
+	copy(sorted, frames)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].CompressedOffset < sorted[j].CompressedOffset })
+
+	var next int64
+	for i, f := range sorted {
+		if f.CompressedSize <= 0 || f.UncompressedSize <= 0 {
+			return fmt.Errorf("frame %d has non-positive size", i)
+		}
+		if f.CompressedOffset != next {
+			return fmt.Errorf("frame %d starts at %d, expected %d (frames must tile the object)", i, f.CompressedOffset, next)
+		}
+		next += f.CompressedSize
+	}
+	if next != objectSize {
+		return fmt.Errorf("frames cover %d bytes but the object is %d", next, objectSize)
+	}
+	return nil
 }
 
 // fileKey identifies a file (or split-file part) for checksum lookup.
@@ -328,13 +449,15 @@ func tarNameToFileKey(tarName string) (path string, partIndex int, isPart bool) 
 func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, error) {
 	result := &FilesVerifyResult{Algorithm: dv.manifest.ChecksumAlgorithm}
 
-	// Index expected checksums by (path, partIndex).
+	// Index expected checksums and (#436) recorded archive offsets by (path, partIndex).
 	expected := make(map[fileKey]string)
+	offsets := make(map[fileKey]int64)
 	for _, f := range dv.manifest.Files {
 		if f.IsDuplicate {
 			continue // deduplicated files aren't stored in a chunk of their own
 		}
 		expected[fileKey{f.Path, f.PartIndex}] = f.Checksum
+		offsets[fileKey{f.Path, f.PartIndex}] = f.ArchiveOffset
 		result.TotalFiles++
 	}
 
@@ -361,7 +484,7 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 		if chunk == nil {
 			continue
 		}
-		fileResults, err := dv.verifyChunkFiles(ctx, chunk, expected, seen)
+		fileResults, err := dv.verifyChunkFiles(ctx, chunk, expected, offsets, seen)
 		if err != nil {
 			// Chunk object unreadable: every file in it is missing.
 			for _, f := range dv.manifest.Files {
@@ -417,7 +540,7 @@ func (dv *DeepVerifier) chunkByID(id int) *ChunkEntry {
 // verifyChunkFiles downloads one chunk, walks its tar, and hashes each file
 // entry, comparing to the expected checksums. It marks seen keys so the caller
 // can detect files that never appeared.
-func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry, expected map[fileKey]string, seen map[fileKey]bool) ([]FileVerifyResult, error) {
+func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry, expected map[fileKey]string, offsets map[fileKey]int64, seen map[fileKey]bool) ([]FileVerifyResult, error) {
 	output, err := dv.s3Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(dv.objectBucket()),
 		Key:    aws.String(dv.objectKey(chunk.S3Key)),
@@ -459,7 +582,11 @@ func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry,
 	}
 
 	var results []FileVerifyResult
-	tr := tar.NewReader(decompressed)
+	// #436: count uncompressed tar bytes so we can confirm each file's data begins
+	// exactly at its recorded archive_offset. After tr.Next() reads a header, the
+	// counter equals the file's data start — the same point the archiver recorded.
+	cr := &countingReader{r: decompressed}
+	tr := tar.NewReader(cr)
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -468,6 +595,7 @@ func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry,
 		if err != nil {
 			return nil, fmt.Errorf("tar read: %w", err)
 		}
+		dataOffset := cr.n // data starts here, right after the header
 		if hdr.Name == ".padding" {
 			continue // synthetic padding entry, not a real file
 		}
@@ -478,6 +606,18 @@ func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry,
 			continue // not a manifest file we track (shouldn't happen)
 		}
 		seen[k] = true
+
+		// #436: when a frame index is present, the recorded archive_offset must
+		// match where the file actually sits in the tar stream, or random-access
+		// restore would read the wrong bytes.
+		if len(chunk.Frames) > 0 {
+			if wantOff := offsets[k]; wantOff != dataOffset {
+				results = append(results, FileVerifyResult{
+					Path: path, ChunkID: chunk.ID, Expected: exp, Status: ChunkVerifyMismatch,
+				})
+				continue
+			}
+		}
 
 		// Hash exactly the file's declared size via CopyN. The bound guards
 		// against a decompression bomb (a malicious manifest/chunk can't stream

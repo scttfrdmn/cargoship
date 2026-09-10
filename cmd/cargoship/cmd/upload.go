@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
@@ -34,6 +35,7 @@ func NewUploadCmd() *cobra.Command {
 		shardCount       int
 		shardStrategy    string
 		compressionLevel int
+		frameSize        string // #436: --frame-size, parsed to bytes (e.g. "16MiB", "0")
 		quiet            bool
 		interactive      bool // Issue #112: Interactive TUI mode
 
@@ -157,6 +159,13 @@ Examples:
 			// Validate compression level (zstd range: 1-22, recommended: 1-19)
 			if compressionLevel < 1 || compressionLevel > 22 {
 				return fmt.Errorf("compression-level must be between 1 and 22 (zstd range)")
+			}
+
+			// #436: parse --frame-size (accepts "16MiB", "64MB", "0", ...).
+			// 0 disables the random-access frame index (single frame per chunk).
+			frameSizeBytes, err := humanize.ParseBytes(frameSize)
+			if err != nil {
+				return fmt.Errorf("invalid --frame-size %q: %w", frameSize, err)
 			}
 
 			// Validate shard count (0 = auto, 4-32 = manual)
@@ -602,6 +611,9 @@ Examples:
 				ShardStrategy:    shardStrategy,
 				CompressionLevel: effectiveCompressionLevel,
 
+				// #436: random-access frame index size (0 = single frame/chunk).
+				FrameSize: int64(frameSizeBytes),
+
 				// Progress tracking
 				EnableProgress:   !quiet,
 				ProgressInterval: 100 * 1000000, // 100ms in nanoseconds
@@ -881,6 +893,10 @@ Examples:
 		"Shard distribution strategy (round-robin, hash, size, type, directory)")
 	cmd.Flags().IntVar(&compressionLevel, "compression-level", 3,
 		"Fixed zstd compression level (1-22), overriding per-chunk content-aware selection. Unset = content-aware")
+	// #436: frame the compressed chunk stream for random-access single-file
+	// restore. 0 disables it (a single zstd frame per chunk, the pre-2.1 layout).
+	cmd.Flags().StringVar(&frameSize, "frame-size", "16MiB",
+		"Cut compressed chunks into random-access zstd frames every N bytes (e.g. 16MiB, 64MB); 0 disables framing")
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "Disable progress display")
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "Enable interactive TUI mode with per-shard progress (Issue #112)")
 	// #316: --interactive has never had an implementation on the live upload

@@ -14,13 +14,19 @@ import (
 // parsing via FromJSON AND satisfy the embedded schema. If a future change to
 // the structs or schema breaks an older version, this fails — so a version bump
 // can't silently orphan archives written by an earlier CargoShip.
+//
+// 2.1 is the current format (#436). v2.0 is kept as the read-compatibility guard:
+// the reader is additive/version-tolerant, and this proves it still parses the
+// immediate predecessor. The vestigial 1.0 constant and its fixture were retired
+// with the 2.1 consolidation (1.0 was never written by any released binary that
+// isn't already covered by the 2.0 read path).
 func TestVersionFixturesParseAndValidate(t *testing.T) {
 	fixtures := []struct {
 		file        string
 		wantVersion string
 	}{
+		{"v2.1.json", "2.1"},
 		{"v2.0.json", "2.0"},
-		{"v1.0.json", "1.0"},
 	}
 
 	for _, f := range fixtures {

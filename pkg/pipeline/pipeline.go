@@ -542,6 +542,8 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 		UseLowEntropyPadding: true, // S3-optimized zero-byte padding
 		// #271: per-file content checksums (on by default; see PipelineConfig).
 		FileChecksums: p.config.FileChecksums,
+		// #436: random-access frame index size (0 = single frame per chunk).
+		FrameSize: p.config.FrameSize,
 	}
 
 	// Create uploader stage (real S3 or simulated)

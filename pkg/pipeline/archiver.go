@@ -17,7 +17,94 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
 	"github.com/scttfrdmn/cargoship/pkg/compression"
 	"github.com/scttfrdmn/cargoship/pkg/ioutils"
+	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
+
+// countingWriter counts the bytes written through it, forwarding to w. It is the
+// byte-offset source for the format-2.1 frame index (#436): one instance wraps
+// the tar stream (uncompressed offsets), another wraps the pipe (compressed
+// offsets). Only the single archive goroutine writes through it, so it needs no
+// locking.
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
+}
+
+// framer cuts a chunk's zstd stream into independently-decodable frames at file
+// boundaries and records the frame index + per-file offsets for format-2.1
+// random access (#436). It is active only when compression is on and frameSize
+// > 0; otherwise every method is a no-op and the chunk is written as a single
+// frame — byte-for-byte the pre-2.1 layout.
+//
+// Wrapping order is tw → cwU → encoder → cwC → pw: cwU counts the uncompressed
+// tar position (file data offsets, frame uncompressed spans) and cwC counts the
+// compressed position in the object (frame byte ranges for ranged GETs).
+type framer struct {
+	tw          *tar.Writer
+	encoder     *zstd.Encoder
+	cwU, cwC    *countingWriter
+	frameSize   int64
+	frameStartU int64
+	frameStartC int64
+	frames      []manifest.FrameEntry
+}
+
+func (f *framer) active() bool { return f != nil && f.encoder != nil && f.frameSize > 0 }
+
+// recordOffset captures a file's data start (the uncompressed tar position right
+// after its header) so the reader can locate it without a tar walk. Call
+// immediately after tw.WriteHeader returns.
+func (f *framer) recordOffset(job *Job, file chunking.File) {
+	if !f.active() || job == nil {
+		return
+	}
+	job.SetFileArchiveOffset(fileChecksumKey(file), f.cwU.n)
+}
+
+// maybeCut ends the current frame and starts a new one when the accumulated
+// uncompressed bytes reach frameSize. Call at a file boundary (after the file's
+// data is written), so no file ever spans two frames.
+func (f *framer) maybeCut() error {
+	if !f.active() || f.cwU.n-f.frameStartU < f.frameSize {
+		return nil
+	}
+	if err := f.tw.Flush(); err != nil { // push the finished file's padding into the encoder
+		return fmt.Errorf("flush tar before frame cut: %w", err)
+	}
+	if err := f.encoder.Close(); err != nil { // write this frame's epilogue into cwC→pw
+		return fmt.Errorf("close zstd frame: %w", err)
+	}
+	f.frames = append(f.frames, manifest.FrameEntry{
+		CompressedOffset:   f.frameStartC,
+		CompressedSize:     f.cwC.n - f.frameStartC,
+		UncompressedOffset: f.frameStartU,
+		UncompressedSize:   f.cwU.n - f.frameStartU,
+	})
+	f.frameStartC = f.cwC.n
+	f.frameStartU = f.cwU.n
+	f.encoder.Reset(f.cwC) // begin the next independent frame on the same pipe
+	return nil
+}
+
+// finalize records the trailing frame. Call after the deferred tw.Close() and
+// encoder.Close() have run, so the counters reflect the whole stream.
+func (f *framer) finalize() {
+	if !f.active() {
+		return
+	}
+	f.frames = append(f.frames, manifest.FrameEntry{
+		CompressedOffset:   f.frameStartC,
+		CompressedSize:     f.cwC.n - f.frameStartC,
+		UncompressedOffset: f.frameStartU,
+		UncompressedSize:   f.cwU.n - f.frameStartU,
+	})
+}
 
 // EncoderPool manages a pool of reusable zstd encoders
 // Phase 5 Redux: Eliminates expensive encoder creation overhead
@@ -546,13 +633,20 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 	// Archive creation goroutine
 	go func() {
 		var tw *tar.Writer
+		// fr is active only for compressed chunks with a positive --frame-size;
+		// it cuts the zstd stream into random-access frames (#436). Left nil (and
+		// inert) for plain .tar chunks and when framing is disabled, so the
+		// single-frame byte layout is exactly as before.
+		var fr *framer
 
 		if useCompression {
-			// Reset encoder for new output stream
-			encoder.Reset(pw)
-
-			// Create tar writer on top of compression
-			tw = tar.NewWriter(encoder)
+			// cwC counts compressed bytes into the pipe; cwU counts the
+			// uncompressed tar position. tw → cwU → encoder → cwC → pw.
+			cwC := &countingWriter{w: pw}
+			encoder.Reset(cwC)
+			cwU := &countingWriter{w: encoder}
+			tw = tar.NewWriter(cwU)
+			fr = &framer{tw: tw, encoder: encoder, cwU: cwU, cwC: cwC, frameSize: s.config.FrameSize}
 		} else {
 			// Skip compression - write tar directly
 			tw = tar.NewWriter(pw)
@@ -573,8 +667,14 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 		}()
 		if useCompression {
 			defer func() {
-				// (2) flush the encoder's final frame into pw, then return it.
+				// (2) flush the encoder's final (trailing) frame into pw. Record
+				// that frame before returning the encoder, then hand the index to
+				// the uploader — cwU/cwC are final once Close returns (#436).
 				_ = encoder.Close()
+				if fr.active() {
+					fr.finalize()
+					job.SetFrames(fr.frames)
+				}
 				if encoderPool != nil {
 					encoderPool.Put(encoder)
 				}
@@ -587,7 +687,7 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 
 		// Add all files to archive with parallel I/O optimization
 		var totalSize int64
-		if err := s.addFilesWithParallelIO(tw, job, job.Chunk.Files, &totalSize); err != nil {
+		if err := s.addFilesWithParallelIO(tw, fr, job, job.Chunk.Files, &totalSize); err != nil {
 			_ = pw.CloseWithError(err)
 			return
 		}
@@ -781,11 +881,11 @@ type fileData struct {
 // addFilesWithParallelIO adds files to archive with parallel I/O optimization
 // Files are read in parallel by a worker pool, but written to tar sequentially
 // to maintain tar format integrity. This provides 4-8x speedup for I/O bound workloads.
-func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, job *Job, files []chunking.File, totalSize *int64) error {
+func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, fr *framer, job *Job, files []chunking.File, totalSize *int64) error {
 	// For very small file counts, parallel I/O overhead isn't worth it
 	if len(files) < 3 {
 		for _, file := range files {
-			if err := s.addFileToArchiveWithMetadata(tw, job, file); err != nil {
+			if err := s.addFileToArchiveWithMetadata(tw, fr, job, file); err != nil {
 				return err
 			}
 			*totalSize += file.Size
@@ -925,7 +1025,7 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, job *Job, files [
 		}
 
 		// Write to tar sequentially (fast, data already in memory)
-		if err := s.addFileToArchiveFromMemoryWithMetadata(tw, job, fd.File, fd.Info, fd.Data); err != nil {
+		if err := s.addFileToArchiveFromMemoryWithMetadata(tw, fr, job, fd.File, fd.Info, fd.Data); err != nil {
 			close(fileChan)
 			return err
 		}
@@ -953,7 +1053,7 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, job *Job, files [
 
 // addFileToArchiveWithMetadata adds a file to archive with full metadata support (Phase 5)
 // Supports partial file reads with offset/length for split files
-func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, job *Job, file chunking.File) error {
+func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, fr *framer, job *Job, file chunking.File) error {
 	// Open file
 	f, err := os.Open(file.Path)
 	if err != nil {
@@ -1012,6 +1112,9 @@ func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, job *Job, f
 		return fmt.Errorf("failed to write tar header: %w", err)
 	}
 
+	// #436: the file's data starts at the current uncompressed tar offset.
+	fr.recordOffset(job, file)
+
 	// Copy file content with length limit. When per-file checksums are enabled
 	// (#271) we hash the content as it's copied. This routes through a
 	// TeeReader, which bypasses the platform zero-copy (splice/sendfile) path —
@@ -1030,7 +1133,8 @@ func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, job *Job, f
 		}
 	}
 
-	return nil
+	// #436: at this file boundary, cut a new zstd frame if the current one is full.
+	return fr.maybeCut()
 }
 
 // copyFileToArchivePlain copies from an arbitrary reader (e.g. a TeeReader used
@@ -1052,7 +1156,7 @@ func fileChecksumKey(file chunking.File) string {
 }
 
 // addFileToArchiveFromMemoryWithMetadata adds a file to tar from in-memory data with metadata (Phase 5)
-func (s *ArchiverStage) addFileToArchiveFromMemoryWithMetadata(tw *tar.Writer, job *Job, file chunking.File, info os.FileInfo, data []byte) error {
+func (s *ArchiverStage) addFileToArchiveFromMemoryWithMetadata(tw *tar.Writer, fr *framer, job *Job, file chunking.File, info os.FileInfo, data []byte) error {
 	// Create tar header
 	header, err := tar.FileInfoHeader(info, "")
 	if err != nil {
@@ -1083,6 +1187,9 @@ func (s *ArchiverStage) addFileToArchiveFromMemoryWithMetadata(tw *tar.Writer, j
 		return fmt.Errorf("failed to write tar header: %w", err)
 	}
 
+	// #436: the file's data starts at the current uncompressed tar offset.
+	fr.recordOffset(job, file)
+
 	// Write data from memory
 	if _, err := tw.Write(data); err != nil {
 		return fmt.Errorf("failed to write file content: %w", err)
@@ -1095,7 +1202,8 @@ func (s *ArchiverStage) addFileToArchiveFromMemoryWithMetadata(tw *tar.Writer, j
 		job.SetFileChecksum(fileChecksumKey(file), hex.EncodeToString(sum[:]))
 	}
 
-	return nil
+	// #436: at this file boundary, cut a new zstd frame if the current one is full.
+	return fr.maybeCut()
 }
 
 // StreamingArchiveReader wraps a pipe reader to track bytes read

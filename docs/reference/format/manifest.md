@@ -19,8 +19,9 @@ reader in any language.
 - **Encryption:** optionally KMS-envelope-encrypted into a
   `manifest.encrypted.json[.gz]` wrapper — see
   [Encryption](/reference/format/encryption).
-- **Version:** the top-level `version` is `"2.0"` for current uploads; `"1.0"`
-  is read-compatible. See [format versioning](/reference/format/#format-versioning).
+- **Version:** the top-level `version` is `"2.1"` for current uploads; the
+  reader is additive/version-tolerant and still parses older manifests. See
+  [format versioning](/reference/format/#format-versioning).
 
 ::: info Timestamps
 All time fields serialize as RFC 3339 / ISO 8601 strings (Go `time.Time`), e.g.
@@ -74,6 +75,9 @@ type Manifest struct {
 	CompressionLevel int     `json:"compression_level"` // Compression level used
 	CompressionRatio float64 `json:"compression_ratio"` // Actual compression ratio achieved
 
+	// Format features (#436) — e.g. ["frames"] when chunks carry a frame index
+	FormatFeatures []string `json:"format_features,omitempty"`
+
 	// Encryption (Issue #163)
 	Encryption *EncryptionMetadata `json:"encryption,omitempty"`
 
@@ -120,6 +124,9 @@ type FileEntry struct {
 	Length     int64 `json:"length,omitempty"`      // Length of this part (0 = full file)
 	PartIndex  int   `json:"part_index,omitempty"`  // Part index for split files (0 = not split)
 	TotalParts int   `json:"total_parts,omitempty"` // Total parts if split (0 or 1 = not split)
+
+	// Random-access frame index (#436): data offset within the uncompressed tar
+	ArchiveOffset int64 `json:"archive_offset,omitempty"`
 
 	// Optional metadata
 	Checksum    string            `json:"checksum,omitempty"`     // SHA256 checksum (optional)
@@ -190,8 +197,24 @@ type ChunkEntry struct {
 
 	// Checksums
 	Checksum string `json:"checksum,omitempty"` // SHA256 of compressed archive
+
+	// Random-access frame index (#436); absent for single-frame chunks
+	Frames []FrameEntry `json:"frames,omitempty"`
+}
+
+// FrameEntry maps one independent zstd frame to the tar bytes it decodes to.
+// Frames tile the chunk object and every file lies entirely within one frame.
+type FrameEntry struct {
+	CompressedOffset   int64 `json:"compressed_offset"`   // byte offset of the frame in the object
+	CompressedSize     int64 `json:"compressed_size"`     // frame length in compressed bytes
+	UncompressedOffset int64 `json:"uncompressed_offset"` // frame's first byte in the tar stream
+	UncompressedSize   int64 `json:"uncompressed_size"`   // frame length after decompression
 }
 ```
+
+See [Compression → Random-access frame index](/reference/format/compression#random-access-frame-index-format-2-1)
+for how a reader uses `frames` + `archive_offset` to fetch and decode a single
+file.
 
 `Checksum` here is the **SHA256 of the compressed archive object** — verify a
 downloaded chunk against it before extracting.
@@ -333,7 +356,7 @@ A minimal, v2.0 manifest with one file and one chunk:
 
 ```json
 {
-  "version": "2.0",
+  "version": "2.1",
   "upload_id": "20260721-123456-abcd1234",
   "created_at": "2026-07-21T12:34:56Z",
   "completed_at": "2026-07-21T12:40:00Z",

@@ -31,32 +31,41 @@ bytes and JSON on S3.
 ## Format versioning
 
 The format version is carried in the manifest's top-level `version` field. It is
-independent of the CargoShip product version (the current product release is
-v0.13.2; the current format version is **2.0**).
+independent of the CargoShip product version. The current format version is
+**2.1**.
+
+The format is **additive**: every field is either part of the stable core or an
+optional (`omitempty`) block, and the reader is version-tolerant — it parses
+older manifests transparently and ignores fields it does not recognize. There is
+one format, not a family of parsers; the `version` string records which optional
+capabilities a given manifest may use, and would only change its major digit for
+a genuinely breaking change.
 
 | Format version | Status | Notes |
 |----------------|--------|-------|
-| `2.0` | **Current** — written by all current releases | Adds optional encryption, deduplication, incremental-sync, and DVC/Git provenance blocks on top of the 1.0 core. |
-| `1.0` | **Read-compatible** | The original stable format. Current CargoShip reads 1.0 manifests transparently; the core `Manifest`, `FileEntry`, `ChunkEntry`, and `ShardEntry` fields are unchanged. |
+| `2.1` | **Current** — written by all current releases | Adds the optional random-access frame index (`format_features`, `ChunkEntry.frames`, `FileEntry.archive_offset`) on top of 2.0. |
 
-The version constants are defined in the source as:
+The version constant is defined in the source as:
 
 ```go
 const (
-	// ManifestVersion is the current manifest format version
-	ManifestVersion = "2.0"
+	// ManifestVersion is the current manifest format version.
+	ManifestVersion = "2.1"
 
-	// ManifestVersionV1 is the legacy v1.0 manifest format version (backward-compat read-only)
-	ManifestVersionV1 = "1.0"
+	// FormatFeatureFrames marks a manifest whose chunks carry a random-access
+	// frame index (#436).
+	FormatFeatureFrames = "frames"
 )
 ```
 
-### What 2.0 adds over 1.0
+### Optional blocks
 
-Every field introduced after 1.0 is `omitempty` in the JSON — a 2.0 manifest
-that uses none of the new features serializes identically to a 1.0 manifest
-except for its `version` string. The additive blocks are:
+Every non-core field is `omitempty` in the JSON — a manifest that uses none of
+these serializes to just its core fields plus the `version` string. The additive
+blocks are:
 
+- `format_features`, `chunks[].frames`, `files[].archive_offset` — the 2.1
+  random-access frame index (see [Compression](/reference/format/compression))
 - `encryption` — [`EncryptionMetadata`](/reference/format/encryption)
 - `deduplication` — `ManifestDeduplication`
 - `version_info`, `git_metadata`, `dvc_compatibility`, `dvc_pipeline` — dataset and pipeline provenance
@@ -70,7 +79,8 @@ A conformant reader **must** follow these rules to remain forward-compatible.
 :::
 
 1. **Ignore unknown fields.** New optional fields may be added within a major
-   version. A `2.0` reader must not fail on fields it does not recognize.
+   version. A `2.x` reader must not fail on fields it does not recognize, and
+   must still parse an older manifest (e.g. one without `format_features`).
 2. **Treat absent optional blocks as "feature not used."** `encryption`,
    `deduplication`, and the DVC/Git blocks are pointers that are omitted when
    unused. Their absence is normal, not an error.
@@ -89,7 +99,7 @@ A conformant reader **must** follow these rules to remain forward-compatible.
 - The `version` field governs format compatibility; new minor additions are
   backward compatible and clients ignore unknown fields.
 - CargoShip **reads** all historical format versions; it **writes** the current
-  version (`2.0`).
+  version (`2.1`).
 
 ## Next
 

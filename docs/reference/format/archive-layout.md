@@ -20,8 +20,13 @@ chunk-{m}.tar.zst
 ```
 
 - **Archive format:** POSIX `ustar` (Go's `archive/tar`).
-- **Compression:** a single Zstandard frame wrapping the whole tar stream —
-  **or none**, in which case the object is a plain `.tar`. See below.
+- **Compression:** the tar stream wrapped in Zstandard — **or none**, in which
+  case the object is a plain `.tar`. See below. The zstd stream is one or more
+  independently-decodable frames: a single frame by default, or several cut at
+  file boundaries when `--frame-size` is set, which records a random-access frame
+  index in the manifest (format 2.1, see [Compression](/reference/format/compression)).
+  Concatenated frames are a valid zstd stream, so a whole-object decode is
+  unaffected either way.
 - Chunks are produced by streaming: files flow `tar → zstd → S3` through
   in-memory pipes, so nothing is staged to local disk.
 

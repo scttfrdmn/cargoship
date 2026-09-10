@@ -546,19 +546,6 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 	}
 	chunkMap := make(map[string]*chunkGroup)
 
-	for _, target := range targets {
-		entry := se.resolveEntry(target)
-		if entry == nil {
-			stats.Failed++
-			continue
-		}
-		key := entry.S3Key
-		if _, ok := chunkMap[key]; !ok {
-			chunkMap[key] = &chunkGroup{s3Key: key}
-		}
-		chunkMap[key].files = append(chunkMap[key].files, entry)
-	}
-
 	// #341: every write below goes through this root, so a symlinked component
 	// inside destDir is refused rather than followed.
 	root, err := destRoot(destDir)
@@ -571,6 +558,34 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 	// object (the object at FileEntry.S3Key IS the raw file, not a tar.zst chunk).
 	// Restore those by writing the downloaded bytes directly. (Issue #228)
 	directMode := len(se.manifest.Chunks) == 0
+
+	// #436: chunk-by-S3-key lookup for the random-access frame index. Keyed by
+	// S3Key (not chunk ID) so it's robust to how keys/ids are assigned.
+	var chunkByKey map[string]*ChunkEntry
+	if !directMode {
+		chunkByKey = make(map[string]*ChunkEntry, len(se.manifest.Chunks))
+		for i := range se.manifest.Chunks {
+			chunkByKey[se.manifest.Chunks[i].S3Key] = &se.manifest.Chunks[i]
+		}
+	}
+
+	for _, target := range targets {
+		entry := se.resolveEntry(target)
+		if entry == nil {
+			stats.Failed++
+			continue
+		}
+		// #436: fetch and decode just this file's frame when the chunk carries a
+		// frame index; otherwise fall through to the whole-chunk group below.
+		if !directMode && se.tryFrameRestore(ctx, entry, chunkByKey[entry.S3Key], root, destDir, stats) {
+			continue
+		}
+		key := entry.S3Key
+		if _, ok := chunkMap[key]; !ok {
+			chunkMap[key] = &chunkGroup{s3Key: key}
+		}
+		chunkMap[key].files = append(chunkMap[key].files, entry)
+	}
 
 	for _, grp := range chunkMap {
 		data := se.cache.get(grp.s3Key)
@@ -720,6 +735,135 @@ func (se *SelectiveExtractor) downloadChunk(ctx context.Context, s3Key string) (
 		return nil, fmt.Errorf("read S3 body %q: %w", s3Key, err)
 	}
 	return data, nil
+}
+
+// downloadChunkRange fetches just the byte range [offset, offset+length) of the
+// S3 object at s3Key (format-2.1 random access, #436). partial reports whether
+// the server honored the Range (HTTP 206 with a Content-Range header); a backend
+// that ignores Range returns the whole object with partial=false, which the
+// caller compensates for.
+func (se *SelectiveExtractor) downloadChunkRange(ctx context.Context, s3Key string, offset, length int64) (data []byte, partial bool, err error) {
+	rng := fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)
+	out, err := se.s3Client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(se.objectBucket()),
+		Key:    aws.String(se.resolveKey(s3Key)),
+		Range:  aws.String(rng),
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("S3 GetObject %q range %s: %w", s3Key, rng, err)
+	}
+	defer func() { _ = out.Body.Close() }()
+	body, err := io.ReadAll(out.Body)
+	if err != nil {
+		return nil, false, fmt.Errorf("read S3 body %q range %s: %w", s3Key, rng, err)
+	}
+	return body, out.ContentRange != nil, nil
+}
+
+// findFrame returns the frame whose uncompressed span fully contains
+// [offset, offset+size), or nil if no single frame covers it (#436). Framing cuts
+// only at file boundaries, so a whole file is always contained in one frame.
+func findFrame(frames []FrameEntry, offset, size int64) *FrameEntry {
+	end := offset + size
+	for i := range frames {
+		f := &frames[i]
+		if offset >= f.UncompressedOffset && end <= f.UncompressedOffset+f.UncompressedSize {
+			return f
+		}
+	}
+	return nil
+}
+
+// tryFrameRestore restores a single whole file by fetching and decoding only the
+// zstd frame that contains it, instead of downloading the whole chunk (#436). It
+// returns handled=true when it took responsibility for the file (recording a
+// success or a definite failure in stats), and false when the file is not
+// eligible for random access — a non-zstd chunk, a chunk with no frame index, a
+// split-file part (which needs reassembly via the whole-chunk path), or a file
+// no single frame covers — so the caller falls back to the whole-chunk path.
+func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEntry, chunk *ChunkEntry, root *os.Root, destDir string, stats *RestoreStats) (handled bool) {
+	if se.manifest.CompressionType != "zstd" || chunk == nil || len(chunk.Frames) == 0 {
+		return false
+	}
+	if entry.TotalParts > 1 {
+		return false // split part: whole-chunk path reassembles it
+	}
+	fr := findFrame(chunk.Frames, entry.ArchiveOffset, entry.Size)
+	if fr == nil {
+		return false
+	}
+
+	comp, partial, err := se.downloadChunkRange(ctx, entry.S3Key, fr.CompressedOffset, fr.CompressedSize)
+	if err != nil {
+		stats.Failed++
+		return true
+	}
+	stats.ChunksDownloaded++
+
+	raw, err := decodeZstdFrame(comp)
+	if err != nil {
+		stats.Failed++
+		return true
+	}
+	// The decoded bytes start at fr.UncompressedOffset when the Range was honored;
+	// if the backend ignored it and returned the whole object, they start at 0.
+	decodedStart := int64(0)
+	if partial {
+		decodedStart = fr.UncompressedOffset
+	}
+	sliceStart := entry.ArchiveOffset - decodedStart
+	if sliceStart < 0 || sliceStart+entry.Size > int64(len(raw)) {
+		stats.Failed++
+		return true
+	}
+	content := raw[sliceStart : sliceStart+entry.Size]
+
+	// #270: mirror the whole-chunk path — never write bytes that fail the
+	// recorded checksum.
+	if se.verify && entry.Checksum != "" &&
+		(se.manifest.ChecksumAlgorithm == "" || se.manifest.ChecksumAlgorithm == ChecksumAlgorithmSHA256) {
+		if se.checksumMismatch(entry, content) {
+			stats.Failed++
+			return true
+		}
+	}
+
+	outPath, err := se.restorePath(destDir, entry.Path)
+	if err != nil {
+		stats.Failed++
+		return true
+	}
+	rel, err := destRelPath(destDir, outPath)
+	if err != nil {
+		stats.Failed++
+		return true
+	}
+	if err := prepareParents(root, rel); err != nil {
+		stats.Failed++
+		return true
+	}
+	if err := writeContained(root, rel, content); err != nil {
+		stats.Failed++
+		return true
+	}
+	restoreModTime(root, rel, entry.ModTime)
+	stats.Restored++
+	stats.Bytes += int64(len(content))
+	return true
+}
+
+// decodeZstdFrame decompresses a single self-contained zstd frame (#436).
+func decodeZstdFrame(compressed []byte) ([]byte, error) {
+	dec, err := zstd.NewReader(nil)
+	if err != nil {
+		return nil, fmt.Errorf("zstd decoder: %w", err)
+	}
+	defer dec.Close()
+	raw, err := dec.DecodeAll(compressed, nil)
+	if err != nil {
+		return nil, fmt.Errorf("decode zstd frame: %w", err)
+	}
+	return raw, nil
 }
 
 // extractFromChunkData decompresses data (a compressed tar archive) and writes

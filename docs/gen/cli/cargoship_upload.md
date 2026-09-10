@@ -69,6 +69,7 @@ cargoship upload SOURCE_DIR DESTINATION [flags]
       --encrypt-manifest                 Encrypt manifest with KMS envelope encryption (requires --kms-key-id)
       --force-direct-upload              Force direct upload regardless of thresholds (for benchmarking)
       --force-restart                    Ignore saved state and start fresh upload (bypasses resume detection)
+      --frame-size string                Cut compressed chunks into random-access zstd frames every N bytes (e.g. 16MiB, 64MB); 0 disables framing (default "16MiB")
       --generate-dvc-files               Generate DVC sidecar .dvc files after upload
       --git-metadata                     Embed Git repository metadata (commit, branch, tag, remote) in the manifest
   -h, --help                             help for upload

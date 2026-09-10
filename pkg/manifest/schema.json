@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
-  "$id": "https://cargoship.app/schema/manifest-2.0.json",
+  "$id": "https://cargoship.app/schema/manifest-2.1.json",
   "title": "CargoShip Manifest",
   "description": "Schema for a CargoShip upload manifest (manifest.json[.gz]). See docs/reference/format/manifest.md. This schema is drift-checked against pkg/manifest/types.go by TestSchemaMatchesStructs (#274).",
   "type": "object",
@@ -26,7 +26,7 @@
     "shards"
   ],
   "properties": {
-    "version": { "type": "string", "description": "Manifest format version (\"2.0\" current, \"1.0\" read-compatible)." },
+    "version": { "type": "string", "description": "Manifest format version (\"2.1\" current). The reader is additive/version-tolerant and still parses older manifests." },
     "upload_id": { "type": "string" },
     "created_at": { "type": "string", "format": "date-time" },
     "completed_at": { "type": "string", "format": "date-time" },
@@ -45,6 +45,7 @@
     "compression_level": { "type": "integer" },
     "compression_ratio": { "type": "number" },
     "checksum_algorithm": { "type": "string", "description": "Hash for chunk/file checksums, e.g. \"sha256\" (#271)." },
+    "format_features": { "type": "array", "items": { "type": "string" }, "description": "Optional format-2.1 capability markers, e.g. \"frames\" (#436)." },
     "encryption": { "type": ["object", "null"] },
     "deduplication": { "type": ["object", "null"] },
     "version_info": { "type": ["object", "null"] },
@@ -70,6 +71,7 @@
         "length": { "type": "integer" },
         "part_index": { "type": "integer" },
         "total_parts": { "type": "integer" },
+        "archive_offset": { "type": "integer", "description": "Byte offset of this file's data within the chunk's uncompressed tar stream (format 2.1, #436)." },
         "checksum": { "type": "string" },
         "content_hash": { "type": "string" },
         "metadata": { "type": ["object", "null"] },
@@ -95,7 +97,18 @@
         "compressed_size": { "type": "integer" },
         "created_at": { "type": "string", "format": "date-time" },
         "uploaded_at": { "type": "string", "format": "date-time" },
-        "checksum": { "type": "string" }
+        "checksum": { "type": "string" },
+        "frames": { "type": "array", "items": { "$ref": "#/definitions/frameEntry" }, "description": "Random-access frame index (format 2.1, #436); absent for single-frame chunks." }
+      }
+    },
+    "frameEntry": {
+      "type": "object",
+      "required": ["compressed_offset", "compressed_size", "uncompressed_offset", "uncompressed_size"],
+      "properties": {
+        "compressed_offset": { "type": "integer" },
+        "compressed_size": { "type": "integer" },
+        "uncompressed_offset": { "type": "integer" },
+        "uncompressed_size": { "type": "integer" }
       }
     },
     "shardEntry": {

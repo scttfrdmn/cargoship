@@ -401,6 +401,17 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 			// (no-op when file checksums are disabled).
 			builder.SetFileChecksums(job.Chunk.ID, job.FileChecksums())
 
+			// #436: record per-file uncompressed tar offsets captured during
+			// archiving (no-op when framing is disabled).
+			builder.SetFileArchiveOffsets(job.Chunk.ID, job.FileArchiveOffsets())
+
+			// #436: the random-access frame index for this chunk, if framing was
+			// active (nil for single-frame / plain-tar chunks).
+			frames := job.Frames()
+			if len(frames) > 0 {
+				builder.AddFormatFeature(manifest.FormatFeatureFrames)
+			}
+
 			// Add chunk entry (#271: record the SHA-256 of the uploaded archive)
 			builder.AddChunk(manifest.ChunkEntry{
 				ID:               job.Chunk.ID,
@@ -413,6 +424,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 				CreatedAt:        job.StartTime,
 				UploadedAt:       job.EndTime,
 				Checksum:         job.ArchiveChecksum(),
+				Frames:           frames,
 			})
 
 			// Update shard stats
