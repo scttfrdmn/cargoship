@@ -7,6 +7,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-09-10
+
+**Trust & Verification.** This release is the outcome of a project-wide audit of
+"advertised vs actually-wired": features that were simulated, unreachable, or
+fabricated were either wired for real or removed, and two CI guards now keep them
+from creeping back. It also introduces **manifest format 2.1** — frame-indexed
+random access with per-frame content checksums — so a reader can fetch and verify
+a single file's bytes without downloading the whole chunk. The entire byte path
+is now covered by a byte-exact torture suite that has been run green against real
+Amazon S3.
+
+### Added
+
+- **Format 2.1: frame-indexed random access**
+  ([#436](https://github.com/scttfrdmn/cargoship/issues/436)). A new
+  `--frame-size` flag (default 16MiB; `0` = single frame = the pre-2.1 layout)
+  cuts a compressed chunk's zstd stream into independently-decodable frames at
+  file boundaries and records a frame index (`ChunkEntry.frames`,
+  `FileEntry.archive_offset`, `Manifest.format_features`). `cargoship restore
+  --file` fetches and decodes just the covering frame via a ranged GET; `verify
+  --deep` validates frame magic, tiling, and offsets; `cargoship info` prints
+  `format_features`. Additive — 2.0 manifests still read.
+- **Per-frame content checksums**
+  ([#439](https://github.com/scttfrdmn/cargoship/issues/439)). Each frame carries
+  the SHA-256 of its compressed bytes, so a random-access or mount reader can
+  verify a ranged fetch **before** decoding rather than trusting a weak S3 ETag. A
+  new content-integrity contract documents the whole-file / whole-object /
+  per-frame hashes and their fallbacks.
+- **Magika AI file-type detection is now wired into the scanner**
+  ([#30](https://github.com/scttfrdmn/cargoship/issues/30)) — previously dormant;
+  content-aware compression now benefits from it.
+- **Real congestion control on the upload path**
+  ([#424](https://github.com/scttfrdmn/cargoship/issues/424)). `--optimization` /
+  `--congestion-control` (bbr, cubic, auto) drive a BBR-fed pacer; an S3 503
+  SlowDown feeds back as a loss signal. Fabricated throughput metrics were
+  deleted.
+- **Resumable uploads**
+  ([#119](https://github.com/scttfrdmn/cargoship/issues/119)). `cargoship resume
+  <id>` and `upload --resume` reuse a prior run's upload ID to skip
+  already-uploaded chunks.
+- **Selectable byte-exact torture suite** (`make torture [RUN=<selector>]`) —
+  round-trips across hostile paths, 1000-file sets, multipart, all shard
+  strategies, congestion, resume, and frames; run green on the Substrate emulator
+  and against real S3.
+
+### Changed
+
+- **Manifest format version 2.0 → 2.1** (additive; the reader stays
+  version-tolerant and still parses older manifests). The vestigial 1.0 constant
+  was retired.
+- **`cargoship dashboard` rebuilt on real data**
+  ([#435](https://github.com/scttfrdmn/cargoship/issues/435)) — a focused
+  Overview / Costs / Uploads view over the local cost ledger and resume state,
+  with honest empty states. The fabricated tabs and the `--mock-data` flag were
+  removed.
+- **`ChunkEntry.CompressedSize` now records the true compressed size**, not the
+  uncompressed estimate, so `cargoship info` reports real space savings.
+- **Removed the dead `agent` execution context** left over from the v0.20.0
+  controller deletion; `local` and `repl` remain.
+
+### Fixed
+
+- **`cargoship sync` uploaded zero bytes** (silent data loss) — its pipeline
+  config omitted the real S3 uploader
+  ([#425](https://github.com/scttfrdmn/cargoship/issues/425)).
+- **Compressed objects uploaded through the transporter were unreadable** by
+  standard clients — the transporter never set `Content-Encoding`; a caller can
+  now set it explicitly
+  ([#353](https://github.com/scttfrdmn/cargoship/issues/353)).
+- **lz4 round-trip broke under lz4 4.1.29** — a compressor was closed twice,
+  emitting a second end-of-frame marker
+  ([#397](https://github.com/scttfrdmn/cargoship/issues/397)).
+- **An explicit per-object storage class is now honored** by the base transporter
+  ([#352](https://github.com/scttfrdmn/cargoship/issues/352)).
+- **The "Pre-built binaries" download commands in the install guide 404'd** — the
+  documented asset names never matched goreleaser's output
+  ([#406](https://github.com/scttfrdmn/cargoship/issues/406)).
+
+### Removed
+
+- Dead simulated subsystems: the `pkg/monitoring` package and the `performance`
+  command ([#429](https://github.com/scttfrdmn/cargoship/issues/429)); the s3opt
+  prefetch/ML surface
+  ([#431](https://github.com/scttfrdmn/cargoship/issues/431)).
+
+### Security
+
+- Cleared the Go security-scanner findings in `go.mod` (go-git, x/crypto, grpc)
+  ([#418](https://github.com/scttfrdmn/cargoship/issues/418)); rebuilt the
+  container image on the Go 1.26.8 builder with a runtime `apk upgrade` to clear
+  all HIGH image-scan findings
+  ([#422](https://github.com/scttfrdmn/cargoship/issues/422)); plus a batch of
+  Dependabot updates across the Go, Actions, and Python ecosystems.
+
+### CI / quality
+
+- Two guards keep the "advertised vs wired" gap from reopening: an **anti-theater
+  ratchet** blocks new stub/fabricated-metric code
+  ([#427](https://github.com/scttfrdmn/cargoship/issues/427)), and a
+  **reachability guard** keeps simulated/roadmap packages (e.g. `pkg/multiregion`)
+  off the CLI ([#428](https://github.com/scttfrdmn/cargoship/issues/428)).
+
 ## [0.23.0] - 2026-08-04
 
 **Key Material & Contracts.** Two breaking changes, both closing a gap between
