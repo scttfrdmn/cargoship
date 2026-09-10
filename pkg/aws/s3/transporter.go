@@ -38,6 +38,19 @@ type Archive struct {
 	CompressionType string                 // Compression algorithm used
 	AccessPattern   string                 // Expected access pattern
 	RetentionDays   int                    // Expected retention period
+
+	// ContentEncoding, when non-empty, is set as the object's HTTP
+	// `Content-Encoding` header (e.g. "zstd", "gzip") so a standards-conforming
+	// reader — aws s3 cp, boto3, a browser fetch — knows to decode the body
+	// (#353). It is an EXPLICIT signal a caller sets when it hands CargoShip a
+	// body it has already content-encoded; it is deliberately NOT derived from
+	// CompressionType. CargoShip's own chunk objects leave this empty on purpose:
+	// a .tar.zst chunk is addressed by its key extension and read as raw bytes
+	// (and, for format-2.1 random access, via byte-range GETs), so stamping
+	// Content-Encoding on it would make HTTP clients auto-decompress the whole
+	// object and break ranged reads. CompressionType remains a private
+	// x-amz-meta-* annotation, unchanged.
+	ContentEncoding string
 }
 
 // UploadResult contains the result of an S3 upload
@@ -75,6 +88,34 @@ func (t *Transporter) SetTracer(tracer *tracing.S3Tracer) {
 	t.tracer = tracer
 }
 
+// putObjectInput builds the S3 PutObjectInput for an archive. Extracted from
+// Upload so the header/metadata mapping — notably the #353 Content-Encoding
+// rule — is unit-testable without a live S3 client.
+func (t *Transporter) putObjectInput(archive Archive, storageClass types.StorageClass) *s3.PutObjectInput {
+	input := &s3.PutObjectInput{
+		Bucket:       aws.String(t.config.Bucket),
+		Key:          aws.String(archive.Key),
+		Body:         archive.Reader,
+		StorageClass: storageClass,
+		Metadata:     t.buildMetadata(archive),
+	}
+
+	// #353: set the HTTP Content-Encoding header when the caller pre-encoded the
+	// body, so standards-conforming readers decode it. Empty for CargoShip's own
+	// chunks (see Archive.ContentEncoding) — CompressionType is NOT used here.
+	if archive.ContentEncoding != "" {
+		input.ContentEncoding = aws.String(archive.ContentEncoding)
+	}
+
+	// Add KMS encryption if configured
+	if t.config.KMSKeyID != "" {
+		input.ServerSideEncryption = types.ServerSideEncryptionAwsKms
+		input.SSEKMSKeyId = aws.String(t.config.KMSKeyID)
+	}
+
+	return input
+}
+
 // Upload uploads an archive to S3 with intelligent storage class selection
 func (t *Transporter) Upload(ctx context.Context, archive Archive) (*UploadResult, error) {
 	startTime := time.Now()
@@ -93,20 +134,8 @@ func (t *Transporter) Upload(ctx context.Context, archive Archive) (*UploadResul
 		t.tracer.AddStorageClass(span, string(storageClass))
 	}
 
-	// Prepare upload input
-	input := &s3.PutObjectInput{
-		Bucket:       aws.String(t.config.Bucket),
-		Key:          aws.String(archive.Key),
-		Body:         archive.Reader,
-		StorageClass: storageClass,
-		Metadata:     t.buildMetadata(archive),
-	}
-
-	// Add KMS encryption if configured
-	if t.config.KMSKeyID != "" {
-		input.ServerSideEncryption = types.ServerSideEncryptionAwsKms
-		input.SSEKMSKeyId = aws.String(t.config.KMSKeyID)
-	}
+	// Prepare upload input (extracted for unit testing — see putObjectInput).
+	input := t.putObjectInput(archive, storageClass)
 
 	// Perform upload
 	result, err := t.uploader.Upload(ctx, input)
