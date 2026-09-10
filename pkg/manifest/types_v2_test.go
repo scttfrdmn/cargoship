@@ -9,10 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestManifestVersion verifies the version constant was bumped.
+// TestManifestVersion verifies the current format version. The reader stays
+// version-tolerant (validateVersion only warns on a mismatch), so older
+// manifests still parse — but new manifests are written at this version.
 func TestManifestVersion(t *testing.T) {
-	assert.Equal(t, "2.0", ManifestVersion)
-	assert.Equal(t, "1.0", ManifestVersionV1)
+	assert.Equal(t, "2.1", ManifestVersion)
 }
 
 // TestManifestV2Fields verifies new v2 fields round-trip through JSON.

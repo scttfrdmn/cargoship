@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -143,6 +144,9 @@ Examples:
 			fmt.Printf("   Source:           %s\n", m.SourcePath)
 			fmt.Printf("   Hostname:         %s\n", m.Hostname)
 			fmt.Printf("   Manifest Version: %s\n", m.Version)
+			if len(m.FormatFeatures) > 0 {
+				fmt.Printf("   Format Features:  %s\n", strings.Join(m.FormatFeatures, ", "))
+			}
 			fmt.Println()
 
 			// Storage location

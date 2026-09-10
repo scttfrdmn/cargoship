@@ -112,6 +112,56 @@ func TestTorture(t *testing.T) {
 		})
 	}
 
+	// #436: the format-2.1 frame index. A small --frame-size against compressible
+	// files larger than it forces multiple frames per chunk; every file must
+	// still round-trip byte-identically, the manifest must advertise the frame
+	// index, and a single-file restore must fetch only that file's frame.
+	t.Run("frames_random_access", func(t *testing.T) {
+		// Files with a >5 MiB average steer the pipeline onto the chunked tar.zst
+		// path (not the small-dataset direct-upload fast path, which never frames).
+		src := t.TempDir()
+		corpus := plantCompressibleFiles(t, src, []int{8 * 1024 * 1024, 6 * 1024 * 1024, 10 * 1024 * 1024})
+		m := tortureRoundTrip(t, corpus, src, func(pc *PipelineConfig) {
+			pc.FrameSize = 1024 * 1024 // small vs the files: forces several frames per chunk
+		})
+
+		require.Contains(t, m.FormatFeatures, manifest.FormatFeatureFrames,
+			"manifest must advertise the frame index")
+		framedChunks, multiFrame := 0, 0
+		for _, c := range m.Chunks {
+			if len(c.Frames) > 0 {
+				framedChunks++
+			}
+			if len(c.Frames) > 1 {
+				multiFrame++
+			}
+		}
+		require.Positive(t, framedChunks, "at least one chunk must carry a frame index")
+		require.Positive(t, multiFrame, "a 64KiB frame size over >=150KiB files must cut multiple frames")
+		for _, f := range m.Files {
+			require.Positive(t, f.ArchiveOffset, "file %s must have a recorded archive offset", f.Path)
+		}
+
+		// Single-file restore exercises the ranged frame fast path end-to-end.
+		region := tortureEnv("AWS_REGION", "us-east-1")
+		cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
+		require.NoError(t, err)
+		var s3Opts []func(*s3.Options)
+		if substrateURL != "" {
+			s3Opts = append(s3Opts, func(o *s3.Options) { o.UsePathStyle = true })
+		}
+		s3Client := s3.NewFromConfig(cfg, s3Opts...)
+		outDir := t.TempDir()
+		se := manifest.NewSelectiveExtractor(m, s3Client, 0)
+		stats, err := se.BatchRestore(context.Background(), []string{corpus[0].relPath}, outDir)
+		require.NoError(t, err)
+		require.Equal(t, int64(1), stats.Restored)
+		require.Zero(t, stats.Failed)
+		got, err := os.ReadFile(filepath.Join(outDir, corpus[0].relPath))
+		require.NoError(t, err)
+		require.Equal(t, corpus[0].sum, sha256hex(got), "single-file frame restore must be byte-identical")
+	})
+
 	// #119: resume must skip chunks already uploaded and never corrupt the data.
 	t.Run("resume_skips_completed", func(t *testing.T) {
 		runResumeTorture(t, rng)
@@ -307,6 +357,27 @@ func plantManyFiles(t *testing.T, root string, rng *rand.Rand, n int) []genFile 
 		_, _ = rng.Read(content)
 		require.NoError(t, os.WriteFile(abs, content, 0644))
 		out = append(out, genFile{relPath: rel, base: base, sum: sha256hex(content), size: size})
+	}
+	return out
+}
+
+// plantCompressibleFiles writes files of compressible (patterned) content with a
+// .log extension so the archiver takes the zstd path — required for the #436
+// frame index to be emitted. Each file gets a unique prefix so their bytes (and
+// checksums) differ while staying highly compressible.
+func plantCompressibleFiles(t *testing.T, root string, sizes []int) []genFile {
+	t.Helper()
+	out := make([]genFile, 0, len(sizes))
+	for i, sz := range sizes {
+		base := fmt.Sprintf("frames%02d.log", i)
+		abs := filepath.Join(root, base)
+		content := make([]byte, sz)
+		pattern := []byte(fmt.Sprintf("cargoship frame-index test line %02d — the quick brown fox\n", i))
+		for j := range content {
+			content[j] = pattern[j%len(pattern)]
+		}
+		require.NoError(t, os.WriteFile(abs, content, 0644))
+		out = append(out, genFile{relPath: base, base: base, sum: sha256hex(content), size: sz})
 	}
 	return out
 }

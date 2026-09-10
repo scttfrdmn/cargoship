@@ -60,6 +60,7 @@ func TestSchemaMatchesStructs(t *testing.T) {
 		{"Manifest", reflect.TypeOf(Manifest{}), doc.Properties},
 		{"FileEntry", reflect.TypeOf(FileEntry{}), doc.Definitions["fileEntry"].Properties},
 		{"ChunkEntry", reflect.TypeOf(ChunkEntry{}), doc.Definitions["chunkEntry"].Properties},
+		{"FrameEntry", reflect.TypeOf(FrameEntry{}), doc.Definitions["frameEntry"].Properties},
 		{"ShardEntry", reflect.TypeOf(ShardEntry{}), doc.Definitions["shardEntry"].Properties},
 	}
 

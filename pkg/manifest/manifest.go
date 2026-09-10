@@ -18,16 +18,21 @@ import (
 )
 
 const (
-	// ManifestVersion is the current manifest format version
-	ManifestVersion = "2.0"
+	// ManifestVersion is the current manifest format version. 2.1 adds the
+	// optional random-access frame index (ChunkEntry.Frames, FileEntry.
+	// ArchiveOffset, Manifest.FormatFeatures; #436). The schema is additive: the
+	// reader is version-tolerant and still parses older (2.0) manifests, ignoring
+	// fields it does not recognize.
+	ManifestVersion = "2.1"
 
 	// ChecksumAlgorithmSHA256 is the hash algorithm recorded in
 	// Manifest.ChecksumAlgorithm for chunk (and per-file) checksums. It matches
 	// the SHA-256 (hex) used by the deduplication index. (#271)
 	ChecksumAlgorithmSHA256 = "sha256"
 
-	// ManifestVersionV1 is the legacy v1.0 manifest format version (backward-compat read-only)
-	ManifestVersionV1 = "1.0"
+	// FormatFeatureFrames is the Manifest.FormatFeatures marker set when at least
+	// one chunk carries a random-access frame index (#436).
+	FormatFeatureFrames = "frames"
 
 	// ManifestFileName is the standard manifest filename
 	ManifestFileName = "manifest.json"
@@ -98,6 +103,7 @@ func NewBuilderFromExisting(existing *Manifest) (*Builder, error) {
 		CompressionLevel:  existing.CompressionLevel,
 		CompressionRatio:  existing.CompressionRatio,
 		ChecksumAlgorithm: existing.ChecksumAlgorithm,
+		FormatFeatures:    append([]string(nil), existing.FormatFeatures...),
 		Files:             append([]FileEntry(nil), existing.Files...),
 		Chunks:            append([]ChunkEntry(nil), existing.Chunks...),
 		Shards:            append([]ShardEntry(nil), existing.Shards...),
@@ -286,6 +292,46 @@ func (b *Builder) SetFileChecksums(chunkID int, checksums map[string]string) {
 			f.Checksum = sum
 		}
 	}
+}
+
+// SetFileArchiveOffsets records each file's data offset within the chunk's
+// uncompressed tar stream into the matching FileEntry records for the given
+// chunk (format 2.1, #436). Keys follow the same convention as SetFileChecksums:
+// FileEntry.Path, or "path#part" for split-file parts. Files not present in the
+// map are left unchanged (e.g. framing disabled, --frame-size 0).
+func (b *Builder) SetFileArchiveOffsets(chunkID int, offsets map[string]int64) {
+	if len(offsets) == 0 {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	for i := range b.manifest.Files {
+		f := &b.manifest.Files[i]
+		if f.ChunkID != chunkID {
+			continue
+		}
+		key := f.Path
+		if f.TotalParts > 1 {
+			key = fmt.Sprintf("%s#%d", f.Path, f.PartIndex)
+		}
+		if off, ok := offsets[key]; ok {
+			f.ArchiveOffset = off
+		}
+	}
+}
+
+// AddFormatFeature records an optional format-2.1 capability marker (e.g.
+// FormatFeatureFrames) on the manifest, de-duplicating (#436). Thread-safe.
+func (b *Builder) AddFormatFeature(feature string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, f := range b.manifest.FormatFeatures {
+		if f == feature {
+			return
+		}
+	}
+	b.manifest.FormatFeatures = append(b.manifest.FormatFeatures, feature)
 }
 
 // UpdateFileS3KeyByPath updates the S3Key, ShardID, and ChunkID for the single

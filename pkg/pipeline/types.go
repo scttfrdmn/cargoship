@@ -49,6 +49,59 @@ type Job struct {
 	// into FileEntry.Checksum by the uploader when the chunk is recorded.
 	fileChecksums   map[string]string
 	fileChecksumsMu sync.Mutex
+
+	// #436: per-file data offset within the chunk's uncompressed tar stream,
+	// captured by the archiver's framer, keyed like fileChecksums (path, or
+	// "path#part" for split parts). Read into FileEntry.ArchiveOffset by the
+	// uploader when the chunk is recorded. Populated only when framing is active.
+	fileArchiveOffsets   map[string]int64
+	fileArchiveOffsetsMu sync.Mutex
+
+	// #436: the chunk's random-access zstd frame index, set by the archiver once
+	// the stream is fully written and read into ChunkEntry.Frames by the uploader.
+	// Nil when framing is disabled (single-frame chunk).
+	frames   []manifest.FrameEntry
+	framesMu sync.Mutex
+}
+
+// SetFileArchiveOffset records one archived file/part's data offset within the
+// chunk's uncompressed tar stream (#436; thread-safe, mirroring SetFileChecksum).
+func (j *Job) SetFileArchiveOffset(key string, offset int64) {
+	j.fileArchiveOffsetsMu.Lock()
+	defer j.fileArchiveOffsetsMu.Unlock()
+	if j.fileArchiveOffsets == nil {
+		j.fileArchiveOffsets = make(map[string]int64)
+	}
+	j.fileArchiveOffsets[key] = offset
+}
+
+// FileArchiveOffsets returns a copy of the captured per-file archive offsets, or
+// nil if none were captured (framing disabled).
+func (j *Job) FileArchiveOffsets() map[string]int64 {
+	j.fileArchiveOffsetsMu.Lock()
+	defer j.fileArchiveOffsetsMu.Unlock()
+	if len(j.fileArchiveOffsets) == 0 {
+		return nil
+	}
+	out := make(map[string]int64, len(j.fileArchiveOffsets))
+	for k, v := range j.fileArchiveOffsets {
+		out[k] = v
+	}
+	return out
+}
+
+// SetFrames records the chunk's frame index (#436; thread-safe).
+func (j *Job) SetFrames(frames []manifest.FrameEntry) {
+	j.framesMu.Lock()
+	defer j.framesMu.Unlock()
+	j.frames = frames
+}
+
+// Frames returns the chunk's frame index, or nil if framing was disabled.
+func (j *Job) Frames() []manifest.FrameEntry {
+	j.framesMu.Lock()
+	defer j.framesMu.Unlock()
+	return j.frames
 }
 
 // SetFileChecksum records the content hash for one archived file/part
@@ -239,6 +292,13 @@ type PipelineConfig struct {
 	// paces job.Archive and feeds an S3 503 SlowDown back as a loss signal.
 	EnableOptimization bool
 	CongestionControl  string
+
+	// #436: FrameSize cuts each compressed chunk's zstd stream into
+	// independently-decodable frames at file boundaries once this many
+	// uncompressed bytes accumulate, writing a random-access frame index into the
+	// manifest (format 2.1). 0 disables framing (a single frame per chunk = the
+	// pre-2.1 layout). Passed through to ArchiverConfig.
+	FrameSize int64
 
 	// Phase 3.3: Compressed-aware chunking with adaptive sizing and padding
 	EnableCompressedAwareChunking bool    // Enable compression-aware chunking (default: true)
@@ -435,6 +495,12 @@ type ArchiverConfig struct {
 	// confirm end-to-end source->restore identity. On by default; disable for
 	// max-throughput bulk uploads (adds a SHA-256 pass over each file's bytes).
 	FileChecksums bool
+
+	// #436: FrameSize cuts each compressed chunk into random-access zstd frames at
+	// file boundaries once this many uncompressed bytes accumulate. 0 = single
+	// frame per chunk (pre-2.1 layout, no frame index). Read by the archiver's
+	// framer.
+	FrameSize int64
 }
 
 // UploaderConfig configures the uploader stage

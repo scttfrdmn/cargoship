@@ -90,6 +90,34 @@ A per-chunk `CompressionType` in the manifest, when present, is the most specifi
 field-level signal, but the key extension is always definitive.
 :::
 
+## Random-access frame index (format 2.1)
+
+By default a compressed chunk is a single zstd frame, so restoring one file means
+downloading and decoding the whole chunk. With `--frame-size N` (default
+`16MiB`; `0` disables it), the archiver cuts the zstd stream into multiple
+independently-decodable frames at file boundaries — a new frame once `N`
+uncompressed bytes have accumulated — and records a **frame index** in the
+manifest. A file never spans a frame, so a reader can fetch and decode just the
+one frame that contains it.
+
+The index lives in three additive fields (all `omitempty`):
+
+- `format_features` — contains `"frames"` when any chunk carries a frame index.
+- `chunks[].frames[]` — per frame: `compressed_offset`, `compressed_size` (its
+  byte range within the chunk object, for a ranged `GET`), `uncompressed_offset`,
+  and `uncompressed_size` (its span in the tar stream).
+- `files[].archive_offset` — the byte offset of the file's data within the
+  uncompressed tar stream (right after its tar header).
+
+To read a single file with the index: find the frame whose
+`[uncompressed_offset, uncompressed_offset+uncompressed_size)` contains the
+file's `archive_offset`; ranged-`GET` `[compressed_offset, compressed_size)`;
+zstd-decode that one frame; slice at `archive_offset − uncompressed_offset` for
+the file's `size` (or `length` for a split part). Frames tile the object
+contiguously and each begins with the zstd magic `0x28 0xB5 0x2F 0xFD`, both of
+which `cargoship verify --deep` checks. Readers without frame support decode the
+whole (concatenated-frame) stream exactly as before.
+
 ## Manifest compression (separate concern)
 
 The manifest object itself is compressed with **gzip**, not zstd, when stored as

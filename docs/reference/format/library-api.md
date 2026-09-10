@@ -150,10 +150,19 @@ defer out.Body.Close()
 
 ## Extracting a file from a chunk
 
-A chunk is a `tar` stream, optionally wrapped in a single zstd frame. Branch on
-the key extension (see [Compression](/reference/format/compression)), decode, and
-scan the tar for your target entry. The pattern below mirrors CargoShip's own
-example program:
+A chunk is a `tar` stream, optionally wrapped in one or more zstd frames. Branch
+on the key extension (see [Compression](/reference/format/compression)), decode,
+and scan the tar for your target entry. The pattern below mirrors CargoShip's own
+example program and reads the whole chunk; it works regardless of framing because
+concatenated zstd frames decode as one stream.
+
+::: tip Random access (format 2.1)
+When `ChunkEntry.Frames` is present, you can skip the whole-chunk download: find
+the frame covering `FileEntry.ArchiveOffset`, ranged-`GET` its
+`[CompressedOffset, CompressedSize)`, zstd-decode that one frame, and slice at
+`ArchiveOffset − UncompressedOffset` for the file's `Size`. `SelectiveExtractor.
+BatchRestore` does this automatically for single-file restores of framed chunks.
+:::
 
 ```go
 import (

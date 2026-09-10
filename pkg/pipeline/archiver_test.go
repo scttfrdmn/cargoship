@@ -652,6 +652,78 @@ func TestArchiverStage_Process_NoTruncation(t *testing.T) {
 	}
 }
 
+// TestArchiverStage_Process_Frames exercises the #436 framing path end-to-end
+// through the real archiver: a small FrameSize over compressible files must
+// produce a multi-frame chunk, record per-file archive offsets on the job, and
+// still decode to a byte-identical tar. It covers the Process goroutine's active
+// framing wiring (maybeCut in the leaf writers, the deferred finalize/SetFrames).
+func TestArchiverStage_Process_Frames(t *testing.T) {
+	dir := t.TempDir()
+	const nFiles = 4
+	const fileSize = 256 * 1024 // compressible (constant bytes)
+	var files []chunking.File
+	for i := 0; i < nFiles; i++ {
+		content := make([]byte, fileSize)
+		for j := range content {
+			content[j] = byte(i + 1)
+		}
+		path := fmt.Sprintf("%s/frame%d.dat", dir, i)
+		require.NoError(t, os.WriteFile(path, content, 0644))
+		files = append(files, chunking.File{Path: path, Size: fileSize})
+	}
+
+	config := &ArchiverConfig{Workers: 2, CompressionType: "zstd", FrameSize: 64 * 1024}
+	input := make(chan *Job, 1)
+	output := make(chan *Job, 1)
+	stage, err := NewArchiverStage(config, input, output)
+	require.NoError(t, err)
+	defer func() { _ = stage.Stop() }()
+
+	job := &Job{ID: 0, Chunk: chunking.Chunk{ID: 0, Files: files, TotalSize: nFiles * fileSize}}
+	require.NoError(t, stage.Process(context.Background(), job))
+
+	out := <-output
+	require.NotNil(t, out.Archive)
+	raw, err := io.ReadAll(out.Archive)
+	require.NoError(t, err)
+	_ = out.Archive.Close()
+
+	// The job carries a multi-frame index and a recorded offset per file.
+	frames := out.Frames()
+	require.Greater(t, len(frames), 1, "small frame size must cut multiple frames")
+	require.Len(t, out.FileArchiveOffsets(), nFiles)
+
+	// Frames tile the compressed object contiguously and cover it entirely.
+	var next int64
+	for i, f := range frames {
+		assert.Equal(t, next, f.CompressedOffset, "frame %d must be contiguous", i)
+		next += f.CompressedSize
+	}
+	assert.Equal(t, int64(len(raw)), next, "frames must cover the whole object")
+
+	// The concatenated-frame stream still decodes as one valid tar.
+	dec, err := zstd.NewReader(bytes.NewReader(raw))
+	require.NoError(t, err)
+	defer dec.Close()
+	tr := tar.NewReader(dec)
+	seen := 0
+	for {
+		hdr, terr := tr.Next()
+		if terr == io.EOF {
+			break
+		}
+		require.NoError(t, terr)
+		if hdr.Name == ".padding" {
+			continue
+		}
+		n, cerr := io.Copy(io.Discard, tr)
+		require.NoError(t, cerr)
+		require.Equal(t, hdr.Size, n)
+		seen++
+	}
+	require.Equal(t, nFiles, seen, "all files must decode from the framed stream")
+}
+
 // archiveOnce runs one chunk of source-code-like text through Process and
 // returns the compressed archive bytes plus the level the archiver recorded.
 func archiveOnce(t *testing.T, level int, files []chunking.File, totalSize int64) ([]byte, string) {
