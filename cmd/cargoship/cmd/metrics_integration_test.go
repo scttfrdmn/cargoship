@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -77,26 +77,29 @@ func launchSubstrate() (string, context.CancelFunc, error) {
 	return baseURL, cancel, nil
 }
 
-func getTestCloudWatchClient() *cloudwatch.Client {
-	cfg := aws.Config{
-		Region:       testRegion,
-		Credentials:  credentials.NewStaticCredentialsProvider("test", "test", ""),
-		BaseEndpoint: aws.String(substrateURL),
+// realCloudWatchOrSkip skips tests that need real CloudWatch. Substrate's
+// CloudWatch emulation doesn't implement the rpc-v2-cbor protocol the current
+// aws-sdk-go-v2 client uses (scttfrdmn/substrate#785), so these run only against
+// real AWS — gated on the same flag the real-AWS CI lane sets.
+func realCloudWatchOrSkip(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
 	}
+	if os.Getenv("CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS") != "true" {
+		t.Skip("real CloudWatch required (substrate lacks rpc-v2-cbor — scttfrdmn/substrate#785); set CARGOSHIP_ENABLE_AWS_INTEGRATION_TESTS=true")
+	}
+}
+
+func getTestCloudWatchClient(t *testing.T) *cloudwatch.Client {
+	t.Helper()
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(testRegion))
+	require.NoError(t, err)
 	return cloudwatch.NewFromConfig(cfg)
 }
 
 func TestRunMetricsIntegrationWithLocalStack(t *testing.T) {
-	// This test requires Substrate running with CloudWatch support
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	// Route AWS SDK calls to Substrate for this test
-	t.Setenv("AWS_ENDPOINT_URL", substrateURL)
-	t.Setenv("AWS_ACCESS_KEY_ID", "test")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	t.Setenv("AWS_REGION", testRegion)
+	realCloudWatchOrSkip(t) // real CloudWatch; substrate can't do rpc-v2-cbor (#459, substrate#785)
 
 	// Save original global variables
 	originalNamespace := metricsNamespace
@@ -127,7 +130,7 @@ func TestRunMetricsIntegrationWithLocalStack(t *testing.T) {
 	assert.NoError(t, err, "runMetrics should succeed with Substrate")
 
 	// Verify metrics were published to Substrate
-	client := getTestCloudWatchClient()
+	client := getTestCloudWatchClient(t)
 	ctx := context.Background()
 
 	// Give a moment for metrics to be processed
@@ -179,15 +182,7 @@ func TestRunMetricsValidationIntegration(t *testing.T) {
 }
 
 func TestRunMetricsWithCustomParameters(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	// Route AWS SDK calls to Substrate for this test
-	t.Setenv("AWS_ENDPOINT_URL", substrateURL)
-	t.Setenv("AWS_ACCESS_KEY_ID", "test")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	t.Setenv("AWS_REGION", testRegion)
+	realCloudWatchOrSkip(t) // real CloudWatch; substrate can't do rpc-v2-cbor (#459, substrate#785)
 
 	// Save original global variables
 	originalNamespace := metricsNamespace
@@ -245,15 +240,7 @@ func TestRunMetricsWithCustomParameters(t *testing.T) {
 }
 
 func TestRunMetricsAWSConfigHandling(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-
-	// Route AWS SDK calls to Substrate for this test
-	t.Setenv("AWS_ENDPOINT_URL", substrateURL)
-	t.Setenv("AWS_ACCESS_KEY_ID", "test")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	t.Setenv("AWS_REGION", testRegion)
+	realCloudWatchOrSkip(t) // real CloudWatch; substrate can't do rpc-v2-cbor (#459, substrate#785)
 
 	// Save original global variables
 	originalNamespace := metricsNamespace
