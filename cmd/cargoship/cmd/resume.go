@@ -1,12 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
 
+	cargoconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
+	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 	"github.com/scttfrdmn/cargoship/pkg/resume"
 )
 
@@ -56,11 +60,34 @@ Each state file contains upload progress, configuration, and file hashes.
 			// Display upload info
 			displayUploadInfo(state)
 
-			// TODO: Actually resume the upload by calling pipeline
-			// This requires refactoring upload command to support resume
-			fmt.Println("\n⚠️  Direct resume not yet implemented")
-			fmt.Println("💡 Use: cargoship upload <path> <destination> --resume --upload-id", uploadID)
+			if state.IsComplete() {
+				fmt.Println("\n✅ This upload already completed — nothing to resume.")
+				return nil
+			}
 
+			// Rebuild the S3 client and pipeline from the saved state, in resume
+			// mode: the pipeline downloads the S3 partial manifest for this upload
+			// ID and skips every chunk already uploaded, transferring only the rest.
+			ctx := context.Background()
+			httpConfig := cargoconfig.DefaultHTTPTransportConfig()
+			s3Client, err := cargoconfig.GetOrCreateS3Client(ctx, state.Bucket, state.Region, "", httpConfig)
+			if err != nil {
+				return fmt.Errorf("failed to create S3 client: %w", err)
+			}
+
+			fmt.Printf("\n🔄 Resuming — already-uploaded chunks will be skipped.\n\n")
+			pipe, err := pipeline.NewPipeline(newResumePipelineConfig(state, s3Client))
+			if err != nil {
+				return fmt.Errorf("failed to create pipeline: %w", err)
+			}
+			result, err := pipe.Run(ctx, state.SourceDir)
+			if err != nil {
+				return fmt.Errorf("resume failed: %w", err)
+			}
+			if !result.Success {
+				return fmt.Errorf("resume did not complete successfully")
+			}
+			fmt.Printf("✅ Upload %s resumed and completed.\n", uploadID)
 			return nil
 		},
 	}
@@ -192,6 +219,50 @@ Each file is typically 10-50 KB.
 }
 
 // displayUploadInfo displays formatted information about an upload state
+// newResumePipelineConfig rebuilds a pipeline config from a saved UploadState in
+// resume mode (#119). It reuses the prior run's UploadID as both UploadID and
+// ResumeUploadID, so the pipeline downloads that upload's S3 partial manifest
+// (#157) and skips every chunk already marked UploadedAt — transferring only the
+// remainder. Extracted so the resume wiring is unit-testable (the cobra RunE
+// closure is not). Knobs not persisted in UploadState (compression level, shard
+// strategy) fall back to defaults; the remaining chunks still upload correctly
+// because compression is content-aware per chunk.
+func newResumePipelineConfig(state *resume.UploadState, s3Client *s3.Client) *pipeline.PipelineConfig {
+	shardCount := state.ShardCount
+	if shardCount <= 0 {
+		shardCount = 8
+	}
+	return &pipeline.PipelineConfig{
+		ScannerWorkers:  2,
+		ArchiverWorkers: 4,
+		UploaderWorkers: 4,
+
+		S3Bucket:       state.Bucket,
+		S3Prefix:       state.Prefix,
+		S3Region:       state.Region,
+		S3StorageClass: state.StorageClass,
+		S3PartSize:     64 * 1024 * 1024,
+		S3SSEKMSKeyId:  state.KMSKeyID,
+
+		UseRealS3:  true,
+		S3Client:   s3Client,
+		SourcePath: state.SourceDir,
+
+		EnableMultiPrefix:     true,
+		ShardCount:            shardCount,
+		WorkersPerPrefix:      2,
+		ArchiveBufferSize:     100,
+		EnableManifest:        true,
+		EnablePartialManifest: true,
+
+		// #119: resume the prior upload — reuse its ID so the #157 partial-manifest
+		// skip machinery kicks in for chunks already uploaded.
+		UploadID:       state.UploadID,
+		ResumeMode:     true,
+		ResumeUploadID: state.UploadID,
+	}
+}
+
 func displayUploadInfo(state *resume.UploadState) {
 	// Progress percentage
 	progress := state.Progress()

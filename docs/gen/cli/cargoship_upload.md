@@ -81,6 +81,7 @@ cargoship upload SOURCE_DIR DESTINATION [flags]
       --prometheus-addr string           Prometheus metrics HTTP address (e.g., :9090)
       --quiet                            Disable progress display
   -r, --region string                    AWS region (default "us-west-2")
+      --resume                           Resume an interrupted upload of this source→destination without prompting (skips already-uploaded chunks)
       --shard-count int                  Shards for parallel uploads: 0 auto-selects 4-32 (falls back to 8), or set 4-32 manually
       --shard-strategy string            Shard distribution strategy (round-robin, hash, size, type, directory) (default "round-robin")
       --storage-class string             S3 storage class (STANDARD, INTELLIGENT_TIERING, GLACIER, etc.) (default "STANDARD")

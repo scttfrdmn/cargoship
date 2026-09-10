@@ -56,6 +56,7 @@ func NewUploadCmd() *cobra.Command {
 
 		// Issue #119: Resume configuration
 		forceRestart bool
+		resumeFlag   bool
 
 		// Issue #168: Skip confirmation prompts
 		skipConfirmation bool
@@ -234,21 +235,28 @@ Examples:
 				}
 			}
 
-			// Issue #119: Auto-detect interrupted uploads
+			// Issue #119: detect an interrupted upload of this source→destination
+			// and, if the user resumes, carry its UploadID so the pipeline skips
+			// chunks already uploaded (resume fields applied to the config below).
+			var resumeUploadID string
 			if !forceRestart {
-				detectedState, err := resume.DetectInterruptedUpload(absPath, bucket, prefix)
-				if err != nil {
-					fmt.Printf("⚠️  Warning: Failed to check for interrupted uploads: %v\n", err)
-				} else if detectedState != nil && resume.ShouldPromptForResume(detectedState) {
-					// Found an interrupted upload - prompt user
-					if promptForResume(detectedState) {
-						fmt.Println("\n⚠️  Direct resume via upload command not yet fully implemented")
-						fmt.Printf("💡 Use: cargoship resume %s\n", detectedState.UploadID)
-						fmt.Println("    Or use --force-restart to ignore saved state and start fresh")
-						return fmt.Errorf("resume via upload command pending implementation")
+				detectedState, derr := resume.DetectInterruptedUpload(absPath, bucket, prefix)
+				if derr != nil {
+					fmt.Printf("⚠️  Warning: Failed to check for interrupted uploads: %v\n", derr)
+				} else if detectedState != nil && !detectedState.IsComplete() {
+					resumeThis := false
+					switch {
+					case resumeFlag:
+						resumeThis = true // explicit --resume: no prompt
+					case resume.ShouldPromptForResume(detectedState):
+						resumeThis = promptForResume(detectedState)
 					}
-					// User chose not to resume - continue with fresh upload
-					fmt.Println("Starting fresh upload...")
+					if resumeThis {
+						resumeUploadID = detectedState.UploadID
+						fmt.Printf("🔄 Resuming upload %s — already-uploaded chunks will be skipped.\n\n", resumeUploadID)
+					} else if !resumeFlag && resume.ShouldPromptForResume(detectedState) {
+						fmt.Println("Starting fresh upload...")
+					}
 				}
 			}
 
@@ -666,6 +674,15 @@ Examples:
 				fmt.Printf("   Storage Class:     %s\n\n", storageClass)
 			}
 
+			// #119: resume the detected interrupted upload — reuse its UploadID so
+			// the pipeline loads that upload's S3 partial manifest and skips the
+			// chunks already uploaded, transferring only the remainder.
+			if resumeUploadID != "" {
+				pipelineConfig.UploadID = resumeUploadID
+				pipelineConfig.ResumeMode = true
+				pipelineConfig.ResumeUploadID = resumeUploadID
+			}
+
 			// Create pipeline
 			pipe, err := pipeline.NewPipeline(pipelineConfig)
 			if err != nil {
@@ -896,6 +913,7 @@ Examples:
 
 	// Issue #119: Resume configuration
 	cmd.Flags().BoolVar(&forceRestart, "force-restart", false, "Ignore saved state and start fresh upload (bypasses resume detection)")
+	cmd.Flags().BoolVar(&resumeFlag, "resume", false, "Resume an interrupted upload of this source→destination without prompting (skips already-uploaded chunks)")
 
 	// Issue #168: Skip confirmation prompts (for automation)
 	cmd.Flags().BoolVarP(&skipConfirmation, "yes", "y", false, "Skip confirmation prompts (auto-accept warnings)")
