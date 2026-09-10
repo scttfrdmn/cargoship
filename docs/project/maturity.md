@@ -29,6 +29,10 @@ For capabilities that are **not** in CargoShip — those removed (some because t
 were non-functional or simulated) or deferred, and what a real version would
 take — see the [roadmap](/project/roadmap). Nothing there is a shipping feature.
 
+For the capabilities that *are* here, each is mapped to the evidence that proves
+it (and CI enforces those citations resolve) on the
+[capability verification](/project/verification) page.
+
 ## Component maturity
 
 | Capability | Status | What that means |
