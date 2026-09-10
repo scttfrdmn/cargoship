@@ -140,6 +140,16 @@ func (j *Job) ArchiveChecksum() string {
 	return j.archiveHasher.Sum()
 }
 
+// ArchiveCompressedSize returns the true compressed size of the uploaded archive
+// (the exact bytes PUT to S3), or 0 if the hashing wrapper wasn't wired. Call
+// only after upload completes. Unlike ArchiveSize, this is not an estimate.
+func (j *Job) ArchiveCompressedSize() int64 {
+	if j.archiveHasher == nil {
+		return 0
+	}
+	return j.archiveHasher.BytesRead()
+}
+
 // Stage represents a pipeline stage
 type Stage interface {
 	// Name returns the stage name for logging/metrics

@@ -141,6 +141,20 @@ func TestTorture(t *testing.T) {
 		for _, f := range m.Files {
 			require.Positive(t, f.ArchiveOffset, "file %s must have a recorded archive offset", f.Path)
 		}
+		// CompressedSize is now the true streamed byte count, not the uncompressed
+		// estimate — for this highly-compressible corpus it must be well under the
+		// uncompressed size, and equal the sum of the chunk's frame sizes.
+		for _, c := range m.Chunks {
+			require.Positive(t, c.CompressedSize)
+			require.Less(t, c.CompressedSize, c.UncompressedSize, "compressible chunk must record a real (smaller) compressed size")
+			if len(c.Frames) > 0 {
+				var framesTotal int64
+				for _, fr := range c.Frames {
+					framesTotal += fr.CompressedSize
+				}
+				require.Equal(t, c.CompressedSize, framesTotal, "chunk compressed size must equal the sum of its frame sizes")
+			}
+		}
 
 		// Single-file restore exercises the ranged frame fast path end-to-end.
 		region := tortureEnv("AWS_REGION", "us-east-1")

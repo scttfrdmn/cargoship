@@ -412,6 +412,16 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 				builder.AddFormatFeature(manifest.FormatFeatureFrames)
 			}
 
+			// The true compressed size is the exact byte count read off the
+			// upload stream by the hashing wrapper. ArchiveSize is only an
+			// uncompressed-total estimate, so it made CompressedSize wrong (and
+			// "space saved" report as 0%). Fall back to the estimate when the
+			// hasher wasn't wired (e.g. a code path that didn't wrap the stream).
+			compressedSize := job.ArchiveCompressedSize()
+			if compressedSize == 0 {
+				compressedSize = atomic.LoadInt64(&job.ArchiveSize)
+			}
+
 			// Add chunk entry (#271: record the SHA-256 of the uploaded archive)
 			builder.AddChunk(manifest.ChunkEntry{
 				ID:               job.Chunk.ID,
@@ -420,7 +430,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 				FileCount:        len(job.Chunk.Files),
 				FilePaths:        filePaths,
 				UncompressedSize: job.Chunk.TotalSize,
-				CompressedSize:   atomic.LoadInt64(&job.ArchiveSize),
+				CompressedSize:   compressedSize,
 				CreatedAt:        job.StartTime,
 				UploadedAt:       job.EndTime,
 				Checksum:         job.ArchiveChecksum(),
@@ -433,7 +443,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 				job.S3Key,
 				int64(len(job.Chunk.Files)),
 				job.Chunk.TotalSize,
-				atomic.LoadInt64(&job.ArchiveSize),
+				compressedSize,
 			)
 
 			s.pipeline.manifestMu.Unlock()
