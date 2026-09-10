@@ -97,6 +97,21 @@ func TestTorture(t *testing.T) {
 		})
 	})
 
+	// #424: the wired congestion pacer must move bytes intact. Run the real
+	// BBR-fed pacer on the upload path (chunked + multipart) and assert
+	// byte-identity for each algorithm.
+	for _, algo := range []string{"bbr", "cubic", "auto"} {
+		algo := algo
+		t.Run("congestion_"+algo, func(t *testing.T) {
+			src := t.TempDir()
+			corpus := plantHostileCorpus(t, src, rng, 6*1024*1024)
+			tortureRoundTrip(t, corpus, src, func(pc *PipelineConfig) {
+				pc.EnableOptimization = true
+				pc.CongestionControl = algo
+			})
+		})
+	}
+
 	t.Run("idempotent_rerun", func(t *testing.T) {
 		// Uploading the same corpus twice must round-trip byte-identically both
 		// times (no partial/duplicated state corrupting the second run).

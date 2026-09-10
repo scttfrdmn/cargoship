@@ -88,6 +88,24 @@ func (p *CongestionPacer) sample(n int, start, now time.Time) {
 	p.mu.Unlock()
 }
 
+// WrapReadCloser is WrapReader for an io.ReadCloser: it paces reads while
+// delegating Close to rc, so the caller's cleanup still runs. Returns rc
+// unchanged when the pacer is disabled.
+func (p *CongestionPacer) WrapReadCloser(rc io.ReadCloser) io.ReadCloser {
+	if !p.enabled || p.prober == nil {
+		return rc
+	}
+	return &pacedReadCloser{Reader: p.WrapReader(rc), closer: rc}
+}
+
+// pacedReadCloser adds Close (delegated to the wrapped stream) to a paced reader.
+type pacedReadCloser struct {
+	io.Reader
+	closer io.Closer
+}
+
+func (p *pacedReadCloser) Close() error { return p.closer.Close() }
+
 // SignalThrottle reports a server-side congestion signal (e.g. an S3 503
 // SlowDown / RequestLimitExceeded). It is BBR's loss input: the estimate and
 // window contract, so subsequent pacing actually limits the send rate.

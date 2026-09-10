@@ -233,6 +233,13 @@ type PipelineConfig struct {
 	// the output channel.
 	ShardStrategy string
 
+	// #424: real congestion control on the upload path. EnableOptimization turns
+	// on the BBR-fed pacer in the multi-prefix uploader; CongestionControl selects
+	// the algorithm ("bbr", "cubic", "auto"). Passed to the uploader stage, which
+	// paces job.Archive and feeds an S3 503 SlowDown back as a loss signal.
+	EnableOptimization bool
+	CongestionControl  string
+
 	// Phase 3.3: Compressed-aware chunking with adaptive sizing and padding
 	EnableCompressedAwareChunking bool    // Enable compression-aware chunking (default: true)
 	EnableArchivePadding          bool    // Enable padding to reach target sizes (default: true)

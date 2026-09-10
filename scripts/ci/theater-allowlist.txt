@@ -5,11 +5,6 @@
 #
 # Burn-down inventory (2026-09 advertised-vs-wired audit):
 
-# #424 — congestion control is inert: applyOptimizations is a log-only stub and
-# getPerformanceMetrics returns hardcoded 4.6x / 78.3% / 25%. Removed when the
-# real BBR pacing (branch feat/424-wire-congestion-control) is wired in.
-pkg/s3optimization/optimizer.go
-
 # TUI dashboard returns mock data (fetchDataCmd), tied to the controller/agent
 # APIs deleted in v0.20.0. Pending the TUI rebuild-or-remove decision.
 pkg/tui/essential_functions.go

@@ -3,6 +3,7 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	smithy "github.com/aws/smithy-go"
 	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
@@ -54,8 +56,12 @@ type S3MultiPrefixUploaderStage struct {
 	uploader *manager.Uploader
 
 	// v0.6.2: Advanced transporter (optional, shared across all shards)
-	// Future enhancement: Create per-shard transporter instances for independent BBR/CUBIC state
 	transporter s3transport.BasicTransporter
+
+	// #424: real congestion control. Shared across all shard workers (one BBR
+	// prober fed by every stream); nil-safe passthrough when optimization is off.
+	// Note: per-shard pacers for independent BBR/CUBIC state is a future refinement.
+	pacer *s3transport.CongestionPacer
 
 	// Manifest tracking (Issue #97)
 	pipeline *Pipeline // Reference to parent pipeline for manifest tracking
@@ -145,6 +151,11 @@ func NewS3MultiPrefixUploaderStage(
 		stage.transporter = config.Transporter
 	}
 
+	// #424: build the congestion pacer. Disabled → a transparent passthrough with
+	// no prober goroutine. Uses context.Background(); the prober loop is torn down
+	// by Stop() → pacer.Close().
+	stage.pacer = s3transport.NewCongestionPacer(context.Background(), config.CongestionControl, config.EnableOptimization)
+
 	return stage, nil
 }
 
@@ -182,6 +193,9 @@ func (s *S3MultiPrefixUploaderStage) Stop() error {
 		s.cancel()
 	}
 	s.wg.Wait()
+	if s.pacer != nil {
+		s.pacer.Close() // #424: stop the BBR prober goroutine
+	}
 	return nil
 }
 
@@ -456,6 +470,14 @@ func (s *S3MultiPrefixUploaderStage) uploadToS3(ctx context.Context, job *Job) e
 		job.Archive = job.archiveHasher
 	}
 
+	// #424: pace the stream through the real congestion controller. After the
+	// hashing wrap so the checksum still covers the exact uploaded bytes; a
+	// passthrough when optimization is off. Both upload paths below read
+	// job.Archive, so wrapping here covers transporter and manager alike.
+	if s.pacer != nil && job.Archive != nil {
+		job.Archive = s.pacer.WrapReadCloser(job.Archive)
+	}
+
 	// Prepare metadata
 	metadata := map[string]string{
 		"cargoship-chunk-id":    fmt.Sprintf("%d", job.ID),
@@ -485,6 +507,7 @@ func (s *S3MultiPrefixUploaderStage) uploadViaTransporter(ctx context.Context, s
 	// Upload via transporter.
 	_, err := s.transporter.Upload(ctx, archive)
 	if err != nil {
+		s.maybeSignalThrottle(err, job)
 		return fmt.Errorf("transporter upload failed for %s: %w", job.S3Key, err)
 	}
 
@@ -495,6 +518,24 @@ func (s *S3MultiPrefixUploaderStage) uploadViaTransporter(ctx context.Context, s
 	// sibling keys relative to the bucket). The object was written at
 	// Prefix + "/" + job.S3Key, so the relative key is correct as-is.
 	return nil
+}
+
+// maybeSignalThrottle feeds an S3 server-side throttle (503 SlowDown /
+// RequestLimitExceeded / ServiceUnavailable) to the congestion pacer as its loss
+// signal (#424), so the estimated rate contracts and subsequent sends back off.
+// Other errors are ignored — they aren't congestion.
+func (s *S3MultiPrefixUploaderStage) maybeSignalThrottle(err error, job *Job) {
+	if s.pacer == nil || err == nil {
+		return
+	}
+	var apiErr smithy.APIError
+	if !errors.As(err, &apiErr) {
+		return
+	}
+	switch apiErr.ErrorCode() {
+	case "SlowDown", "RequestLimitExceeded", "ServiceUnavailable", "Throttling", "ThrottlingException":
+		s.pacer.SignalThrottle(atomic.LoadInt64(&job.ArchiveSize))
+	}
 }
 
 // uploadViaManager uploads using basic AWS SDK manager.Uploader (backward compatibility)
@@ -525,6 +566,7 @@ func (s *S3MultiPrefixUploaderStage) uploadViaManager(ctx context.Context, s3Key
 	// Upload using AWS SDK manager (handles multipart automatically)
 	_, err := s.uploader.Upload(ctx, input)
 	if err != nil {
+		s.maybeSignalThrottle(err, job)
 		return fmt.Errorf("S3 upload failed for %s: %w", job.S3Key, err)
 	}
 

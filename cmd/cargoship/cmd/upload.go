@@ -607,6 +607,12 @@ Examples:
 				// `magika:` block), threaded through to the scanner.
 				MagikaConfig: magikaConfigFromViper(),
 
+				// #424: real congestion control on the upload path (--optimization,
+				// --congestion-control). The multi-prefix uploader paces each stream
+				// through a BBR-fed pacer and backs off on S3 503 SlowDown.
+				EnableOptimization: enableOptimization,
+				CongestionControl:  congestionControl,
+
 				// Manifest generation
 				EnableManifest:              true,
 				EnablePartialManifest:       true,

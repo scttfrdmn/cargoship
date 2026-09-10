@@ -176,10 +176,7 @@ func (o *S3Optimizer) GetObjectOptimized(ctx context.Context, input *s3.GetObjec
 
 	startTime := time.Now()
 
-	// Apply network optimizations (BBR/CUBIC algorithms)
-	o.applyOptimizations("GET", safeStringValue(input.Key))
-
-	// Execute request using optimized S3 client
+	// Execute request (congestion control lives on the upload path now, #424).
 	result, err := o.client.GetObject(ctx, input)
 	duration := time.Since(startTime)
 
@@ -206,10 +203,7 @@ func (o *S3Optimizer) PutObjectOptimized(ctx context.Context, input *s3.PutObjec
 
 	startTime := time.Now()
 
-	// Apply network optimizations (BBR/CUBIC algorithms)
-	o.applyOptimizations("PUT", safeStringValue(input.Key))
-
-	// Execute request using optimized S3 client
+	// Execute request (congestion control lives on the upload path now, #424).
 	result, err := o.client.PutObject(ctx, input)
 	duration := time.Since(startTime)
 
@@ -346,25 +340,6 @@ func (o *S3Optimizer) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// applyOptimizations applies network-level optimizations (BBR, CUBIC, adaptive algorithms)
-func (o *S3Optimizer) applyOptimizations(operation, key string) {
-	// In full implementation, this would:
-	// 1. Apply BBR bandwidth probing from network/bbr.go
-	// 2. Adjust CUBIC congestion window from network/cubic.go
-	// 3. Update RTT estimations from network/rtt.go
-	// 4. Detect and recover from packet loss from network/loss.go
-	// 5. Optimize connection pooling from connection/pool.go
-	// 6. Apply adaptive transport from adaptive/transporter.go
-	// 7. Use predictive adaptation from adaptive/predictor.go
-
-	o.logger.Debug("applied CargoShip optimizations",
-		"operation", operation,
-		"key", key,
-		"bbr_enabled", o.config.EnableBBR,
-		"cubic_enabled", o.config.EnableCUBIC,
-		"optimization_ratio", "4.6x")
-}
-
 // recordRequest records request metrics
 func (o *S3Optimizer) recordRequest(duration time.Duration, err error) {
 	o.metrics.mu.Lock()
@@ -405,15 +380,17 @@ func (m *Metrics) getPerformanceMetrics() *PerformanceMetrics {
 		throughputMbps = (bytesPerSecond * 8) / (1024 * 1024)
 	}
 
+	// Only measured values are reported. OptimizationRatio/BandwidthSavings/
+	// LatencyReduction are left zero: this component does not run congestion
+	// control (that moved to the upload pacer, #424), so it has no measured
+	// improvement to claim. They were previously hardcoded to 4.6/78.3/25 — a
+	// fabricated figure the audit flagged.
 	return &PerformanceMetrics{
 		TotalRequests:      m.totalRequests,
 		SuccessfulRequests: m.successfulRequests,
 		FailedRequests:     m.failedRequests,
 		AverageLatency:     avgLatency,
 		ThroughputMbps:     throughputMbps,
-		OptimizationRatio:  4.6,  // CargoShip's proven improvement ratio
-		BandwidthSavings:   78.3, // (4.6-1)/4.6 * 100
-		LatencyReduction:   25.0,
 		CollectedAt:        time.Now(),
 	}
 }
