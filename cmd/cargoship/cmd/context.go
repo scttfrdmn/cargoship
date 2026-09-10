@@ -19,15 +19,14 @@ func NewContextCmd() *cobra.Command {
 
 Context determines the operational mode:
 - local: Local filesystem operations and archive creation
-- agent: Launch agent monitoring and management
 - repl:  Interactive shell mode with command discovery
 
 The current context is cached in ~/.cargoship-context and persists between sessions.`,
 		Example: `  # Show current context
   cargoship context
 
-  # Switch to agent context
-  cargoship context switch agent
+  # Switch to repl context
+  cargoship context switch repl
 
   # List available contexts
   cargoship context list
@@ -71,10 +70,8 @@ func newContextSwitchCmd() *cobra.Command {
 
 Available contexts:
 - local: Local filesystem operations and archive creation
-- agent: Launch agent monitoring and management
 - repl:  Interactive shell mode with command discovery`,
 		Example: `  cargoship context switch local
-  cargoship context switch agent
   cargoship context switch repl`,
 		Args: cobra.ExactArgs(1),
 		RunE: switchContext,
@@ -252,15 +249,8 @@ func showContextTips(ctx context.ExecutionContext) {
 	switch ctx {
 	case context.ContextLocal:
 		fmt.Println("💡 Local context tips:")
-		fmt.Println("   cargoship create suitcase /path/to/data")
+		fmt.Println("   cargoship create upload /path/to/data")
 		fmt.Println("   cargoship analyze /path/to/data")
-		fmt.Println("   cargoship wizard  # Interactive setup")
-
-	case context.ContextAgent:
-		fmt.Println("💡 Agent context tips:")
-		fmt.Println("   cargoship agent status")
-		fmt.Println("   cargoship agent logs")
-		fmt.Println("   cargoship agent config reload")
 
 	case context.ContextREPL:
 		fmt.Println("💡 REPL context tips:")

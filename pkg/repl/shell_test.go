@@ -37,7 +37,6 @@ func TestGetPrompt(t *testing.T) {
 		expected string
 	}{
 		{context.ContextLocal, "cargoship> "},
-		{context.ContextAgent, "agent> "},
 		{context.ContextREPL, "repl> "},
 	}
 
@@ -152,7 +151,6 @@ func TestGetAvailableCommands(t *testing.T) {
 		hasConfig bool
 	}{
 		{context.ContextLocal, true, true},
-		{context.ContextAgent, false, true},
 		{context.ContextREPL, true, true},
 	}
 
@@ -176,4 +174,38 @@ func TestStop(t *testing.T) {
 	shell.Stop()
 
 	assert.False(t, shell.running)
+}
+
+// TestDisplayHelpers exercises the print-only display helpers to ensure they
+// run without panicking across the remaining contexts.
+func TestDisplayHelpers(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	rootCmd := &cobra.Command{Use: "test"}
+	sub := &cobra.Command{Use: "create", Short: "Create something"}
+	rootCmd.AddCommand(sub)
+	shell := NewShell(rootCmd, logger)
+
+	// Populate history so showHistory covers the loop body.
+	shell.addToHistory("create /tmp")
+
+	assert.NotPanics(t, func() {
+		shell.showWelcome()
+		shell.showGoodbye()
+		shell.clearScreen()
+		shell.showHistory()
+		shell.showCurrentContext()
+		shell.showAvailableContexts()
+	})
+
+	// createCommandInstance returns the wrapped root command.
+	assert.Equal(t, rootCmd, shell.createCommandInstance())
+
+	// handleContextCommand routes: no args -> current, "list" -> available,
+	// and an unknown subcommand falls through to current.
+	assert.NotPanics(t, func() {
+		shell.handleContextCommand(nil)
+		shell.handleContextCommand([]string{"list"})
+		shell.handleContextCommand([]string{"ls"})
+		shell.handleContextCommand([]string{"unknown"})
+	})
 }
