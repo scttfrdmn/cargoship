@@ -85,6 +85,33 @@ func NewOptimizedTransporter(ctx context.Context, s3Client *s3.Client, config aw
 	return transporter, nil
 }
 
+// putObjectInput builds the S3 PutObjectInput for an archive. Extracted from
+// Upload so the header mapping — notably the #353 Content-Encoding rule — is
+// unit-testable without a live S3 client.
+func (t *OptimizedTransporter) putObjectInput(archive *Archive) *s3.PutObjectInput {
+	input := &s3.PutObjectInput{
+		Bucket:       aws.String(t.config.Bucket),
+		Key:          aws.String(archive.Key),
+		Body:         archive.Reader,
+		StorageClass: types.StorageClass(archive.StorageClass),
+		Metadata:     archive.Metadata,
+	}
+
+	// #353: honor an explicit, caller-set Content-Encoding (empty for CargoShip's
+	// own chunks; see Archive.ContentEncoding) — CompressionType is NOT used here.
+	if archive.ContentEncoding != "" {
+		input.ContentEncoding = aws.String(archive.ContentEncoding)
+	}
+
+	// Add KMS encryption if configured
+	if t.config.KMSKeyID != "" {
+		input.ServerSideEncryption = types.ServerSideEncryptionAwsKms
+		input.SSEKMSKeyId = aws.String(t.config.KMSKeyID)
+	}
+
+	return input
+}
+
 // Upload performs an optimized CargoShip archive upload using manager.Uploader
 func (t *OptimizedTransporter) Upload(ctx context.Context, archive *Archive) (*UploadResult, error) {
 	if archive == nil {
@@ -100,20 +127,8 @@ func (t *OptimizedTransporter) Upload(ctx context.Context, archive *Archive) (*U
 		LastUpdated: time.Now(),
 	})
 
-	// Convert CargoShip archive to S3 input for manager.Uploader
-	input := &s3.PutObjectInput{
-		Bucket:       aws.String(t.config.Bucket),
-		Key:          aws.String(archive.Key),
-		Body:         archive.Reader,
-		StorageClass: types.StorageClass(archive.StorageClass),
-		Metadata:     archive.Metadata,
-	}
-
-	// Add KMS encryption if configured
-	if t.config.KMSKeyID != "" {
-		input.ServerSideEncryption = types.ServerSideEncryptionAwsKms
-		input.SSEKMSKeyId = aws.String(t.config.KMSKeyID)
-	}
+	// Convert CargoShip archive to S3 input (extracted for unit testing).
+	input := t.putObjectInput(archive)
 
 	// Use manager.Uploader which handles Content-Length automatically
 	result, err := t.uploader.Upload(ctx, input)
