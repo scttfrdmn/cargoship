@@ -5,10 +5,6 @@
 #
 # Burn-down inventory (2026-09 advertised-vs-wired audit):
 
-# TUI dashboard returns mock data (fetchDataCmd), tied to the controller/agent
-# APIs deleted in v0.20.0. Pending the TUI rebuild-or-remove decision.
-pkg/tui/essential_functions.go
-
 # Aspirational "would be replaced with actual ML model" comment on a rule-based
 # compression heuristic that is itself real (the audit confirmed the fallback
 # works). Kept until the ML selector is either built or the comment dropped.
