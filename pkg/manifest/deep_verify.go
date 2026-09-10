@@ -585,26 +585,26 @@ func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry,
 	}
 	body := bytes.NewReader(objectBytes)
 
+	// #452: decode by the chunk's key extension, not the manifest's top-level
+	// compression_type — a mixed upload holds both .tar.zst and plain .tar chunks.
 	var decompressed io.Reader
-	switch dv.manifest.CompressionType {
-	case "zstd", "":
+	switch chunkCompression(chunk.S3Key, dv.manifest.CompressionType) {
+	case "zstd":
 		dec, err := zstd.NewReader(body)
 		if err != nil {
 			return nil, fmt.Errorf("zstd reader: %w", err)
 		}
 		defer dec.Close()
 		decompressed = dec
-	case "gzip", "gz":
+	case "gzip":
 		gz, err := gzip.NewReader(body)
 		if err != nil {
 			return nil, fmt.Errorf("gzip reader: %w", err)
 		}
 		defer func() { _ = gz.Close() }()
 		decompressed = gz
-	case "none":
+	default: // "none" — a plain .tar chunk
 		decompressed = body
-	default:
-		return nil, fmt.Errorf("unsupported compression type: %s", dv.manifest.CompressionType)
 	}
 
 	var results []FileVerifyResult

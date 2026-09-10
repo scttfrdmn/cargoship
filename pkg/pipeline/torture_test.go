@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -174,6 +175,40 @@ func TestTorture(t *testing.T) {
 		got, err := os.ReadFile(filepath.Join(outDir, corpus[0].relPath))
 		require.NoError(t, err)
 		require.Equal(t, corpus[0].sum, sha256hex(got), "single-file frame restore must be byte-identical")
+	})
+
+	// #452: a MIXED-compressibility corpus produces both .tar.zst and plain .tar
+	// chunks under one manifest compression_type. Every file must round-trip —
+	// the bug (decoding by the top-level field) left files in the plain .tar
+	// chunks unrestorable, which homogeneous corpora never exposed.
+	t.Run("mixed_compressibility", func(t *testing.T) {
+		src := t.TempDir()
+		// Compressible (.log) + already-compressed extensions (.zip, which the
+		// detector skips → plain .tar). Files ~6 MiB with a 4 MiB forced chunk
+		// size → each file is its own chunk, so the upload yields BOTH .tar.zst
+		// (the .log files, which also set the manifest's top-level type to zstd)
+		// and plain .tar chunks (the .zip files) — the #452 mixed case.
+		corpus := plantCompressibleFiles(t, src, []int{6 * 1024 * 1024, 6 * 1024 * 1024})
+		corpus = append(corpus, plantAlreadyCompressedFiles(t, src, rng, []int{6 * 1024 * 1024, 6 * 1024 * 1024})...)
+		// tortureRoundTrip restores ALL files and asserts byte-identity, so if the
+		// chunker produces a plain .tar chunk under a zstd manifest (the #452
+		// shape), a regression there fails here. The deterministic guarantee of
+		// the decode-by-extension fix lives in the manifest unit test
+		// (TestRestoreDecodesPlainTarChunkInMixedUpload); the chunker's exact
+		// chunk-kind split isn't controllable from here, so we log it, not assert.
+		m := tortureRoundTrip(t, corpus, src, func(pc *PipelineConfig) {
+			pc.ForceChunkSizeMB = 4
+		})
+		var zst, plain int
+		for _, c := range m.Chunks {
+			switch {
+			case strings.HasSuffix(c.S3Key, ".tar.zst"):
+				zst++
+			case strings.HasSuffix(c.S3Key, ".tar"):
+				plain++
+			}
+		}
+		t.Logf("mixed corpus chunk kinds: %d compressed (.tar.zst), %d plain (.tar)", zst, plain)
 	})
 
 	// #119: resume must skip chunks already uploaded and never corrupt the data.
@@ -390,6 +425,24 @@ func plantCompressibleFiles(t *testing.T, root string, sizes []int) []genFile {
 		for j := range content {
 			content[j] = pattern[j%len(pattern)]
 		}
+		require.NoError(t, os.WriteFile(abs, content, 0644))
+		out = append(out, genFile{relPath: base, base: base, sum: sha256hex(content), size: sz})
+	}
+	return out
+}
+
+// plantAlreadyCompressedFiles writes random-content files with a .zip extension,
+// which the compression detector treats as already-compressed → the archiver
+// writes them as a plain .tar chunk (no zstd). Used to exercise the mixed
+// .tar.zst + .tar case (#452).
+func plantAlreadyCompressedFiles(t *testing.T, root string, rng *rand.Rand, sizes []int) []genFile {
+	t.Helper()
+	out := make([]genFile, 0, len(sizes))
+	for i, sz := range sizes {
+		base := fmt.Sprintf("blob%02d.zip", i)
+		abs := filepath.Join(root, base)
+		content := make([]byte, sz)
+		_, _ = rng.Read(content)
 		require.NoError(t, os.WriteFile(abs, content, 0644))
 		out = append(out, genFile{relPath: base, base: base, sum: sha256hex(content), size: sz})
 	}

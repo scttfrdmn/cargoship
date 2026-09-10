@@ -192,8 +192,11 @@ func (v *Validator) validateShardConsistency(result *ValidationResult) {
 				fmt.Sprintf("Shard %d has no chunks", shard.ID))
 		}
 
-		// Check shard sizes are consistent
-		if shard.CompressedSize > shard.UncompressedSize {
+		// Check shard sizes are consistent. #453: a plain .tar chunk's stored
+		// (archive) size legitimately exceeds the raw file-byte sum by tar
+		// headers + 512-byte padding, so only flag a shard whose chunks are ALL
+		// compressed — otherwise this is expected, not "unusual".
+		if shard.CompressedSize > shard.UncompressedSize && !hasUncompressedChunk(shard.ChunkKeys, v.manifest.CompressionType) {
 			result.AddWarning(fmt.Sprintf("shard[%d].size", i),
 				"compressed <= uncompressed",
 				fmt.Sprintf("compressed=%d > uncompressed=%d", shard.CompressedSize, shard.UncompressedSize),
@@ -202,6 +205,18 @@ func (v *Validator) validateShardConsistency(result *ValidationResult) {
 	}
 
 	result.Checks["shard_consistency"] = valid
+}
+
+// hasUncompressedChunk reports whether any of the shard's chunks is a plain
+// (uncompressed) .tar, whose stored size legitimately exceeds its raw content
+// (#453). Used to suppress the shard-level compressed>uncompressed warning.
+func hasUncompressedChunk(chunkKeys []string, manifestType string) bool {
+	for _, k := range chunkKeys {
+		if chunkCompression(k, manifestType) == "none" {
+			return true
+		}
+	}
+	return false
 }
 
 // validateChunkConsistency validates chunk data consistency (Issue #91 - criterion 4)
@@ -256,8 +271,11 @@ func (v *Validator) validateChunkConsistency(result *ValidationResult) {
 				fmt.Sprintf("Chunk %d has no files", chunk.ID))
 		}
 
-		// Check chunk sizes are consistent
-		if chunk.CompressedSize > chunk.UncompressedSize {
+		// Check chunk sizes are consistent. #453: only a COMPRESSED chunk that is
+		// larger than its raw content is unusual; a plain .tar chunk exceeding it
+		// by tar headers + padding is expected (its stored size is the real
+		// archive size since #445), so don't flag it.
+		if chunkCompression(chunk.S3Key, v.manifest.CompressionType) != "none" && chunk.CompressedSize > chunk.UncompressedSize {
 			result.AddWarning(fmt.Sprintf("chunk[%d].size", i),
 				"compressed <= uncompressed",
 				fmt.Sprintf("compressed=%d > uncompressed=%d", chunk.CompressedSize, chunk.UncompressedSize),

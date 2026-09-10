@@ -737,6 +737,41 @@ func (se *SelectiveExtractor) downloadChunk(ctx context.Context, s3Key string) (
 	return data, nil
 }
 
+// chunkCompression returns the decompression a chunk needs. The chunk's S3 key
+// extension is authoritative when present — the per-chunk signal the format spec
+// documents (#452) — because the manifest's top-level compression_type is a
+// single value even when an upload produced both compressed (.tar.zst) and plain
+// (.tar) chunks, so decoding by it wraps a zstd reader around a plain tar and
+// restores nothing. When the key carries no recognized archive extension, fall
+// back to the manifest's declared type (the historical behavior).
+func chunkCompression(s3Key, manifestType string) string {
+	switch {
+	case strings.HasSuffix(s3Key, ".tar.zst"), strings.HasSuffix(s3Key, ".zst"):
+		return "zstd"
+	case strings.HasSuffix(s3Key, ".tar.gz"), strings.HasSuffix(s3Key, ".gz"):
+		return "gzip"
+	case strings.HasSuffix(s3Key, ".tar"):
+		return "none"
+	default: // no recognized extension → trust the manifest's declared type
+		switch manifestType {
+		case "gzip", "gz":
+			return "gzip"
+		case "none":
+			return "none"
+		default: // "zstd" or "" → zstd, matching the historical reader default
+			return "zstd"
+		}
+	}
+}
+
+// chunkKeyOf returns the S3 key shared by a group of files from the same chunk.
+func chunkKeyOf(files []*FileEntry) string {
+	if len(files) == 0 {
+		return ""
+	}
+	return files[0].S3Key
+}
+
 // downloadChunkRange fetches just the byte range [offset, offset+length) of the
 // S3 object at s3Key (format-2.1 random access, #436). partial reports whether
 // the server honored the Range (HTTP 206 with a Content-Range header); a backend
@@ -782,7 +817,7 @@ func findFrame(frames []FrameEntry, offset, size int64) *FrameEntry {
 // split-file part (which needs reassembly via the whole-chunk path), or a file
 // no single frame covers — so the caller falls back to the whole-chunk path.
 func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEntry, chunk *ChunkEntry, root *os.Root, destDir string, stats *RestoreStats) (handled bool) {
-	if se.manifest.CompressionType != "zstd" || chunk == nil || len(chunk.Frames) == 0 {
+	if chunk == nil || len(chunk.Frames) == 0 || chunkCompression(chunk.S3Key, se.manifest.CompressionType) != "zstd" {
 		return false
 	}
 	if entry.TotalParts > 1 {
@@ -891,7 +926,11 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 	r := bytes.NewReader(data)
 	var tarReader *tar.Reader
 
-	switch se.manifest.CompressionType {
+	// #452: decode by the chunk's KEY EXTENSION, not the manifest's top-level
+	// compression_type. A mixed-compressibility upload holds both .tar.zst and
+	// plain .tar chunks under a single "zstd" compression_type, so decoding by
+	// that field wraps a zstd reader around a plain tar and restores nothing.
+	switch chunkCompression(chunkKeyOf(files), se.manifest.CompressionType) {
 	case "zstd":
 		dec, err := zstd.NewReader(r)
 		if err != nil {
@@ -899,17 +938,15 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 		}
 		defer dec.Close()
 		tarReader = tar.NewReader(dec)
-	case "gzip", "gz":
+	case "gzip":
 		gz, err := gzip.NewReader(r)
 		if err != nil {
 			return 0, 0, fmt.Errorf("gzip reader: %w", err)
 		}
 		defer func() { _ = gz.Close() }()
 		tarReader = tar.NewReader(gz)
-	case "none", "":
+	default: // "none" — a plain .tar chunk
 		tarReader = tar.NewReader(r)
-	default:
-		return 0, 0, fmt.Errorf("unsupported compression type %q", se.manifest.CompressionType)
 	}
 
 	var restored int
