@@ -1,6 +1,6 @@
 package corpus
 
-import "math/rand"
+import "math/rand" // nosemgrep: go.lang.security.audit.crypto.math_random.math-random-used -- non-crypto: reproducible synthetic corpus content, seeded for determinism
 
 // Profile is a named, reproducible corpus. Plant writes it under root and
 // returns the planted files. Each profile seeds its own RNG from a fixed seed,
