@@ -800,6 +800,19 @@ func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEn
 	}
 	stats.ChunksDownloaded++
 
+	// #439: when the frame carries a content checksum, verify the fetched
+	// compressed bytes before decoding — the strong per-range witness that
+	// catches a changed/hostile endpoint without trusting the S3 ETag. Only when
+	// the Range was honored (otherwise comp is the whole object, not the frame).
+	if partial && fr.Checksum != "" &&
+		(se.manifest.ChecksumAlgorithm == "" || se.manifest.ChecksumAlgorithm == ChecksumAlgorithmSHA256) {
+		got := sha256.Sum256(comp)
+		if hex.EncodeToString(got[:]) != fr.Checksum {
+			stats.Failed++
+			return true
+		}
+	}
+
 	raw, err := decodeZstdFrame(comp)
 	if err != nil {
 		stats.Failed++

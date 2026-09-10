@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"sort"
 	"strings"
@@ -258,14 +259,16 @@ func (dv *DeepVerifier) verifyChunk(ctx context.Context, chunk *ChunkEntry) Chun
 	defer func() { _ = output.Body.Close() }()
 
 	hasher := sha256.New()
-	// #436: when the chunk carries a frame index, verify in the same streaming
-	// pass that the zstd frame magic appears at each recorded frame offset — no
-	// extra download and no buffering of the (possibly large) object.
-	var magic *frameMagicWriter
+	// #436/#439: when the chunk carries a frame index, verify in the same
+	// streaming pass that the zstd frame magic appears at each recorded frame
+	// offset AND that each frame's content checksum matches its bytes — no extra
+	// download and no buffering of the (possibly large) object.
+	var fv *frameStreamVerifier
 	dst := io.Writer(hasher)
 	if len(chunk.Frames) > 0 {
-		magic = newFrameMagicWriter(chunk.Frames)
-		dst = io.MultiWriter(hasher, magic)
+		algoOK := dv.manifest.ChecksumAlgorithm == "" || dv.manifest.ChecksumAlgorithm == ChecksumAlgorithmSHA256
+		fv = newFrameStreamVerifier(chunk.Frames, algoOK)
+		dst = io.MultiWriter(hasher, fv)
 	}
 	n, err := io.Copy(dst, output.Body)
 	if err != nil {
@@ -281,17 +284,18 @@ func (dv *DeepVerifier) verifyChunk(ctx context.Context, chunk *ChunkEntry) Chun
 		return cr
 	}
 
-	// #436: the bytes matched; now confirm the frame index is well-formed —
-	// frames tile the object contiguously and each begins with the zstd magic.
+	// #436/#439: the bytes matched; now confirm the frame index is well-formed —
+	// frames tile the object contiguously, each begins with the zstd magic, and
+	// each recorded per-frame checksum matches its bytes.
 	if len(chunk.Frames) > 0 {
 		if ferr := validateFrameTiling(chunk.Frames, n); ferr != nil {
 			cr.Status = ChunkVerifyMismatch
 			cr.Err = ferr.Error()
 			return cr
 		}
-		if magic.err != nil {
+		if fv.err != nil {
 			cr.Status = ChunkVerifyMismatch
-			cr.Err = magic.err.Error()
+			cr.Err = fv.err.Error()
 			return cr
 		}
 	}
@@ -316,60 +320,82 @@ func (c *countingReader) Read(p []byte) (int, error) {
 // zstdFrameMagic is the 4-byte magic number that begins every zstd frame.
 var zstdFrameMagic = []byte{0x28, 0xB5, 0x2F, 0xFD}
 
-// frameMagicWriter verifies, as a chunk object streams through it, that the zstd
-// frame magic appears at each recorded frame's CompressedOffset (#436). It
-// collects the four magic bytes for one frame at a time and tolerates a magic
-// that straddles two Write calls. Frames must be sorted by CompressedOffset.
-type frameMagicWriter struct {
-	frames []FrameEntry
-	pos    int64  // absolute stream offset of the next byte to be written
-	idx    int    // index of the frame whose magic we're still collecting
-	got    []byte // magic bytes collected so far for frames[idx]
-	err    error
+// frameStreamVerifier verifies a chunk object's frame index as the object
+// streams through it (#436/#439): each frame must begin with the zstd magic, and
+// — when the frame carries a checksum — its bytes must hash to that checksum. It
+// consumes the frames in order, CompressedSize bytes each (they tile the object,
+// which validateFrameTiling confirms separately), so it needs no buffering and
+// tolerates arbitrary Write chunking. Frames are sorted by CompressedOffset.
+type frameStreamVerifier struct {
+	frames   []FrameEntry
+	idx      int       // current frame
+	consumed int64     // bytes of the current frame seen so far
+	magic    []byte    // first up-to-4 bytes of the current frame
+	h        hash.Hash // per-frame content hash (nil when algorithm unsupported)
+	hashing  bool      // whether the current frame's checksum is being verified
+	algoOK   bool      // manifest checksum algorithm is sha256 (or unset)
+	err      error
 }
 
-func newFrameMagicWriter(frames []FrameEntry) *frameMagicWriter {
+func newFrameStreamVerifier(frames []FrameEntry, algoOK bool) *frameStreamVerifier {
 	sorted := make([]FrameEntry, len(frames))
 	copy(sorted, frames)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].CompressedOffset < sorted[j].CompressedOffset })
-	return &frameMagicWriter{frames: sorted, got: make([]byte, 0, 4)}
+	v := &frameStreamVerifier{frames: sorted, magic: make([]byte, 0, 4), algoOK: algoOK}
+	if algoOK {
+		v.h = sha256.New()
+	}
+	v.hashing = len(sorted) > 0 && algoOK && sorted[0].Checksum != ""
+	return v
 }
 
-func (w *frameMagicWriter) Write(p []byte) (int, error) {
-	if w.err == nil {
-		w.scan(p)
+func (w *frameStreamVerifier) Write(p []byte) (int, error) {
+	total := len(p)
+	for len(p) > 0 && w.idx < len(w.frames) && w.err == nil {
+		fr := &w.frames[w.idx]
+		remaining := fr.CompressedSize - w.consumed
+		if remaining <= 0 { // defensive: non-positive frame size (tiling check reports it)
+			w.finishFrame(fr)
+			continue
+		}
+		take := int64(len(p))
+		if take > remaining {
+			take = remaining
+		}
+		seg := p[:take]
+		for i := 0; i < len(seg) && len(w.magic) < 4; i++ {
+			w.magic = append(w.magic, seg[i])
+		}
+		if w.hashing {
+			_, _ = w.h.Write(seg)
+		}
+		w.consumed += take
+		p = p[take:]
+		if w.consumed == fr.CompressedSize {
+			w.finishFrame(fr)
+		}
 	}
-	w.pos += int64(len(p))
-	return len(p), nil
+	return total, nil
 }
 
-func (w *frameMagicWriter) scan(p []byte) {
-	for w.idx < len(w.frames) {
-		off := w.frames[w.idx].CompressedOffset
-		start := off + int64(len(w.got)) // absolute position of the next magic byte we need
-		rel := start - w.pos
-		if rel < 0 {
-			w.err = fmt.Errorf("frame %d offset %d precedes the stream position", w.idx, off)
-			return
-		}
-		if rel >= int64(len(p)) {
-			return // the bytes we need are in a later buffer
-		}
-		take := int64(4 - len(w.got))
-		if avail := int64(len(p)) - rel; avail < take {
-			take = avail
-		}
-		w.got = append(w.got, p[rel:rel+take]...)
-		if len(w.got) < 4 {
-			return // wait for the rest in the next buffer
-		}
-		if !bytes.Equal(w.got, zstdFrameMagic) {
-			w.err = fmt.Errorf("frame %d at offset %d does not begin with the zstd frame magic", w.idx, off)
-			return
-		}
-		w.got = w.got[:0]
-		w.idx++
+func (w *frameStreamVerifier) finishFrame(fr *FrameEntry) {
+	if len(w.magic) < 4 || !bytes.Equal(w.magic, zstdFrameMagic) {
+		w.err = fmt.Errorf("frame %d does not begin with the zstd frame magic", w.idx)
+		return
 	}
+	if w.hashing {
+		if hex.EncodeToString(w.h.Sum(nil)) != fr.Checksum {
+			w.err = fmt.Errorf("frame %d content checksum does not match its bytes", w.idx)
+			return
+		}
+	}
+	w.idx++
+	w.consumed = 0
+	w.magic = w.magic[:0]
+	if w.h != nil {
+		w.h.Reset()
+	}
+	w.hashing = w.idx < len(w.frames) && w.algoOK && w.frames[w.idx].Checksum != ""
 }
 
 // validateFrameTiling checks that the frame index covers the whole object with

@@ -62,3 +62,4 @@ benchmark-current.txt
 .env
 .env.*
 !.env.example
+.claude/worktrees/

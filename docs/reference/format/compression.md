@@ -109,14 +109,46 @@ The index lives in three additive fields (all `omitempty`):
 - `files[].archive_offset` — the byte offset of the file's data within the
   uncompressed tar stream (right after its tar header).
 
+Each frame also carries `checksum` — the SHA-256 (hex) of its **compressed**
+bytes, i.e. exactly what a ranged `GET` of `[compressed_offset, compressed_size)`
+returns.
+
 To read a single file with the index: find the frame whose
 `[uncompressed_offset, uncompressed_offset+uncompressed_size)` contains the
 file's `archive_offset`; ranged-`GET` `[compressed_offset, compressed_size)`;
+**verify the fetched bytes against the frame's `checksum` before decoding**;
 zstd-decode that one frame; slice at `archive_offset − uncompressed_offset` for
 the file's `size` (or `length` for a split part). Frames tile the object
-contiguously and each begins with the zstd magic `0x28 0xB5 0x2F 0xFD`, both of
-which `cargoship verify --deep` checks. Readers without frame support decode the
-whole (concatenated-frame) stream exactly as before.
+contiguously, each begins with the zstd magic `0x28 0xB5 0x2F 0xFD`, and each
+`checksum` matches its bytes — all three of which `cargoship verify --deep`
+checks. Readers without frame support decode the whole (concatenated-frame)
+stream exactly as before.
+
+## Content-integrity contract (for readers and mount layers)
+
+A reader — including a random-access mount layer such as
+[lith](https://github.com/scttfrdmn/lith) — should verify bytes against the
+manifest's strong hashes rather than a weak witness like an S3 ETag (a multipart
+ETag is not a content hash). The manifest records SHA-256 (hex; the algorithm is
+`checksum_algorithm`) at three granularities, all optional:
+
+| Granularity | Field | Attests | Use for |
+|---|---|---|---|
+| Whole file | `files[].checksum` | the file's full content | verifying a reassembled file |
+| Whole object | `chunks[].checksum` | the entire chunk object | `verify --deep`, full-object fetches |
+| Per frame | `chunks[].frames[].checksum` | one frame's compressed bytes | **incremental verification of a ranged fetch** |
+
+Per-frame checksums are the granularity a streaming/mount reader wants: fetch a
+frame's byte range, verify it against `frames[].checksum`, then decode — so a
+changed or hostile endpoint is caught at the range level without downloading the
+whole object.
+
+**Fallbacks.** These fields are additive and may be absent:
+- A chunk without `frames` (a single-frame chunk, or any pre-2.1 archive) has no
+  per-frame hashes; verify at whole-file or whole-object granularity instead.
+- An archive written before per-file checksums existed may lack `files[].checksum`
+  (and `checksum_algorithm`); `verify --deep` reports such data as *unverifiable*
+  rather than assuming it. A reader must decide its own policy for that case.
 
 ## Manifest compression (separate concern)
 

@@ -293,6 +293,14 @@ type FrameEntry struct {
 	UncompressedOffset int64 `json:"uncompressed_offset"`
 	// UncompressedSize is the frame's length after decompression.
 	UncompressedSize int64 `json:"uncompressed_size"`
+	// Checksum is the SHA-256 (hex) of the frame's *compressed* bytes — exactly
+	// the bytes a ranged GET of [CompressedOffset, CompressedOffset+CompressedSize)
+	// returns (#439). It lets a reader verify a single frame it fetched, before
+	// decoding, without downloading the whole object — the strong per-range
+	// content witness the mount/random-access path needs (an S3 ETag is not one).
+	// Empty when checksums were disabled at upload; the algorithm is the
+	// manifest's ChecksumAlgorithm.
+	Checksum string `json:"checksum,omitempty"`
 }
 
 // ShardEntry represents a shard (S3 prefix) in the manifest

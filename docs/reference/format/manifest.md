@@ -205,10 +205,11 @@ type ChunkEntry struct {
 // FrameEntry maps one independent zstd frame to the tar bytes it decodes to.
 // Frames tile the chunk object and every file lies entirely within one frame.
 type FrameEntry struct {
-	CompressedOffset   int64 `json:"compressed_offset"`   // byte offset of the frame in the object
-	CompressedSize     int64 `json:"compressed_size"`     // frame length in compressed bytes
-	UncompressedOffset int64 `json:"uncompressed_offset"` // frame's first byte in the tar stream
-	UncompressedSize   int64 `json:"uncompressed_size"`   // frame length after decompression
+	CompressedOffset   int64  `json:"compressed_offset"`   // byte offset of the frame in the object
+	CompressedSize     int64  `json:"compressed_size"`     // frame length in compressed bytes
+	UncompressedOffset int64  `json:"uncompressed_offset"` // frame's first byte in the tar stream
+	UncompressedSize   int64  `json:"uncompressed_size"`   // frame length after decompression
+	Checksum           string `json:"checksum,omitempty"`  // SHA-256 (hex) of the frame's compressed bytes (#439)
 }
 ```
 
