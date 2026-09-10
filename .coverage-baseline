@@ -33,6 +33,7 @@
 # no unit test could exercise), and Start() became testable once it no longer
 # waited on that dial.
 cmd/cargoship 60
+cmd/cargoship-bench 0
 cmd/cargoship-cost 57
 cmd/cargoship-test 0
 cmd/cargoship/cmd 22
@@ -46,8 +47,10 @@ pkg/aws/lifecycle 90
 pkg/aws/metrics 100
 pkg/aws/pricing 90
 pkg/aws/s3 74
+pkg/benchharness 18
 pkg/benchmarks 0
 pkg/chunking 82
+pkg/corpus 85
 pkg/compression 92
 pkg/config 92
 pkg/context 40
@@ -69,6 +72,7 @@ pkg/progress 99
 pkg/repl 41
 pkg/restore 76
 pkg/resume 41
+pkg/s3count 92
 pkg/s3optimization 58
 pkg/staging 81
 pkg/testutils 76
