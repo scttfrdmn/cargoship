@@ -36,6 +36,9 @@ type Options struct {
 }
 
 // Phase captures the speed + request counts of one leg (upload or restore).
+// MBPerSec is EFFECTIVE throughput over the source bytes (the user's data
+// moved per second, crediting compression) — the metric comparable to a raw
+// 1:1 mover — not wire bytes. Bytes is the source-byte count for the leg.
 type Phase struct {
 	Duration time.Duration  `json:"duration_ms"`
 	Bytes    int64          `json:"bytes"`
@@ -57,7 +60,7 @@ type RunResult struct {
 	Profile       string `json:"profile"`
 	Files         int    `json:"files"`
 	SourceBytes   int64  `json:"source_bytes"`
-	StoredBytes   int64  `json:"stored_bytes"` // sum of chunk CompressedSize (what S3 holds)
+	StoredBytes   int64  `json:"stored_bytes"` // bytes S3 holds: chunk CompressedSize sum, or source bytes for direct upload
 	Chunks        int    `json:"chunks"`
 	Upload        Phase  `json:"upload"`
 	Restore       Phase  `json:"restore"`
@@ -124,8 +127,8 @@ func Run(ctx context.Context, opts Options) (*RunResult, error) {
 	for _, c := range m.Chunks {
 		storedBytes += c.CompressedSize
 	}
-	if storedBytes == 0 { // direct-upload manifests have no chunks
-		storedBytes = res.TotalBytes
+	if len(m.Chunks) == 0 { // direct upload: objects stored 1:1, uncompressed
+		storedBytes = srcBytes
 	}
 
 	// --- Restore leg (whole corpus) ---
@@ -157,17 +160,20 @@ func Run(ctx context.Context, opts Options) (*RunResult, error) {
 		SourceBytes: srcBytes,
 		StoredBytes: storedBytes,
 		Chunks:      len(m.Chunks),
+		// Effective throughput over source bytes — robust across the direct and
+		// chunked paths (the pipeline's TotalBytes/RestoreStats.Bytes are not
+		// populated on the direct-upload path) and comparable to a raw 1:1 mover.
 		Upload: Phase{
-			Duration: upDur, Bytes: res.TotalBytes,
-			MBPerSec: mbPerSec(res.TotalBytes, upDur), OpCounts: uploadCounts,
+			Duration: upDur, Bytes: srcBytes,
+			MBPerSec: mbPerSec(srcBytes, upDur), OpCounts: uploadCounts,
 		},
 		Restore: Phase{
-			Duration: rDur, Bytes: stats.Bytes,
-			MBPerSec: mbPerSec(stats.Bytes, rDur), OpCounts: restoreCounts,
+			Duration: rDur, Bytes: srcBytes,
+			MBPerSec: mbPerSec(srcBytes, rDur), OpCounts: restoreCounts,
 		},
 		ByteIdentical: byteIdentical,
 	}
-	rr.Cost = computeCost(storedBytes, stats.Bytes, uploadCounts, restoreCounts)
+	rr.Cost = computeCost(storedBytes, uploadCounts, restoreCounts)
 	return rr, nil
 }
 
@@ -218,8 +224,10 @@ func requestTier(op string) string {
 
 // computeCost models the STANDARD-class S3 bill from measured counts + stored
 // bytes. Ingress (upload data transfer) is free (#451); storage is monthly;
-// restore includes GET-tier requests + egress ($0.09/GB).
-func computeCost(storedBytes, restoreBytes int64, upload, restore map[string]int) Cost {
+// restore includes GET-tier requests + egress ($0.09/GB). Egress is billed on
+// the bytes that physically leave S3 — the stored (compressed) chunk bytes we
+// download, not the decompressed size — so compression cuts egress cost too.
+func computeCost(storedBytes int64, upload, restore map[string]int) Cost {
 	const std = config.StorageClassStandard
 	reqUSD := func(counts map[string]int) float64 {
 		var usd float64
@@ -229,11 +237,10 @@ func computeCost(storedBytes, restoreBytes int64, upload, restore map[string]int
 		return usd
 	}
 	storedGB := float64(storedBytes) / (1024 * 1024 * 1024)
-	restoreGB := float64(restoreBytes) / (1024 * 1024 * 1024)
 	return Cost{
 		UploadRequestsUSD:  reqUSD(upload),
 		MonthlyStorageUSD:  storedGB * pricingfallback.StoragePrice(std),
 		RestoreRequestsUSD: reqUSD(restore),
-		RestoreEgressUSD:   restoreGB * 0.09, // $0.09/GB egress
+		RestoreEgressUSD:   storedGB * 0.09, // $0.09/GB egress on the bytes leaving S3
 	}
 }

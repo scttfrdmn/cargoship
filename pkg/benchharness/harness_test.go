@@ -42,9 +42,8 @@ func TestComputeCost(t *testing.T) {
 	upload := map[string]int{"PutObject": 1, "CreateMultipartUpload": 1, "UploadPart": 5, "CompleteMultipartUpload": 1}
 	restore := map[string]int{"GetObject": 3}
 	const storedBytes = 25 * 1024 * 1024
-	const restoreBytes = 24 * 1024 * 1024
 
-	got := computeCost(storedBytes, restoreBytes, upload, restore)
+	got := computeCost(storedBytes, upload, restore)
 
 	// Upload requests: 8 PUT-tier ops, priced from the canonical fallback table.
 	wantUpload := (8.0 / 1000.0) * pricingfallback.RequestPrice("PUT", std)
@@ -55,11 +54,12 @@ func TestComputeCost(t *testing.T) {
 	assert.InDelta(t, wantRestoreReq, got.RestoreRequestsUSD, 1e-12)
 
 	// Monthly storage from stored (compressed) bytes.
-	wantStorage := (float64(storedBytes) / (1024 * 1024 * 1024)) * pricingfallback.StoragePrice(std)
+	storedGB := float64(storedBytes) / (1024 * 1024 * 1024)
+	wantStorage := storedGB * pricingfallback.StoragePrice(std)
 	assert.InDelta(t, wantStorage, got.MonthlyStorageUSD, 1e-12)
 
-	// Egress at $0.09/GB.
-	wantEgress := (float64(restoreBytes) / (1024 * 1024 * 1024)) * 0.09
+	// Egress at $0.09/GB on the bytes leaving S3 (stored/compressed bytes).
+	wantEgress := storedGB * 0.09
 	assert.InDelta(t, wantEgress, got.RestoreEgressUSD, 1e-12)
 
 	// #451: upload data transfer (ingress) is never billed — only requests appear.
