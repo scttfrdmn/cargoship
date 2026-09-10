@@ -40,6 +40,13 @@ type S3UploaderConfig struct {
 	// Advanced transporter (v0.6.2)
 	// If set, uses advanced S3 transporter instead of basic manager.Uploader
 	Transporter s3transport.BasicTransporter // Optional advanced transporter
+
+	// #424: real congestion control. When EnableOptimization is set, the
+	// multi-prefix uploader paces each archive stream through a BBR-fed pacer
+	// (CongestionControl selects "bbr"/"cubic"/"auto") and feeds S3 503 SlowDown
+	// back as a loss signal. Disabled → the pacer is a transparent passthrough.
+	EnableOptimization bool
+	CongestionControl  string
 }
 
 // S3UploaderStage uploads streaming archives to real AWS S3

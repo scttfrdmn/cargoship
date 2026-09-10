@@ -84,12 +84,18 @@ func TestPerformanceMetrics(t *testing.T) {
 		t.Errorf("Expected 2 failed requests, got %d", perfMetrics.FailedRequests)
 	}
 
-	if perfMetrics.OptimizationRatio != 4.6 {
-		t.Errorf("Expected optimization ratio 4.6, got %f", perfMetrics.OptimizationRatio)
+	// #424: improvement figures are measured, not fabricated. With no congestion
+	// control in this component they are zero rather than a hardcoded 4.6x/78.3%.
+	if perfMetrics.OptimizationRatio != 0 {
+		t.Errorf("OptimizationRatio must not be fabricated, got %f", perfMetrics.OptimizationRatio)
+	}
+	if perfMetrics.BandwidthSavings != 0 {
+		t.Errorf("BandwidthSavings must not be fabricated, got %f%%", perfMetrics.BandwidthSavings)
 	}
 
-	if perfMetrics.BandwidthSavings != 78.3 {
-		t.Errorf("Expected bandwidth savings 78.3%%, got %f%%", perfMetrics.BandwidthSavings)
+	// Throughput IS measured: 1024 bytes over ~1 minute must be > 0.
+	if perfMetrics.ThroughputMbps <= 0 {
+		t.Errorf("ThroughputMbps should be measured (>0), got %f", perfMetrics.ThroughputMbps)
 	}
 }
 
@@ -449,11 +455,16 @@ func TestS3OptimizerMetricsRecording(t *testing.T) {
 		t.Errorf("Expected 0 successful requests, got %d", metrics.SuccessfulRequests)
 	}
 
-	// Verify performance metrics structure
-	if metrics.OptimizationRatio != 4.6 {
-		t.Errorf("Expected optimization ratio 4.6, got %f", metrics.OptimizationRatio)
+	// #424: the improvement figures are no longer fabricated. This component runs
+	// no congestion control (that moved to the upload pacer), so it reports no
+	// improvement rather than a hardcoded 4.6x/78.3%.
+	if metrics.OptimizationRatio != 0 {
+		t.Errorf("OptimizationRatio must not be fabricated, got %f", metrics.OptimizationRatio)
 	}
-	if metrics.BandwidthSavings != 78.3 {
-		t.Errorf("Expected bandwidth savings 78.3%%, got %f%%", metrics.BandwidthSavings)
+	if metrics.BandwidthSavings != 0 {
+		t.Errorf("BandwidthSavings must not be fabricated, got %f", metrics.BandwidthSavings)
+	}
+	if metrics.LatencyReduction != 0 {
+		t.Errorf("LatencyReduction must not be fabricated, got %f", metrics.LatencyReduction)
 	}
 }

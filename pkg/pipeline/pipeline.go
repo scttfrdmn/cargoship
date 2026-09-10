@@ -556,6 +556,9 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				Prefix:       p.config.S3Prefix,
 				StorageClass: types.StorageClass(p.config.S3StorageClass),
 				TierSelector: p.config.TierSelector,
+				// #424: real congestion control on the multi-prefix upload path.
+				EnableOptimization: p.config.EnableOptimization,
+				CongestionControl:  p.config.CongestionControl,
 			}
 
 			if p.config.S3PartSize == 0 {
@@ -621,6 +624,9 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				Prefix:       p.config.S3Prefix,
 				StorageClass: types.StorageClass(p.config.S3StorageClass),
 				TierSelector: p.config.TierSelector,
+				// #424: real congestion control on the multi-prefix upload path.
+				EnableOptimization: p.config.EnableOptimization,
+				CongestionControl:  p.config.CongestionControl,
 			}
 
 			if p.config.S3PartSize == 0 {
@@ -664,6 +670,9 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				Prefix:       p.config.S3Prefix,
 				StorageClass: types.StorageClass(p.config.S3StorageClass),
 				TierSelector: p.config.TierSelector,
+				// #424: real congestion control on the multi-prefix upload path.
+				EnableOptimization: p.config.EnableOptimization,
+				CongestionControl:  p.config.CongestionControl,
 			}
 
 			if p.config.S3PartSize == 0 {
