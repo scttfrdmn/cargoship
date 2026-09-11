@@ -233,6 +233,10 @@ func FuzzResolveObjectKey(f *testing.F) {
 	f.Add("p", "b", "://nohost")
 	f.Add("prefix", "prefix", "prefix/prefix/k")
 	f.Add("prefix", "bucket", "prefix/uploads/x/weird://name.txt")
+	// Regression: stripping the bucket ("0/") exposed "A://", which a second
+	// resolve pass mangled to "" — resolution was not idempotent for an empty
+	// prefix. Found by FuzzResolveObjectKey.
+	f.Add("", "0", "0/A://")
 
 	f.Fuzz(func(t *testing.T, prefix, bucket, s3Key string) {
 		// A manifest Prefix is an S3 key prefix, never a URL — only the stored

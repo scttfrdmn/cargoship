@@ -161,25 +161,8 @@ func ResolveObjectKey(prefix, bucket, s3Key string) string {
 	// leading position. Found by FuzzResolveObjectKey.
 	key := strings.TrimLeft(s3Key, "/")
 
-	// Strip a scheme://host/ prefix if S3Key was stored as a full URL. Only a
-	// "://" in true scheme position counts: S3 permits ':' in object keys, so
-	// matching "://" anywhere would mangle a legitimate key (a file named
-	// "weird://name.txt" once resolved to just the bare prefix). Looped, with a
-	// re-trim each pass, so a doubly-wrapped URL can't leave a scheme behind.
-	// Found by FuzzResolveObjectKey.
-	for {
-		i := strings.Index(key, "://")
-		if i <= 0 || !isURLScheme(key[:i]) {
-			break
-		}
-		rest := key[i+3:]
-		slash := strings.Index(rest, "/")
-		if slash < 0 {
-			key = ""
-			break
-		}
-		key = strings.TrimLeft(rest[slash+1:], "/") // drop host, keep path
-	}
+	// Strip a scheme://host/ prefix if S3Key was stored as a full URL.
+	key = stripURLScheme(key)
 
 	// The prefix is trimmed of surrounding slashes: a manifest written from a
 	// user-typed "s3://bucket/archives/" carries a trailing slash, and joining
@@ -202,11 +185,37 @@ func ResolveObjectKey(prefix, bucket, s3Key string) string {
 		key = strings.TrimLeft(strings.TrimPrefix(key, bucket+"/"), "/")
 	}
 
+	// Re-run the scheme strip: dropping the bucket segment can expose a
+	// scheme-like leading token (e.g. "0/A://" -> "A://"), which a second
+	// resolve pass would strip — leaving the output non-idempotent unless we
+	// normalize it to the same fixed point here. Found by FuzzResolveObjectKey.
+	key = stripURLScheme(key)
+
 	// Prepend the manifest Prefix unless it's already there (or empty).
 	if prefix != "" && key != prefix && !strings.HasPrefix(key, prefix+"/") {
 		key = prefix + "/" + key
 	}
 	return key
+}
+
+// stripURLScheme removes a leading scheme://host/ from an S3 key stored as a
+// full URL. Only a "://" in true scheme position counts: S3 permits ':' in
+// object keys, so matching "://" anywhere would mangle a legitimate key (a file
+// named "weird://name.txt"). Looped, re-trimming each pass, so a doubly-wrapped
+// URL can't leave a scheme behind. Found by FuzzResolveObjectKey.
+func stripURLScheme(key string) string {
+	for {
+		i := strings.Index(key, "://")
+		if i <= 0 || !isURLScheme(key[:i]) {
+			return key
+		}
+		rest := key[i+3:]
+		slash := strings.Index(rest, "/")
+		if slash < 0 {
+			return ""
+		}
+		key = strings.TrimLeft(rest[slash+1:], "/") // drop host, keep path
+	}
 }
 
 // isURLScheme reports whether s is a plausible URI scheme per RFC 3986:
