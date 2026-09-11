@@ -826,10 +826,20 @@ func runCostUpload(ctx context.Context, region, bucket, prefix, uploadID string,
 		return fmt.Errorf("failed to download manifest from S3: %w", err)
 	}
 
-	// Calculate total compressed size
+	// Calculate total stored size. Direct uploads (len(Chunks)==0) have no
+	// shards; each file is stored as its own object, uncompressed, so the stored
+	// size is the sum of file sizes (#487 — otherwise cost showed $0).
 	var totalCompressedSize int64
-	for _, shard := range m.Shards {
-		totalCompressedSize += shard.CompressedSize
+	if len(m.Chunks) == 0 {
+		for i := range m.Files {
+			if !m.Files[i].IsDuplicate {
+				totalCompressedSize += m.Files[i].Size
+			}
+		}
+	} else {
+		for _, shard := range m.Shards {
+			totalCompressedSize += shard.CompressedSize
+		}
 	}
 
 	// Calculate storage duration
