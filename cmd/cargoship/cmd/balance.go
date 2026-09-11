@@ -8,6 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/spf13/cobra"
@@ -98,11 +99,12 @@ func runBalance(cmd *cobra.Command, args []string) error {
 
 	// Create S3 client
 	s3Client := s3.NewFromConfig(awsCfg)
+	kmsClient := kms.NewFromConfig(awsCfg)
 
-	// Download manifest
-	fmt.Printf("📥 Downloading manifest from s3://%s/%s/uploads/%s/manifest.json.gz\n", bucket, prefix, uploadID)
+	// Download manifest (decryption-aware: handles --encrypt-manifest uploads, #479)
+	fmt.Printf("📥 Downloading manifest from s3://%s/%s/uploads/%s/\n", bucket, prefix, uploadID)
 
-	m, err := manifest.DownloadFromS3(ctx, s3Client, bucket, prefix, uploadID)
+	m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, prefix, uploadID)
 	if err != nil {
 		return fmt.Errorf("failed to download manifest: %w", err)
 	}

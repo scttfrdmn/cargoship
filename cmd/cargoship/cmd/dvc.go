@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/cobra"
 
@@ -226,6 +227,7 @@ func loadManifestFromS3URL(ctx context.Context, s3URL, region string) (*manifest
 		return nil, fmt.Errorf("load AWS config: %w", err)
 	}
 	s3Client := s3.NewFromConfig(cfg)
+	kmsClient := kms.NewFromConfig(cfg)
 
 	var actualPrefix, uploadID string
 	if idx := strings.Index(prefix, "/uploads/"); idx != -1 {
@@ -235,7 +237,8 @@ func loadManifestFromS3URL(ctx context.Context, s3URL, region string) (*manifest
 		uploadID = prefix
 	}
 
-	m, err := manifest.DownloadFromS3(ctx, s3Client, bucket, actualPrefix, uploadID)
+	// Decryption-aware: handles --encrypt-manifest uploads (#479).
+	m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
 	if err != nil {
 		return nil, fmt.Errorf("download manifest: %w", err)
 	}
