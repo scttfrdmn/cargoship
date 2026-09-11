@@ -39,9 +39,16 @@ func run() error {
 		region      = flag.String("region", "us-east-1", "AWS region")
 		prefix      = flag.String("prefix", "", "S3 key prefix (default bench-<timestamp>)")
 		endpoint    = flag.String("endpoint", "", "S3 endpoint override (emulator/LocalStack); enables path-style")
+		mode        = flag.String("mode", "auto", "upload path: auto|direct|packed")
 		asJSON      = flag.Bool("json", false, "emit JSON results")
 	)
 	flag.Parse()
+
+	switch benchharness.Mode(*mode) {
+	case benchharness.ModeAuto, benchharness.ModeDirect, benchharness.ModePacked:
+	default:
+		return fmt.Errorf("invalid --mode %q (want auto|direct|packed)", *mode)
+	}
 
 	if *bucket == "" {
 		return fmt.Errorf("--bucket is required")
@@ -78,7 +85,7 @@ func run() error {
 		rr, err := benchharness.Run(ctx, benchharness.Options{
 			Profile: prof, Client: client, Counter: counter,
 			Bucket: *bucket, Prefix: fmt.Sprintf("%s/%s", pfx, prof.Name), Region: *region,
-			SrcDir: srcDir, RestoreDir: restoreDir,
+			SrcDir: srcDir, RestoreDir: restoreDir, Mode: benchharness.Mode(*mode),
 		})
 		_ = os.RemoveAll(srcDir)
 		_ = os.RemoveAll(restoreDir)
@@ -120,7 +127,7 @@ func printHuman(rr *benchharness.RunResult) {
 	if !rr.ByteIdentical {
 		ok = "❌ NOT byte-identical"
 	}
-	fmt.Printf("── %s %s\n", rr.Profile, ok)
+	fmt.Printf("── %s [%s] %s\n", rr.Profile, rr.Mode, ok)
 	fmt.Printf("   files=%d  source=%s  stored=%s  chunks=%d\n",
 		rr.Files, humanBytes(rr.SourceBytes), humanBytes(rr.StoredBytes), rr.Chunks)
 	fmt.Printf("   upload : %6.1f MB/s  %v\n", rr.Upload.MBPerSec, rr.Upload.OpCounts)
