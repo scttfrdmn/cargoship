@@ -84,13 +84,10 @@ Examples:
 				return fmt.Errorf("failed to download manifest from S3: %w", err)
 			}
 
-			// Build list of all S3 keys to delete
-			var keysToDelete []string
-
-			// Add all chunk keys from all shards
-			for _, shard := range m.Shards {
-				keysToDelete = append(keysToDelete, shard.ChunkKeys...)
-			}
+			// Build list of all S3 keys to delete: the upload's data objects
+			// (chunk objects, or one object per file for a direct upload — #487),
+			// then the manifest object(s).
+			keysToDelete := uploadObjectKeys(m)
 
 			// Add the manifest object(s): both the plaintext and encrypted names,
 			// since the upload may have used --encrypt-manifest (#479). Deleting a
@@ -228,4 +225,31 @@ Examples:
 	}
 
 	return cmd
+}
+
+// uploadObjectKeys returns the S3 keys of the data objects an upload stored: the
+// chunk objects for a chunked upload, or one object per file for a DIRECT upload
+// (len(Chunks)==0), where there are no shards/chunks. It de-duplicates and drops
+// empty keys (dedup duplicates reference the original's key). It does NOT include
+// the manifest object(s). Enumerating direct-upload file keys is what keeps
+// `delete` from orphaning a direct upload's objects (#487).
+func uploadObjectKeys(m *manifest.Manifest) []string {
+	seen := make(map[string]bool)
+	var keys []string
+	add := func(k string) {
+		if k != "" && !seen[k] {
+			seen[k] = true
+			keys = append(keys, k)
+		}
+	}
+	if len(m.Chunks) == 0 {
+		for i := range m.Files {
+			add(m.Files[i].S3Key)
+		}
+		return keys
+	}
+	for i := range m.Chunks {
+		add(m.Chunks[i].S3Key)
+	}
+	return keys
 }
