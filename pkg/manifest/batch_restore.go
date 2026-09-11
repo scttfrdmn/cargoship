@@ -748,6 +748,14 @@ func (se *SelectiveExtractor) downloadChunk(ctx context.Context, s3Key string) (
 	return data, nil
 }
 
+// ChunkCompression is the exported entry point to chunkCompression, for callers
+// outside this package (e.g. the rebalance path) that must decode a chunk by its
+// per-chunk key extension rather than the manifest's single top-level type (#452,
+// #482). One implementation, so the two can never drift.
+func ChunkCompression(s3Key, manifestType string) string {
+	return chunkCompression(s3Key, manifestType)
+}
+
 // chunkCompression returns the decompression a chunk needs. The chunk's S3 key
 // extension is authoritative when present — the per-chunk signal the format spec
 // documents (#452) — because the manifest's top-level compression_type is a
