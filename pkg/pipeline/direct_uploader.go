@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,6 +39,7 @@ type DirectUploaderConfig struct {
 	S3Client        S3Uploader            // AWS S3 client (interface for testability)
 	Bucket          string                // Target S3 bucket
 	Prefix          string                // S3 key prefix (optional)
+	SourcePath      string                // Source root; keys preserve each file's path relative to it (#480)
 	Workers         int                   // Number of concurrent upload workers
 	MaxRetries      int                   // Maximum upload retry attempts
 	RetryDelay      time.Duration         // Delay between retries
@@ -288,16 +291,26 @@ func (s *DirectUploaderStage) uploadFile(ctx context.Context, file chunking.File
 	return fmt.Errorf("upload failed after %d attempts for %s: %w", s.config.MaxRetries, file.Path, lastErr)
 }
 
-// buildS3Key constructs the S3 key from file path
+// buildS3Key constructs the S3 key for a file, preserving its path relative to
+// the source root so that two files with the same basename in different
+// directories get distinct keys. Keying by basename alone (the old behavior)
+// made same-basename files collide: the second upload overwrote the first and
+// restore silently returned the survivor's bytes for both (#480). Falls back to
+// the basename when no source root is set or the file lies outside it.
 func (s *DirectUploaderStage) buildS3Key(filePath string) string {
-	// Get relative path from file path
 	relPath := filepath.Base(filePath)
-
-	// Add prefix if configured
-	if s.config.Prefix != "" {
-		return filepath.Join(s.config.Prefix, relPath)
+	if s.config.SourcePath != "" {
+		if rel, err := filepath.Rel(s.config.SourcePath, filePath); err == nil &&
+			rel != "" && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel) {
+			relPath = rel
+		}
 	}
+	// S3 keys are always slash-separated, regardless of host OS.
+	relPath = filepath.ToSlash(relPath)
 
+	if s.config.Prefix != "" {
+		return path.Join(s.config.Prefix, relPath)
+	}
 	return relPath
 }
 

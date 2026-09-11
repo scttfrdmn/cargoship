@@ -508,6 +508,7 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 			S3Client:        p.config.S3Client.(S3Uploader),
 			Bucket:          p.config.S3Bucket,
 			Prefix:          p.config.S3Prefix,
+			SourcePath:      p.config.SourcePath, // #480: keys preserve directory structure
 			Workers:         p.config.DirectUploadWorkers,
 			MaxRetries:      3,
 			RetryDelay:      time.Second,
