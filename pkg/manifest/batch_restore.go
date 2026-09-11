@@ -631,23 +631,34 @@ func (se *SelectiveExtractor) resolveEntry(target string) *FileEntry {
 		return entry
 	}
 	clean := filepath.Clean(target)
-	base := filepath.Base(clean)
-	var suffixMatch *FileEntry
-	for i := range se.manifest.Files {
-		p := se.manifest.Files[i].Path
-		// e.g. target "sub/greeting.txt" matching stored "/abs/root/sub/greeting.txt"
-		if p == clean || strings.HasSuffix(p, string(filepath.Separator)+clean) {
-			return &se.manifest.Files[i]
-		}
-		if filepath.Base(p) == base {
-			if suffixMatch != nil {
-				// Ambiguous basename; require a more specific target.
-				return nil
+	// When the target carries a path (not a bare basename), match it exactly or by
+	// path-suffix across ALL entries FIRST, so a unique suffix match always wins
+	// even when many files share the basename. (The previous single-pass resolver
+	// bailed on basename ambiguity before it could reach the target's suffix match,
+	// so a fully-qualified path failed whenever ≥2 other files shared its basename
+	// earlier in the manifest — 46% of a random ~/src sample, since source trees are
+	// full of repeated names like abort.d.ts / __init__.py.)
+	if strings.ContainsRune(clean, filepath.Separator) {
+		for i := range se.manifest.Files {
+			p := se.manifest.Files[i].Path
+			if p == clean || strings.HasSuffix(p, string(filepath.Separator)+clean) {
+				return &se.manifest.Files[i]
 			}
-			suffixMatch = &se.manifest.Files[i]
 		}
 	}
-	return suffixMatch
+	// Bare basename (e.g. `--file greeting.txt`), or a path with no suffix match:
+	// resolve by basename, but only when it is unambiguous.
+	base := filepath.Base(clean)
+	var basenameMatch *FileEntry
+	for i := range se.manifest.Files {
+		if filepath.Base(se.manifest.Files[i].Path) == base {
+			if basenameMatch != nil {
+				return nil // ambiguous basename; require a more specific target
+			}
+			basenameMatch = &se.manifest.Files[i]
+		}
+	}
+	return basenameMatch
 }
 
 // writeDirectFiles writes direct-upload objects (raw file bytes, one object per
