@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"strconv"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/cobra"
 
@@ -818,35 +818,12 @@ func runCostUpload(ctx context.Context, region, bucket, prefix, uploadID string,
 	}
 
 	s3Client := s3.NewFromConfig(awsCfg)
+	kmsClient := kms.NewFromConfig(awsCfg)
 
-	// Build manifest key
-	manifestKey := fmt.Sprintf("%s/uploads/%s/manifest.json.gz", prefix, uploadID)
-
-	// Download manifest
-	getObjectInput := &s3.GetObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(manifestKey),
-	}
-
-	result, err := s3Client.GetObject(ctx, getObjectInput)
+	// Download manifest (decryption-aware: handles --encrypt-manifest uploads, #479).
+	m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, prefix, uploadID)
 	if err != nil {
 		return fmt.Errorf("failed to download manifest from S3: %w", err)
-	}
-	defer func() {
-		if cerr := result.Body.Close(); cerr != nil {
-			slog.Warn("failed to close manifest body", "error", cerr)
-		}
-	}()
-
-	// Read and decompress manifest
-	manifestBytes, err := io.ReadAll(result.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read manifest: %w", err)
-	}
-
-	m, err := manifest.FromJSONCompressed(manifestBytes)
-	if err != nil {
-		return fmt.Errorf("failed to parse manifest: %w", err)
 	}
 
 	// Calculate total compressed size

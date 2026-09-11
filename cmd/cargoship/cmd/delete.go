@@ -4,13 +4,13 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/dustin/go-humanize"
@@ -74,32 +74,14 @@ Examples:
 			}
 
 			s3Client := s3.NewFromConfig(cfg)
+			kmsClient := kms.NewFromConfig(cfg)
 
-			// Download manifest to get all S3 keys
-			manifestKey := fmt.Sprintf("%s/uploads/%s/manifest.json.gz", prefix, uploadID)
-			fmt.Printf("📥 Loading manifest: s3://%s/%s\n", bucket, manifestKey)
-
-			getObjectInput := &s3.GetObjectInput{
-				Bucket: aws.String(bucket),
-				Key:    aws.String(manifestKey),
-			}
-
-			result, err := s3Client.GetObject(ctx, getObjectInput)
+			// Download manifest (decryption-aware: handles --encrypt-manifest uploads,
+			// #479 — a delete that can't read the manifest would orphan objects).
+			fmt.Printf("📥 Loading manifest: s3://%s/%s/uploads/%s/\n", bucket, prefix, uploadID)
+			m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, prefix, uploadID)
 			if err != nil {
 				return fmt.Errorf("failed to download manifest from S3: %w", err)
-			}
-
-			// Read manifest
-			manifestBytes, err := io.ReadAll(result.Body)
-			_ = result.Body.Close()
-			if err != nil {
-				return fmt.Errorf("failed to read manifest: %w", err)
-			}
-
-			// Deserialize manifest
-			m, err := manifest.FromJSONCompressed(manifestBytes)
-			if err != nil {
-				return fmt.Errorf("failed to deserialize manifest: %w", err)
 			}
 
 			// Build list of all S3 keys to delete
@@ -110,8 +92,13 @@ Examples:
 				keysToDelete = append(keysToDelete, shard.ChunkKeys...)
 			}
 
-			// Add manifest itself
-			keysToDelete = append(keysToDelete, manifestKey)
+			// Add the manifest object(s): both the plaintext and encrypted names,
+			// since the upload may have used --encrypt-manifest (#479). Deleting a
+			// key that doesn't exist is a harmless no-op.
+			keysToDelete = append(keysToDelete,
+				fmt.Sprintf("%s/uploads/%s/manifest.json.gz", prefix, uploadID),
+				fmt.Sprintf("%s/uploads/%s/manifest.encrypted.json.gz", prefix, uploadID),
+			)
 
 			// Calculate total size
 			var totalCompressedSize int64
