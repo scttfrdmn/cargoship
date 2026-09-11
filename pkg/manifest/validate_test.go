@@ -479,3 +479,25 @@ func containsAt(s, substr string) bool {
 	}
 	return false
 }
+
+// TestCompressedSizeUnusual guards the verify-warning tolerance: a compressed
+// chunk a hair above its uncompressed size (incompressible content + framing
+// overhead) is NOT flagged, but a genuine large expansion is.
+func TestCompressedSizeUnusual(t *testing.T) {
+	// Just over uncompressed — within the 64 KiB / 1% tolerance → not unusual.
+	if compressedSizeUnusual(1_000_000+1024, 1_000_000) {
+		t.Error("1KB over 1MB should be tolerated (incompressible overhead)")
+	}
+	// 1% over a large chunk → within tolerance.
+	if compressedSizeUnusual(100_000_000+900_000, 100_000_000) {
+		t.Error("<1% over should be tolerated")
+	}
+	// Genuinely larger (e.g. ~2x — double-compression / wrong size) → unusual.
+	if !compressedSizeUnusual(2_000_000, 1_000_000) {
+		t.Error("2x expansion must be flagged")
+	}
+	// Zero uncompressed → never flag (avoids div-by-zero / empty chunk noise).
+	if compressedSizeUnusual(1024, 0) {
+		t.Error("zero uncompressed must not be flagged")
+	}
+}
