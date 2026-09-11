@@ -581,3 +581,40 @@ func BenchmarkDirectUploaderStage_MultipleFiles(b *testing.B) {
 		_ = uploader.Stop()
 	}
 }
+
+// TestDirectUploaderStage_BuildS3Key_PreservesRelativePath guards #480: two files
+// with the same basename in different directories must get DISTINCT keys, or the
+// second silently overwrites the first in S3 and restore returns the wrong bytes.
+func TestDirectUploaderStage_BuildS3Key_PreservesRelativePath(t *testing.T) {
+	ctx := context.Background()
+	poolConfig := &AdaptiveWorkerPoolConfig{InitialWorkers: 2, MaxWorkers: 2, EnableAdaptive: false}
+	config := &DirectUploaderConfig{
+		S3Client:   &mockS3Client{},
+		Bucket:     "b",
+		Prefix:     "p",
+		SourcePath: "/src/root",
+		WorkerPool: NewAdaptiveWorkerPool(ctx, poolConfig),
+	}
+	up, err := NewDirectUploaderStage(config, make(chan *Job), make(chan *Job))
+	if err != nil {
+		t.Fatalf("create uploader: %v", err)
+	}
+	defer func() { _ = up.Stop() }()
+
+	a := up.buildS3Key("/src/root/dirA/README.md")
+	b := up.buildS3Key("/src/root/dirB/README.md")
+	if a != "p/dirA/README.md" {
+		t.Errorf("dirA key = %q, want p/dirA/README.md", a)
+	}
+	if b != "p/dirB/README.md" {
+		t.Errorf("dirB key = %q, want p/dirB/README.md", b)
+	}
+	if a == b {
+		t.Fatalf("same-basename files collided on one key %q", a)
+	}
+
+	// A file outside the source root falls back to the basename.
+	if out := up.buildS3Key("/elsewhere/x.txt"); out != "p/x.txt" {
+		t.Errorf("fallback key = %q, want p/x.txt", out)
+	}
+}
