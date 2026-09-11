@@ -500,9 +500,12 @@ func downloadAndExtractFiles(ctx context.Context, s3Client *s3.Client, bucket st
 		_ = result.Body.Close()
 	}()
 
-	// Decompress based on compression type
+	// Decompress by the chunk's KEY EXTENSION, not the manifest's single
+	// top-level compression_type (#452/#482): a mixed upload holds both .tar.zst
+	// and plain .tar chunks under one "zstd" type, so decoding by that type wraps
+	// a zstd reader around a plain tar and extracts nothing.
 	var decompressor io.Reader
-	switch compressionType {
+	switch manifest.ChunkCompression(chunkKey, compressionType) {
 	case "zstd":
 		decoder, err := zstd.NewReader(result.Body)
 		if err != nil {
@@ -510,9 +513,9 @@ func downloadAndExtractFiles(ctx context.Context, s3Client *s3.Client, bucket st
 		}
 		defer decoder.Close()
 		decompressor = decoder
-	case "gzip", "gz":
+	case "gzip":
 		return nil, fmt.Errorf("gzip compression not yet supported for rebalancing")
-	case "none", "":
+	case "none":
 		decompressor = result.Body
 	default:
 		return nil, fmt.Errorf("unsupported compression type: %s", compressionType)

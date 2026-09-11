@@ -24,6 +24,12 @@ func TestChunkCompression(t *testing.T) {
 	assert.Equal(t, "zstd", chunkCompression("x/chunk-0", "zstd"))
 	assert.Equal(t, "zstd", chunkCompression("x/chunk-0", "")) // historical default
 	assert.Equal(t, "none", chunkCompression("x/chunk-0", "none"))
+
+	// The exported wrapper (used by the rebalance path, #482) must agree — so
+	// `balance --execute` decodes a mixed upload's plain .tar chunk as plain tar
+	// instead of wrapping a zstd reader around it.
+	assert.Equal(t, "none", ChunkCompression("x/chunk-0.tar", "zstd"))
+	assert.Equal(t, "zstd", ChunkCompression("x/chunk-0.tar.zst", "none"))
 }
 
 // TestVerifyFilesDuplicateChunkIDsAcrossShards is the #455 regression guard:
