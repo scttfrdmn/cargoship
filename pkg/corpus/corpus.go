@@ -112,6 +112,25 @@ func PlantManyFiles(root string, rng *rand.Rand, n int) ([]File, error) {
 	return out, nil
 }
 
+// PlantUniform writes n incompressible (random) files of exactly size bytes
+// each, with unique basenames spread across subdirectories. It's the parametric
+// corpus for the direct-vs-packed crossover sweep (#466): fix the file size and
+// vary n to find the file count at which packing overtakes direct upload.
+func PlantUniform(root string, rng *rand.Rand, n, size int) ([]File, error) {
+	out := make([]File, 0, n)
+	for i := 0; i < n; i++ {
+		rel := filepath.Join(fmt.Sprintf("d%04d", i/500), fmt.Sprintf("u%07d.dat", i))
+		content := make([]byte, size)
+		_, _ = rng.Read(content)
+		f, err := write(root, rel, content)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, nil
+}
+
 // PlantSized writes one incompressible (random) file per requested size, with
 // unique basenames. Size 0 yields an empty file.
 func PlantSized(root string, rng *rand.Rand, sizes []int) ([]File, error) {

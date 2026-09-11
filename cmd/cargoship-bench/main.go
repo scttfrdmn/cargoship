@@ -40,6 +40,8 @@ func run() error {
 		prefix      = flag.String("prefix", "", "S3 key prefix (default bench-<timestamp>)")
 		endpoint    = flag.String("endpoint", "", "S3 endpoint override (emulator/LocalStack); enables path-style")
 		mode        = flag.String("mode", "auto", "upload path: auto|direct|packed")
+		files       = flag.Int("files", 0, "if >0, use a synthetic corpus of N uniform files (overrides --profile) — for the #466 crossover sweep")
+		fileSize    = flag.Int("file-size", 65536, "bytes per file when --files is set")
 		asJSON      = flag.Bool("json", false, "emit JSON results")
 	)
 	flag.Parse()
@@ -59,7 +61,10 @@ func run() error {
 	}
 
 	profiles := corpus.Profiles()
-	if *profileName != "all" {
+	switch {
+	case *files > 0:
+		profiles = []corpus.Profile{corpus.UniformProfile(*files, *fileSize)}
+	case *profileName != "all":
 		p, ok := corpus.ProfileByName(*profileName)
 		if !ok {
 			return fmt.Errorf("unknown profile %q (have: %s)", *profileName, profileNames())

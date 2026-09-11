@@ -1,6 +1,9 @@
 package corpus
 
-import "math/rand" // nosemgrep: go.lang.security.audit.crypto.math_random.math-random-used -- non-crypto: reproducible synthetic corpus content, seeded for determinism
+import (
+	"fmt"
+	"math/rand" // nosemgrep: go.lang.security.audit.crypto.math_random.math-random-used -- non-crypto: reproducible synthetic corpus content, seeded for determinism
+)
 
 // Profile is a named, reproducible corpus. Plant writes it under root and
 // returns the planted files. Each profile seeds its own RNG from a fixed seed,
@@ -55,6 +58,18 @@ func Profiles() []Profile {
 			Name: "hostile", Desc: "awkward names/sizes/nesting, tiny edge cases", seed: 0x686F7374,
 			gen: func(root string, rng *rand.Rand) ([]File, error) { return PlantHostile(root, rng, 0) },
 		},
+	}
+}
+
+// UniformProfile returns a reproducible profile of n files each exactly size
+// bytes (incompressible). Used by the #466 direct-vs-packed crossover sweep to
+// vary file count at a fixed file size.
+func UniformProfile(n, size int) Profile {
+	return Profile{
+		Name: fmt.Sprintf("uniform-%dx%dB", n, size),
+		Desc: fmt.Sprintf("%d incompressible files of %d bytes each", n, size),
+		seed: 0x53574550, // "SWEP"
+		gen:  func(root string, rng *rand.Rand) ([]File, error) { return PlantUniform(root, rng, n, size) },
 	}
 }
 
