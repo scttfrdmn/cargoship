@@ -125,7 +125,10 @@ type FileEntry struct {
 	PartIndex  int   `json:"part_index,omitempty"`  // Part index for split files (0 = not split)
 	TotalParts int   `json:"total_parts,omitempty"` // Total parts if split (0 or 1 = not split)
 
-	// Random-access frame index (#436): data offset within the uncompressed tar
+	// Data offset within the chunk's uncompressed tar stream (#436, #492).
+	// Recorded for EVERY file in a chunked upload — framed .tar.zst AND plain
+	// .tar — so a reader can locate a file without walking tar headers. Omitted
+	// only for direct-upload files (each is its own object, no enclosing tar).
 	ArchiveOffset int64 `json:"archive_offset,omitempty"`
 
 	// Optional metadata
@@ -177,6 +180,14 @@ the duplicate to its real bytes without a second copy existing in S3.
 ## `ChunkEntry`
 
 One entry per chunk (one `.tar.zst` or `.tar` object).
+
+::: warning Chunk identity is `(shard_id, id)` or `s3_key`, not `id` alone
+`ChunkEntry.id` restarts at 0 within each shard, so a multi-shard archive has
+several chunks with `id: 0`. A chunk's stable, unique identity is its **`s3_key`**
+(or the `(shard_id, id)` pair). A `FileEntry` therefore joins to its chunk on
+`(shard_id, chunk_id)` or on `s3_key` — never on `chunk_id` alone. Readers should
+key chunks by `s3_key`, which is unambiguous. (#494)
+:::
 
 ```go
 type ChunkEntry struct {

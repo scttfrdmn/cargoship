@@ -96,11 +96,13 @@ func TestFramerCutsFramesAndRecordsOffsets(t *testing.T) {
 	}
 }
 
-// TestFramerInactiveIsNoOp confirms a framer with frameSize 0 (or a nil framer)
-// records nothing and never cuts — the single-frame, pre-2.1 layout.
+// TestFramerInactiveIsNoOp confirms an inactive framer (frameSize 0) never CUTS
+// frames — the single-frame, pre-2.1 layout — but STILL records each file's
+// archive offset as long as it has an uncompressed counter (#492: plain/unframed
+// chunks need offsets too). A nil framer records nothing and is safe to call.
 func TestFramerInactiveIsNoOp(t *testing.T) {
 	var buf bytes.Buffer
-	fr := newTestFramer(t, &buf, 0) // framing disabled
+	fr := newTestFramer(t, &buf, 0) // framing disabled (has cwU, no frame cutting)
 	job := &Job{}
 
 	require.NoError(t, fr.tw.WriteHeader(&tar.Header{Name: "x", Mode: 0644, Size: 3}))
@@ -113,13 +115,18 @@ func TestFramerInactiveIsNoOp(t *testing.T) {
 	fr.finalize()
 
 	assert.False(t, fr.active())
-	assert.Empty(t, fr.frames, "inactive framer must not record frames")
-	assert.Nil(t, job.FileArchiveOffsets(), "inactive framer must not record offsets")
+	assert.Empty(t, fr.frames, "inactive framer must not cut frames")
+	// #492: the offset is recorded (512 = right after the tar header) even though
+	// no frames were cut, so a plain-chunk reader can range-GET the file.
+	assert.Equal(t, map[string]int64{"x": 512}, job.FileArchiveOffsets(),
+		"an inactive framer with a counter still records archive offsets (#492)")
 
-	// A nil framer is safe to call (plain .tar path passes nil).
+	// A nil framer records nothing and is safe to call (defensive).
+	njob := &Job{}
 	var nilFr *framer
 	assert.False(t, nilFr.active())
-	nilFr.recordOffset(job, chunking.File{Path: "y"})
+	nilFr.recordOffset(njob, chunking.File{Path: "y"})
 	require.NoError(t, nilFr.maybeCut())
 	nilFr.finalize()
+	assert.Nil(t, njob.FileArchiveOffsets(), "a nil framer records no offsets")
 }
