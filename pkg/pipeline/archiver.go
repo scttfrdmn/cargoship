@@ -64,10 +64,13 @@ type framer struct {
 func (f *framer) active() bool { return f != nil && f.encoder != nil && f.frameSize > 0 }
 
 // recordOffset captures a file's data start (the uncompressed tar position right
-// after its header) so the reader can locate it without a tar walk. Call
-// immediately after tw.WriteHeader returns.
+// after its header) so the reader can locate it without a tar walk. Recorded for
+// EVERY chunk — framed OR plain .tar (#492) — because a plain chunk is served by a
+// direct range GET at this offset (no decompression, no frame index). Requires
+// only the uncompressed counter (cwU), not an active framer. Call immediately
+// after tw.WriteHeader returns.
 func (f *framer) recordOffset(job *Job, file chunking.File) {
-	if !f.active() || job == nil {
+	if f == nil || f.cwU == nil || job == nil {
 		return
 	}
 	job.SetFileArchiveOffset(fileChecksumKey(file), f.cwU.n)
@@ -664,8 +667,14 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 			tw = tar.NewWriter(cwU)
 			fr = &framer{tw: tw, encoder: encoder, cwU: cwU, cwC: cwC, frameSize: s.config.FrameSize}
 		} else {
-			// Skip compression - write tar directly
-			tw = tar.NewWriter(pw)
+			// Skip compression — write the tar directly, but still count the
+			// uncompressed tar position so every file's archive_offset is recorded
+			// for random access (#492). No encoder / frameSize, so fr is not
+			// active(): no frames are cut and the byte layout is exactly the plain
+			// .tar as before; the framer only carries the offset counter.
+			cwU := &countingWriter{w: pw}
+			tw = tar.NewWriter(cwU)
+			fr = &framer{tw: tw, cwU: cwU}
 			// Track time saved by skipping compression
 			// Estimate: ~1s per 100MB for zstd compression
 			estimatedTimeSaved := (job.Chunk.TotalSize / (100 * 1024 * 1024)) * int64(time.Second)

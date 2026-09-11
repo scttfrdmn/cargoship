@@ -308,6 +308,27 @@ func tortureRoundTrip(t *testing.T, corpus []genFile, srcDir string, mutate func
 	require.NoError(t, err)
 	require.Equal(t, int64(len(corpus)), m.TotalFiles, "manifest file count should match corpus")
 
+	// #493: each chunk object appears exactly once — no duplicate ChunkEntry per
+	// s3_key. Staging snapshots or chunk-ID collisions (#468) would add partial
+	// extras that a strict manifest reader (lith) rejects.
+	seenKey := map[string]bool{}
+	for _, c := range m.Chunks {
+		require.False(t, seenKey[c.S3Key], "duplicate ChunkEntry for s3_key %q (#493)", c.S3Key)
+		seenKey[c.S3Key] = true
+	}
+	// #492: in a chunked upload, every file records its archive_offset — including
+	// files in a plain .tar chunk — so a random-access reader can range-GET a file
+	// without walking tar headers. (Direct uploads have no chunks; split parts use
+	// the whole-chunk path.)
+	if len(m.Chunks) > 0 {
+		for _, f := range m.Files {
+			if f.IsDuplicate || f.TotalParts > 1 {
+				continue
+			}
+			require.Positive(t, f.ArchiveOffset, "file %s missing archive_offset (#492)", f.Path)
+		}
+	}
+
 	// Restore everything and assert byte-identity by basename.
 	outDir := t.TempDir()
 	se := manifest.NewSelectiveExtractor(m, s3Client, 0)
