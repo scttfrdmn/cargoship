@@ -139,7 +139,10 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 		config.DirectUploadThresholdMB = 500 // Default: 500MB max for direct upload
 	}
 	if config.DirectUploadMaxFiles == 0 {
-		config.DirectUploadMaxFiles = 50000 // Default: 50k files max for direct upload
+		// #466: direct upload only pays off for a small number of files; beyond
+		// this, packing is faster and far cheaper (measured on real S3). This is a
+		// conservative cap — a measured crossover sweep can refine it later.
+		config.DirectUploadMaxFiles = 1000
 	}
 	if config.DirectUploadAvgSizeMB == 0 {
 		config.DirectUploadAvgSizeMB = 5.0 // Default: 5MB average file size threshold
@@ -411,14 +414,19 @@ func (p *Pipeline) shouldUseDirectUpload(fileCount int64, totalSize int64) bool 
 	// Calculate total size in MB
 	totalSizeMB := totalSize / (1024 * 1024)
 
-	// Use direct upload if:
-	// 1. Total size is under threshold AND
-	// 2. Average file size is small (under threshold) OR file count is high
+	// Direct upload stores one S3 object per file — cheap and low-latency only for
+	// a SMALL number of files. #466 measured (real S3, 5000 tiny files) that with
+	// many files packing wins on every axis: it collapses thousands of PUTs into a
+	// handful of chunk objects (~830× cheaper request cost) and turns a slow
+	// serial-GET restore into a few chunk downloads, at ~5× the upload throughput.
+	// So gate direct upload on a LOW file count — never route many files to it,
+	// regardless of how small each one is. (A prior heuristic did the opposite,
+	// forcing >1000 small files to direct.)
 	underSizeThreshold := totalSizeMB < int64(p.config.DirectUploadThresholdMB)
+	underFileCount := fileCount <= int64(p.config.DirectUploadMaxFiles)
 	smallAvgSize := avgFileSizeMB < p.config.DirectUploadAvgSizeMB
-	manySmallFiles := fileCount > 1000 && avgFileSizeMB < 10.0 // Many files under 10MB each
 
-	return underSizeThreshold && (smallAvgSize || manySmallFiles)
+	return underSizeThreshold && underFileCount && smallAvgSize
 }
 
 // startStages initializes and starts all pipeline stages

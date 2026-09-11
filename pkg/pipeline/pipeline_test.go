@@ -664,15 +664,32 @@ func TestPipeline_ShouldUseDirectUpload(t *testing.T) {
 			expectedDirectMode: true,
 		},
 		{
-			name: "auto_detect_small_avg_file_size",
+			// #466: many small files must PACK, not go direct — even though the
+			// average size is tiny, 10000 files exceeds the direct file-count cap.
+			name: "auto_many_small_files_packs",
 			config: &PipelineConfig{
 				S3Bucket:                "test-bucket",
 				EnableAutoDirectUpload:  true,
 				DirectUploadThresholdMB: 500,
+				DirectUploadMaxFiles:    1000,
 				DirectUploadAvgSizeMB:   5.0,
 			},
 			fileCount:          10000,
 			totalSize:          400 * 1024 * 1024, // 400MB total, 0.04MB avg
+			expectedDirectMode: false,
+		},
+		{
+			// Few small files: direct upload is fine (low per-file overhead).
+			name: "auto_few_small_files_direct",
+			config: &PipelineConfig{
+				S3Bucket:                "test-bucket",
+				EnableAutoDirectUpload:  true,
+				DirectUploadThresholdMB: 500,
+				DirectUploadMaxFiles:    1000,
+				DirectUploadAvgSizeMB:   5.0,
+			},
+			fileCount:          100,
+			totalSize:          100 * 1024 * 1024, // 100MB total, 1MB avg
 			expectedDirectMode: true,
 		},
 		{
@@ -704,12 +721,13 @@ func TestPipeline_ShouldUseDirectUpload(t *testing.T) {
 			config: &PipelineConfig{
 				S3Bucket:                "test-bucket",
 				DirectUploadThresholdMB: 500,
+				DirectUploadMaxFiles:    1000,
 				DirectUploadAvgSizeMB:   5.0,
 				// EnableAutoDirectUpload not set - should default to true
 			},
-			fileCount:          10000,
-			totalSize:          100 * 1024 * 1024, // 100MB total, 0.01MB avg
-			expectedDirectMode: true,              // Should auto-enable due to small avg file size
+			fileCount:          500,
+			totalSize:          100 * 1024 * 1024, // 100MB total, 0.2MB avg, few files
+			expectedDirectMode: true,              // auto-enables: small files, under the count cap
 		},
 		{
 			name: "zero_files",
@@ -749,7 +767,7 @@ func TestNewPipeline_DirectUploadDefaults(t *testing.T) {
 
 	// Verify defaults were applied
 	assert.Equal(t, 500, pipeline.config.DirectUploadThresholdMB)
-	assert.Equal(t, 50000, pipeline.config.DirectUploadMaxFiles)
+	assert.Equal(t, 1000, pipeline.config.DirectUploadMaxFiles) // #466: conservative cap
 	assert.Equal(t, 5.0, pipeline.config.DirectUploadAvgSizeMB)
 	assert.Equal(t, 256, pipeline.config.DirectUploadWorkers)
 	assert.True(t, pipeline.config.EnableAutoDirectUpload)
