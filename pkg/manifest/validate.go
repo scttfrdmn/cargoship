@@ -196,7 +196,7 @@ func (v *Validator) validateShardConsistency(result *ValidationResult) {
 		// (archive) size legitimately exceeds the raw file-byte sum by tar
 		// headers + 512-byte padding, so only flag a shard whose chunks are ALL
 		// compressed — otherwise this is expected, not "unusual".
-		if shard.CompressedSize > shard.UncompressedSize && !hasUncompressedChunk(shard.ChunkKeys, v.manifest.CompressionType) {
+		if compressedSizeUnusual(shard.CompressedSize, shard.UncompressedSize) && !hasUncompressedChunk(shard.ChunkKeys, v.manifest.CompressionType) {
 			result.AddWarning(fmt.Sprintf("shard[%d].size", i),
 				"compressed <= uncompressed",
 				fmt.Sprintf("compressed=%d > uncompressed=%d", shard.CompressedSize, shard.UncompressedSize),
@@ -278,7 +278,7 @@ func (v *Validator) validateChunkConsistency(result *ValidationResult) {
 		// larger than its raw content is unusual; a plain .tar chunk exceeding it
 		// by tar headers + padding is expected (its stored size is the real
 		// archive size since #445), so don't flag it.
-		if chunkCompression(chunk.S3Key, v.manifest.CompressionType) != "none" && chunk.CompressedSize > chunk.UncompressedSize {
+		if chunkCompression(chunk.S3Key, v.manifest.CompressionType) != "none" && compressedSizeUnusual(chunk.CompressedSize, chunk.UncompressedSize) {
 			result.AddWarning(fmt.Sprintf("chunk[%d].size", i),
 				"compressed <= uncompressed",
 				fmt.Sprintf("compressed=%d > uncompressed=%d", chunk.CompressedSize, chunk.UncompressedSize),
@@ -287,6 +287,25 @@ func (v *Validator) validateChunkConsistency(result *ValidationResult) {
 	}
 
 	result.Checks["chunk_consistency"] = valid
+}
+
+// compressedSizeUnusual reports whether a compressed chunk/shard is
+// MEANINGFULLY larger than its raw content. A small excess is expected and not
+// worth warning about: zstd cannot shrink incompressible or already-compressed
+// content (images, media, .zip, encrypted blobs) and adds a little framing
+// overhead, so such a chunk legitimately ends up a hair above its uncompressed
+// size. Tolerate ~1% (min 64 KiB) before flagging — enough to silence that noise
+// (the real ~/src dog-food raised 174 benign warnings) while still catching a
+// genuine anomaly like double-compression or a wrong recorded size.
+func compressedSizeUnusual(compressed, uncompressed int64) bool {
+	if uncompressed <= 0 {
+		return false
+	}
+	margin := uncompressed / 100
+	if margin < 64*1024 {
+		margin = 64 * 1024
+	}
+	return compressed > uncompressed+margin
 }
 
 // validateFileConsistency validates file data consistency (Issue #91)
