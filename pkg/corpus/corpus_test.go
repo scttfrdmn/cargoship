@@ -66,3 +66,26 @@ func TestProfileByNameUnknown(t *testing.T) {
 	_, ok := ProfileByName("does-not-exist")
 	assert.False(t, ok)
 }
+
+// TestUniformProfile plants exactly n files of the requested size and is
+// byte-reproducible — the parametric corpus for the #466 crossover sweep.
+func TestUniformProfile(t *testing.T) {
+	p := UniformProfile(37, 4096)
+	a, err := p.Plant(t.TempDir())
+	require.NoError(t, err)
+	b, err := p.Plant(t.TempDir())
+	require.NoError(t, err)
+
+	require.Len(t, a, 37)
+	for _, f := range a {
+		assert.Equal(t, 4096, f.Size, "every uniform file is the requested size")
+	}
+	sums := func(fs []File) map[string]string {
+		m := make(map[string]string, len(fs))
+		for _, f := range fs {
+			m[f.RelPath] = f.Sum
+		}
+		return m
+	}
+	assert.Equal(t, sums(a), sums(b), "uniform profile must be byte-reproducible")
+}
