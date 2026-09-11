@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -533,6 +534,12 @@ func (se *SelectiveExtractor) ExtractFileByHash(ctx context.Context, hash, destD
 // each distinct chunk is downloaded at most once. The LRU cache further reduces
 // downloads across multiple BatchRestore calls on the same SelectiveExtractor.
 // (Issue #189)
+// chunkGroup collects the files that live in one S3 object (one download).
+type chunkGroup struct {
+	s3Key string
+	files []*FileEntry
+}
+
 func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string, destDir string) (*RestoreStats, error) {
 	stats := &RestoreStats{}
 	if len(targets) == 0 {
@@ -540,10 +547,6 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 	}
 
 	// Group FileEntry pointers by S3 key (one S3 key == one chunk download).
-	type chunkGroup struct {
-		s3Key string
-		files []*FileEntry
-	}
 	chunkMap := make(map[string]*chunkGroup)
 
 	// #341: every write below goes through this root, so a symlinked component
@@ -587,39 +590,68 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 		chunkMap[key].files = append(chunkMap[key].files, entry)
 	}
 
+	// Download + extract each chunk group concurrently (#472). Serially, a
+	// direct-upload restore (one S3 object per file → one group per file) ran at
+	// ~1.2 MB/s regardless of file count — each GET waited on the previous one's
+	// round trip. Groups are independent (distinct S3 keys, distinct output
+	// paths), the chunk cache is already mutex-guarded, and *os.Root writes are
+	// safe for concurrent use, so a bounded pool is sufficient. Stats are updated
+	// atomically.
+	groups := make([]*chunkGroup, 0, len(chunkMap))
 	for _, grp := range chunkMap {
-		data := se.cache.get(grp.s3Key)
-		if data == nil {
-			var dlErr error
-			data, dlErr = se.downloadChunk(ctx, grp.s3Key)
-			if dlErr != nil {
-				stats.Failed += int64(len(grp.files))
-				continue
-			}
-			se.cache.put(grp.s3Key, data)
-			stats.ChunksDownloaded++
-		}
-
-		if directMode {
-			// One S3 object == one file; write the raw bytes.
-			restored, written, err := se.writeDirectFiles(data, grp.files, root, destDir)
-			stats.Restored += int64(restored)
-			stats.Bytes += written
-			if err != nil {
-				stats.Failed += int64(len(grp.files)) - int64(restored)
-			}
-			continue
-		}
-
-		restored, written, err := se.extractFromChunkData(data, grp.files, root, destDir)
-		stats.Restored += int64(restored)
-		stats.Bytes += written
-		if err != nil {
-			stats.Failed += int64(len(grp.files)) - int64(restored)
-		}
+		groups = append(groups, grp)
 	}
+	sem := make(chan struct{}, restoreConcurrency)
+	var wg sync.WaitGroup
+	for _, grp := range groups {
+		grp := grp
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			se.restoreGroup(ctx, grp, directMode, root, destDir, stats)
+		}()
+	}
+	wg.Wait()
 
 	return stats, nil
+}
+
+// restoreConcurrency bounds how many chunk groups BatchRestore downloads and
+// extracts in parallel. Enough to hide per-request latency (the direct-upload
+// win) without holding too many decompressed chunks in memory at once.
+const restoreConcurrency = 16
+
+// restoreGroup downloads one chunk group (unless cached) and writes its files,
+// updating stats atomically. Safe to call concurrently across distinct groups.
+func (se *SelectiveExtractor) restoreGroup(ctx context.Context, grp *chunkGroup, directMode bool, root *os.Root, destDir string, stats *RestoreStats) {
+	data := se.cache.get(grp.s3Key)
+	if data == nil {
+		fetched, err := se.downloadChunk(ctx, grp.s3Key)
+		if err != nil {
+			atomic.AddInt64(&stats.Failed, int64(len(grp.files)))
+			return
+		}
+		data = fetched
+		se.cache.put(grp.s3Key, data)
+		atomic.AddInt64(&stats.ChunksDownloaded, 1)
+	}
+
+	var restored int
+	var written int64
+	var err error
+	if directMode {
+		// One S3 object == one file; write the raw bytes.
+		restored, written, err = se.writeDirectFiles(data, grp.files, root, destDir)
+	} else {
+		restored, written, err = se.extractFromChunkData(data, grp.files, root, destDir)
+	}
+	atomic.AddInt64(&stats.Restored, int64(restored))
+	atomic.AddInt64(&stats.Bytes, written)
+	if err != nil {
+		atomic.AddInt64(&stats.Failed, int64(len(grp.files))-int64(restored))
+	}
 }
 
 // resolveEntry finds the manifest entry for a restore target. It tries an exact
