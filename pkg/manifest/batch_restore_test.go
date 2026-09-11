@@ -269,6 +269,34 @@ func TestBatchRestore_UnknownTarget_IncrementsFailed(t *testing.T) {
 	assert.Equal(t, int64(0), stats.ChunksDownloaded)
 }
 
+// TestResolveEntry_UniquePathWinsOverAmbiguousBasename guards the restore bug the
+// ~/src dog-food surfaced: a fully-qualified relative path must resolve to its
+// exact file even when other files share the basename (and appear earlier in the
+// manifest). The old single-pass resolver bailed on basename ambiguity before
+// reaching the target's suffix match, failing ~46% of a real source-tree sample.
+func TestResolveEntry_UniquePathWinsOverAmbiguousBasename(t *testing.T) {
+	m := &Manifest{Files: []FileEntry{
+		{Path: "/root/a/dup.txt", S3Key: "k1"},
+		{Path: "/root/b/dup.txt", S3Key: "k2"},
+		{Path: "/root/c/dup.txt", S3Key: "k3"}, // target: two same-basename files precede it
+		{Path: "/root/x/only.txt", S3Key: "k4"},
+	}}
+	se := NewSelectiveExtractor(m, &mockS3Client{}, 0)
+
+	// A unique full relative path resolves to the exact file despite the collisions.
+	got := se.resolveEntry("c/dup.txt")
+	require.NotNil(t, got, "unique path must resolve even with ambiguous basename")
+	assert.Equal(t, "/root/c/dup.txt", got.Path)
+
+	// A bare, genuinely-ambiguous basename still returns nil (unchanged).
+	assert.Nil(t, se.resolveEntry("dup.txt"), "bare ambiguous basename stays unresolved")
+
+	// A unique bare basename still resolves.
+	got = se.resolveEntry("only.txt")
+	require.NotNil(t, got)
+	assert.Equal(t, "/root/x/only.txt", got.Path)
+}
+
 func TestBatchRestore_EmptyTargets(t *testing.T) {
 	m := build100FileManifest()
 	se := NewSelectiveExtractor(m, &mockS3Client{}, 0)
