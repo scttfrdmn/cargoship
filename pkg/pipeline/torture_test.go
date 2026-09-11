@@ -73,6 +73,38 @@ func TestTorture(t *testing.T) {
 		tortureRoundTrip(t, corpus, src, nil)
 	})
 
+	// #480/#475: files that share a basename across directories (README.md,
+	// index.js) must each restore their OWN bytes. Small corpus → direct-upload
+	// path, where keying by basename silently corrupted one file. The relative-
+	// path verification in tortureRoundTrip is what makes this assertion real.
+	t.Run("repeated_basenames", func(t *testing.T) {
+		src := t.TempDir()
+		corpus := plantRepeatedBasenames(t, src)
+		tortureRoundTrip(t, corpus, src, nil)
+	})
+
+	// #481: content-duplicate files under --enable-dedup must all restore. The
+	// duplicate entries carried a placeholder empty S3Key until patched post-
+	// upload; unpatched, restore aborted entirely.
+	t.Run("dedup_duplicates", func(t *testing.T) {
+		src := t.TempDir()
+		corpus := plantDuplicateContent(t, src, rng)
+		tortureRoundTrip(t, corpus, src, func(pc *PipelineConfig) {
+			pc.EnableDeduplication = true
+		})
+	})
+
+	// #468: a chunked upload spanning MORE THAN ONE scan batch (batchSize=1000)
+	// must not collide chunk IDs/S3 keys across batches. Force the packed path
+	// (negative threshold) with >1000 files so ≥2 batches run.
+	t.Run("multi_batch_packed", func(t *testing.T) {
+		src := t.TempDir()
+		corpus := plantManyFiles(t, src, rng, 1500)
+		tortureRoundTrip(t, corpus, src, func(pc *PipelineConfig) {
+			pc.DirectUploadThresholdMB = -1 // never take the direct path → chunked, multi-batch
+		})
+	})
+
 	// Every shard strategy must preserve bytes — the strategy only changes which
 	// prefix a chunk lands under, never its content.
 	for _, strat := range []string{
@@ -288,12 +320,12 @@ func tortureRoundTrip(t *testing.T, corpus []genFile, srcDir string, mutate func
 	require.Equal(t, int64(len(corpus)), stats.Restored, "every file should restore (failed=%d)", stats.Failed)
 	require.Zero(t, stats.Failed)
 
-	byBase := indexFilesByBase(t, outDir)
+	// Verify by RELATIVE PATH, not basename: restore preserves directory
+	// structure (restorePath), and keying on basename hid same-basename
+	// collisions (#480/#475) — the exact blind spot this suite must not have.
 	for _, want := range corpus {
-		path, ok := byBase[want.base]
-		require.True(t, ok, "restored file not found for %s", want.relPath)
-		got, err := os.ReadFile(path)
-		require.NoError(t, err)
+		got, err := os.ReadFile(filepath.Join(outDir, filepath.FromSlash(want.relPath)))
+		require.NoError(t, err, "restored file not found for %s", want.relPath)
 		require.Equal(t, want.size, len(got), "size mismatch for %s", want.relPath)
 		require.Equal(t, want.sum, sha256hex(got),
 			"BYTE MISMATCH after round-trip for %s (integrity invariant failed)", want.relPath)
@@ -406,6 +438,50 @@ func plantManyFiles(t *testing.T, root string, rng *rand.Rand, n int) []genFile 
 		_, _ = rng.Read(content)
 		require.NoError(t, os.WriteFile(abs, content, 0644))
 		out = append(out, genFile{relPath: rel, base: base, sum: sha256hex(content), size: size})
+	}
+	return out
+}
+
+// plantRepeatedBasenames writes files that deliberately SHARE a basename across
+// different directories with different content — the shape that direct-upload
+// keyed by basename silently corrupted (#480), and that basename-indexed verify
+// couldn't even check (#475).
+func plantRepeatedBasenames(t *testing.T, root string) []genFile {
+	t.Helper()
+	var out []genFile
+	for _, dir := range []string{"dirA", "dirB", "dirC"} {
+		for _, base := range []string{"README.md", "index.js"} {
+			rel := filepath.Join(dir, base)
+			abs := filepath.Join(root, rel)
+			require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0755))
+			content := []byte(fmt.Sprintf("distinct content for %s\n", rel))
+			require.NoError(t, os.WriteFile(abs, content, 0644))
+			out = append(out, genFile{relPath: rel, base: base, sum: sha256hex(content), size: len(content)})
+		}
+	}
+	return out
+}
+
+// plantDuplicateContent writes several files with IDENTICAL content (unique
+// basenames) plus one unique file, to exercise the --enable-dedup path (#481).
+func plantDuplicateContent(t *testing.T, root string, rng *rand.Rand) []genFile {
+	t.Helper()
+	shared := make([]byte, 4096)
+	_, _ = rng.Read(shared)
+	uniq := make([]byte, 4096)
+	_, _ = rng.Read(uniq)
+	specs := []struct {
+		rel     string
+		content []byte
+	}{
+		{"a/dup1.bin", shared}, {"b/dup2.bin", shared}, {"c/dup3.bin", shared}, {"unique.bin", uniq},
+	}
+	var out []genFile
+	for _, s := range specs {
+		abs := filepath.Join(root, s.rel)
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0755))
+		require.NoError(t, os.WriteFile(abs, s.content, 0644))
+		out = append(out, genFile{relPath: s.rel, base: filepath.Base(s.rel), sum: sha256hex(s.content), size: len(s.content)})
 	}
 	return out
 }
