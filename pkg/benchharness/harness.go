@@ -23,6 +23,18 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/s3count"
 )
 
+// Mode selects the upload path under test.
+type Mode string
+
+const (
+	// ModeAuto lets the pipeline's heuristic pick direct vs packed (default).
+	ModeAuto Mode = "auto"
+	// ModeDirect forces the direct-upload fast path (one object per file).
+	ModeDirect Mode = "direct"
+	// ModePacked forces the archive/chunk path (packs files into chunks).
+	ModePacked Mode = "packed"
+)
+
 // Options configures one benchmark run.
 type Options struct {
 	Profile    corpus.Profile
@@ -33,6 +45,7 @@ type Options struct {
 	Region     string
 	SrcDir     string // where to plant the corpus (caller owns cleanup)
 	RestoreDir string // where to restore (caller owns cleanup)
+	Mode       Mode   // upload path to force; "" == ModeAuto
 }
 
 // Phase captures the speed + request counts of one leg (upload or restore).
@@ -58,6 +71,7 @@ type Cost struct {
 // RunResult is the full record for one profile.
 type RunResult struct {
 	Profile       string `json:"profile"`
+	Mode          Mode   `json:"mode"`
 	Files         int    `json:"files"`
 	SourceBytes   int64  `json:"source_bytes"`
 	StoredBytes   int64  `json:"stored_bytes"` // bytes S3 holds: chunk CompressedSize sum, or source bytes for direct upload
@@ -82,6 +96,10 @@ func Run(ctx context.Context, opts Options) (*RunResult, error) {
 		srcBytes += int64(f.Size)
 	}
 
+	mode := opts.Mode
+	if mode == "" {
+		mode = ModeAuto
+	}
 	uploadID := fmt.Sprintf("%d-bench", time.Now().UnixNano())
 	pc := &pipeline.PipelineConfig{
 		ScannerWorkers: 4, ArchiverWorkers: 4, UploaderWorkers: 4,
@@ -89,6 +107,16 @@ func Run(ctx context.Context, opts Options) (*RunResult, error) {
 		UseRealS3: true, S3Client: opts.Client, S3PartSize: 5 * 1024 * 1024,
 		EnableManifest: true, SourcePath: opts.SrcDir, UploadID: uploadID,
 		EnableMultiPrefix: true, ShardCount: 4, FileChecksums: true,
+	}
+	switch mode {
+	case ModeDirect:
+		pc.ForceDirectUpload = true
+	case ModePacked:
+		// No config disables the direct fast path outright; a negative threshold
+		// makes the "under size" test always false, so the heuristic never picks
+		// direct regardless of dataset size. The Chunks>0 assertion below verifies
+		// the packed path actually engaged.
+		pc.DirectUploadThresholdMB = -1
 	}
 
 	// --- Upload leg ---
@@ -123,6 +151,13 @@ func Run(ctx context.Context, opts Options) (*RunResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse manifest: %w", err)
 	}
+	// Verify the forced mode actually engaged (chunks present == packed path).
+	switch {
+	case mode == ModePacked && len(m.Chunks) == 0:
+		return nil, fmt.Errorf("packed mode requested but upload took the direct path (no chunks) — dataset may be too small")
+	case mode == ModeDirect && len(m.Chunks) != 0:
+		return nil, fmt.Errorf("direct mode requested but upload produced %d chunks", len(m.Chunks))
+	}
 	var storedBytes int64
 	for _, c := range m.Chunks {
 		storedBytes += c.CompressedSize
@@ -156,6 +191,7 @@ func Run(ctx context.Context, opts Options) (*RunResult, error) {
 
 	rr := &RunResult{
 		Profile:     opts.Profile.Name,
+		Mode:        mode,
 		Files:       len(files),
 		SourceBytes: srcBytes,
 		StoredBytes: storedBytes,

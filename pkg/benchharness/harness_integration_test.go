@@ -65,6 +65,56 @@ func TestHarnessRunOnEmulator(t *testing.T) {
 		rr.Files, rr.StoredBytes, rr.Upload.MBPerSec, up, rr.Restore.MBPerSec, rr.Cost.MonthlyStorageUSD)
 }
 
+// TestHarnessModesOnEmulator confirms the forced upload modes engage the path
+// they name: packed produces chunks, direct produces one object per file (no
+// chunks) — the head-to-head that answers #466. Both round-trip byte-identical.
+func TestHarnessModesOnEmulator(t *testing.T) {
+	url, cancel := launchSubstrate(t)
+	defer cancel()
+	const bucket = "cargoship-bench-modes"
+	require.NoError(t, createSubstrateBucket(url, bucket))
+
+	prof, ok := corpus.ProfileByName("many-tiny")
+	require.True(t, ok)
+
+	for _, tc := range []struct {
+		mode        Mode
+		wantChunked bool
+	}{
+		{ModePacked, true},
+		{ModeDirect, false},
+	} {
+		t.Run(string(tc.mode), func(t *testing.T) {
+			counter := s3count.New()
+			cfg := aws.Config{
+				Region:       "us-east-1",
+				BaseEndpoint: aws.String(url),
+				Credentials:  credentials.NewStaticCredentialsProvider("test", "test", ""),
+			}
+			counter.Instrument(&cfg)
+			client := awss3.NewFromConfig(cfg, func(o *awss3.Options) { o.UsePathStyle = true })
+
+			rr, err := Run(context.Background(), Options{
+				Profile: prof, Client: client, Counter: counter, Mode: tc.mode,
+				Bucket: bucket, Prefix: fmt.Sprintf("modes-%s-%d", tc.mode, time.Now().UnixNano()),
+				Region: "us-east-1", SrcDir: t.TempDir(), RestoreDir: t.TempDir(),
+			})
+			require.NoError(t, err)
+			assert.True(t, rr.ByteIdentical)
+			assert.Equal(t, tc.mode, rr.Mode)
+			if tc.wantChunked {
+				assert.Positive(t, rr.Chunks, "packed mode must produce chunks")
+				assert.Positive(t, rr.Upload.OpCounts["PutObject"]+rr.Upload.OpCounts["CreateMultipartUpload"])
+			} else {
+				assert.Zero(t, rr.Chunks, "direct mode must produce no chunks")
+				// One PutObject per file (5000) + the manifest.
+				assert.Greater(t, rr.Upload.OpCounts["PutObject"], 5000, "direct mode PUTs each file")
+			}
+			t.Logf("many-tiny [%s]: chunks=%d up=%v", tc.mode, rr.Chunks, rr.Upload.OpCounts)
+		})
+	}
+}
+
 // launchSubstrate starts an in-process Substrate S3 emulator (mirrors the
 // pipeline integration tests' bootstrap).
 func launchSubstrate(t *testing.T) (string, context.CancelFunc) {
