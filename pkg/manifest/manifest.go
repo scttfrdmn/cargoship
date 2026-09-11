@@ -351,6 +351,55 @@ func (b *Builder) UpdateFileS3KeyByPath(path string, shardID int, s3Key string) 
 	}
 }
 
+// PatchDuplicateLocations fills in the real chunk/object location for every
+// duplicate FileEntry (#481). A duplicate is recorded at SCAN time with the
+// placeholder location the dedup index held then — an empty S3Key and ChunkID
+// -1 — because the file's real location isn't known until its content's first
+// occurrence has been uploaded. Left unpatched, a duplicate has S3Key "" and is
+// unrestorable (restore keys on S3Key; an empty key even aborts the whole
+// restore via the glacier pre-flight). Call after uploads complete, before
+// Finalize.
+//
+// The index maps a content hash to the first occurrence's PATH (set at scan
+// time, so it's available in both direct and chunked modes); the original's own
+// FileEntry has the real S3Key by now (patched by UpdateFileS3Keys /
+// UpdateFileS3KeyByPath). So we resolve each duplicate through the original
+// entry, which works regardless of upload mode.
+func (b *Builder) PatchDuplicateLocations(index *FileDeduplicationIndex) {
+	if index == nil {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	origByPath := make(map[string]*FileEntry)
+	for i := range b.manifest.Files {
+		if f := &b.manifest.Files[i]; !f.IsDuplicate {
+			origByPath[f.Path] = f
+		}
+	}
+	for i := range b.manifest.Files {
+		f := &b.manifest.Files[i]
+		if !f.IsDuplicate {
+			continue
+		}
+		loc := index.FindFile(f.DuplicateOfHash)
+		if loc == nil {
+			continue
+		}
+		orig := origByPath[loc.Path]
+		if orig == nil || orig.S3Key == "" {
+			continue // original not found / not yet located; leave as-is
+		}
+		f.S3Key = orig.S3Key
+		f.ChunkID = orig.ChunkID
+		f.ShardID = orig.ShardID
+		f.OriginalS3Key = orig.S3Key
+		f.OriginalChunkID = orig.ChunkID
+		f.OriginalShardID = orig.ShardID
+	}
+}
+
 // Finalize completes the manifest and returns it (thread-safe)
 func (b *Builder) Finalize() *Manifest {
 	b.mu.Lock()

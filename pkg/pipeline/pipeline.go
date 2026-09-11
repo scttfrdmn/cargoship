@@ -850,6 +850,10 @@ func (p *Pipeline) uploadManifest(ctx context.Context) error {
 	// Issue #108: Export deduplication metadata if enabled
 	if p.dedupEnabled && p.dedupIndex != nil {
 		dedupIndex := p.dedupIndex.(*manifest.FileDeduplicationIndex)
+		// #481: duplicate FileEntries were recorded at scan time with a placeholder
+		// empty S3Key; fill in each one's real location (from its content's first
+		// occurrence, now uploaded) so duplicates are restorable.
+		builder.PatchDuplicateLocations(dedupIndex)
 		dedupMetadata := dedupIndex.ExportToManifest()
 		builder.SetDeduplication(dedupMetadata)
 

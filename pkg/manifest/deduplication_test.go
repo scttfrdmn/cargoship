@@ -478,3 +478,64 @@ func TestUpdateFileLocationByPath_NonexistentFile(t *testing.T) {
 		t.Error("Expected error for non-existent file")
 	}
 }
+
+// TestBuilder_PatchDuplicateLocations guards #481: a duplicate FileEntry recorded
+// at scan time with an empty S3Key must be patched to the real location of its
+// content's first occurrence, or the duplicate is unrestorable.
+func TestBuilder_PatchDuplicateLocations(t *testing.T) {
+	dir := t.TempDir()
+	orig := filepath.Join(dir, "a", "orig.bin")
+	dup := filepath.Join(dir, "b", "dup.bin")
+	for _, p := range []string{orig, dup} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("identical content for dedup"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	idx := NewFileDeduplicationIndex()
+	// First occurrence → unique; second → duplicate (index maps hash → orig path).
+	if _, _, err := idx.AddFile(orig, -1, -1, ""); err != nil {
+		t.Fatal(err)
+	}
+	isDup, loc, err := idx.AddFile(dup, -1, -1, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isDup {
+		t.Fatal("second identical file should be a duplicate")
+	}
+
+	b, err := NewBuilder("u1", dir, "bucket", "prefix", "us-west-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The original entry as it looks AFTER upload (real S3Key filled in).
+	b.AddFile(FileEntry{Path: orig, S3Key: "prefix/a/orig.bin", ChunkID: 3, ShardID: 1})
+	// The duplicate as scan time recorded it: placeholder empty key, ChunkID -1.
+	b.AddFile(FileEntry{Path: dup, IsDuplicate: true, DuplicateOfHash: loc.Hash, ChunkID: -1, ShardID: -1})
+
+	b.PatchDuplicateLocations(idx)
+
+	m := b.Build()
+	var got *FileEntry
+	for i := range m.Files {
+		if m.Files[i].Path == dup {
+			got = &m.Files[i]
+		}
+	}
+	if got == nil {
+		t.Fatal("duplicate entry missing")
+	}
+	if got.S3Key != "prefix/a/orig.bin" {
+		t.Errorf("duplicate S3Key = %q, want the original's key", got.S3Key)
+	}
+	if got.ChunkID != 3 || got.ShardID != 1 {
+		t.Errorf("duplicate location = chunk %d shard %d, want 3/1", got.ChunkID, got.ShardID)
+	}
+	if got.OriginalS3Key != "prefix/a/orig.bin" {
+		t.Errorf("OriginalS3Key = %q, want the original's key", got.OriginalS3Key)
+	}
+}
