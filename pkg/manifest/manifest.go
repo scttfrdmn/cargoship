@@ -454,6 +454,20 @@ func FromJSONCompressed(data []byte) (*Manifest, error) {
 	return FromJSON(jsonData)
 }
 
+// parseManifestJSON deserializes manifest bytes that may or may not be
+// gzip-compressed, dispatching on the gzip magic number (0x1f 0x8b). The
+// encrypted-manifest write path encrypts the COMPRESSED manifest when
+// compress=true, so the plaintext recovered after KMS decryption is itself
+// gzip — feeding it straight to FromJSON produced "invalid character '\x1f'"
+// and made every encrypted manifest unreadable (#474). Auto-detecting here keeps
+// the reader correct regardless of whether the inner payload was compressed.
+func parseManifestJSON(data []byte) (*Manifest, error) {
+	if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
+		return FromJSONCompressed(data)
+	}
+	return FromJSON(data)
+}
+
 // UploadToS3 uploads the manifest to S3
 func (m *Manifest) UploadToS3(ctx context.Context, s3Client *s3.Client, compress bool) error {
 	var data []byte
@@ -610,7 +624,7 @@ func DownloadFromS3WithDecryption(ctx context.Context, s3Client *s3.Client, kmsC
 				if err := json.Unmarshal(decompressed, &encryptedManifest); err == nil {
 					manifestJSON, err := encryption.DecryptManifestBytes(ctx, kmsClient, &encryptedManifest)
 					if err == nil {
-						return FromJSON(manifestJSON)
+						return parseManifestJSON(manifestJSON)
 					}
 				}
 			}
@@ -625,7 +639,7 @@ func DownloadFromS3WithDecryption(ctx context.Context, s3Client *s3.Client, kmsC
 		if err := json.Unmarshal(data, &encryptedManifest); err == nil {
 			manifestJSON, err := encryption.DecryptManifestBytes(ctx, kmsClient, &encryptedManifest)
 			if err == nil {
-				return FromJSON(manifestJSON)
+				return parseManifestJSON(manifestJSON)
 			}
 		}
 	}

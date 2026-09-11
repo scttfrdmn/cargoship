@@ -3,11 +3,9 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"io"
-	"os"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
@@ -105,36 +103,17 @@ Exit Codes:
 			}
 
 			s3Client := s3.NewFromConfig(cfg)
+			kmsClient := kms.NewFromConfig(cfg)
 
-			// Download manifest from S3
-			manifestKey := fmt.Sprintf("%s/uploads/%s/manifest.json.gz", prefix, uploadID)
-			fmt.Printf("📥 Downloading manifest: s3://%s/%s\n", bucket, manifestKey)
-
-			getObjectInput := &s3.GetObjectInput{
-				Bucket: aws.String(bucket),
-				Key:    aws.String(manifestKey),
-			}
-
-			result, err := s3Client.GetObject(ctx, getObjectInput)
+			// Download the manifest, decrypting it when the upload used
+			// --encrypt-manifest. DownloadFromS3WithDecryption transparently
+			// handles both plaintext (manifest.json.gz) and KMS-encrypted
+			// (manifest.encrypted.json.gz) manifests, so `verify` works on
+			// encrypted uploads instead of 404ing on the plaintext name (#474).
+			fmt.Printf("📥 Downloading manifest: s3://%s/%s/uploads/%s/\n", bucket, prefix, uploadID)
+			m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, prefix, uploadID)
 			if err != nil {
 				return fmt.Errorf("failed to download manifest from S3: %w", err)
-			}
-			defer func() {
-				if closeErr := result.Body.Close(); closeErr != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to close S3 response body: %v\n", closeErr)
-				}
-			}()
-
-			// Read manifest bytes
-			manifestBytes, err := io.ReadAll(result.Body)
-			if err != nil {
-				return fmt.Errorf("failed to read manifest from S3: %w", err)
-			}
-
-			// Decompress and deserialize manifest
-			m, err := manifest.FromJSONCompressed(manifestBytes)
-			if err != nil {
-				return fmt.Errorf("failed to deserialize manifest: %w", err)
 			}
 
 			fmt.Printf("✅ Manifest downloaded successfully\n\n")

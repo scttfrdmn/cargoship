@@ -1314,3 +1314,34 @@ func TestBuilder_SetEncryption_ClearEncryption(t *testing.T) {
 	manifest = builder.Build()
 	assert.Nil(t, manifest.Encryption)
 }
+
+// TestParseManifestJSON_HandlesPlainAndGzip guards #474: an encrypted manifest is
+// written by encrypting the COMPRESSED manifest, so the plaintext recovered after
+// KMS decryption is gzip. The reader must detect that and decompress rather than
+// feed gzip bytes to json.Unmarshal (which failed with "invalid character
+// '\x1f'", making every encrypted manifest unreadable).
+func TestParseManifestJSON_HandlesPlainAndGzip(t *testing.T) {
+	m := &Manifest{Version: ManifestVersion, UploadID: "u1", Bucket: "b"}
+
+	plain, err := m.ToJSON()
+	if err != nil {
+		t.Fatalf("ToJSON: %v", err)
+	}
+	gz, err := m.ToJSONCompressed()
+	if err != nil {
+		t.Fatalf("ToJSONCompressed: %v", err)
+	}
+	if len(gz) < 2 || gz[0] != 0x1f || gz[1] != 0x8b {
+		t.Fatalf("compressed manifest is not gzip-framed: %x", gz[:2])
+	}
+
+	for name, data := range map[string][]byte{"plain": plain, "gzip": gz} {
+		got, err := parseManifestJSON(data)
+		if err != nil {
+			t.Fatalf("%s: parseManifestJSON: %v", name, err)
+		}
+		if got.UploadID != "u1" || got.Bucket != "b" {
+			t.Fatalf("%s: round-trip mismatch: %+v", name, got)
+		}
+	}
+}
