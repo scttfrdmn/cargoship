@@ -8,8 +8,8 @@ backported.
 
 | Version | Supported |
 | ------- | --------- |
-| 0.24.x  | :white_check_mark: |
-| < 0.24  | :x: |
+| 0.25.x  | :white_check_mark: |
+| < 0.25  | :x: |
 
 Always run the [latest release](https://github.com/scttfrdmn/cargoship/releases/latest).
 

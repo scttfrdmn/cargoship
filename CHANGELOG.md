@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-09-11
+
+**Performance comparison & verified claims.** The competitor-comparison harness is
+complete: CargoShip is now measured head-to-head against `s5cmd`, `rclone`, and
+`tar+zstd+aws s3 cp`, and the "fastest / most cost-efficient" claims move from
+Aspirational to **Verified — scoped to where the data supports them.**
+
+### Added
+- **Measured competitor comparison**, published in `docs/reference/benchmarks.md`
+  with full provenance (tool versions, machine, OS, date). Competitor uploads are
+  byte-verified (SHA-256 round-trip) and their server-side S3 request counts are
+  read from CloudWatch (`pkg/s3metrics`) and priced with the same model as
+  CargoShip's (`pkg/s3cost`). On many-small-file workloads CargoShip is fastest
+  and cheapest — roughly 700× fewer S3 requests than one-object-per-file movers;
+  on few-large-file workloads it is competitive. (#495)
+- **Stated goal** in the README and ROADMAP: the fastest and most efficient — in
+  both S3 operations and dollars — way to move data into and out of S3, without
+  compromising trust. (#519)
+
+### Changed
+- The [capability matrix](docs/project/verification.md) marks fastest /
+  most-cost-efficient **Verified for many-small-file workloads** (previously
+  Aspirational), citing the measured run; competitive elsewhere — not a blanket
+  claim. (#516)
+
+### Fixed
+- De-flaked `TestPipeline_TimeBreakdown`: it asserted a stage's share of
+  wall-clock exceed a fixed threshold, but the pipeline stages run concurrently
+  and the test data is tiny, so the ratio was scheduling noise. Now asserts the
+  stable invariant that every stage did positive work. (#518)
+
 ## [0.24.5] - 2026-09-11
 
 **Frameless already-compressed files.** A patch completing the large-file random
