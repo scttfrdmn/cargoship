@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
+	tmtypes "github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
@@ -22,7 +23,7 @@ import (
 // Transporter implements S3-based transport for CargoShip
 type Transporter struct {
 	client   *s3.Client
-	uploader *manager.Uploader
+	uploader *transfermanager.Client
 	config   awsconfig.S3Config
 	tracer   *tracing.S3Tracer // Optional: S3 operation tracer (Issue #155)
 }
@@ -66,14 +67,13 @@ type UploadResult struct {
 
 // NewTransporter creates a new S3 transporter
 func NewTransporter(client *s3.Client, config awsconfig.S3Config) *Transporter {
-	uploader := manager.NewUploader(client, func(u *manager.Uploader) {
-		u.PartSize = config.MultipartChunkSize
-		u.Concurrency = config.Concurrency
-		u.LeavePartsOnError = false // Clean up failed uploads
-		// Issue #34 Phase 2.2: Increased from 25MB to 64MB buffers
-		// Better matches typical chunk sizes, reduces buffer allocation overhead
-		// Pool size automatically managed by AWS SDK (typically 16 buffers = 1GB total)
-		u.BufferProvider = manager.NewBufferedReadSeekerWriteToPool(64 * 1024 * 1024)
+	// #384: migrated off the deprecated feature/s3/manager Uploader to
+	// feature/s3/transfermanager. transfermanager aborts a failed multipart upload
+	// by default (no LeavePartsOnError knob) and manages its own part buffers (no
+	// BufferProvider); part size and concurrency map directly.
+	uploader := transfermanager.New(client, func(o *transfermanager.Options) {
+		o.PartSizeBytes = config.MultipartChunkSize
+		o.Concurrency = config.Concurrency
 	})
 
 	return &Transporter{
@@ -91,12 +91,14 @@ func (t *Transporter) SetTracer(tracer *tracing.S3Tracer) {
 // putObjectInput builds the S3 PutObjectInput for an archive. Extracted from
 // Upload so the header/metadata mapping — notably the #353 Content-Encoding
 // rule — is unit-testable without a live S3 client.
-func (t *Transporter) putObjectInput(archive Archive, storageClass types.StorageClass) *s3.PutObjectInput {
-	input := &s3.PutObjectInput{
-		Bucket:       aws.String(t.config.Bucket),
-		Key:          aws.String(archive.Key),
-		Body:         archive.Reader,
-		StorageClass: storageClass,
+func (t *Transporter) putObjectInput(archive Archive, storageClass types.StorageClass) *transfermanager.UploadObjectInput {
+	input := &transfermanager.UploadObjectInput{
+		Bucket: aws.String(t.config.Bucket),
+		Key:    aws.String(archive.Key),
+		Body:   archive.Reader,
+		// #384: transfermanager has its own StorageClass enum with identical string
+		// values (STANDARD, GLACIER, …), so a string cast preserves the class.
+		StorageClass: tmtypes.StorageClass(string(storageClass)),
 		Metadata:     t.buildMetadata(archive),
 	}
 
@@ -109,8 +111,8 @@ func (t *Transporter) putObjectInput(archive Archive, storageClass types.Storage
 
 	// Add KMS encryption if configured
 	if t.config.KMSKeyID != "" {
-		input.ServerSideEncryption = types.ServerSideEncryptionAwsKms
-		input.SSEKMSKeyId = aws.String(t.config.KMSKeyID)
+		input.ServerSideEncryption = tmtypes.ServerSideEncryptionAwsKms
+		input.SSEKMSKeyID = aws.String(t.config.KMSKeyID)
 	}
 
 	return input
@@ -138,7 +140,7 @@ func (t *Transporter) Upload(ctx context.Context, archive Archive) (*UploadResul
 	input := t.putObjectInput(archive, storageClass)
 
 	// Perform upload
-	result, err := t.uploader.Upload(ctx, input)
+	result, err := t.uploader.UploadObject(ctx, input)
 	if err != nil {
 		// Record error in span
 		if span != nil && t.tracer != nil {
@@ -158,10 +160,11 @@ func (t *Transporter) Upload(ctx context.Context, archive Archive) (*UploadResul
 	}
 
 	return &UploadResult{
-		Location:     result.Location,
+		// #384: transfermanager returns *string for these (manager returned string).
+		Location:     aws.ToString(result.Location),
 		Key:          archive.Key,
 		ETag:         aws.ToString(result.ETag),
-		UploadID:     result.UploadID,
+		UploadID:     aws.ToString(result.UploadID),
 		Duration:     duration,
 		Throughput:   throughput,
 		StorageClass: storageClass,

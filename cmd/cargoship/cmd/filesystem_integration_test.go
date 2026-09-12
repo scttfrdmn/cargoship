@@ -24,7 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/require"
@@ -347,13 +347,13 @@ func (s *IntegrationTestSuite) UploadToS3(localPath, s3Key string) string {
 	require.NoError(s.t, err, "Failed to open file for upload: %s", localPath)
 	defer file.Close()
 
-	// Use the multipart upload manager rather than a bare PutObject: S3 caps a
-	// single PutObject at 5 GiB, and this suite uploads larger archives. The
-	// manager streams the file in bounded-size parts, which is also what
-	// CargoShip's own uploader does — so it keeps process memory flat regardless
-	// of file size (see #239).
-	uploader := manager.NewUploader(s.S3Client)
-	_, err = uploader.Upload(ctx, &s3.PutObjectInput{
+	// Use the SDK transfer manager rather than a bare PutObject: S3 caps a single
+	// PutObject at 5 GiB, and this suite uploads larger archives. transfermanager
+	// streams the file in bounded-size parts, which is also what CargoShip's own
+	// uploader does (#384) — so it keeps process memory flat regardless of file
+	// size (see #239).
+	uploader := transfermanager.New(s.S3Client)
+	_, err = uploader.UploadObject(ctx, &transfermanager.UploadObjectInput{
 		Bucket: aws.String(s.S3Bucket),
 		Key:    aws.String(s3Key),
 		Body:   file,

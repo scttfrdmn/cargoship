@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -981,13 +981,13 @@ func (p *Pipeline) savePartialManifest(ctx context.Context) error {
 	// Construct S3 key: prefix/uploads/{uploadID}/manifest.partial.json.gz
 	s3Key := fmt.Sprintf("%s/uploads/%s/manifest.partial.json.gz", p.config.S3Prefix, p.config.UploadID)
 
-	// Upload to S3 using the same S3 client
+	// Upload to S3 using the same S3 client (#384: transfermanager).
 	s3Client := p.config.S3Client.(*s3.Client)
-	uploader := manager.NewUploader(s3Client, func(u *manager.Uploader) {
-		u.PartSize = 5 * 1024 * 1024 // 5MB parts
+	uploader := transfermanager.New(s3Client, func(o *transfermanager.Options) {
+		o.PartSizeBytes = 5 * 1024 * 1024 // 5MB parts
 	})
 
-	input := &s3.PutObjectInput{
+	input := &transfermanager.UploadObjectInput{
 		Bucket:      aws.String(p.config.S3Bucket),
 		Key:         aws.String(s3Key),
 		Body:        bytes.NewReader(manifestBytes),
@@ -1001,7 +1001,7 @@ func (p *Pipeline) savePartialManifest(ctx context.Context) error {
 		},
 	}
 
-	_, err = uploader.Upload(ctx, input)
+	_, err = uploader.UploadObject(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to upload partial manifest to S3: %w", err)
 	}

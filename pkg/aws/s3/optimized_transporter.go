@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
+	tmtypes "github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
@@ -20,7 +21,7 @@ import (
 // OptimizedTransporter provides backward-compatible CargoShip transport using new optimization modules
 type OptimizedTransporter struct {
 	optimizer *s3optimization.S3Optimizer
-	uploader  *manager.Uploader
+	uploader  *transfermanager.Client
 	config    awsconfig.S3Config
 	logger    *slog.Logger
 }
@@ -60,12 +61,13 @@ func NewOptimizedTransporter(ctx context.Context, s3Client *s3.Client, config aw
 		return nil, fmt.Errorf("failed to create S3 optimizer: %w", err)
 	}
 
-	// Create AWS SDK uploader for reliable Content-Length handling
-	uploader := manager.NewUploader(s3Client, func(u *manager.Uploader) {
-		u.PartSize = config.MultipartChunkSize
-		u.Concurrency = int(config.Concurrency)
-		u.LeavePartsOnError = false
-		u.MaxUploadParts = 10000
+	// #384: transfermanager replaces the deprecated manager.Uploader. It aborts a
+	// failed multipart upload by default (no LeavePartsOnError) and manages its own
+	// buffers; part size, concurrency, and max-parts map directly.
+	uploader := transfermanager.New(s3Client, func(o *transfermanager.Options) {
+		o.PartSizeBytes = config.MultipartChunkSize
+		o.Concurrency = int(config.Concurrency)
+		o.MaxUploadParts = 10000
 	})
 
 	transporter := &OptimizedTransporter{
@@ -88,12 +90,12 @@ func NewOptimizedTransporter(ctx context.Context, s3Client *s3.Client, config aw
 // putObjectInput builds the S3 PutObjectInput for an archive. Extracted from
 // Upload so the header mapping — notably the #353 Content-Encoding rule — is
 // unit-testable without a live S3 client.
-func (t *OptimizedTransporter) putObjectInput(archive *Archive) *s3.PutObjectInput {
-	input := &s3.PutObjectInput{
+func (t *OptimizedTransporter) putObjectInput(archive *Archive) *transfermanager.UploadObjectInput {
+	input := &transfermanager.UploadObjectInput{
 		Bucket:       aws.String(t.config.Bucket),
 		Key:          aws.String(archive.Key),
 		Body:         archive.Reader,
-		StorageClass: types.StorageClass(archive.StorageClass),
+		StorageClass: tmtypes.StorageClass(string(archive.StorageClass)),
 		Metadata:     archive.Metadata,
 	}
 
@@ -105,14 +107,14 @@ func (t *OptimizedTransporter) putObjectInput(archive *Archive) *s3.PutObjectInp
 
 	// Add KMS encryption if configured
 	if t.config.KMSKeyID != "" {
-		input.ServerSideEncryption = types.ServerSideEncryptionAwsKms
-		input.SSEKMSKeyId = aws.String(t.config.KMSKeyID)
+		input.ServerSideEncryption = tmtypes.ServerSideEncryptionAwsKms
+		input.SSEKMSKeyID = aws.String(t.config.KMSKeyID)
 	}
 
 	return input
 }
 
-// Upload performs an optimized CargoShip archive upload using manager.Uploader
+// Upload performs an optimized CargoShip archive upload using the SDK transfer manager
 func (t *OptimizedTransporter) Upload(ctx context.Context, archive *Archive) (*UploadResult, error) {
 	if archive == nil {
 		return nil, fmt.Errorf("archive cannot be nil")
@@ -130,8 +132,8 @@ func (t *OptimizedTransporter) Upload(ctx context.Context, archive *Archive) (*U
 	// Convert CargoShip archive to S3 input (extracted for unit testing).
 	input := t.putObjectInput(archive)
 
-	// Use manager.Uploader which handles Content-Length automatically
-	result, err := t.uploader.Upload(ctx, input)
+	// transfermanager handles Content-Length and multipart automatically.
+	result, err := t.uploader.UploadObject(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("optimized upload failed: %w", err)
 	}
@@ -147,10 +149,10 @@ func (t *OptimizedTransporter) Upload(ctx context.Context, archive *Archive) (*U
 
 	// Convert result back to CargoShip format
 	uploadResult := &UploadResult{
-		Location:     result.Location,
+		Location:     aws.ToString(result.Location), // #384: *string now
 		Key:          archive.Key,
 		ETag:         aws.ToString(result.ETag),
-		UploadID:     result.UploadID,
+		UploadID:     aws.ToString(result.UploadID),
 		Duration:     duration,
 		Throughput:   throughput,
 		StorageClass: types.StorageClass(archive.StorageClass),

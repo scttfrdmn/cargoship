@@ -269,7 +269,7 @@ type PipelineConfig struct {
 	KMSClient       interface{} // *kms.Client for manifest encryption (type: *github.com/aws/aws-sdk-go-v2/service/kms.Client)
 
 	// Advanced transporter configuration (v0.6.2)
-	// If set, uses advanced S3 transporters (staging, adaptive, optimized) instead of basic manager.Uploader
+	// If set, uses advanced S3 transporters (staging, adaptive, optimized) instead of basic SDK transfer manager
 	// Set via NewPipelineTransporter() factory
 	Transporter interface{} // s3transport.BasicTransporter for advanced uploads (type: github.com/scttfrdmn/cargoship/pkg/aws/s3.BasicTransporter)
 
