@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"testing"
 
 	"github.com/klauspost/compress/zstd"
@@ -94,6 +95,83 @@ func TestFramerCutsFramesAndRecordsOffsets(t *testing.T) {
 		start := off - covering.UncompressedOffset
 		assert.Equal(t, f.content, raw[start:start+int64(len(f.content))], "sliced frame bytes must match %s", f.path)
 	}
+}
+
+// TestFramerSubFramesLargeFile is the #502 guard: a single file larger than
+// frameSize must be cut into many independently-decodable frames (not one
+// unseekable frame), the stream must round-trip byte-identically, and a byte
+// range spanning a frame boundary must be reconstructable from only its covering
+// frames — the random-access promise for large files.
+func TestFramerSubFramesLargeFile(t *testing.T) {
+	const frameSize = int64(64 * 1024) // 64 KiB frames
+	var buf bytes.Buffer
+	fr := newTestFramer(t, &buf, frameSize)
+	job := &Job{}
+	s := &ArchiverStage{}
+
+	// One compressible file far larger than frameSize.
+	content := bytes.Repeat([]byte("cargoship-502-"), 80000) // ~1.12 MB
+	require.NoError(t, fr.tw.WriteHeader(&tar.Header{Name: "big.dat", Mode: 0o644, Size: int64(len(content))}))
+	fr.recordOffset(job, chunking.File{Path: "big.dat"})
+	require.NoError(t, s.copyFileFramed(fr.tw, fr, bytes.NewReader(content)))
+	require.NoError(t, fr.maybeCut())
+	require.NoError(t, fr.tw.Close())
+	require.NoError(t, fr.encoder.Close())
+	fr.finalize()
+
+	// The large file spans many frames (pre-#502 it was a single frame).
+	require.Greater(t, len(fr.frames), 5, "a large file must be cut into many sub-frames (#502)")
+
+	obj := buf.Bytes()
+	var next int64
+	for i, fe := range fr.frames {
+		assert.Equal(t, next, fe.CompressedOffset, "frame %d must start where the previous ended", i)
+		// No frame's uncompressed span materially exceeds frameSize (one block slack).
+		assert.LessOrEqual(t, fe.UncompressedSize, frameSize+frameSize, "frame %d span ~frameSize", i)
+		want := sha256.Sum256(obj[fe.CompressedOffset : fe.CompressedOffset+fe.CompressedSize])
+		assert.Equal(t, hex.EncodeToString(want[:]), fe.Checksum, "frame %d checksum", i)
+		next += fe.CompressedSize
+	}
+	assert.Equal(t, int64(buf.Len()), next, "frames must cover the whole object")
+
+	// Whole-stream round-trip is byte-identical.
+	dec, err := zstd.NewReader(nil)
+	require.NoError(t, err)
+	defer dec.Close()
+	raw, err := dec.DecodeAll(obj, nil)
+	require.NoError(t, err)
+	tr := tar.NewReader(bytes.NewReader(raw))
+	hdr, err := tr.Next()
+	require.NoError(t, err)
+	require.Equal(t, "big.dat", hdr.Name)
+	got, err := io.ReadAll(tr)
+	require.NoError(t, err)
+	require.Equal(t, content, got, "round-trip must be byte-identical")
+
+	// Random access: reconstruct a range that spans multiple frames from ONLY its
+	// covering frames, the way a frame-index reader (lith) would.
+	off := job.FileArchiveOffsets()["big.dat"]
+	start, n := frameSize, frameSize+5000 // deliberately spans >1 frame boundary
+	require.LessOrEqual(t, start+n, int64(len(content)))
+	absStart := off + start
+
+	var covering []*manifest.FrameEntry
+	for i := range fr.frames {
+		fe := &fr.frames[i]
+		if fe.UncompressedOffset+fe.UncompressedSize > absStart && fe.UncompressedOffset < absStart+n {
+			covering = append(covering, fe)
+		}
+	}
+	require.Greater(t, len(covering), 1, "a range of frameSize+ must span multiple frames")
+	var region []byte
+	for _, fe := range covering {
+		d, derr := dec.DecodeAll(obj[fe.CompressedOffset:fe.CompressedOffset+fe.CompressedSize], nil)
+		require.NoError(t, derr)
+		region = append(region, d...)
+	}
+	rel := absStart - covering[0].UncompressedOffset
+	assert.Equal(t, content[start:start+n], region[rel:rel+n],
+		"a byte range must be recoverable from only its covering frames")
 }
 
 // TestFramerInactiveIsNoOp confirms an inactive framer (frameSize 0) never CUTS
