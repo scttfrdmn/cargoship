@@ -115,13 +115,17 @@ func runCargoHoldBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir, 
 		}
 	}
 
+	// `cargoship create upload` takes --shards (there is no --shard-strategy /
+	// --shard-count in the current CLI); the strategy is retained only as a label
+	// for the S3 prefix and results. --quiet disables the TUI for non-interactive
+	// exec.
 	args := []string{
 		"create", "upload",
 		dataDir,
 		"--bucket", config.Bucket,
 		"--prefix", fmt.Sprintf("%s/cargohold-%s-%s", config.Prefix, strategy, config.Scenario),
-		"--shard-strategy", strategy,
-		"--shard-count", "10",
+		"--shards", "10",
+		"--quiet",
 	}
 
 	cmd := exec.Command(cargoshipPath, args...)
