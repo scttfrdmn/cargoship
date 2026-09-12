@@ -4,7 +4,61 @@ import (
 	"fmt"
 	"os/exec"
 	"testing"
+
+	"github.com/scttfrdmn/cargoship/pkg/corpus"
 )
+
+func TestMirrorPrefix(t *testing.T) {
+	cfg := &BenchmarkConfig{Prefix: "bench", Scenario: "small"}
+	for _, tool := range []string{"s5cmd", "rclone", "mc"} {
+		got, ok := mirrorPrefix(tool, cfg)
+		if !ok {
+			t.Fatalf("%s should be a mirror tool", tool)
+		}
+		if want := "bench/" + tool + "-small"; got != want {
+			t.Fatalf("%s prefix = %q, want %q", tool, got, want)
+		}
+	}
+	for _, tool := range []string{"cargohold", "tar"} {
+		if _, ok := mirrorPrefix(tool, cfg); ok {
+			t.Fatalf("%s must NOT be treated as a mirror tool (chunked/archive)", tool)
+		}
+	}
+}
+
+func TestCompareDownloaded(t *testing.T) {
+	dir := t.TempDir()
+	files, err := corpus.UniformProfile(20, 512).Plant(dir)
+	if err != nil {
+		t.Fatalf("plant: %v", err)
+	}
+
+	t.Run("all present and identical", func(t *testing.T) {
+		n, err := compareDownloaded(dir, files)
+		if err != nil {
+			t.Fatalf("unexpected: %v", err)
+		}
+		if n != len(files) {
+			t.Fatalf("verified %d, want %d", n, len(files))
+		}
+	})
+
+	t.Run("content mismatch is caught", func(t *testing.T) {
+		bad := append([]corpus.File(nil), files...)
+		bad[0].Sum = "deadbeef"
+		if _, err := compareDownloaded(dir, bad); err == nil {
+			t.Fatal("expected a mismatch error")
+		}
+	})
+
+	t.Run("missing file is caught", func(t *testing.T) {
+		bad := append([]corpus.File(nil), files...)
+		bad = append(bad, corpus.File{Base: "not-uploaded.dat", Sum: "x"})
+		if _, err := compareDownloaded(dir, bad); err == nil {
+			t.Fatal("expected a missing-file error")
+		}
+	})
+}
 
 // TestRunInstrumentedSamplesChild proves the fix for the wrong-PID sampler: a
 // CPU-burning CHILD process must show non-zero CPU, which only happens if we

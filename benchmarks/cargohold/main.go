@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/scttfrdmn/cargoship/pkg/corpus"
 )
 
 // BenchmarkConfig holds configuration for a benchmark run
@@ -22,6 +24,7 @@ type BenchmarkConfig struct {
 	ResultsDir      string   // Results output directory
 	Concurrency     int      // Parallel operations
 	Iterations      int      // Number of runs per test
+	Corpus          string   // shared pkg/corpus profile name; "" == legacy scenario generator
 }
 
 // BenchmarkResult stores results from a single benchmark run
@@ -39,6 +42,8 @@ type BenchmarkResult struct {
 	AvgCPUPercent          float64       `json:"avg_cpu_percent"`
 	RequestCount           int           `json:"request_count,omitempty"`
 	ErrorCount             int           `json:"error_count"`
+	Verified               bool          `json:"verified,omitempty"`       // upload byte-verified against the source corpus
+	VerifiedFiles          int           `json:"verified_files,omitempty"` // files confirmed byte-identical
 	Timestamp              time.Time     `json:"timestamp"`
 }
 
@@ -100,15 +105,28 @@ func main() {
 		log.Fatalf("Failed to create results directory: %v", err)
 	}
 
-	// Generate or verify test data
+	// Prepare test data — either the shared, reproducible pkg/corpus profile
+	// (enables byte-verify) or the legacy scenario generator.
 	spec := scenarios[config.Scenario]
+	dataDir := filepath.Join(config.DataDir, config.Scenario)
+	var corpusFiles []corpus.File
+	if config.Corpus != "" {
+		files, planted, dir, err := plantCorpus(config)
+		if err != nil {
+			log.Fatalf("Failed to plant corpus %q: %v", config.Corpus, err)
+		}
+		corpusFiles, dataDir = files, dir
+		spec = planted
+	} else {
+		if err := ensureTestData(dataDir, spec); err != nil {
+			log.Fatalf("Failed to prepare test data: %v", err)
+		}
+	}
 	log.Printf("📊 Test Scenario: %s", spec.Name)
 	log.Printf("   Files: %d", spec.FileCount)
-	log.Printf("   Total Size: %s\n", formatBytes(spec.TotalSize))
-
-	dataDir := filepath.Join(config.DataDir, config.Scenario)
-	if err := ensureTestData(dataDir, spec); err != nil {
-		log.Fatalf("Failed to prepare test data: %v", err)
+	log.Printf("   Total Size: %s", formatBytes(spec.TotalSize))
+	if config.Corpus != "" {
+		log.Printf("   Corpus: %s (reproducible; uploads will be byte-verified)\n", config.Corpus)
 	}
 
 	// Run benchmarks
@@ -126,6 +144,7 @@ func main() {
 					log.Printf("❌ CargoHold %s failed: %v", strategy, err)
 					continue
 				}
+				verifyIfCorpus(config, "cargohold", corpusFiles, &result)
 				results = append(results, result)
 				printResult(result)
 			}
@@ -138,6 +157,7 @@ func main() {
 				log.Printf("❌ %s failed: %v", tool, err)
 				continue
 			}
+			verifyIfCorpus(config, tool, corpusFiles, &result)
 			results = append(results, result)
 			printResult(result)
 		}
@@ -189,6 +209,33 @@ func runBest(iterations int, run func() (BenchmarkResult, error)) (BenchmarkResu
 	return best, nil
 }
 
+// plantCorpus materializes a shared, reproducible pkg/corpus profile and returns
+// its files (with sha256 sums, for byte-verify), a spec describing it, and the
+// directory it was planted in. It re-plants fresh each run so the corpus is
+// deterministic regardless of prior state.
+func plantCorpus(config *BenchmarkConfig) ([]corpus.File, ScenarioSpec, string, error) {
+	prof, ok := corpus.ProfileByName(config.Corpus)
+	if !ok {
+		return nil, ScenarioSpec{}, "", fmt.Errorf("unknown profile (want many-tiny|few-large|mixed|hostile)")
+	}
+	dir := filepath.Join(config.DataDir, "corpus-"+config.Corpus)
+	if err := os.RemoveAll(dir); err != nil {
+		return nil, ScenarioSpec{}, "", fmt.Errorf("clear corpus dir: %w", err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, ScenarioSpec{}, "", fmt.Errorf("create corpus dir: %w", err)
+	}
+	files, err := prof.Plant(dir)
+	if err != nil {
+		return nil, ScenarioSpec{}, "", fmt.Errorf("plant: %w", err)
+	}
+	var total int64
+	for _, f := range files {
+		total += int64(f.Size)
+	}
+	return files, ScenarioSpec{Name: prof.Name, FileCount: len(files), TotalSize: total}, dir, nil
+}
+
 func parseFlags() *BenchmarkConfig {
 	config := &BenchmarkConfig{}
 
@@ -199,6 +246,7 @@ func parseFlags() *BenchmarkConfig {
 	flag.StringVar(&config.ResultsDir, "results-dir", "./results", "Results output directory")
 	flag.IntVar(&config.Concurrency, "concurrency", 10, "Parallel operations")
 	flag.IntVar(&config.Iterations, "iterations", 3, "Number of runs per test")
+	flag.StringVar(&config.Corpus, "corpus", "", "shared pkg/corpus profile (many-tiny|few-large|mixed|hostile); enables byte-verify. Empty uses the legacy scenario generator")
 
 	var tools string
 	var strategies string
@@ -282,6 +330,9 @@ func printResult(result BenchmarkResult) {
 	log.Printf("      Throughput: %.1f MB/s", result.UploadThroughputMBps)
 	log.Printf("      Memory: %.1f MB", result.PeakMemoryMB)
 	log.Printf("      CPU: %.1f%%", result.AvgCPUPercent)
+	if result.Verified {
+		log.Printf("      Verified: ✅ %d files byte-identical", result.VerifiedFiles)
+	}
 	if result.ErrorCount > 0 {
 		log.Printf("      Errors: %d", result.ErrorCount)
 	}
