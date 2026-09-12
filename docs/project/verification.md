@@ -48,7 +48,7 @@ real-AWS verification report — see [Security](/project/security) and
 | Real congestion control (BBR/CUBIC) moves bytes intact | Verified | `` `make:torture` `` |
 | Resumable uploads (skip already-uploaded chunks) | Verified | `` `cmd:resume` ``, `` `test:TestNewResumePipelineConfig_EnablesResume` ``, `` `make:torture` `` |
 | Internal throughput benchmarks | Verified | `` `cmd:benchmark` `` |
-| **Fastest mover in class** — faster than `aws s3 cp`, `s5cmd`, `rclone` for the same data | **Aspirational** | **Not yet measured.** No head-to-head benchmark exists. Tracked as a v0.25.0 workstream (a comparative harness); until it lands, CargoShip does **not** claim to be the fastest. |
+| **Fastest mover for many-small-file workloads** — faster than `aws s3 cp`, `s5cmd`, `rclone` | Verified | Measured 2026-09-11 (5000-file corpus, LA→`us-west-2`): CargoShip **9.7 MB/s** vs s5cmd 2.2 / rclone 0.1 / tar 3.5 — packing avoids per-object latency. On **few-large** files s5cmd is faster (56 vs 47), so this is **not** a blanket claim. See [benchmarks](/reference/benchmarks). `` `script:benchmarks/cargohold/benchmarks.go` ``, `` `script:pkg/s3metrics/s3metrics.go` `` |
 
 ## Cost efficiency (priority 3, tied to performance)
 
@@ -57,7 +57,7 @@ real-AWS verification report — see [Security](/project/security) and
 | Cost estimation before upload | Verified | `` `cmd:estimate` ``, `` `test:TestAnalyzeBurnRate_IncreasingPattern` `` |
 | Budgets & volume quotas | Verified | `` `cmd:budget` ``, `` `test:TestAlertCooldownPeriod` `` |
 | Packing many files into archives → far fewer S3 requests | Verified | `` `make:torture` `` (the pipeline packs; round-trip proves it) |
-| **Most cost-efficient mover in class** — lowest total S3 cost to move + store the same data | **Aspirational** | **Not yet measured.** Needs the comparative harness to also count requests / bytes transferred / bytes stored → dollars. Until then, not claimed. |
+| **Lowest S3 cost for many-small-file workloads** — fewest requests + bytes → dollars | Verified | Measured 2026-09-11 (5000-file corpus): **7 requests → $0.00003** vs s5cmd 5000 → $0.025 and rclone 15001 → $0.029 (≈700× fewer requests; competitor counts from CloudWatch, priced by `pkg/s3cost`). On few-large workloads request counts are negligible for all, so cost is competitive, not ahead; storage is equal on incompressible data. See [benchmarks](/reference/benchmarks). `` `script:pkg/s3cost/cost.go` ``, `` `script:benchmarks/cargohold/cloudwatch.go` `` |
 
 ## Experimental / not shipping
 
