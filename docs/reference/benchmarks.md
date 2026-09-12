@@ -206,13 +206,29 @@ dataset exceeds a conservative file-count cap (`DirectUploadMaxFiles`, default
 
 ### Competitor comparison (measured, 2026-09-11, LA → `us-west-2`, STANDARD)
 
-Head-to-head against `s5cmd`, `rclone`, and `tar+zstd+aws s3 cp`, on the shared
-reproducible `pkg/corpus` profiles. Competitor uploads are **byte-verified**
+**Provenance** (as with the microbenchmark header, a comparison number is only
+meaningful with the machine, versions, and path behind it):
+
+```
+# Date:        2026-09-11
+# Path:        Los Angeles → us-west-2 (residential uplink)
+# Machine:     Mac16,11 · Apple M4 Pro (12-core) · 48 GB · macOS 26.6.2 (25G83)
+# CargoShip:   built from main @ 64b2b45 (v0.24.5-dev)
+# s5cmd:       v2.3.0        rclone:  v1.75.1
+# aws-cli:     2.36.42       tar:     bsdtar 3.5.3 (libarchive 3.7.4) + zstd v1.5.7
+# Storage:     STANDARD      Corpora: pkg/corpus many-tiny, few-large (fixed seed)
+# Reproduce:   cargohold -tools cargohold,s5cmd,rclone,tar -corpus <name> \
+#                -iterations 1 -cloudwatch-metrics -bucket <b> -prefix cmp
+```
+
+One machine, one network path, one run each — recorded for reference and
+reproducible, not a portable absolute (a faster uplink or instance changes every
+row). Head-to-head against `s5cmd`, `rclone`, and `tar+zstd+aws s3 cp`, on the
+shared reproducible `pkg/corpus` profiles. Competitor uploads are **byte-verified**
 (downloaded and SHA-256-compared to the source); competitor server-side request
 counts come from CloudWatch S3 request metrics (`pkg/s3metrics`) and are priced
 with the same model as CargoShip's (`pkg/s3cost`). Harness:
-`benchmarks/cargohold` (`-corpus`, `-cloudwatch-metrics`). One machine, one
-network path — recorded for reference, reproducible, not a portable absolute.
+`benchmarks/cargohold` (`-corpus`, `-cloudwatch-metrics`).
 
 **`many-tiny` — 5000 files, 9.9 MB:**
 
