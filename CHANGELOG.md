@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.5] - 2026-09-11
+
+**Frameless already-compressed files.** A patch completing the large-file random
+access work for already-compressed content, reported by the lith random-access
+reader.
+
+### Fixed
+- **Already-compressed files (CRAM/BAM/BCF) were wrapped in a pointless zstd
+  frame.** A `.cram` slipped past the already-compressed detector and was framed
+  into `.tar.zst`, so a random-access reader had to decode a frame to read content
+  zstd can't shrink. `.cram`/`.bam`/`.bcf` are now recognized as already
+  compressed (by extension and, for CRAM, by magic bytes), and any large
+  unknown-extension file whose first ~1 MiB barely compresses (<5%) is also stored
+  frameless — served by a direct range GET with no decode. (#511)
+
+### Documentation
+- Documented that chunk packing preserves source (tree/sort) order as contiguous
+  runs, so a tree-order reader stays within one chunk at a time. (#512)
+
 ## [0.24.4] - 2026-09-11
 
 **Large-file random access.** A patch fixing the Format 2.1 frame index for large
