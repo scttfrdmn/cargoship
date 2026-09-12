@@ -77,6 +77,8 @@ func runToolBenchmark(tool string, config *BenchmarkConfig, spec ScenarioSpec, d
 		return runS5cmdBenchmark(config, spec, dataDir, result)
 	case "mc":
 		return runMinIOMcBenchmark(config, spec, dataDir, result)
+	case "rclone":
+		return runRcloneBenchmark(config, spec, dataDir, result)
 	case "tar":
 		return runTarBenchmark(config, spec, dataDir, result)
 	default:
@@ -114,6 +116,44 @@ func runS5cmdBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir strin
 
 	if err != nil {
 		return result, fmt.Errorf("s5cmd failed: %w\nOutput: %s", err, string(output))
+	}
+
+	result.UploadDuration = uploadDuration
+	result.UploadThroughputMBps = float64(spec.TotalSize) / (1024 * 1024) / uploadDuration.Seconds()
+
+	return result, nil
+}
+
+// runRcloneBenchmark runs an upload benchmark using rclone's S3 backend. It uses
+// an inline `:s3:` connection string (creds from the environment via env_auth,
+// region from AWS_REGION) so no pre-configured rclone remote is required.
+func runRcloneBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir string, result BenchmarkResult) (BenchmarkResult, error) {
+	rclonePath, err := exec.LookPath("rclone")
+	if err != nil {
+		return result, fmt.Errorf("rclone not found in PATH")
+	}
+
+	region := os.Getenv("AWS_REGION")
+	if region == "" {
+		region = "us-east-1"
+	}
+	dest := fmt.Sprintf(":s3,provider=AWS,env_auth=true,region=%s:%s/%s/rclone-%s",
+		region, config.Bucket, config.Prefix, config.Scenario)
+
+	metrics := startMetricsCollection()
+
+	startTime := time.Now()
+	cmd := exec.Command(rclonePath, "copy", dataDir, dest,
+		"--transfers", fmt.Sprintf("%d", config.Concurrency),
+		"--s3-no-check-bucket",
+	)
+	output, err := cmd.CombinedOutput()
+	uploadDuration := time.Since(startTime)
+
+	stopMetricsCollection(metrics, &result)
+
+	if err != nil {
+		return result, fmt.Errorf("rclone failed: %w\nOutput: %s", err, string(output))
 	}
 
 	result.UploadDuration = uploadDuration
