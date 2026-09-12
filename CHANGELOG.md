@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-09-12
+
+**Migrations, resume & dashboard.** Migrates the upload path off a deprecated AWS
+SDK API, fixes resume accounting, and adds S3-backed dashboard views.
+
+### Added
+- **Dashboard: completed-uploads inventory + on-demand bucket analyze.** Passing
+  an S3 target (`cargoship dashboard s3://bucket/prefix`) adds a 🗂️ Inventory view
+  (completed uploads read from the manifests under the prefix) and a 🔎 Analyze
+  view (an on-demand bucket cost/savings scan, triggered with `a`). Without a
+  target the dashboard is unchanged. (#449)
+
+### Changed
+- **Migrated the upload path off the deprecated `feature/s3/manager` Uploader to
+  `feature/s3/transfermanager`** across all five call sites. Resolves the SA1019
+  deprecation warnings and unblocks the aws-sdk dependency group bump (#370).
+  Behavior preserved: validated with the emulator integration + torture suites and
+  a real-AWS multipart upload + byte-identical restore. transfermanager is pinned
+  at v0.3.9 (pre-1.0). (#384)
+
+### Fixed
+- **Resume accounting.** Chunks skipped on resume are now counted in
+  `ChunksSkipped` (previously miscounted as uploaded), and resuming no longer
+  re-adds already-recorded files to the manifest (the builder now dedups by file
+  identity). (#447)
+
 ## [0.25.0] - 2026-09-11
 
 **Performance comparison & verified claims.** The competitor-comparison harness is
