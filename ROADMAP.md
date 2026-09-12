@@ -9,6 +9,16 @@ For released-version history, see [CHANGELOG.md](CHANGELOG.md).
 Dates and scope are targets, not commitments, and may shift with community
 feedback and development progress.
 
+## Guiding goal
+
+CargoShip aims to be **the fastest and most efficient — in both S3 operations
+and dollars — way to move data into and out of S3**, without compromising the
+first priority: trust (byte-exact, verifiable round-trips). Every performance and
+cost feature is measured against `aws s3 cp` / `s5cmd` / `rclone` and only
+claimed where the evidence supports it — see the
+[capability matrix](https://cargoship.app/project/verification). Ordering:
+(1) trust, (2) speed, (3) cost efficiency.
+
 ---
 
 ## Next (in planning)

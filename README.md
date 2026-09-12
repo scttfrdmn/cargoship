@@ -15,10 +15,18 @@
 [![GitHub Issues](https://img.shields.io/github/issues/scttfrdmn/cargoship)](https://github.com/scttfrdmn/cargoship/issues)
 [![GitHub Pull Requests](https://img.shields.io/github/issues-pr/scttfrdmn/cargoship)](https://github.com/scttfrdmn/cargoship/pulls)
 
-CargoShip turns large directory trees into compressed, verifiable, portable
-archives streamed directly to Amazon S3. It is for research and technical
-datasets with many files, where ordinary copy tools create excessive S3
-requests, give weak recovery guarantees, or make storage costs hard to predict.
+**CargoShip's goal is to be the fastest and most efficient — in both S3
+operations and dollars — way to move data into and out of Amazon S3.** It packs
+large directory trees into compressed, verifiable, portable archives streamed
+directly to S3, for research and technical datasets with many files, where
+ordinary copy tools create excessive S3 requests, give weak recovery guarantees,
+or make storage costs hard to predict.
+
+That goal is an explicit aim, not a blanket claim: where it has been *measured*
+against `aws s3 cp` / `s5cmd` / `rclone` is recorded honestly in the
+[capability matrix](https://cargoship.app/project/verification) and
+[benchmarks](https://cargoship.app/reference/benchmarks) — today, fastest and
+cheapest on many-small-file workloads, competitive on few-large.
 
 ## Why not plain `aws s3 cp` or `rclone`?
 
