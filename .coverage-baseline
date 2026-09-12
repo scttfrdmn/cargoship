@@ -73,6 +73,7 @@ pkg/repl 41
 pkg/restore 76
 pkg/resume 41
 pkg/s3count 92
+pkg/s3metrics 90
 pkg/s3optimization 58
 pkg/staging 81
 pkg/testutils 76
