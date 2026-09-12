@@ -1,33 +1,58 @@
 package benchharness
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/scttfrdmn/cargoship/pkg/aws/config"
 	"github.com/scttfrdmn/cargoship/pkg/aws/pricingfallback"
+	"github.com/scttfrdmn/cargoship/pkg/corpus"
 )
 
-func TestRequestTier(t *testing.T) {
-	cases := map[string]string{
-		"PutObject":               "PUT",
-		"CreateMultipartUpload":   "PUT",
-		"UploadPart":              "PUT",
-		"CompleteMultipartUpload": "PUT",
-		"CopyObject":              "PUT",
-		"ListObjectsV2":           "LIST",
-		"ListParts":               "LIST",
-		"GetObject":               "GET",
-		"HeadObject":              "GET",
-		"DeleteObject":            "DELETE",
-		"AbortMultipartUpload":    "DELETE",
-		"WhoKnows":                "DELETE",
+func sha256hex(b []byte) string {
+	s := sha256.Sum256(b)
+	return hex.EncodeToString(s[:])
+}
+
+func TestVerifyByteIdentical(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, b []byte) corpus.File {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), b, 0o600))
+		return corpus.File{RelPath: name, Base: name, Size: len(b), Sum: sha256hex(b)}
 	}
-	for op, want := range cases {
-		assert.Equal(t, want, requestTier(op), "op %s", op)
+	files := []corpus.File{
+		write("a.txt", []byte("hello")),
+		write("b.txt", []byte("world")),
 	}
+
+	t.Run("all match", func(t *testing.T) {
+		ok, err := verifyByteIdentical(files, dir)
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("content mismatch", func(t *testing.T) {
+		bad := append([]corpus.File(nil), files...)
+		bad[0].Sum = sha256hex([]byte("HELLO")) // right file, wrong expected bytes
+		ok, err := verifyByteIdentical(bad, dir)
+		require.NoError(t, err)
+		assert.False(t, ok)
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		bad := append([]corpus.File(nil), files...)
+		bad = append(bad, corpus.File{RelPath: "c.txt", Base: "c.txt", Sum: sha256hex([]byte("x"))})
+		ok, err := verifyByteIdentical(bad, dir)
+		require.NoError(t, err)
+		assert.False(t, ok)
+	})
 }
 
 func TestMBPerSec(t *testing.T) {

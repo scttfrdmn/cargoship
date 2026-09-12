@@ -16,10 +16,10 @@ import (
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 
 	"github.com/scttfrdmn/cargoship/pkg/aws/config"
-	"github.com/scttfrdmn/cargoship/pkg/aws/pricingfallback"
 	"github.com/scttfrdmn/cargoship/pkg/corpus"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
+	"github.com/scttfrdmn/cargoship/pkg/s3cost"
 	"github.com/scttfrdmn/cargoship/pkg/s3count"
 )
 
@@ -244,39 +244,31 @@ func verifyByteIdentical(files []corpus.File, restoreDir string) (bool, error) {
 	return true, nil
 }
 
-// requestTier maps an S3 operation name to the fallback pricing request type.
-func requestTier(op string) string {
-	switch op {
-	case "PutObject", "CreateMultipartUpload", "UploadPart", "CompleteMultipartUpload", "CopyObject":
-		return "PUT"
-	case "ListObjectsV2", "ListObjects", "ListMultipartUploads", "ListParts":
-		return "LIST"
-	case "GetObject", "HeadObject", "HeadBucket":
-		return "GET"
-	default: // DeleteObject, AbortMultipartUpload, unknown → free tier
-		return "DELETE"
+// computeCost models the STANDARD-class S3 bill from measured counts + stored
+// bytes, via the shared pkg/s3cost model (one cost model for CargoShip and, once
+// competitor request counts are wired, the comparison harness). Ingress is free
+// (#451): the upload leg carries request + monthly-storage cost; the restore leg
+// carries request + egress cost, egress billed on the stored (compressed) bytes
+// that physically leave S3 — so compression cuts egress too.
+func computeCost(storedBytes int64, upload, restore map[string]int) Cost {
+	up := s3cost.Compute(s3cost.Usage{
+		StorageClass: config.StorageClassStandard, Operations: toInt64Counts(upload), StoredBytes: storedBytes,
+	})
+	rs := s3cost.Compute(s3cost.Usage{
+		StorageClass: config.StorageClassStandard, Operations: toInt64Counts(restore), EgressBytes: storedBytes,
+	})
+	return Cost{
+		UploadRequestsUSD:  up.RequestsUSD,
+		MonthlyStorageUSD:  up.MonthlyUSD,
+		RestoreRequestsUSD: rs.RequestsUSD,
+		RestoreEgressUSD:   rs.DataTransfer.USD,
 	}
 }
 
-// computeCost models the STANDARD-class S3 bill from measured counts + stored
-// bytes. Ingress (upload data transfer) is free (#451); storage is monthly;
-// restore includes GET-tier requests + egress ($0.09/GB). Egress is billed on
-// the bytes that physically leave S3 — the stored (compressed) chunk bytes we
-// download, not the decompressed size — so compression cuts egress cost too.
-func computeCost(storedBytes int64, upload, restore map[string]int) Cost {
-	const std = config.StorageClassStandard
-	reqUSD := func(counts map[string]int) float64 {
-		var usd float64
-		for op, n := range counts {
-			usd += (float64(n) / 1000.0) * pricingfallback.RequestPrice(requestTier(op), std)
-		}
-		return usd
+func toInt64Counts(m map[string]int) map[string]int64 {
+	out := make(map[string]int64, len(m))
+	for k, v := range m {
+		out[k] = int64(v)
 	}
-	storedGB := float64(storedBytes) / (1024 * 1024 * 1024)
-	return Cost{
-		UploadRequestsUSD:  reqUSD(upload),
-		MonthlyStorageUSD:  storedGB * pricingfallback.StoragePrice(std),
-		RestoreRequestsUSD: reqUSD(restore),
-		RestoreEgressUSD:   storedGB * 0.09, // $0.09/GB egress on the bytes leaving S3
-	}
+	return out
 }
