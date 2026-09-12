@@ -204,12 +204,60 @@ dataset exceeds a conservative file-count cap (`DirectUploadMaxFiles`, default
 1000), reserving direct upload for genuinely small sets — see
 [#466](https://github.com/scttfrdmn/cargoship/issues/466).
 
-::: warning "Fastest" and "cheapest" are goals, not verified claims
-These are CargoShip's own numbers. Head-to-head comparisons against `aws s3 cp`,
-`s5cmd`, and `rclone` on the same corpus/bucket/hardware are future work; until
-that harness exists, the [capability matrix](/project/verification) marks
-performance and cost **Aspirational**.
-:::
+### Competitor comparison (measured, 2026-09-11, LA → `us-west-2`, STANDARD)
+
+**Provenance** (as with the microbenchmark header, a comparison number is only
+meaningful with the machine, versions, and path behind it):
+
+```
+# Date:        2026-09-11
+# Path:        Los Angeles → us-west-2 (residential uplink)
+# Machine:     Mac16,11 · Apple M4 Pro (12-core) · 48 GB · macOS 26.6.2 (25G83)
+# CargoShip:   built from main @ 64b2b45 (v0.24.5-dev)
+# s5cmd:       v2.3.0        rclone:  v1.75.1
+# aws-cli:     2.36.42       tar:     bsdtar 3.5.3 (libarchive 3.7.4) + zstd v1.5.7
+# Storage:     STANDARD      Corpora: pkg/corpus many-tiny, few-large (fixed seed)
+# Reproduce:   cargohold -tools cargohold,s5cmd,rclone,tar -corpus <name> \
+#                -iterations 1 -cloudwatch-metrics -bucket <b> -prefix cmp
+```
+
+One machine, one network path, one run each — recorded for reference and
+reproducible, not a portable absolute (a faster uplink or instance changes every
+row). Head-to-head against `s5cmd`, `rclone`, and `tar+zstd+aws s3 cp`, on the
+shared reproducible `pkg/corpus` profiles. Competitor uploads are **byte-verified**
+(downloaded and SHA-256-compared to the source); competitor server-side request
+counts come from CloudWatch S3 request metrics (`pkg/s3metrics`) and are priced
+with the same model as CargoShip's (`pkg/s3cost`). Harness:
+`benchmarks/cargohold` (`-corpus`, `-cloudwatch-metrics`).
+
+**`many-tiny` — 5000 files, 9.9 MB:**
+
+| Tool | Upload MB/s | S3 requests | Request $ | Byte-verified |
+|---|---|---|---|---|
+| **CargoShip** | **9.7** | **7** | **$0.00003** | (via harness round-trip) |
+| tar+zstd+cp | 3.5 | 4 | $0.00002 | — |
+| s5cmd | 2.2 | 5,000 | $0.025 | ✅ 5000/5000 |
+| rclone | 0.1 | 15,001 | $0.029 | ✅ 5000/5000 |
+
+**`few-large` — 4 files, 46 MB:**
+
+| Tool | Upload MB/s | S3 requests | Request $ | Byte-verified |
+|---|---|---|---|---|
+| s5cmd | **56.3** | 4 | $0.00002 | ✅ 4/4 |
+| rclone | 53.5 | 13 | $0.00002 | ✅ 4/4 |
+| **CargoShip** | 47.4 | 3 | $0.00001 | (via harness round-trip) |
+| tar+zstd+cp | 30.5 | 8 | $0.00004 | — |
+
+**Honest read:** on **many-small-file** workloads CargoShip is both fastest and
+cheapest — it packs 5000 files into 5 chunks, so it pays per-object latency and
+per-object request charges a handful of times instead of 5000 (≈700× fewer
+requests than `s5cmd`). On **few-large-file** workloads a raw parallel mover
+(`s5cmd`) is faster (56 vs 47 MB/s) and request counts are all negligible, so
+there CargoShip is competitive, not ahead. Storage was ≈equal on both corpora
+because both are incompressible; compression only helps cost on compressible
+input. The [capability matrix](/project/verification) therefore marks fastest /
+cheapest **Verified for small-file workloads**, competitive elsewhere — not a
+blanket claim.
 
 ## See also
 
