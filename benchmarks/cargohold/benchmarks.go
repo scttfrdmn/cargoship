@@ -3,14 +3,96 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/scttfrdmn/cargoship/pkg/corpus"
 )
+
+// verifyIfCorpus byte-verifies a completed upload against the source corpus when
+// running in corpus mode. It downloads what the tool wrote to S3 and confirms
+// every file matches by sha256. Mirror-style tools (s5cmd, rclone, mc) preserve
+// the file tree and are verified here; cargohold writes chunked archives
+// (byte-verified separately by pkg/benchharness) and tar writes a single
+// archive, so those log a skip rather than a false failure.
+func verifyIfCorpus(config *BenchmarkConfig, tool string, files []corpus.File, result *BenchmarkResult) {
+	if config.Corpus == "" || len(files) == 0 {
+		return
+	}
+	prefix, ok := mirrorPrefix(tool, config)
+	if !ok {
+		log.Printf("      Verify: skipped for %s (chunked/archive layout — cargoship is verified by pkg/benchharness)", tool)
+		return
+	}
+	n, err := verifyMirrorUpload(config.Bucket, prefix, files)
+	if err != nil {
+		log.Printf("      ❌ Verify FAILED for %s: %v", tool, err)
+		result.ErrorCount++
+		return
+	}
+	result.Verified = true
+	result.VerifiedFiles = n
+}
+
+// mirrorPrefix returns the S3 key prefix a mirror-style tool wrote its file tree
+// under, matching the dest each runner builds. Non-mirror tools return ok=false.
+func mirrorPrefix(tool string, config *BenchmarkConfig) (string, bool) {
+	switch tool {
+	case "s5cmd", "rclone", "mc":
+		return fmt.Sprintf("%s/%s-%s", config.Prefix, tool, config.Scenario), true
+	default: // cargohold (chunked), tar (single archive)
+		return "", false
+	}
+}
+
+// verifyMirrorUpload downloads everything under s3://bucket/prefix/ and confirms
+// every source file is present with byte-identical content (matched by basename,
+// as pkg/benchharness does). Returns the number of files verified.
+func verifyMirrorUpload(bucket, prefix string, files []corpus.File) (int, error) {
+	tmp, err := os.MkdirTemp("", "cargohold-verify-")
+	if err != nil {
+		return 0, err
+	}
+	defer os.RemoveAll(tmp)
+
+	src := fmt.Sprintf("s3://%s/%s/", bucket, prefix)
+	if out, err := exec.Command("aws", "s3", "sync", src, tmp).CombinedOutput(); err != nil {
+		return 0, fmt.Errorf("aws s3 sync %s: %w\n%s", src, err, out)
+	}
+	return compareDownloaded(tmp, files)
+}
+
+// compareDownloaded confirms every source file appears in dir (matched by
+// basename) with a byte-identical sha256. Returns the count verified.
+func compareDownloaded(dir string, files []corpus.File) (int, error) {
+	idx, err := corpus.IndexByBase(dir)
+	if err != nil {
+		return 0, err
+	}
+	for _, f := range files {
+		path, ok := idx[f.Base]
+		if !ok {
+			return 0, fmt.Errorf("file %q missing from upload", f.Base)
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			return 0, err
+		}
+		sum := sha256.Sum256(got)
+		if hex.EncodeToString(sum[:]) != f.Sum {
+			return 0, fmt.Errorf("file %q content mismatch (sha256)", f.Base)
+		}
+	}
+	return len(files), nil
+}
 
 // runCargoHoldBenchmark runs a benchmark using CargoHold
 func runCargoHoldBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir, strategy string) (BenchmarkResult, error) {
@@ -86,7 +168,9 @@ func runS5cmdBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir strin
 		return result, fmt.Errorf("s5cmd not found in PATH")
 	}
 
-	s3Dest := fmt.Sprintf("s3://%s/%s/s5cmd-%s/*", config.Bucket, config.Prefix, config.Scenario)
+	// Target must be a plain prefix (s5cmd rejects a glob in the destination);
+	// the source "dir/*" recurses subdirectories.
+	s3Dest := fmt.Sprintf("s3://%s/%s/s5cmd-%s/", config.Bucket, config.Prefix, config.Scenario)
 
 	// Run upload using s5cmd's parallel cp
 	cmd := exec.Command(s5cmdPath,
