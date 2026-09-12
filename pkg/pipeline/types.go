@@ -22,6 +22,7 @@ type Job struct {
 	Error       error             // Error if job failed
 	StartTime   time.Time         // When job started
 	EndTime     time.Time         // When job completed
+	Skipped     bool              // #447: chunk was skipped on resume (already uploaded), not re-uploaded
 
 	// Phase 3.3: Compressed-aware chunking with adaptive sizing
 	TargetCompressedSize int64 // Target compressed size from CompressedAwareChunker (0 = no target)

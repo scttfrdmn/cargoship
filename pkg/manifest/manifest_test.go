@@ -171,6 +171,53 @@ func TestBuilder_AddFileBatch_Empty(t *testing.T) {
 	assert.Equal(t, int64(0), m.TotalBytes)
 }
 
+// TestBuilder_ResumeDoesNotReAddFiles guards #447: on resume the builder is
+// preloaded with the prior manifest's files, then the scanner rediscovers the
+// same corpus and re-adds them. The builder must dedup by file identity so
+// TotalFiles doesn't double — while still keeping distinct split-file parts and
+// still accepting genuinely new files.
+func TestBuilder_ResumeDoesNotReAddFiles(t *testing.T) {
+	files := []FileEntry{
+		{Path: "a/f1.txt", Size: 100},
+		{Path: "a/f2.txt", Size: 200},
+		{Path: "big.bin", Size: 300, PartIndex: 0, TotalParts: 2},
+		{Path: "big.bin", Size: 300, PartIndex: 1, TotalParts: 2}, // same path, distinct part
+	}
+	existing := &Manifest{
+		Version: ManifestVersion, UploadID: "u1",
+		Files:      append([]FileEntry(nil), files...),
+		TotalFiles: int64(len(files)), TotalBytes: 900,
+	}
+
+	b, err := NewBuilderFromExisting(existing)
+	require.NoError(t, err)
+
+	// Re-add the exact same files (what the scanner does on resume), via both paths.
+	b.AddFileBatch(files)
+	b.AddFile(files[0])
+
+	m := b.Build()
+	assert.Len(t, m.Files, len(files), "resume must not duplicate files (#447)")
+	assert.Equal(t, int64(len(files)), m.TotalFiles)
+	assert.Equal(t, int64(900), m.TotalBytes)
+
+	// Both parts of the split file are retained (keyed by path#partIndex).
+	parts := 0
+	for _, f := range m.Files {
+		if f.Path == "big.bin" {
+			parts++
+		}
+	}
+	assert.Equal(t, 2, parts, "distinct split-file parts must be kept")
+
+	// A genuinely new file is still added.
+	b.AddFile(FileEntry{Path: "a/f3.txt", Size: 50})
+	m = b.Build()
+	assert.Len(t, m.Files, len(files)+1)
+	assert.Equal(t, int64(len(files)+1), m.TotalFiles)
+	assert.Equal(t, int64(950), m.TotalBytes)
+}
+
 // TestBuilder_AddFileBatch_Concurrent tests concurrent batch additions (Issue #34 Phase 1.4)
 func TestBuilder_AddFileBatch_Concurrent(t *testing.T) {
 	builder, err := NewBuilder("test-123", "/data", "bucket", "prefix", "us-west-2")

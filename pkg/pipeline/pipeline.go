@@ -803,7 +803,16 @@ func (p *Pipeline) waitForCompletion(ctx context.Context) *Result {
 
 	// Wait for results
 	for job := range p.resultChan {
-		result.ChunksUploaded++
+		// #447: a chunk skipped on resume (already uploaded) must not be counted
+		// as uploaded. TotalChunks is the sum of both.
+		// #447: a chunk skipped on resume (already uploaded) must not be counted
+		// as uploaded. TotalChunks is the sum of both.
+		if job.Skipped {
+			result.ChunksSkipped++
+		} else {
+			result.ChunksUploaded++
+		}
+		result.TotalChunks++
 
 		if job.Error != nil {
 			result.Success = false
