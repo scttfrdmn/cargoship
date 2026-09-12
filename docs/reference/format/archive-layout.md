@@ -23,12 +23,27 @@ chunk-{m}.tar.zst
 - **Compression:** the tar stream wrapped in Zstandard — **or none**, in which
   case the object is a plain `.tar`. See below. The zstd stream is one or more
   independently-decodable frames: a single frame by default, or several cut at
-  file boundaries when `--frame-size` is set, which records a random-access frame
-  index in the manifest (format 2.1, see [Compression](/reference/format/compression)).
-  Concatenated frames are a valid zstd stream, so a whole-object decode is
-  unaffected either way.
+  `--frame-size` boundaries when set — between files, and *within* a large file so
+  it never becomes one unseekable multi-GB frame — which records a random-access
+  frame index in the manifest (format 2.1, see
+  [Compression](/reference/format/compression)). Concatenated frames are a valid
+  zstd stream, so a whole-object decode is unaffected either way.
 - Chunks are produced by streaming: files flow `tar → zstd → S3` through
   in-memory pipes, so nothing is staged to local disk.
+
+### Packing order
+
+Chunk assignment **preserves source order**: files are packed in the order they
+are scanned (sorted / tree-walk order), and each chunk holds a **contiguous run**
+of that sequence. A dataset of files `sorted[0..N)` packed into chunks of size *k*
+yields `chunk-0 = sorted[0:k]`, `chunk-1 = sorted[k:2k]`, and so on — no
+interleaving, regardless of `--shard-strategy` (the strategy chooses which *shard*
+a chunk lands in, not which files a chunk contains).
+
+A reader walking the archive in tree order can therefore rely on the walk staying
+within one chunk at a time: it reads a chunk fully before moving to the next,
+rather than jumping between chunks per file. This makes a tree-order traversal of
+a packed archive sequential per chunk.
 
 ### tar attributes
 

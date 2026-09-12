@@ -7,7 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/klauspost/compress/zstd"
 )
+
+// probeMinSize is the file size at or above which an unknown-extension file that
+// passed the extension/magic checks is sampled with a real compression probe
+// (#511). Small files don't create the giant frames the probe guards against.
+const probeMinSize = 8 << 20 // 8 MiB
 
 // CompressionDetector determines if a file is already compressed
 type CompressionDetector struct {
@@ -60,6 +67,7 @@ func (d *CompressionDetector) ShouldCompress(path string) (bool, string) {
 	// Cache miss - compute decision
 	var shouldCompress bool
 	var reason string
+	probed := false // a content probe ran; its result is content-, not extension-, specific
 
 	// Check file extension against known compressed formats
 	if ext != "" && d.skipExtensions[ext] {
@@ -70,6 +78,13 @@ func (d *CompressionDetector) ShouldCompress(path string) (bool, string) {
 		if compressed, desc := d.checkMagicBytes(path); compressed {
 			shouldCompress = false
 			reason = "already_compressed_magic:" + desc
+		} else if isLargeFile(path) && !d.probeCompressible(path) {
+			// #511: a large unknown-extension file whose magic didn't match but that
+			// barely compresses (e.g. an oddly-named already-compressed file) is
+			// stored frameless, so a random reader never decodes a pointless frame.
+			shouldCompress = false
+			reason = "incompressible_probe"
+			probed = true
 		} else {
 			shouldCompress = true
 			reason = "compressible"
@@ -79,8 +94,9 @@ func (d *CompressionDetector) ShouldCompress(path string) (bool, string) {
 		reason = "compressible"
 	}
 
-	// Store in cache for future lookups (only cache by extension for consistency)
-	if ext != "" {
+	// Store in cache for future lookups (only cache by extension for consistency).
+	// A probe-based decision is content-specific, so it is NOT cached by extension.
+	if ext != "" && !probed {
 		d.decisionCache.Store(ext, &compressionDecision{
 			shouldCompress: shouldCompress,
 			reason:         reason,
@@ -88,6 +104,41 @@ func (d *CompressionDetector) ShouldCompress(path string) (bool, string) {
 	}
 
 	return shouldCompress, reason
+}
+
+// isLargeFile reports whether path is at least probeMinSize bytes.
+func isLargeFile(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Size() >= probeMinSize
+}
+
+// probeCompressible samples the first ~1 MiB of path and reports whether zstd
+// shrinks it by at least 5%. A file that barely compresses is treated as already
+// compressed (#511). On any read/encode error it defaults to true (compressible),
+// preserving the prior behavior.
+func (d *CompressionDetector) probeCompressible(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return true
+	}
+	defer func() { _ = f.Close() }()
+
+	sample := make([]byte, 1<<20)
+	n, _ := io.ReadFull(f, sample)
+	if n < 4096 { // too small to judge
+		return true
+	}
+	sample = sample[:n]
+
+	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedFastest))
+	if err != nil {
+		return true
+	}
+	defer func() { _ = enc.Close() }()
+	compressed := enc.EncodeAll(sample, nil)
+
+	// Compressible only if it shrank by ≥5%.
+	return len(compressed) < n*95/100
 }
 
 // checkMagicBytes reads file header and checks for compression signatures
@@ -236,6 +287,12 @@ func buildSkipExtensionsMap() map[string]bool {
 		".war", // ZIP-based
 		".ipa", // ZIP-based
 
+		// Genomics (already compressed): CRAM is its own container, BAM/BCF are
+		// BGZF-wrapped. #511 — these were being framed pointlessly.
+		".cram",
+		".bam",
+		".bcf",
+
 		// Other compressed formats
 		".dmg",  // macOS disk images
 		".iso",  // May contain compressed files
@@ -265,6 +322,7 @@ func buildSkipMagicBytes() []magicBytePattern {
 		{0, []byte{0x52, 0x61, 0x72, 0x21, 0x1A, 0x07}, "RAR"},
 		{0, []byte{0x28, 0xB5, 0x2F, 0xFD}, "ZSTD"},
 		{0, []byte{0x04, 0x22, 0x4D, 0x18}, "LZ4"},
+		{0, []byte{0x43, 0x52, 0x41, 0x4D}, "CRAM"}, // #511: CRAM is not gzip-wrapped, so an extension miss slips past the gzip magic
 
 		// Images
 		{0, []byte{0xFF, 0xD8, 0xFF}, "JPEG"},
