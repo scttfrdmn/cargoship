@@ -34,6 +34,7 @@ release assets to find the evidence.
 
 | Version | Date | Files | Bytes | Paths | Suites | Result | Report |
 |---------|------|-------|-------|-------|--------|--------|--------|
+| v0.24.3 | 2026-09-11 | — | — | direct, chunked | — | ⏳ Run in progress | Pending — attached by the real-AWS lane minutes after the tag is pushed. |
 | v0.24.2 | 2026-09-10 | 20 | 61.01 MB | direct, chunked | 42 / 0 | ✅ Passed | [`v0.24.2-2026-09-10.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.24.2/v0.24.2-2026-09-10.md) |
 | v0.24.1 | 2026-09-10 | — | — | direct, chunked | — | ⚠️ Lane failed on CI infra ([#459](https://github.com/scttfrdmn/cargoship/issues/459)) | No report attached: the tagged real-AWS lane failed on the CloudWatch metrics tests (not the data path). Fixed in v0.24.2; data path verified via the emulator lane + a real-S3 dog-food. |
 | v0.24.0 | 2026-09-10 | — | — | direct, chunked | — | ⚠️ Lane failed on CI infra ([#459](https://github.com/scttfrdmn/cargoship/issues/459)) | No report attached: same CloudWatch CI issue as v0.24.1; resolved in v0.24.2. Data path verified separately. |

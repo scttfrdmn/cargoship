@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.3] - 2026-09-11
+
+**Data-integrity release.** A sustained bug-hunt — a real 811K-file / 46 GB
+`~/src` dog-food plus two adversarial audits — found and fixed a class of upload
+paths that could silently lose or corrupt data. Every fix was reproduced and
+re-validated on real S3, ships with a regression test, and the whole class is now
+guarded in CI (the torture suite verifies by relative path and covers repeated
+basenames, deduplication, and multi-batch uploads).
+
+### Fixed
+- **Data loss on chunked uploads over 1000 files.** Scan batches numbered their
+  chunks locally, so `chunk-{id}` S3 keys collided across batches and later chunk
+  objects overwrote earlier ones. Chunk IDs are now globally unique. (#468)
+- **Silent corruption on the direct-upload path.** Objects were keyed by
+  basename, so two files with the same name in different directories (e.g. two
+  `README.md`) overwrote each other and restore returned the wrong bytes. Direct
+  uploads now key by the path relative to the source root. (#480)
+- **`--enable-dedup` made duplicates unrestorable.** Duplicate files were recorded
+  with an empty S3 key, which aborted the whole restore. Their real location is
+  now patched in after upload. (#481)
+- **`--encrypt-manifest` uploads could not be verified, inspected, or restored.**
+  `verify` looked for the wrong object and the decrypt path never decompressed the
+  manifest. Both fixed; `balance`/`cost`/`delete`/`dvc` now read encrypted
+  manifests too. (#474, #479)
+- **`restore --file` failed for files with common basenames** (`__init__.py`,
+  `index.js`): the resolver bailed on basename ambiguity before matching the full
+  path. (#475)
+- **`delete` orphaned direct-upload objects** (and `cost` undercounted them): both
+  enumerated only chunk objects, which a direct upload has none of. (#487)
+- **`balance` failed on mixed-compressibility uploads**, decoding plain `.tar`
+  chunks by the manifest's top-level compression type. (#482)
+- **`estimate` billed for upload data transfer** — S3 ingress is free. (#451)
+- `ResolveObjectKey` is now idempotent when a bucket-strip exposes a scheme-like
+  path segment. (#471)
+- `verify` no longer warns "compressed size exceeds uncompressed size" for
+  incompressible `.tar.zst` chunks (a small overhead is expected). (#491)
+
+### Added
+- **`archive_offset` is now recorded for every file in a chunked upload**,
+  including plain `.tar` chunks, so a random-access reader can locate a file with
+  a single ranged GET and no tar-header walk. (#492)
+- The format spec documents that a chunk's identity is `(shard_id, id)` or
+  `s3_key`, never `id` alone. (#494)
+
+### Changed
+- **Direct-upload heuristic prefers packing for many small files.** Measured on
+  real S3, packing beats one-object-per-file on upload cost, restore speed, and
+  request count; direct upload is now reserved for genuinely small file counts. (#466)
+- **Selective restore downloads chunk groups concurrently** — a direct-upload
+  restore is roughly 15× faster (1.2 → 18 MB/s in a 500-file measurement). (#472)
+- Bumped the Substrate test emulator to v0.110.0.
+- Removed the dead `pkg/resume/multipart.go` (superseded by chunk-level resume);
+  hardened the release lane's verification-report attach to fail loudly instead of
+  swallowing an upload error. (#448, #458)
+
+_Development tooling (not shipped in the release binary): a CargoShip-only
+speed + cost benchmark harness (`cmd/cargoship-bench`, reproducible corpora,
+exact middleware-counted S3 request costs) and its methodology doc._
+
 ## [0.24.2] - 2026-09-10
 
 **Restore the real-AWS verification lane.** No user-facing behavior change — this
