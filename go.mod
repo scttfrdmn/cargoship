@@ -9,10 +9,6 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.45.1
 	github.com/aws/aws-sdk-go-v2/config v1.33.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.1
-	// Pinned: see the #384 note in .github/dependabot.yml. v1.22.35+ deprecates
-	// the Uploader API in favour of feature/s3/transfermanager, which is 11
-	// blocking SA1019 on the upload path. Bump only via the #384 migration.
-	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.82
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.69.1
 	github.com/aws/aws-sdk-go-v2/service/kms v1.57.1
 	github.com/aws/aws-sdk-go-v2/service/pricing v1.46.1
@@ -50,6 +46,10 @@ require (
 	golang.org/x/term v0.45.0
 	gopkg.in/yaml.v3 v3.0.1
 )
+
+// #384: migrated the upload path off the deprecated feature/s3/manager Uploader.
+// NOTE: transfermanager is still pre-1.0 (v0.x) — watch for breaking changes on bump.
+require github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager v0.3.9
 
 require (
 	dario.cat/mergo v1.0.2 // indirect

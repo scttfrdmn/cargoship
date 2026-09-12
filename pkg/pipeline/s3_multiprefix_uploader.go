@@ -14,7 +14,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
+	tmtypes "github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	smithy "github.com/aws/smithy-go"
 	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
@@ -53,7 +54,7 @@ type S3MultiPrefixUploaderStage struct {
 	perPrefixStats map[string]*PrefixStats
 
 	// S3 uploader (shared across all workers)
-	uploader *manager.Uploader
+	uploader *transfermanager.Client
 
 	// v0.6.2: Advanced transporter (optional, shared across all shards)
 	transporter s3transport.BasicTransporter
@@ -116,12 +117,11 @@ func NewS3MultiPrefixUploaderStage(
 		logger = slog.Default()
 	}
 
-	// Create AWS S3 uploader with optimized settings (backward compatibility)
-	uploader := manager.NewUploader(config.S3Client, func(u *manager.Uploader) {
-		u.PartSize = config.PartSize
-		u.Concurrency = 4 // Internal concurrency per upload
-		u.LeavePartsOnError = false
-		u.BufferProvider = manager.NewBufferedReadSeekerWriteToPool(25 * 1024 * 1024)
+	// Create AWS S3 uploader with optimized settings (#384: transfermanager, which
+	// aborts a failed multipart upload by default and manages its own buffers).
+	uploader := transfermanager.New(config.S3Client, func(o *transfermanager.Options) {
+		o.PartSizeBytes = config.PartSize
+		o.Concurrency = 4 // Internal concurrency per upload
 	})
 
 	// Initialize per-prefix stats
@@ -510,7 +510,7 @@ func (s *S3MultiPrefixUploaderStage) uploadToS3(ctx context.Context, job *Job) e
 		"cargoship-archive":     "tar",
 	}
 
-	// Choose upload path: transporter (advanced) or manager.Uploader (basic)
+	// Choose upload path: transporter (advanced) or the SDK transfer manager (basic)
 	if s.transporter != nil {
 		return s.uploadViaTransporter(ctx, s3Key, job, metadata)
 	}
@@ -561,33 +561,34 @@ func (s *S3MultiPrefixUploaderStage) maybeSignalThrottle(err error, job *Job) {
 	}
 }
 
-// uploadViaManager uploads using basic AWS SDK manager.Uploader (backward compatibility)
+// uploadViaManager uploads using basic AWS SDK the SDK transfer manager (backward compatibility)
 func (s *S3MultiPrefixUploaderStage) uploadViaManager(ctx context.Context, s3Key string, job *Job, metadata map[string]string) error {
-	// Prepare upload input
-	input := &s3.PutObjectInput{
+	// Prepare upload input (#384: transfermanager types; string casts preserve
+	// identical StorageClass/SSE values).
+	input := &transfermanager.UploadObjectInput{
 		Bucket:       aws.String(s.config.Bucket),
 		Key:          aws.String(s3Key),
 		Body:         job.Archive,
-		StorageClass: s.config.StorageClass,
+		StorageClass: tmtypes.StorageClass(string(s.config.StorageClass)),
 		Metadata:     metadata,
 	}
 
 	// Add server-side encryption if configured
 	if s.config.ServerSideEncryption != "" {
-		input.ServerSideEncryption = s.config.ServerSideEncryption
+		input.ServerSideEncryption = tmtypes.ServerSideEncryption(string(s.config.ServerSideEncryption))
 		if s.config.SSEKMSKeyId != "" {
-			input.SSEKMSKeyId = aws.String(s.config.SSEKMSKeyId)
+			input.SSEKMSKeyID = aws.String(s.config.SSEKMSKeyId)
 		}
 	}
 
-	// Ensure job.Archive implements io.Reader for manager.Uploader
+	// Ensure job.Archive implements io.Reader
 	var reader io.Reader = job.Archive
 
 	// Replace Body with reader to ensure interface satisfaction
 	input.Body = reader
 
-	// Upload using AWS SDK manager (handles multipart automatically)
-	_, err := s.uploader.Upload(ctx, input)
+	// Upload (handles multipart automatically)
+	_, err := s.uploader.UploadObject(ctx, input)
 	if err != nil {
 		s.maybeSignalThrottle(err, job)
 		return fmt.Errorf("S3 upload failed for %s: %w", job.S3Key, err)

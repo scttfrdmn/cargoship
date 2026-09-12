@@ -11,7 +11,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
+	tmtypes "github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	awsconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
@@ -38,7 +39,7 @@ type S3UploaderConfig struct {
 	TierSelector *StorageTierSelector // If nil, uses StorageClass for all uploads
 
 	// Advanced transporter (v0.6.2)
-	// If set, uses advanced S3 transporter instead of basic manager.Uploader
+	// If set, uses advanced S3 transporter instead of basic SDK transfer manager
 	Transporter s3transport.BasicTransporter // Optional advanced transporter
 
 	// #424: real congestion control. When EnableOptimization is set, the
@@ -66,7 +67,7 @@ type S3UploaderStage struct {
 	bytesProcessed int64
 
 	// S3 uploader
-	uploader *manager.Uploader
+	uploader *transfermanager.Client
 
 	// Manifest tracking (Issue #157)
 	pipeline *Pipeline // Reference to parent pipeline for resume capability
@@ -104,12 +105,11 @@ func NewS3UploaderStage(config *S3UploaderConfig, input <-chan *Job, output chan
 		logger = slog.Default()
 	}
 
-	// Create AWS S3 uploader with optimized settings
-	uploader := manager.NewUploader(config.S3Client, func(u *manager.Uploader) {
-		u.PartSize = config.PartSize
-		u.Concurrency = 4 // Internal concurrency per upload
-		u.LeavePartsOnError = false
-		u.BufferProvider = manager.NewBufferedReadSeekerWriteToPool(25 * 1024 * 1024)
+	// Create AWS S3 uploader with optimized settings (#384: transfermanager, which
+	// aborts a failed multipart upload by default and manages its own buffers).
+	uploader := transfermanager.New(config.S3Client, func(o *transfermanager.Options) {
+		o.PartSizeBytes = config.PartSize
+		o.Concurrency = 4 // Internal concurrency per upload
 	})
 
 	return &S3UploaderStage{
@@ -383,13 +383,13 @@ func (s *S3UploaderStage) uploadToS3(ctx context.Context, job *Job) error {
 		"cargoship-archive":     "tar",
 	}
 
-	// Choose upload path: transporter (advanced) or manager.Uploader (basic)
+	// Choose upload path: transporter (advanced) or the SDK transfer manager (basic)
 	if s.config.Transporter != nil {
 		// Use advanced transporter (staging, adaptive, optimized)
 		return s.uploadViaTransporter(ctx, s3Key, job, metadata)
 	}
 
-	// Fallback to basic manager.Uploader (backward compatibility)
+	// Fallback to basic SDK transfer manager (backward compatibility)
 	return s.uploadViaManager(ctx, s3Key, job, metadata)
 }
 
@@ -450,7 +450,7 @@ func (s *S3UploaderStage) uploadViaTransporter(ctx context.Context, s3Key string
 	return nil
 }
 
-// uploadViaManager uploads using basic AWS SDK manager.Uploader (backward compatibility)
+// uploadViaManager uploads using basic AWS SDK the SDK transfer manager (backward compatibility)
 func (s *S3UploaderStage) uploadViaManager(ctx context.Context, s3Key string, job *Job, metadata map[string]string) error {
 	// Determine storage class: use pre-assigned tier (Issue #164), TierSelector, or default
 	storageClass := s.config.StorageClass
@@ -485,31 +485,32 @@ func (s *S3UploaderStage) uploadViaManager(ctx context.Context, s3Key string, jo
 		}
 	}
 
-	// Prepare upload input
-	input := &s3.PutObjectInput{
+	// Prepare upload input (#384: transfermanager's own input/enum types; string
+	// casts preserve identical StorageClass/SSE values).
+	input := &transfermanager.UploadObjectInput{
 		Bucket:       aws.String(s.config.Bucket),
 		Key:          aws.String(s3Key),
 		Body:         job.Archive,
-		StorageClass: storageClass,
+		StorageClass: tmtypes.StorageClass(string(storageClass)),
 		Metadata:     metadata,
 	}
 
 	// Add server-side encryption if configured
 	if s.config.ServerSideEncryption != "" {
-		input.ServerSideEncryption = s.config.ServerSideEncryption
+		input.ServerSideEncryption = tmtypes.ServerSideEncryption(string(s.config.ServerSideEncryption))
 		if s.config.SSEKMSKeyId != "" {
-			input.SSEKMSKeyId = aws.String(s.config.SSEKMSKeyId)
+			input.SSEKMSKeyID = aws.String(s.config.SSEKMSKeyId)
 		}
 	}
 
-	// Ensure job.Archive implements io.Reader for manager.Uploader
+	// Ensure job.Archive implements io.Reader
 	var reader io.Reader = job.Archive
 
 	// Replace Body with reader to ensure interface satisfaction
 	input.Body = reader
 
-	// Upload using AWS SDK manager (handles multipart automatically)
-	_, err := s.uploader.Upload(ctx, input)
+	// Upload (handles multipart automatically)
+	_, err := s.uploader.UploadObject(ctx, input)
 	if err != nil {
 		return fmt.Errorf("S3 upload failed for %s: %w", job.S3Key, err)
 	}
