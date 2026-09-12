@@ -34,6 +34,7 @@ release assets to find the evidence.
 
 | Version | Date | Files | Bytes | Paths | Suites | Result | Report |
 |---------|------|-------|-------|-------|--------|--------|--------|
+| v0.24.5 | 2026-09-11 | — | — | direct, chunked | — | ⏳ Run in progress | Pending — filled from the attached report after the tagged real-AWS lane completes. |
 | v0.24.4 | 2026-09-12 | 20 | 61.01 MB | direct, chunked | 46 / 0 | ✅ Passed | [`v0.24.4-2026-09-12.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.24.4/v0.24.4-2026-09-12.md) |
 | v0.24.3 | 2026-09-12 | 20 | 61.01 MB | direct, chunked | 45 / 0 | ✅ Passed | [`v0.24.3-2026-09-12.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.24.3/v0.24.3-2026-09-12.md) |
 | v0.24.2 | 2026-09-10 | 20 | 61.01 MB | direct, chunked | 42 / 0 | ✅ Passed | [`v0.24.2-2026-09-10.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.24.2/v0.24.2-2026-09-10.md) |
