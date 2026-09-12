@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.4] - 2026-09-11
+
+**Large-file random access.** A patch fixing the Format 2.1 frame index for large
+files, reported by an external random-access reader (lith).
+
+### Fixed
+- **A large file was compressed into one giant, non-seekable zstd frame.** The
+  framer cut frames only at file boundaries, so a single big file (e.g. a 3.5 GB
+  CRAM) became one multi-GB frame. Because a zstd frame isn't seekable, a
+  random-access reader had to fetch and decode the entire frame to read any byte,
+  defeating the Format 2.1 random-access promise for exactly the files where it
+  matters most. The archiver now cuts sub-frames *inside* a large file at
+  `--frame-size`, so the file spans many independently-decodable ~`frame-size`
+  frames and a byte range is served from only its covering frames. No manifest
+  format change — the frame index already carries the offsets a reader needs — and
+  restore is byte-identical (concatenated zstd frames decode the same). Validated
+  on real S3: a 250 MB file now records 16 frames (previously ~1) and round-trips
+  byte-identically. (#502)
+
 ## [0.24.3] - 2026-09-11
 
 **Data-integrity release.** A sustained bug-hunt — a real 811K-file / 46 GB
