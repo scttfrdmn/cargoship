@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -78,7 +79,8 @@ func (f *framer) recordOffset(job *Job, file chunking.File) {
 
 // maybeCut ends the current frame and starts a new one when the accumulated
 // uncompressed bytes reach frameSize. Call at a file boundary (after the file's
-// data is written), so no file ever spans two frames.
+// data is written): it flushes the tar writer first so the finished file's
+// padding lands in this frame, keeping small files whole within a frame.
 func (f *framer) maybeCut() error {
 	if !f.active() || f.cwU.n-f.frameStartU < f.frameSize {
 		return nil
@@ -86,11 +88,33 @@ func (f *framer) maybeCut() error {
 	if err := f.tw.Flush(); err != nil { // push the finished file's padding into the encoder
 		return fmt.Errorf("flush tar before frame cut: %w", err)
 	}
-	if err := f.encoder.Close(); err != nil { // write this frame's epilogue into cwC→pw
+	return f.cutFrame()
+}
+
+// maybeCutMidFile ends the current frame mid-tar-entry when it reaches frameSize,
+// so a single large file spans many independently-decodable frames instead of one
+// unseekable multi-GB frame (#502). Unlike maybeCut it does NOT flush the tar
+// writer — the entry is still being written, and a zstd frame boundary need not
+// align with a tar block. The file bytes written so far are already in the
+// encoder, so closing it ends a complete, valid frame; the reader locates a byte
+// range via the frame index's uncompressed offsets.
+func (f *framer) maybeCutMidFile() error {
+	if !f.active() || f.cwU.n-f.frameStartU < f.frameSize {
+		return nil
+	}
+	return f.cutFrame()
+}
+
+// cutFrame closes the current zstd frame (writing its epilogue into cwC→pw),
+// records it, and resets the encoder to begin the next independent frame on the
+// same pipe. Callers gate on frameSize and decide whether to flush the tar writer
+// first (only maybeCut does, at a file boundary).
+func (f *framer) cutFrame() error {
+	if err := f.encoder.Close(); err != nil {
 		return fmt.Errorf("close zstd frame: %w", err)
 	}
 	f.appendFrame()
-	f.encoder.Reset(f.cwC) // begin the next independent frame on the same pipe
+	f.encoder.Reset(f.cwC)
 	return nil
 }
 
@@ -1141,24 +1165,39 @@ func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, fr *framer,
 	fr.recordOffset(job, file)
 
 	// Copy file content with length limit. When per-file checksums are enabled
-	// (#271) we hash the content as it's copied. This routes through a
-	// TeeReader, which bypasses the platform zero-copy (splice/sendfile) path —
-	// an accepted trade for the integrity guarantee, and this small-chunk
-	// (<3 files) branch is not the throughput-critical path (that's the
-	// in-memory parallel path). With checksums off, the fast path is unchanged.
+	// (#271) we hash the content as it's copied, via a TeeReader — an accepted
+	// trade of the zero-copy path for the integrity guarantee. When the framer is
+	// active (#502) we copy in blocks so a large file is cut into many ~frameSize
+	// frames rather than one unseekable frame; that copier also reads from an
+	// io.Reader, so it composes with the checksum TeeReader. Only the plain,
+	// checksum-off, unframed case keeps the platform zero-copy (splice/sendfile)
+	// fast path.
+	var hasher hash.Hash
+	src := io.LimitReader(f, length)
 	if job != nil && s.config.FileChecksums {
-		hasher := sha256.New()
-		if err := s.copyFileToArchivePlain(tw, io.TeeReader(io.LimitReader(f, length), hasher)); err != nil {
+		hasher = sha256.New()
+		src = io.TeeReader(src, hasher)
+	}
+	switch {
+	case fr.active():
+		if err := s.copyFileFramed(tw, fr, src); err != nil {
 			return fmt.Errorf("failed to write file content: %w", err)
 		}
-		job.SetFileChecksum(fileChecksumKey(file), hex.EncodeToString(hasher.Sum(nil)))
-	} else {
+	case hasher != nil:
+		if err := s.copyFileToArchivePlain(tw, src); err != nil {
+			return fmt.Errorf("failed to write file content: %w", err)
+		}
+	default:
 		if err := s.copyFileToArchive(tw, f, length); err != nil {
 			return fmt.Errorf("failed to write file content: %w", err)
 		}
 	}
+	if hasher != nil {
+		job.SetFileChecksum(fileChecksumKey(file), hex.EncodeToString(hasher.Sum(nil)))
+	}
 
-	// #436: at this file boundary, cut a new zstd frame if the current one is full.
+	// #436: at this file boundary, cut a new zstd frame if the current one is full
+	// (catches the tail of a large file and batches of small files).
 	return fr.maybeCut()
 }
 
@@ -1168,6 +1207,39 @@ func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, fr *framer,
 func (s *ArchiverStage) copyFileToArchivePlain(tw *tar.Writer, r io.Reader) error {
 	_, err := io.Copy(tw, r)
 	return err
+}
+
+// copyFileFramed copies r into the current tar entry, cutting a new zstd frame
+// each time the current frame fills to frameSize — so a large file spans many
+// independently-decodable frames rather than one unseekable frame (#502). Used
+// only when the framer is active; the inactive and zero-copy paths are untouched.
+// Reading in bounded blocks keeps frame sizes close to frameSize regardless of
+// how much r returns per Read.
+func (s *ArchiverStage) copyFileFramed(tw *tar.Writer, fr *framer, r io.Reader) error {
+	// Write granularity for the frame-full check: 1 MiB, but never larger than
+	// frameSize (so a small frameSize still yields frames near that size).
+	block := int64(1 << 20)
+	if fr.frameSize > 0 && fr.frameSize < block {
+		block = fr.frameSize
+	}
+	buf := make([]byte, block)
+	for {
+		n, rerr := r.Read(buf)
+		if n > 0 {
+			if _, werr := tw.Write(buf[:n]); werr != nil {
+				return werr
+			}
+			if cerr := fr.maybeCutMidFile(); cerr != nil {
+				return cerr
+			}
+		}
+		if rerr == io.EOF {
+			return nil
+		}
+		if rerr != nil {
+			return rerr
+		}
+	}
 }
 
 // fileChecksumKey returns the map key under which a file's (or split part's)
@@ -1215,9 +1287,17 @@ func (s *ArchiverStage) addFileToArchiveFromMemoryWithMetadata(tw *tar.Writer, f
 	// #436: the file's data starts at the current uncompressed tar offset.
 	fr.recordOffset(job, file)
 
-	// Write data from memory
-	if _, err := tw.Write(data); err != nil {
-		return fmt.Errorf("failed to write file content: %w", err)
+	// Write data from memory. When the framer is active (#502), sub-frame a large
+	// in-memory file the same way as the streaming path so it stays seekable;
+	// otherwise a single write preserves the prior behavior.
+	if fr.active() {
+		if err := s.copyFileFramed(tw, fr, bytes.NewReader(data)); err != nil {
+			return fmt.Errorf("failed to write file content: %w", err)
+		}
+	} else {
+		if _, err := tw.Write(data); err != nil {
+			return fmt.Errorf("failed to write file content: %w", err)
+		}
 	}
 
 	// #271: the file content is already in memory here, so hashing is a single

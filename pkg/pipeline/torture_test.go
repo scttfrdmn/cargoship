@@ -171,6 +171,17 @@ func TestTorture(t *testing.T) {
 		}
 		require.Positive(t, framedChunks, "at least one chunk must carry a frame index")
 		require.Positive(t, multiFrame, "a 64KiB frame size over >=150KiB files must cut multiple frames")
+
+		// #502: sub-frame cutting means a single file LARGER than frameSize spans
+		// many frames. Pre-#502 the framer cut only at file boundaries, so this
+		// 24 MiB corpus over 1 MiB frames gave ~3 frames (one per file); now each
+		// large file is cut into several, so the total far exceeds the file count.
+		totalFrames := 0
+		for _, c := range m.Chunks {
+			totalFrames += len(c.Frames)
+		}
+		require.Greater(t, totalFrames, len(corpus)*3,
+			"a large file must be sub-framed into many frames, not one frame per file (#502)")
 		for _, f := range m.Files {
 			require.Positive(t, f.ArchiveOffset, "file %s must have a recorded archive offset", f.Path)
 		}
