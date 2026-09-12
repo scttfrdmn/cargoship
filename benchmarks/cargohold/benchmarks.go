@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -40,18 +42,8 @@ func runCargoHoldBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir, 
 		"--shard-count", "10",
 	}
 
-	// Start metrics collection
-	metrics := startMetricsCollection()
-
-	// Run upload
-	startTime := time.Now()
 	cmd := exec.Command(cargoshipPath, args...)
-	output, err := cmd.CombinedOutput()
-	uploadDuration := time.Since(startTime)
-
-	// Stop metrics collection
-	stopMetricsCollection(metrics, &result)
-
+	output, uploadDuration, err := runInstrumented(cmd, &result)
 	if err != nil {
 		return result, fmt.Errorf("cargoship upload failed: %w\nOutput: %s", err, string(output))
 	}
@@ -96,11 +88,7 @@ func runS5cmdBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir strin
 
 	s3Dest := fmt.Sprintf("s3://%s/%s/s5cmd-%s/*", config.Bucket, config.Prefix, config.Scenario)
 
-	// Start metrics collection
-	metrics := startMetricsCollection()
-
 	// Run upload using s5cmd's parallel cp
-	startTime := time.Now()
 	cmd := exec.Command(s5cmdPath,
 		"--numworkers", fmt.Sprintf("%d", config.Concurrency),
 		"cp",
@@ -108,12 +96,7 @@ func runS5cmdBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir strin
 		s3Dest,
 	)
 
-	output, err := cmd.CombinedOutput()
-	uploadDuration := time.Since(startTime)
-
-	// Stop metrics collection
-	stopMetricsCollection(metrics, &result)
-
+	output, uploadDuration, err := runInstrumented(cmd, &result)
 	if err != nil {
 		return result, fmt.Errorf("s5cmd failed: %w\nOutput: %s", err, string(output))
 	}
@@ -140,18 +123,11 @@ func runRcloneBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir stri
 	dest := fmt.Sprintf(":s3,provider=AWS,env_auth=true,region=%s:%s/%s/rclone-%s",
 		region, config.Bucket, config.Prefix, config.Scenario)
 
-	metrics := startMetricsCollection()
-
-	startTime := time.Now()
 	cmd := exec.Command(rclonePath, "copy", dataDir, dest,
 		"--transfers", fmt.Sprintf("%d", config.Concurrency),
 		"--s3-no-check-bucket",
 	)
-	output, err := cmd.CombinedOutput()
-	uploadDuration := time.Since(startTime)
-
-	stopMetricsCollection(metrics, &result)
-
+	output, uploadDuration, err := runInstrumented(cmd, &result)
 	if err != nil {
 		return result, fmt.Errorf("rclone failed: %w\nOutput: %s", err, string(output))
 	}
@@ -170,19 +146,21 @@ func runMinIOMcBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir str
 		return result, fmt.Errorf("mc not found in PATH")
 	}
 
-	// Configure alias (assuming aws profile is configured)
-	aliasCmd := exec.Command(mcPath, "alias", "set", "s3bench", "https://s3.amazonaws.com", "", "")
+	// Configure alias against the region's S3 endpoint (creds from the standard
+	// AWS env vars). Falls back to the global endpoint when AWS_REGION is unset.
+	endpoint := "https://s3.amazonaws.com"
+	if region := os.Getenv("AWS_REGION"); region != "" {
+		endpoint = fmt.Sprintf("https://s3.%s.amazonaws.com", region)
+	}
+	aliasCmd := exec.Command(mcPath, "alias", "set", "s3bench", endpoint,
+		os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"))
 	if output, err := aliasCmd.CombinedOutput(); err != nil {
 		return result, fmt.Errorf("mc alias setup failed: %w\nOutput: %s", err, string(output))
 	}
 
 	s3Dest := fmt.Sprintf("s3bench/%s/%s/mc-%s/", config.Bucket, config.Prefix, config.Scenario)
 
-	// Start metrics collection
-	metrics := startMetricsCollection()
-
 	// Run upload using mc mirror (parallel)
-	startTime := time.Now()
 	cmd := exec.Command(mcPath,
 		"mirror",
 		"--parallel", fmt.Sprintf("%d", config.Concurrency),
@@ -190,12 +168,7 @@ func runMinIOMcBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir str
 		s3Dest,
 	)
 
-	output, err := cmd.CombinedOutput()
-	uploadDuration := time.Since(startTime)
-
-	// Stop metrics collection
-	stopMetricsCollection(metrics, &result)
-
+	output, uploadDuration, err := runInstrumented(cmd, &result)
 	if err != nil {
 		return result, fmt.Errorf("mc mirror failed: %w\nOutput: %s", err, string(output))
 	}
@@ -219,8 +192,9 @@ func runTarBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir string,
 	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("benchmark-%s.tar.zst", config.Scenario))
 	defer os.Remove(tmpFile)
 
-	// Start metrics collection
-	metrics := startMetricsCollection()
+	// Whole-pipeline timing (tar → zstd → aws cp). Resource metrics are sampled
+	// on the aws-cp upload child (runInstrumented); the tar|zstd compression runs
+	// as separate child processes whose CPU/mem this simple sampler doesn't track.
 	startTime := time.Now()
 
 	// Step 1: Create tar.zst archive
@@ -238,23 +212,19 @@ func runTarBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir string,
 	// Pipe tar output to zstd
 	pipe, err := tarCmd.StdoutPipe()
 	if err != nil {
-		stopMetricsCollection(metrics, &result)
 		return result, fmt.Errorf("failed to create pipe: %w", err)
 	}
 	zstdCmd.Stdin = pipe
 
 	if err := zstdCmd.Start(); err != nil {
-		stopMetricsCollection(metrics, &result)
 		return result, fmt.Errorf("failed to start zstd: %w", err)
 	}
 
 	if err := tarCmd.Run(); err != nil {
-		stopMetricsCollection(metrics, &result)
 		return result, fmt.Errorf("tar failed: %w", err)
 	}
 
 	if err := zstdCmd.Wait(); err != nil {
-		stopMetricsCollection(metrics, &result)
 		return result, fmt.Errorf("zstd failed: %w", err)
 	}
 
@@ -263,15 +233,11 @@ func runTarBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir string,
 		config.Bucket, config.Prefix, config.Scenario)
 
 	awsCmd := exec.Command("aws", "s3", "cp", tmpFile, s3Dest)
-	if output, err := awsCmd.CombinedOutput(); err != nil {
-		stopMetricsCollection(metrics, &result)
+	if output, _, err := runInstrumented(awsCmd, &result); err != nil {
 		return result, fmt.Errorf("aws s3 cp failed: %w\nOutput: %s", err, string(output))
 	}
 
 	uploadDuration := time.Since(startTime)
-
-	// Stop metrics collection
-	stopMetricsCollection(metrics, &result)
 
 	result.UploadDuration = uploadDuration
 	result.UploadThroughputMBps = float64(spec.TotalSize) / (1024 * 1024) / uploadDuration.Seconds()
@@ -279,11 +245,12 @@ func runTarBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir string,
 	return result, nil
 }
 
-// MetricsCollector tracks resource usage during benchmark
+// MetricsCollector tracks resource usage during a benchmark. It samples the
+// benchmarked CHILD process (set via begin), not the harness itself.
 type MetricsCollector struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
-	pid       int
+	pid       atomic.Int64 // the child PID to sample; 0 until begin() is called
 	samples   []resourceSample
 	startTime time.Time
 }
@@ -296,18 +263,42 @@ type resourceSample struct {
 
 func startMetricsCollection() *MetricsCollector {
 	ctx, cancel := context.WithCancel(context.Background())
-	collector := &MetricsCollector{
+	return &MetricsCollector{
 		ctx:       ctx,
 		cancel:    cancel,
-		pid:       os.Getpid(),
 		samples:   make([]resourceSample, 0),
 		startTime: time.Now(),
 	}
+}
 
-	// Start background sampling
-	go collector.collectSamples()
+// begin points the collector at pid (the child process to measure) and starts
+// background sampling. Sampling before begin is a no-op, so the goroutine never
+// races on the PID.
+func (mc *MetricsCollector) begin(pid int) {
+	mc.pid.Store(int64(pid))
+	go mc.collectSamples()
+}
 
-	return collector
+// runInstrumented runs cmd to completion while sampling the CHILD process's
+// CPU/memory (the fix for measuring os.Getpid(), the harness, instead of the
+// tool under test). It returns the combined stdout+stderr, the wall-clock
+// duration, and rolls the peak/avg metrics into result.
+func runInstrumented(cmd *exec.Cmd, result *BenchmarkResult) ([]byte, time.Duration, error) {
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+
+	mc := startMetricsCollection()
+	start := time.Now()
+	if err := cmd.Start(); err != nil {
+		stopMetricsCollection(mc, result)
+		return buf.Bytes(), time.Since(start), err
+	}
+	mc.begin(cmd.Process.Pid)
+	err := cmd.Wait()
+	dur := time.Since(start)
+	stopMetricsCollection(mc, result)
+	return buf.Bytes(), dur, err
 }
 
 func (mc *MetricsCollector) collectSamples() {
@@ -326,9 +317,13 @@ func (mc *MetricsCollector) collectSamples() {
 }
 
 func (mc *MetricsCollector) takeSample() resourceSample {
+	pid := mc.pid.Load()
+	if pid == 0 { // begin() not called yet — nothing to sample
+		return resourceSample{timestamp: time.Now()}
+	}
 	// Use ps command to get resource usage
 	// This is a simplified implementation - production would use proper process monitoring
-	cmd := exec.Command("ps", "-p", fmt.Sprintf("%d", mc.pid), "-o", "%cpu,%mem")
+	cmd := exec.Command("ps", "-p", fmt.Sprintf("%d", pid), "-o", "%cpu,%mem")
 	output, err := cmd.Output()
 	if err != nil {
 		return resourceSample{timestamp: time.Now()}

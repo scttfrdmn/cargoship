@@ -118,8 +118,10 @@ func main() {
 		if tool == "cargohold" {
 			// Test all shard strategies for CargoHold
 			for _, strategy := range config.ShardStrategies {
-				log.Printf("\n🔬 Benchmarking CargoHold with %s strategy...", strategy)
-				result, err := runCargoHoldBenchmark(config, spec, dataDir, strategy)
+				log.Printf("\n🔬 Benchmarking CargoHold with %s strategy (%d iteration(s))...", strategy, config.Iterations)
+				result, err := runBest(config.Iterations, func() (BenchmarkResult, error) {
+					return runCargoHoldBenchmark(config, spec, dataDir, strategy)
+				})
 				if err != nil {
 					log.Printf("❌ CargoHold %s failed: %v", strategy, err)
 					continue
@@ -128,8 +130,10 @@ func main() {
 				printResult(result)
 			}
 		} else {
-			log.Printf("\n🔬 Benchmarking %s...", tool)
-			result, err := runToolBenchmark(tool, config, spec, dataDir)
+			log.Printf("\n🔬 Benchmarking %s (%d iteration(s))...", tool, config.Iterations)
+			result, err := runBest(config.Iterations, func() (BenchmarkResult, error) {
+				return runToolBenchmark(tool, config, spec, dataDir)
+			})
 			if err != nil {
 				log.Printf("❌ %s failed: %v", tool, err)
 				continue
@@ -152,6 +156,37 @@ func main() {
 
 	log.Printf("\n✅ Benchmark complete!")
 	log.Printf("   Results saved to: %s", config.ResultsDir)
+}
+
+// runBest runs a benchmark up to iterations times and returns the run with the
+// highest upload throughput — best-of-N factors out transient contention, and
+// (unlike the old code) actually honors -iterations. Each attempt is logged so
+// the raw spread stays visible; an error is returned only if every run failed.
+func runBest(iterations int, run func() (BenchmarkResult, error)) (BenchmarkResult, error) {
+	if iterations < 1 {
+		iterations = 1
+	}
+	var (
+		best    BenchmarkResult
+		haveOne bool
+		lastErr error
+	)
+	for i := 1; i <= iterations; i++ {
+		res, err := run()
+		if err != nil {
+			log.Printf("      iteration %d/%d failed: %v", i, iterations, err)
+			lastErr = err
+			continue
+		}
+		log.Printf("      iteration %d/%d: %.1f MB/s", i, iterations, res.UploadThroughputMBps)
+		if !haveOne || res.UploadThroughputMBps > best.UploadThroughputMBps {
+			best, haveOne = res, true
+		}
+	}
+	if !haveOne {
+		return BenchmarkResult{}, lastErr
+	}
+	return best, nil
 }
 
 func parseFlags() *BenchmarkConfig {
