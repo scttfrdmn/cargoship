@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -25,6 +26,9 @@ type BenchmarkConfig struct {
 	Concurrency     int      // Parallel operations
 	Iterations      int      // Number of runs per test
 	Corpus          string   // shared pkg/corpus profile name; "" == legacy scenario generator
+
+	CloudWatchMetrics bool          // read competitor server-side request counts from CloudWatch (real-AWS only)
+	MetricsSettle     time.Duration // how long to wait after runs for metrics to publish
 }
 
 // BenchmarkResult stores results from a single benchmark run
@@ -44,7 +48,16 @@ type BenchmarkResult struct {
 	ErrorCount             int           `json:"error_count"`
 	Verified               bool          `json:"verified,omitempty"`       // upload byte-verified against the source corpus
 	VerifiedFiles          int           `json:"verified_files,omitempty"` // files confirmed byte-identical
+	RequestsUSD            float64       `json:"requests_usd,omitempty"`   // itemized S3 request cost (from server-side counts)
 	Timestamp              time.Time     `json:"timestamp"`
+
+	// windowStart/windowEnd bound the run in wall-clock time, so a post-run
+	// CloudWatch read can attribute server-side request counts to it, and
+	// metricsLabel identifies its prefix-filtered metrics configuration. Not
+	// serialized — internal to the metrics pass.
+	windowStart  time.Time
+	windowEnd    time.Time
+	metricsLabel string
 }
 
 // ScenarioSpec defines a test scenario
@@ -129,6 +142,17 @@ func main() {
 		log.Printf("   Corpus: %s (reproducible; uploads will be byte-verified)\n", config.Corpus)
 	}
 
+	// Optionally enable CloudWatch S3 request metrics up front (they take up to
+	// ~15 min to activate the first time on a bucket), so a post-run read can
+	// attribute each tool's server-side request counts and itemized request cost.
+	var mc *metricsClients
+	if config.CloudWatchMetrics {
+		var err error
+		if mc, err = enableRequestMetrics(context.Background(), config); err != nil {
+			log.Fatalf("Failed to enable CloudWatch request metrics: %v", err)
+		}
+	}
+
 	// Run benchmarks
 	var results []BenchmarkResult
 
@@ -144,6 +168,7 @@ func main() {
 					log.Printf("❌ CargoHold %s failed: %v", strategy, err)
 					continue
 				}
+				result.metricsLabel = resultLabel("cargohold", strategy, config.Scenario)
 				verifyIfCorpus(config, "cargohold", corpusFiles, &result)
 				results = append(results, result)
 				printResult(result)
@@ -157,10 +182,16 @@ func main() {
 				log.Printf("❌ %s failed: %v", tool, err)
 				continue
 			}
+			result.metricsLabel = resultLabel(tool, "", config.Scenario)
 			verifyIfCorpus(config, tool, corpusFiles, &result)
 			results = append(results, result)
 			printResult(result)
 		}
+	}
+
+	// Read server-side request counts + itemized request cost from CloudWatch.
+	if mc != nil {
+		populateRequestCounts(context.Background(), mc, config, results)
 	}
 
 	// Save results
@@ -247,6 +278,8 @@ func parseFlags() *BenchmarkConfig {
 	flag.IntVar(&config.Concurrency, "concurrency", 10, "Parallel operations")
 	flag.IntVar(&config.Iterations, "iterations", 3, "Number of runs per test")
 	flag.StringVar(&config.Corpus, "corpus", "", "shared pkg/corpus profile (many-tiny|few-large|mixed|hostile); enables byte-verify. Empty uses the legacy scenario generator")
+	flag.BoolVar(&config.CloudWatchMetrics, "cloudwatch-metrics", false, "read each tool's server-side S3 request counts (and itemized request cost) from CloudWatch. Real-AWS only; best with -iterations 1")
+	flag.DurationVar(&config.MetricsSettle, "metrics-settle", 10*time.Minute, "how long to wait after the runs for CloudWatch metrics to publish before reading")
 
 	var tools string
 	var strategies string

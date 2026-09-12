@@ -3,7 +3,10 @@ package main
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/scttfrdmn/cargoship/pkg/corpus"
 )
@@ -79,6 +82,27 @@ func TestRunInstrumentedSamplesChild(t *testing.T) {
 		t.Fatalf("expected non-zero CPU for the busy child, got %.2f%% — sampler is watching the wrong PID", result.AvgCPUPercent)
 	}
 	t.Logf("child sampled: avg CPU %.1f%%, peak mem %.1f MB", result.AvgCPUPercent, result.PeakMemoryMB)
+}
+
+func TestResultLabelAndFilterID(t *testing.T) {
+	assert.Equal(t, "cargohold-hash-small", resultLabel("cargohold", "hash", "small"))
+	assert.Equal(t, "s5cmd-small", resultLabel("s5cmd", "", "small"))
+	assert.Equal(t, "tar-small", resultLabel("tar", "ignored", "small"))
+	// filter id keeps valid chars and is bounded to 64.
+	assert.Equal(t, "s5cmd-small", metricsFilterID("s5cmd-small"))
+	assert.Equal(t, "a-b-c", metricsFilterID("a/b c"), "slashes and spaces become dashes")
+	assert.LessOrEqual(t, len(metricsFilterID(strings.Repeat("x", 100))), 64)
+}
+
+func TestPlannedLabels(t *testing.T) {
+	cfg := &BenchmarkConfig{
+		Scenario:        "small",
+		Tools:           []string{"cargohold", "s5cmd", "tar"},
+		ShardStrategies: []string{"hash", "size"},
+	}
+	assert.Equal(t, []string{
+		"cargohold-hash-small", "cargohold-size-small", "s5cmd-small", "tar-small",
+	}, plannedLabels(cfg))
 }
 
 func TestRunBest_HonorsIterations(t *testing.T) {

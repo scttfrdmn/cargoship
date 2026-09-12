@@ -382,6 +382,7 @@ func runInstrumented(cmd *exec.Cmd, result *BenchmarkResult) ([]byte, time.Durat
 	err := cmd.Wait()
 	dur := time.Since(start)
 	stopMetricsCollection(mc, result)
+	result.windowStart, result.windowEnd = start, time.Now()
 	return buf.Bytes(), dur, err
 }
 
