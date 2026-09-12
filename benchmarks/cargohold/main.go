@@ -169,9 +169,7 @@ func main() {
 					continue
 				}
 				result.metricsLabel = resultLabel("cargohold", strategy, config.Scenario)
-				verifyIfCorpus(config, "cargohold", corpusFiles, &result)
 				results = append(results, result)
-				printResult(result)
 			}
 		} else {
 			log.Printf("\n🔬 Benchmarking %s (%d iteration(s))...", tool, config.Iterations)
@@ -183,15 +181,21 @@ func main() {
 				continue
 			}
 			result.metricsLabel = resultLabel(tool, "", config.Scenario)
-			verifyIfCorpus(config, tool, corpusFiles, &result)
 			results = append(results, result)
-			printResult(result)
 		}
 	}
 
-	// Read server-side request counts + itemized request cost from CloudWatch.
+	// Read server-side request counts + itemized request cost from CloudWatch
+	// BEFORE byte-verify: verify downloads the objects (aws s3 sync), which would
+	// otherwise land in the metric window and inflate a competitor's GET count.
 	if mc != nil {
 		populateRequestCounts(context.Background(), mc, config, results)
+	}
+
+	// Byte-verify each upload (safe now that the metric read is done) and print.
+	for i := range results {
+		verifyIfCorpus(config, results[i].Tool, corpusFiles, &results[i])
+		printResult(results[i])
 	}
 
 	// Save results
