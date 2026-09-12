@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -49,6 +50,17 @@ type Builder struct {
 
 	// Hostname for upload source tracking
 	hostname string
+
+	// #447: keys of files already recorded, so a resumed run (which preloads the
+	// prior manifest's Files) does not re-append them when the scanner rediscovers
+	// the same corpus and doubles TotalFiles. Keyed by fileEntryKey.
+	seen map[string]bool
+}
+
+// fileEntryKey is a FileEntry's unique identity for dedup — its path, plus the
+// part index for a split file (so each part of a split file is distinct).
+func fileEntryKey(e FileEntry) string {
+	return e.Path + "#" + strconv.Itoa(e.PartIndex)
 }
 
 // NewBuilder creates a new manifest builder
@@ -74,6 +86,7 @@ func NewBuilder(uploadID, sourcePath, bucket, prefix, region string) (*Builder, 
 			Shards:            make([]ShardEntry, 0),
 		},
 		hostname: hostname,
+		seen:     make(map[string]bool),
 	}, nil
 }
 
@@ -113,9 +126,17 @@ func NewBuilderFromExisting(existing *Manifest) (*Builder, error) {
 		DVCPipeline:       existing.DVCPipeline,
 	}
 
+	// #447: seed the dedup set from the preloaded files so a resumed run that
+	// re-scans the same corpus doesn't append them again (which doubled TotalFiles).
+	seen := make(map[string]bool, len(cloned.Files))
+	for _, f := range cloned.Files {
+		seen[fileEntryKey(f)] = true
+	}
+
 	return &Builder{
 		manifest: cloned,
 		hostname: hostname,
+		seen:     seen,
 	}, nil
 }
 
@@ -124,6 +145,11 @@ func (b *Builder) AddFile(entry FileEntry) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	key := fileEntryKey(entry)
+	if b.seen[key] { // #447: already recorded (e.g. preloaded on resume) — don't duplicate
+		return
+	}
+	b.seen[key] = true
 	b.manifest.Files = append(b.manifest.Files, entry)
 	b.manifest.TotalFiles++
 	b.manifest.TotalBytes += entry.Size
@@ -139,11 +165,15 @@ func (b *Builder) AddFileBatch(entries []FileEntry) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	// Append all entries at once
-	b.manifest.Files = append(b.manifest.Files, entries...)
-
-	// Update totals
+	// #447: skip entries already recorded (resume preloads the prior Files), so a
+	// re-scan of the same corpus can't double TotalFiles.
 	for _, entry := range entries {
+		key := fileEntryKey(entry)
+		if b.seen[key] {
+			continue
+		}
+		b.seen[key] = true
+		b.manifest.Files = append(b.manifest.Files, entry)
 		b.manifest.TotalFiles++
 		b.manifest.TotalBytes += entry.Size
 	}

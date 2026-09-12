@@ -313,6 +313,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 	if skip {
 		// Chunk already uploaded - skip and mark as complete
 		job.EndTime = time.Now()
+		job.Skipped = true // #447: so waitForCompletion counts it as skipped, not uploaded
 
 		// Update statistics (but not bytes processed since we didn't actually upload)
 		atomic.AddInt64(&s.jobsProcessed, 1)
