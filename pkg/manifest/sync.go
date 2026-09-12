@@ -178,7 +178,7 @@ func FindLatestManifestForSource(ctx context.Context, s3Client *s3.Client, bucke
 	}
 
 	// List all manifests in the bucket/prefix
-	manifests, err := listAllManifests(ctx, s3Client, bucket, prefix)
+	manifests, err := ListAllManifests(ctx, s3Client, bucket, prefix)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list manifests: %w", err)
 	}
@@ -213,8 +213,10 @@ func FindLatestManifestForSource(ctx context.Context, s3Client *s3.Client, bucke
 	return latest, nil
 }
 
-// listAllManifests lists all manifests in the specified S3 bucket/prefix
-func listAllManifests(ctx context.Context, s3Client *s3.Client, bucket, prefix string) ([]*Manifest, error) {
+// ListAllManifests lists and parses every completed-upload manifest under
+// s3://bucket/<prefix>/uploads/. Exported for the dashboard's completed-uploads
+// inventory (#449); also used internally by FindLatestManifestForSource.
+func ListAllManifests(ctx context.Context, s3Client *s3.Client, bucket, prefix string) ([]*Manifest, error) {
 	var manifests []*Manifest
 
 	// List all objects under prefix/uploads/

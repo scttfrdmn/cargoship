@@ -26,6 +26,10 @@ const (
 	DashboardCosts
 	// DashboardUploads lists in-progress / resumable uploads.
 	DashboardUploads
+	// DashboardInventory lists completed uploads read from S3 manifests (#449).
+	DashboardInventory
+	// DashboardAnalyze shows an on-demand bucket cost/inventory analysis (#449).
+	DashboardAnalyze
 )
 
 // CostProvider is the subset of *cost.Manager the dashboard reads. It is an
@@ -36,13 +40,50 @@ type CostProvider interface {
 	GetBudgetStatus() map[string]interface{}
 }
 
+// InventoryProvider lists completed uploads from S3 manifests (#449). It is an
+// interface (nil when no bucket is configured) so pkg/tui stays free of AWS
+// dependencies and tests can inject a fake. The command layer adapts
+// manifest.ListAllManifests into ManifestSummary values.
+type InventoryProvider interface {
+	ListManifests(ctx context.Context) ([]ManifestSummary, error)
+}
+
+// ManifestSummary is one completed upload, projected from a manifest.
+type ManifestSummary struct {
+	UploadID    string
+	Source      string
+	Destination string
+	Files       int64
+	Bytes       int64
+	Created     time.Time
+	Completed   bool
+}
+
+// AnalyzeProvider runs an on-demand bucket analysis (#449). Nil when no bucket is
+// configured; the command layer adapts costs.S3Analyzer into an AnalyzeResult.
+type AnalyzeProvider interface {
+	Analyze(ctx context.Context) (*AnalyzeResult, error)
+}
+
+// AnalyzeResult is the projected outcome of a bucket scan.
+type AnalyzeResult struct {
+	Objects          int64
+	Bytes            int64
+	CurrentMonthly   float64
+	ProjectedMonthly float64
+	Savings          float64
+}
+
 // Dashboard is a read-only Bubble Tea dashboard over CargoShip's real local
 // data: the recorded cost ledger (pkg/aws/cost) and in-progress upload state
 // (pkg/resume). It fabricates nothing and performs no live bucket scans — when a
 // source has no data it says so rather than showing invented numbers.
 type Dashboard struct {
 	ctx     context.Context
-	cost    CostProvider // nil when the cost manager is unavailable
+	cost    CostProvider      // nil when the cost manager is unavailable
+	inv     InventoryProvider // nil when no bucket is configured (#449)
+	an      AnalyzeProvider   // nil when no bucket is configured (#449)
+	target  string            // "s3://bucket/prefix" for display; "" when none
 	logger  *slog.Logger
 	refresh time.Duration
 
@@ -53,12 +94,18 @@ type Dashboard struct {
 	summary    *cost.CostSummary
 	budget     map[string]interface{}
 	uploads    []*resume.UploadState
+	manifests  []ManifestSummary // #449: completed uploads from S3
+	invErr     error
+	analysis   *AnalyzeResult // #449: last on-demand bucket analysis
+	analyzeErr error
+	analyzing  bool
 	fetchErr   error
 	lastUpdate time.Time
 
 	// Widgets.
-	costTable   table.Model
-	uploadTable table.Model
+	costTable      table.Model
+	uploadTable    table.Model
+	inventoryTable table.Model
 
 	// Styles.
 	titleStyle     lipgloss.Style
@@ -72,7 +119,7 @@ type Dashboard struct {
 // spend figures then report as unavailable while Uploads still works). initial
 // selects the opening view; refresh is the data refresh cadence (a sane default
 // is applied when non-positive).
-func NewDashboard(ctx context.Context, costProvider CostProvider, initial DashboardType, refresh time.Duration, logger *slog.Logger) *Dashboard {
+func NewDashboard(ctx context.Context, costProvider CostProvider, inv InventoryProvider, an AnalyzeProvider, target string, initial DashboardType, refresh time.Duration, logger *slog.Logger) *Dashboard {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -99,16 +146,36 @@ func NewDashboard(ctx context.Context, costProvider CostProvider, initial Dashbo
 		table.WithFocused(true),
 		table.WithHeight(12),
 	)
+	inventoryTable := table.New(
+		table.WithColumns([]table.Column{
+			{Title: "Upload ID", Width: 26},
+			{Title: "Source", Width: 28},
+			{Title: "Files", Width: 10},
+			{Title: "Size", Width: 12},
+			{Title: "Created", Width: 20},
+		}),
+		table.WithFocused(true),
+		table.WithHeight(12),
+	)
+
+	tabs := []string{"🏠 Overview", "💰 Costs", "📦 Uploads"}
+	if inv != nil || an != nil { // S3-backed views only when a bucket is configured
+		tabs = append(tabs, "🗂️  Inventory", "🔎 Analyze")
+	}
 
 	return &Dashboard{
 		ctx:            ctx,
 		cost:           costProvider,
+		inv:            inv,
+		an:             an,
+		target:         target,
 		logger:         logger.With("component", "tui-dashboard"),
 		refresh:        refresh,
 		currentView:    initial,
-		tabs:           []string{"🏠 Overview", "💰 Costs", "📦 Uploads"},
+		tabs:           tabs,
 		costTable:      costTable,
 		uploadTable:    uploadTable,
+		inventoryTable: inventoryTable,
 		titleStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Background(lipgloss.Color("235")).Padding(0, 1),
 		tabStyle:       lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("252")).Background(lipgloss.Color("238")),
 		activeTabStyle: lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("15")).Background(lipgloss.Color("69")).Bold(true),
@@ -127,10 +194,18 @@ func (d *Dashboard) Run() error {
 
 // dataMsg carries a refreshed snapshot of the real data sources.
 type dataMsg struct {
-	summary *cost.CostSummary
-	budget  map[string]interface{}
-	uploads []*resume.UploadState
-	err     error
+	summary   *cost.CostSummary
+	budget    map[string]interface{}
+	uploads   []*resume.UploadState
+	manifests []ManifestSummary
+	invErr    error
+	err       error
+}
+
+// analyzeMsg carries the result of an on-demand bucket analysis (#449).
+type analyzeMsg struct {
+	result *AnalyzeResult
+	err    error
 }
 
 type tickMsg time.Time
@@ -146,7 +221,7 @@ func (d *Dashboard) tick() tea.Cmd {
 
 // fetch reads the real data sources off the UI goroutine.
 func (d *Dashboard) fetch() tea.Cmd {
-	ctx, cp := d.ctx, d.cost
+	ctx, cp, inv := d.ctx, d.cost, d.inv
 	return func() tea.Msg {
 		msg := dataMsg{}
 		// In-progress / resumable uploads (local, no AWS calls).
@@ -164,7 +239,27 @@ func (d *Dashboard) fetch() tea.Cmd {
 			// A report error (e.g. no records yet) is not fatal — Costs shows an
 			// honest empty state.
 		}
+		// #449: completed-uploads inventory from S3 manifests (a bounded ListObjects
+		// + manifest reads; cheap relative to a full bucket scan, so it refreshes
+		// with the tick).
+		if inv != nil {
+			if manifests, err := inv.ListManifests(ctx); err == nil {
+				msg.manifests = manifests
+			} else {
+				msg.invErr = err
+			}
+		}
 		return msg
+	}
+}
+
+// analyze runs the on-demand bucket analysis off the UI goroutine (#449). A full
+// bucket scan is expensive, so it is triggered by a key, not the refresh tick.
+func (d *Dashboard) analyze() tea.Cmd {
+	ctx, an := d.ctx, d.an
+	return func() tea.Msg {
+		result, err := an.Analyze(ctx)
+		return analyzeMsg{result: result, err: err}
 	}
 }
 
@@ -185,6 +280,21 @@ func (d *Dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			d.currentView = DashboardCosts
 		case "3":
 			d.currentView = DashboardUploads
+		case "4":
+			if d.inv != nil || d.an != nil {
+				d.currentView = DashboardInventory
+			}
+		case "5":
+			if d.inv != nil || d.an != nil {
+				d.currentView = DashboardAnalyze
+			}
+		case "a":
+			// #449: run the on-demand bucket analysis (expensive; explicit trigger).
+			if d.an != nil && !d.analyzing {
+				d.analyzing = true
+				d.analyzeErr = nil
+				return d, d.analyze()
+			}
 		case "r":
 			return d, d.fetch()
 		}
@@ -194,10 +304,18 @@ func (d *Dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		d.summary = msg.summary
 		d.budget = msg.budget
 		d.uploads = msg.uploads
+		d.manifests = msg.manifests
+		d.invErr = msg.invErr
 		d.fetchErr = msg.err
 		d.lastUpdate = time.Now()
 		d.costTable.SetRows(costRows(msg.summary))
 		d.uploadTable.SetRows(uploadRows(msg.uploads))
+		d.inventoryTable.SetRows(inventoryRows(msg.manifests))
+		return d, nil
+	case analyzeMsg:
+		d.analyzing = false
+		d.analysis = msg.result
+		d.analyzeErr = msg.err
 		return d, nil
 	}
 
@@ -208,6 +326,8 @@ func (d *Dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		d.costTable, cmd = d.costTable.Update(msg)
 	case DashboardUploads:
 		d.uploadTable, cmd = d.uploadTable.Update(msg)
+	case DashboardInventory:
+		d.inventoryTable, cmd = d.inventoryTable.Update(msg)
 	}
 	return d, cmd
 }
@@ -232,11 +352,20 @@ func (d *Dashboard) View() string {
 		body = d.renderCosts()
 	case DashboardUploads:
 		body = d.renderUploads()
+	case DashboardInventory:
+		body = d.renderInventory()
+	case DashboardAnalyze:
+		body = d.renderAnalyze()
 	}
 
-	help := d.helpStyle.Render("tab/1-3 switch · r refresh · q quit")
+	n := len(d.tabs)
+	keys := fmt.Sprintf("tab/1-%d switch · r refresh · q quit", n)
+	if d.an != nil {
+		keys = fmt.Sprintf("tab/1-%d switch · a analyze · r refresh · q quit", n)
+	}
+	help := d.helpStyle.Render(keys)
 	if !d.lastUpdate.IsZero() {
-		help = d.helpStyle.Render(fmt.Sprintf("tab/1-3 switch · r refresh · q quit · updated %s ago", time.Since(d.lastUpdate).Round(time.Second)))
+		help = d.helpStyle.Render(fmt.Sprintf("%s · updated %s ago", keys, time.Since(d.lastUpdate).Round(time.Second)))
 	}
 	return fmt.Sprintf("%s\n%s\n\n%s\n%s", header, tabs, body, help)
 }
@@ -284,6 +413,66 @@ func (d *Dashboard) renderUploads() string {
 		body += "\n\n  " + d.errStyle.Render("could not read upload state: "+d.fetchErr.Error())
 	}
 	return body
+}
+
+func (d *Dashboard) renderInventory() string {
+	body := fmt.Sprintf("Inventory — completed uploads in %s\n\n%s", d.target, d.inventoryTable.View())
+	if d.invErr != nil {
+		body += "\n\n  " + d.errStyle.Render("could not list manifests: "+d.invErr.Error())
+	}
+	return body
+}
+
+func (d *Dashboard) renderAnalyze() string {
+	head := fmt.Sprintf("Analyze — on-demand bucket scan of %s", d.target)
+	switch {
+	case d.analyzing:
+		return head + "\n\n  scanning… (press a to re-run)"
+	case d.analyzeErr != nil:
+		return head + "\n\n  " + d.errStyle.Render("analysis failed: "+d.analyzeErr.Error())
+	case d.analysis == nil:
+		return head + "\n\n  press a to analyze (a full bucket scan; not run automatically)"
+	}
+	a := d.analysis
+	return head + "\n\n" +
+		fmt.Sprintf("  Objects:            %d\n", a.Objects) +
+		fmt.Sprintf("  Size:               %s\n", humanBytes(a.Bytes)) +
+		fmt.Sprintf("  Current storage:    $%.2f/mo\n", a.CurrentMonthly) +
+		fmt.Sprintf("  Projected (CargoShip): $%.2f/mo\n", a.ProjectedMonthly) +
+		fmt.Sprintf("  Potential savings:  $%.2f/mo", a.Savings)
+}
+
+// inventoryRows maps completed-upload summaries into table rows; an empty set
+// yields a single honest "no completed uploads" row rather than fabricated data.
+func inventoryRows(manifests []ManifestSummary) []table.Row {
+	if len(manifests) == 0 {
+		return []table.Row{{"(no completed uploads found)", "", "", "", ""}}
+	}
+	rows := make([]table.Row, 0, len(manifests))
+	for _, m := range manifests {
+		rows = append(rows, table.Row{
+			m.UploadID,
+			m.Source,
+			fmt.Sprintf("%d", m.Files),
+			humanBytes(m.Bytes),
+			m.Created.Format("2006-01-02 15:04"),
+		})
+	}
+	return rows
+}
+
+// humanBytes renders a byte count as a compact human-readable size.
+func humanBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 // costRows maps a cost summary's per-storage-class spend into table rows. A nil
