@@ -151,5 +151,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${GITHUB_REF_NAME}" "${{ steps.report.outputs.path }}" --clobber \
-            || echo "release ${GITHUB_REF_NAME} not found yet — artifact still available in workflow run"
+          # The release is published by a separate workflow on the same tag, so
+          # it may not exist for the first minute or two — retry to absorb that
+          # race. But do NOT swallow a genuine failure (#458): if the upload never
+          # succeeds, fail the step. The report is also kept as a workflow artifact
+          # (previous step), so evidence is never lost even on failure.
+          for attempt in $(seq 1 12); do
+            if gh release upload "${GITHUB_REF_NAME}" "${{ steps.report.outputs.path }}" --clobber; then
+              echo "attached verification report to release ${GITHUB_REF_NAME} (attempt ${attempt})"
+              exit 0
+            fi
+            echo "attempt ${attempt}/12: release ${GITHUB_REF_NAME} not ready or upload failed; retrying in 30s..."
+            sleep 30
+          done
+          echo "::error::failed to attach the verification report to release ${GITHUB_REF_NAME} after 12 attempts (6 min)"
+          exit 1
