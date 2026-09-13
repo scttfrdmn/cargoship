@@ -946,7 +946,7 @@ Examples:
 
 	// Issue #529: access-control posture preflight
 	cmd.Flags().Bool("check-access", false, "Report the target bucket's access-control posture before uploading (see the 'access-check' command)")
-	cmd.Flags().String("fail-on", "none", "With --check-access, abort if the worst finding is at least this severe: none, unknown, warn, critical")
+	cmd.Flags().String("fail-on", "none", "With --check-access, abort if the worst finding is at least this severe: none, unknown, warn, critical (warn/critical do NOT trip on checks that couldn't be evaluated — use 'unknown' to also fail when a check was denied)")
 
 	// Issue #166: Direct upload optimization (fast path for small files)
 	cmd.Flags().Bool("direct-upload", false, "Enable direct upload mode (bypasses archiving/compression for small files)")
