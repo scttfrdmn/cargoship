@@ -339,7 +339,7 @@ func NewArchiverStage(config *ArchiverConfig, input <-chan *Job, output chan<- *
 
 	// Issue #34 Phase 1.1: Create BufferedPipe pool (32 pipes, 64MB each = 2GB total)
 	// This prevents 64GB memory leak when processing 1000 chunks
-	pipePool := NewBufferedPipePool(32, 64*1024*1024, 32*1024)
+	pipePool := NewBufferedPipePool(32, pipeBufferSize, pipeChunkSize)
 
 	// Issue #34 Phase 2.1: Create mmap LRU cache with 1000 FD limit
 	// Prevents file descriptor exhaustion on large datasets (100k+ files)
@@ -404,7 +404,7 @@ func NewArchiverStageWithSharding(config *ArchiverConfig, input <-chan *Job, out
 	}
 
 	// Issue #34 Phase 1.1: Create BufferedPipe pool (32 pipes, 64MB each = 2GB total)
-	pipePool := NewBufferedPipePool(32, 64*1024*1024, 32*1024)
+	pipePool := NewBufferedPipePool(32, pipeBufferSize, pipeChunkSize)
 
 	// Issue #34 Phase 2.1: Create mmap LRU cache with 1000 FD limit
 	mmapCache := newMmapLRUCache(1000)

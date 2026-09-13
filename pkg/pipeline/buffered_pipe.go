@@ -6,6 +6,25 @@ import (
 	"sync"
 )
 
+// Default BufferedPipe geometry for the upload streaming path.
+//
+// pipeBufferSize is how far the archiver may work ahead of the uploader before
+// backpressure blocks it. pipeChunkSize is the granularity of a single
+// channel handoff: the writer copies incoming data into pooled chunks of this
+// size and the reader copies them back out.
+//
+// #522: the chunk size trades copy/handoff overhead against backpressure
+// granularity. It does not change the number of bytes copied (that is inherent
+// to a streaming pipe), but a larger chunk means proportionally fewer channel
+// sends, pool Get/Put pairs, and producer/consumer wakeups per GB moved. At
+// 32KiB a multi-GB chunk incurs tens of thousands of handoffs; 256KiB cuts that
+// 8× while still giving fine-grained (256-slot) backpressure over the 64MiB
+// buffer.
+const (
+	pipeBufferSize = 64 * 1024 * 1024 // 64 MiB work-ahead window
+	pipeChunkSize  = 256 * 1024       // 256 KiB per channel handoff
+)
+
 // BufferedPipePool manages a pool of BufferedPipe instances to avoid
 // allocating 64MB per chunk (Issue #34 Phase 1.1)
 //
