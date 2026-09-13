@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`cargoship access-check s3://bucket/prefix`** — a read-only report on the
+  access-control posture of a target bucket: Block Public Access (bucket +
+  account), wildcard-principal grants in the bucket policy and ACL, object
+  ownership, and the scoping of the default SSE-KMS key policy. Each check
+  degrades gracefully — a check the caller lacks permission for reports
+  `unknown` with the IAM action it needs, and the rest still run. Report-only:
+  exits 0 on findings, exits 1 only if the bucket is unreachable. `--format json`
+  for machine output. Scoped to user/group access controls, not a general
+  security audit. (#529)
+
 ## [0.27.0] - 2026-09-12
 
 **Upload efficiency.** Systematic profiling of a real-S3 upload (#522) found the

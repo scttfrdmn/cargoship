@@ -92,23 +92,24 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 		NewContextCmd(),
 		NewShellCmd(),
 		NewDashboardCmd(),
-		NewUploadCmd(),   // Issue #95: Upload command with CargoHold sharding
-		NewSyncCmd(),     // Issue #148: Incremental sync command
-		NewMigrateCmd(),  // Issue #100: Migrate command for archive conversion
-		NewListCmd(),     // Issue #97: List uploaded files from manifest
-		NewDownloadCmd(), // Issue #96: Download with selective extraction
-		NewInfoCmd(),     // Issue #98: Info command for upload metadata
-		NewVerifyCmd(),   // Issue #99: Verify command for integrity checks
-		NewBalanceCmd(),  // Issue #109: Analyze shard balance and rebalancing
-		NewDeleteCmd(),   // Delete specific upload
-		NewScuttleCmd(),  // Nuclear option: delete everything
-		NewResumeCmd(),   // Issue #119: Resume interrupted uploads with local state
-		NewCostCmd(),     // Issue #145: Cost management and budget tracking
-		NewBudgetCmd(),   // Issue #147: Budget management and volume quotas
-		NewAlertsCmd(),   // Issue #147 Phase 4: Budget alerts and notifications
-		NewRestoreCmd(),  // Issue #189: Hash/DVC-aware selective file restore
-		NewBrowseCmd(),   // Issue #190: Interactive TUI file browser
-		NewDVCCmd(),      // v0.13.0: DVC pipeline auto-discovery and stage inspection
+		NewUploadCmd(),      // Issue #95: Upload command with CargoHold sharding
+		NewSyncCmd(),        // Issue #148: Incremental sync command
+		NewMigrateCmd(),     // Issue #100: Migrate command for archive conversion
+		NewListCmd(),        // Issue #97: List uploaded files from manifest
+		NewDownloadCmd(),    // Issue #96: Download with selective extraction
+		NewInfoCmd(),        // Issue #98: Info command for upload metadata
+		NewVerifyCmd(),      // Issue #99: Verify command for integrity checks
+		NewAccessCheckCmd(), // Issue #529: read-only access-control posture report
+		NewBalanceCmd(),     // Issue #109: Analyze shard balance and rebalancing
+		NewDeleteCmd(),      // Delete specific upload
+		NewScuttleCmd(),     // Nuclear option: delete everything
+		NewResumeCmd(),      // Issue #119: Resume interrupted uploads with local state
+		NewCostCmd(),        // Issue #145: Cost management and budget tracking
+		NewBudgetCmd(),      // Issue #147: Budget management and volume quotas
+		NewAlertsCmd(),      // Issue #147 Phase 4: Budget alerts and notifications
+		NewRestoreCmd(),     // Issue #189: Hash/DVC-aware selective file restore
+		NewBrowseCmd(),      // Issue #190: Interactive TUI file browser
+		NewDVCCmd(),         // v0.13.0: DVC pipeline auto-discovery and stage inspection
 	)
 	// Legacy commands removed: NewWizardCmd, NewAnalyzeCmd, NewSchemaCmd, newTravelAgentCmd
 	cmd.AddCommand(NewMDDocsCmd())
