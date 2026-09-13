@@ -68,6 +68,8 @@ func NewOptimizedTransporter(ctx context.Context, s3Client *s3.Client, config aw
 		o.PartSizeBytes = config.MultipartChunkSize
 		o.Concurrency = int(config.Concurrency)
 		o.MaxUploadParts = 10000
+		// #522: skip the SDK's default per-upload CRC32 (redundant with our SHA-256).
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
 	})
 
 	transporter := &OptimizedTransporter{

@@ -122,6 +122,8 @@ func NewS3MultiPrefixUploaderStage(
 	uploader := transfermanager.New(config.S3Client, func(o *transfermanager.Options) {
 		o.PartSizeBytes = config.PartSize
 		o.Concurrency = 4 // Internal concurrency per upload
+		// #522: skip the SDK's default per-upload CRC32 (redundant with our SHA-256).
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
 	})
 
 	// Initialize per-prefix stats

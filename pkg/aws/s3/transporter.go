@@ -74,6 +74,11 @@ func NewTransporter(client *s3.Client, config awsconfig.S3Config) *Transporter {
 	uploader := transfermanager.New(client, func(o *transfermanager.Options) {
 		o.PartSizeBytes = config.MultipartChunkSize
 		o.Concurrency = config.Concurrency
+		// #522: transfermanager defaults to calculating a CRC32 on every upload,
+		// which is ~5% of upload CPU and redundant with CargoShip's own per-archive
+		// SHA-256 (#271) + verify-on-restore. Only compute a checksum when the API
+		// requires it. TLS still protects bytes on the wire.
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
 	})
 
 	return &Transporter{

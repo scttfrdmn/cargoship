@@ -985,6 +985,8 @@ func (p *Pipeline) savePartialManifest(ctx context.Context) error {
 	s3Client := p.config.S3Client.(*s3.Client)
 	uploader := transfermanager.New(s3Client, func(o *transfermanager.Options) {
 		o.PartSizeBytes = 5 * 1024 * 1024 // 5MB parts
+		// #522: skip the SDK's default per-upload CRC32 (redundant with our SHA-256).
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
 	})
 
 	input := &transfermanager.UploadObjectInput{
