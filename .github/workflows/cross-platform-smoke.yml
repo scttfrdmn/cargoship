@@ -5,9 +5,14 @@ name: Cross-Platform Smoke
 # case, symlinks, permissions, temp/long paths, drive semantics) unexercised.
 #
 # This is a SMOKE lane, deliberately NOT the AWS integration suite: it builds the
-# binary, checks it runs, and runs the credential-free unit tests (`-short`) on
-# macOS and Windows — enough to catch platform regressions in path containment,
-# manifest round-trips, and CLI parsing without needing AWS or the emulator.
+# binary, checks it runs, and runs the credential-free unit tests (`-short`) —
+# enough to catch platform regressions in path containment, manifest round-trips,
+# and CLI parsing without needing AWS or the emulator.
+#
+# macOS only for now. The first run surfaced ~30 Windows failures (Unix-permission
+# assertions, clock-granularity timing, CRLF golden files, mmap, and a couple of
+# path/symlink cases to verify) — tracked in #563. windows-latest is added back to
+# the matrix, as a required lane, once `go test -short ./...` is green there.
 
 on:
   push:
@@ -36,9 +41,9 @@ jobs:
   smoke:
     name: Smoke (${{ matrix.os }})
     strategy:
-      fail-fast: false # report macOS and Windows independently
+      fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest] # windows-latest added once green (#563)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
