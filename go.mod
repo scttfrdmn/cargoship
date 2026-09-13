@@ -3,7 +3,7 @@ module github.com/scttfrdmn/cargoship
 go 1.26.0
 
 require (
-	github.com/ProtonMail/go-crypto v1.3.0
+	github.com/ProtonMail/go-crypto v1.4.1
 	github.com/ProtonMail/gopenpgp/v2 v2.9.0
 	github.com/andybalholm/brotli v1.2.3
 	github.com/aws/aws-sdk-go-v2 v1.46.0
