@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Incremental-sync restore no longer silently omits unchanged files.** An
+  incremental `sync` uploads only changed files, so the newest manifest is a
+  delta chained to its predecessor via `PreviousManifestID` — but restore read a
+  single manifest and never followed the chain, so any file unchanged since an
+  earlier version was unrestorable from the latest version. Restore now resolves
+  the version chain into an effective full-dataset view (newest-wins per path,
+  each file fetched from the chunk that stores it), fixing already-written
+  incremental archives with no format change. `verify` chain-awareness is a
+  tracked follow-up. (#552)
+
 ### Added
 - **`cargoship access-check s3://bucket/prefix`** — a read-only report on the
   access-control posture of a target bucket: Block Public Access (bucket +
