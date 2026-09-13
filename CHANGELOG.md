@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-09-12
+
+**Upload efficiency.** Systematic profiling of a real-S3 upload (#522) found the
+CargoShip-specific CPU cost concentrated in redundant hashing and streaming-pipe
+overhead. This release closes those without weakening integrity: it drops two
+redundant checksum passes and widens the internal pipe handoff.
+
+### Changed
+- **Dropped the redundant per-upload CRC32.** The AWS SDK computed a CRC32 over
+  every upload on top of CargoShip's own SHA-256 integrity. The SDK's
+  `RequestChecksumCalculation` is now `WhenRequired`, removing that ~5% of upload
+  CPU. SHA-256 integrity is
+  unchanged. (#522, #545)
+- **Framed chunks no longer carry a redundant whole-object checksum.** A framed
+  `.tar.zst` chunk's per-frame `FrameEntry.Checksum`es already tile the entire
+  compressed object (a strict superset, including tar metadata), so the separate
+  whole-object `ChunkEntry.Checksum` is no longer computed for framed chunks —
+  removing a full SHA-256 pass over the compressed stream. `verify --deep`
+  verifies a framed chunk via its frames. **Manifest contract:**
+  `ChunkEntry.Checksum` is now **optional** — present for unframed chunks
+  (object-level integrity), omitted for framed chunks (their frame checksums
+  cover the object). External readers should treat an empty `checksum` on a
+  framed chunk as "covered by frames," not "unverifiable." Unframed / plain-tar
+  chunks are unchanged and still carry it. (#522, #548)
+- **Widened the upload pipe's internal handoff from 32 KiB to 256 KiB.** The
+  archiver→uploader stream copies data through a channel in fixed-size chunks;
+  32 KiB incurred tens of thousands of channel sends, pool operations, and
+  goroutine wakeups per multi-GB chunk. Widening to 256 KiB (still 256-slot
+  backpressure over the 64 MiB window) measured ~25% higher pipe throughput and
+  ~7.6× fewer allocations in isolation. No change to bytes or byte-exactness.
+  (#522, #549)
+- **Dependency updates.** aws-sdk group (17 updates, incl.
+  `feature/s3/transfermanager` v0.3.9→v0.4.3), `klauspost/compress` 1.19.1→1.20.0
+  (zstd byte path, validated byte-exact), gopenpgp/go-crypto, and CI action pins.
+  (#534, #544, #532, #533)
+
 ## [0.26.0] - 2026-09-12
 
 **Migrations, resume & dashboard.** Migrates the upload path off a deprecated AWS
