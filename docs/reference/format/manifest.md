@@ -229,7 +229,13 @@ for how a reader uses `frames` + `archive_offset` to fetch and decode a single
 file.
 
 `Checksum` here is the **SHA256 of the compressed archive object** — verify a
-downloaded chunk against it before extracting.
+downloaded chunk against it before extracting. It is **optional and omitted for
+framed chunks** (`frames` non-empty): a framed chunk's `FrameEntry.Checksum`es
+tile the entire compressed object, so they already cover it and the redundant
+whole-object hash is not computed (#522). A reader should therefore verify a
+framed chunk via its per-frame checksums and treat an empty `checksum` as
+"covered by frames," not "unverifiable"; unframed chunks always carry it as their
+object-level integrity.
 
 ## `ShardEntry`
 

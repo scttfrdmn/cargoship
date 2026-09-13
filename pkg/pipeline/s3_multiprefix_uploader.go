@@ -411,21 +411,29 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 			// #436: the random-access frame index for this chunk, if framing was
 			// active (nil for single-frame / plain-tar chunks).
 			frames := job.Frames()
+			// #522: for a framed chunk the whole-object hash was skipped (frames
+			// cover it), so source both the true compressed size and the object
+			// integrity from the frames: the per-frame CompressedSizes sum to the
+			// exact object size, and the per-frame checksums are the integrity. An
+			// unframed chunk uses the whole-object hasher's byte count + digest
+			// (falling back to the uncompressed estimate only if it wasn't wired).
+			var compressedSize int64
+			var checksum string
 			if len(frames) > 0 {
 				builder.AddFormatFeature(manifest.FormatFeatureFrames)
+				for _, f := range frames {
+					compressedSize += f.CompressedSize
+				}
+			} else {
+				compressedSize = job.ArchiveCompressedSize()
+				if compressedSize == 0 {
+					compressedSize = atomic.LoadInt64(&job.ArchiveSize)
+				}
+				checksum = job.ArchiveChecksum()
 			}
 
-			// The true compressed size is the exact byte count read off the
-			// upload stream by the hashing wrapper. ArchiveSize is only an
-			// uncompressed-total estimate, so it made CompressedSize wrong (and
-			// "space saved" report as 0%). Fall back to the estimate when the
-			// hasher wasn't wired (e.g. a code path that didn't wrap the stream).
-			compressedSize := job.ArchiveCompressedSize()
-			if compressedSize == 0 {
-				compressedSize = atomic.LoadInt64(&job.ArchiveSize)
-			}
-
-			// Add chunk entry (#271: record the SHA-256 of the uploaded archive)
+			// Add chunk entry (#271/#522: whole-object SHA-256 for unframed chunks;
+			// empty for framed chunks, where FrameEntry.Checksum provides integrity).
 			builder.AddChunk(manifest.ChunkEntry{
 				ID:               job.Chunk.ID,
 				ShardID:          shardID,
@@ -436,7 +444,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 				CompressedSize:   compressedSize,
 				CreatedAt:        job.StartTime,
 				UploadedAt:       job.EndTime,
-				Checksum:         job.ArchiveChecksum(),
+				Checksum:         checksum,
 				Frames:           frames,
 			})
 
@@ -490,7 +498,12 @@ func (s *S3MultiPrefixUploaderStage) uploadToS3(ctx context.Context, job *Job) e
 	// Both upload paths (transporter, manager) read job.Archive, so wrapping
 	// here covers both. The digest is finalized once the stream is consumed and
 	// is read into ChunkEntry.Checksum after a successful upload.
-	if job.Archive != nil && job.archiveHasher == nil {
+	// #522: skip this whole-object hash for a framed chunk — its per-frame
+	// checksums already tile the entire compressed object (a strict superset), so
+	// the whole-object digest is redundant. Frames also carry the true compressed
+	// size, so AddChunk sources that from them below. Unframed (e.g. plain-tar /
+	// incompressible) chunks still get the whole-object hash.
+	if job.Archive != nil && job.archiveHasher == nil && !job.Framed {
 		job.archiveHasher = newHashingReadCloser(job.Archive)
 		job.Archive = job.archiveHasher
 	}

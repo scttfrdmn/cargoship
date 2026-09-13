@@ -634,6 +634,12 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 	} else {
 		job.Metadata["compression"] = "none"
 	}
+	// #522: a framed chunk (compressed + framing on) will carry per-frame checksums
+	// that tile the whole compressed object, so the uploader can skip the redundant
+	// whole-object SHA-256. Decided here (before streaming) so the flag is set on
+	// the job before it reaches the uploader — the frame list itself isn't ready
+	// until the stream finishes.
+	job.Framed = useCompression && s.config.FrameSize > 0
 	job.Metadata["compressible_files"] = fmt.Sprintf("%d", compressibleCount)
 	job.Metadata["precompressed_files"] = fmt.Sprintf("%d", preCompressedCount)
 
@@ -683,9 +689,17 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 		var fr *framer
 
 		if useCompression {
-			// cwC counts (and hashes, #439) compressed bytes into the pipe; cwU
-			// counts the uncompressed tar position. tw → cwU → encoder → cwC → pw.
-			cwC := &countingWriter{w: pw, h: sha256.New()}
+			// cwC counts (and, when framing is active, hashes #439) compressed bytes
+			// into the pipe; cwU counts the uncompressed tar position.
+			// tw → cwU → encoder → cwC → pw.
+			// #522: the per-frame hash is only read when frames are cut, so only pay
+			// for it when framing is on (FrameSize > 0). With framing off the digest
+			// was computed over every compressed byte and never used.
+			var cwCHash hash.Hash
+			if s.config.FrameSize > 0 {
+				cwCHash = sha256.New()
+			}
+			cwC := &countingWriter{w: pw, h: cwCHash}
 			encoder.Reset(cwC)
 			cwU := &countingWriter{w: encoder}
 			tw = tar.NewWriter(cwU)
