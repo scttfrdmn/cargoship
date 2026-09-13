@@ -172,7 +172,7 @@ Full documentation lives at **[cargoship.app](https://cargoship.app)**.
 
 ## Project status and license
 
-CargoShip is at **v0.27.0** and is a community-maintained v0.x project — the CLI
+CargoShip is at **v0.28.0** and is a community-maintained v0.x project — the CLI
 and archive format are usable in production, with compatibility caveats tracked
 on the [maturity page](https://cargoship.app/project/maturity). To report a
 security issue, see [SECURITY.md](SECURITY.md).

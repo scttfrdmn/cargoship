@@ -7,16 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- **Incremental-sync restore no longer silently omits unchanged files.** An
-  incremental `sync` uploads only changed files, so the newest manifest is a
-  delta chained to its predecessor via `PreviousManifestID` — but restore read a
-  single manifest and never followed the chain, so any file unchanged since an
-  earlier version was unrestorable from the latest version. Restore now resolves
-  the version chain into an effective full-dataset view (newest-wins per path,
-  each file fetched from the chunk that stores it), fixing already-written
-  incremental archives with no format change. `verify` chain-awareness is a
-  tracked follow-up. (#552)
+## [0.28.0] - 2026-09-13
+
+**Access controls & an incremental-restore data-integrity fix.** Adds a
+read-only bucket access-control posture report (standalone and as an upload
+preflight), and fixes a bug where restoring the latest incremental `sync` could
+silently omit unchanged files.
 
 ### Added
 - **`cargoship access-check s3://bucket/prefix`** — a read-only report on the
@@ -32,6 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   preflight before uploading. With `--fail-on <none|unknown|warn|critical>` it
   aborts the upload when the worst finding meets the threshold (e.g. refuse to
   write to a bucket whose policy is world-readable). (#529)
+
+### Fixed
+- **Incremental-sync restore no longer silently omits unchanged files.** An
+  incremental `sync` uploads only changed files, so the newest manifest is a
+  delta chained to its predecessor via `PreviousManifestID` — but restore read a
+  single manifest and never followed the chain, so any file unchanged since an
+  earlier version was unrestorable from the latest version. Restore now resolves
+  the version chain into an effective full-dataset view (newest-wins per path,
+  each file fetched from the chunk that stores it), fixing already-written
+  incremental archives with no format change. `verify` chain-awareness is a
+  tracked follow-up. (#552)
 
 ## [0.27.0] - 2026-09-12
 
