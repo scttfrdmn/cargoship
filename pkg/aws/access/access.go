@@ -57,6 +57,10 @@ func (s Severity) rank() int {
 	}
 }
 
+// AtLeast reports whether s is at least as severe as o (by rank), so callers
+// can gate on a threshold (e.g. "fail if worst finding is at least warn").
+func (s Severity) AtLeast(o Severity) bool { return s.rank() >= o.rank() }
+
 // Finding is the result of a single posture check.
 type Finding struct {
 	Check       string   `json:"check"`                 // stable machine key, e.g. "block-public-access"

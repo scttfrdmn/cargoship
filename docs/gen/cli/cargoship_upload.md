@@ -55,6 +55,7 @@ cargoship upload SOURCE_DIR DESTINATION [flags]
 ```
       --auto-tier                        Enable automatic storage tier selection based on file access time
   -b, --bucket string                    S3 bucket name (or use s3:// URL in DESTINATION)
+      --check-access                     Report the target bucket's access-control posture before uploading (see the 'access-check' command)
       --compression-level int            Fixed zstd compression level (1-22), overriding per-chunk content-aware selection. Unset = content-aware (default 3)
       --congestion-control string        Congestion control algorithm: bbr, cubic, auto (default "auto")
       --direct-upload                    Enable direct upload mode (bypasses archiving/compression for small files)
@@ -67,6 +68,7 @@ cargoship upload SOURCE_DIR DESTINATION [flags]
       --dvc-stage string                 DVC pipeline stage name to extract provenance from (reads dvc.yaml + dvc.lock)
       --enable-dedup                     Enable cross-shard file deduplication (10-30% space savings for redundant datasets)
       --encrypt-manifest                 Encrypt manifest with KMS envelope encryption (requires --kms-key-id)
+      --fail-on string                   With --check-access, abort if the worst finding is at least this severe: none, unknown, warn, critical (default "none")
       --force-direct-upload              Force direct upload regardless of thresholds (for benchmarking)
       --force-restart                    Ignore saved state and start fresh upload (bypasses resume detection)
       --frame-size string                Cut compressed chunks into random-access zstd frames every N bytes (e.g. 16MiB, 64MB); 0 disables framing (default "16MiB")
