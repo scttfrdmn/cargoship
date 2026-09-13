@@ -1,0 +1,56 @@
+name: Cross-Platform Smoke
+
+# CargoShip ships macOS and Windows binaries, but the core test CI is Linux-only.
+# For a filesystem/path-heavy tool this leaves platform behavior (path separators,
+# case, symlinks, permissions, temp/long paths, drive semantics) unexercised.
+#
+# This is a SMOKE lane, deliberately NOT the AWS integration suite: it builds the
+# binary, checks it runs, and runs the credential-free unit tests (`-short`) on
+# macOS and Windows — enough to catch platform regressions in path containment,
+# manifest round-trips, and CLI parsing without needing AWS or the emulator.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/cross-platform-smoke.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/cross-platform-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: '1.26'
+
+jobs:
+  smoke:
+    name: Smoke (${{ matrix.os }})
+    strategy:
+      fail-fast: false # report macOS and Windows independently
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Compile all packages
+        run: go build ./...
+      - name: CLI runs and reports its version
+        run: go run ./cmd/cargoship --version
+      - name: Unit tests (short, credential-free)
+        run: go test -short ./...
