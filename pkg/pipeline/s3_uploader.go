@@ -110,6 +110,8 @@ func NewS3UploaderStage(config *S3UploaderConfig, input <-chan *Job, output chan
 	uploader := transfermanager.New(config.S3Client, func(o *transfermanager.Options) {
 		o.PartSizeBytes = config.PartSize
 		o.Concurrency = 4 // Internal concurrency per upload
+		// #522: skip the SDK's default per-upload CRC32 (redundant with our SHA-256).
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
 	})
 
 	return &S3UploaderStage{
