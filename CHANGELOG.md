@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-09-13
+
+**Incremental-sync trust story, completed.** With the restore fix in v0.28.0
+(#552), `verify` and deletions now also understand the `PreviousManifestID`
+chain: verify validates the whole dataset of an incremental chain, and
+`--track-deletes` finally persists deletions so a removed file is honored on
+restore.
+
 ### Fixed
 - **`verify` now validates the full dataset of an incremental sync (#554).** It
   previously validated only the latest (delta) manifest, under-reporting a
