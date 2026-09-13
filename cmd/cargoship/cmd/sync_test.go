@@ -25,6 +25,7 @@ func TestNewSyncPipelineConfig_UsesRealS3(t *testing.T) {
 		includeFiles:     []string{"a.txt", "b.txt"},
 		syncType:         "incremental",
 		previousUploadID: "prev-123",
+		deletedPaths:     []string{"old/removed.txt"},
 		s3Client:         client,
 	})
 
@@ -53,6 +54,10 @@ func TestNewSyncPipelineConfig_UsesRealS3(t *testing.T) {
 	}
 	if len(cfg.IncludeOnlyFiles) != 2 {
 		t.Errorf("IncludeOnlyFiles = %v, want 2 files", cfg.IncludeOnlyFiles)
+	}
+	// #555: deletions must thread through so they land in the manifest.
+	if len(cfg.DeletedPaths) != 1 || cfg.DeletedPaths[0] != "old/removed.txt" {
+		t.Errorf("DeletedPaths = %v, want [old/removed.txt]", cfg.DeletedPaths)
 	}
 	if cfg.CompressionLevel != 0 {
 		t.Errorf("CompressionLevel = %d, want 0 (content-aware)", cfg.CompressionLevel)

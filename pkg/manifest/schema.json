@@ -34,6 +34,7 @@
     "hostname": { "type": "string" },
     "previous_manifest_id": { "type": "string" },
     "sync_type": { "type": "string" },
+    "deleted_paths": { "type": "array", "items": { "type": "string" } },
     "bucket": { "type": "string" },
     "prefix": { "type": "string" },
     "region": { "type": "string" },

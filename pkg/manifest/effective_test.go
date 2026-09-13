@@ -102,6 +102,64 @@ func TestResolveEffective_ThreeVersionsNewestWins(t *testing.T) {
 	}
 }
 
+// TestResolveEffective_DeleteTombstone is the #555 regression: a file deleted in
+// a newer version must be dropped from the merged dataset, even though an
+// ancestor still lists it.
+func TestResolveEffective_DeleteTombstone(t *testing.T) {
+	v1 := &Manifest{
+		UploadID: "v1",
+		Files: []FileEntry{
+			fileEntry("keep.txt", "p/uploads/v1/c0", 10),
+			fileEntry("gone.txt", "p/uploads/v1/c0", 20),
+		},
+		Chunks: []ChunkEntry{{S3Key: "p/uploads/v1/c0"}},
+	}
+	// v2 deletes gone.txt (nothing new uploaded); records the tombstone.
+	v2 := &Manifest{
+		UploadID:           "v2",
+		PreviousManifestID: "v1",
+		SyncType:           SyncTypeIncremental,
+		DeletedPaths:       []string{"gone.txt"},
+	}
+
+	eff, err := ResolveEffective(context.Background(), v2, chainFetch(map[string]*Manifest{"v1": v1}))
+	if err != nil {
+		t.Fatalf("ResolveEffective: %v", err)
+	}
+	byPath := map[string]FileEntry{}
+	for _, f := range eff.Files {
+		byPath[f.Path] = f
+	}
+	if _, ok := byPath["gone.txt"]; ok {
+		t.Error("gone.txt was deleted in v2 but survived the merge (#555 tombstone not honored)")
+	}
+	if _, ok := byPath["keep.txt"]; !ok {
+		t.Error("keep.txt should survive")
+	}
+	if eff.TotalFiles != 1 {
+		t.Errorf("want 1 file after delete, got %d", eff.TotalFiles)
+	}
+	if eff.DeletedPaths != nil {
+		t.Error("effective manifest should not carry DeletedPaths (resolved into the file set)")
+	}
+}
+
+// TestResolveEffective_DeleteThenReAdd: a path deleted in v2 and re-created in v3
+// must be present (v3's version wins over v2's tombstone).
+func TestResolveEffective_DeleteThenReAdd(t *testing.T) {
+	v1 := &Manifest{UploadID: "v1", Files: []FileEntry{fileEntry("f.txt", "k1", 1)}, Chunks: []ChunkEntry{{S3Key: "k1"}}}
+	v2 := &Manifest{UploadID: "v2", PreviousManifestID: "v1", DeletedPaths: []string{"f.txt"}}
+	v3 := &Manifest{UploadID: "v3", PreviousManifestID: "v2", Files: []FileEntry{fileEntry("f.txt", "k3", 3)}, Chunks: []ChunkEntry{{S3Key: "k3"}}}
+
+	eff, err := ResolveEffective(context.Background(), v3, chainFetch(map[string]*Manifest{"v1": v1, "v2": v2}))
+	if err != nil {
+		t.Fatalf("ResolveEffective: %v", err)
+	}
+	if len(eff.Files) != 1 || eff.Files[0].S3Key != "k3" || eff.Files[0].Size != 3 {
+		t.Errorf("re-added f.txt (v3) must win over the v2 tombstone, got %+v", eff.Files)
+	}
+}
+
 func TestResolveEffective_NoChain(t *testing.T) {
 	m := &Manifest{UploadID: "solo", Files: []FileEntry{fileEntry("x", "k", 1)}}
 	eff, err := ResolveEffective(context.Background(), m, nil) // nil fetcher is fine with no chain

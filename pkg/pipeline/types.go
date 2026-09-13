@@ -343,6 +343,7 @@ type PipelineConfig struct {
 	IncludeOnlyFiles []string // If set, only upload these files (for incremental sync)
 	SyncType         string   // "full" or "incremental" (for manifest)
 	PreviousUploadID string   // Previous upload ID (for manifest chaining)
+	DeletedPaths     []string // Paths removed in this incremental version (Issue #555; recorded in the manifest for the chain-merge tombstone set)
 
 	// Progress tracking
 	EnableProgress   bool

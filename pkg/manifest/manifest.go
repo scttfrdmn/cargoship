@@ -224,6 +224,15 @@ func (b *Builder) SetSyncInfo(syncType string, previousUploadID string) {
 	b.manifest.PreviousManifestID = previousUploadID
 }
 
+// SetDeletedPaths records the paths removed in this incremental version relative
+// to its predecessor (Issue #555). Called only when delete tracking is enabled.
+func (b *Builder) SetDeletedPaths(paths []string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.manifest.DeletedPaths = paths
+}
+
 // SetEncryption sets encryption metadata (Issue #163, thread-safe)
 func (b *Builder) SetEncryption(kmsKeyID string, manifestEncrypted bool) {
 	b.mu.Lock()
