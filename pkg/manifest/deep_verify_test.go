@@ -253,8 +253,8 @@ func TestVerifyFiles_AllOK(t *testing.T) {
 		CompressionType: "zstd", ChecksumAlgorithm: ChecksumAlgorithmSHA256,
 		Chunks: []ChunkEntry{{ID: 0, S3Key: "chunk-0"}},
 		Files: []FileEntry{
-			{Path: "a.txt", ChunkID: 0, Checksum: sha256hex(fileA)},
-			{Path: "b.txt", ChunkID: 0, Checksum: sha256hex(fileB)},
+			{Path: "a.txt", ChunkID: 0, S3Key: "chunk-0", Checksum: sha256hex(fileA)},
+			{Path: "b.txt", ChunkID: 0, S3Key: "chunk-0", Checksum: sha256hex(fileB)},
 		},
 	}
 
@@ -278,7 +278,7 @@ func TestVerifyFiles_DetectsCorruptedFile(t *testing.T) {
 		Version: ManifestVersion, Bucket: "bkt", Prefix: "pfx",
 		CompressionType: "zstd", ChecksumAlgorithm: ChecksumAlgorithmSHA256,
 		Chunks: []ChunkEntry{{ID: 0, S3Key: "chunk-0"}},
-		Files:  []FileEntry{{Path: "a.txt", ChunkID: 0, Checksum: sha256hex(good)}},
+		Files:  []FileEntry{{Path: "a.txt", ChunkID: 0, S3Key: "chunk-0", Checksum: sha256hex(good)}},
 	}
 
 	res, err := NewDeepVerifier(m, dl).VerifyFiles(context.Background())
@@ -299,8 +299,8 @@ func TestVerifyFiles_MissingFromChunk(t *testing.T) {
 		CompressionType: "zstd", ChecksumAlgorithm: ChecksumAlgorithmSHA256,
 		Chunks: []ChunkEntry{{ID: 0, S3Key: "chunk-0"}},
 		Files: []FileEntry{
-			{Path: "a.txt", ChunkID: 0, Checksum: sha256hex(fileA)},
-			{Path: "b.txt", ChunkID: 0, Checksum: sha256hex([]byte("missing"))},
+			{Path: "a.txt", ChunkID: 0, S3Key: "chunk-0", Checksum: sha256hex(fileA)},
+			{Path: "b.txt", ChunkID: 0, S3Key: "chunk-0", Checksum: sha256hex([]byte("missing"))},
 		},
 	}
 
@@ -321,7 +321,7 @@ func TestVerifyFiles_Unverifiable(t *testing.T) {
 		Version: ManifestVersion, Bucket: "bkt", Prefix: "pfx",
 		CompressionType: "zstd", ChecksumAlgorithm: ChecksumAlgorithmSHA256,
 		Chunks: []ChunkEntry{{ID: 0, S3Key: "chunk-0"}},
-		Files:  []FileEntry{{Path: "a.txt", ChunkID: 0, Checksum: ""}}, // no checksum
+		Files:  []FileEntry{{Path: "a.txt", ChunkID: 0, S3Key: "chunk-0", Checksum: ""}}, // no checksum
 	}
 
 	res, err := NewDeepVerifier(m, dl).VerifyFiles(context.Background())
@@ -341,14 +341,49 @@ func TestVerifyFiles_SkipsDuplicates(t *testing.T) {
 		CompressionType: "zstd", ChecksumAlgorithm: ChecksumAlgorithmSHA256,
 		Chunks: []ChunkEntry{{ID: 0, S3Key: "chunk-0"}},
 		Files: []FileEntry{
-			{Path: "a.txt", ChunkID: 0, Checksum: sha256hex(fileA)},
-			{Path: "dup.txt", ChunkID: 0, IsDuplicate: true, Checksum: sha256hex(fileA)},
+			{Path: "a.txt", ChunkID: 0, S3Key: "chunk-0", Checksum: sha256hex(fileA)},
+			{Path: "dup.txt", ChunkID: 0, S3Key: "chunk-0", IsDuplicate: true, Checksum: sha256hex(fileA)},
 		},
 	}
 	res, err := NewDeepVerifier(m, dl).VerifyFiles(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, 1, res.TotalFiles, "duplicate excluded")
 	assert.True(t, res.Passed())
+}
+
+// TestVerifyFiles_MergedChainCollidingIdents is the #554 regression: a
+// chain-merged manifest (#552) unions chunks from multiple uploads that reuse
+// (ShardID, ID) = (0, 0) with DISTINCT S3Keys. Resolving files→chunk by the
+// composite ident would send both files to the first (0,0) chunk and mis-verify
+// one; the S3Key join routes each file to the chunk that actually holds it.
+func TestVerifyFiles_MergedChainCollidingIdents(t *testing.T) {
+	fileA := []byte("file a lives in upload one")
+	fileB := []byte("file b lives in upload two")
+	chunkU1 := makeTarZst(t, map[string][]byte{"a.txt": fileA})
+	chunkU2 := makeTarZst(t, map[string][]byte{"b.txt": fileB})
+	dl := &fakeDownloader{objects: map[string][]byte{
+		"pfx/u1/shard-0/chunk-0": chunkU1,
+		"pfx/u2/shard-0/chunk-0": chunkU2,
+	}}
+	m := &Manifest{
+		Version: ManifestVersion, Bucket: "bkt", Prefix: "pfx",
+		CompressionType: "zstd", ChecksumAlgorithm: ChecksumAlgorithmSHA256,
+		// Both chunks reuse (ShardID 0, ID 0) — the merged-chain shape.
+		Chunks: []ChunkEntry{
+			{ID: 0, ShardID: 0, S3Key: "u1/shard-0/chunk-0"},
+			{ID: 0, ShardID: 0, S3Key: "u2/shard-0/chunk-0"},
+		},
+		Files: []FileEntry{
+			{Path: "a.txt", ChunkID: 0, ShardID: 0, S3Key: "u1/shard-0/chunk-0", Checksum: sha256hex(fileA)},
+			{Path: "b.txt", ChunkID: 0, ShardID: 0, S3Key: "u2/shard-0/chunk-0", Checksum: sha256hex(fileB)},
+		},
+	}
+	res, err := NewDeepVerifier(m, dl).VerifyFiles(context.Background())
+	require.NoError(t, err)
+	assert.True(t, res.Passed(), "both files must verify against their own chunk (%+v)", res)
+	assert.Equal(t, 2, res.OK)
+	assert.Zero(t, res.Missing)
+	assert.Zero(t, res.Mismatched)
 }
 
 // TestTarNameToFileKey covers whole-file and split-part name parsing.

@@ -501,42 +501,43 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 		result.TotalFiles++
 	}
 
-	// Group files by chunk so we download each chunk object once. #455: key by
-	// the (ShardID, ChunkID) composite, not ChunkID alone — chunk IDs are unique
-	// only within a shard, so an ID-keyed lookup collapses distinct chunks across
-	// shards and resolves the wrong object.
-	byChunk := make(map[chunkIdent]bool)
+	// Group files by their chunk's S3Key so we download each chunk object once,
+	// and resolve the backing chunk by S3Key. #455/#554: S3Key is globally unique
+	// (it embeds the upload ID), whereas (ShardID, ChunkID) repeats across shards
+	// AND across the versions of a chain-merged manifest (#552), so an ID-based
+	// lookup resolves the wrong object. FileEntry.S3Key equals its chunk's S3Key
+	// by the manifest contract.
+	chunkByKey := make(map[string]*ChunkEntry, len(dv.manifest.Chunks))
+	for i := range dv.manifest.Chunks {
+		chunkByKey[dv.manifest.Chunks[i].S3Key] = &dv.manifest.Chunks[i]
+	}
+	byKey := make(map[string]bool)
 	for _, f := range dv.manifest.Files {
 		if !f.IsDuplicate {
-			byChunk[chunkIdent{f.ShardID, f.ChunkID}] = true
+			byKey[f.S3Key] = true
 		}
 	}
-	idents := make([]chunkIdent, 0, len(byChunk))
-	for k := range byChunk {
-		idents = append(idents, k)
+	keys := make([]string, 0, len(byKey))
+	for k := range byKey {
+		keys = append(keys, k)
 	}
-	sort.Slice(idents, func(i, j int) bool {
-		if idents[i].shard != idents[j].shard {
-			return idents[i].shard < idents[j].shard
-		}
-		return idents[i].id < idents[j].id
-	})
+	sort.Strings(keys)
 
 	seen := make(map[fileKey]bool)
 
-	for _, ident := range idents {
+	for _, key := range keys {
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		chunk := dv.chunkByIdent(ident)
+		chunk := chunkByKey[key]
 		if chunk == nil {
 			continue
 		}
 		fileResults, err := dv.verifyChunkFiles(ctx, chunk, expected, offsets, seen)
 		if err != nil {
-			// Chunk object unreadable: every file in it is missing.
+			// Chunk object unreadable: every file backed by it is missing.
 			for _, f := range dv.manifest.Files {
-				if f.ShardID == ident.shard && f.ChunkID == ident.id && !f.IsDuplicate {
+				if f.S3Key == key && !f.IsDuplicate {
 					result.Files = append(result.Files, FileVerifyResult{
 						Path: f.Path, ChunkID: f.ChunkID, Status: ChunkVerifyMissing,
 					})
@@ -577,18 +578,10 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 
 // chunkIdent is a chunk's unique identity: (ShardID, ID). Chunk IDs repeat
 // across shards in a multi-prefix upload, so ID alone is not unique (#455).
+// Used by the validator's duplicate-chunk check; VerifyFiles resolves chunks by
+// S3Key instead (#554).
 type chunkIdent struct {
 	shard, id int
-}
-
-// chunkByIdent returns the chunk with the given (ShardID, ID), or nil.
-func (dv *DeepVerifier) chunkByIdent(ident chunkIdent) *ChunkEntry {
-	for i := range dv.manifest.Chunks {
-		if dv.manifest.Chunks[i].ShardID == ident.shard && dv.manifest.Chunks[i].ID == ident.id {
-			return &dv.manifest.Chunks[i]
-		}
-	}
-	return nil
 }
 
 // verifyChunkFiles downloads one chunk, walks its tar, and hashes each file

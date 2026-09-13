@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`verify` now validates the full dataset of an incremental sync (#554).** It
+  previously validated only the latest (delta) manifest, under-reporting a
+  chained incremental dataset. `verify` now follows the `PreviousManifestID`
+  chain: it validates each version individually (the structural invariants hold
+  per-manifest) and runs the summary + `--deep` checks against the merged
+  full-dataset view. Deep file verification also now joins files to chunks by
+  `S3Key` instead of `(shard_id, chunk_id)` — correct across a chain that unions
+  chunks from multiple uploads (which reuse those ids), and strictly more correct
+  for single manifests too (the format contract mandates the `s3_key` join).
+
 ### Added
 - **`sync --track-deletes` now persists deletions and restore honors them (#555).**
   Incremental `sync` recorded deletions only for display; they never reached the
