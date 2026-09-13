@@ -318,7 +318,7 @@ func runIncrementalChainTorture(t *testing.T, rng *rand.Rand, forceChunked bool)
 	// upload runs one pipeline pass against the shared bucket/prefix. includeOnly
 	// (relative paths) restricts an incremental pass to the delta; prevID chains
 	// the manifest.
-	upload := func(uploadID string, includeOnly []string, syncType, prevID string) {
+	upload := func(uploadID string, includeOnly, deleted []string, syncType, prevID string) {
 		pc := &PipelineConfig{
 			ScannerWorkers: 4, ArchiverWorkers: 4, UploaderWorkers: 4,
 			S3Bucket: bucket, S3Prefix: testPrefix, S3Region: region,
@@ -326,6 +326,7 @@ func runIncrementalChainTorture(t *testing.T, rng *rand.Rand, forceChunked bool)
 			EnableManifest: true, SourcePath: srcDir, UploadID: uploadID,
 			EnableMultiPrefix: true, ShardCount: 4, FileChecksums: true,
 			IncludeOnlyFiles: includeOnly, SyncType: syncType, PreviousUploadID: prevID,
+			DeletedPaths: deleted, // #555
 		}
 		if forceChunked {
 			// Route through the archiver (tar.zst chunks) instead of the
@@ -357,7 +358,8 @@ func runIncrementalChainTorture(t *testing.T, rng *rand.Rand, forceChunked bool)
 	// v1: full upload of a small corpus.
 	v1corpus := plantManyFiles(t, srcDir, rng, 40)
 	v1ID := fmt.Sprintf("%d-v1", time.Now().UnixNano())
-	upload(v1ID, nil, "full", "")
+	upload(v1ID, nil, nil, "full", "")
+	m1 := fetchManifest(v1ID) // to learn the stored FileEntry.Path form for the tombstone
 
 	// Mutate the tree: rewrite content of a subset (modified) and add a few new
 	// files; the rest stay unchanged. Build the expected FINAL dataset by path.
@@ -386,14 +388,41 @@ func runIncrementalChainTorture(t *testing.T, rng *rand.Rand, forceChunked bool)
 		final[rel] = genFile{relPath: rel, base: filepath.Base(rel), sum: sha256hex(content), size: len(content)}
 		delta = append(delta, rel)
 	}
+	// #555: delete one UNCHANGED file (present only in v1). It must be dropped
+	// from the chain-resolved dataset via the DeletedPaths tombstone. The
+	// tombstone must be in the manifest's own FileEntry.Path form (that is how
+	// `sync` derives delta.Deleted — from the previous manifest), so look it up
+	// in m1 rather than synthesizing a relative path.
+	var deleted []string  // manifest-path form (goes into DeletedPaths)
+	var deletedRel string // corpus relpath (for srcDir removal + final)
+	for i, f := range v1corpus {
+		if i%4 == 0 { // skip the modified ones
+			continue
+		}
+		var mpath string
+		for _, fe := range m1.Files {
+			if strings.HasSuffix(filepath.ToSlash(fe.Path), f.relPath) {
+				mpath = fe.Path
+				break
+			}
+		}
+		require.NotEmpty(t, mpath, "should find %s in the v1 manifest", f.relPath)
+		require.NoError(t, os.Remove(filepath.Join(srcDir, filepath.FromSlash(f.relPath))))
+		delete(final, f.relPath)
+		deleted = append(deleted, mpath)
+		deletedRel = f.relPath
+		break
+	}
+	require.Len(t, deleted, 1, "test should delete exactly one file")
 
-	// v2: incremental upload of ONLY the delta, chained to v1.
+	// v2: incremental upload of ONLY the delta, chained to v1, recording the delete.
 	v2ID := fmt.Sprintf("%d-v2", time.Now().UnixNano())
-	upload(v2ID, delta, "incremental", v1ID)
+	upload(v2ID, delta, deleted, "incremental", v1ID)
 
 	// The newest manifest alone is a partial (delta) view — this is the bug's root.
 	m2 := fetchManifest(v2ID)
 	require.Equal(t, v1ID, m2.PreviousManifestID, "v2 must chain to v1")
+	require.Contains(t, m2.DeletedPaths, deleted[0], "v2 manifest must record the deletion (#555)")
 	require.Less(t, m2.TotalFiles, int64(len(final)),
 		"v2 manifest should hold only the delta (%d), not the full dataset (%d)", m2.TotalFiles, len(final))
 
@@ -403,7 +432,7 @@ func runIncrementalChainTorture(t *testing.T, rng *rand.Rand, forceChunked bool)
 	})
 	require.NoError(t, err)
 	require.Equal(t, int64(len(final)), eff.TotalFiles,
-		"effective view must describe the FULL dataset (%d files)", len(final))
+		"effective view must describe the FULL dataset (%d files); a tombstoned file survived", len(final))
 
 	// Restore the effective view and assert byte-identity of the CURRENT state:
 	// unchanged files come from v1's chunks, modified/new from v2's.
@@ -425,7 +454,12 @@ func runIncrementalChainTorture(t *testing.T, rng *rand.Rand, forceChunked bool)
 		require.Equal(t, want.sum, sha256hex(got),
 			"BYTE MISMATCH after incremental-chain restore for %s (#552 invariant failed)", rel)
 	}
-	t.Logf("incremental-chain restore OK: %d files byte-identical (v2 delta=%d)", len(final), m2.TotalFiles)
+	// #555: the tombstoned file must be gone from the merged view AND unrestored.
+	require.NotContains(t, targets, deletedRel, "deleted file must not be in the effective dataset")
+	if _, err := os.Stat(filepath.Join(outDir, filepath.FromSlash(deletedRel))); !os.IsNotExist(err) {
+		t.Errorf("deleted file %s was restored but should have been tombstoned (#555)", deletedRel)
+	}
+	t.Logf("incremental-chain restore OK: %d files byte-identical (v2 delta=%d, 1 deleted)", len(final), m2.TotalFiles)
 }
 
 // tortureRoundTrip uploads srcDir through the real pipeline, restores every file

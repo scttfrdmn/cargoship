@@ -244,6 +244,7 @@ Examples:
 				includeFiles:     includeFiles,
 				syncType:         syncType,
 				previousUploadID: previousUploadID,
+				deletedPaths:     delta.Deleted, // #555: persist deletions (empty unless --track-deletes)
 				s3Client:         s3Client,
 			})
 			// Issue #30: AI file-type detection, if configured.
@@ -315,6 +316,7 @@ type syncPipelineParams struct {
 	shardCount       int
 	compressionLevel int
 	includeFiles     []string
+	deletedPaths     []string
 	s3Client         *s3.Client
 }
 
@@ -349,6 +351,7 @@ func newSyncPipelineConfig(p syncPipelineParams) *pipeline.PipelineConfig {
 		IncludeOnlyFiles: p.includeFiles,
 		SyncType:         p.syncType,
 		PreviousUploadID: p.previousUploadID,
+		DeletedPaths:     p.deletedPaths,
 	}
 }
 

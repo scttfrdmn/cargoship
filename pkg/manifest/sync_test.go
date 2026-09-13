@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -292,6 +293,23 @@ func TestManifest_SyncFields(t *testing.T) {
 	assert.Equal(t, "sync-000", m.PreviousManifestID)
 	assert.Equal(t, SyncTypeIncremental, m.SyncType)
 	assert.Equal(t, "/home/user/data", m.SourcePath)
+}
+
+// TestManifest_DeletedPaths verifies the #555 field round-trips through JSON and
+// is omitted when empty (version-tolerant for pre-#555 readers).
+func TestManifest_DeletedPaths(t *testing.T) {
+	withDeletes, err := json.Marshal(&Manifest{DeletedPaths: []string{"a/gone.txt", "b/removed.txt"}})
+	assert.NoError(t, err)
+	assert.Contains(t, string(withDeletes), `"deleted_paths":["a/gone.txt","b/removed.txt"]`)
+
+	var back Manifest
+	assert.NoError(t, json.Unmarshal(withDeletes, &back))
+	assert.Equal(t, []string{"a/gone.txt", "b/removed.txt"}, back.DeletedPaths)
+
+	// Omitted when empty.
+	empty, err := json.Marshal(&Manifest{})
+	assert.NoError(t, err)
+	assert.NotContains(t, string(empty), "deleted_paths")
 }
 
 // TestSyncType_Constants tests sync type constants (Issue #148)

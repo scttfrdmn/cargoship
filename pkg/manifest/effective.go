@@ -43,10 +43,11 @@ type ChainFetcher func(ctx context.Context, uploadID string) (*Manifest, error)
 // one deeper than maxChainDepth, is an error — a corrupt chain must fail loudly
 // rather than return a partial dataset.
 //
-// Limitations (tracked for follow-up): deletes are not persisted by `sync`
-// today, so a file removed in a later version is still reconstructed from an
-// ancestor; and a dataset that mixed direct-upload and chunked uploads across
-// versions is not handled (the merged view assumes a consistent mode).
+// Deletes recorded by `sync --track-deletes` (Manifest.DeletedPaths) are honored
+// as tombstones: a path deleted in a version is dropped from the reconstructed
+// dataset (unless a still-newer version re-adds it). Limitation (tracked): a
+// dataset that mixed direct-upload and chunked uploads across versions is not
+// handled (the merged view assumes a consistent mode).
 func ResolveEffective(ctx context.Context, m *Manifest, fetch ChainFetcher) (*Manifest, error) {
 	if m == nil {
 		return nil, errors.New("resolve effective manifest: nil manifest")
@@ -54,46 +55,84 @@ func ResolveEffective(ctx context.Context, m *Manifest, fetch ChainFetcher) (*Ma
 	if m.PreviousManifestID == "" {
 		return m, nil
 	}
-	if fetch == nil {
-		return nil, errors.New("resolve effective manifest: nil fetcher")
+	chain, err := ResolveChain(ctx, m, fetch)
+	if err != nil {
+		return nil, err
 	}
+	return MergeChain(chain), nil
+}
 
-	// Walk the chain newest -> oldest.
+// ResolveChain walks the PreviousManifestID chain from m (newest) back to the
+// root, returning the manifests newest-first (chain[0] == m). A cycle, or a
+// chain deeper than maxChainDepth, is an error — a corrupt chain must fail
+// loudly rather than silently truncate the dataset. Callers that only need the
+// merged view should use ResolveEffective; verify uses this to validate each
+// version individually (single-manifest invariants hold per-manifest, not on
+// the merged view).
+func ResolveChain(ctx context.Context, m *Manifest, fetch ChainFetcher) ([]*Manifest, error) {
+	if m == nil {
+		return nil, errors.New("resolve chain: nil manifest")
+	}
+	if fetch == nil {
+		return nil, errors.New("resolve chain: nil fetcher")
+	}
 	chain := []*Manifest{m}
 	seen := map[string]bool{m.UploadID: true}
 	cur := m
 	for cur.PreviousManifestID != "" {
 		prev := cur.PreviousManifestID
 		if seen[prev] {
-			return nil, fmt.Errorf("resolve effective manifest: chain cycle at upload %q", prev)
+			return nil, fmt.Errorf("resolve chain: cycle at upload %q", prev)
 		}
 		if len(chain) >= maxChainDepth {
-			return nil, fmt.Errorf("resolve effective manifest: chain exceeds %d versions; refusing to resolve", maxChainDepth)
+			return nil, fmt.Errorf("resolve chain: exceeds %d versions; refusing to resolve", maxChainDepth)
 		}
 		anc, err := fetch(ctx, prev)
 		if err != nil {
-			return nil, fmt.Errorf("resolve effective manifest: fetch ancestor %q: %w", prev, err)
+			return nil, fmt.Errorf("resolve chain: fetch ancestor %q: %w", prev, err)
 		}
 		if anc == nil {
-			return nil, fmt.Errorf("resolve effective manifest: ancestor %q not found", prev)
+			return nil, fmt.Errorf("resolve chain: ancestor %q not found", prev)
 		}
 		seen[prev] = true
 		chain = append(chain, anc)
 		cur = anc
 	}
+	return chain, nil
+}
 
-	// Newest-wins union of files by path (chain[0] is newest).
+// MergeChain merges a newest-first chain (from ResolveChain) into one effective
+// manifest describing the full current dataset: files unioned newest-wins per
+// path, deletes tombstoned, chunks the union (by S3Key) of those a surviving
+// file references. Top-level metadata comes from the newest manifest. A
+// single-element chain returns that manifest unchanged.
+func MergeChain(chain []*Manifest) *Manifest {
+	newest := chain[0]
+	if len(chain) == 1 {
+		return newest
+	}
+
+	// Walk newest -> oldest. The newest MENTION of a path wins, whether that
+	// mention is a file (include) or a delete (tombstone). `decided` records
+	// paths already resolved, so an older version can neither re-add a tombstoned
+	// path nor override a newer file.
 	fileByPath := make(map[string]FileEntry)
+	decided := make(map[string]bool)
 	for _, mm := range chain {
+		for _, p := range mm.DeletedPaths {
+			if !decided[p] {
+				decided[p] = true // tombstone: decided, not added
+			}
+		}
 		for _, f := range mm.Files {
-			if _, ok := fileByPath[f.Path]; !ok {
+			if !decided[f.Path] {
+				decided[f.Path] = true
 				fileByPath[f.Path] = f
 			}
 		}
 	}
 
-	// Union of all chunks by S3Key across the chain, then keep only those a
-	// surviving file references.
+	// Union of all chunks by S3Key, then keep only those a surviving file references.
 	chunkByKey := make(map[string]ChunkEntry)
 	for _, mm := range chain {
 		for _, c := range mm.Chunks {
@@ -107,7 +146,7 @@ func ResolveEffective(ctx context.Context, m *Manifest, fetch ChainFetcher) (*Ma
 		needed[f.S3Key] = true
 	}
 
-	eff := *m // copy top-level metadata from the newest manifest
+	eff := *newest // copy top-level metadata from the newest manifest
 	eff.Files = make([]FileEntry, 0, len(fileByPath))
 	var totalBytes int64
 	for _, f := range fileByPath {
@@ -128,8 +167,9 @@ func ResolveEffective(ctx context.Context, m *Manifest, fetch ChainFetcher) (*Ma
 	eff.TotalFiles = int64(len(eff.Files))
 	eff.TotalChunks = len(eff.Chunks)
 	eff.TotalBytes = totalBytes
+	eff.DeletedPaths = nil // tombstones are resolved into the merged file set
 	// Shard rollups are not recomputed: the effective manifest is for file/chunk
 	// resolution (restore/verify join by S3Key), not shard-level statistics.
 
-	return &eff, nil
+	return &eff
 }

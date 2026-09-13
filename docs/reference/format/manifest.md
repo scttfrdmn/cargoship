@@ -59,6 +59,13 @@ type Manifest struct {
 	PreviousManifestID string `json:"previous_manifest_id,omitempty"` // For version chain in incremental syncs
 	SyncType           string `json:"sync_type,omitempty"`            // "full" or "incremental" (empty = full for backwards compat)
 
+	// Paths removed in this incremental version relative to its predecessor
+	// (Issue #555, recorded only under `sync --track-deletes`). A chain reader
+	// treats these as tombstones: a path listed here is absent from the
+	// reconstructed dataset unless a still-newer version re-adds it. Omitted on
+	// full uploads and pre-#555 manifests.
+	DeletedPaths []string `json:"deleted_paths,omitempty"`
+
 	// S3 location
 	Bucket string `json:"bucket"` // S3 bucket name
 	Prefix string `json:"prefix"` // S3 prefix (key prefix)

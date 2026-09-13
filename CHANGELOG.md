@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`sync --track-deletes` now persists deletions and restore honors them (#555).**
+  Incremental `sync` recorded deletions only for display; they never reached the
+  manifest, so the chain-resolved restore of a later version still reconstructed a
+  removed file. Deletions are now written to the manifest (`deleted_paths`) and the
+  chain-merge (`ResolveEffective`) treats them as tombstones — a file deleted in a
+  version is absent from the reconstructed dataset unless a still-newer version
+  re-adds it. Default stays opt-in (`--track-deletes`, off): additive-backup by
+  default, mirror semantics when enabled. No change for existing (full or
+  non-tracked) uploads.
+
 ## [0.28.1] - 2026-09-13
 
 **Access-check security fix.** Closes false negatives in the v0.28.0 bucket

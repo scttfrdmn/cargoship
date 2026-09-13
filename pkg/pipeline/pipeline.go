@@ -247,6 +247,10 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 			if config.SyncType != "" {
 				builder.SetSyncInfo(config.SyncType, config.PreviousUploadID)
 			}
+			// Record deletions for the chain-merge tombstone set (Issue #555).
+			if len(config.DeletedPaths) > 0 {
+				builder.SetDeletedPaths(config.DeletedPaths)
+			}
 
 			// Set encryption info (Issue #163)
 			if config.KMSKeyID != "" || config.EncryptManifest {
