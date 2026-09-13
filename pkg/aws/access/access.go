@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -248,17 +247,25 @@ func (c *Checker) checkBucketPolicy(ctx context.Context, bucket string) Finding 
 		}
 		return Finding{Check: check, Severity: SeverityUnknown, Summary: "Bucket policy check failed", Detail: err.Error()}
 	}
-	wildcards := wildcardPrincipalStatements(aws.ToString(out.Policy))
-	if len(wildcards) > 0 {
+	hits, ok := analyzePolicy(aws.ToString(out.Policy))
+	if !ok {
+		return Finding{
+			Check:       check,
+			Severity:    SeverityUnknown,
+			Summary:     "Bucket policy present but could not be parsed",
+			Remediation: "Inspect the bucket policy manually — CargoShip could not evaluate it, so treat its exposure as unknown.",
+		}
+	}
+	if len(hits) > 0 {
 		return Finding{
 			Check:       check,
 			Severity:    SeverityCritical,
-			Summary:     "Bucket policy grants access to a wildcard principal",
-			Detail:      fmt.Sprintf("%d Allow statement(s) with Principal \"*\": %s", len(wildcards), strings.Join(wildcards, ", ")),
-			Remediation: "Scope the bucket policy Principal to specific accounts/roles, or add a Condition that restricts it.",
+			Summary:     "Bucket policy grants broad/public access",
+			Detail:      fmt.Sprintf("%d Allow statement(s) grant to a wildcard or NotPrincipal: %s", len(hits), strings.Join(hits, ", ")),
+			Remediation: "Scope the bucket policy Principal to specific accounts/roles, or gate it with a principal-narrowing Condition (e.g. aws:PrincipalOrgID).",
 		}
 	}
-	return Finding{Check: check, Severity: SeverityOK, Summary: "Bucket policy has no wildcard-principal Allow statements"}
+	return Finding{Check: check, Severity: SeverityOK, Summary: "Bucket policy has no public/wildcard-principal Allow statements (cross-account grants not evaluated)"}
 }
 
 func (c *Checker) checkBucketACL(ctx context.Context, bucket string) Finding {
@@ -369,17 +376,25 @@ func (c *Checker) checkKMS(ctx context.Context, bucket string) Finding {
 		}
 		return Finding{Check: check, Severity: SeverityUnknown, Summary: "KMS key-policy check failed", Detail: err.Error()}
 	}
-	wildcards := wildcardPrincipalStatements(aws.ToString(pol.Policy))
-	if len(wildcards) > 0 {
+	hits, ok := analyzePolicy(aws.ToString(pol.Policy))
+	if !ok {
+		return Finding{
+			Check:       check,
+			Severity:    SeverityUnknown,
+			Summary:     fmt.Sprintf("KMS key %s policy could not be parsed", keyID),
+			Remediation: "Inspect the key policy manually — CargoShip could not evaluate it, so treat its scoping as unknown.",
+		}
+	}
+	if len(hits) > 0 {
 		return Finding{
 			Check:       check,
 			Severity:    SeverityWarn,
-			Summary:     "KMS key policy has wildcard-principal Allow statements",
-			Detail:      fmt.Sprintf("key %s: %d statement(s) with Principal \"*\" — verify a Condition scopes them: %s", keyID, len(wildcards), strings.Join(wildcards, ", ")),
-			Remediation: "Ensure any Principal \"*\" statement in the key policy is constrained by a Condition (e.g. kms:ViaService, aws:PrincipalOrgID).",
+			Summary:     "KMS key policy grants broad access",
+			Detail:      fmt.Sprintf("key %s: %d Allow statement(s) with a wildcard or NotPrincipal not scoped by a principal-narrowing condition: %s", keyID, len(hits), strings.Join(hits, ", ")),
+			Remediation: "Constrain any Principal \"*\" statement in the key policy with a principal-narrowing Condition (e.g. kms:ViaService, aws:PrincipalOrgID), and avoid NotPrincipal Allow.",
 		}
 	}
-	return Finding{Check: check, Severity: SeverityOK, Summary: fmt.Sprintf("KMS key %s policy has no unconditioned wildcard-principal grants", keyID)}
+	return Finding{Check: check, Severity: SeverityOK, Summary: fmt.Sprintf("KMS key %s policy has no broad (wildcard/NotPrincipal) grants", keyID)}
 }
 
 // defaultBucketKMSKey returns the KMS key ID from the bucket's default SSE-KMS
@@ -404,55 +419,116 @@ func (c *Checker) defaultBucketKMSKey(ctx context.Context, bucket string) (strin
 	return "", nil
 }
 
-// policyDocument is the minimal shape of an IAM/S3/KMS policy we parse. The
-// Principal and Action fields are polymorphic in JSON (string or list/object),
-// so they are decoded as json.RawMessage and interpreted by helpers.
-type policyDocument struct {
-	Statement []struct {
-		Sid       string          `json:"Sid"`
-		Effect    string          `json:"Effect"`
-		Principal json.RawMessage `json:"Principal"`
-		Condition json.RawMessage `json:"Condition"`
-	} `json:"Statement"`
+// policyStatement is one statement of an IAM/S3/KMS policy. Principal,
+// NotPrincipal, and Condition are polymorphic JSON, decoded as RawMessage and
+// interpreted by helpers.
+type policyStatement struct {
+	Sid          string          `json:"Sid"`
+	Effect       string          `json:"Effect"`
+	Principal    json.RawMessage `json:"Principal"`
+	NotPrincipal json.RawMessage `json:"NotPrincipal"`
+	Condition    json.RawMessage `json:"Condition"`
 }
 
-// wildcardPrincipalStatements returns the Sid (or index) of every Allow
-// statement whose Principal is the wildcard "*" (or {"AWS":"*"}) AND which
-// carries no Condition. Statements gated by a Condition are treated as
-// intentionally scoped and excluded — a Principal "*" with a Condition is a
-// common, legitimate pattern (e.g. kms:ViaService, aws:SourceArn).
-func wildcardPrincipalStatements(policyJSON string) []string {
+// policyDocument captures the Statement raw because the AWS grammar allows it to
+// be either a single object or an array; analyzePolicy normalizes both.
+type policyDocument struct {
+	Statement json.RawMessage `json:"Statement"`
+}
+
+// narrowingConditionKeys are condition keys that genuinely restrict WHO can act
+// (not merely how or when), so a wildcard Principal gated by one is
+// intentionally scoped rather than public. Compared case-insensitively.
+var narrowingConditionKeys = map[string]bool{
+	"aws:principalorgid":        true,
+	"aws:principalorgpaths":     true,
+	"aws:principalarn":          true,
+	"aws:principalaccount":      true,
+	"aws:sourceaccount":         true,
+	"aws:sourcearn":             true,
+	"aws:sourceowner":           true,
+	"aws:sourcevpc":             true,
+	"aws:sourcevpce":            true,
+	"kms:viaservice":            true,
+	"kms:calleraccount":         true,
+	"s3:dataaccesspointaccount": true,
+}
+
+// analyzePolicy parses a policy document and returns a label for every Allow
+// statement that grants broad/public access: a wildcard Principal ("*" or
+// {"AWS":"*"}) not scoped by a principal-narrowing Condition, or any
+// NotPrincipal Allow (which grants to everyone except the listed principals).
+//
+// ok is false when the policy is present but cannot be parsed at all — callers
+// MUST treat !ok as "unknown", NEVER as "clean". A silently-OK unparseable
+// policy is a false negative that would report a genuinely public target as safe.
+func analyzePolicy(policyJSON string) (hits []string, ok bool) {
 	policyJSON = strings.TrimSpace(policyJSON)
 	if policyJSON == "" {
-		return nil
-	}
-	// Bucket-policy JSON may arrive URL-encoded from some APIs; decode best-effort.
-	if !strings.HasPrefix(policyJSON, "{") {
-		if dec, err := url.QueryUnescape(policyJSON); err == nil {
-			policyJSON = dec
-		}
+		return nil, true // no policy document → no broad grants
 	}
 	var doc policyDocument
 	if err := json.Unmarshal([]byte(policyJSON), &doc); err != nil {
-		return nil
+		return nil, false
 	}
-	var hits []string
-	for i, st := range doc.Statement {
+	// Statement may be a single object or an array in the AWS grammar.
+	var stmts []policyStatement
+	if err := json.Unmarshal(doc.Statement, &stmts); err != nil {
+		var single policyStatement
+		if err2 := json.Unmarshal(doc.Statement, &single); err2 != nil {
+			return nil, false
+		}
+		stmts = []policyStatement{single}
+	}
+	for i, st := range stmts {
 		if !strings.EqualFold(st.Effect, "Allow") {
 			continue
 		}
-		if len(st.Condition) > 0 && string(st.Condition) != "null" && string(st.Condition) != "{}" {
-			continue // conditioned wildcard — treated as intentionally scoped
+		label := st.Sid
+		if label == "" {
+			label = fmt.Sprintf("statement[%d]", i)
+		}
+		// Allow + NotPrincipal grants to everyone EXCEPT the listed principals —
+		// effectively public and almost never intended.
+		if hasContent(st.NotPrincipal) {
+			hits = append(hits, label+" (NotPrincipal)")
+			continue
 		}
 		if principalIsWildcard(st.Principal) {
-			label := st.Sid
-			if label == "" {
-				label = fmt.Sprintf("statement[%d]", i)
+			// A wildcard is only truly scoped by a Condition that narrows WHO;
+			// a condition of only transport/time keys (e.g. aws:SecureTransport)
+			// leaves the object world-readable and must still be reported.
+			if hasContent(st.Condition) && conditionNarrowsPrincipal(st.Condition) {
+				continue
 			}
 			hits = append(hits, label)
 		}
 	}
-	return hits
+	return hits, true
+}
+
+// hasContent reports whether a RawMessage is present and not JSON null or {}.
+func hasContent(raw json.RawMessage) bool {
+	s := strings.TrimSpace(string(raw))
+	return len(s) > 0 && s != "null" && s != "{}"
+}
+
+// conditionNarrowsPrincipal reports whether a Condition block contains at least
+// one principal-narrowing key (see narrowingConditionKeys). An unparseable
+// condition is NOT credited as scoping (safer to over-report).
+func conditionNarrowsPrincipal(raw json.RawMessage) bool {
+	var cond map[string]map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &cond); err != nil {
+		return false
+	}
+	for _, kv := range cond {
+		for key := range kv {
+			if narrowingConditionKeys[strings.ToLower(key)] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // principalIsWildcard reports whether a policy Principal is the unrestricted

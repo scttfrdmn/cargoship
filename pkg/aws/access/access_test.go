@@ -293,26 +293,46 @@ func TestChecker_KMS(t *testing.T) {
 	})
 }
 
-func TestWildcardPrincipalStatements(t *testing.T) {
+func TestAnalyzePolicy(t *testing.T) {
 	tests := []struct {
-		name   string
-		policy string
-		want   int
+		name    string
+		policy  string
+		wantHit int
+		wantOK  bool
 	}{
-		{"empty", "", 0},
-		{"star string", `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"s3:*"}]}`, 1},
-		{"aws star object", `{"Statement":[{"Effect":"Allow","Principal":{"AWS":"*"},"Action":"s3:*"}]}`, 1},
-		{"aws star in list", `{"Statement":[{"Effect":"Allow","Principal":{"AWS":["arn:x","*"]},"Action":"s3:*"}]}`, 1},
-		{"deny star ignored", `{"Statement":[{"Effect":"Deny","Principal":"*","Action":"s3:*"}]}`, 0},
-		{"conditioned star excluded", `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"s3:*","Condition":{"StringEquals":{"aws:PrincipalOrgID":"o-1"}}}]}`, 0},
-		{"scoped principal ok", `{"Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::1:root"},"Action":"s3:*"}]}`, 0},
-		{"malformed json", `not json`, 0},
-		{"url encoded", `%7B%22Statement%22%3A%5B%7B%22Effect%22%3A%22Allow%22%2C%22Principal%22%3A%22*%22%2C%22Action%22%3A%22s3%3A*%22%7D%5D%7D`, 1},
+		{"empty", "", 0, true},
+		{"star string", `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"s3:*"}]}`, 1, true},
+		{"aws star object", `{"Statement":[{"Effect":"Allow","Principal":{"AWS":"*"},"Action":"s3:*"}]}`, 1, true},
+		{"aws star in list", `{"Statement":[{"Effect":"Allow","Principal":{"AWS":["arn:x","*"]},"Action":"s3:*"}]}`, 1, true},
+		{"deny star ignored", `{"Statement":[{"Effect":"Deny","Principal":"*","Action":"s3:*"}]}`, 0, true},
+		{"scoped principal ok", `{"Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::1:root"},"Action":"s3:*"}]}`, 0, true},
+
+		// F1: a SINGLE-OBJECT Statement (not an array) with a wildcard must be
+		// detected — previously it failed to parse and reported clean.
+		{"single object statement wildcard", `{"Statement":{"Effect":"Allow","Principal":"*","Action":"s3:GetObject"}}`, 1, true},
+		{"single object statement scoped", `{"Statement":{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::1:root"},"Action":"s3:*"}}`, 0, true},
+
+		// F1: an unparseable policy must be reported as UNKNOWN (ok=false), never clean.
+		{"not json -> not ok", `not json`, 0, false},
+		{"statement wrong type -> not ok", `{"Statement": 42}`, 0, false},
+
+		// F2: a wildcard gated only by a NON-narrowing condition is still public.
+		{"secure-transport-only condition still flagged", `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"s3:GetObject","Condition":{"Bool":{"aws:SecureTransport":"true"}}}]}`, 1, true},
+		// F2: a principal-narrowing condition genuinely scopes the wildcard.
+		{"org-id condition excluded", `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"s3:*","Condition":{"StringEquals":{"aws:PrincipalOrgID":"o-1"}}}]}`, 0, true},
+		{"kms viaservice condition excluded", `{"Statement":[{"Effect":"Allow","Principal":"*","Action":"kms:*","Condition":{"StringEquals":{"kms:ViaService":"s3.us-west-2.amazonaws.com"}}}]}`, 0, true},
+
+		// F3: an Allow with NotPrincipal grants to everyone-except and is flagged.
+		{"not-principal allow flagged", `{"Statement":[{"Effect":"Allow","NotPrincipal":{"AWS":"arn:aws:iam::1:root"},"Action":"s3:*"}]}`, 1, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := len(wildcardPrincipalStatements(tt.policy)); got != tt.want {
-				t.Errorf("want %d wildcard statements, got %d", tt.want, got)
+			hits, ok := analyzePolicy(tt.policy)
+			if ok != tt.wantOK {
+				t.Errorf("ok: want %v, got %v", tt.wantOK, ok)
+			}
+			if len(hits) != tt.wantHit {
+				t.Errorf("want %d broad-grant statements, got %d (%v)", tt.wantHit, len(hits), hits)
 			}
 		})
 	}

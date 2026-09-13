@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`access-check` no longer reports a genuinely public bucket/KMS key as "ok".**
+  A focused security pass on the v0.28.0 access checks found false negatives in
+  the policy-exposure detection: a **single-object** `Statement` (valid AWS
+  grammar, not just arrays) failed to parse and was reported clean; **any**
+  `Condition` — even a non-principal one like `aws:SecureTransport` — exempted a
+  wildcard `Principal`; and `NotPrincipal` Allow statements (grant-to-everyone-
+  except) were never inspected. The policy parser now normalizes single-object
+  statements, treats an **unparseable** policy as `unknown` (never `ok`), only
+  credits a wildcard as scoped when the `Condition` carries a principal-narrowing
+  key (`aws:PrincipalOrgID`, `kms:ViaService`, …), and flags `NotPrincipal`
+  Allow. Most impactful for the KMS key-policy check, which has no `IsPublic`
+  backstop. The `ok` wording now notes cross-account grants aren't evaluated, and
+  `upload --fail-on` help clarifies that `warn`/`critical` don't trip on
+  unevaluated checks.
+
 ## [0.28.0] - 2026-09-13
 
 **Access controls & an incremental-restore data-integrity fix.** Adds a
