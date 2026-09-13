@@ -118,17 +118,55 @@ Exit Codes:
 
 			fmt.Printf("✅ Manifest downloaded successfully\n\n")
 
-			// Validate manifest using the validation framework (Issue #91)
-			fmt.Printf("🔍 Validating manifest integrity...\n")
-			validator := manifest.NewValidator(m)
-
+			// Validate manifest using the validation framework (Issue #91).
+			//
+			// #554: an incremental upload is a chain of delta manifests linked by
+			// PreviousManifestID. The single-manifest validator's shard/ID-range and
+			// duplicate-chunk invariants hold only per-manifest, not on the merged
+			// view, so validate EACH version individually and then verify the full
+			// dataset (summary + --deep) against the merged effective manifest.
 			var validationResult *manifest.ValidationResult
-			if quick {
-				fmt.Printf("   Mode: Quick validation (metadata only)\n\n")
-				validationResult = validator.ValidateQuick()
+			if m.PreviousManifestID != "" {
+				fetch := func(ctx context.Context, id string) (*manifest.Manifest, error) {
+					return manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, prefix, id)
+				}
+				chain, cerr := manifest.ResolveChain(ctx, m, fetch)
+				if cerr != nil {
+					return fmt.Errorf("failed to resolve incremental version chain: %w", cerr)
+				}
+				fmt.Printf("🔗 Incremental version chain: %d versions\n", len(chain))
+				fmt.Printf("🔍 Validating each version...\n\n")
+				for _, orig := range chain {
+					v := manifest.NewValidator(orig)
+					var res *manifest.ValidationResult
+					if quick {
+						res = v.ValidateQuick()
+					} else {
+						res = v.Validate()
+					}
+					if !res.Valid {
+						fmt.Printf("❌ Validation FAILED for version %s\n\n", orig.UploadID)
+						printValidationFailure(res, verbose)
+						return ErrSilent
+					}
+				}
+				fmt.Printf("✅ All %d versions structurally valid\n\n", len(chain))
+				// Resolve the full current dataset for the summary + deep verify.
+				m = manifest.MergeChain(chain)
+				validationResult = &manifest.ValidationResult{
+					Valid:  true,
+					Checks: map[string]bool{"chain-structure": true, "dataset-completeness": true},
+				}
 			} else {
-				fmt.Printf("   Mode: Full validation (all checks)\n\n")
-				validationResult = validator.Validate()
+				fmt.Printf("🔍 Validating manifest integrity...\n")
+				validator := manifest.NewValidator(m)
+				if quick {
+					fmt.Printf("   Mode: Quick validation (metadata only)\n\n")
+					validationResult = validator.ValidateQuick()
+				} else {
+					fmt.Printf("   Mode: Full validation (all checks)\n\n")
+					validationResult = validator.Validate()
+				}
 			}
 
 			// Display validation results
@@ -190,44 +228,9 @@ Exit Codes:
 
 			// Validation failed
 			fmt.Printf("❌ Validation: FAIL\n\n")
-
-			// Display errors
-			fmt.Printf("❌ Errors: %d\n\n", len(validationResult.Errors))
-			for _, err := range validationResult.Errors {
-				fmt.Printf("   • %s\n", err.Message)
-				if verbose {
-					fmt.Printf("     Field:    %s\n", err.Field)
-					fmt.Printf("     Expected: %s\n", err.Expected)
-					fmt.Printf("     Actual:   %s\n", err.Actual)
-					fmt.Println()
-				}
-			}
-
-			// Display warnings if any
-			if validationResult.HasWarnings() {
-				fmt.Printf("\n⚠️  Warnings: %d\n\n", len(validationResult.Warnings))
-				for _, warning := range validationResult.Warnings {
-					fmt.Printf("   • %s\n", warning.Message)
-					if verbose {
-						fmt.Printf("     Field:    %s\n", warning.Field)
-						fmt.Printf("     Expected: %s\n", warning.Expected)
-						fmt.Printf("     Actual:   %s\n", warning.Actual)
-						fmt.Println()
-					}
-				}
-			}
-
-			// Show which checks failed
-			fmt.Printf("\n❌ Failed Checks:\n")
-			for check, passed := range validationResult.Checks {
-				if !passed {
-					fmt.Printf("   ✗ %s\n", check)
-				}
-			}
-			fmt.Println()
-
-			// The failed checks are already printed above; report failure through
-			// the exit code without a duplicate error line.
+			printValidationFailure(validationResult, verbose)
+			// The failed checks are already printed; report failure through the
+			// exit code without a duplicate error line.
 			return ErrSilent
 		},
 	}
@@ -241,6 +244,43 @@ Exit Codes:
 	cmd.Flags().BoolVar(&deep, "deep", false, "Deep verification: re-download stored objects and recompute checksums against the manifest (data-level integrity)")
 
 	return cmd
+}
+
+// printValidationFailure prints a validator's errors, warnings, and failed
+// checks (with per-field detail under --verbose). Shared by the single-manifest
+// and per-version (incremental chain, #554) validation paths.
+func printValidationFailure(result *manifest.ValidationResult, verbose bool) {
+	fmt.Printf("❌ Errors: %d\n\n", len(result.Errors))
+	for _, err := range result.Errors {
+		fmt.Printf("   • %s\n", err.Message)
+		if verbose {
+			fmt.Printf("     Field:    %s\n", err.Field)
+			fmt.Printf("     Expected: %s\n", err.Expected)
+			fmt.Printf("     Actual:   %s\n", err.Actual)
+			fmt.Println()
+		}
+	}
+
+	if result.HasWarnings() {
+		fmt.Printf("\n⚠️  Warnings: %d\n\n", len(result.Warnings))
+		for _, warning := range result.Warnings {
+			fmt.Printf("   • %s\n", warning.Message)
+			if verbose {
+				fmt.Printf("     Field:    %s\n", warning.Field)
+				fmt.Printf("     Expected: %s\n", warning.Expected)
+				fmt.Printf("     Actual:   %s\n", warning.Actual)
+				fmt.Println()
+			}
+		}
+	}
+
+	fmt.Printf("\n❌ Failed Checks:\n")
+	for check, passed := range result.Checks {
+		if !passed {
+			fmt.Printf("   ✗ %s\n", check)
+		}
+	}
+	fmt.Println()
 }
 
 // runDeepVerify re-downloads each chunk object, recomputes its checksum, and
