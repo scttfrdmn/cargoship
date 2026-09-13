@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exits 0 on findings, exits 1 only if the bucket is unreachable. `--format json`
   for machine output. Scoped to user/group access controls, not a general
   security audit. (#529)
+- **`cargoship upload --check-access`** — runs the same posture report as a
+  preflight before uploading. With `--fail-on <none|unknown|warn|critical>` it
+  aborts the upload when the worst finding meets the threshold (e.g. refuse to
+  write to a bucket whose policy is world-readable). (#529)
 
 ## [0.27.0] - 2026-09-12
 

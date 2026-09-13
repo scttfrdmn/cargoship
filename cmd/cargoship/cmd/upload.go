@@ -199,6 +199,16 @@ Examples:
 				return fmt.Errorf("bucket %s is not accessible: %w", bucket, err)
 			}
 
+			// Optional access-control posture preflight (#529): report whether
+			// the target bucket is exposed before writing to it, and (with
+			// --fail-on) abort if the posture is too weak.
+			if checkAccess, _ := cmd.Flags().GetBool("check-access"); checkAccess {
+				failOn, _ := cmd.Flags().GetString("fail-on")
+				if err := runAccessPreflight(ctx, s3Client, region, "", kmsKeyID, bucket, prefix, failOn); err != nil {
+					return err
+				}
+			}
+
 			// Get absolute path for source directory
 			absPath, err := filepath.Abs(sourceDir)
 			if err != nil {
@@ -933,6 +943,10 @@ Examples:
 
 	// Issue #168: Skip confirmation prompts (for automation)
 	cmd.Flags().BoolVarP(&skipConfirmation, "yes", "y", false, "Skip confirmation prompts (auto-accept warnings)")
+
+	// Issue #529: access-control posture preflight
+	cmd.Flags().Bool("check-access", false, "Report the target bucket's access-control posture before uploading (see the 'access-check' command)")
+	cmd.Flags().String("fail-on", "none", "With --check-access, abort if the worst finding is at least this severe: none, unknown, warn, critical")
 
 	// Issue #166: Direct upload optimization (fast path for small files)
 	cmd.Flags().Bool("direct-upload", false, "Enable direct upload mode (bypasses archiving/compression for small files)")

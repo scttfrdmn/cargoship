@@ -132,6 +132,53 @@ Exit Codes:
 	return cmd
 }
 
+// runAccessPreflight builds a checker from an already-constructed S3 client
+// (plus STS/KMS clients from a config loaded for the region), runs the posture
+// checks against bucket/prefix, prints the report, and enforces failOn. It is
+// shared by the standalone `access-check` command and `upload --check-access`.
+func runAccessPreflight(ctx context.Context, s3api access.S3PolicyAPI, region, profile, kmsKeyID, bucket, prefix, failOn string) error {
+	cfg, err := loadAWSConfig(ctx, profile, region)
+	if err != nil {
+		return fmt.Errorf("failed to load AWS config for access check: %w", err)
+	}
+	checker := &access.Checker{
+		S3:       s3api,
+		STS:      sts.NewFromConfig(cfg),
+		KMS:      kms.NewFromConfig(cfg),
+		KMSKeyID: kmsKeyID,
+	}
+	report, err := checker.Check(ctx, bucket, prefix)
+	if err != nil {
+		return fmt.Errorf("access check failed: %w", err)
+	}
+	report.Region = region
+	printAccessReport(report)
+	return enforceAccessFailOn(report, failOn)
+}
+
+// enforceAccessFailOn returns a non-nil error when failOn names a severity and
+// the report's worst finding is at least that severe. Accepts "none"/"" (never
+// fails), "unknown", "warn", "critical".
+func enforceAccessFailOn(r *access.Report, failOn string) error {
+	var threshold access.Severity
+	switch strings.ToLower(strings.TrimSpace(failOn)) {
+	case "", "none":
+		return nil
+	case "unknown":
+		threshold = access.SeverityUnknown
+	case "warn", "warning":
+		threshold = access.SeverityWarn
+	case "critical":
+		threshold = access.SeverityCritical
+	default:
+		return fmt.Errorf("invalid --fail-on %q (want none, unknown, warn, or critical)", failOn)
+	}
+	if worst := r.Worst(); worst.AtLeast(threshold) {
+		return fmt.Errorf("access-control posture %q meets --fail-on threshold %q", worst, threshold)
+	}
+	return nil
+}
+
 // printAccessReport renders a posture report as a human-readable table.
 func printAccessReport(r *access.Report) {
 	fmt.Printf("🔐 Access-control posture — s3://%s", r.Bucket)

@@ -55,6 +55,36 @@ func TestPrintAccessReport(t *testing.T) {
 	}
 }
 
+func TestEnforceAccessFailOn(t *testing.T) {
+	rep := func(worst access.Severity) *access.Report {
+		return &access.Report{Findings: []access.Finding{{Severity: worst}}}
+	}
+	tests := []struct {
+		name    string
+		worst   access.Severity
+		failOn  string
+		wantErr bool
+	}{
+		{"none never fails", access.SeverityCritical, "none", false},
+		{"empty never fails", access.SeverityCritical, "", false},
+		{"warn threshold, critical worst -> fail", access.SeverityCritical, "warn", true},
+		{"warn threshold, warn worst -> fail", access.SeverityWarn, "warn", true},
+		{"warn threshold, info worst -> pass", access.SeverityInfo, "warn", false},
+		{"critical threshold, warn worst -> pass", access.SeverityWarn, "critical", false},
+		{"unknown threshold, unknown worst -> fail", access.SeverityUnknown, "unknown", true},
+		{"unknown threshold, ok worst -> pass", access.SeverityOK, "unknown", false},
+		{"invalid threshold -> error", access.SeverityOK, "bogus", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := enforceAccessFailOn(rep(tt.worst), tt.failOn)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("failOn=%q worst=%q: wantErr=%v got %v", tt.failOn, tt.worst, tt.wantErr, err)
+			}
+		})
+	}
+}
+
 func TestSeverityIcon(t *testing.T) {
 	for _, s := range []access.Severity{
 		access.SeverityOK, access.SeverityInfo, access.SeverityWarn, access.SeverityCritical, access.SeverityUnknown,
