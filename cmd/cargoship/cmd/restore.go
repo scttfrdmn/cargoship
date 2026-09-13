@@ -111,6 +111,22 @@ Examples:
 			}
 			fmt.Printf("✅ Manifest loaded: %d files, %d chunks\n\n", m.TotalFiles, m.TotalChunks)
 
+			// #552: an incremental sync's manifest lists only that run's changed
+			// files, chained to its predecessor via PreviousManifestID. Follow
+			// the chain and merge newest-wins so restore sees the FULL dataset
+			// (otherwise unchanged files are silently unrestorable).
+			if m.PreviousManifestID != "" {
+				fetch := func(ctx context.Context, prevID string) (*manifest.Manifest, error) {
+					return manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, prevID)
+				}
+				merged, err := manifest.ResolveEffective(ctx, m, fetch)
+				if err != nil {
+					return fmt.Errorf("failed to resolve incremental version chain: %w", err)
+				}
+				fmt.Printf("🔗 Resolved incremental version chain: %d files across the full dataset\n\n", merged.TotalFiles)
+				m = merged
+			}
+
 			maxCacheBytes := cacheGB * 1024 * 1024 * 1024
 			// SetBucket: fetch from the bucket the manifest was just read from,
 			// not the stale name recorded inside it, so a copied or replicated
