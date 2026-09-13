@@ -17,6 +17,8 @@ Flag tables below are generated from the CLI and kept in sync by a drift check.
 
 <!-- @include: ../../gen/cli/cargoship_verify.md -->
 
+<!-- @include: ../../gen/cli/cargoship_access-check.md -->
+
 <!-- @include: ../../gen/cli/cargoship_balance.md -->
 
 <!-- @include: ../../gen/cli/cargoship_download.md -->
