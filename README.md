@@ -73,15 +73,18 @@ cargoship upload /data/project-2024 s3://my-bucket/project-2024 \
 # 🚢 Uploading: 1234 files | 5.67 GB | 89 chunks | 123.4 MB/s | 1m30s elapsed
 # ✅ Upload Complete!  Upload ID: 20260721-123456-abcd1234
 
+# Steps 3–5 address the upload by its ID (printed above), as
+#   s3://<bucket>/<prefix>/uploads/<upload-id>
+
 # 3. Inspect what was uploaded, straight from the manifest (no download)
-cargoship info s3://my-bucket/project-2024
+cargoship info s3://my-bucket/project-2024/uploads/20260721-123456-abcd1234
 
 # 4. Verify the archive against its manifest checksums
-cargoship verify s3://my-bucket/project-2024
+cargoship verify s3://my-bucket/project-2024/uploads/20260721-123456-abcd1234
 
-# 5. Restore a single file without pulling the whole archive
-cargoship restore s3://my-bucket/project-2024 \
-  --file results/summary.csv --output ./restored/
+# 5. Restore a single file (OUTPUT_DIR is positional) without pulling the whole archive
+cargoship restore s3://my-bucket/project-2024/uploads/20260721-123456-abcd1234 ./restored/ \
+  --file results/summary.csv
 ```
 
 See the [quick start](https://cargoship.app/start/quickstart) for a guided

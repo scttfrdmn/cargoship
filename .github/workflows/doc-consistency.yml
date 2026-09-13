@@ -14,6 +14,7 @@ on:
       # otherwise skip this workflow at exactly the moment the doc tables go stale.
       - 'internal/version/version.txt'
       - 'scripts/ci/check-doc-versions.sh'
+      - 'scripts/ci/check-readme-commands.sh'
       - '.github/workflows/doc-consistency.yml'
   pull_request:
     branches: [main]
@@ -28,6 +29,7 @@ on:
       # otherwise skip this workflow at exactly the moment the doc tables go stale.
       - 'internal/version/version.txt'
       - 'scripts/ci/check-doc-versions.sh'
+      - 'scripts/ci/check-readme-commands.sh'
       - '.github/workflows/doc-consistency.yml'
 
 permissions:
@@ -44,3 +46,5 @@ jobs:
           fetch-depth: 0  # need full tag history for the version check
       - name: Check doc version consistency
         run: ./scripts/ci/check-doc-versions.sh
+      - name: Check README example commands
+        run: ./scripts/ci/check-readme-commands.sh
