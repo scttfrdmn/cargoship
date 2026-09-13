@@ -279,6 +279,153 @@ func TestTorture(t *testing.T) {
 		tortureRoundTrip(t, corpus, src, nil)
 		tortureRoundTrip(t, corpus, src, nil)
 	})
+
+	// #552: after an incremental sync, restoring the LATEST version must recover
+	// the full dataset — unchanged files (which live only in the parent upload)
+	// included — via the PreviousManifestID chain merge (manifest.ResolveEffective).
+	t.Run("incremental_chain_restore", func(t *testing.T) {
+		// Cover both upload modes: direct (FileEntry.S3Key is the raw object) and
+		// chunked (files packed into tar.zst chunks whose ChunkEntry must be
+		// carried forward by the merge).
+		t.Run("direct", func(t *testing.T) { runIncrementalChainTorture(t, rng, false) })
+		t.Run("chunked", func(t *testing.T) { runIncrementalChainTorture(t, rng, true) })
+	})
+}
+
+// runIncrementalChainTorture is the end-to-end #552 trust proof: a full sync
+// then an incremental sync (delta-only upload chained via PreviousManifestID),
+// then a chain-resolved restore of the LATEST version that must reproduce the
+// COMPLETE current dataset byte-for-byte — unchanged files (stored only in the
+// parent upload) included. It also asserts the newest manifest alone is a
+// partial (delta) view, so the merge is doing real work.
+func runIncrementalChainTorture(t *testing.T, rng *rand.Rand, forceChunked bool) {
+	t.Helper()
+
+	bucket := tortureEnv("CARGOSHIP_TEST_BUCKET", "cargoship-pipeline-test")
+	region := tortureEnv("AWS_REGION", "us-east-1")
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
+	require.NoError(t, err)
+	var s3Opts []func(*s3.Options)
+	if substrateURL != "" {
+		s3Opts = append(s3Opts, func(o *s3.Options) { o.UsePathStyle = true })
+	}
+	s3Client := s3.NewFromConfig(cfg, s3Opts...)
+	ctx := context.Background()
+
+	srcDir := t.TempDir()
+	testPrefix := fmt.Sprintf("torture-incr-%d", time.Now().UnixNano())
+
+	// upload runs one pipeline pass against the shared bucket/prefix. includeOnly
+	// (relative paths) restricts an incremental pass to the delta; prevID chains
+	// the manifest.
+	upload := func(uploadID string, includeOnly []string, syncType, prevID string) {
+		pc := &PipelineConfig{
+			ScannerWorkers: 4, ArchiverWorkers: 4, UploaderWorkers: 4,
+			S3Bucket: bucket, S3Prefix: testPrefix, S3Region: region,
+			UseRealS3: true, S3Client: s3Client, S3PartSize: 5 * 1024 * 1024,
+			EnableManifest: true, SourcePath: srcDir, UploadID: uploadID,
+			EnableMultiPrefix: true, ShardCount: 4, FileChecksums: true,
+			IncludeOnlyFiles: includeOnly, SyncType: syncType, PreviousUploadID: prevID,
+		}
+		if forceChunked {
+			// Route through the archiver (tar.zst chunks) instead of the
+			// small-file direct-upload fast path, so the merge must carry
+			// ancestor ChunkEntry+archive_offset forward. NewPipeline resets
+			// EnableAutoDirectUpload to true, so force the chunked path via the
+			// max-files gate instead (a nonzero value survives the constructor).
+			pc.DirectUploadMaxFiles = 1
+		}
+		p, err := NewPipeline(pc)
+		require.NoError(t, err)
+		result, err := p.Run(ctx, srcDir)
+		require.NoError(t, err)
+		require.True(t, result.Success, "upload %s should succeed", uploadID)
+	}
+
+	fetchManifest := func(uploadID string) *manifest.Manifest {
+		key := fmt.Sprintf("%s/uploads/%s/manifest.json.gz", testPrefix, uploadID)
+		obj, err := s3Client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
+		require.NoError(t, err, "manifest for %s should exist", uploadID)
+		b, err := readAll(obj.Body)
+		require.NoError(t, err)
+		_ = obj.Body.Close()
+		m, err := manifest.FromJSONCompressed(b)
+		require.NoError(t, err)
+		return m
+	}
+
+	// v1: full upload of a small corpus.
+	v1corpus := plantManyFiles(t, srcDir, rng, 40)
+	v1ID := fmt.Sprintf("%d-v1", time.Now().UnixNano())
+	upload(v1ID, nil, "full", "")
+
+	// Mutate the tree: rewrite content of a subset (modified) and add a few new
+	// files; the rest stay unchanged. Build the expected FINAL dataset by path.
+	final := make(map[string]genFile, len(v1corpus))
+	for _, f := range v1corpus {
+		final[f.relPath] = f
+	}
+	var delta []string
+	for i, f := range v1corpus {
+		if i%4 != 0 { // modify every 4th file
+			continue
+		}
+		content := make([]byte, 1+rng.Intn(8192))
+		_, _ = rng.Read(content)
+		require.NoError(t, os.WriteFile(filepath.Join(srcDir, filepath.FromSlash(f.relPath)), content, 0644))
+		final[f.relPath] = genFile{relPath: f.relPath, base: f.base, sum: sha256hex(content), size: len(content)}
+		delta = append(delta, f.relPath)
+	}
+	for i := 0; i < 5; i++ { // add new files
+		rel := filepath.ToSlash(filepath.Join("added", fmt.Sprintf("n%03d.dat", i)))
+		content := make([]byte, 1+rng.Intn(8192))
+		_, _ = rng.Read(content)
+		abs := filepath.Join(srcDir, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0755))
+		require.NoError(t, os.WriteFile(abs, content, 0644))
+		final[rel] = genFile{relPath: rel, base: filepath.Base(rel), sum: sha256hex(content), size: len(content)}
+		delta = append(delta, rel)
+	}
+
+	// v2: incremental upload of ONLY the delta, chained to v1.
+	v2ID := fmt.Sprintf("%d-v2", time.Now().UnixNano())
+	upload(v2ID, delta, "incremental", v1ID)
+
+	// The newest manifest alone is a partial (delta) view — this is the bug's root.
+	m2 := fetchManifest(v2ID)
+	require.Equal(t, v1ID, m2.PreviousManifestID, "v2 must chain to v1")
+	require.Less(t, m2.TotalFiles, int64(len(final)),
+		"v2 manifest should hold only the delta (%d), not the full dataset (%d)", m2.TotalFiles, len(final))
+
+	// Resolve the chain into the full-dataset effective view.
+	eff, err := manifest.ResolveEffective(ctx, m2, func(_ context.Context, id string) (*manifest.Manifest, error) {
+		return fetchManifest(id), nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(len(final)), eff.TotalFiles,
+		"effective view must describe the FULL dataset (%d files)", len(final))
+
+	// Restore the effective view and assert byte-identity of the CURRENT state:
+	// unchanged files come from v1's chunks, modified/new from v2's.
+	outDir := t.TempDir()
+	se := manifest.NewSelectiveExtractor(eff, s3Client, 0)
+	targets := make([]string, 0, len(final))
+	for rel := range final {
+		targets = append(targets, rel)
+	}
+	stats, err := se.BatchRestore(ctx, targets, outDir)
+	require.NoError(t, err)
+	require.Equal(t, int64(len(final)), stats.Restored, "every current file must restore (failed=%d)", stats.Failed)
+	require.Zero(t, stats.Failed)
+
+	for rel, want := range final {
+		got, err := os.ReadFile(filepath.Join(outDir, filepath.FromSlash(rel)))
+		require.NoError(t, err, "restored file not found for %s", rel)
+		require.Equal(t, want.size, len(got), "size mismatch for %s", rel)
+		require.Equal(t, want.sum, sha256hex(got),
+			"BYTE MISMATCH after incremental-chain restore for %s (#552 invariant failed)", rel)
+	}
+	t.Logf("incremental-chain restore OK: %d files byte-identical (v2 delta=%d)", len(final), m2.TotalFiles)
 }
 
 // tortureRoundTrip uploads srcDir through the real pipeline, restores every file
