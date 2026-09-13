@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-09-13
+
+**Access-check security fix.** Closes false negatives in the v0.28.0 bucket
+access-control posture detection that could report a genuinely public bucket or
+KMS key as "ok".
+
 ### Fixed
 - **`access-check` no longer reports a genuinely public bucket/KMS key as "ok".**
   A focused security pass on the v0.28.0 access checks found false negatives in
