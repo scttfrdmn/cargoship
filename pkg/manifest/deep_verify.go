@@ -250,8 +250,10 @@ func (dv *DeepVerifier) objectKey(chunkKey string) string {
 func (dv *DeepVerifier) verifyChunk(ctx context.Context, chunk *ChunkEntry) ChunkVerifyResult {
 	cr := ChunkVerifyResult{ChunkID: chunk.ID, S3Key: chunk.S3Key, Expected: chunk.Checksum}
 
-	// No recorded checksum (or no algorithm) => can't verify.
-	if chunk.Checksum == "" || dv.manifest.ChecksumAlgorithm == "" {
+	// #522: a framed chunk records no whole-object checksum — its per-frame
+	// checksums are the integrity. Verifiable if it has a whole-object checksum OR
+	// a frame index (and a known checksum algorithm).
+	if (chunk.Checksum == "" && len(chunk.Frames) == 0) || dv.manifest.ChecksumAlgorithm == "" {
 		cr.Status = ChunkVerifyUnverifiable
 		return cr
 	}
@@ -288,7 +290,10 @@ func (dv *DeepVerifier) verifyChunk(ctx context.Context, chunk *ChunkEntry) Chun
 	cr.SizeGot = n
 	cr.Actual = hex.EncodeToString(hasher.Sum(nil))
 
-	if cr.Actual != chunk.Checksum {
+	// #522: compare the whole-object hash only when one was recorded (unframed
+	// chunks). Framed chunks (empty Checksum) are verified by their per-frame
+	// checksums in the frame block below.
+	if chunk.Checksum != "" && cr.Actual != chunk.Checksum {
 		cr.Status = ChunkVerifyMismatch
 		return cr
 	}

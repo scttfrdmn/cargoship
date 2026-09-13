@@ -197,6 +197,13 @@ func TestTorture(t *testing.T) {
 					framesTotal += fr.CompressedSize
 				}
 				require.Equal(t, c.CompressedSize, framesTotal, "chunk compressed size must equal the sum of its frame sizes")
+				// #522: a framed chunk carries NO whole-object checksum — its
+				// per-frame checksums are the integrity. Pre-#522 this was a
+				// redundant non-empty SHA-256 over the same bytes.
+				require.Empty(t, c.Checksum, "framed chunk must omit the redundant whole-object checksum (#522)")
+				for _, fr := range c.Frames {
+					require.NotEmpty(t, fr.Checksum, "each frame must carry its own checksum")
+				}
 			}
 		}
 
@@ -247,8 +254,13 @@ func TestTorture(t *testing.T) {
 			switch {
 			case strings.HasSuffix(c.S3Key, ".tar.zst"):
 				zst++
+				// #522: framed .tar.zst chunks omit the whole-object checksum.
+				require.Empty(t, c.Checksum, "framed .tar.zst chunk must omit the redundant whole-object checksum (#522)")
 			case strings.HasSuffix(c.S3Key, ".tar"):
 				plain++
+				// #522: plain (unframed) chunks keep the whole-object checksum as
+				// their only object-level integrity (no frames cover them).
+				require.NotEmpty(t, c.Checksum, "plain .tar chunk must keep its whole-object checksum (#522)")
 			}
 		}
 		t.Logf("mixed corpus chunk kinds: %d compressed (.tar.zst), %d plain (.tar)", zst, plain)
