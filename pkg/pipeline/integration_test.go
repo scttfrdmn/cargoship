@@ -255,9 +255,13 @@ func TestPipeline_TimeBreakdown(t *testing.T) {
 	// swings above and below run to run on a shared CI runner (observed: 46.9%),
 	// so it is a flaky assertion, not a real regression signal. The percentages
 	// above are logged as a diagnostic only.
-	assert.Positive(t, scanTime, "Scan should take some time")
-	assert.Positive(t, archiveTime, "Archive should take some time")
-	assert.Positive(t, uploadTime, "Upload should take some time")
+	// A per-stage TotalTime can round to 0 on a coarse clock (Windows ~15ms) when
+	// the test data is single-digit-millisecond tiny, so assert only that each is
+	// non-negative; positive overall wall-clock is the reliable "the pipeline ran"
+	// signal. (#563)
+	assert.GreaterOrEqual(t, scanTime, time.Duration(0))
+	assert.GreaterOrEqual(t, archiveTime, time.Duration(0))
+	assert.GreaterOrEqual(t, uploadTime, time.Duration(0))
 	assert.Positive(t, totalTime, "the pipeline should record wall-clock time")
 }
 
