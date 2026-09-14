@@ -4,7 +4,6 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -224,8 +223,10 @@ func (s *DirectUploaderStage) uploadFile(ctx context.Context, file chunking.File
 	// Build S3 key
 	s3Key := s.buildS3Key(file.Path)
 
-	// Open file
-	f, err := os.Open(file.Path)
+	// Open the file through a root anchored at the source dir so a path swapped
+	// to a symlink after scanning can't redirect the read outside the tree
+	// (CSH-SEC-001).
+	f, err := openContainedSourceFile(s.config.SourcePath, file.Path)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", file.Path, err)
 	}

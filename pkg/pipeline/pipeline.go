@@ -541,6 +541,7 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 	// Create archiver stage based on configuration
 	archiverConfig := &ArchiverConfig{
 		Workers:         p.config.ArchiverWorkers,
+		SourcePath:      p.config.SourcePath, // CSH-SEC-001: confine source reads to the scan root
 		CompressionType: "zstd",
 		BufferSize:      64 * 1024, // 64KB
 		UploadID:        p.config.UploadID,
