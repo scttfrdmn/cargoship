@@ -2,6 +2,9 @@ package pipeline
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -28,7 +31,26 @@ func (m *mockS3Client) PutObject(ctx context.Context, input *s3.PutObjectInput, 
 	if m.failAfter > 0 && calls <= m.failAfter {
 		return nil, &mockError{message: "simulated upload failure"}
 	}
+	// Consume the body as a real S3 client would, so a TeeReader wrapping it
+	// (CSH-SEC-002 checksum) actually sees the bytes.
+	if input.Body != nil {
+		_, _ = io.Copy(io.Discard, input.Body)
+	}
 	return &s3.PutObjectOutput{}, nil
+}
+
+// captureBuilder records the args of the last UpdateFileS3KeyByPath call.
+type captureBuilder struct {
+	mu           sync.Mutex
+	path, s3Key  string
+	checksum     string
+	updateCalled bool
+}
+
+func (c *captureBuilder) UpdateFileS3KeyByPath(path string, shardID int, s3Key, checksum string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.path, c.s3Key, c.checksum, c.updateCalled = path, s3Key, checksum, true
 }
 
 // Multipart upload methods (not used by DirectUploaderStage but required by interface)
@@ -616,5 +638,67 @@ func TestDirectUploaderStage_BuildS3Key_PreservesRelativePath(t *testing.T) {
 	// A file outside the source root falls back to the basename.
 	if out := up.buildS3Key("/elsewhere/x.txt"); out != "p/x.txt" {
 		t.Errorf("fallback key = %q, want p/x.txt", out)
+	}
+}
+
+// TestDirectUploaderStage_RecordsChecksum is the CSH-SEC-002 regression: direct
+// mode must record each file's SHA-256 in the manifest (matching packed mode),
+// and must omit it only when FileChecksums is disabled.
+func TestDirectUploaderStage_RecordsChecksum(t *testing.T) {
+	content := []byte("integrity matters in direct mode too")
+	sum := sha256.Sum256(content)
+	want := hex.EncodeToString(sum[:])
+
+	run := func(fileChecksums bool) *captureBuilder {
+		ctx := context.Background()
+		tmpDir := t.TempDir()
+		testFile := filepath.Join(tmpDir, "sub", "data.bin")
+		if err := os.MkdirAll(filepath.Dir(testFile), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(testFile, content, 0o644); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		builder := &captureBuilder{}
+		input := make(chan *Job, 1)
+		output := make(chan *Job, 1)
+		config := &DirectUploaderConfig{
+			S3Client: &mockS3Client{}, Bucket: "b", SourcePath: tmpDir,
+			FileChecksums: fileChecksums, ManifestBuilder: builder,
+			Workers: 2, MaxRetries: 2, RetryDelay: time.Millisecond,
+			WorkerPool: NewAdaptiveWorkerPool(ctx, &AdaptiveWorkerPoolConfig{
+				InitialWorkers: 2, MaxWorkers: 2, EnableAdaptive: false,
+			}),
+		}
+		up, err := NewDirectUploaderStage(config, input, output)
+		if err != nil {
+			t.Fatalf("new: %v", err)
+		}
+		if err := up.Start(ctx); err != nil {
+			t.Fatalf("start: %v", err)
+		}
+		input <- &Job{ID: 1, Chunk: chunking.Chunk{ID: 1, Files: []chunking.File{
+			{Path: testFile, Size: int64(len(content))},
+		}}}
+		close(input)
+		<-output
+		_ = up.Stop()
+		return builder
+	}
+
+	on := run(true)
+	if !on.updateCalled {
+		t.Fatal("builder was not updated")
+	}
+	if on.checksum != want {
+		t.Errorf("FileChecksums=true: checksum = %q, want %q (CSH-SEC-002)", on.checksum, want)
+	}
+
+	off := run(false)
+	if !off.updateCalled {
+		t.Fatal("builder was not updated (checksums off)")
+	}
+	if off.checksum != "" {
+		t.Errorf("FileChecksums=false: checksum = %q, want empty", off.checksum)
 	}
 }
