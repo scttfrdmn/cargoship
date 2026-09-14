@@ -246,6 +246,17 @@ func (dv *DeepVerifier) objectKey(chunkKey string) string {
 	return ResolveObjectKey(dv.manifest.Prefix, dv.manifest.Bucket, chunkKey)
 }
 
+// verifiableWithSHA256 reports whether the manifest's checksum algorithm is
+// exactly the sha256 deep-verify recomputes. Unlike the restore path
+// (canRecomputeChecksum), an empty algorithm is NOT treated as a sha256 default
+// here: it marks a pre-capture manifest whose contents are honestly
+// Unverifiable. A non-empty unknown/tampered algorithm is likewise not
+// verifiable and must be reported Unverifiable rather than a silent pass
+// (CSH-SEC-005).
+func (dv *DeepVerifier) verifiableWithSHA256() bool {
+	return dv.manifest.ChecksumAlgorithm == ChecksumAlgorithmSHA256
+}
+
 // verifyChunk fetches and hashes a single chunk object.
 func (dv *DeepVerifier) verifyChunk(ctx context.Context, chunk *ChunkEntry) ChunkVerifyResult {
 	cr := ChunkVerifyResult{ChunkID: chunk.ID, S3Key: chunk.S3Key, Expected: chunk.Checksum}
@@ -253,7 +264,10 @@ func (dv *DeepVerifier) verifyChunk(ctx context.Context, chunk *ChunkEntry) Chun
 	// #522: a framed chunk records no whole-object checksum — its per-frame
 	// checksums are the integrity. Verifiable if it has a whole-object checksum OR
 	// a frame index (and a known checksum algorithm).
-	if (chunk.Checksum == "" && len(chunk.Frames) == 0) || dv.manifest.ChecksumAlgorithm == "" {
+	// A pre-capture manifest (empty algorithm) and — CSH-SEC-005 — a non-empty
+	// algorithm we cannot recompute (unknown/tampered) are both reported
+	// Unverifiable rather than silently treated as verified.
+	if (chunk.Checksum == "" && len(chunk.Frames) == 0) || !dv.verifiableWithSHA256() {
 		cr.Status = ChunkVerifyUnverifiable
 		return cr
 	}
@@ -277,7 +291,7 @@ func (dv *DeepVerifier) verifyChunk(ctx context.Context, chunk *ChunkEntry) Chun
 	var fv *frameStreamVerifier
 	dst := io.Writer(hasher)
 	if len(chunk.Frames) > 0 {
-		algoOK := dv.manifest.ChecksumAlgorithm == "" || dv.manifest.ChecksumAlgorithm == ChecksumAlgorithmSHA256
+		algoOK := dv.verifiableWithSHA256()
 		fv = newFrameStreamVerifier(chunk.Frames, algoOK)
 		dst = io.MultiWriter(hasher, fv)
 	}
@@ -683,8 +697,8 @@ func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry,
 
 		fr := FileVerifyResult{Path: path, ChunkID: chunk.ID, Expected: exp, Actual: actual}
 		switch {
-		case exp == "" || dv.manifest.ChecksumAlgorithm == "":
-			fr.Status = ChunkVerifyUnverifiable
+		case exp == "" || !dv.verifiableWithSHA256():
+			fr.Status = ChunkVerifyUnverifiable // CSH-SEC-005: unrecomputable algorithm is not a pass
 		case actual == exp:
 			fr.Status = ChunkVerifyOK
 		default:

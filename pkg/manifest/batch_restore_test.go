@@ -755,6 +755,81 @@ func TestBatchRestore_Direct_NoChecksumRestores(t *testing.T) {
 	assert.Equal(t, int64(0), stats.Failed)
 }
 
+// TestBatchRestore_UnknownAlgorithm_FailsClosed is the CSH-SEC-005 regression:
+// a manifest that declares a checksum algorithm this build cannot recompute must
+// FAIL a checksummed file rather than silently restoring the (unverified) bytes.
+// Before the fix an attacker could set ChecksumAlgorithm to any unrecognized
+// value to switch integrity checking off while still presenting a plausible
+// checksum; verification must fail closed instead. Covers the direct and chunked
+// (tar/zst) restore paths.
+func TestBatchRestore_UnknownAlgorithm_FailsClosed(t *testing.T) {
+	content := []byte("bytes whose declared algorithm we cannot recompute")
+
+	t.Run("direct", func(t *testing.T) {
+		m := &Manifest{
+			Version: ManifestVersion, Bucket: "b", CompressionType: "none",
+			ChecksumAlgorithm: "md5-not-supported", TotalChunks: 0,
+			Files: []FileEntry{{
+				Path: "/abs/src/file.txt", Size: int64(len(content)),
+				// A sha256 that matches the bytes: even a "correct" checksum must
+				// not pass under an algorithm we can't recompute.
+				S3Key: "k", Checksum: sha256hex(content),
+			}},
+		}
+		m.TotalFiles = 1
+		client := &mockS3Client{chunks: map[string][]byte{"k": content}}
+
+		se := NewSelectiveExtractor(m, client, 0)
+		dest := t.TempDir()
+		stats, err := se.BatchRestore(context.Background(), []string{"file.txt"}, dest)
+		require.NoError(t, err)
+		assert.Zero(t, stats.Restored, "unverifiable-algorithm file must not restore")
+		assert.Equal(t, int64(1), stats.Failed, "unverifiable-algorithm file must fail closed")
+		_, statErr := os.Stat(filepath.Join(dest, "abs/src/file.txt"))
+		assert.True(t, os.IsNotExist(statErr), "must not write unverified bytes to disk")
+	})
+
+	t.Run("chunked", func(t *testing.T) {
+		filePath := "/abs/src/report.txt"
+		chunk := makeTarZst(t, map[string][]byte{filePath: content})
+		client := &mockS3Client{chunks: map[string][]byte{"u/shard-0/chunk-0.tar.zst": chunk}}
+		m := &Manifest{
+			Version: ManifestVersion, Bucket: "b",
+			CompressionType: "zstd", ChecksumAlgorithm: "md5-not-supported", TotalChunks: 1,
+			Chunks: []ChunkEntry{{ID: 0, S3Key: "u/shard-0/chunk-0.tar.zst", FileCount: 1, FilePaths: []string{filePath}}},
+			Files:  []FileEntry{{Path: filePath, Size: int64(len(content)), S3Key: "u/shard-0/chunk-0.tar.zst", Checksum: sha256hex(content)}},
+		}
+		m.TotalFiles = 1
+
+		se := NewSelectiveExtractor(m, client, 0)
+		dest := t.TempDir()
+		stats, err := se.BatchRestore(context.Background(), []string{"report.txt"}, dest)
+		require.NoError(t, err)
+		assert.Zero(t, stats.Restored, "unverifiable-algorithm chunked file must not restore")
+		assert.Equal(t, int64(1), stats.Failed, "unverifiable-algorithm chunked file must fail closed")
+		_, statErr := os.Stat(filepath.Join(dest, "abs/src/report.txt"))
+		assert.True(t, os.IsNotExist(statErr), "must not write unverified bytes to disk")
+	})
+
+	t.Run("opt-out still restores", func(t *testing.T) {
+		// SetVerify(false) is the explicit escape hatch: with verification off,
+		// the unverifiable algorithm is irrelevant and the file restores.
+		m := &Manifest{
+			Version: ManifestVersion, Bucket: "b", CompressionType: "none",
+			ChecksumAlgorithm: "md5-not-supported", TotalChunks: 0,
+			Files: []FileEntry{{Path: "/abs/src/file.txt", Size: int64(len(content)), S3Key: "k", Checksum: sha256hex(content)}},
+		}
+		m.TotalFiles = 1
+		client := &mockS3Client{chunks: map[string][]byte{"k": content}}
+
+		se := NewSelectiveExtractor(m, client, 0).SetVerify(false)
+		dest := t.TempDir()
+		stats, err := se.BatchRestore(context.Background(), []string{"file.txt"}, dest)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), stats.Restored, "opt-out restores despite unverifiable algorithm")
+	})
+}
+
 // TestBatchRestore_Chunked_DetectsCorruption verifies the chunked path also
 // refuses a file whose extracted content doesn't match the recorded checksum.
 func TestBatchRestore_Chunked_DetectsCorruption(t *testing.T) {

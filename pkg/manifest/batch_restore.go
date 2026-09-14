@@ -221,15 +221,20 @@ func (se *SelectiveExtractor) SetFlatten(f bool) *SelectiveExtractor {
 }
 
 // checksumMismatch reports whether restore-time verification is active for this
-// entry and the given content fails it. It returns false (no mismatch) when
-// verification is off, the entry has no recorded checksum, or the manifest's
-// algorithm isn't the sha256 we can recompute.
+// entry and the given content fails it. It returns false (no mismatch, restore
+// the bytes) only when verification is off or the entry has no recorded
+// checksum. When the entry HAS a checksum recorded under an algorithm this build
+// cannot recompute it fails CLOSED — returns true (CSH-SEC-005): the file is
+// unverifiable, and with verification on we refuse it rather than silently
+// writing unchecked bytes, so a manifest declaring an unknown algorithm cannot
+// disable integrity checking. Callers must NOT pre-gate on the algorithm; route
+// every checksummed entry through here so the fail-closed decision is honored.
 func (se *SelectiveExtractor) checksumMismatch(entry *FileEntry, content []byte) bool {
 	if !se.verify || entry.Checksum == "" {
 		return false
 	}
-	if se.manifest.ChecksumAlgorithm != "" && se.manifest.ChecksumAlgorithm != ChecksumAlgorithmSHA256 {
-		return false // unknown algorithm; can't recompute, don't false-fail
+	if !canRecomputeChecksum(se.manifest.ChecksumAlgorithm) {
+		return true // unverifiable algorithm: fail closed
 	}
 	sum := sha256.Sum256(content)
 	return hex.EncodeToString(sum[:]) != entry.Checksum
@@ -895,8 +900,11 @@ func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEn
 	// compressed bytes before decoding — the strong per-range witness that
 	// catches a changed/hostile endpoint without trusting the S3 ETag. Only when
 	// the Range was honored (otherwise comp is the whole object, not the frame).
-	if partial && fr.Checksum != "" &&
-		(se.manifest.ChecksumAlgorithm == "" || se.manifest.ChecksumAlgorithm == ChecksumAlgorithmSHA256) {
+	if partial && fr.Checksum != "" {
+		if !canRecomputeChecksum(se.manifest.ChecksumAlgorithm) {
+			stats.Failed++ // CSH-SEC-005: unverifiable frame witness, fail closed
+			return true
+		}
 		got := sha256.Sum256(comp)
 		if hex.EncodeToString(got[:]) != fr.Checksum {
 			stats.Failed++
@@ -923,13 +931,11 @@ func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEn
 	content := raw[sliceStart : sliceStart+entry.Size]
 
 	// #270: mirror the whole-chunk path — never write bytes that fail the
-	// recorded checksum.
-	if se.verify && entry.Checksum != "" &&
-		(se.manifest.ChecksumAlgorithm == "" || se.manifest.ChecksumAlgorithm == ChecksumAlgorithmSHA256) {
-		if se.checksumMismatch(entry, content) {
-			stats.Failed++
-			return true
-		}
+	// recorded checksum. No algorithm pre-gate: checksumMismatch fails closed on
+	// an unverifiable algorithm (CSH-SEC-005).
+	if se.checksumMismatch(entry, content) {
+		stats.Failed++
+		return true
 	}
 
 	outPath, err := se.restorePath(destDir, entry.Path)
@@ -1034,8 +1040,10 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 			return restored, totalBytes, mkErr
 		}
 
-		verifyThis := se.verify && entry.Checksum != "" &&
-			(se.manifest.ChecksumAlgorithm == "" || se.manifest.ChecksumAlgorithm == ChecksumAlgorithmSHA256)
+		// Buffer + verify whenever the entry is checksummed and verification is on;
+		// checksumMismatch fails closed if the algorithm is unrecomputable
+		// (CSH-SEC-005) rather than streaming unchecked bytes to disk.
+		verifyThis := se.verify && entry.Checksum != ""
 
 		if verifyThis {
 			// #270: hash the extracted content and only write it if it matches

@@ -133,6 +133,25 @@ func TestDeepVerify_PreCaptureManifest(t *testing.T) {
 	assert.Equal(t, 1, res.Unverifiable)
 }
 
+// TestDeepVerify_UnknownAlgorithm_Unverifiable is the CSH-SEC-005 verify-side
+// regression: a manifest declaring a checksum algorithm this build cannot
+// recompute must report chunks Unverifiable (not a pass), even when they carry a
+// checksum — closing the fail-open where an unrecognized algorithm silently
+// skipped verification.
+func TestDeepVerify_UnknownAlgorithm_Unverifiable(t *testing.T) {
+	content := []byte("x")
+	dl := &fakeDownloader{objects: map[string][]byte{"k0": content}}
+	m := manifestWith("md5-not-supported", []ChunkEntry{
+		{ID: 0, S3Key: "k0", Checksum: sha256hex(content)}, // even a correct sha256 must not pass
+	})
+
+	res, err := NewDeepVerifier(m, dl).VerifyChunks(context.Background())
+	require.NoError(t, err)
+	assert.False(t, res.Passed(), "unknown algorithm must not report a pass")
+	assert.Equal(t, 1, res.Unverifiable)
+	assert.Equal(t, 0, res.OK)
+}
+
 // TestDeepVerify_MixedContinuesPastFailure verifies the walk reports every chunk
 // rather than stopping at the first failure.
 func TestDeepVerify_MixedContinuesPastFailure(t *testing.T) {
