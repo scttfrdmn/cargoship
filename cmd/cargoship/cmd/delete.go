@@ -97,6 +97,28 @@ Examples:
 				fmt.Sprintf("%s/uploads/%s/manifest.encrypted.json.gz", prefix, uploadID),
 			)
 
+			// #592: chain-aware guard. Incremental sync uploads only changed files
+			// into a new uploads/<id>/ prefix; a later version's effective view still
+			// references this upload's chunk objects by S3Key, and its chain
+			// resolution walks this upload's manifest. Deleting an upload that a newer
+			// version chains through would make that version unrestorable — so refuse
+			// unless --force. Enumerate decryption-aware so encrypted-manifest chains
+			// are covered too.
+			allManifests, listErr := listUploadManifests(ctx, s3Client, kmsClient, bucket, prefix)
+			if listErr != nil && !force {
+				return fmt.Errorf("unable to verify no other upload depends on %s (re-run with --force to skip this check): %w", uploadID, listErr)
+			}
+			deps := manifest.DependentUploads(m.UploadID, allManifests)
+			blocked := len(deps) > 0 && !force
+			if len(deps) > 0 {
+				fmt.Printf("\n⛔ %d newer upload(s) chain through %s and reference its objects:\n   %s\n",
+					len(deps), m.UploadID, strings.Join(deps, ", "))
+				fmt.Println("   Deleting it would make those uploads unrestorable.")
+				if force {
+					fmt.Println("   --force set: proceeding anyway — the dependent uploads above WILL be corrupted.")
+				}
+			}
+
 			// Calculate total size
 			var totalCompressedSize int64
 			for _, shard := range m.Shards {
@@ -128,7 +150,16 @@ Examples:
 					}
 				}
 				fmt.Printf("\nTotal: %d S3 objects\n", len(keysToDelete))
+				if blocked {
+					fmt.Println("\n⛔ This delete would be REFUSED without --force (dependent uploads exist).")
+				}
 				return nil
+			}
+
+			// #592: refuse a chain-stranding delete before touching S3.
+			if blocked {
+				return fmt.Errorf("refusing to delete %s: %d dependent upload(s) (%s) would be stranded; re-run with --force to override",
+					m.UploadID, len(deps), strings.Join(deps, ", "))
 			}
 
 			// Confirmation prompt (unless --force)
@@ -252,4 +283,61 @@ func uploadObjectKeys(m *manifest.Manifest) []string {
 		add(m.Chunks[i].S3Key)
 	}
 	return keys
+}
+
+// listUploadManifests enumerates every upload under <prefix>/uploads/ and returns
+// their parsed manifests, decryption-aware so encrypted-manifest uploads are
+// included (ListAllManifests matches only the plaintext names). Uploads whose
+// manifest can't be read are skipped. Used by the #592 chain-aware delete guard
+// to walk the PreviousManifestID graph in memory.
+func listUploadManifests(ctx context.Context, s3Client *s3.Client, kmsClient *kms.Client, bucket, prefix string) ([]*manifest.Manifest, error) {
+	listPrefix := prefix
+	if listPrefix != "" && !strings.HasSuffix(listPrefix, "/") {
+		listPrefix += "/"
+	}
+	listPrefix += "uploads/"
+
+	seen := make(map[string]bool)
+	var ids []string
+	paginator := s3.NewListObjectsV2Paginator(s3Client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucket),
+		Prefix: aws.String(listPrefix),
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list uploads: %w", err)
+		}
+		for _, obj := range page.Contents {
+			key := aws.ToString(obj.Key)
+			// Only manifest objects tell us an upload's identity + chain. Match both
+			// plaintext and encrypted names.
+			base := key[strings.LastIndex(key, "/")+1:]
+			if !strings.HasPrefix(base, "manifest.") ||
+				(!strings.HasSuffix(base, ".json") && !strings.HasSuffix(base, ".json.gz")) {
+				continue
+			}
+			// Extract the <id> segment after "uploads/".
+			parts := strings.Split(key, "/")
+			for i, p := range parts {
+				if p == "uploads" && i+1 < len(parts) {
+					if id := parts[i+1]; id != "" && !seen[id] {
+						seen[id] = true
+						ids = append(ids, id)
+					}
+					break
+				}
+			}
+		}
+	}
+
+	var manifests []*manifest.Manifest
+	for _, id := range ids {
+		m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, prefix, id)
+		if err != nil {
+			continue // unreadable upload — skip; the guard errs toward the readable set
+		}
+		manifests = append(manifests, m)
+	}
+	return manifests, nil
 }
