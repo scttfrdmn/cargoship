@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-09-14
+
+**Security hardening (contained fixes from an external review) plus
+cross-platform correctness.** Three findings from a v0.29.0 security review are
+fixed in place; the new macOS/Windows CI lane also caught two real Windows
+restore bugs. The archive format is unchanged and fully compatible with v0.29.0.
+
 ### Security
 - **Source-file reads are confined to the scan root (CSH-SEC-001).** The scanner
   validated a path at walk time but consumers reopened it by path later, so a
@@ -29,6 +36,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   presenting plausible checksums. Restore now refuses such a file (unless
   verification is explicitly disabled), and `verify` reports the chunk
   Unverifiable rather than passed. External audit Low.
+
+### Fixed
+- **Windows restore correctness (surfaced by the new cross-platform CI).** Two
+  path bugs affected restore on Windows: the extractor rejected absolute symlink
+  targets with `filepath.IsAbs`, which missed Unix-absolute targets like
+  `/etc/passwd` on Windows — now rejected regardless of path convention; and
+  `restore --file` matched manifest paths using OS-native separators, so a
+  backslash host could not match the archive's slash-separated paths — now
+  matched on slashes. The archive format itself was already portable.
+- **README round-trip example was broken.** `info`/`verify` require the
+  `/uploads/<id>` suffix and `restore` takes `S3_URL OUTPUT_DIR` (no `--output`);
+  the examples are corrected and now guarded in CI.
+
+### Changed
+- **CI now builds and runs `go test -short` on macOS and Windows** on every
+  change, so cross-platform regressions are caught before release rather than by
+  users.
 
 ## [0.29.0] - 2026-09-13
 
