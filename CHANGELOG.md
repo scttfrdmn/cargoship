@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the operator passes `--allow-public-observability`. Defaults were already safe
   (pprof binds localhost, Prometheus is unset), so this only guards an explicit
   public address. External audit Low.
+- **Bounded manifest and object reads (CSH-SEC-003).** Restore, deep verify, and
+  manifest loading read whole S3 objects and decompressed gzip streams with no
+  ceiling, so a hostile or corrupt archive/manifest could force an unbounded
+  allocation (memory-exhaustion DoS, CWE-400/409). Reads are now capped: manifest
+  objects and their decompressed JSON have finite limits; chunk/object reads are
+  bounded to the manifest's declared size (validated against S3's reported
+  ContentLength up front, then enforced on the read); and manifest entry counts
+  have finite ceilings. Over-limit reads fail with an explicit "exceeds safety
+  limit" error. External audit Medium.
 
 ## [0.29.1] - 2026-09-14
 
