@@ -23,6 +23,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ContentLength up front, then enforced on the read); and manifest entry counts
   have finite ceilings. Over-limit reads fail with an explicit "exceeds safety
   limit" error. External audit Medium.
+- **Encrypted manifests are cryptographically bound to their upload (CSH-SEC-004).**
+  Manifest encryption used sound primitives but bound the ciphertext to nothing
+  (no KMS `EncryptionContext`, nil GCM AAD), so an attacker with S3 write could
+  substitute another upload's legitimate encrypted manifest and it would decrypt
+  cleanly (CWE-345). New encrypted manifests now bind the DEK and the GCM layer
+  to the upload identity; decryption derives that identity from the location
+  being read, so a substituted manifest from a different upload fails to decrypt.
+  **Forward-incompatibility caveat:** an encrypted manifest written by this
+  release cannot be decrypted by an older cargoship binary — this is inherent to
+  binding and affects only the opt-in `--encrypt-manifest` path (data chunks and
+  unencrypted manifests are unaffected). New code still reads older, unbound
+  encrypted manifests (`binding_version` absent). External audit Medium.
 
 ## [0.29.1] - 2026-09-14
 

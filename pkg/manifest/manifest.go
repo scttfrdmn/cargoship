@@ -641,9 +641,11 @@ func (m *Manifest) UploadToS3WithEncryption(ctx context.Context, s3Client *s3.Cl
 		return fmt.Errorf("failed to serialize manifest: %w", err)
 	}
 
-	// Encrypt the manifest using KMS envelope encryption
+	// Encrypt the manifest using KMS envelope encryption, bound to this upload's
+	// identity so it can't be substituted with another upload's manifest
+	// (CSH-SEC-004).
 	encryptor := encryption.NewKMSEncryptor(kmsClient, m.Encryption.ManifestKMSKeyID)
-	encrypted, err := encryptor.EncryptManifest(ctx, manifestJSON)
+	encrypted, err := encryptor.EncryptManifest(ctx, manifestJSON, encryption.ManifestIdentity{UploadID: m.UploadID})
 	if err != nil {
 		return fmt.Errorf("failed to encrypt manifest: %w", err)
 	}
@@ -719,6 +721,11 @@ func DownloadFromS3(ctx context.Context, s3Client *s3.Client, bucket, prefix, up
 
 // DownloadFromS3WithDecryption downloads a manifest from S3 with optional KMS decryption (Issue #163)
 func DownloadFromS3WithDecryption(ctx context.Context, s3Client *s3.Client, kmsClient encryption.KMSClient, bucket, prefix, uploadID string) (*Manifest, error) {
+	// CSH-SEC-004: the identity a bound manifest must decrypt under is derived
+	// from the upload we are fetching, not from the ciphertext — so a manifest
+	// swapped in from another upload fails to decrypt.
+	expected := encryption.ManifestIdentity{UploadID: uploadID}
+
 	// Try encrypted compressed version first
 	key := fmt.Sprintf("%s/uploads/%s/manifest.encrypted.json.gz", prefix, uploadID)
 	data, err := downloadS3Object(ctx, s3Client, bucket, key)
@@ -732,7 +739,7 @@ func DownloadFromS3WithDecryption(ctx context.Context, s3Client *s3.Client, kmsC
 				// Decrypt
 				var encryptedManifest encryption.EncryptedManifest
 				if err := json.Unmarshal(decompressed, &encryptedManifest); err == nil {
-					manifestJSON, err := encryption.DecryptManifestBytes(ctx, kmsClient, &encryptedManifest)
+					manifestJSON, err := encryption.DecryptManifestBytes(ctx, kmsClient, &encryptedManifest, expected)
 					if err == nil {
 						return parseManifestJSON(manifestJSON)
 					}
@@ -747,7 +754,7 @@ func DownloadFromS3WithDecryption(ctx context.Context, s3Client *s3.Client, kmsC
 	if err == nil {
 		var encryptedManifest encryption.EncryptedManifest
 		if err := json.Unmarshal(data, &encryptedManifest); err == nil {
-			manifestJSON, err := encryption.DecryptManifestBytes(ctx, kmsClient, &encryptedManifest)
+			manifestJSON, err := encryption.DecryptManifestBytes(ctx, kmsClient, &encryptedManifest, expected)
 			if err == nil {
 				return parseManifestJSON(manifestJSON)
 			}
