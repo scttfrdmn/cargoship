@@ -512,6 +512,7 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 			S3Client:        p.config.S3Client.(S3Uploader),
 			Bucket:          p.config.S3Bucket,
 			Prefix:          p.config.S3Prefix,
+			UploadID:        p.config.UploadID,      // #591: isolate direct objects under uploads/<id>/
 			SourcePath:      p.config.SourcePath,    // #480: keys preserve directory structure
 			FileChecksums:   p.config.FileChecksums, // CSH-SEC-002: per-file SHA-256 in direct mode too
 			Workers:         p.config.DirectUploadWorkers,

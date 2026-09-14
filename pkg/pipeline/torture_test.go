@@ -290,6 +290,12 @@ func TestTorture(t *testing.T) {
 		t.Run("direct", func(t *testing.T) { runIncrementalChainTorture(t, rng, false) })
 		t.Run("chunked", func(t *testing.T) { runIncrementalChainTorture(t, rng, true) })
 	})
+
+	// #591: two independent direct uploads of the same relative path to the same
+	// bucket/prefix must not clobber each other on one object key.
+	t.Run("direct_cross_upload_isolation", func(t *testing.T) {
+		runDirectCrossUploadIsolation(t)
+	})
 }
 
 // runIncrementalChainTorture is the end-to-end #552 trust proof: a full sync
@@ -460,6 +466,85 @@ func runIncrementalChainTorture(t *testing.T, rng *rand.Rand, forceChunked bool)
 		t.Errorf("deleted file %s was restored but should have been tombstoned (#555)", deletedRel)
 	}
 	t.Logf("incremental-chain restore OK: %d files byte-identical (v2 delta=%d, 1 deleted)", len(final), m2.TotalFiles)
+}
+
+// runDirectCrossUploadIsolation is the #591 regression: two independent DIRECT
+// uploads of the same relative path to the SAME bucket/prefix must not collide
+// on one object key. It uploads v1, changes the file's content, uploads v2 to
+// the same prefix, then restores v1's manifest and asserts it still yields v1's
+// bytes. Before the fix both uploads wrote <prefix>/<relpath>, so v2 overwrote
+// v1's object and v1 became unrestorable (its recorded checksum no longer
+// matched the object, or — with checksums off — restore returned v2's bytes).
+func runDirectCrossUploadIsolation(t *testing.T) {
+	t.Helper()
+
+	bucket := tortureEnv("CARGOSHIP_TEST_BUCKET", "cargoship-pipeline-test")
+	region := tortureEnv("AWS_REGION", "us-east-1")
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
+	require.NoError(t, err)
+	var s3Opts []func(*s3.Options)
+	if substrateURL != "" {
+		s3Opts = append(s3Opts, func(o *s3.Options) { o.UsePathStyle = true })
+	}
+	s3Client := s3.NewFromConfig(cfg, s3Opts...)
+	ctx := context.Background()
+
+	srcDir := t.TempDir()
+	rel := "data/report.csv"
+	abs := filepath.Join(srcDir, filepath.FromSlash(rel))
+	require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+	testPrefix := fmt.Sprintf("torture-591-%d", time.Now().UnixNano())
+
+	upload := func(uploadID string) {
+		pc := &PipelineConfig{
+			ScannerWorkers: 2, ArchiverWorkers: 2, UploaderWorkers: 2,
+			S3Bucket: bucket, S3Prefix: testPrefix, S3Region: region,
+			UseRealS3: true, S3Client: s3Client, S3PartSize: 5 * 1024 * 1024,
+			EnableManifest: true, SourcePath: srcDir, UploadID: uploadID,
+			EnableMultiPrefix: true, ShardCount: 2, FileChecksums: true,
+		}
+		p, perr := NewPipeline(pc)
+		require.NoError(t, perr)
+		result, rerr := p.Run(ctx, srcDir)
+		require.NoError(t, rerr)
+		require.True(t, result.Success, "upload %s should succeed", uploadID)
+	}
+	fetchManifest := func(uploadID string) *manifest.Manifest {
+		key := fmt.Sprintf("%s/uploads/%s/manifest.json.gz", testPrefix, uploadID)
+		obj, gerr := s3Client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
+		require.NoError(t, gerr)
+		b, rerr := readAll(obj.Body)
+		require.NoError(t, rerr)
+		_ = obj.Body.Close()
+		m, merr := manifest.FromJSONCompressed(b)
+		require.NoError(t, merr)
+		return m
+	}
+
+	v1 := []byte("VERSION-ONE content for report.csv")
+	require.NoError(t, os.WriteFile(abs, v1, 0o644))
+	upload("20260101-uone")
+	m1 := fetchManifest("20260101-uone")
+
+	// Same relative path, DIFFERENT content, second upload to the SAME prefix.
+	v2 := []byte("VERSION-TWO content — different and deliberately longer than v1")
+	require.NoError(t, os.WriteFile(abs, v2, 0o644))
+	upload("20260102-utwo")
+
+	// This fix concerns the direct path; assert the scenario actually took it.
+	require.Empty(t, m1.Chunks, "expected a direct-upload manifest (no chunks) — scenario needs the direct path")
+
+	// Restore v1's manifest; it MUST still yield v1's bytes, not v2's.
+	outDir := t.TempDir()
+	se := manifest.NewSelectiveExtractor(m1, s3Client, 0)
+	stats, err := se.BatchRestore(ctx, []string{rel}, outDir)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), stats.Restored, "v1 must restore after a second upload to the same prefix (failed=%d)", stats.Failed)
+	got, err := os.ReadFile(filepath.Join(outDir, filepath.FromSlash(rel)))
+	require.NoError(t, err)
+	require.Equal(t, string(v1), string(got),
+		"#591: restoring upload v1 returned upload v2's bytes — direct-upload objects collided on one key")
+	t.Logf("direct cross-upload isolation OK: v1 (%d B) survived a v2 (%d B) upload to the same prefix", len(v1), len(v2))
 }
 
 // tortureRoundTrip uploads srcDir through the real pipeline, restores every file
