@@ -59,7 +59,7 @@ func TestRealTimeParameterOptimizerOptimizeParameters(t *testing.T) {
 	assert.NotNil(t, result.OldParameters)
 	assert.NotNil(t, result.NewParameters)
 	assert.GreaterOrEqual(t, result.ImprovementRatio, 0.0)
-	assert.Greater(t, result.OptimizationTime, time.Duration(0))
+	assert.GreaterOrEqual(t, result.OptimizationTime, time.Duration(0)) // #563: coarse Windows clock
 	assert.NotEmpty(t, result.Strategy.Algorithm)
 	assert.GreaterOrEqual(t, result.Confidence, 0.0)
 	assert.LessOrEqual(t, result.Confidence, 1.0)

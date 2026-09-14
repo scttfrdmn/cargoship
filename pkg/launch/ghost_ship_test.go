@@ -3,6 +3,7 @@ package launch
 import (
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 	"time"
@@ -207,7 +208,9 @@ func TestGenerateS3KeyIsDatePartitioned(t *testing.T) {
 	key := gs.generateS3Key("/volume1/data/reads.fastq", "genomics")
 
 	now := time.Now()
-	want := filepath.Join("ghost-01", "genomics",
+	// S3 keys use "/" on every platform — build the expected key with path.Join,
+	// not filepath.Join (which is "\" on Windows). The code correctly emits "/". (#563)
+	want := path.Join("ghost-01", "genomics",
 		now.Format("2006"), now.Format("01"), now.Format("02"), "reads.fastq")
 	assert.Equal(t, want, key)
 }
