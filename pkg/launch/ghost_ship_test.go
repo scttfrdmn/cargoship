@@ -134,6 +134,13 @@ func TestFileMatchesRule(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sample.fasta")
 	require.NoError(t, os.WriteFile(path, make([]byte, 2048), 0o600))
+	// Age the file 1s into the past so the age-based cases below are deterministic.
+	// A just-written file's measured age can round to 0 (or go slightly negative)
+	// on coarse-mtime filesystems — e.g. GitHub's windows-latest runner — which
+	// flakily flips "older than max age" (MaxAge=1ns). 1s is safely > 1ns and
+	// < 1h, so all three age cases hold on every platform. (#563)
+	past := time.Now().Add(-time.Second)
+	require.NoError(t, os.Chtimes(path, past, past))
 	info, err := os.Stat(path)
 	require.NoError(t, err)
 
