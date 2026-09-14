@@ -1,0 +1,16 @@
+# Code owners for CargoShip (CSH-SEC-006).
+#
+# GitHub requests a review from the matching owner when a pull request touches
+# these paths. The release and CI plumbing get an explicit owner because a change
+# there can alter what ships or how it is built/signed — the highest-leverage
+# files in the repo.
+
+# Default owner for everything not matched below.
+*                       @scttfrdmn
+
+# Release, signing, and CI plumbing — extra scrutiny.
+/.github/workflows/     @scttfrdmn
+/.github/CODEOWNERS      @scttfrdmn
+/.goreleaser.yml        @scttfrdmn
+/scripts/ci/            @scttfrdmn
+/internal/version/      @scttfrdmn

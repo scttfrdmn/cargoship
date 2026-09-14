@@ -270,6 +270,29 @@ before investing significant effort.
 4. **Documentation review** - If docs changed
 5. **Final approval** - Maintainer approval
 
+## 🔒 Branch protection & releases
+
+`main` and the `v*` release tags are protected by GitHub repository rulesets
+(CSH-SEC-006), so all changes — **including release preparation** — land through
+pull requests:
+
+- **`main`**: no direct pushes and no force-push or deletion; linear history; a
+  pull request is required; and a core set of always-run checks must pass before
+  merge — **Build Tags Compile**, **Test with Race Detector**, **Integration
+  (emulator)**, **Lint**, **Go Vulnerability Check**, and **Go SAST (gosec)**.
+  (These come from the unconditional `test.yml`/`security.yml` workflows;
+  path-filtered workflows like cross-platform smoke and doc-consistency are not
+  required, so a docs-only or code-only PR is never stranded waiting on a check
+  that its paths don't trigger.)
+- **`v*` tags**: cannot be deleted or force-updated, so a published release's tag
+  is immutable.
+
+**Releasing is PR-based.** The version bump (`internal/version/version.txt` plus
+the doc/CHANGELOG updates) goes up as a release-prep pull request; once it merges,
+the annotated `vX.Y.Z` tag is created on the resulting `main` commit, which fires
+the release, real-AWS verification, and docs workflows. The post-release
+verification-report row is likewise filled via a follow-up PR.
+
 ## 🤝 Community
 
 ### Code of Conduct
