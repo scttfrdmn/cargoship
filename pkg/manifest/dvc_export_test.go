@@ -3,6 +3,7 @@ package manifest
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,7 +21,9 @@ func readGolden(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(goldenPath(name))
 	require.NoError(t, err, "read golden file %s", name)
-	return string(data)
+	// Normalize CRLF→LF so the compare matches LF-generated output even if the
+	// golden was checked out with CRLF on Windows (#563).
+	return strings.ReplaceAll(string(data), "\r\n", "\n")
 }
 
 // makeTestManifest returns a minimal *Manifest suitable for export tests.

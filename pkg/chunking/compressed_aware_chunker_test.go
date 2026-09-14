@@ -1,6 +1,7 @@
 package chunking
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,7 +74,7 @@ func TestCompressedAwareChunker_CreateChunks_LargeWorkload(t *testing.T) {
 	// Create 100 files of 200MB each (20GB total, compresses to ~2-4GB)
 	files := make([]File, 100)
 	for i := 0; i < 100; i++ {
-		filePath := filepath.Join(tmpDir, "large"+string(rune('0'+i))+".txt")
+		filePath := filepath.Join(tmpDir, fmt.Sprintf("large%d.txt", i))
 
 		// Create file but don't actually write 200MB (just simulate size)
 		err := os.WriteFile(filePath, []byte("test"), 0644)

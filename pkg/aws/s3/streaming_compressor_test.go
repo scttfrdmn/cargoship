@@ -49,7 +49,7 @@ func TestStreamingCompressorCompressStream(t *testing.T) {
 	assert.Less(t, result.CompressedSize, result.OriginalSize)
 	assert.Greater(t, result.CompressionRatio, 0.0)
 	assert.Less(t, result.CompressionRatio, 1.0)
-	assert.Greater(t, result.CompressionTime, time.Duration(0))
+	assert.GreaterOrEqual(t, result.CompressionTime, time.Duration(0)) // #563 coarse clock
 	assert.Greater(t, result.ThroughputMBps, 0.0)
 	assert.True(t, result.Success)
 	assert.NotZero(t, result.Timestamp)

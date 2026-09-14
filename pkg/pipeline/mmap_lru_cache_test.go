@@ -3,6 +3,7 @@ package pipeline
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -11,6 +12,9 @@ import (
 
 // TestMmapLRUCache_BasicOperations tests basic Get/Put/Release operations
 func TestMmapLRUCache_BasicOperations(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("mmap is a Unix-only optimization (see mmap_other.go); the cache is unavailable on Windows")
+	}
 	cache := newMmapLRUCache(3)
 
 	// Create temporary test files
@@ -84,6 +88,9 @@ func TestMmapLRUCache_BasicOperations(t *testing.T) {
 
 // TestMmapLRUCache_LRUEviction tests that LRU eviction works correctly
 func TestMmapLRUCache_LRUEviction(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("mmap is a Unix-only optimization (see mmap_other.go); the cache is unavailable on Windows")
+	}
 	cache := newMmapLRUCache(2) // Small capacity for testing
 
 	tmpDir := t.TempDir()
@@ -153,6 +160,9 @@ func TestMmapLRUCache_LRUEviction(t *testing.T) {
 
 // TestMmapLRUCache_RefCountPreventsEviction tests that entries with ref count > 0 are not evicted
 func TestMmapLRUCache_RefCountPreventsEviction(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("mmap is a Unix-only optimization (see mmap_other.go); the cache is unavailable on Windows")
+	}
 	cache := newMmapLRUCache(2)
 
 	tmpDir := t.TempDir()
@@ -208,6 +218,9 @@ func TestMmapLRUCache_RefCountPreventsEviction(t *testing.T) {
 
 // TestMmapLRUCache_Concurrent tests concurrent access to the cache
 func TestMmapLRUCache_Concurrent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("mmap is a Unix-only optimization (see mmap_other.go); the cache is unavailable on Windows")
+	}
 	cache := newMmapLRUCache(10)
 
 	tmpDir := t.TempDir()
@@ -271,6 +284,9 @@ func TestMmapLRUCache_Concurrent(t *testing.T) {
 
 // TestMmapLRUCache_Clear tests that Clear() properly cleans up all entries
 func TestMmapLRUCache_Clear(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("mmap is a Unix-only optimization (see mmap_other.go); the cache is unavailable on Windows")
+	}
 	cache := newMmapLRUCache(5)
 
 	tmpDir := t.TempDir()

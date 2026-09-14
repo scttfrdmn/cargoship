@@ -671,5 +671,5 @@ func TestRealTimeNetworkTrendAnalyzer(t *testing.T) {
 
 	analyzer.UpdateTrends(conditions)
 	updatedTrends := analyzer.GetCurrentTrends()
-	assert.True(t, updatedTrends.LastUpdate.After(trends.LastUpdate))
+	assert.False(t, updatedTrends.LastUpdate.Before(trends.LastUpdate)) // #563 coarse clock (equal within a tick)
 }
