@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Source-file reads are confined to the scan root (CSH-SEC-001).** The scanner
+  validated a path at walk time but consumers reopened it by path later, so a
+  path swapped to a symlink in between was followed — on a shared filesystem an
+  attacker could redirect a read to an out-of-tree file (SSH key, creds) and have
+  it streamed to S3. All source reads now open through an `os.Root` anchored at
+  the source dir, refusing symlinks that escape it and rejecting a symlink at the
+  leaf. External audit High.
+- **Direct-upload mode now records per-file checksums (CSH-SEC-002).** Direct
+  mode bypassed the archiver and produced no `FileEntry.Checksum`, silently
+  dropping the integrity guarantee the CLI implies (checksums on by default).
+  It now records each file's SHA-256, matching packed mode; `--no-file-checksums`
+  remains the only way to opt out. External audit Medium.
+
 ## [0.29.0] - 2026-09-13
 
 **Incremental-sync trust story, completed.** With the restore fix in v0.28.0

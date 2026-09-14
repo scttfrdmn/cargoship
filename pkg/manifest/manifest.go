@@ -373,11 +373,13 @@ func (b *Builder) AddFormatFeature(feature string) {
 	b.manifest.FormatFeatures = append(b.manifest.FormatFeatures, feature)
 }
 
-// UpdateFileS3KeyByPath updates the S3Key, ShardID, and ChunkID for the single
-// FileEntry whose SourcePath matches path. Used by direct upload mode where each
-// file has its own S3 key (unlike chunk-based mode where all files in a chunk
-// share the same key).
-func (b *Builder) UpdateFileS3KeyByPath(path string, shardID int, s3Key string) {
+// UpdateFileS3KeyByPath updates the S3Key, ShardID, ChunkID and (when non-empty)
+// Checksum for the single FileEntry whose Path matches path. Used by direct
+// upload mode where each file has its own S3 key (unlike chunk-based mode where
+// all files in a chunk share the same key). checksum is the SHA-256 of the file
+// bytes as streamed to S3, so direct mode carries the same per-file integrity as
+// packed mode (CSH-SEC-002); pass "" when checksums are disabled.
+func (b *Builder) UpdateFileS3KeyByPath(path string, shardID int, s3Key, checksum string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for i := range b.manifest.Files {
@@ -385,6 +387,9 @@ func (b *Builder) UpdateFileS3KeyByPath(path string, shardID int, s3Key string) 
 			b.manifest.Files[i].S3Key = s3Key
 			b.manifest.Files[i].ShardID = shardID
 			b.manifest.Files[i].ChunkID = 0 // direct mode: no chunking
+			if checksum != "" {
+				b.manifest.Files[i].Checksum = checksum
+			}
 			return
 		}
 	}

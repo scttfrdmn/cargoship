@@ -3,7 +3,10 @@ package pipeline
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"path"
 	"path/filepath"
 	"strings"
@@ -19,7 +22,7 @@ import (
 // directManifestBuilder is the interface satisfied by *manifest.Builder for direct upload mode.
 // Using a minimal interface keeps direct_uploader.go decoupled from the concrete type.
 type directManifestBuilder interface {
-	UpdateFileS3KeyByPath(path string, shardID int, s3Key string)
+	UpdateFileS3KeyByPath(path string, shardID int, s3Key, checksum string)
 }
 
 // S3Uploader is an interface for uploading to S3 (allows mocking)
@@ -39,6 +42,7 @@ type DirectUploaderConfig struct {
 	Bucket          string                // Target S3 bucket
 	Prefix          string                // S3 key prefix (optional)
 	SourcePath      string                // Source root; keys preserve each file's path relative to it (#480)
+	FileChecksums   bool                  // Record a SHA-256 per file in the manifest (CSH-SEC-002; on by default, --no-file-checksums opts out)
 	Workers         int                   // Number of concurrent upload workers
 	MaxRetries      int                   // Maximum upload retry attempts
 	RetryDelay      time.Duration         // Delay between retries
@@ -234,6 +238,23 @@ func (s *DirectUploaderStage) uploadFile(ctx context.Context, file chunking.File
 		_ = f.Close()
 	}()
 
+	// Compute the per-file SHA-256 in one local pass before uploading, then
+	// rewind, so direct mode records the same integrity as packed mode
+	// (CSH-SEC-002). It is deliberately NOT teed onto the upload body: the AWS SDK
+	// needs a seekable *os.File to sign and retry a PutObject, and a TeeReader is
+	// not seekable. The extra read is local and cheap next to the network PUT.
+	checksum := ""
+	if s.config.FileChecksums {
+		h := sha256.New()
+		if _, err := io.Copy(h, f); err != nil {
+			return fmt.Errorf("failed to checksum %s: %w", file.Path, err)
+		}
+		checksum = hex.EncodeToString(h.Sum(nil))
+		if _, err := f.Seek(0, 0); err != nil {
+			return fmt.Errorf("failed to rewind %s: %w", file.Path, err)
+		}
+	}
+
 	// Upload with retries
 	var lastErr error
 	for attempt := 0; attempt < s.config.MaxRetries; attempt++ {
@@ -250,7 +271,7 @@ func (s *DirectUploaderStage) uploadFile(ctx context.Context, file chunking.File
 			return fmt.Errorf("failed to seek file: %w", err)
 		}
 
-		// Upload to S3
+		// Upload to S3 (body is the seekable *os.File; retries re-seek to 0).
 		_, err := s.config.S3Client.PutObject(ctx, &s3.PutObjectInput{
 			Bucket: aws.String(s.config.Bucket),
 			Key:    aws.String(s3Key),
@@ -267,9 +288,9 @@ func (s *DirectUploaderStage) uploadFile(ctx context.Context, file chunking.File
 			continue
 		}
 
-		// Record S3 key in manifest (if builder is configured)
+		// Record S3 key (and checksum, when enabled) in the manifest.
 		if s.config.ManifestBuilder != nil {
-			s.config.ManifestBuilder.UpdateFileS3KeyByPath(file.Path, 0, s3Key)
+			s.config.ManifestBuilder.UpdateFileS3KeyByPath(file.Path, 0, s3Key, checksum)
 		}
 
 		// Success
