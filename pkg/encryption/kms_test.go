@@ -2,6 +2,8 @@ package encryption
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"encoding/base64"
 	"testing"
 
@@ -9,13 +11,20 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
 )
 
-// MockKMSClient implements a mock KMS client for testing
+// MockKMSClient implements a mock KMS client for testing. It records the
+// EncryptionContext passed to GenerateDataKey and Decrypt (CSH-SEC-004) so tests
+// can assert the KMS binding layer is wired; the GCM AAD layer (real crypto)
+// independently enforces substitution rejection.
 type MockKMSClient struct {
 	generateDataKeyFunc func(ctx context.Context, params *kms.GenerateDataKeyInput, optFns ...func(*kms.Options)) (*kms.GenerateDataKeyOutput, error)
 	decryptFunc         func(ctx context.Context, params *kms.DecryptInput, optFns ...func(*kms.Options)) (*kms.DecryptOutput, error)
+
+	lastGenContext     map[string]string
+	lastDecryptContext map[string]string
 }
 
 func (m *MockKMSClient) GenerateDataKey(ctx context.Context, params *kms.GenerateDataKeyInput, optFns ...func(*kms.Options)) (*kms.GenerateDataKeyOutput, error) {
+	m.lastGenContext = params.EncryptionContext
 	if m.generateDataKeyFunc != nil {
 		return m.generateDataKeyFunc(ctx, params, optFns...)
 	}
@@ -33,6 +42,7 @@ func (m *MockKMSClient) GenerateDataKey(ctx context.Context, params *kms.Generat
 }
 
 func (m *MockKMSClient) Decrypt(ctx context.Context, params *kms.DecryptInput, optFns ...func(*kms.Options)) (*kms.DecryptOutput, error) {
+	m.lastDecryptContext = params.EncryptionContext
 	if m.decryptFunc != nil {
 		return m.decryptFunc(ctx, params, optFns...)
 	}
@@ -63,7 +73,8 @@ func TestEncryptDecryptManifest(t *testing.T) {
 	manifestJSON := []byte(`{"version":"1.0","upload_id":"test-123","files":[]}`)
 
 	// Encrypt
-	encrypted, err := encryptor.EncryptManifest(ctx, manifestJSON)
+	id := ManifestIdentity{UploadID: "test-123"}
+	encrypted, err := encryptor.EncryptManifest(ctx, manifestJSON, id)
 	if err != nil {
 		t.Fatalf("EncryptManifest failed: %v", err)
 	}
@@ -97,7 +108,7 @@ func TestEncryptDecryptManifest(t *testing.T) {
 	}
 
 	// Decrypt
-	decrypted, err := encryptor.DecryptManifest(ctx, encrypted)
+	decrypted, err := encryptor.DecryptManifest(ctx, encrypted, id)
 	if err != nil {
 		t.Fatalf("DecryptManifest failed: %v", err)
 	}
@@ -118,13 +129,14 @@ func TestEncryptManifestWithEmptyData(t *testing.T) {
 	// Empty manifest
 	manifestJSON := []byte("")
 
-	encrypted, err := encryptor.EncryptManifest(ctx, manifestJSON)
+	id := ManifestIdentity{UploadID: "empty-1"}
+	encrypted, err := encryptor.EncryptManifest(ctx, manifestJSON, id)
 	if err != nil {
 		t.Fatalf("EncryptManifest with empty data failed: %v", err)
 	}
 
 	// Decrypt
-	decrypted, err := encryptor.DecryptManifest(ctx, encrypted)
+	decrypted, err := encryptor.DecryptManifest(ctx, encrypted, id)
 	if err != nil {
 		t.Fatalf("DecryptManifest with empty data failed: %v", err)
 	}
@@ -148,7 +160,7 @@ func TestDecryptManifestWithInvalidAlgorithm(t *testing.T) {
 		EncryptedData: "dGVzdA==",
 	}
 
-	_, err := encryptor.DecryptManifest(ctx, encrypted)
+	_, err := encryptor.DecryptManifest(ctx, encrypted, ManifestIdentity{})
 	if err == nil {
 		t.Error("Expected error for invalid algorithm, got nil")
 	}
@@ -205,7 +217,7 @@ func TestDecryptManifestWithInvalidBase64(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := encryptor.DecryptManifest(ctx, tt.encrypted)
+			_, err := encryptor.DecryptManifest(ctx, tt.encrypted, ManifestIdentity{})
 			if err == nil {
 				t.Error("Expected error for invalid base64, got nil")
 			}
@@ -227,13 +239,14 @@ func TestConvenienceFunctions(t *testing.T) {
 	manifestJSON := []byte(`{"test":"data"}`)
 
 	// Test EncryptManifestBytes
-	encrypted, err := EncryptManifestBytes(ctx, mockKMS, kmsKeyID, manifestJSON)
+	id := ManifestIdentity{UploadID: "conv-1"}
+	encrypted, err := EncryptManifestBytes(ctx, mockKMS, kmsKeyID, manifestJSON, id)
 	if err != nil {
 		t.Fatalf("EncryptManifestBytes failed: %v", err)
 	}
 
 	// Test DecryptManifestBytes
-	decrypted, err := DecryptManifestBytes(ctx, mockKMS, encrypted)
+	decrypted, err := DecryptManifestBytes(ctx, mockKMS, encrypted, id)
 	if err != nil {
 		t.Fatalf("DecryptManifestBytes failed: %v", err)
 	}
@@ -257,13 +270,14 @@ func TestEncryptDecryptLargeManifest(t *testing.T) {
 	}
 
 	// Encrypt
-	encrypted, err := encryptor.EncryptManifest(ctx, largeData)
+	id := ManifestIdentity{UploadID: "large-1"}
+	encrypted, err := encryptor.EncryptManifest(ctx, largeData, id)
 	if err != nil {
 		t.Fatalf("EncryptManifest with large data failed: %v", err)
 	}
 
 	// Decrypt
-	decrypted, err := encryptor.DecryptManifest(ctx, encrypted)
+	decrypted, err := encryptor.DecryptManifest(ctx, encrypted, id)
 	if err != nil {
 		t.Fatalf("DecryptManifest with large data failed: %v", err)
 	}
@@ -279,5 +293,127 @@ func TestEncryptDecryptLargeManifest(t *testing.T) {
 	}
 	if decrypted[len(decrypted)-1] != largeData[len(largeData)-1] {
 		t.Errorf("Last byte mismatch. Expected %d, got %d", largeData[len(largeData)-1], decrypted[len(decrypted)-1])
+	}
+}
+
+// --- CSH-SEC-004: identity binding ---
+
+// TestEncryptManifest_BindsIdentity confirms a newly-encrypted manifest is marked
+// bound and that the upload identity reached the KMS EncryptionContext.
+func TestEncryptManifest_BindsIdentity(t *testing.T) {
+	ctx := context.Background()
+	mockKMS := &MockKMSClient{}
+	enc := NewKMSEncryptor(mockKMS, "k")
+
+	m, err := enc.EncryptManifest(ctx, []byte(`{"x":1}`), ManifestIdentity{UploadID: "A"})
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	if m.BindingVersion != CurrentBindingVersion {
+		t.Errorf("BindingVersion = %d, want %d", m.BindingVersion, CurrentBindingVersion)
+	}
+	if got := mockKMS.lastGenContext["upload_id"]; got != "A" {
+		t.Errorf("GenerateDataKey EncryptionContext upload_id = %q, want A", got)
+	}
+	if mockKMS.lastGenContext["application"] != "cargoship" || mockKMS.lastGenContext["purpose"] != "manifest" {
+		t.Errorf("EncryptionContext missing application/purpose: %v", mockKMS.lastGenContext)
+	}
+}
+
+// TestDecryptManifest_RejectsSubstitution is the CSH-SEC-004 regression: a
+// manifest bound to upload A must NOT decrypt under a different expected upload
+// B. Enforced here by the GCM AAD layer (real crypto); real KMS additionally
+// refuses the DEK unwrap on the mismatched EncryptionContext.
+func TestDecryptManifest_RejectsSubstitution(t *testing.T) {
+	ctx := context.Background()
+	mockKMS := &MockKMSClient{}
+	enc := NewKMSEncryptor(mockKMS, "k")
+
+	m, err := enc.EncryptManifest(ctx, []byte(`{"secret":"A"}`), ManifestIdentity{UploadID: "A"})
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+
+	// Correct identity decrypts.
+	if _, err := enc.DecryptManifest(ctx, m, ManifestIdentity{UploadID: "A"}); err != nil {
+		t.Fatalf("decrypt with correct identity should succeed: %v", err)
+	}
+	// A different upload's identity must fail.
+	if _, err := enc.DecryptManifest(ctx, m, ManifestIdentity{UploadID: "B"}); err == nil {
+		t.Fatal("decrypt under a different upload identity must fail (substitution)")
+	}
+	// The decrypt attempt must have carried the EXPECTED identity into KMS, not
+	// the ciphertext's.
+	if got := mockKMS.lastDecryptContext["upload_id"]; got != "B" {
+		t.Errorf("Decrypt EncryptionContext upload_id = %q, want B (the expected identity)", got)
+	}
+}
+
+// TestDecryptManifest_FailsClosedWithoutIdentity confirms a bound manifest is
+// refused when the caller cannot supply the expected upload identity.
+func TestDecryptManifest_FailsClosedWithoutIdentity(t *testing.T) {
+	ctx := context.Background()
+	mockKMS := &MockKMSClient{}
+	enc := NewKMSEncryptor(mockKMS, "k")
+
+	m, err := enc.EncryptManifest(ctx, []byte(`{}`), ManifestIdentity{UploadID: "A"})
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	if _, err := enc.DecryptManifest(ctx, m, ManifestIdentity{}); err == nil {
+		t.Fatal("a bound manifest with no expected identity must fail closed")
+	}
+}
+
+// TestDecryptManifest_ReadsLegacyUnbound confirms backward read support: an
+// archive written before the binding scheme (BindingVersion 0, nil AAD/context)
+// still decrypts regardless of the expected identity.
+func TestDecryptManifest_ReadsLegacyUnbound(t *testing.T) {
+	ctx := context.Background()
+	mockKMS := &MockKMSClient{}
+	enc := NewKMSEncryptor(mockKMS, "k")
+	plaintext := []byte(`{"legacy":true}`)
+
+	legacy := legacyEncrypted(t, mockKMS, "k", plaintext)
+	if legacy.BindingVersion != 0 {
+		t.Fatalf("fixture should be unbound, got BindingVersion=%d", legacy.BindingVersion)
+	}
+	// Even with a (non-matching) expected identity, an unbound manifest reads.
+	got, err := enc.DecryptManifest(ctx, legacy, ManifestIdentity{UploadID: "whatever"})
+	if err != nil {
+		t.Fatalf("legacy unbound manifest must still decrypt: %v", err)
+	}
+	if string(got) != string(plaintext) {
+		t.Errorf("legacy decrypt = %q, want %q", got, plaintext)
+	}
+}
+
+// legacyEncrypted reconstructs a pre-CSH-SEC-004 (unbound) EncryptedManifest:
+// DEK from KMS with no EncryptionContext, AES-GCM with nil AAD, BindingVersion 0.
+func legacyEncrypted(t *testing.T, mockKMS *MockKMSClient, keyID string, plaintext []byte) *EncryptedManifest {
+	t.Helper()
+	out, err := mockKMS.GenerateDataKey(context.Background(), &kms.GenerateDataKeyInput{
+		KeyId: &keyID, KeySpec: "AES_256", // no EncryptionContext
+	})
+	if err != nil {
+		t.Fatalf("gen key: %v", err)
+	}
+	block, err := aes.NewCipher(out.Plaintext)
+	if err != nil {
+		t.Fatalf("cipher: %v", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatalf("gcm: %v", err)
+	}
+	iv := make([]byte, gcm.NonceSize())
+	data := gcm.Seal(nil, iv, plaintext, nil) // nil AAD = legacy
+	return &EncryptedManifest{
+		Algorithm:     "AES-256-GCM",
+		KMSKeyID:      keyID,
+		EncryptedDEK:  base64.StdEncoding.EncodeToString(out.CiphertextBlob),
+		IV:            base64.StdEncoding.EncodeToString(iv),
+		EncryptedData: base64.StdEncoding.EncodeToString(data),
+		// BindingVersion left 0
 	}
 }

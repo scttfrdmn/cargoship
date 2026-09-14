@@ -76,17 +76,48 @@ type EncryptedManifest struct {
 
 	// Base64-encoded encrypted manifest data
 	EncryptedData string `json:"encrypted_data"`
+
+	// Nonzero when the manifest is cryptographically bound to its upload
+	// identity (KMS EncryptionContext + GCM AAD). Absent/0 = legacy unbound.
+	BindingVersion int `json:"binding_version,omitempty"`
 }
 ```
 
+### Identity binding (`binding_version`)
+
+Since binding scheme v1, a newly-written encrypted manifest is bound to the
+upload it belongs to, so an attacker with S3 write cannot substitute another
+upload's (legitimately encrypted) manifest — the substituted object fails to
+decrypt (CSH-SEC-004). The binding value is the key/value set
+`{application: "cargoship", purpose: "manifest", v: "1", upload_id: <id>}`, used
+**both** as the KMS `EncryptionContext` (on `GenerateDataKey`/`Decrypt`) and as
+the AES-GCM AAD (canonical sorted `k=v\n`). Only `upload_id` varies per upload;
+bucket/prefix are deliberately **not** bound, so an archive stays readable after
+a legitimate copy/rename to another location.
+
+A reader derives the expected identity from the location it is fetching (the
+upload id in the object key), **not** from the ciphertext, and passes it to
+`Decrypt`; a `binding_version ≥ 1` manifest with no expected upload id is
+rejected (fail closed). A `binding_version` of 0 or absent is decrypted with no
+context and nil AAD, so manifests written before the scheme remain readable.
+
+::: warning Forward compatibility
+A bound manifest cannot be decrypted by a cargoship build older than the binding
+scheme — the older reader passes no `EncryptionContext`/AAD, and KMS + GCM both
+refuse. This is inherent to binding and affects only the `--encrypt-manifest`
+path; unencrypted manifests and data chunks are unaffected.
+:::
+
 ### Envelope encryption flow (write)
 
-1. Call KMS `GenerateDataKey` with `KeySpec: AES_256` against `manifest_kms_key_id`.
-   This returns both a **plaintext** 32-byte DEK and a **KMS-encrypted** copy of
-   it (the ciphertext blob).
+1. Call KMS `GenerateDataKey` with `KeySpec: AES_256` against `manifest_kms_key_id`,
+   passing the upload-identity `EncryptionContext`. This returns both a
+   **plaintext** 32-byte DEK and a **KMS-encrypted** copy of it (the ciphertext
+   blob) that KMS will only unwrap under the same context.
 2. Encrypt the (optionally gzip-compressed) manifest JSON with **AES-256-GCM**
-   using the plaintext DEK and a fresh random IV (nonce). GCM provides
-   authenticated encryption — confidentiality **and** integrity.
+   using the plaintext DEK, a fresh random IV (nonce), and the identity AAD. GCM
+   provides authenticated encryption — confidentiality **and** integrity — and
+   the AAD binds the ciphertext to the upload. Set `binding_version = 1`.
 3. Discard the plaintext DEK. Store the KMS-encrypted DEK, the IV, and the
    ciphertext (all base64-encoded) in the `EncryptedManifest` wrapper.
 4. Serialize the wrapper to JSON and upload it as `manifest.encrypted.json[.gz]`.
@@ -103,9 +134,12 @@ To recover the manifest JSON:
 2. Parse the `EncryptedManifest` JSON and verify `Algorithm == "AES-256-GCM"`.
 3. Base64-decode `encrypted_dek`, `iv`, and `encrypted_data`.
 4. Call KMS `Decrypt` on the encrypted DEK to recover the plaintext 32-byte key.
-5. AES-256-GCM `Open` the ciphertext with the DEK and IV. A GCM authentication
-   failure means the data was tampered with or the wrong key was used — treat it
-   as a hard error, not a soft fallback.
+   For a `binding_version ≥ 1` manifest, pass the `EncryptionContext` derived from
+   the upload you are reading; KMS refuses the unwrap if it doesn't match.
+5. AES-256-GCM `Open` the ciphertext with the DEK, IV, and — for a bound manifest
+   — the identity AAD. A GCM authentication failure means the data was tampered
+   with, substituted from another upload, or the wrong key was used — treat it as
+   a hard error, not a soft fallback.
 6. The result is the plaintext manifest JSON (still gzip-compressed if it was
    compressed before encryption — gunzip again if so).
 
@@ -135,7 +169,8 @@ encrypted variants first and falls back to the plaintext download.
   "kms_key_id": "arn:aws:kms:us-west-2:123456789012:key/abcd-1234",
   "encrypted_dek": "AQIDAHh...base64...",
   "iv": "n0Nc3Byt3s...base64...",
-  "encrypted_data": "…base64 ciphertext of the (gzipped) manifest JSON…"
+  "encrypted_data": "…base64 ciphertext of the (gzipped) manifest JSON…",
+  "binding_version": 1
 }
 ```
 
@@ -146,6 +181,10 @@ encrypted variants first and falls back to the plaintext download.
 - Enforce `Algorithm == "AES-256-GCM"`; reject unknown algorithms.
 - Use the authenticated-decryption result — GCM verification is your integrity
   check for the manifest payload.
+- For a `binding_version ≥ 1` manifest, pass the upload-identity
+  `EncryptionContext` to KMS `Decrypt` and the identity AAD to GCM `Open`, both
+  derived from the upload you are reading (not from the wrapper). Reject a bound
+  manifest you cannot supply an upload id for.
 - The Go implementation lives in `pkg/encryption` (`EncryptManifest` /
   `DecryptManifest`, `EncryptedManifest`); see
   [Reading archives](/reference/format/library-api) for using it.
