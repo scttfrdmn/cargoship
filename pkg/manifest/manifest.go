@@ -42,6 +42,19 @@ const (
 	ManifestFileNameGZ = "manifest.json.gz"
 )
 
+// canRecomputeChecksum reports whether algo names a hash this build can
+// actually recompute to verify content: sha256, or "" which legacy manifests
+// (pre-#271) used to mean sha256 by default. Any other value is a hash we do not
+// implement — a future format we cannot yet read, or a tampered manifest.
+//
+// Callers on the restore/verify paths use this to fail CLOSED (CSH-SEC-005): a
+// recorded checksum we cannot recompute is treated as unverifiable, never as a
+// silent pass, so a manifest declaring an unknown algorithm can no longer switch
+// off integrity checking while still presenting legitimate-looking checksums.
+func canRecomputeChecksum(algo string) bool {
+	return algo == "" || algo == ChecksumAlgorithmSHA256
+}
+
 // Builder helps construct a manifest incrementally during upload
 // All methods are thread-safe for concurrent use (Issue #88)
 type Builder struct {

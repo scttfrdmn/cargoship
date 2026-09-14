@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dropping the integrity guarantee the CLI implies (checksums on by default).
   It now records each file's SHA-256, matching packed mode; `--no-file-checksums`
   remains the only way to opt out. External audit Medium.
+- **Restore and verify now fail closed on a checksum algorithm they cannot
+  recompute (CSH-SEC-005).** A manifest declaring an unrecognized
+  `checksum_algorithm` (a future format, or a tampered manifest) previously
+  caused restore to skip integrity verification silently and write the unchecked
+  bytes, and caused `verify` to skip framed-chunk checks — an attacker could set
+  the field to any unknown value to switch integrity checking off while still
+  presenting plausible checksums. Restore now refuses such a file (unless
+  verification is explicitly disabled), and `verify` reports the chunk
+  Unverifiable rather than passed. External audit Low.
 
 ## [0.29.0] - 2026-09-13
 
