@@ -49,7 +49,7 @@ func TestStreamingCompressorCompressStream(t *testing.T) {
 	assert.Less(t, result.CompressedSize, result.OriginalSize)
 	assert.Greater(t, result.CompressionRatio, 0.0)
 	assert.Less(t, result.CompressionRatio, 1.0)
-	assert.Greater(t, result.CompressionTime, time.Duration(0))
+	assert.GreaterOrEqual(t, result.CompressionTime, time.Duration(0)) // #563 coarse clock
 	assert.Greater(t, result.ThroughputMBps, 0.0)
 	assert.True(t, result.Success)
 	assert.NotZero(t, result.Timestamp)
@@ -262,7 +262,7 @@ func TestStreamingCompressorGetCompressionMetrics(t *testing.T) {
 	assert.NotNil(t, metrics)
 	assert.Equal(t, int64(3), metrics.TotalOperations)
 	assert.Greater(t, metrics.TotalBytesProcessed, int64(0))
-	assert.Greater(t, metrics.TotalCompressionTime, time.Duration(0))
+	assert.GreaterOrEqual(t, metrics.TotalCompressionTime, time.Duration(0)) // #563: coarse Windows clock
 	assert.Greater(t, metrics.AverageRatio, 0.0)
 	assert.Less(t, metrics.AverageRatio, 1.0)
 	assert.Greater(t, metrics.AverageThroughput, 0.0)

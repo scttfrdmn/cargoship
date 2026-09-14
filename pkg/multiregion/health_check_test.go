@@ -308,7 +308,7 @@ func TestHealthCheckTypes(t *testing.T) {
 
 		assert.Equal(t, "aws_connectivity", result.CheckType)
 		assert.NotNil(t, result.Details)
-		assert.Greater(t, result.ResponseTime, time.Duration(0))
+		assert.GreaterOrEqual(t, result.ResponseTime, time.Duration(0)) // #563: coarse Windows clock
 		// Note: This will currently fail because AWSConfig.Region is empty in test
 		// In a real implementation with proper AWS config, this should succeed
 	})
@@ -318,8 +318,8 @@ func TestHealthCheckTypes(t *testing.T) {
 
 		assert.Equal(t, "s3_service_health", result.CheckType)
 		assert.NotNil(t, result.Details)
-		assert.True(t, result.Success) // Simulated success
-		assert.Greater(t, result.ResponseTime, time.Duration(0))
+		assert.True(t, result.Success)                                  // Simulated success
+		assert.GreaterOrEqual(t, result.ResponseTime, time.Duration(0)) // #563: coarse Windows clock
 	})
 
 	t.Run("TestCheckRegionLatency", func(t *testing.T) {
@@ -328,7 +328,7 @@ func TestHealthCheckTypes(t *testing.T) {
 		assert.Equal(t, "region_latency", result.CheckType)
 		assert.True(t, result.Success) // Should succeed with fast execution
 		assert.Contains(t, result.Details, "latency_ms")
-		assert.Greater(t, result.ResponseTime, time.Duration(0))
+		assert.GreaterOrEqual(t, result.ResponseTime, time.Duration(0)) // #563: coarse Windows clock
 	})
 
 	t.Run("TestCheckResourceCapacity", func(t *testing.T) {

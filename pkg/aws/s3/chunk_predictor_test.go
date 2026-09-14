@@ -430,7 +430,7 @@ func TestContentAnalyzer(t *testing.T) {
 	assert.NotEmpty(t, analysis.CompressionRatios)
 	assert.NotEmpty(t, analysis.OptimalChunkSizes)
 	assert.Greater(t, analysis.AnalysisConfidence, 0.0)
-	assert.NotZero(t, analysis.ProcessingTime)
+	assert.GreaterOrEqual(t, analysis.ProcessingTime, time.Duration(0)) // #563: 0 on coarse Windows clock
 }
 
 func TestContentAnalyzerDetectContentType(t *testing.T) {

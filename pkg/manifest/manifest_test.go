@@ -405,10 +405,12 @@ func TestBuilder_Finalize(t *testing.T) {
 	// CompletedAt should be zero before finalize
 	assert.Zero(t, builder.Build().CompletedAt)
 
-	// Finalize should set CompletedAt
+	// Finalize should set CompletedAt at or after createdAt. Use !Before rather
+	// than strict After: on a coarse clock (Windows ~15ms) a fast finalize lands
+	// in the same tick as createdAt, making them equal. (#563)
 	manifest := builder.Finalize()
 	assert.NotZero(t, manifest.CompletedAt)
-	assert.True(t, manifest.CompletedAt.After(createdAt))
+	assert.False(t, manifest.CompletedAt.Before(createdAt))
 }
 
 // TestBuilder_Build tests building without finalizing

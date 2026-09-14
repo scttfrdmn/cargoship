@@ -206,9 +206,10 @@ func TestBandwidthOptimizer_ForceOptimization(t *testing.T) {
 
 	newUtilization := optimizer.GetCurrentUtilization()
 
-	// Should have updated timestamp
-	if !newUtilization.Timestamp.After(initialUtilization.Timestamp) {
-		t.Error("Expected utilization timestamp to be updated after force optimization")
+	// Should not go backwards. Use !Before rather than strict After: on a coarse
+	// clock (Windows ~15ms) the two reads can land in the same tick. (#563)
+	if newUtilization.Timestamp.Before(initialUtilization.Timestamp) {
+		t.Error("utilization timestamp went backwards after force optimization")
 	}
 }
 

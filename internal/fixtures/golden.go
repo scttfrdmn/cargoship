@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -66,7 +67,12 @@ func AssertGolden(t *testing.T, name, got string, normalizers ...Normalizer) {
 	if err != nil {
 		t.Fatalf("golden: read %s: %v (run `go test -update` to create it)", path, err)
 	}
-	if got != string(want) {
+	// Compare with LF-normalized line endings so a golden file checked out with
+	// CRLF (Windows git autocrlf) still matches LF-generated output. The
+	// repo's .gitattributes already forces LF; this is belt-and-suspenders (#563).
+	wantStr := strings.ReplaceAll(string(want), "\r\n", "\n")
+	got = strings.ReplaceAll(got, "\r\n", "\n")
+	if got != wantStr {
 		t.Errorf("golden mismatch for %s.\n--- want ---\n%s\n--- got ---\n%s\n(run `go test -update` to accept)",
 			name, string(want), got)
 	}

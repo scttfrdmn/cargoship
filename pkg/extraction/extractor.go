@@ -382,9 +382,35 @@ func (e *Extractor) createRegularFile(tarReader *tar.Reader, root *os.Root, relP
 // createSymlink creates a symbolic link from tar header.
 // The symlink target is validated to prevent path traversal via crafted archives (CWE-22).
 // outputPath is the absolute form of relPath, used only for target resolution.
+// symlinkTargetUnsafe reports whether a tar symlink target must be rejected: it
+// is absolute in any OS convention (Unix "/...", Windows "C:\..."/"C:/...", UNC
+// "\\..."/"//...") or contains a ".." component. filepath.IsAbs is host-specific,
+// so relying on it alone lets a Unix-absolute target slip through on Windows and
+// vice versa (#563); this normalizes and checks every convention regardless of
+// the host OS.
+func symlinkTargetUnsafe(linkname string) bool {
+	if strings.Contains(linkname, "..") {
+		return true
+	}
+	if filepath.IsAbs(linkname) { // OS-native absolute (incl. Windows C:\, \\)
+		return true
+	}
+	s := filepath.ToSlash(linkname)
+	if strings.HasPrefix(s, "/") { // Unix-absolute or //UNC, even on Windows
+		return true
+	}
+	if len(s) >= 2 && s[1] == ':' { // Windows drive letter (e.g. "C:...") on any host
+		return true
+	}
+	return false
+}
+
 func (e *Extractor) createSymlink(root *os.Root, relPath, outputPath string, header *tar.Header) error {
-	// Validate symlink target: reject absolute paths and any ".." components.
-	if filepath.IsAbs(header.Linkname) || strings.Contains(header.Linkname, "..") {
+	// Validate symlink target: reject absolute paths (in ANY OS convention) and
+	// any ".." components. filepath.IsAbs alone is host-OS-specific — on Windows it
+	// treats a Unix-absolute target like "/etc/passwd" as relative (#563), so a
+	// cross-built archive could smuggle an escaping symlink past a Windows extract.
+	if symlinkTargetUnsafe(header.Linkname) {
 		return fmt.Errorf("invalid symlink target %q: must be relative and must not contain '..'", header.Linkname)
 	}
 

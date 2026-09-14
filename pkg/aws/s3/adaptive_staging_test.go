@@ -56,7 +56,7 @@ func TestAdaptiveStagingStageChunk(t *testing.T) {
 	assert.Greater(t, result.StagedSize, int64(0))
 	assert.Greater(t, result.CompressionRatio, 0.0)
 	assert.Less(t, result.CompressionRatio, 1.0)
-	assert.Greater(t, result.StagingTime, time.Duration(0))
+	assert.GreaterOrEqual(t, result.StagingTime, time.Duration(0)) // #563: 0 on coarse Windows clock
 	assert.NotNil(t, result.Metrics)
 }
 
@@ -239,7 +239,7 @@ func TestAdaptiveStagingLargeChunk(t *testing.T) {
 	assert.Equal(t, "large-chunk", result.ChunkID)
 	assert.True(t, result.Success)
 	assert.Greater(t, result.StagedSize, int64(0))
-	assert.Greater(t, result.StagingTime, time.Duration(0))
+	assert.GreaterOrEqual(t, result.StagingTime, time.Duration(0)) // #563: 0 on coarse Windows clock
 }
 
 func TestAdaptiveStagingEmptyChunk(t *testing.T) {

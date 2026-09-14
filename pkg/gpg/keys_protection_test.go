@@ -3,6 +3,7 @@ package gpg
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/ProtonMail/gopenpgp/v2/crypto"
@@ -205,6 +206,11 @@ func TestNewKeyFilesWithPair_PrivateKeyIsNotWorldReadable(t *testing.T) {
 
 	info, err := os.Stat(files[0])
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(),
-		"the private key must be readable only by its owner")
+	// Unix mode bits (0600) aren't meaningful on Windows (ACL-based); the key is
+	// still written 0600 on Unix. Windows owner-only protection would need an ACL
+	// check, out of scope for this smoke lane. (#563)
+	if runtime.GOOS != "windows" {
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(),
+			"the private key must be readable only by its owner")
+	}
 }

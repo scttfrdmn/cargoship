@@ -1,6 +1,7 @@
 package gpg
 
 import (
+	"io/fs"
 	"os"
 	"testing"
 
@@ -139,7 +140,9 @@ func TestFileInfo_LargeFile(t *testing.T) {
 func TestReadEntity_FileNotFound(t *testing.T) {
 	_, err := ReadEntity("nonexistent-file.key")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "no such file or directory")
+	// Check the sentinel, not the OS-specific message string (Windows says
+	// "The system cannot find the file specified."). (#563)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 func TestEncryptToWithCmd_ExcludeSystems(t *testing.T) {

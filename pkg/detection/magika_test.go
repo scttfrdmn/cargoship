@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -445,6 +446,9 @@ func TestMagikaDetector_ConcurrentAccess(t *testing.T) {
 
 // TestVerifyBinary tests binary verification
 func TestVerifyBinary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("magika binary verification is a Unix concept; magika is an opt-in Unix-oriented feature (#563)")
+	}
 	tests := []struct {
 		name        string
 		setup       func(t *testing.T) string

@@ -5,11 +5,15 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"runtime"
 	"testing"
 )
 
 // TestMmapSupported verifies memory mapping suitability detection
 func TestMmapSupported(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("mmap is unsupported on Windows (mmap_other.go returns false by design)")
+	}
 	// Test with nil file
 	if MmapSupported(nil) {
 		t.Error("Expected MmapSupported to return false for nil file")

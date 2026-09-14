@@ -662,7 +662,12 @@ func (se *SelectiveExtractor) resolveEntry(target string) *FileEntry {
 	if entry := se.query.FindFile(target); entry != nil {
 		return entry
 	}
-	clean := filepath.Clean(target)
+	// Manifest paths are always slash-separated (the portable format convention),
+	// so resolve in slash space regardless of host OS. filepath here would use "\"
+	// on Windows and never match the manifest's "/" paths — `restore --file
+	// a/b.txt` then failed on Windows (#563). ToSlash the target (a user-supplied
+	// --file may use either separator) and the manifest paths (belt-and-suspenders).
+	clean := path.Clean(filepath.ToSlash(target))
 	// When the target carries a path (not a bare basename), match it exactly or by
 	// path-suffix across ALL entries FIRST, so a unique suffix match always wins
 	// even when many files share the basename. (The previous single-pass resolver
@@ -670,20 +675,20 @@ func (se *SelectiveExtractor) resolveEntry(target string) *FileEntry {
 	// so a fully-qualified path failed whenever ≥2 other files shared its basename
 	// earlier in the manifest — 46% of a random ~/src sample, since source trees are
 	// full of repeated names like abort.d.ts / __init__.py.)
-	if strings.ContainsRune(clean, filepath.Separator) {
+	if strings.ContainsRune(clean, '/') {
 		for i := range se.manifest.Files {
-			p := se.manifest.Files[i].Path
-			if p == clean || strings.HasSuffix(p, string(filepath.Separator)+clean) {
+			p := filepath.ToSlash(se.manifest.Files[i].Path)
+			if p == clean || strings.HasSuffix(p, "/"+clean) {
 				return &se.manifest.Files[i]
 			}
 		}
 	}
 	// Bare basename (e.g. `--file greeting.txt`), or a path with no suffix match:
 	// resolve by basename, but only when it is unambiguous.
-	base := filepath.Base(clean)
+	base := path.Base(clean)
 	var basenameMatch *FileEntry
 	for i := range se.manifest.Files {
-		if filepath.Base(se.manifest.Files[i].Path) == base {
+		if path.Base(filepath.ToSlash(se.manifest.Files[i].Path)) == base {
 			if basenameMatch != nil {
 				return nil // ambiguous basename; require a more specific target
 			}
