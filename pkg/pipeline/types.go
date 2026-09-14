@@ -479,6 +479,11 @@ type ScannerConfig struct {
 type ArchiverConfig struct {
 	Workers int
 
+	// SourcePath is the scan root. Source files are opened through an os.Root
+	// anchored here so a path swapped to a symlink after scanning can't redirect
+	// the read outside the tree (CSH-SEC-001).
+	SourcePath string
+
 	// CompressionLevel overrides content-aware per-chunk compression (#316).
 	// 0 means automatic: analyze each chunk's predominant content type and pick
 	// a level from it (#105/#30). Any other value pins every chunk to that

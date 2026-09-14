@@ -543,8 +543,9 @@ func (s *ArchiverStage) getMmapReader(path string) (*ioutils.MmapReader, bool, e
 		return reader, true, nil
 	}
 
-	// Open file
-	file, err := os.Open(path)
+	// Open through a root anchored at the source dir (CSH-SEC-001): a path
+	// swapped to a symlink after scanning can't redirect the read outside the tree.
+	file, err := openContainedSourceFile(s.config.SourcePath, path)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1117,8 +1118,8 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, fr *framer, job *
 // addFileToArchiveWithMetadata adds a file to archive with full metadata support (Phase 5)
 // Supports partial file reads with offset/length for split files
 func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, fr *framer, job *Job, file chunking.File) error {
-	// Open file
-	f, err := os.Open(file.Path)
+	// Open through a root anchored at the source dir (CSH-SEC-001).
+	f, err := openContainedSourceFile(s.config.SourcePath, file.Path)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
