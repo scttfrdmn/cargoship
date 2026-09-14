@@ -768,6 +768,24 @@ func (se *SelectiveExtractor) BatchRestoreByCommit(ctx context.Context, commit, 
 	return se.BatchRestore(ctx, paths, destDir)
 }
 
+// expectedObjectBytes returns the size the manifest declares for the object at
+// s3Key — a chunk's CompressedSize, else a direct-upload file's Size — or 0 when
+// the manifest declares no size for it. Used to bound restore reads
+// (CSH-SEC-003).
+func (se *SelectiveExtractor) expectedObjectBytes(s3Key string) int64 {
+	for i := range se.manifest.Chunks {
+		if se.manifest.Chunks[i].S3Key == s3Key {
+			return se.manifest.Chunks[i].CompressedSize
+		}
+	}
+	for i := range se.manifest.Files {
+		if se.manifest.Files[i].S3Key == s3Key {
+			return se.manifest.Files[i].Size
+		}
+	}
+	return 0
+}
+
 // downloadChunk fetches the S3 object at s3Key from the manifest's bucket and
 // returns its raw bytes.
 func (se *SelectiveExtractor) downloadChunk(ctx context.Context, s3Key string) ([]byte, error) {
@@ -783,7 +801,13 @@ func (se *SelectiveExtractor) downloadChunk(ctx context.Context, s3Key string) (
 		return nil, fmt.Errorf("S3 GetObject %q: %w", s3Key, err)
 	}
 	defer func() { _ = out.Body.Close() }()
-	data, err := io.ReadAll(out.Body)
+	// CSH-SEC-003: bound the read to the manifest's declared object size (a
+	// finite fallback when undeclared), rejecting an object larger than declared.
+	limit := objectReadLimit(se.expectedObjectBytes(s3Key))
+	if err := checkContentLength(out.ContentLength, limit, "chunk object "+s3Key); err != nil {
+		return nil, err
+	}
+	data, err := readAllLimited(out.Body, limit, "chunk object "+s3Key)
 	if err != nil {
 		return nil, fmt.Errorf("read S3 body %q: %w", s3Key, err)
 	}
@@ -849,7 +873,14 @@ func (se *SelectiveExtractor) downloadChunkRange(ctx context.Context, s3Key stri
 		return nil, false, fmt.Errorf("S3 GetObject %q range %s: %w", s3Key, rng, err)
 	}
 	defer func() { _ = out.Body.Close() }()
-	body, err := io.ReadAll(out.Body)
+	// CSH-SEC-003: a backend that ignores the Range returns the whole object, so
+	// bound by the chunk's declared size (which covers both the honored range and
+	// the whole-object fallback), with a finite fallback when undeclared.
+	limit := objectReadLimit(se.expectedObjectBytes(s3Key))
+	if err := checkContentLength(out.ContentLength, limit, "chunk object "+s3Key); err != nil {
+		return nil, false, err
+	}
+	body, err := readAllLimited(out.Body, limit, "chunk object "+s3Key)
 	if err != nil {
 		return nil, false, fmt.Errorf("read S3 body %q range %s: %w", s3Key, rng, err)
 	}

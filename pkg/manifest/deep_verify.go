@@ -611,9 +611,15 @@ func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry,
 	}
 	// Buffer the compressed object before decompressing. The tar/zstd readers
 	// need the complete stream; reading directly from the S3 body can surface a
-	// premature "unexpected EOF" on some endpoints. Chunk objects are bounded
-	// (target sizes are tens of MB), so this stays memory-safe.
-	objectBytes, err := io.ReadAll(output.Body)
+	// premature "unexpected EOF" on some endpoints. CSH-SEC-003: bound the read
+	// to the chunk's declared CompressedSize (finite fallback when undeclared) so
+	// a hostile object can't force an unbounded allocation.
+	limit := objectReadLimit(chunk.CompressedSize)
+	if err := checkContentLength(output.ContentLength, limit, "chunk object "+chunk.S3Key); err != nil {
+		_ = output.Body.Close()
+		return nil, err
+	}
+	objectBytes, err := readAllLimited(output.Body, limit, "chunk object "+chunk.S3Key)
 	_ = output.Body.Close()
 	if err != nil {
 		return nil, fmt.Errorf("read chunk object: %w", err)

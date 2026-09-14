@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 	"sync"
@@ -536,6 +535,11 @@ func FromJSON(data []byte) (*Manifest, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
+	// CSH-SEC-003: reject a manifest whose entry counts exceed finite safety
+	// limits before any downstream code allocates per-entry.
+	if err := validateManifestCounts(len(m.Files), len(m.Chunks)); err != nil {
+		return nil, err
+	}
 	return &m, nil
 }
 
@@ -552,7 +556,7 @@ func FromJSONCompressed(data []byte) (*Manifest, error) {
 		}
 	}()
 
-	jsonData, err := io.ReadAll(gzipReader)
+	jsonData, err := readAllLimited(gzipReader, MaxManifestJSONBytes, "decompressed manifest")
 	if err != nil {
 		return nil, fmt.Errorf("failed to decompress JSON: %w", err)
 	}
@@ -723,7 +727,7 @@ func DownloadFromS3WithDecryption(ctx context.Context, s3Client *s3.Client, kmsC
 		gzipReader, err := gzip.NewReader(bytes.NewReader(data))
 		if err == nil {
 			defer func() { _ = gzipReader.Close() }()
-			decompressed, err := io.ReadAll(gzipReader)
+			decompressed, err := readAllLimited(gzipReader, MaxManifestJSONBytes, "decompressed encrypted manifest")
 			if err == nil {
 				// Decrypt
 				var encryptedManifest encryption.EncryptedManifest
@@ -782,7 +786,12 @@ func downloadS3Object(ctx context.Context, s3Client *s3.Client, bucket, key stri
 		}
 	}()
 
-	return io.ReadAll(result.Body)
+	// CSH-SEC-003: bound the manifest object read; validate S3's reported size
+	// up front, then cap the read itself in case ContentLength is unset or lies.
+	if err := checkContentLength(result.ContentLength, MaxManifestObjectBytes, "manifest object "+key); err != nil {
+		return nil, err
+	}
+	return readAllLimited(result.Body, MaxManifestObjectBytes, "manifest object "+key)
 }
 
 // ParseS3URL parses an S3 URL into bucket and prefix
