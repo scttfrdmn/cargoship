@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-09-14
+
+**External security-audit remediation.** Closes the remaining findings from the
+v0.29.0 security review (the contained fixes shipped in v0.29.1). Two changes are
+compatibility-affecting and are why this is a minor bump: the observability
+endpoints now refuse a public bind by default, and newly-written **encrypted**
+manifests are cryptographically bound to their upload — an encrypted manifest
+written by this release cannot be decrypted by an older binary (only the opt-in
+`--encrypt-manifest` path; data chunks and unencrypted manifests are unaffected;
+new code still reads older archives). `main` and `v*` tags are now protected by
+strict repository rulesets and releases are cut through pull requests
+(CSH-SEC-006; see CONTRIBUTING).
+
 ### Security
 - **Observability endpoints refuse a public bind by default (CSH-SEC-007).**
   The pprof and Prometheus endpoints are unauthenticated; a non-loopback
