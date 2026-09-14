@@ -188,3 +188,43 @@ func TestResolveEffective_MissingAncestor(t *testing.T) {
 		t.Fatal("expected an error when an ancestor cannot be fetched (must fail loudly, not truncate)")
 	}
 }
+
+// TestDependentUploads is the #592 core: identifying uploads whose chain passes
+// through a target upload, so a chain-aware delete can refuse to strand them.
+func TestDependentUploads(t *testing.T) {
+	v1 := &Manifest{UploadID: "v1"}
+	v2 := &Manifest{UploadID: "v2", PreviousManifestID: "v1"}
+	v3 := &Manifest{UploadID: "v3", PreviousManifestID: "v2"}
+	standalone := &Manifest{UploadID: "s1"}
+	all := []*Manifest{v1, v2, v3, standalone}
+
+	// Root has two descendants (v2 directly, v3 transitively).
+	deps := DependentUploads("v1", all)
+	if len(deps) != 2 || !containsID(deps, "v2") || !containsID(deps, "v3") {
+		t.Errorf("v1 dependents = %v, want [v2 v3]", deps)
+	}
+	// A middle version has one descendant.
+	if deps := DependentUploads("v2", all); len(deps) != 1 || deps[0] != "v3" {
+		t.Errorf("v2 dependents = %v, want [v3]", deps)
+	}
+	// The head and a standalone upload have no dependents → safe to delete.
+	if deps := DependentUploads("v3", all); len(deps) != 0 {
+		t.Errorf("v3 (head) dependents = %v, want none", deps)
+	}
+	if deps := DependentUploads("s1", all); len(deps) != 0 {
+		t.Errorf("standalone dependents = %v, want none", deps)
+	}
+	// A cyclic chain must not hang.
+	c1 := &Manifest{UploadID: "c1", PreviousManifestID: "c2"}
+	c2 := &Manifest{UploadID: "c2", PreviousManifestID: "c1"}
+	_ = DependentUploads("x", []*Manifest{c1, c2})
+}
+
+func containsID(ss []string, s string) bool {
+	for _, x := range ss {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}

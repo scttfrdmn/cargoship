@@ -101,6 +101,49 @@ func ResolveChain(ctx context.Context, m *Manifest, fetch ChainFetcher) ([]*Mani
 	return chain, nil
 }
 
+// DependentUploads returns the upload IDs among `all` whose PreviousManifestID
+// chain passes through targetUploadID — i.e. incremental versions that would
+// become unrestorable if the target upload were deleted, because their effective
+// view reaches the target's chunks by S3Key and their chain resolution walks the
+// target's manifest. The target itself is excluded, and the result is
+// deterministic (input order). Chains are walked in-memory (no fetch) with a
+// per-walk visited guard against cycles; an ancestor not present in `all` simply
+// ends that walk. Shared by chain-aware delete (#592) and versioning GC (#521).
+func DependentUploads(targetUploadID string, all []*Manifest) []string {
+	if targetUploadID == "" {
+		return nil
+	}
+	byID := make(map[string]*Manifest, len(all))
+	for _, m := range all {
+		if m != nil && m.UploadID != "" {
+			byID[m.UploadID] = m
+		}
+	}
+	var deps []string
+	for _, m := range all {
+		if m == nil || m.UploadID == targetUploadID {
+			continue
+		}
+		visited := map[string]bool{}
+		for cur := m.PreviousManifestID; cur != ""; {
+			if cur == targetUploadID {
+				deps = append(deps, m.UploadID)
+				break
+			}
+			if visited[cur] {
+				break // cycle guard
+			}
+			visited[cur] = true
+			parent, ok := byID[cur]
+			if !ok {
+				break // ancestor not among the provided manifests
+			}
+			cur = parent.PreviousManifestID
+		}
+	}
+	return deps
+}
+
 // MergeChain merges a newest-first chain (from ResolveChain) into one effective
 // manifest describing the full current dataset: files unioned newest-wins per
 // path, deletes tombstoned, chunks the union (by S3Key) of those a surviving

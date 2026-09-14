@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matching the chunked path. Restore is unaffected (it resolves the manifest's
   recorded key; both old and new layouts resolve correctly), so existing archives
   keep restoring.
+- **`delete` is now chain-aware and won't strand incremental versions (#592).**
+  `cargoship delete <upload>` removed only that upload's own objects with no
+  awareness of the `PreviousManifestID` chain, so deleting an ancestor of an
+  incremental `sync` chain silently removed chunks that newer versions reference
+  by `S3Key` (and the manifest their chain resolution walks), making those
+  versions unrestorable. `delete` now enumerates the other uploads under the
+  prefix (decryption-aware, so encrypted-manifest chains are covered) and refuses
+  to delete an upload that a newer version chains through, listing the dependents;
+  `--force` overrides. Standalone uploads and chain heads delete as before.
 
 ## [0.30.0] - 2026-09-14
 
