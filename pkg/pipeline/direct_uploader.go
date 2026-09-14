@@ -41,6 +41,7 @@ type DirectUploaderConfig struct {
 	S3Client        S3Uploader            // AWS S3 client (interface for testability)
 	Bucket          string                // Target S3 bucket
 	Prefix          string                // S3 key prefix (optional)
+	UploadID        string                // Upload session ID; keys are isolated under uploads/<id>/ so distinct uploads never share an object key (#591)
 	SourcePath      string                // Source root; keys preserve each file's path relative to it (#480)
 	FileChecksums   bool                  // Record a SHA-256 per file in the manifest (CSH-SEC-002; on by default, --no-file-checksums opts out)
 	Workers         int                   // Number of concurrent upload workers
@@ -319,6 +320,15 @@ func (s *DirectUploaderStage) uploadFile(ctx context.Context, file chunking.File
 // made same-basename files collide: the second upload overwrote the first and
 // restore silently returned the survivor's bytes for both (#480). Falls back to
 // the basename when no source root is set or the file lies outside it.
+//
+// #591: the key is isolated under uploads/<uploadID>/ (matching the chunked
+// path's layout) so two uploads of the same relative path to the same
+// bucket/prefix — across hosts, or one host re-uploading a changed tree — no
+// longer resolve to the same object key and silently overwrite each other.
+// Without the segment, restoring an older upload's manifest fetched the newer
+// upload's bytes. When UploadID is empty (unit tests), the pre-#591 flat layout
+// is kept; restore is unaffected either way because it resolves the manifest's
+// stored FileEntry.S3Key, and ResolveObjectKey is idempotent for both shapes.
 func (s *DirectUploaderStage) buildS3Key(filePath string) string {
 	relPath := filepath.Base(filePath)
 	if s.config.SourcePath != "" {
@@ -330,10 +340,15 @@ func (s *DirectUploaderStage) buildS3Key(filePath string) string {
 	// S3 keys are always slash-separated, regardless of host OS.
 	relPath = filepath.ToSlash(relPath)
 
+	segments := make([]string, 0, 4)
 	if s.config.Prefix != "" {
-		return path.Join(s.config.Prefix, relPath)
+		segments = append(segments, s.config.Prefix)
 	}
-	return relPath
+	if s.config.UploadID != "" {
+		segments = append(segments, "uploads", s.config.UploadID)
+	}
+	segments = append(segments, relPath)
+	return path.Join(segments...)
 }
 
 // Process processes a single job (not used in direct mode, kept for interface compatibility)

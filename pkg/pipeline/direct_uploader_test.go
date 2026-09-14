@@ -641,6 +641,48 @@ func TestDirectUploaderStage_BuildS3Key_PreservesRelativePath(t *testing.T) {
 	}
 }
 
+// TestDirectUploaderStage_UploadIDIsolatesKeys is the #591 regression: direct
+// uploads must key objects under uploads/<uploadID>/ so two uploads of the SAME
+// relative path to the SAME bucket/prefix get DISTINCT keys. Without this the
+// second upload silently overwrites the first, and restoring the first upload's
+// manifest returns the second upload's bytes.
+func TestDirectUploaderStage_UploadIDIsolatesKeys(t *testing.T) {
+	ctx := context.Background()
+	poolConfig := &AdaptiveWorkerPoolConfig{InitialWorkers: 2, MaxWorkers: 2, EnableAdaptive: false}
+	mk := func(uploadID string) *DirectUploaderStage {
+		cfg := &DirectUploaderConfig{
+			S3Client:   &mockS3Client{},
+			Bucket:     "b",
+			Prefix:     "p",
+			UploadID:   uploadID,
+			SourcePath: "/src/root",
+			WorkerPool: NewAdaptiveWorkerPool(ctx, poolConfig),
+		}
+		up, err := NewDirectUploaderStage(cfg, make(chan *Job), make(chan *Job))
+		if err != nil {
+			t.Fatalf("create uploader: %v", err)
+		}
+		return up
+	}
+	up1 := mk("20260101-aaaa")
+	defer func() { _ = up1.Stop() }()
+	up2 := mk("20260102-bbbb")
+	defer func() { _ = up2.Stop() }()
+
+	k1 := up1.buildS3Key("/src/root/data/report.csv")
+	k2 := up2.buildS3Key("/src/root/data/report.csv")
+
+	if k1 != "p/uploads/20260101-aaaa/data/report.csv" {
+		t.Errorf("upload1 key = %q, want p/uploads/20260101-aaaa/data/report.csv", k1)
+	}
+	if k2 != "p/uploads/20260102-bbbb/data/report.csv" {
+		t.Errorf("upload2 key = %q, want p/uploads/20260102-bbbb/data/report.csv", k2)
+	}
+	if k1 == k2 {
+		t.Fatalf("same relative path from two uploads collided on one key %q (silent overwrite)", k1)
+	}
+}
+
 // TestDirectUploaderStage_RecordsChecksum is the CSH-SEC-002 regression: direct
 // mode must record each file's SHA-256 in the manifest (matching packed mode),
 // and must omit it only when FileChecksums is disabled.

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Direct-upload mode no longer clobbers objects across uploads (#591).** Direct
+  uploads keyed objects at `<prefix>/<relpath>` with no per-upload segment, so two
+  uploads of the same relative path to the same bucket/prefix — across hosts, or
+  one host re-uploading a changed tree — wrote the same object key and the second
+  silently overwrote the first, leaving the older upload unrestorable. Direct
+  objects are now isolated under `<prefix>/uploads/<upload-id>/<relpath>`,
+  matching the chunked path. Restore is unaffected (it resolves the manifest's
+  recorded key; both old and new layouts resolve correctly), so existing archives
+  keep restoring.
+
 ## [0.30.0] - 2026-09-14
 
 **External security-audit remediation.** Closes the remaining findings from the
