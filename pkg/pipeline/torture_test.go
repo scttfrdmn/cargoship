@@ -367,6 +367,14 @@ func runIncrementalChainTorture(t *testing.T, rng *rand.Rand, forceChunked bool)
 	upload(v1ID, nil, nil, "full", "")
 	m1 := fetchManifest(v1ID) // to learn the stored FileEntry.Path form for the tombstone
 
+	// #521: a fresh (root) upload writes its dataset-versioning identity — the
+	// dataset is named for this upload and it is version 1, with the feature
+	// marker set. (Inheritance across a chain is exercised by the manifest pkg's
+	// TestNextVersion; the sync CLI threads it in.)
+	require.Equal(t, v1ID, m1.DatasetID, "#521: a root upload's DatasetID is its own UploadID")
+	require.Equal(t, 1, m1.VersionOrdinal, "#521: a root upload is version 1")
+	require.Contains(t, m1.FormatFeatures, manifest.FormatFeatureVersioning, "#521: versioning feature marker must be set")
+
 	// Mutate the tree: rewrite content of a subset (modified) and add a few new
 	// files; the rest stay unchanged. Build the expected FINAL dataset by path.
 	final := make(map[string]genFile, len(v1corpus))

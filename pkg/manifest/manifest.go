@@ -18,12 +18,13 @@ import (
 )
 
 const (
-	// ManifestVersion is the current manifest format version. 2.1 adds the
+	// ManifestVersion is the current manifest format version. 2.2 adds dataset
+	// versioning (Manifest.DatasetID, VersionOrdinal; #521). 2.1 added the
 	// optional random-access frame index (ChunkEntry.Frames, FileEntry.
 	// ArchiveOffset, Manifest.FormatFeatures; #436). The schema is additive: the
-	// reader is version-tolerant and still parses older (2.0) manifests, ignoring
-	// fields it does not recognize.
-	ManifestVersion = "2.1"
+	// reader is version-tolerant and still parses older (2.0/2.1) manifests,
+	// ignoring fields it does not recognize.
+	ManifestVersion = "2.2"
 
 	// ChecksumAlgorithmSHA256 is the hash algorithm recorded in
 	// Manifest.ChecksumAlgorithm for chunk (and per-file) checksums. It matches
@@ -33,6 +34,10 @@ const (
 	// FormatFeatureFrames is the Manifest.FormatFeatures marker set when at least
 	// one chunk carries a random-access frame index (#436).
 	FormatFeatureFrames = "frames"
+
+	// FormatFeatureVersioning is the Manifest.FormatFeatures marker set when the
+	// manifest carries dataset-versioning identity (DatasetID/VersionOrdinal; #521).
+	FormatFeatureVersioning = "versioning"
 
 	// ManifestFileName is the standard manifest filename
 	ManifestFileName = "manifest.json"
@@ -243,6 +248,28 @@ func (b *Builder) SetDeletedPaths(paths []string) {
 	defer b.mu.Unlock()
 
 	b.manifest.DeletedPaths = paths
+}
+
+// SetDatasetInfo records the dataset-versioning identity (Issue #521): the
+// DatasetID this upload belongs to (the version chain's stable name — the chain
+// root's UploadID, or a user slug) and its 1-based VersionOrdinal. It also marks
+// the manifest with the "versioning" format feature. A datasetID of "" leaves
+// the manifest un-versioned (legacy behavior). Thread-safe.
+func (b *Builder) SetDatasetInfo(datasetID string, ordinal int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if datasetID == "" {
+		return
+	}
+	b.manifest.DatasetID = datasetID
+	b.manifest.VersionOrdinal = ordinal
+	for _, f := range b.manifest.FormatFeatures {
+		if f == FormatFeatureVersioning {
+			return
+		}
+	}
+	b.manifest.FormatFeatures = append(b.manifest.FormatFeatures, FormatFeatureVersioning)
 }
 
 // SetEncryption sets encryption metadata (Issue #163, thread-safe)

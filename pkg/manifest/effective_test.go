@@ -220,6 +220,76 @@ func TestDependentUploads(t *testing.T) {
 	_ = DependentUploads("x", []*Manifest{c1, c2})
 }
 
+// TestDatasetIDOf covers the #521 identity derivation: an explicit DatasetID
+// wins; a legacy standalone upload is its own dataset; a legacy chain resolves
+// to its root UploadID.
+func TestDatasetIDOf(t *testing.T) {
+	// Explicit DatasetID is returned directly (no fetch needed).
+	m := &Manifest{UploadID: "v3", DatasetID: "my-dataset", PreviousManifestID: "v2"}
+	if id, err := DatasetIDOf(context.Background(), m, nil); err != nil || id != "my-dataset" {
+		t.Errorf("explicit DatasetID: got %q err %v, want my-dataset", id, err)
+	}
+	// Legacy standalone upload is its own dataset root.
+	solo := &Manifest{UploadID: "solo"}
+	if id, err := DatasetIDOf(context.Background(), solo, nil); err != nil || id != "solo" {
+		t.Errorf("standalone: got %q err %v, want solo", id, err)
+	}
+	// Legacy chain (no DatasetID) resolves to the root UploadID.
+	v1 := &Manifest{UploadID: "v1"}
+	v2 := &Manifest{UploadID: "v2", PreviousManifestID: "v1"}
+	v3 := &Manifest{UploadID: "v3", PreviousManifestID: "v2"}
+	id, err := DatasetIDOf(context.Background(), v3, chainFetch(map[string]*Manifest{"v1": v1, "v2": v2}))
+	if err != nil || id != "v1" {
+		t.Errorf("legacy chain: got %q err %v, want root v1", id, err)
+	}
+}
+
+// TestNextVersion covers the #521 successor computation used by sync.
+func TestNextVersion(t *testing.T) {
+	// No predecessor → new dataset, version 1, empty id (pipeline roots it).
+	if id, ord := NextVersion(context.Background(), nil, nil); id != "" || ord != 1 {
+		t.Errorf("nil prev: got (%q,%d), want (\"\",1)", id, ord)
+	}
+	// A versioned predecessor → inherit its dataset, ordinal+1.
+	prev := &Manifest{UploadID: "v2", DatasetID: "ds", VersionOrdinal: 2}
+	if id, ord := NextVersion(context.Background(), prev, nil); id != "ds" || ord != 3 {
+		t.Errorf("versioned prev: got (%q,%d), want (ds,3)", id, ord)
+	}
+	// A legacy standalone predecessor → dataset = its own id, becomes version 2.
+	legacy := &Manifest{UploadID: "u1"}
+	if id, ord := NextVersion(context.Background(), legacy, nil); id != "u1" || ord != 2 {
+		t.Errorf("legacy standalone prev: got (%q,%d), want (u1,2)", id, ord)
+	}
+	// A legacy predecessor mid-chain → dataset = chain root, version 2.
+	root := &Manifest{UploadID: "r"}
+	mid := &Manifest{UploadID: "m", PreviousManifestID: "r"}
+	if id, ord := NextVersion(context.Background(), mid, chainFetch(map[string]*Manifest{"r": root})); id != "r" || ord != 2 {
+		t.Errorf("legacy chain prev: got (%q,%d), want (r,2)", id, ord)
+	}
+}
+
+// TestSetDatasetInfo covers the builder setter + the versioning format marker.
+func TestSetDatasetInfo(t *testing.T) {
+	b, err := NewBuilder("u1", "/src", "b", "p", "r")
+	if err != nil {
+		t.Fatalf("NewBuilder: %v", err)
+	}
+	b.SetDatasetInfo("ds-1", 4)
+	m := b.Finalize()
+	if m.DatasetID != "ds-1" || m.VersionOrdinal != 4 {
+		t.Errorf("got DatasetID=%q ordinal=%d, want ds-1/4", m.DatasetID, m.VersionOrdinal)
+	}
+	if !containsID(m.FormatFeatures, FormatFeatureVersioning) {
+		t.Errorf("FormatFeatures %v should include %q", m.FormatFeatures, FormatFeatureVersioning)
+	}
+	// Empty datasetID is a no-op (stays un-versioned).
+	b2, _ := NewBuilder("u2", "/src", "b", "p", "r")
+	b2.SetDatasetInfo("", 0)
+	if m2 := b2.Finalize(); m2.DatasetID != "" || containsID(m2.FormatFeatures, FormatFeatureVersioning) {
+		t.Errorf("empty datasetID should be a no-op, got DatasetID=%q features=%v", m2.DatasetID, m2.FormatFeatures)
+	}
+}
+
 func containsID(ss []string, s string) bool {
 	for _, x := range ss {
 		if x == s {

@@ -13,7 +13,7 @@ import (
 // version-tolerant (validateVersion only warns on a mismatch), so older
 // manifests still parse — but new manifests are written at this version.
 func TestManifestVersion(t *testing.T) {
-	assert.Equal(t, "2.1", ManifestVersion)
+	assert.Equal(t, "2.2", ManifestVersion)
 }
 
 // TestManifestV2Fields verifies new v2 fields round-trip through JSON.

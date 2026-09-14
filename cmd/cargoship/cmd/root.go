@@ -109,6 +109,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 		NewCostCmd(),        // Issue #145: Cost management and budget tracking
 		NewBudgetCmd(),      // Issue #147: Budget management and volume quotas
 		NewAlertsCmd(),      // Issue #147 Phase 4: Budget alerts and notifications
+		NewDatasetCmd(),     // Issue #521: inspect dataset versions (sync history)
 		NewRestoreCmd(),     // Issue #189: Hash/DVC-aware selective file restore
 		NewBrowseCmd(),      // Issue #190: Interactive TUI file browser
 		NewDVCCmd(),         // v0.13.0: DVC pipeline auto-discovery and stage inspection
