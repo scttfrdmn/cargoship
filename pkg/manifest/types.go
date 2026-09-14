@@ -23,6 +23,16 @@ type Manifest struct {
 	PreviousManifestID string `json:"previous_manifest_id,omitempty"` // For version chain in incremental syncs
 	SyncType           string `json:"sync_type,omitempty"`            // "full" or "incremental" (empty = full for backwards compat)
 
+	// Dataset versioning (Issue #521). DatasetID names the version chain this
+	// upload belongs to — it defaults to the chain root's UploadID (see
+	// DatasetIDOf), so every version of a dataset shares one ID. VersionOrdinal is
+	// this version's 1-based position in the chain. Both are omitempty and inert:
+	// a manifest without them (a legacy upload, or a user who never uses the
+	// `dataset` commands) behaves exactly as before; DatasetIDOf derives the
+	// identity lazily for legacy manifests.
+	DatasetID      string `json:"dataset_id,omitempty"`
+	VersionOrdinal int    `json:"version_ordinal,omitempty"`
+
 	// Paths removed in this incremental version relative to its predecessor
 	// (Issue #555). Recorded only when the upload was run with delete tracking.
 	// The chain-merge (ResolveEffective) treats these as tombstones so a file

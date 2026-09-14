@@ -252,6 +252,15 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 				builder.SetDeletedPaths(config.DeletedPaths)
 			}
 
+			// #521: dataset-versioning identity. An explicit DatasetID (threaded
+			// from sync, inherited from the predecessor) is used as-is; otherwise
+			// this upload starts a new dataset and is its own chain root (v1).
+			if config.DatasetID != "" {
+				builder.SetDatasetInfo(config.DatasetID, config.VersionOrdinal)
+			} else {
+				builder.SetDatasetInfo(config.UploadID, 1)
+			}
+
 			// Set encryption info (Issue #163)
 			if config.KMSKeyID != "" || config.EncryptManifest {
 				builder.SetEncryption(config.KMSKeyID, config.EncryptManifest)

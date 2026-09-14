@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Dataset versioning — inspection (#521, phase 1).** Incremental `sync` already
+  builds a version chain (`PreviousManifestID`); this names it and makes it
+  browsable. Each manifest now records a `DatasetID` (the chain's stable identity —
+  the root upload's ID, inherited by every version) and a 1-based
+  `VersionOrdinal`. New read-only commands: `cargoship dataset list s3://…`
+  (datasets under a prefix, with version count and head size) and `cargoship
+  dataset versions s3://… --dataset-id ID` (a dataset's versions, newest first);
+  both support `--json`. The fields are `omitempty` and inert — a plain `upload`
+  is a standalone one-version dataset and users who never run `dataset` see no
+  change; legacy manifests (no `DatasetID`) are handled by deriving the identity
+  from the chain root. Manifest format bumped to 2.2 (`versioning` feature marker);
+  older readers ignore the new fields. Versioning is entirely opt-in; comparison
+  (`diff`) and garbage-collection (`prune`) land in later phases.
+
 ### Fixed
 - **Direct-upload mode no longer clobbers objects across uploads (#591).** Direct
   uploads keyed objects at `<prefix>/<relpath>` with no per-upload segment, so two

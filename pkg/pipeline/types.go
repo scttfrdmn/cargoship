@@ -344,6 +344,8 @@ type PipelineConfig struct {
 	SyncType         string   // "full" or "incremental" (for manifest)
 	PreviousUploadID string   // Previous upload ID (for manifest chaining)
 	DeletedPaths     []string // Paths removed in this incremental version (Issue #555; recorded in the manifest for the chain-merge tombstone set)
+	DatasetID        string   // Dataset chain identity (Issue #521); empty → this upload starts a new dataset (its own root)
+	VersionOrdinal   int      // 1-based position of this version in the dataset chain (Issue #521)
 
 	// Progress tracking
 	EnableProgress   bool

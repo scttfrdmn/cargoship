@@ -231,6 +231,13 @@ Examples:
 			if previousManifest != nil {
 				previousUploadID = previousManifest.UploadID
 			}
+			// #521: inherit the dataset chain identity from the predecessor so every
+			// version shares one DatasetID; a first sync (no predecessor) leaves it
+			// empty and the pipeline starts a new dataset (this upload = root, v1).
+			datasetFetch := func(fctx context.Context, id string) (*manifest.Manifest, error) {
+				return manifest.DownloadFromS3(fctx, s3Client, bucket, prefix, id)
+			}
+			datasetID, versionOrdinal := manifest.NextVersion(ctx, previousManifest, datasetFetch)
 
 			pipelineConfig := newSyncPipelineConfig(syncPipelineParams{
 				bucket:           bucket,
@@ -244,7 +251,9 @@ Examples:
 				includeFiles:     includeFiles,
 				syncType:         syncType,
 				previousUploadID: previousUploadID,
-				deletedPaths:     delta.Deleted, // #555: persist deletions (empty unless --track-deletes)
+				deletedPaths:     delta.Deleted,  // #555: persist deletions (empty unless --track-deletes)
+				datasetID:        datasetID,      // #521
+				versionOrdinal:   versionOrdinal, // #521
 				s3Client:         s3Client,
 			})
 			// Issue #30: AI file-type detection, if configured.
@@ -317,6 +326,8 @@ type syncPipelineParams struct {
 	compressionLevel int
 	includeFiles     []string
 	deletedPaths     []string
+	datasetID        string // #521: inherited dataset chain identity ("" = new dataset)
+	versionOrdinal   int    // #521: this version's position in the chain
 	s3Client         *s3.Client
 }
 
@@ -352,6 +363,10 @@ func newSyncPipelineConfig(p syncPipelineParams) *pipeline.PipelineConfig {
 		SyncType:         p.syncType,
 		PreviousUploadID: p.previousUploadID,
 		DeletedPaths:     p.deletedPaths,
+
+		// #521: dataset-versioning identity, inherited from the predecessor.
+		DatasetID:      p.datasetID,
+		VersionOrdinal: p.versionOrdinal,
 	}
 }
 

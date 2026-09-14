@@ -144,6 +144,50 @@ func DependentUploads(targetUploadID string, all []*Manifest) []string {
 	return deps
 }
 
+// DatasetIDOf returns the stable dataset identity of m: its recorded DatasetID
+// when set, else — for a legacy manifest written before dataset versioning
+// (#521) — the UploadID of its chain root, derived by walking PreviousManifestID
+// via fetch. A manifest with no chain is its own dataset root. fetch is only
+// consulted for a legacy manifest that has a chain.
+func DatasetIDOf(ctx context.Context, m *Manifest, fetch ChainFetcher) (string, error) {
+	if m == nil {
+		return "", errors.New("dataset id: nil manifest")
+	}
+	if m.DatasetID != "" {
+		return m.DatasetID, nil
+	}
+	if m.PreviousManifestID == "" {
+		return m.UploadID, nil
+	}
+	chain, err := ResolveChain(ctx, m, fetch)
+	if err != nil {
+		return "", err
+	}
+	return chain[len(chain)-1].UploadID, nil
+}
+
+// NextVersion computes the dataset identity and version ordinal for a new upload
+// that follows prev, its incremental predecessor (#521). prev == nil (a first or
+// forced-full sync) returns ("", 1): the caller leaves DatasetID empty and the
+// pipeline starts a new dataset rooted at the new upload. Otherwise the new
+// version inherits prev's dataset (via DatasetIDOf, falling back to prev's own
+// UploadID if the chain root can't be resolved) and is ordinal prev+1 — a legacy
+// predecessor with no recorded ordinal counts as version 1.
+func NextVersion(ctx context.Context, prev *Manifest, fetch ChainFetcher) (datasetID string, ordinal int) {
+	if prev == nil {
+		return "", 1
+	}
+	id, err := DatasetIDOf(ctx, prev, fetch)
+	if err != nil {
+		id = prev.UploadID
+	}
+	ord := prev.VersionOrdinal
+	if ord < 1 {
+		ord = 1
+	}
+	return id, ord + 1
+}
+
 // MergeChain merges a newest-first chain (from ResolveChain) into one effective
 // manifest describing the full current dataset: files unioned newest-wins per
 // path, deletes tombstoned, chunks the union (by S3Key) of those a surviving
