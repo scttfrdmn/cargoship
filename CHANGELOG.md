@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Observability endpoints refuse a public bind by default (CSH-SEC-007).**
+  The pprof and Prometheus endpoints are unauthenticated; a non-loopback
+  `--pprof-addr`/`--prometheus-addr` now fails fast with a clear message unless
+  the operator passes `--allow-public-observability`. Defaults were already safe
+  (pprof binds localhost, Prometheus is unset), so this only guards an explicit
+  public address. External audit Low.
+
 ## [0.29.1] - 2026-09-14
 
 **Security hardening (contained fixes from an external review) plus

@@ -20,6 +20,7 @@ import (
 	cargoconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
+	"github.com/scttfrdmn/cargoship/pkg/observability/bindguard"
 	"github.com/scttfrdmn/cargoship/pkg/observability/metrics"
 	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
@@ -363,6 +364,12 @@ Examples:
 
 			// Initialize Prometheus metrics if enabled
 			if prometheusAddr != "" {
+				// CSH-SEC-007: the metrics endpoint is unauthenticated; refuse a
+				// non-loopback bind unless the operator explicitly allowed it.
+				allowPublic, _ := cmd.Flags().GetBool("allow-public-observability")
+				if err := bindguard.Guard("Prometheus metrics", prometheusAddr, allowPublic); err != nil {
+					return err
+				}
 				metricsCollector = metrics.NewPrometheusCollector()
 
 				// Start metrics HTTP server in background
