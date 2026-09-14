@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/viper"
 
 	contextpkg "github.com/scttfrdmn/cargoship/pkg/context"
+	"github.com/scttfrdmn/cargoship/pkg/observability/bindguard"
 	"github.com/scttfrdmn/cargoship/pkg/profiling"
 )
 
@@ -67,6 +68,7 @@ func NewRootCmdWithVersion(lo io.Writer, versionInfo string) *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&profile, "profile", false, "Enable performance profiling. This will generate profile files in a temp directory")
 	cmd.PersistentFlags().BoolVar(&runtimeProfile, "pprof", false, "Enable runtime profiling HTTP endpoint at localhost:6060")
 	cmd.PersistentFlags().String("pprof-addr", "localhost:6060", "Address for runtime profiling HTTP endpoint")
+	cmd.PersistentFlags().Bool("allow-public-observability", false, "Permit the pprof/Prometheus endpoints to bind a non-loopback (public) interface; they are unauthenticated, so this exposes them to the network")
 	cmd.PersistentFlags().String("memory-limit", "", "Set a memory limit for the run. This will slow things down, but will less likely to OOM in certain situations. Avoid this unless you are having memory issues.")
 	cmd.PersistentFlags().String("context", "", "Override execution context (local, repl)")
 	cmd.SetVersionTemplate("{{ .Version }}\n")
@@ -235,6 +237,10 @@ func globalPersistentPreRun(cmd *cobra.Command, _ []string) {
 	// Enable runtime profiling if requested
 	if runtimeProfile {
 		addr, _ := cmd.Flags().GetString("pprof-addr")
+		allowPublic, _ := cmd.Flags().GetBool("allow-public-observability")
+		// CSH-SEC-007: refuse to expose the unauthenticated pprof endpoint on a
+		// non-loopback interface unless explicitly allowed.
+		checkErr(bindguard.Guard("pprof", addr, allowPublic), "refusing to start runtime profiler")
 		enableRuntimeProfiling(addr)
 	}
 	/*

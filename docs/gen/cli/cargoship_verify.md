@@ -56,11 +56,12 @@ cargoship verify [s3://bucket/prefix/uploads/upload-id] [flags]
 ### Options inherited from parent commands
 
 ```
-      --context string        Override execution context (local, repl)
-      --memory-limit string   Set a memory limit for the run. This will slow things down, but will less likely to OOM in certain situations. Avoid this unless you are having memory issues.
-      --pprof                 Enable runtime profiling HTTP endpoint at localhost:6060
-      --pprof-addr string     Address for runtime profiling HTTP endpoint (default "localhost:6060")
-      --profile               Enable performance profiling. This will generate profile files in a temp directory
-  -t, --trace                 Enable trace messages in output
+      --allow-public-observability   Permit the pprof/Prometheus endpoints to bind a non-loopback (public) interface; they are unauthenticated, so this exposes them to the network
+      --context string               Override execution context (local, repl)
+      --memory-limit string          Set a memory limit for the run. This will slow things down, but will less likely to OOM in certain situations. Avoid this unless you are having memory issues.
+      --pprof                        Enable runtime profiling HTTP endpoint at localhost:6060
+      --pprof-addr string            Address for runtime profiling HTTP endpoint (default "localhost:6060")
+      --profile                      Enable performance profiling. This will generate profile files in a temp directory
+  -t, --trace                        Enable trace messages in output
 ```
 
