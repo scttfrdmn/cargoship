@@ -1,0 +1,15 @@
+# Normalize line endings: check out text files with LF on every platform so
+# golden fixtures and generated output compare byte-for-byte on Windows too,
+# where git's autocrlf would otherwise convert LF→CRLF on checkout (#563).
+* text=auto eol=lf
+
+# Binary fixtures and assets — never munge line endings.
+*.zst   binary
+*.gz    binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.ico   binary
+*.pdf   binary
+*.gpg   binary
+*.sigstore.json text eol=lf

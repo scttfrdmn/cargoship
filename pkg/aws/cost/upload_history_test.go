@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -193,7 +194,11 @@ func TestUploadHistory_FilePermissions(t *testing.T) {
 
 	info, err := os.Stat(path)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+	// Unix mode bits (0600) aren't meaningful on Windows (ACL-based); the store
+	// still writes 0600 on Unix. (#563)
+	if runtime.GOOS != "windows" {
+		assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+	}
 
 	// On-disk shape carries the version.
 	data, err := os.ReadFile(path)

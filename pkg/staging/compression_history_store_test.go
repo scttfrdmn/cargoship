@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -180,7 +181,10 @@ func TestCompressionHistoryStore_FilePermissions(t *testing.T) {
 
 	info, err := os.Stat(path)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+	// Unix mode bits aren't meaningful on Windows (ACL-based). (#563)
+	if runtime.GOOS != "windows" {
+		assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+	}
 }
 
 // TestNewCompressionHistoryStore_EnvModes covers the opt-in switch parsing.
