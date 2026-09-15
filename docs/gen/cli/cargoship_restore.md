@@ -49,7 +49,9 @@ cargoship restore S3_URL OUTPUT_DIR [flags]
 ### Options
 
 ```
+      --as-of string             With --dataset-id: restore the newest version at or before this date (YYYY-MM-DD)
       --cache-gb int             LRU chunk cache size in GB (0 = default 10 GB) (default 10)
+      --dataset-id string        Restore a version of this dataset (S3_URL is then the bucket/prefix); see 'cargoship dataset list'
       --dry-run                  Show what would be restored without downloading
       --dvc-stage string         Restore all files produced by this DVC pipeline stage
       --file stringArray         Exact file path(s) to restore (repeatable)
@@ -63,6 +65,7 @@ cargoship restore S3_URL OUTPUT_DIR [flags]
   -r, --region string            AWS region (default "us-east-1")
       --restore-days int32       Days to keep Glacier restored copy available (default 7)
       --tier string              Glacier retrieval tier: expedited, standard (default), bulk
+      --version int              With --dataset-id: the version ordinal to restore (default: latest)
       --wait                     Block until Glacier restoration completes before downloading
 ```
 

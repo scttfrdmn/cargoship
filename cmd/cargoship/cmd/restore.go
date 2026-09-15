@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
@@ -34,6 +35,9 @@ func NewRestoreCmd() *cobra.Command {
 		restoreDays    int32
 		noVerify       bool
 		flatten        bool
+		datasetID      string // #521: version-aware restore
+		version        int
+		asOfStr        string
 	)
 
 	cmd := &cobra.Command{
@@ -95,13 +99,45 @@ Examples:
 			s3Client := s3.NewFromConfig(cfg)
 			kmsClient := kms.NewFromConfig(cfg)
 
-			// Parse upload ID from prefix.
+			// #521: version-aware restore. With --dataset-id the S3_URL is a
+			// bucket/prefix (not a specific /uploads/<id>); resolve the requested
+			// version of the dataset to a concrete upload, then restore it via the
+			// existing path (chain-follow below still assembles the full dataset).
 			var actualPrefix, uploadID string
-			if idx := strings.Index(prefix, "/uploads/"); idx != -1 {
-				actualPrefix = prefix[:idx]
-				uploadID = prefix[idx+9:]
-			} else {
-				uploadID = prefix
+			switch {
+			case datasetID != "":
+				if version > 0 && asOfStr != "" {
+					return fmt.Errorf("--version and --as-of are mutually exclusive")
+				}
+				var asOf time.Time
+				if asOfStr != "" {
+					d, perr := time.Parse("2006-01-02", asOfStr)
+					if perr != nil {
+						return fmt.Errorf("invalid --as-of %q (use YYYY-MM-DD): %w", asOfStr, perr)
+					}
+					asOf = d.Add(24*time.Hour - time.Nanosecond) // inclusive of the whole day
+				}
+				all, lerr := listUploadManifests(ctx, s3Client, kmsClient, bucket, prefix)
+				if lerr != nil {
+					return lerr
+				}
+				sel, serr := selectDatasetVersion(ctx, all, inMemoryFetch(all), datasetID, version, asOf)
+				if serr != nil {
+					return serr
+				}
+				actualPrefix, uploadID = prefix, sel.UploadID
+				fmt.Printf("🎯 Dataset %s: restoring v%d (upload %s)\n", datasetID, sel.VersionOrdinal, uploadID)
+			default:
+				if version > 0 || asOfStr != "" {
+					return fmt.Errorf("--version/--as-of require --dataset-id")
+				}
+				// Parse upload ID from the prefix.
+				if idx := strings.Index(prefix, "/uploads/"); idx != -1 {
+					actualPrefix = prefix[:idx]
+					uploadID = prefix[idx+9:]
+				} else {
+					uploadID = prefix
+				}
 			}
 
 			fmt.Printf("📥 Loading manifest: s3://%s/%s\n", bucket, prefix)
@@ -323,6 +359,9 @@ Examples:
 	cmd.Flags().Int32Var(&restoreDays, "restore-days", 7, "Days to keep Glacier restored copy available")
 	cmd.Flags().BoolVar(&noVerify, "no-verify", false, "Skip restore-time checksum verification (faster, but won't detect corrupted stored data)")
 	cmd.Flags().BoolVar(&flatten, "flatten", false, "Write restored files by basename into the output dir instead of recreating their directory structure")
+	cmd.Flags().StringVar(&datasetID, "dataset-id", "", "Restore a version of this dataset (S3_URL is then the bucket/prefix); see 'cargoship dataset list'")
+	cmd.Flags().IntVar(&version, "version", 0, "With --dataset-id: the version ordinal to restore (default: latest)")
+	cmd.Flags().StringVar(&asOfStr, "as-of", "", "With --dataset-id: restore the newest version at or before this date (YYYY-MM-DD)")
 
 	cmd.AddCommand(newRestoreJobsCmd())
 	return cmd
