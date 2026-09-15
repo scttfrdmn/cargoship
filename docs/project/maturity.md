@@ -37,7 +37,7 @@ it (and CI enforces those citations resolve) on the
 
 | Capability | Status | What that means |
 |-----------|--------|-----------------|
-| **Archive & manifest format** | **Stable** | Documented in the [format spec](/reference/format/). Manifest is `v2.0`; `v1.0` remains readable. Backward-readable across the versions the spec states — your archives don't become unreadable on upgrade. |
+| **Archive & manifest format** | **Stable** | Documented in the [format spec](/reference/format/). Manifest is `v2.2`; `v2.1`/`v2.0` remain readable. Backward-readable across the versions the spec states — your archives don't become unreadable on upgrade. |
 | **Core upload / verify / restore** | **Stable** | The canonical `cargoship upload`, `verify`, `download`, and `restore` paths are covered by integration + regression tests. |
 | **Cost, budget & lifecycle** | **Stable** | Estimation, budgets/quotas, and lifecycle commands are established. |
 | **Sharding & compression** | **Stable** | Multi-prefix sharding and content-aware zstd are core to the pipeline. |

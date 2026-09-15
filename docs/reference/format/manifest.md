@@ -19,7 +19,7 @@ reader in any language.
 - **Encryption:** optionally KMS-envelope-encrypted into a
   `manifest.encrypted.json[.gz]` wrapper — see
   [Encryption](/reference/format/encryption).
-- **Version:** the top-level `version` is `"2.1"` for current uploads; the
+- **Version:** the top-level `version` is `"2.2"` for current uploads; the
   reader is additive/version-tolerant and still parses older manifests. See
   [format versioning](/reference/format/#format-versioning).
 
@@ -377,11 +377,12 @@ manifest (envelope) encryption. It is documented in full on the
 
 ## Example manifest
 
-A minimal, v2.0 manifest with one file and one chunk:
+A minimal manifest with one file and one chunk (current `version`, only core
+fields populated):
 
 ```json
 {
-  "version": "2.1",
+  "version": "2.2",
   "upload_id": "20260721-123456-abcd1234",
   "created_at": "2026-07-21T12:34:56Z",
   "completed_at": "2026-07-21T12:40:00Z",

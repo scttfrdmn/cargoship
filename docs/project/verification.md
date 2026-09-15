@@ -29,7 +29,7 @@ marketing; a claim with no backing evidence does not belong here as "Verified."
 | Single-file random access via the 2.1 frame index (one ranged GET) | Verified | `` `test:TestFrameIndexRandomAccess` ``, `` `test:TestSelectiveExtractorFrameRestore` ``, `` `make:torture` `` |
 | Data-level integrity check (`verify --deep`: chunk + file + frame) | Verified | `` `cmd:verify` ``, `` `test:TestDeepVerifyFrameIndex` `` |
 | Per-frame content integrity — a tampered ranged fetch is rejected before decode | Verified | `` `test:TestFrameChecksumCatchesTamperedRange` ``, `` `test:TestArchiverStage_Process_Frames` `` |
-| Open, portable format (2.1) readable with stdlib + zstd only | Verified | `` `test:TestIndependentReader` ``, `` `test:TestSchemaMatchesStructs` ``, `` `test:TestVersionFixturesParseAndValidate` `` |
+| Open, portable format (2.2) readable with stdlib + zstd only | Verified | `` `test:TestIndependentReader` ``, `` `test:TestSchemaMatchesStructs` ``, `` `test:TestVersionFixturesParseAndValidate` `` |
 | True compressed size recorded in the manifest | Verified | `` `test:TestHashingReadCloser_HashesStreamedBytes` ``, `` `test:TestJob_ArchiveCompressedSize` `` |
 | Content-Encoding honored for caller-pre-encoded objects | Verified | `` `test:TestTransporterContentEncoding` `` |
 | KMS envelope encryption of the manifest | Verified | `` `test:TestEncryptDecryptLargeManifest` `` |
@@ -38,6 +38,24 @@ marketing; a claim with no backing evidence does not belong here as "Verified."
 Releases are signed (cosign keyless) with SBOMs and a published per-release
 real-AWS verification report — see [Security](/project/security) and
 [verification reports](/project/verification-reports).
+
+## Dataset versioning (Beta)
+
+Introduced in v0.31.0 (manifest format 2.2). Marked **Beta**: the model and its
+failure-safety are tested, but it is newer than core upload/restore and the
+garbage collector has documented first-cut limitations (keep-last-N only;
+chunked, unencrypted-manifest datasets), so it has not yet had the same
+production soak time.
+
+| Capability | Status | Evidence |
+|---|---|---|
+| Dataset identity + version ordering (chain-derived, legacy-tolerant) | Beta | `` `test:TestDatasetIDOf` ``, `` `test:TestNextVersion` ``, `` `test:TestSetDatasetInfo` `` |
+| Chain resolution: bounded, cycles fail loudly, missing ancestors error | Beta | `` `test:TestResolveEffective_IncrementalChain` ``, `` `test:TestResolveEffective_Cycle` ``, `` `test:TestResolveEffective_MissingAncestor` `` |
+| Newest-wins merge + deletion tombstones | Beta | `` `test:TestResolveEffective_ThreeVersionsNewestWins` ``, `` `test:TestResolveEffective_DeleteTombstone` ``, `` `test:TestResolveEffective_DeleteThenReAdd` `` |
+| Historical restore by version/date (`restore --version/--as-of`) | Beta | `` `cmd:restore` ``, `` `test:TestSelectDatasetVersion` ``, `` `test:TestResolveSelector` ``, `` `make:torture` `` |
+| Dataset diff between two versions | Beta | `` `cmd:dataset` ``, `` `test:TestDiffFiles` `` |
+| Chain-aware delete (won't strand a dependent version) | Verified | `` `cmd:delete` ``, `` `test:TestDependentUploads` `` |
+| Reference-aware GC (`dataset prune`): mark-sweep by S3Key + verified compaction | Beta | `` `cmd:dataset` ``, `` `test:TestPlanKeepLast` ``, `` `make:torture` `` |
 
 ## Throughput & scale (priority 2: performance)
 

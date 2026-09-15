@@ -61,9 +61,24 @@ cargoship sync ./my-data s3://my-bucket/backups/ --checksum --track-deletes
 
 ::: info Deletions are recorded, not purged
 `--track-deletes` marks files as deleted in the *new* manifest so restores from
-it won't include them. It does not delete chunk data from S3 — earlier manifests
-still reference those chunks. Use an [S3 lifecycle policy](/guides/cost/lifecycle)
-to expire old data on a schedule.
+it won't include them. It does not delete chunk data from S3 — earlier versions
+in the chain still reference those chunks.
+:::
+
+::: warning Reclaim storage with `dataset prune`, not age-based expiration
+To free space, use reference-aware garbage collection:
+
+```bash
+cargoship dataset prune s3://my-bucket/backups/ --dataset-id <id> --keep-last 5
+```
+
+`dataset prune` deletes only objects that no retained version still references
+(see [dataset versioning](/guides/inspecting)). **Do not** apply an age-based S3
+lifecycle *expiration* rule to an active dataset's `uploads/` prefix: because an
+incremental version reuses unchanged objects from older versions, expiring
+objects by age can make a currently-retained version unrestorable. S3 lifecycle
+is still appropriate for *storage-class transitions* (e.g. Standard → Glacier) of
+still-live data — just not for deletion.
 :::
 
 ## Forcing a full re-sync

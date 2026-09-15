@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Incremental-sync storage-reclaim guidance corrected (archival safety).** The
+  sync guide recommended an age-based S3 lifecycle *expiration* rule to clear old
+  chunks — unsafe now that a retained version can reference objects from older
+  versions (expiring by age can make a kept version unrestorable). It now directs
+  users to reference-aware `dataset prune`, and limits S3 lifecycle to
+  storage-class transitions.
+- **`dataset` help no longer claims all subcommands are read-only** — `prune`
+  performs destructive GC; the group help now says so. The mixed-mode `prune`
+  refusal also explains the limitation and that the data remains restorable.
+
+### Documentation
+- **Manifest format version synchronized to 2.2 across the docs** (maturity,
+  format spec/index/manifest, capability matrix, JSON Schema description) and a
+  new doc-consistency guard asserts these "current format version" claims track
+  `manifest.ManifestVersion`, so they can't drift again.
+- **Capability-verification ledger now covers dataset versioning** (identity,
+  chain resolution, tombstones, historical restore, diff, chain-aware delete,
+  reference-aware prune), marked **Beta**.
+
 ## [0.31.0] - 2026-09-15
 
 **Dataset versioning, plus two incremental-backup data-integrity fixes.**
