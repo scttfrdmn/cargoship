@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Incremental sync re-uploaded unchanged files every cycle (#624).** `ComputeDelta`
+  keyed the previous manifest by the full (source-prefixed) `FileEntry.Path` the scanner
+  stores, but looked files up by the source-relative path `ScanLocalFiles` produces — an
+  exact-match miss classified every unchanged file as *New*, so `cargoship sync`,
+  `cargoship ghostship run`, and `cargoship upload --incremental` re-transferred the whole
+  tree each run (and, with `--track-deletes`, spuriously reported everything deleted). Fixed
+  by normalizing the manifest path to source-relative on the read side via a new
+  `manifest.RelativeToSource` (also used to fix the twin miss in `pipeline.IncrementalScanner`);
+  the stored absolute path and manifest format are unchanged, and `--track-deletes` still
+  emits full paths for chain tombstones. Regression tests added in `pkg/manifest`,
+  `pkg/pipeline`, and the ghostship E2E (a no-change cycle now uploads nothing).
+
 ### Added
 - **Writer isolation (`--writer-id`, #520)** — opt-in per-agent isolation for a fleet
   sharing one bucket. `cargoship upload`/`sync` accept `--writer-id <name>` (or

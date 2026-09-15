@@ -70,10 +70,12 @@ func NewIncrementalScanner(prev *manifest.Manifest, cacheFile string) (*Incremen
 		return nil, fmt.Errorf("create hash cache: %w", err)
 	}
 
-	// Build O(1) path index from previous manifest entries.
+	// Build O(1) path index from previous manifest entries, keyed by the
+	// source-relative path so lookups by relPath match; FileEntry.Path is stored as
+	// the full (source-prefixed) walked path (#624).
 	fileIndex := make(map[string]manifest.FileEntry, len(prev.Files))
 	for _, f := range prev.Files {
-		fileIndex[f.Path] = f
+		fileIndex[manifest.RelativeToSource(prev.SourcePath, f.Path)] = f
 	}
 
 	return &IncrementalScanner{

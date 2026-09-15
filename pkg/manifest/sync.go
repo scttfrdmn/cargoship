@@ -46,6 +46,27 @@ type SyncOptions struct {
 	IgnorePatterns []string
 }
 
+// RelativeToSource returns entryPath relative to sourcePath when it sits under it,
+// otherwise entryPath unchanged. Manifests store FileEntry.Path as the full
+// (source-prefixed) walked path; readers that compare against source-relative paths
+// — incremental delta detection (ComputeDelta) and restore layout — normalize
+// through this. Comparison is in slash form and requires a path-segment boundary so
+// "/a/bc" is not treated as under "/a/b" (Issue #624).
+func RelativeToSource(sourcePath, entryPath string) string {
+	if sourcePath == "" {
+		return entryPath
+	}
+	e := filepath.ToSlash(entryPath)
+	r := strings.TrimRight(filepath.ToSlash(sourcePath), "/")
+	if e == r {
+		return filepath.Base(e)
+	}
+	if strings.HasPrefix(e, r+"/") {
+		return strings.TrimPrefix(e, r+"/")
+	}
+	return entryPath
+}
+
 // ComputeDelta compares local filesystem state against a previous manifest (Issue #148)
 // Returns files that are new, modified, deleted, or unchanged
 func ComputeDelta(localFiles []FileInfo, previousManifest *Manifest, opts *SyncOptions) (*DeltaResult, error) {
@@ -64,7 +85,9 @@ func ComputeDelta(localFiles []FileInfo, previousManifest *Manifest, opts *SyncO
 	manifestFiles := make(map[string]FileEntry)
 	if previousManifest != nil {
 		for _, file := range previousManifest.Files {
-			manifestFiles[file.Path] = file
+			// Key by the source-relative path so it matches ScanLocalFiles output;
+			// FileEntry.Path is stored as the full (source-prefixed) walked path (#624).
+			manifestFiles[RelativeToSource(previousManifest.SourcePath, file.Path)] = file
 		}
 	}
 
@@ -95,8 +118,10 @@ func ComputeDelta(localFiles []FileInfo, previousManifest *Manifest, opts *SyncO
 
 	// Track deleted files if requested
 	if opts.TrackDeletes {
-		for path := range manifestFiles {
-			result.Deleted = append(result.Deleted, path)
+		// Emit the stored (full) FileEntry.Path so tombstones match the manifest
+		// chain (#555), even though the lookup map is keyed by the relative path.
+		for _, file := range manifestFiles {
+			result.Deleted = append(result.Deleted, file.Path)
 		}
 	}
 

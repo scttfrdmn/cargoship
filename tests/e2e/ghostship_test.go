@@ -117,24 +117,35 @@ func TestGhostshipRun_IncrementalChain(t *testing.T) {
 		return out
 	}
 
-	// First cycle has no prior manifest → full sync.
+	client := e2eS3Client(t)
+	count := func() int { return len(uploadIDsUnder(t, client, bucket, "data/writers/inc-1")) }
+
+	// First cycle has no prior manifest → full sync, one version.
 	if out := runOut("first"); !strings.Contains(out, "sync_type=full") {
 		t.Fatalf("first cycle should be a full sync, got:\n%s", out)
 	}
-
-	// A later cycle must find the prior manifest UNDER THE WRITER PREFIX
-	// (writers/inc-1/uploads/…) and chain to it → incremental. This is the
-	// writer-scoped-chain proof: FindLatestManifestForSource resolves within the
-	// folded prefix, which no unit test can verify.
-	writeFile(t, filepath.Join(src, "a.txt"), "one-changed")
-	if out := runOut("second"); !strings.Contains(out, "sync_type=incremental") {
-		t.Fatalf("second cycle should chain to the prior manifest under the writer prefix (incremental), got:\n%s", out)
+	if got := count(); got != 1 {
+		t.Fatalf("first cycle should create 1 upload, got %d", got)
 	}
 
-	// And the second upload is a distinct version under the same writer prefix.
-	client := e2eS3Client(t)
-	if ids := uploadIDsUnder(t, client, bucket, "data/writers/inc-1"); len(ids) < 2 {
-		t.Fatalf("expected a second version under data/writers/inc-1/uploads/, got %v", ids)
+	// A no-change cycle must dedup — detect no changes and upload NOTHING new (#624).
+	if out := runOut("nochange"); !strings.Contains(out, "no changes") {
+		t.Fatalf("no-change cycle should detect no changes and upload nothing (#624), got:\n%s", out)
+	}
+	if got := count(); got != 1 {
+		t.Fatalf("a no-change cycle must not create a new upload (delta dedup, #624); got %d", got)
+	}
+
+	// A real change chains to the prior manifest UNDER THE WRITER PREFIX
+	// (writers/inc-1/uploads/…) → incremental, producing a second version. This is the
+	// writer-scoped-chain proof: FindLatestManifestForSource resolves within the folded
+	// prefix, which no unit test can verify.
+	writeFile(t, filepath.Join(src, "a.txt"), "one-changed")
+	if out := runOut("changed"); !strings.Contains(out, "sync_type=incremental") {
+		t.Fatalf("changed cycle should chain to the prior manifest under the writer prefix (incremental), got:\n%s", out)
+	}
+	if got := count(); got != 2 {
+		t.Fatalf("after a change want 2 uploads under data/writers/inc-1/uploads/, got %d", got)
 	}
 }
 
