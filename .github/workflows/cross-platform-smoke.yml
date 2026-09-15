@@ -15,21 +15,15 @@ name: Cross-Platform Smoke
 # platform assumptions (Unix perms, coarse-clock timing, CRLF golden files, mmap
 # being Unix-only, Windows-illegal filenames, magika as a Unix-oriented feature).
 
+# NOTE: no `paths:` filter. This lane is a required merge gate (see the branch
+# ruleset), and a path-filtered required check never reports on a PR that doesn't
+# touch those paths — which blocks the PR forever. Running it on every PR costs a
+# short macOS/Windows build but keeps the gate honest; it stays quick (`-short`).
 on:
   push:
     branches: [main]
-    paths:
-      - '**/*.go'
-      - 'go.mod'
-      - 'go.sum'
-      - '.github/workflows/cross-platform-smoke.yml'
   pull_request:
     branches: [main]
-    paths:
-      - '**/*.go'
-      - 'go.mod'
-      - 'go.sum'
-      - '.github/workflows/cross-platform-smoke.yml'
   workflow_dispatch:
 
 permissions:
