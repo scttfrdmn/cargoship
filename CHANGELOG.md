@@ -52,6 +52,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guard apply directly to what the daemon runs. `archival_rules` are now **optional** and
   **ignored in sync mode** (a warning is logged if present) — they belong to the legacy
   per-file model. The single-source flag form (`run SOURCE_DIR S3_URL`) is unchanged.
+- **Ghostship end-to-end tests (emulator)** — the `ghostship` daemon is now exercised
+  end-to-end through the real binary against the in-process S3 emulator (in the existing
+  Quick Start E2E lane): a writer-scoped round-trip (`ghostship run --once --writer-id` →
+  `restore`, byte-verified), the writer-scoped **incremental chain** (a later cycle finds
+  the prior manifest under `writers/<id>/` and chains to it), and config-file multi-source
+  runs. Closes the gap where fleet code was unit-tested but never round-tripped.
 
 ## [0.31.3] - 2026-09-15
 
