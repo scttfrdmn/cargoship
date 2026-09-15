@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.2] - 2026-09-15
+
+**Data-completeness fix for the interactive browser.**
+
 ### Fixed
 - **`browse` now shows the full dataset for an incremental sync (#603).** The
   interactive browser loaded a single manifest without following the
