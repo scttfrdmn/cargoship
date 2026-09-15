@@ -296,6 +296,13 @@ func TestTorture(t *testing.T) {
 	t.Run("direct_cross_upload_isolation", func(t *testing.T) {
 		runDirectCrossUploadIsolation(t)
 	})
+
+	// #521 phase 3: dataset prune GC. After pruning old versions, the kept
+	// (compacted) version must still restore the FULL current dataset, and a
+	// superseded object must actually be gone.
+	t.Run("dataset_prune_gc", func(t *testing.T) {
+		runDatasetPruneGC(t)
+	})
 }
 
 // runIncrementalChainTorture is the end-to-end #552 trust proof: a full sync
@@ -474,6 +481,129 @@ func runIncrementalChainTorture(t *testing.T, rng *rand.Rand, forceChunked bool)
 		t.Errorf("deleted file %s was restored but should have been tombstoned (#555)", deletedRel)
 	}
 	t.Logf("incremental-chain restore OK: %d files byte-identical (v2 delta=%d, 1 deleted)", len(final), m2.TotalFiles)
+}
+
+// runDatasetPruneGC is the #521 phase-3 proof: a chunked 3-version dataset is
+// pruned to keep-last-1, and afterwards (a) the kept version — now compacted
+// self-contained — still restores the full current dataset byte-for-byte, and
+// (b) an object superseded by a newer version is actually deleted. It exercises
+// the prune ALGORITHM end-to-end via the manifest + S3 APIs (the cmd wiring is
+// thin glue over these): PlanKeepLast → compaction (ResolveChain/MergeChain +
+// write) → delete PrunableObjectKeys.
+func runDatasetPruneGC(t *testing.T) {
+	t.Helper()
+	bucket := tortureEnv("CARGOSHIP_TEST_BUCKET", "cargoship-pipeline-test")
+	region := tortureEnv("AWS_REGION", "us-east-1")
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
+	require.NoError(t, err)
+	var s3Opts []func(*s3.Options)
+	if substrateURL != "" {
+		s3Opts = append(s3Opts, func(o *s3.Options) { o.UsePathStyle = true })
+	}
+	s3Client := s3.NewFromConfig(cfg, s3Opts...)
+	ctx := context.Background()
+
+	srcDir := t.TempDir()
+	fileA := filepath.Join(srcDir, "a.txt")
+	fileB := filepath.Join(srcDir, "b.txt")
+	testPrefix := fmt.Sprintf("torture-prunegc-%d", time.Now().UnixNano())
+
+	fetch := func(fctx context.Context, id string) (*manifest.Manifest, error) {
+		return manifest.DownloadFromS3(fctx, s3Client, bucket, testPrefix, id)
+	}
+	// upload runs one chunked pass; datasetID/ordinal are threaded like `sync`.
+	upload := func(uploadID, prevID, datasetID string, ordinal int, includeOnly []string) {
+		pc := &PipelineConfig{
+			ScannerWorkers: 2, ArchiverWorkers: 2, UploaderWorkers: 2,
+			S3Bucket: bucket, S3Prefix: testPrefix, S3Region: region,
+			UseRealS3: true, S3Client: s3Client, S3PartSize: 5 * 1024 * 1024,
+			EnableManifest: true, SourcePath: srcDir, UploadID: uploadID,
+			EnableMultiPrefix: true, ShardCount: 2, FileChecksums: true,
+			DirectUploadThresholdMB: -1, // never take the direct path → chunked (consistent mode)
+			DatasetID:               datasetID, VersionOrdinal: ordinal,
+		}
+		if prevID != "" {
+			pc.SyncType, pc.PreviousUploadID, pc.IncludeOnlyFiles = "incremental", prevID, includeOnly
+		}
+		p, perr := NewPipeline(pc)
+		require.NoError(t, perr)
+		res, rerr := p.Run(ctx, srcDir)
+		require.NoError(t, rerr)
+		require.True(t, res.Success, "upload %s should succeed", uploadID)
+	}
+
+	// v1: a.txt="A1". Root → its own DatasetID, v1.
+	require.NoError(t, os.WriteFile(fileA, []byte("A1-original-content"), 0o644))
+	upload("20260101-p1", "", "", 1, nil)
+	v1, err := fetch(ctx, "20260101-p1")
+	require.NoError(t, err)
+	dsID := v1.DatasetID
+	require.Equal(t, "20260101-p1", dsID, "root dataset id")
+
+	// v2: a.txt modified → "A2". Incremental, inherits dataset, v2.
+	// IncludeOnlyFiles takes paths relative to the source root.
+	require.NoError(t, os.WriteFile(fileA, []byte("A2-modified-content-longer"), 0o644))
+	upload("20260102-p2", "20260101-p1", dsID, 2, []string{"a.txt"})
+
+	// v3: add b.txt. Incremental, v3.
+	require.NoError(t, os.WriteFile(fileB, []byte("B1-brand-new-file"), 0o644))
+	upload("20260103-p3", "20260102-p2", dsID, 3, []string{"b.txt"})
+
+	members := make([]*manifest.Manifest, 0, 3)
+	for _, id := range []string{"20260101-p1", "20260102-p2", "20260103-p3"} {
+		m, ferr := fetch(ctx, id)
+		require.NoError(t, ferr)
+		members = append(members, m)
+	}
+
+	// Plan keep-last-1: keep v3, prune v2+v1, compact v3.
+	plan, err := manifest.PlanKeepLast(ctx, members, 1, fetch)
+	require.NoError(t, err)
+	require.Equal(t, "20260103-p3", plan.CompactID, "HEAD must be compacted")
+	prunable := plan.PrunableObjectKeys()
+	require.NotEmpty(t, prunable, "v1's superseded a.txt chunk should be prunable")
+
+	// The surviving objects (v3's effective chunks) must NOT be in the prune set.
+	for k := range plan.KeepObjectKeys {
+		require.NotContains(t, prunable, k, "a kept object must never be prunable: %s", k)
+	}
+
+	// Compact v3 (self-contained) — the real prune command does this first.
+	chain, err := manifest.ResolveChain(ctx, members[2], fetch)
+	require.NoError(t, err)
+	merged := manifest.MergeChain(chain)
+	merged.PreviousManifestID, merged.SyncType = "", manifest.SyncTypeFull
+	merged.Bucket, merged.Prefix, merged.UploadID = bucket, testPrefix, "20260103-p3"
+	require.NoError(t, merged.UploadToS3(ctx, s3Client, true))
+
+	// Delete the pruned data objects + pruned manifests.
+	delKeys := append([]string{}, prunable...)
+	for _, id := range []string{"20260101-p1", "20260102-p2"} {
+		delKeys = append(delKeys, fmt.Sprintf("%s/uploads/%s/manifest.json.gz", testPrefix, id))
+	}
+	for _, k := range delKeys {
+		_, derr := s3Client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(bucket), Key: aws.String(k)})
+		require.NoError(t, derr, "delete %s", k)
+	}
+
+	// The kept, compacted v3 must still restore the FULL current dataset.
+	v3, err := fetch(ctx, "20260103-p3")
+	require.NoError(t, err)
+	require.Empty(t, v3.PreviousManifestID, "v3 must be self-contained after compaction")
+	outDir := t.TempDir()
+	se := manifest.NewSelectiveExtractor(v3, s3Client, 0).SetBucket(bucket)
+	stats, err := se.BatchRestore(ctx, []string{"a.txt", "b.txt"}, outDir)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), stats.Restored, "both current files must restore after prune (failed=%d)", stats.Failed)
+	gotA, _ := os.ReadFile(filepath.Join(outDir, "a.txt"))
+	gotB, _ := os.ReadFile(filepath.Join(outDir, "b.txt"))
+	require.Equal(t, "A2-modified-content-longer", string(gotA), "a.txt must be the CURRENT (v2) content after prune")
+	require.Equal(t, "B1-brand-new-file", string(gotB), "b.txt must survive prune")
+
+	// A pruned (superseded) object must actually be gone.
+	_, headErr := s3Client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(prunable[0])})
+	require.Error(t, headErr, "a pruned object must be deleted from S3")
+	t.Logf("dataset prune GC OK: pruned %d object(s); kept dataset restores byte-exact", len(delKeys))
 }
 
 // runDirectCrossUploadIsolation is the #591 regression: two independent DIRECT

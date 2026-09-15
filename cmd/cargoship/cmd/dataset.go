@@ -1,14 +1,17 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -31,8 +34,201 @@ func NewDatasetCmd() *cobra.Command {
 A "dataset" is a chain of manifests linked by their previous-manifest reference;
 each 'cargoship sync' adds a version. These commands are read-only.`,
 	}
-	cmd.AddCommand(newDatasetListCmd(), newDatasetVersionsCmd(), newDatasetDiffCmd())
+	cmd.AddCommand(newDatasetListCmd(), newDatasetVersionsCmd(), newDatasetDiffCmd(), newDatasetPruneCmd())
 	return cmd
+}
+
+func newDatasetPruneCmd() *cobra.Command {
+	var region, datasetID string
+	var keepLast int
+	var dryRun, force bool
+	cmd := &cobra.Command{
+		Use:   "prune S3_URL --dataset-id ID --keep-last N",
+		Short: "Delete old versions of a dataset, keeping the newest N (garbage collection)",
+		Long: `Reclaim storage by deleting old versions of a dataset, keeping the newest N.
+
+Only objects no kept version still references are removed. The oldest kept
+version is first rewritten self-contained (compaction) so the pruned versions'
+manifests can be removed without breaking it; the original is backed up to a
+".pre-compact.bak" object first, and the rewrite is verified before anything is
+deleted.
+
+WARNING: deletion is IRREVERSIBLE. Use --dry-run to preview. Encrypted-manifest
+datasets and mixed direct/chunked chains are not yet supported.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			if datasetID == "" {
+				return fmt.Errorf("--dataset-id is required (see 'cargoship dataset list')")
+			}
+			if keepLast < 1 {
+				return fmt.Errorf("--keep-last must be >= 1")
+			}
+			bucket, prefix, err := parseS3URL(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid S3 URL: %w", err)
+			}
+			s3Client, kmsClient, err := datasetClients(ctx, region)
+			if err != nil {
+				return err
+			}
+			all, err := listUploadManifests(ctx, s3Client, kmsClient, bucket, prefix)
+			if err != nil {
+				return err
+			}
+			fetch := inMemoryFetch(all)
+
+			var members []*manifest.Manifest
+			for _, m := range all {
+				id, derr := manifest.DatasetIDOf(ctx, m, fetch)
+				if derr != nil {
+					id = m.UploadID
+				}
+				if id != datasetID {
+					continue
+				}
+				if m.Encryption != nil && m.Encryption.ManifestEncrypted {
+					return fmt.Errorf("prune does not yet support encrypted-manifest datasets (version %s)", m.UploadID)
+				}
+				members = append(members, m)
+			}
+
+			plan, err := manifest.PlanKeepLast(ctx, members, keepLast, fetch)
+			if err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			if len(plan.Prune) == 0 {
+				_, _ = fmt.Fprintf(out, "Nothing to prune: dataset %s has %d version(s); keeping last %d.\n",
+					datasetID, len(plan.Keep), keepLast)
+				return nil
+			}
+
+			prunableObjs := plan.PrunableObjectKeys()
+			var manifestKeys []string
+			for _, m := range plan.Prune {
+				manifestKeys = append(manifestKeys,
+					fmt.Sprintf("%s/uploads/%s/manifest.json.gz", prefix, m.UploadID),
+					fmt.Sprintf("%s/uploads/%s/manifest.json", prefix, m.UploadID),
+				)
+			}
+			deletionKeys := append(append([]string{}, prunableObjs...), manifestKeys...)
+
+			_, _ = fmt.Fprintf(out, "Dataset %s: keep %d newest, prune %d older version(s).\n", datasetID, len(plan.Keep), len(plan.Prune))
+			_, _ = fmt.Fprintf(out, "  Keep:  %s\n", versionLabels(plan.Keep))
+			_, _ = fmt.Fprintf(out, "  Prune: %s\n", versionLabels(plan.Prune))
+			if plan.CompactID != "" {
+				_, _ = fmt.Fprintf(out, "  Compact: upload %s is rewritten self-contained (backup .pre-compact.bak) before its ancestors are removed.\n", plan.CompactID)
+			}
+			_, _ = fmt.Fprintf(out, "  Delete: %d data object(s) + %d pruned manifest(s).\n", len(prunableObjs), len(plan.Prune))
+
+			if dryRun {
+				_, _ = fmt.Fprintln(out, "\n🔍 Dry run — nothing deleted.")
+				return nil
+			}
+			if !force {
+				_, _ = fmt.Fprintf(out, "\n⚠️  This permanently deletes %d objects. Type 'yes' to confirm: ", len(deletionKeys))
+				reader := bufio.NewReader(os.Stdin)
+				resp, rerr := reader.ReadString('\n')
+				if rerr != nil {
+					return fmt.Errorf("failed to read confirmation: %w", rerr)
+				}
+				if strings.TrimSpace(strings.ToLower(resp)) != "yes" {
+					_, _ = fmt.Fprintln(out, "❌ Prune cancelled")
+					return nil
+				}
+			}
+
+			// 1. Compact the oldest kept version FIRST (verified) so a mid-run
+			//    failure never strands a kept version.
+			if plan.CompactID != "" {
+				if err := compactVersion(ctx, s3Client, bucket, prefix, plan.CompactID, fetch); err != nil {
+					return fmt.Errorf("compaction failed — nothing deleted: %w", err)
+				}
+				_, _ = fmt.Fprintf(out, "✅ Compacted upload %s (self-contained).\n", plan.CompactID)
+			}
+			// 2. Concurrency guard: refuse if a new version appeared meanwhile.
+			after, err := listUploadManifests(ctx, s3Client, kmsClient, bucket, prefix)
+			if err != nil {
+				return fmt.Errorf("re-list before delete: %w", err)
+			}
+			if datasetHead(ctx, after, inMemoryFetch(after), datasetID) != datasetHead(ctx, all, fetch, datasetID) {
+				return fmt.Errorf("a new version appeared during prune; aborting before any delete")
+			}
+			// 3. Delete pruned objects (safe: none are in the kept mark set).
+			deleted, err := deleteS3Objects(ctx, s3Client, bucket, deletionKeys)
+			_, _ = fmt.Fprintf(out, "✅ Pruned %d version(s); deleted %d object(s).\n", len(plan.Prune), deleted)
+			return err
+		},
+	}
+	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region")
+	cmd.Flags().StringVar(&datasetID, "dataset-id", "", "Dataset ID to prune (from 'cargoship dataset list')")
+	cmd.Flags().IntVar(&keepLast, "keep-last", 0, "Keep the newest N versions; delete older ones (required, >= 1)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview what would be pruned without deleting")
+	cmd.Flags().BoolVar(&force, "force", false, "Skip the confirmation prompt")
+	return cmd
+}
+
+// compactVersion rewrites the upload's manifest as a self-contained (full)
+// manifest — the merged effective view of its chain — so pruning its ancestors
+// won't strand it. The original manifest object is copied to a
+// ".pre-compact.bak" key first, and the rewrite is re-read and checked before
+// the caller deletes anything. Plaintext manifests only (callers refuse
+// encrypted datasets).
+func compactVersion(ctx context.Context, s3Client *s3.Client, bucket, prefix, uploadID string, fetch manifest.ChainFetcher) error {
+	target, err := fetch(ctx, uploadID)
+	if err != nil {
+		return fmt.Errorf("load compaction target %s: %w", uploadID, err)
+	}
+	chain, err := manifest.ResolveChain(ctx, target, fetch)
+	if err != nil {
+		return fmt.Errorf("resolve chain of %s: %w", uploadID, err)
+	}
+	merged := manifest.MergeChain(chain)
+	merged.PreviousManifestID = ""
+	merged.SyncType = manifest.SyncTypeFull
+	merged.Bucket, merged.Prefix, merged.UploadID = bucket, prefix, uploadID
+
+	origKey := fmt.Sprintf("%s/uploads/%s/manifest.json.gz", prefix, uploadID)
+	bakKey := origKey + ".pre-compact.bak"
+	if _, err := s3Client.CopyObject(ctx, &s3.CopyObjectInput{
+		Bucket:     aws.String(bucket),
+		CopySource: aws.String(bucket + "/" + origKey),
+		Key:        aws.String(bakKey),
+	}); err != nil {
+		return fmt.Errorf("back up manifest before compaction: %w", err)
+	}
+	if err := merged.UploadToS3(ctx, s3Client, true); err != nil {
+		return fmt.Errorf("write compacted manifest: %w", err)
+	}
+	// Verify: the rewrite must re-read and be self-contained.
+	check, err := manifest.DownloadFromS3(ctx, s3Client, bucket, prefix, uploadID)
+	if err != nil {
+		return fmt.Errorf("re-read compacted manifest: %w", err)
+	}
+	if check.PreviousManifestID != "" {
+		return fmt.Errorf("compacted manifest %s is still chained after rewrite", uploadID)
+	}
+	return nil
+}
+
+// datasetHead returns the upload ID of the highest-ordinal (then most recent)
+// version of datasetID among all, or "" if none — used as a concurrency guard.
+func datasetHead(ctx context.Context, all []*manifest.Manifest, fetch manifest.ChainFetcher, datasetID string) string {
+	head, err := selectDatasetVersion(ctx, all, fetch, datasetID, 0, time.Time{})
+	if err != nil {
+		return ""
+	}
+	return head.UploadID
+}
+
+// versionLabels renders a compact "vN(uploadID)" list for reporting.
+func versionLabels(ms []*manifest.Manifest) string {
+	parts := make([]string, len(ms))
+	for i, m := range ms {
+		parts[i] = fmt.Sprintf("v%d(%s)", m.VersionOrdinal, m.UploadID)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // selectDatasetVersion picks the manifest for a version selector within `all`
