@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -29,8 +31,154 @@ func NewDatasetCmd() *cobra.Command {
 A "dataset" is a chain of manifests linked by their previous-manifest reference;
 each 'cargoship sync' adds a version. These commands are read-only.`,
 	}
-	cmd.AddCommand(newDatasetListCmd(), newDatasetVersionsCmd())
+	cmd.AddCommand(newDatasetListCmd(), newDatasetVersionsCmd(), newDatasetDiffCmd())
 	return cmd
+}
+
+// selectDatasetVersion picks the manifest for a version selector within `all`
+// (filtered to datasetID): version > 0 → the exact VersionOrdinal; a non-zero
+// asOf → the newest version created at or before it; otherwise HEAD (highest
+// ordinal, then most recent). Shared by `dataset diff` and version-aware restore.
+func selectDatasetVersion(ctx context.Context, all []*manifest.Manifest, fetch manifest.ChainFetcher, datasetID string, version int, asOf time.Time) (*manifest.Manifest, error) {
+	var members []*manifest.Manifest
+	for _, m := range all {
+		id, derr := manifest.DatasetIDOf(ctx, m, fetch)
+		if derr != nil {
+			id = m.UploadID
+		}
+		if id == datasetID {
+			members = append(members, m)
+		}
+	}
+	if len(members) == 0 {
+		return nil, fmt.Errorf("no dataset %q found under this prefix", datasetID)
+	}
+	switch {
+	case version > 0:
+		for _, m := range members {
+			if m.VersionOrdinal == version {
+				return m, nil
+			}
+		}
+		return nil, fmt.Errorf("dataset %q has no version %d", datasetID, version)
+	case !asOf.IsZero():
+		var best *manifest.Manifest
+		for _, m := range members {
+			if !m.CreatedAt.After(asOf) && (best == nil || m.CreatedAt.After(best.CreatedAt)) {
+				best = m
+			}
+		}
+		if best == nil {
+			return nil, fmt.Errorf("dataset %q has no version at or before %s", datasetID, asOf.Format("2006-01-02"))
+		}
+		return best, nil
+	default: // HEAD
+		best := members[0]
+		for _, m := range members[1:] {
+			if m.VersionOrdinal > best.VersionOrdinal ||
+				(m.VersionOrdinal == best.VersionOrdinal && m.CreatedAt.After(best.CreatedAt)) {
+				best = m
+			}
+		}
+		return best, nil
+	}
+}
+
+func newDatasetDiffCmd() *cobra.Command {
+	var region, datasetID, fromSel, toSel string
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "diff S3_URL --dataset-id ID --from V --to V",
+		Short: "Compare two versions of a dataset (added/removed/modified files)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			if datasetID == "" {
+				return fmt.Errorf("--dataset-id is required (see 'cargoship dataset list')")
+			}
+			if fromSel == "" {
+				return fmt.Errorf("--from is required (a version number like 2, or a date YYYY-MM-DD)")
+			}
+			bucket, prefix, err := parseS3URL(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid S3 URL: %w", err)
+			}
+			s3Client, kmsClient, err := datasetClients(ctx, region)
+			if err != nil {
+				return err
+			}
+			all, err := listUploadManifests(ctx, s3Client, kmsClient, bucket, prefix)
+			if err != nil {
+				return err
+			}
+			fetch := inMemoryFetch(all)
+
+			fromM, err := resolveSelector(ctx, all, fetch, datasetID, fromSel)
+			if err != nil {
+				return fmt.Errorf("--from: %w", err)
+			}
+			toM, err := resolveSelector(ctx, all, fetch, datasetID, toSel) // toSel "" → HEAD
+			if err != nil {
+				return fmt.Errorf("--to: %w", err)
+			}
+
+			fromEff, err := manifest.ResolveEffective(ctx, fromM, fetch)
+			if err != nil {
+				return fmt.Errorf("resolve --from effective view: %w", err)
+			}
+			toEff, err := manifest.ResolveEffective(ctx, toM, fetch)
+			if err != nil {
+				return fmt.Errorf("resolve --to effective view: %w", err)
+			}
+			d := manifest.DiffFiles(fromEff.Files, toEff.Files)
+
+			if asJSON {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{
+					"dataset_id": datasetID,
+					"from":       fromM.UploadID, "from_version": fromM.VersionOrdinal,
+					"to": toM.UploadID, "to_version": toM.VersionOrdinal,
+					"added": d.Added, "removed": d.Removed, "modified": d.Modified, "unchanged": d.Unchanged,
+				})
+			}
+			out := cmd.OutOrStdout()
+			_, _ = fmt.Fprintf(out, "Dataset %s: v%d → v%d\n", datasetID, fromM.VersionOrdinal, toM.VersionOrdinal)
+			_, _ = fmt.Fprintf(out, "  +%d added  -%d removed  ~%d modified  =%d unchanged\n",
+				len(d.Added), len(d.Removed), len(d.Modified), d.Unchanged)
+			for _, p := range d.Added {
+				_, _ = fmt.Fprintf(out, "  + %s\n", p)
+			}
+			for _, p := range d.Removed {
+				_, _ = fmt.Fprintf(out, "  - %s\n", p)
+			}
+			for _, p := range d.Modified {
+				_, _ = fmt.Fprintf(out, "  ~ %s\n", p)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region")
+	cmd.Flags().StringVar(&datasetID, "dataset-id", "", "Dataset ID (from 'cargoship dataset list')")
+	cmd.Flags().StringVar(&fromSel, "from", "", "Baseline version: a number (v2 → 2) or a date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&toSel, "to", "", "Target version: a number or date; default HEAD (latest)")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Output as JSON")
+	return cmd
+}
+
+// resolveSelector parses a CLI version selector — "" (HEAD), an ordinal like "2"
+// or "v2", or a date "YYYY-MM-DD" — and resolves it to a manifest via
+// selectDatasetVersion.
+func resolveSelector(ctx context.Context, all []*manifest.Manifest, fetch manifest.ChainFetcher, datasetID, sel string) (*manifest.Manifest, error) {
+	sel = strings.TrimSpace(sel)
+	if sel == "" || strings.EqualFold(sel, "head") {
+		return selectDatasetVersion(ctx, all, fetch, datasetID, 0, time.Time{})
+	}
+	if n, err := strconv.Atoi(strings.TrimPrefix(sel, "v")); err == nil {
+		return selectDatasetVersion(ctx, all, fetch, datasetID, n, time.Time{})
+	}
+	if d, err := time.Parse("2006-01-02", sel); err == nil {
+		return selectDatasetVersion(ctx, all, fetch, datasetID, 0, d.Add(24*time.Hour-time.Nanosecond))
+	}
+	return nil, fmt.Errorf("invalid version selector %q (use a number like 2, v2, or a date YYYY-MM-DD)", sel)
 }
 
 // datasetClients loads S3 + KMS clients for a region.

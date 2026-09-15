@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Dataset versioning — compare & version-aware restore (#521, phase 2).**
+  `cargoship dataset diff s3://… --dataset-id ID --from V --to V` reports the
+  files added/removed/modified between two versions (comparing their full
+  effective views; `V` is a version number, `vN`, a `YYYY-MM-DD` date, or omitted
+  for the latest). `restore` gains `--dataset-id` with `--version N` or `--as-of
+  DATE`, so you can restore any historical version by number or date without
+  hunting for its upload ID (`restore s3://bucket/prefix ./out --dataset-id ID
+  --version 2`); it resolves to that version and restores its full dataset. Both
+  build on the existing chain-merge, so restoring an older version yields exactly
+  that version's state.
 - **Dataset versioning — inspection (#521, phase 1).** Incremental `sync` already
   builds a version chain (`PreviousManifestID`); this names it and makes it
   browsable. Each manifest now records a `DatasetID` (the chain's stable identity —
