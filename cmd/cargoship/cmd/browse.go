@@ -91,12 +91,14 @@ Examples:
 				uploadID = prefix
 			}
 
-			fmt.Printf("📥 Loading manifest: s3://%s/%s\n", bucket, prefix)
-			m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
+			// Load the manifest and, for an incremental sync, resolve the chain to
+			// the full effective dataset (#552/#603) — so the browser lists (and
+			// can restore) every current file, not just this version's delta.
+			// Shared with `restore` via loadEffectiveManifest.
+			m, err := loadEffectiveManifest(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
 			if err != nil {
-				return fmt.Errorf("failed to load manifest: %w", err)
+				return err
 			}
-			fmt.Printf("✅ Manifest loaded: %d files, %d chunks\n\n", m.TotalFiles, m.TotalChunks)
 
 			_ = outputDirHint // pre-populated in the TUI destination field if provided
 

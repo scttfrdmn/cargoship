@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`browse` now shows the full dataset for an incremental sync (#603).** The
+  interactive browser loaded a single manifest without following the
+  `PreviousManifestID` chain, so browsing an incremental-sync upload listed only
+  that version's delta — unchanged files carried in ancestor versions were
+  invisible, and a browser-driven restore would miss them (the same class as the
+  #552 restore bug, which `restore`/`verify` already fixed). `browse` now resolves
+  the chain to the effective dataset, via a shared `loadEffectiveManifest` helper
+  it uses in common with `restore` so the two can't diverge again.
+
 ## [0.31.1] - 2026-09-15
 
 **Documentation, safety-guidance, and CI-gate follow-ups from an external
