@@ -44,6 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   separate `pkg/launch` per-file wrapper is untouched and slated for retirement). Also
   fixed the stale hardcoded version string in the legacy `ghost-ship` binary to use
   `internal/version`.
+- **`cargoship ghostship run --config box.yaml` (#604)** — config-file, multi-source mode
+  for the backup daemon. One file per box lists several `watch_paths`, each backed up as its
+  own writer-scoped incremental sync under `writers/<id>/` (per-source `storage_class`
+  honored; writer id from `--writer-id` > config `writer_id` > `id` > env). Reuses the
+  existing `GhostShipConfig` type, so `ghostship validate-config` and the scope-widening
+  guard apply directly to what the daemon runs. `archival_rules` are now **optional** and
+  **ignored in sync mode** (a warning is logged if present) — they belong to the legacy
+  per-file model. The single-source flag form (`run SOURCE_DIR S3_URL`) is unchanged.
 
 ## [0.31.3] - 2026-09-15
 

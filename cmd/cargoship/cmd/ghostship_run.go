@@ -13,14 +13,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/cobra"
 
+	"github.com/scttfrdmn/cargoship/pkg/launch"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 )
 
 func newGhostshipRunCmd() *cobra.Command {
 	var (
+		configPath    string
 		interval      time.Duration
 		once          bool
-		writerID      string
+		flagWriterID  string
 		region        string
 		storageClass  string
 		shardCount    int
@@ -29,111 +31,229 @@ func newGhostshipRunCmd() *cobra.Command {
 		trackDeletes  bool
 	)
 	cmd := &cobra.Command{
-		Use:   "run SOURCE_DIR S3_URL",
+		Use:   "run [SOURCE_DIR S3_URL]",
 		Short: "Run an unattended, writer-isolated incremental backup on a schedule",
-		Long: `Continuously back up SOURCE_DIR to s3://BUCKET/PREFIX on an interval, using
-CargoShip's real incremental sync engine (chunked archives, manifests, dataset
-versioning) — the same engine as 'cargoship sync', just scheduled and headless.
+		Long: `Continuously back up on an interval using CargoShip's real incremental sync engine
+(chunked archives, manifests, dataset versioning) — the same engine as 'cargoship
+sync', just scheduled and headless. Each cycle uploads only what changed since the
+previous manifest.
 
-Each cycle uploads only what changed since the previous manifest. With --writer-id
-the objects are isolated under writers/<id>/ so a fleet sharing one bucket never
-collides. Outbound-only: no inbound port, no daemon socket. Stops cleanly on
-SIGINT/SIGTERM.
+Two forms:
+  Single source (flags):  cargoship ghostship run SOURCE_DIR s3://BUCKET/PREFIX --writer-id ID
+  Config file (fleet):    cargoship ghostship run --config box.yaml
+
+With a config file, each entry in 'watch_paths' is backed up as its own source under
+one writer prefix (writers/<id>/). 'archival_rules' are ignored in sync mode (they
+belong to the legacy per-file model). Outbound-only: no inbound port. Stops cleanly on
+SIGINT/SIGTERM; --once runs a single cycle (for cron).
 
 Examples:
   cargoship ghostship run /volume1/Documents s3://backups/nas --writer-id lab-nas-1
-  cargoship ghostship run ./data s3://backups/dev --writer-id auto --interval 30m
-  cargoship ghostship run ./data s3://backups/dev --once   # one cycle then exit (cron)`,
-		Args: cobra.ExactArgs(2),
+  cargoship ghostship run --config /etc/cargoship/box.yaml --interval 30m
+  cargoship ghostship run --config box.yaml --once`,
+		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sourceDir, s3URL := args[0], args[1]
-
-			info, err := os.Stat(sourceDir)
-			if err != nil {
-				return fmt.Errorf("source path error: %w", err)
-			}
-			if !info.IsDir() {
-				return fmt.Errorf("source path must be a directory: %s", sourceDir)
-			}
-
-			bucket, prefix, err := parseS3URL(s3URL)
-			if err != nil {
-				return fmt.Errorf("invalid S3 URL: %w", err)
-			}
-			resolvedWriterID, err := pipeline.ResolveWriterID(writerID)
-			if err != nil {
-				return fmt.Errorf("invalid --writer-id: %w", err)
-			}
-			prefix = pipeline.WriterPrefix(prefix, resolvedWriterID)
-
 			if err := pipeline.ValidateShardStrategy(shardStrategy); err != nil {
 				return err
 			}
+			d := runDefaults{
+				region: region, storageClass: storageClass, shardCount: shardCount,
+				shardStrategy: shardStrategy, compression: compression, trackDeletes: trackDeletes,
+			}
 
-			cfg, err := config.LoadDefaultConfig(cmd.Context(), config.WithRegion(region))
-			if err != nil {
-				return fmt.Errorf("failed to load AWS config: %w", err)
+			var (
+				writerID    string
+				sources     []syncRunParams
+				effInterval = interval
+				err         error
+			)
+
+			if configPath != "" {
+				if len(args) != 0 {
+					return fmt.Errorf("--config takes no positional args (got %d); use either --config or SOURCE_DIR S3_URL", len(args))
+				}
+				cfg, lerr := loadGhostshipConfigFile(configPath)
+				if lerr != nil {
+					return lerr
+				}
+				issues := launch.ValidateConfig(cfg)
+				if hasConfigErrors(issues) {
+					for _, is := range issues {
+						if is.Severity == launch.SeverityError {
+							_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "config error: %s: %s\n", is.Field, is.Message)
+						}
+					}
+					return fmt.Errorf("invalid config %s", configPath)
+				}
+				var warnings []string
+				writerID, sources, warnings, err = buildRunPlan(cfg, flagWriterID, d)
+				if err != nil {
+					return err
+				}
+				for _, w := range warnings {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
+				}
+				if !cmd.Flags().Changed("interval") && cfg.ScanInterval > 0 {
+					effInterval = cfg.ScanInterval
+				}
+			} else {
+				if len(args) != 2 {
+					return fmt.Errorf("require SOURCE_DIR and S3_URL, or use --config")
+				}
+				sourceDir, s3URL := args[0], args[1]
+				info, serr := os.Stat(sourceDir)
+				if serr != nil {
+					return fmt.Errorf("source path error: %w", serr)
+				}
+				if !info.IsDir() {
+					return fmt.Errorf("source path must be a directory: %s", sourceDir)
+				}
+				bucket, prefix, perr := parseS3URL(s3URL)
+				if perr != nil {
+					return fmt.Errorf("invalid S3 URL: %w", perr)
+				}
+				writerID, err = pipeline.ResolveWriterID(flagWriterID)
+				if err != nil {
+					return fmt.Errorf("invalid --writer-id: %w", err)
+				}
+				sources = []syncRunParams{{
+					bucket: bucket, prefix: pipeline.WriterPrefix(prefix, writerID), sourcePath: sourceDir,
+					region: region, writerID: writerID, storageClass: storageClass, shardCount: shardCount,
+					shardStrategy: shardStrategy, compressionLevel: compression, trackDeletes: trackDeletes,
+				}}
+			}
+
+			if len(sources) == 0 {
+				return fmt.Errorf("no sources to back up (config has no watch_paths)")
+			}
+
+			cfg, cerr := config.LoadDefaultConfig(cmd.Context(), config.WithRegion(region))
+			if cerr != nil {
+				return fmt.Errorf("failed to load AWS config: %w", cerr)
 			}
 			s3Client := s3.NewFromConfig(cfg)
-
-			params := syncRunParams{
-				s3Client:         s3Client,
-				bucket:           bucket,
-				prefix:           prefix,
-				sourcePath:       sourceDir,
-				region:           region,
-				writerID:         resolvedWriterID,
-				storageClass:     storageClass,
-				shardCount:       shardCount,
-				shardStrategy:    shardStrategy,
-				compressionLevel: compression,
-				trackDeletes:     trackDeletes,
+			for i := range sources {
+				sources[i].s3Client = s3Client
 			}
 
 			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil)).With(
-				"component", "ghostship", "writer_id", displayWriterID(resolvedWriterID),
-				"source", sourceDir, "dest", fmt.Sprintf("s3://%s/%s", bucket, prefix))
+				"component", "ghostship", "writer_id", displayWriterID(writerID))
 
-			// Stop cleanly on SIGINT/SIGTERM (outbound-only daemon; no listeners).
+			// Outbound-only daemon; stop cleanly on SIGINT/SIGTERM.
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
 
 			cycle := func(ctx context.Context) error {
-				res, err := runOneSync(ctx, params)
-				if err != nil {
-					logger.Error("sync cycle failed", "err", err)
-					return err
+				var firstErr error
+				for _, p := range sources {
+					srcLog := logger.With("source", p.sourcePath,
+						"dest", fmt.Sprintf("s3://%s/%s", p.bucket, p.prefix))
+					res, rerr := runOneSync(ctx, p)
+					if rerr != nil {
+						srcLog.Error("sync cycle failed", "err", rerr)
+						if firstErr == nil {
+							firstErr = rerr
+						}
+						continue
+					}
+					switch {
+					case res.NoChanges:
+						srcLog.Info("no changes; nothing to back up")
+					case res.Result != nil:
+						srcLog.Info("backup cycle complete",
+							"upload_id", res.Result.UploadID, "files", res.Result.TotalFiles,
+							"bytes", res.Result.TotalBytes, "sync_type", res.SyncType)
+					}
 				}
-				switch {
-				case res.NoChanges:
-					logger.Info("no changes; nothing to back up")
-				case res.Result != nil:
-					logger.Info("backup cycle complete",
-						"upload_id", res.Result.UploadID,
-						"files", res.Result.TotalFiles,
-						"bytes", res.Result.TotalBytes,
-						"sync_type", res.SyncType)
-				}
-				return nil
+				return firstErr
 			}
 
 			if !once {
-				logger.Info("ghostship started", "interval", interval.String())
+				logger.Info("ghostship started", "sources", len(sources), "interval", effInterval.String())
 			}
-			return runLoop(ctx, interval, once, cycle)
+			return runLoop(ctx, effInterval, once, cycle)
 		},
 	}
-	cmd.Flags().DurationVar(&interval, "interval", time.Hour, "How often to run a backup cycle")
+	cmd.Flags().StringVar(&configPath, "config", "", "Ghostship config file (fleet mode); backs up each watch_paths entry")
+	cmd.Flags().DurationVar(&interval, "interval", time.Hour, "How often to run a backup cycle (overrides config scan_interval)")
 	cmd.Flags().BoolVar(&once, "once", false, "Run a single cycle and exit (for cron / testing)")
-	cmd.Flags().StringVar(&writerID, "writer-id", "", "Writer identity for fleet isolation (writers/<id>/). 'auto' derives a stable per-host id")
+	cmd.Flags().StringVar(&flagWriterID, "writer-id", "", "Writer identity for fleet isolation (writers/<id>/). 'auto' derives a stable per-host id; overrides the config")
 	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region")
-	cmd.Flags().StringVar(&storageClass, "storage-class", "STANDARD", "S3 storage class (STANDARD, GLACIER_IR, DEEP_ARCHIVE)")
+	cmd.Flags().StringVar(&storageClass, "storage-class", "STANDARD", "Default S3 storage class (per-source storage_class in config overrides)")
 	cmd.Flags().IntVar(&shardCount, "shard-count", 10, "Number of shards for parallel uploads (1-100)")
 	cmd.Flags().StringVar(&shardStrategy, "shard-strategy", pipeline.ShardStrategyRoundRobin,
 		"Shard distribution strategy (round-robin, hash, size, type, directory)")
 	cmd.Flags().IntVar(&compression, "compression-level", 0, "Fixed zstd level (1-22); 0 = content-aware per-chunk selection")
 	cmd.Flags().BoolVar(&trackDeletes, "track-deletes", false, "Record files deleted since the last backup in the manifest")
 	return cmd
+}
+
+// runDefaults are the box-wide sync settings from flags, applied to every source a
+// config-driven run backs up (per-source config values may override some).
+type runDefaults struct {
+	region        string
+	storageClass  string
+	shardCount    int
+	shardStrategy string
+	compression   int
+	trackDeletes  bool
+}
+
+// buildRunPlan turns a ghostship config into the per-source sync params for the
+// daemon loop (#604), pure and S3-free. Writer-id precedence: flagWriterID >
+// cfg.WriterID > cfg.ID > CARGOSHIP_WRITER_ID env. Each watch path becomes one
+// writer-scoped source under writers/<id>/ at the bucket root; per-source
+// storage_class overrides the run default. Returns a warning when archival_rules
+// are present (ignored in sync mode).
+func buildRunPlan(cfg *launch.GhostShipConfig, flagWriterID string, d runDefaults) (writerID string, sources []syncRunParams, warnings []string, err error) {
+	switch {
+	case flagWriterID != "":
+		writerID, err = pipeline.ResolveWriterID(flagWriterID)
+	case cfg.WriterID != "":
+		writerID, err = pipeline.SanitizeWriterID(cfg.WriterID)
+	case cfg.ID != "":
+		writerID, err = pipeline.SanitizeWriterID(cfg.ID)
+	default:
+		writerID, err = pipeline.ResolveWriterID("") // env, else ""
+	}
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("resolve writer id: %w", err)
+	}
+
+	prefix := pipeline.WriterPrefix("", writerID)
+	for _, wp := range cfg.WatchPaths {
+		sc := d.storageClass
+		if wp.StorageClass != "" {
+			sc = wp.StorageClass
+		}
+		sources = append(sources, syncRunParams{
+			bucket:           cfg.S3Config.Bucket,
+			prefix:           prefix,
+			sourcePath:       wp.Path,
+			region:           d.region,
+			writerID:         writerID,
+			storageClass:     sc,
+			shardCount:       d.shardCount,
+			shardStrategy:    d.shardStrategy,
+			compressionLevel: d.compression,
+			trackDeletes:     d.trackDeletes,
+		})
+	}
+	if len(cfg.ArchivalRules) > 0 {
+		warnings = append(warnings, fmt.Sprintf(
+			"%d archival_rules present; ignored in sync mode (ghostship run does directory sync, not per-file rule archival)",
+			len(cfg.ArchivalRules)))
+	}
+	return writerID, sources, warnings, nil
+}
+
+func hasConfigErrors(issues []launch.ConfigIssue) bool {
+	for _, is := range issues {
+		if is.Severity == launch.SeverityError {
+			return true
+		}
+	}
+	return false
 }
 
 // runLoop runs fn immediately, then (unless once) every interval until the context

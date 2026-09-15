@@ -56,6 +56,12 @@ type GhostShipConfig struct {
 	Name        string `json:"name" yaml:"name"`
 	Description string `json:"description" yaml:"description"`
 
+	// WriterID is the fleet writer identity (#520/#604) used by `cargoship ghostship
+	// run` to isolate this box's objects under writers/<id>/. Optional: when empty the
+	// daemon falls back to ID; a --writer-id flag overrides both. Unused by the legacy
+	// rule-based daemon.
+	WriterID string `json:"writer_id,omitempty" yaml:"writer_id,omitempty"`
+
 	// Archival configuration
 	S3Config           cargoshipconfig.S3Config `json:"s3_config" yaml:"s3_config"`
 	OptimizationConfig *s3optimization.Config   `json:"optimization_config" yaml:"optimization_config"`
