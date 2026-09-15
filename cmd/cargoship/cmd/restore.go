@@ -140,27 +140,12 @@ Examples:
 				}
 			}
 
-			fmt.Printf("📥 Loading manifest: s3://%s/%s\n", bucket, prefix)
-			m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
+			// Load the manifest and, for an incremental sync, resolve the chain to
+			// the full effective dataset (#552). Shared with `browse` so the two
+			// can't diverge on chain handling.
+			m, err := loadEffectiveManifest(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
 			if err != nil {
-				return fmt.Errorf("failed to load manifest: %w", err)
-			}
-			fmt.Printf("✅ Manifest loaded: %d files, %d chunks\n\n", m.TotalFiles, m.TotalChunks)
-
-			// #552: an incremental sync's manifest lists only that run's changed
-			// files, chained to its predecessor via PreviousManifestID. Follow
-			// the chain and merge newest-wins so restore sees the FULL dataset
-			// (otherwise unchanged files are silently unrestorable).
-			if m.PreviousManifestID != "" {
-				fetch := func(ctx context.Context, prevID string) (*manifest.Manifest, error) {
-					return manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, prevID)
-				}
-				merged, err := manifest.ResolveEffective(ctx, m, fetch)
-				if err != nil {
-					return fmt.Errorf("failed to resolve incremental version chain: %w", err)
-				}
-				fmt.Printf("🔗 Resolved incremental version chain: %d files across the full dataset\n\n", merged.TotalFiles)
-				m = merged
+				return err
 			}
 
 			maxCacheBytes := cacheGB * 1024 * 1024 * 1024
@@ -365,6 +350,35 @@ Examples:
 
 	cmd.AddCommand(newRestoreJobsCmd())
 	return cmd
+}
+
+// loadEffectiveManifest downloads the manifest for uploadID and, when it is an
+// incremental-sync delta (PreviousManifestID set), resolves the chain into the
+// full effective dataset (newest-wins per path + deletion tombstones), so the
+// caller sees every current file — not just that version's delta (#552).
+// Shared by `restore` and `browse` so they can't diverge on chain handling.
+// `verify` deliberately uses ResolveChain directly (it validates each version),
+// so it does not use this.
+func loadEffectiveManifest(ctx context.Context, s3Client *s3.Client, kmsClient *kms.Client, bucket, actualPrefix, uploadID string) (*manifest.Manifest, error) {
+	fmt.Printf("📥 Loading manifest: s3://%s/%s/uploads/%s\n", bucket, actualPrefix, uploadID)
+	m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load manifest: %w", err)
+	}
+	fmt.Printf("✅ Manifest loaded: %d files, %d chunks\n\n", m.TotalFiles, m.TotalChunks)
+
+	if m.PreviousManifestID != "" {
+		fetch := func(ctx context.Context, prevID string) (*manifest.Manifest, error) {
+			return manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, prevID)
+		}
+		merged, err := manifest.ResolveEffective(ctx, m, fetch)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve incremental version chain: %w", err)
+		}
+		fmt.Printf("🔗 Resolved incremental version chain: %d files across the full dataset\n\n", merged.TotalFiles)
+		m = merged
+	}
+	return m, nil
 }
 
 // restoreOutcomeError converts restore statistics into the command's error
