@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-09-15
+
+**Documentation, safety-guidance, and CI-gate follow-ups from an external
+v0.31.0 re-review.** No archive-format or behavioral change beyond CLI help text
+and a corrected (safety-relevant) storage-reclaim recommendation.
+
 ### Fixed
 - **Incremental-sync storage-reclaim guidance corrected (archival safety).** The
   sync guide recommended an age-based S3 lifecycle *expiration* rule to clear old
