@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   previous layout. `writer_id` is deliberately **not** bound into the manifest encryption
   scheme (CSH-SEC-004) so archive relocation (#335) still works. Backbone of the ghostship
   fleet epic (#604); cross-writer fleet enumeration lands with the fleet view (#615).
+- **`cargoship ghostship iam-policy` (#613)** — emits the least-privilege, **delete-free**
+  IAM policy for one fleet writer, scoped to `writers/<id>/` (reuses `--writer-id`).
+  Grants only `s3:PutObject`/`GetObject`/`AbortMultipartUpload` on the writer's subtree +
+  `s3:ListBucket` gated to that prefix, and — with `--kms-key-arn` — `kms:GenerateDataKey`
+  and `kms:Decrypt` on that one key (both are required by AWS for SSE-KMS multipart
+  uploads). No `s3:DeleteObject` and no cross-writer access, so a compromised writer can
+  only append to its own prefix. Attach it to the IAM identity behind a ghostship agent or
+  a cron'd `sync --writer-id`. First slice of the ghostship provisioning tooling (#604).
 
 ## [0.31.3] - 2026-09-15
 
