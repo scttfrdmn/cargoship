@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Dataset versioning — garbage collection (#521, phase 3).** `cargoship dataset
+  prune s3://… --dataset-id ID --keep-last N` reclaims storage by deleting old
+  versions, keeping the newest N. It removes **only** objects that no kept version
+  still references (mark-sweep by `S3Key`): the oldest kept version is first
+  rewritten self-contained (compaction via the chain merge — original backed up to
+  a `.pre-compact.bak` object and the rewrite verified) so pruned manifests can go
+  without stranding it. `--dry-run` previews; deletion needs confirmation or
+  `--force`; a version appearing mid-prune aborts before any delete. This bounds
+  the otherwise unbounded growth of incremental `sync` chains. First cut:
+  `--keep-last N` on chunked, unencrypted-manifest datasets (mixed-mode and
+  encrypted chains are refused).
 - **Dataset versioning — compare & version-aware restore (#521, phase 2).**
   `cargoship dataset diff s3://… --dataset-id ID --from V --to V` reports the
   files added/removed/modified between two versions (comparing their full

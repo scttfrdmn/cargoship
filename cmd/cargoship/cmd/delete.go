@@ -285,6 +285,41 @@ func uploadObjectKeys(m *manifest.Manifest) []string {
 	return keys
 }
 
+// deleteS3Objects removes keys from bucket in batches of 1000 (the S3
+// DeleteObjects limit), returning the count successfully deleted. Per-key S3
+// errors are collected into the returned error but do not stop later batches.
+func deleteS3Objects(ctx context.Context, s3Client *s3.Client, bucket string, keys []string) (int, error) {
+	const batchSize = 1000
+	deleted := 0
+	var errs []string
+	for i := 0; i < len(keys); i += batchSize {
+		end := i + batchSize
+		if end > len(keys) {
+			end = len(keys)
+		}
+		batch := keys[i:end]
+		objects := make([]types.ObjectIdentifier, 0, len(batch))
+		for _, k := range batch {
+			objects = append(objects, types.ObjectIdentifier{Key: aws.String(k)})
+		}
+		out, err := s3Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: aws.String(bucket),
+			Delete: &types.Delete{Objects: objects, Quiet: aws.Bool(true)},
+		})
+		if err != nil {
+			return deleted, fmt.Errorf("delete batch %d-%d: %w", i, end, err)
+		}
+		deleted += len(batch) - len(out.Errors)
+		for _, e := range out.Errors {
+			errs = append(errs, fmt.Sprintf("%s: %s", aws.ToString(e.Key), aws.ToString(e.Message)))
+		}
+	}
+	if len(errs) > 0 {
+		return deleted, fmt.Errorf("%d object(s) failed to delete: %s", len(errs), strings.Join(errs, "; "))
+	}
+	return deleted, nil
+}
+
 // listUploadManifests enumerates every upload under <prefix>/uploads/ and returns
 // their parsed manifests, decryption-aware so encrypted-manifest uploads are
 // included (ListAllManifests matches only the plaintext names). Uploads whose
