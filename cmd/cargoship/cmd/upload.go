@@ -57,6 +57,9 @@ func NewUploadCmd() *cobra.Command {
 		kmsKeyID        string
 		encryptManifest bool
 
+		// Issue #520: Writer isolation (fleet)
+		writerID string
+
 		// Issue #119: Resume configuration
 		forceRestart bool
 		resumeFlag   bool
@@ -151,6 +154,18 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("invalid destination: %w", err)
 			}
+
+			// #520 writer isolation: resolve the writer id (flag > CARGOSHIP_WRITER_ID
+			// env; "auto" derives an opaque per-host id) and, when set, fold a
+			// writers/<id>/ segment into the prefix so a fleet sharing one bucket never
+			// collides. Empty writer id keeps today's exact layout. Fold once here so
+			// every downstream use of prefix (access preflight, resume, config, the
+			// printed paths) is writer-scoped.
+			resolvedWriterID, err := pipeline.ResolveWriterID(writerID)
+			if err != nil {
+				return fmt.Errorf("invalid --writer-id: %w", err)
+			}
+			prefix = pipeline.WriterPrefix(prefix, resolvedWriterID)
 
 			// Validate shard strategy (#316: the pipeline owns the valid set)
 			if err := pipeline.ValidateShardStrategy(shardStrategy); err != nil {
@@ -590,6 +605,7 @@ Examples:
 				S3Bucket:             bucket,
 				S3Prefix:             prefix,
 				S3Region:             region,
+				WriterID:             resolvedWriterID,
 				UseRealS3:            true,
 				S3Client:             s3Client,
 				S3StorageClass:       storageClass,
@@ -939,6 +955,10 @@ Examples:
 	// Issue #163: Encryption flags
 	cmd.Flags().StringVar(&kmsKeyID, "kms-key-id", "", "AWS KMS key ID or ARN for encryption (data chunks encrypted with SSE-KMS)")
 	cmd.Flags().BoolVar(&encryptManifest, "encrypt-manifest", false, "Encrypt manifest with KMS envelope encryption (requires --kms-key-id)")
+
+	// Issue #520: writer isolation (fleet). Keys go under writers/<id>/ so agents
+	// sharing one bucket/prefix never collide; empty keeps the single-writer layout.
+	cmd.Flags().StringVar(&writerID, "writer-id", "", "Writer identity for fleet isolation: objects go under writers/<id>/. 'auto' derives a stable per-host id; empty = single-writer layout (default)")
 
 	// Issue #108: Deduplication flag
 	cmd.Flags().Bool("enable-dedup", false, "Enable cross-shard file deduplication (10-30% space savings for redundant datasets)")

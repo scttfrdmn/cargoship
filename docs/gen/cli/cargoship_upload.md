@@ -109,6 +109,7 @@ cargoship upload SOURCE_DIR DESTINATION [flags]
       --tracing-exporter string          Tracing exporter: stdout, jaeger, otlp, none (default "stdout")
       --tracing-sample-rate float        Trace sampling rate (0.0-1.0, default: 1.0 = 100%) (default 1)
       --transporter string               S3 transporter type: basic, staging, adaptive, optimized, none (default "staging")
+      --writer-id string                 Writer identity for fleet isolation: objects go under writers/<id>/. 'auto' derives a stable per-host id; empty = single-writer layout (default)
   -y, --yes                              Skip confirmation prompts (auto-accept warnings)
 ```
 

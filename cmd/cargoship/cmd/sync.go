@@ -28,6 +28,7 @@ func NewSyncCmd() *cobra.Command {
 		dryRun           bool
 		force            bool
 		quiet            bool
+		writerID         string
 	)
 
 	cmd := &cobra.Command{
@@ -93,6 +94,17 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("invalid S3 URL: %w", err)
 			}
+
+			// #520 writer isolation: resolve the writer id (flag > CARGOSHIP_WRITER_ID
+			// env; "auto" derives an opaque per-host id) and fold writers/<id>/ into the
+			// prefix so a fleet sharing one bucket never collides. Empty = today's
+			// layout. Folding here makes the whole sync — previous-manifest lookup,
+			// display, upload — writer-scoped, so a writer only ever extends its own chain.
+			resolvedWriterID, err := pipeline.ResolveWriterID(writerID)
+			if err != nil {
+				return fmt.Errorf("invalid --writer-id: %w", err)
+			}
+			prefix = pipeline.WriterPrefix(prefix, resolvedWriterID)
 
 			// #316: now that these flags do something, validate them the way
 			// upload does — an unknown strategy should be a usage error, not a
@@ -243,6 +255,7 @@ Examples:
 				bucket:           bucket,
 				prefix:           prefix,
 				region:           region,
+				writerID:         resolvedWriterID,
 				storageClass:     storageClass,
 				shardCount:       shardCount,
 				shardStrategy:    shardStrategy,
@@ -308,6 +321,8 @@ Examples:
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be synced without uploading")
 	cmd.Flags().BoolVar(&force, "force", false, "Force full sync (ignore previous manifest)")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Quiet mode (minimal output)")
+	// Issue #520: writer isolation (fleet).
+	cmd.Flags().StringVar(&writerID, "writer-id", "", "Writer identity for fleet isolation: objects go under writers/<id>/. 'auto' derives a stable per-host id; empty = single-writer layout (default)")
 
 	return cmd
 }
@@ -317,6 +332,7 @@ type syncPipelineParams struct {
 	bucket           string
 	prefix           string
 	region           string
+	writerID         string
 	storageClass     string
 	shardStrategy    string
 	sourcePath       string
@@ -343,6 +359,7 @@ func newSyncPipelineConfig(p syncPipelineParams) *pipeline.PipelineConfig {
 		S3Bucket:          p.bucket,
 		S3Prefix:          p.prefix,
 		S3Region:          p.region,
+		WriterID:          p.writerID,
 		S3StorageClass:    p.storageClass,
 		EnableMultiPrefix: true,
 		ShardCount:        p.shardCount,

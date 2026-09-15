@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Writer isolation (`--writer-id`, #520)** — opt-in per-agent isolation for a fleet
+  sharing one bucket. `cargoship upload`/`sync` accept `--writer-id <name>` (or
+  `CARGOSHIP_WRITER_ID`; `auto` derives a stable opaque per-host id), which folds a
+  `writers/<id>/` segment into the S3 prefix so each writer's objects live under its
+  own subtree and never collide — resolving the cross-writer/same-path overwrite. The
+  manifest records `writer_id` (advisory attribution) with a `"writers"` format-feature
+  marker; the format stays **2.2** (additive). Omitting the flag is byte-identical to the
+  previous layout. `writer_id` is deliberately **not** bound into the manifest encryption
+  scheme (CSH-SEC-004) so archive relocation (#335) still works. Backbone of the ghostship
+  fleet epic (#604); cross-writer fleet enumeration lands with the fleet view (#615).
+
 ## [0.31.3] - 2026-09-15
 
 **Dataset-versioning reaches the interactive TUI (#603).** Additive, backward-

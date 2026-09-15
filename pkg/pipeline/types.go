@@ -278,6 +278,7 @@ type PipelineConfig struct {
 	EnableMultiPrefix bool   // If true, use multi-prefix parallel uploads (default: true)
 	WorkersPerPrefix  int    // Workers per S3 prefix (default: 2)
 	UploadID          string // Unique identifier for this upload session (format: {timestamp}-{random})
+	WriterID          string // Per-agent writer identity for fleet isolation (#520); recorded in the manifest for attribution. Empty = legacy single-writer. The writers/<id>/ key segment is folded into S3Prefix by the CLI (see WriterPrefix), not here.
 	ShardCount        int    // Number of S3 prefix shards for parallel uploads (default: 8)
 
 	// Phase 3.2: Archiver-level sharding (eliminates router bottleneck)

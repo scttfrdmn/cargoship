@@ -39,6 +39,10 @@ const (
 	// manifest carries dataset-versioning identity (DatasetID/VersionOrdinal; #521).
 	FormatFeatureVersioning = "versioning"
 
+	// FormatFeatureWriters is the Manifest.FormatFeatures marker set when the upload
+	// is writer-isolated (Manifest.WriterID set; objects under writers/<id>/; #520).
+	FormatFeatureWriters = "writers"
+
 	// ManifestFileName is the standard manifest filename
 	ManifestFileName = "manifest.json"
 
@@ -270,6 +274,27 @@ func (b *Builder) SetDatasetInfo(datasetID string, ordinal int) {
 		}
 	}
 	b.manifest.FormatFeatures = append(b.manifest.FormatFeatures, FormatFeatureVersioning)
+}
+
+// SetWriterID records the writer/agent identity that produced this upload
+// (Issue #520) and marks the manifest with the "writers" format feature. An empty
+// writerID leaves the manifest single-writer (legacy behavior). The value is
+// advisory attribution; the writers/<id>/ key segment (folded into the S3 prefix,
+// see pipeline.WriterPrefix) is authoritative for location. Thread-safe.
+func (b *Builder) SetWriterID(writerID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if writerID == "" {
+		return
+	}
+	b.manifest.WriterID = writerID
+	for _, f := range b.manifest.FormatFeatures {
+		if f == FormatFeatureWriters {
+			return
+		}
+	}
+	b.manifest.FormatFeatures = append(b.manifest.FormatFeatures, FormatFeatureWriters)
 }
 
 // SetEncryption sets encryption metadata (Issue #163, thread-safe)

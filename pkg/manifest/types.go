@@ -33,6 +33,16 @@ type Manifest struct {
 	DatasetID      string `json:"dataset_id,omitempty"`
 	VersionOrdinal int    `json:"version_ordinal,omitempty"`
 
+	// Writer isolation (Issue #520). WriterID names the agent/host that produced
+	// this upload in a shared bucket; when set, the upload's objects live under a
+	// `writers/<writer_id>/` key segment (see pipeline.WriterPrefix) so a fleet
+	// sharing one bucket/prefix never collides. Advisory attribution only: the key
+	// path is authoritative for location, and WriterID is deliberately NOT bound
+	// into the manifest encryption scheme (CSH-SEC-004) so relocation (#335) still
+	// works. Omitempty and inert — a manifest without it is a legacy single-writer
+	// upload and behaves exactly as before.
+	WriterID string `json:"writer_id,omitempty"`
+
 	// Paths removed in this incremental version relative to its predecessor
 	// (Issue #555). Recorded only when the upload was run with delete tracking.
 	// The chain-merge (ResolveEffective) treats these as tombstones so a file
