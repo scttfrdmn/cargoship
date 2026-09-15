@@ -36,6 +36,7 @@
     "sync_type": { "type": "string" },
     "dataset_id": { "type": "string" },
     "version_ordinal": { "type": "integer" },
+    "writer_id": { "type": "string", "description": "Writer/agent identity for fleet isolation (#520); objects live under writers/<writer_id>/. Advisory attribution; omitted for single-writer uploads." },
     "deleted_paths": { "type": "array", "items": { "type": "string" } },
     "bucket": { "type": "string" },
     "prefix": { "type": "string" },

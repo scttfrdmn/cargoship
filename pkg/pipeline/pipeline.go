@@ -265,6 +265,13 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 			if config.KMSKeyID != "" || config.EncryptManifest {
 				builder.SetEncryption(config.KMSKeyID, config.EncryptManifest)
 			}
+
+			// Writer isolation attribution (Issue #520). The writers/<id>/ key
+			// segment is already folded into S3Prefix by the CLI (WriterPrefix); here
+			// we only record the identity in the manifest and mark the format feature.
+			if config.WriterID != "" {
+				builder.SetWriterID(config.WriterID)
+			}
 		}
 
 		p.manifestBuilder = builder

@@ -683,6 +683,54 @@ func TestDirectUploaderStage_UploadIDIsolatesKeys(t *testing.T) {
 	}
 }
 
+// TestDirectUploaderStage_WriterIsolatesKeys is the #520 cross-writer regression:
+// with the writer segment folded into Prefix (via WriterPrefix, as the CLI does),
+// two different writers backing up the SAME relative path — even with the same
+// upload id — get distinct keys under writers/<id>/, so a fleet sharing one bucket
+// never collides. Absent a writer id, the key is byte-identical to the pre-#520 layout.
+func TestDirectUploaderStage_WriterIsolatesKeys(t *testing.T) {
+	ctx := context.Background()
+	poolConfig := &AdaptiveWorkerPoolConfig{InitialWorkers: 2, MaxWorkers: 2, EnableAdaptive: false}
+	mk := func(writerID string) *DirectUploaderStage {
+		cfg := &DirectUploaderConfig{
+			S3Client:   &mockS3Client{},
+			Bucket:     "b",
+			Prefix:     WriterPrefix("p", writerID), // fold once, exactly as the CLI entrypoint does
+			UploadID:   "20260101-aaaa",             // same upload id on purpose
+			SourcePath: "/src/root",
+			WorkerPool: NewAdaptiveWorkerPool(ctx, poolConfig),
+		}
+		up, err := NewDirectUploaderStage(cfg, make(chan *Job), make(chan *Job))
+		if err != nil {
+			t.Fatalf("create uploader: %v", err)
+		}
+		return up
+	}
+	up1 := mk("lab-nas-1")
+	defer func() { _ = up1.Stop() }()
+	up2 := mk("lab-nas-2")
+	defer func() { _ = up2.Stop() }()
+
+	k1 := up1.buildS3Key("/src/root/data/report.csv")
+	k2 := up2.buildS3Key("/src/root/data/report.csv")
+	if k1 != "p/writers/lab-nas-1/uploads/20260101-aaaa/data/report.csv" {
+		t.Errorf("writer1 key = %q", k1)
+	}
+	if k2 != "p/writers/lab-nas-2/uploads/20260101-aaaa/data/report.csv" {
+		t.Errorf("writer2 key = %q", k2)
+	}
+	if k1 == k2 {
+		t.Fatalf("two writers collided on one key %q (cross-writer overwrite)", k1)
+	}
+
+	// Legacy (no writer id): byte-identical to the pre-#520 layout.
+	legacy := mk("")
+	defer func() { _ = legacy.Stop() }()
+	if got := legacy.buildS3Key("/src/root/data/report.csv"); got != "p/uploads/20260101-aaaa/data/report.csv" {
+		t.Errorf("legacy key = %q, want p/uploads/20260101-aaaa/data/report.csv", got)
+	}
+}
+
 // TestDirectUploaderStage_RecordsChecksum is the CSH-SEC-002 regression: direct
 // mode must record each file's SHA-256 in the manifest (matching packed mode),
 // and must omit it only when FileChecksums is disabled.

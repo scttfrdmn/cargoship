@@ -56,6 +56,7 @@ cargoship sync SOURCE_DIR S3_URL [flags]
       --shard-strategy string   Shard distribution strategy (round-robin, hash, size, type, directory) (default "round-robin")
       --storage-class string    S3 storage class (STANDARD, GLACIER_IR, DEEP_ARCHIVE) (default "STANDARD")
       --track-deletes           Track deleted files in manifest
+      --writer-id string        Writer identity for fleet isolation: objects go under writers/<id>/. 'auto' derives a stable per-host id; empty = single-writer layout (default)
 ```
 
 ### Options inherited from parent commands
