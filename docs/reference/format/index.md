@@ -32,7 +32,7 @@ bytes and JSON on S3.
 
 The format version is carried in the manifest's top-level `version` field. It is
 independent of the CargoShip product version. The current format version is
-**2.1**.
+**2.2**.
 
 The format is **additive**: every field is either part of the stable core or an
 optional (`omitempty`) block, and the reader is version-tolerant — it parses
@@ -43,18 +43,24 @@ a genuinely breaking change.
 
 | Format version | Status | Notes |
 |----------------|--------|-------|
-| `2.1` | **Current** — written by all current releases | Adds the optional random-access frame index (`format_features`, `ChunkEntry.frames`, `FileEntry.archive_offset`) on top of 2.0. |
+| `2.2` | **Current** — written by all current releases | Adds optional dataset-versioning identity (`dataset_id`, `version_ordinal`; `versioning` feature) on top of 2.1. |
+| `2.1` | Readable | Added the optional random-access frame index (`format_features`, `ChunkEntry.frames`, `FileEntry.archive_offset`) on top of 2.0. |
+| `2.0` | Readable | Core format. |
 
 The version constant is defined in the source as:
 
 ```go
 const (
 	// ManifestVersion is the current manifest format version.
-	ManifestVersion = "2.1"
+	ManifestVersion = "2.2"
 
 	// FormatFeatureFrames marks a manifest whose chunks carry a random-access
 	// frame index (#436).
 	FormatFeatureFrames = "frames"
+
+	// FormatFeatureVersioning marks a manifest carrying dataset-versioning
+	// identity (dataset_id, version_ordinal; #521).
+	FormatFeatureVersioning = "versioning"
 )
 ```
 
@@ -69,7 +75,8 @@ blocks are:
 - `encryption` — [`EncryptionMetadata`](/reference/format/encryption)
 - `deduplication` — `ManifestDeduplication`
 - `version_info`, `git_metadata`, `dvc_compatibility`, `dvc_pipeline` — dataset and pipeline provenance
-- `previous_manifest_id`, `sync_type` — incremental sync chaining
+- `previous_manifest_id`, `sync_type`, `deleted_paths` — incremental sync chaining
+- `dataset_id`, `version_ordinal` — dataset versioning (2.2; see [dataset versioning](/guides/inspecting))
 - Per-file split fields (`offset`, `length`, `part_index`, `total_parts`) and DVC/dedup fields
 
 ### Compatibility rules for readers
@@ -99,7 +106,7 @@ A conformant reader **must** follow these rules to remain forward-compatible.
 - The `version` field governs format compatibility; new minor additions are
   backward compatible and clients ignore unknown fields.
 - CargoShip **reads** all historical format versions; it **writes** the current
-  version (`2.1`).
+  version (`2.2`).
 
 ## Next
 

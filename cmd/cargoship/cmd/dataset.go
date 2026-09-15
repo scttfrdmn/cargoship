@@ -29,10 +29,11 @@ func NewDatasetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dataset",
 		Short: "Inspect dataset versions (incremental sync history)",
-		Long: `Inspect the version history that incremental sync builds under an S3 prefix.
+		Long: `Inspect and manage the version history that incremental sync builds under an S3 prefix.
 
 A "dataset" is a chain of manifests linked by their previous-manifest reference;
-each 'cargoship sync' adds a version. These commands are read-only.`,
+each 'cargoship sync' adds a version. 'list', 'versions', and 'diff' are
+read-only; 'prune' performs destructive, irreversible garbage collection.`,
 	}
 	cmd.AddCommand(newDatasetListCmd(), newDatasetVersionsCmd(), newDatasetDiffCmd(), newDatasetPruneCmd())
 	return cmd

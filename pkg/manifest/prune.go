@@ -42,7 +42,7 @@ func PlanKeepLast(ctx context.Context, members []*Manifest, n int, fetch ChainFe
 	direct := len(members[0].Chunks) == 0
 	for _, m := range members {
 		if (len(m.Chunks) == 0) != direct {
-			return nil, fmt.Errorf("dataset mixes direct-upload and chunked versions; refusing to prune")
+			return nil, fmt.Errorf("dataset mixes direct-upload and chunked versions, which this first cut of prune cannot compact safely; refusing to prune (a version chain can become mixed when the pipeline auto-selects the direct fast path for a small delta but packs a larger one — this is a known limitation, tracked for a follow-up; the data itself is fully restorable)")
 		}
 	}
 

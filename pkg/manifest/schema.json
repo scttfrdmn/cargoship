@@ -26,7 +26,7 @@
     "shards"
   ],
   "properties": {
-    "version": { "type": "string", "description": "Manifest format version (\"2.1\" current). The reader is additive/version-tolerant and still parses older manifests." },
+    "version": { "type": "string", "description": "Manifest format version; 2.2 is current. The reader is additive/version-tolerant and still parses older manifests." },
     "upload_id": { "type": "string" },
     "created_at": { "type": "string", "format": "date-time" },
     "completed_at": { "type": "string", "format": "date-time" },

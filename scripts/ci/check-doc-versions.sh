@@ -164,7 +164,43 @@ if [ -f SECURITY.md ] && [ -n "${ver:-}" ]; then
   done
 fi
 
+# --- Check 6: docs' "current manifest format version" tracks the source --------
+#
+# The manifest FORMAT version (manifest.ManifestVersion) is independent of the
+# product version and drifted across the docs (maturity said 2.0, several format
+# pages said 2.1 while the code shipped 2.2). Check-1 guards structural schema
+# drift; this guards the human-readable "current format version is X" claims,
+# reading the authoritative value from the source constant.
+
+mfver="$(grep -oE 'ManifestVersion += "[0-9]+\.[0-9]+"' pkg/manifest/manifest.go | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+if [ -n "$mfver" ]; then
+  # "<file>|<exact string that must be present>" — the authoritative current-
+  # version claims each doc makes. Historical references (e.g. "format 2.1" for
+  # the frame index) are intentionally NOT matched here.
+  mfdecls=(
+    "docs/reference/format/index.md|ManifestVersion = \"${mfver}\""
+    "docs/reference/format/index.md|current format version is"
+    "docs/reference/format/manifest.md|\`\"${mfver}\"\` for current uploads"
+    "pkg/manifest/schema.json|${mfver} is current"
+    "docs/project/maturity.md|Manifest is \`v${mfver}\`"
+    "docs/project/verification.md|portable format (${mfver})"
+  )
+  for entry in "${mfdecls[@]}"; do
+    f="${entry%%|*}"; needle="${entry#*|}"
+    [ -f "$f" ] || continue
+    if ! grep -qF "$needle" "$f"; then
+      echo "::error file=$f::stale manifest-format-version claim; expected \"$needle\" (manifest.ManifestVersion = $mfver)"
+      fail=1
+    fi
+  done
+  # Belt-and-suspenders: the current bold version marker on the format index.
+  if [ -f docs/reference/format/index.md ] && ! grep -qF "**${mfver}**" docs/reference/format/index.md; then
+    echo "::error file=docs/reference/format/index.md::format index must state the current version as **${mfver}**"
+    fail=1
+  fi
+fi
+
 if [ "$fail" -eq 0 ]; then
-  echo "✅ doc-consistency: version declarations match ${version_file:+$(tr -d '[:space:]' < "$version_file")}; no denylisted tokens; local links resolve; verification-report table covers all releases; SECURITY.md supported line current."
+  echo "✅ doc-consistency: version declarations match ${version_file:+$(tr -d '[:space:]' < "$version_file")}; no denylisted tokens; local links resolve; verification-report table covers all releases; SECURITY.md supported line current; manifest format version ${mfver:-?} consistent across docs."
 fi
 exit $fail
