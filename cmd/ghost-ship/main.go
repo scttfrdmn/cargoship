@@ -9,20 +9,21 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/scttfrdmn/cargoship/internal/version"
 	"github.com/scttfrdmn/cargoship/pkg/launch"
 	"gopkg.in/yaml.v3"
 )
 
 func main() {
 	var (
-		configFile = flag.String("config", "/etc/cargoship/ghost_ship.yaml", "Configuration file path")
-		logLevel   = flag.String("log-level", "info", "Log level (debug, info, warn, error)")
-		version    = flag.Bool("version", false, "Show version and exit")
+		configFile  = flag.String("config", "/etc/cargoship/ghost_ship.yaml", "Configuration file path")
+		logLevel    = flag.String("log-level", "info", "Log level (debug, info, warn, error)")
+		showVersion = flag.Bool("version", false, "Show version and exit")
 	)
 	flag.Parse()
 
-	if *version {
-		fmt.Println("CargoShip Ghost Ship v0.3.0")
+	if *showVersion {
+		fmt.Printf("CargoShip Ghost Ship %s\n", version.Version)
 		return
 	}
 

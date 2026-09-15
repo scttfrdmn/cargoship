@@ -23,10 +23,11 @@ func NewGhostshipCmd() *cobra.Command {
 backup agents that share one S3 bucket without colliding (writer isolation, #520).
 
 Subcommands:
+  run               Run an unattended, writer-isolated incremental backup on a schedule
   iam-policy        Emit the least-privilege IAM policy for one writer
   validate-config   Check a ghostship config (and optionally its scope) before deploy`,
 	}
-	cmd.AddCommand(newGhostshipIAMPolicyCmd(), newGhostshipValidateConfigCmd())
+	cmd.AddCommand(newGhostshipRunCmd(), newGhostshipIAMPolicyCmd(), newGhostshipValidateConfigCmd())
 	return cmd
 }
 

@@ -34,6 +34,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--strict` fails on warnings/widenings. Read-only, no AWS. The scope-widening check is the
   primitive the fleet's config-over-S3 pull will enforce (config signing + keep-last-good
   land with the daemon).
+- **`cargoship ghostship run SOURCE_DIR S3_URL` (#604, engine convergence)** — an
+  unattended, writer-isolated backup daemon that drives the **real incremental sync
+  engine** (chunked archives, manifests, dataset versioning) on an interval — the same
+  engine as `cargoship sync`, just scheduled and headless. Each cycle uploads only what
+  changed since the previous manifest; `--writer-id` isolates objects under `writers/<id>/`;
+  `--once` runs a single cycle (for cron). Outbound-only (no listeners), stops cleanly on
+  SIGINT/SIGTERM. This is the daemon-mode convergence onto the shipping engine (the
+  separate `pkg/launch` per-file wrapper is untouched and slated for retirement). Also
+  fixed the stale hardcoded version string in the legacy `ghost-ship` binary to use
+  `internal/version`.
 
 ## [0.31.3] - 2026-09-15
 
