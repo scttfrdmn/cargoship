@@ -437,21 +437,7 @@ func writeContained(root *os.Root, relPath string, data []byte) error {
 // (the sanitizer in restorePath still makes it destDir-safe). This is what makes
 // the default layout dataset-relative rather than rooted at "/".
 func (se *SelectiveExtractor) relativeEntryPath(entryPath string) string {
-	root := se.manifest.SourcePath
-	if root == "" {
-		return entryPath
-	}
-	// Compare in slash form; require a path-segment boundary so "/a/bc" isn't
-	// treated as under root "/a/b".
-	e := filepath.ToSlash(entryPath)
-	r := strings.TrimRight(filepath.ToSlash(root), "/")
-	if e == r {
-		return filepath.Base(e)
-	}
-	if strings.HasPrefix(e, r+"/") {
-		return strings.TrimPrefix(e, r+"/")
-	}
-	return entryPath
+	return RelativeToSource(se.manifest.SourcePath, entryPath)
 }
 
 // ChunkKeysForPaths returns the deduplicated set of S3 chunk keys that contain
