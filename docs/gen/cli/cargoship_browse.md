@@ -40,12 +40,15 @@ cargoship browse S3_URL [OUTPUT_DIR] [flags]
 ### Options
 
 ```
+      --as-of string             With --dataset-id: browse the newest version at or before this date (YYYY-MM-DD)
       --cache-gb int             LRU chunk cache size in GB (default 10)
+      --dataset-id string        Browse a version of this dataset (S3_URL is then the bucket/prefix); see 'cargoship dataset list'
   -h, --help                     help for browse
       --max-restore-cost float   Abort if estimated retrieval cost exceeds this USD amount
   -r, --region string            AWS region (default "us-east-1")
       --restore-days int32       Days to keep Glacier restored copy available (default 7)
       --tier string              Glacier retrieval tier: expedited, standard (default), bulk
+      --version int              With --dataset-id: the version ordinal to browse (default: latest)
       --wait                     Block until Glacier restoration completes before downloading
 ```
 

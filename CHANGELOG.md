@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Version-aware `browse` (#603).** `cargoship browse --dataset-id ID
+  --version N` (or `--as-of DATE`) opens the interactive browser on a specific
+  historical version of a dataset, mirroring `restore --version/--as-of` — the
+  `S3_URL` is then a bucket/prefix. Resolves to that version and browses its full
+  effective view.
+
 ## [0.31.2] - 2026-09-15
 
 **Data-completeness fix for the interactive browser.**
