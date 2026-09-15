@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.3] - 2026-09-15
+
+**Dataset-versioning reaches the interactive TUI (#603).** Additive, backward-
+compatible.
+
 ### Added
 - **`dashboard` inventory shows dataset + version (#603).** The completed-uploads
   view gained **Dataset** and **Ver** columns, so you can see at a glance which
