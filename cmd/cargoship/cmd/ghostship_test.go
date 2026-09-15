@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -48,5 +50,78 @@ func TestGhostshipIAMPolicyCmd(t *testing.T) {
 	// Invalid S3 URL is a usage error.
 	if _, _, err := run("iam-policy", "nots3://x"); err == nil {
 		t.Error("invalid s3 url should error")
+	}
+}
+
+func TestGhostshipValidateConfigCmd(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	run := func(args ...string) (string, error) {
+		cmd := NewGhostshipCmd()
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&out)
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		return out.String(), err
+	}
+
+	good := write("good.yaml", `id: nas-1
+s3_config:
+  bucket: my-bucket
+  storage_class: STANDARD
+watch_paths:
+  - path: /data/docs
+    include_patterns: ["*.pdf"]
+    recursive: true
+archival_rules:
+  - name: docs
+    file_pattern: "*.pdf"
+`)
+	bad := write("bad.yaml", `id: nas-1
+s3_config:
+  bucket: ""
+watch_paths:
+  - path: /data/docs
+archival_rules:
+  - name: docs
+    storage_class: NOPE
+`)
+	widened := write("widened.yaml", `id: nas-1
+s3_config:
+  bucket: my-bucket
+  storage_class: STANDARD
+watch_paths:
+  - path: /data/docs
+    include_patterns: ["*.pdf"]
+    recursive: true
+  - path: /data/secrets
+archival_rules:
+  - name: docs
+    file_pattern: "*.pdf"
+`)
+
+	// A good config passes.
+	if out, err := run("validate-config", good); err != nil || !strings.Contains(out, "OK") {
+		t.Errorf("good config: err=%v out=%q", err, out)
+	}
+	// A bad config fails with an ERROR line.
+	if out, err := run("validate-config", bad); err == nil || !strings.Contains(out, "ERROR") {
+		t.Errorf("bad config should fail: err=%v out=%q", err, out)
+	}
+	// --baseline reports a widening but does not fail on its own.
+	out, err := run("validate-config", widened, "--baseline", good)
+	if err != nil || !strings.Contains(out, "WIDENS-SCOPE") {
+		t.Errorf("baseline widening: err=%v out=%q", err, out)
+	}
+	// --strict turns a widening into a failure.
+	if _, err := run("validate-config", widened, "--baseline", good, "--strict"); err == nil {
+		t.Error("--strict should fail on a scope-widening")
 	}
 }

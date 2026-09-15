@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   uploads). No `s3:DeleteObject` and no cross-writer access, so a compromised writer can
   only append to its own prefix. Attach it to the IAM identity behind a ghostship agent or
   a cron'd `sync --writer-id`. First slice of the ghostship provisioning tooling (#604).
+- **`cargoship ghostship validate-config` (#614)** — validates a ghostship config before
+  deploy with real enum/range/glob checks and a warning when `delete_after_archive` is
+  paired with a broad matcher (destructive + broad). With `--baseline PREV.yaml` it also
+  reports how the config **widens watch scope** vs the deployed one (new/broadened watch
+  paths, recursive flips, added includes, removed excludes, newly-enabled source deletion);
+  `--strict` fails on warnings/widenings. Read-only, no AWS. The scope-widening check is the
+  primitive the fleet's config-over-S3 pull will enforce (config signing + keep-last-good
+  land with the daemon).
 
 ## [0.31.3] - 2026-09-15
 
