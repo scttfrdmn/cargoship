@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`dashboard` inventory shows dataset + version (#603).** The completed-uploads
+  view gained **Dataset** and **Ver** columns, so you can see at a glance which
+  uploads are versions of the same dataset (they share a `DatasetID`) and their
+  order. Derived from the manifest's `DatasetID`/`VersionOrdinal`, with the
+  chain-root fallback for legacy uploads; `cargoship dataset list` remains the
+  collapsed per-dataset summary.
 - **Version-aware `browse` (#603).** `cargoship browse --dataset-id ID
   --version N` (or `--as-of DATE`) opens the interactive browser on a specific
   historical version of a dataset, mirroring `restore --version/--as-of` — the
