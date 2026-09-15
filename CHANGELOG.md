@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-09-15
+
+**Dataset versioning, plus two incremental-backup data-integrity fixes.**
+Incremental `sync` already chained manifests; this release names that chain a
+"dataset" and makes it first-class: browse versions, diff them, restore any
+historical version by number or date, and garbage-collect old ones to bound
+storage growth (`cargoship dataset list|versions|diff|prune`, version-aware
+`restore --version/--as-of`). Versioning is entirely opt-in — a plain `upload` is
+a standalone one-version dataset and users who never touch `dataset` see no
+change. Manifest format is 2.2 (additive; older readers ignore the new fields).
+Also fixes two ways an incremental-backup workflow could lose data: direct-upload
+object clobber (#591) and a chain-unaware `delete` (#592).
+
 ### Added
 - **Dataset versioning — garbage collection (#521, phase 3).** `cargoship dataset
   prune s3://… --dataset-id ID --keep-last N` reclaims storage by deleting old
