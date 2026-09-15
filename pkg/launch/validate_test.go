@@ -58,7 +58,6 @@ func TestValidateConfig(t *testing.T) {
 		{"missing id", func(c *GhostShipConfig) { c.ID = "" }, "id"},
 		{"missing bucket", func(c *GhostShipConfig) { c.S3Config.Bucket = "" }, "s3_config.bucket"},
 		{"no watch paths", func(c *GhostShipConfig) { c.WatchPaths = nil }, "watch_paths"},
-		{"no rules", func(c *GhostShipConfig) { c.ArchivalRules = nil }, "archival_rules"},
 		{"empty watch path", func(c *GhostShipConfig) { c.WatchPaths[0].Path = "" }, "path"},
 		{"bad rule storage class", func(c *GhostShipConfig) { c.ArchivalRules[0].StorageClass = "NOPE" }, "storage_class"},
 		{"invalid include glob", func(c *GhostShipConfig) { c.WatchPaths[0].IncludePatterns = []string{"["} }, "include_patterns"},
@@ -90,6 +89,16 @@ func TestValidateConfig(t *testing.T) {
 		}
 		if countSeverity(issues, SeverityError) != 0 {
 			t.Errorf("broad+delete should warn, not error: %+v", issues)
+		}
+	})
+
+	// #604: archival_rules are optional for the directory-sync daemon — a config with
+	// watch paths and zero rules must validate clean.
+	t.Run("zero archival_rules is valid", func(t *testing.T) {
+		c := validConfig()
+		c.ArchivalRules = nil
+		if got := countSeverity(ValidateConfig(c), SeverityError); got != 0 {
+			t.Errorf("zero archival_rules should be valid, got %d errors: %+v", got, ValidateConfig(c))
 		}
 	})
 }

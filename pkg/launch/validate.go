@@ -74,9 +74,8 @@ func ValidateConfig(c *GhostShipConfig) []ConfigIssue {
 		}
 	}
 
-	if len(c.ArchivalRules) == 0 {
-		add(SeverityError, "archival_rules", "at least one archival rule is required")
-	}
+	// archival_rules are optional (#604): the directory-sync daemon ignores them, so
+	// a sync config omits them. Any rules that ARE present are still validated.
 	for i, r := range c.ArchivalRules {
 		field := fmt.Sprintf("archival_rules[%d]", i)
 		if strings.TrimSpace(r.Name) == "" {
