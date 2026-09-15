@@ -175,14 +175,20 @@ func TestDashboard_S3TabsOnlyWithTarget(t *testing.T) {
 
 // TestDashboard_InventoryRows maps completed-upload summaries and stays honest when empty.
 func TestInventoryRows(t *testing.T) {
+	// Columns: UploadID, Dataset, Ver, Source, Files, Size, Created (#603).
 	rows := inventoryRows([]ManifestSummary{
-		{UploadID: "20260101-a", Source: "/data", Files: 1234, Bytes: 5 << 20, Created: time.Now()},
+		{UploadID: "20260101-b", DatasetID: "20260101-a", Version: 2, Source: "/data", Files: 1234, Bytes: 5 << 20, Created: time.Now()},
 	})
-	if len(rows) != 1 || rows[0][0] != "20260101-a" || rows[0][2] != "1234" {
-		t.Fatalf("inventory row not mapped: %v", rows)
+	if len(rows) != 1 || rows[0][0] != "20260101-b" || rows[0][1] != "20260101-a" || rows[0][2] != "v2" || rows[0][4] != "1234" {
+		t.Fatalf("inventory row not mapped (dataset/version columns): %v", rows)
+	}
+	// A legacy upload with no recorded ordinal shows "—" in the Ver column.
+	legacy := inventoryRows([]ManifestSummary{{UploadID: "old", DatasetID: "old", Version: 0}})
+	if legacy[0][2] != "—" {
+		t.Fatalf("legacy version should render as em dash, got %q", legacy[0][2])
 	}
 	empty := inventoryRows(nil)
-	if len(empty) != 1 || empty[0][0] == "" || empty[0][2] != "" {
+	if len(empty) != 1 || empty[0][0] == "" || empty[0][4] != "" {
 		t.Fatalf("empty inventory should be one honest row, got %v", empty)
 	}
 }

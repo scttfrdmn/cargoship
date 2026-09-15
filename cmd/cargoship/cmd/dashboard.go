@@ -146,8 +146,17 @@ func (d dashInventory) ListManifests(ctx context.Context) ([]tui.ManifestSummary
 	if err != nil {
 		return nil, err
 	}
+	// #603: surface dataset-versioning identity. DatasetIDOf resolves the chain
+	// root for legacy manifests via an in-memory fetcher over the listed set (no
+	// extra network calls); a post-#521 manifest returns its recorded DatasetID
+	// directly.
+	fetch := inMemoryFetch(ms)
 	out := make([]tui.ManifestSummary, 0, len(ms))
 	for _, m := range ms {
+		datasetID, derr := manifest.DatasetIDOf(ctx, m, fetch)
+		if derr != nil {
+			datasetID = m.UploadID
+		}
 		out = append(out, tui.ManifestSummary{
 			UploadID:    m.UploadID,
 			Source:      m.SourcePath,
@@ -156,6 +165,8 @@ func (d dashInventory) ListManifests(ctx context.Context) ([]tui.ManifestSummary
 			Bytes:       m.TotalBytes,
 			Created:     m.CreatedAt,
 			Completed:   !m.CompletedAt.IsZero(),
+			DatasetID:   datasetID,
+			Version:     m.VersionOrdinal,
 		})
 	}
 	return out, nil

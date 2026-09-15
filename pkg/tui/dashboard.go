@@ -57,6 +57,12 @@ type ManifestSummary struct {
 	Bytes       int64
 	Created     time.Time
 	Completed   bool
+	// Dataset versioning (#603): DatasetID is the version chain this upload
+	// belongs to (root upload's ID); Version is its 1-based ordinal (0 = a legacy
+	// upload with no recorded ordinal). Uploads sharing a DatasetID are versions
+	// of one dataset; see `cargoship dataset list`.
+	DatasetID string
+	Version   int
 }
 
 // AnalyzeProvider runs an on-demand bucket analysis (#449). Nil when no bucket is
@@ -148,11 +154,13 @@ func NewDashboard(ctx context.Context, costProvider CostProvider, inv InventoryP
 	)
 	inventoryTable := table.New(
 		table.WithColumns([]table.Column{
-			{Title: "Upload ID", Width: 26},
-			{Title: "Source", Width: 28},
-			{Title: "Files", Width: 10},
-			{Title: "Size", Width: 12},
-			{Title: "Created", Width: 20},
+			{Title: "Upload ID", Width: 20},
+			{Title: "Dataset", Width: 20},
+			{Title: "Ver", Width: 4},
+			{Title: "Source", Width: 22},
+			{Title: "Files", Width: 8},
+			{Title: "Size", Width: 11},
+			{Title: "Created", Width: 16},
 		}),
 		table.WithFocused(true),
 		table.WithHeight(12),
@@ -446,12 +454,18 @@ func (d *Dashboard) renderAnalyze() string {
 // yields a single honest "no completed uploads" row rather than fabricated data.
 func inventoryRows(manifests []ManifestSummary) []table.Row {
 	if len(manifests) == 0 {
-		return []table.Row{{"(no completed uploads found)", "", "", "", ""}}
+		return []table.Row{{"(no completed uploads found)", "", "", "", "", "", ""}}
 	}
 	rows := make([]table.Row, 0, len(manifests))
 	for _, m := range manifests {
+		ver := "—" // legacy upload with no recorded ordinal
+		if m.Version > 0 {
+			ver = fmt.Sprintf("v%d", m.Version)
+		}
 		rows = append(rows, table.Row{
 			m.UploadID,
+			m.DatasetID,
+			ver,
 			m.Source,
 			fmt.Sprintf("%d", m.Files),
 			humanBytes(m.Bytes),
