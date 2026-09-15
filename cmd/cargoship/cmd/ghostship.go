@@ -3,10 +3,13 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/scttfrdmn/cargoship/pkg/fleet"
+	"github.com/scttfrdmn/cargoship/pkg/launch"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 )
 
@@ -20,9 +23,10 @@ func NewGhostshipCmd() *cobra.Command {
 backup agents that share one S3 bucket without colliding (writer isolation, #520).
 
 Subcommands:
-  iam-policy   Emit the least-privilege IAM policy for one writer`,
+  iam-policy        Emit the least-privilege IAM policy for one writer
+  validate-config   Check a ghostship config (and optionally its scope) before deploy`,
 	}
-	cmd.AddCommand(newGhostshipIAMPolicyCmd())
+	cmd.AddCommand(newGhostshipIAMPolicyCmd(), newGhostshipValidateConfigCmd())
 	return cmd
 }
 
@@ -89,4 +93,86 @@ Examples:
 	cmd.Flags().StringVar(&kmsKeyARN, "kms-key-arn", "", "KMS key ARN for encrypted uploads; adds kms:GenerateDataKey and kms:Decrypt scoped to that key")
 	cmd.Flags().StringVarP(&output, "output", "o", "", "Write the policy JSON to this file instead of stdout")
 	return cmd
+}
+
+func newGhostshipValidateConfigCmd() *cobra.Command {
+	var (
+		baseline string
+		strict   bool
+	)
+	cmd := &cobra.Command{
+		Use:   "validate-config CONFIG_FILE",
+		Short: "Validate a ghostship config, and optionally check it doesn't widen scope",
+		Long: `Validate a ghostship config file before deploying it. Reports errors (an
+invalid config) and warnings (dangerous-but-permitted combinations, e.g.
+delete_after_archive with a broad matcher).
+
+With --baseline, also reports how CONFIG_FILE widens what a writer reads or
+deletes relative to the currently-deployed config (new/broadened watch paths,
+recursive flips, added includes, removed excludes, newly-enabled source deletion)
+— the check the fleet's config-over-S3 pull will enforce.
+
+Read-only: no AWS calls, no network.
+
+Examples:
+  cargoship ghostship validate-config ghost_ship.yaml
+  cargoship ghostship validate-config new.yaml --baseline deployed.yaml --strict`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadGhostshipConfigFile(args[0])
+			if err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+
+			var errCount, warnCount int
+			for _, is := range launch.ValidateConfig(cfg) {
+				if is.Severity == launch.SeverityError {
+					errCount++
+				} else {
+					warnCount++
+				}
+				_, _ = fmt.Fprintf(out, "%s: %s: %s\n", strings.ToUpper(string(is.Severity)), is.Field, is.Message)
+			}
+
+			var widenings []string
+			if baseline != "" {
+				base, err := loadGhostshipConfigFile(baseline)
+				if err != nil {
+					return fmt.Errorf("baseline: %w", err)
+				}
+				widenings = launch.WatchScopeWidenings(base, cfg)
+				for _, wd := range widenings {
+					_, _ = fmt.Fprintf(out, "WIDENS-SCOPE: %s\n", wd)
+				}
+			}
+
+			if errCount == 0 && warnCount == 0 && len(widenings) == 0 {
+				_, _ = fmt.Fprintln(out, "OK: config is valid")
+			}
+			if errCount > 0 {
+				return fmt.Errorf("%d validation error(s)", errCount)
+			}
+			if strict && (warnCount > 0 || len(widenings) > 0) {
+				return fmt.Errorf("--strict: %d warning(s), %d scope-widening(s)", warnCount, len(widenings))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&baseline, "baseline", "", "Path to the currently-deployed config; report how CONFIG_FILE widens watch scope vs it")
+	cmd.Flags().BoolVar(&strict, "strict", false, "Treat warnings and scope-widenings as failures (non-zero exit)")
+	return cmd
+}
+
+// loadGhostshipConfigFile reads and YAML-decodes a ghostship config file.
+func loadGhostshipConfigFile(path string) (*launch.GhostShipConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read config %s: %w", path, err)
+	}
+	var cfg launch.GhostShipConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	return &cfg, nil
 }
