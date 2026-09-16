@@ -27,6 +27,12 @@ type LedgerState struct {
 	// PR2). Pointer + omitempty so pre-PR2 documents (and every local file
 	// written before this) round-trip unchanged: absent → nil.
 	GlobalBudget *config.GlobalBudget `json:"global_budget,omitempty"`
+
+	// AlertConfig is the persisted alert-channel configuration (#630). Pointer +
+	// omitempty so older documents round-trip unchanged. Its secret fields are
+	// tagged json:"-", so persisting it never writes plaintext credentials; secrets
+	// are sourced from the environment at notifier-build time (see withSecretsFromEnv).
+	AlertConfig *BudgetAlertConfig `json:"alert_config,omitempty"`
 }
 
 // Token is an opaque optimistic-concurrency token returned by Load and passed

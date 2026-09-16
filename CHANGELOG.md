@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Alert configuration now persists and the notifier uses it (#630).** Previously
+  `cargoship alerts configure`/`enable` mutated an in-memory config that was discarded on
+  exit (`GetAlertConfig`/`UpdateAlertConfig` were stubs), and the Manager's notifier was
+  frozen to all-channels-disabled defaults — so configured alerts delivered to nobody.
+  Alert config now persists in the budget store (a new `alert_config` field on the ledger
+  state, wired through both the local and S3 stores), and the notifier is (re)built from it
+  at construction and on update. **Secrets are never written to disk** (SMTP password, Slack/
+  webhook URLs stay `json:"-"`); they are sourced from the environment
+  (`CARGOSHIP_SMTP_PASSWORD`, `CARGOSHIP_SLACK_WEBHOOK_URL`, `CARGOSHIP_WEBHOOK_URL`) at send
+  time, matching how the fleet delivers credentials. (Periodic evaluation / fleet
+  stale-writer alerting land next, with #615.)
 - **Incremental sync re-uploaded unchanged files every cycle (#624).** `ComputeDelta`
   keyed the previous manifest by the full (source-prefixed) `FileEntry.Path` the scanner
   stores, but looked files up by the source-relative path `ScanLocalFiles` produces — an
