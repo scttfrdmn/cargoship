@@ -35,3 +35,7 @@ Flag tables below are generated from the CLI and kept in sync by a drift check.
 <!-- @include: ../../gen/cli/cargoship_ghostship_iam-policy.md -->
 
 <!-- @include: ../../gen/cli/cargoship_ghostship_validate-config.md -->
+
+<!-- @include: ../../gen/cli/cargoship_fleet.md -->
+
+<!-- @include: ../../gen/cli/cargoship_fleet_status.md -->
