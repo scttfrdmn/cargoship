@@ -26,9 +26,11 @@ cargoship ghostship validate-config CONFIG_FILE [flags]
 ### Options
 
 ```
-      --baseline string   Path to the currently-deployed config; report how CONFIG_FILE widens watch scope vs it
-  -h, --help              help for validate-config
-      --strict            Treat warnings and scope-widenings as failures (non-zero exit)
+      --baseline string     Path to the currently-deployed config; report how CONFIG_FILE widens watch scope vs it
+  -h, --help                help for validate-config
+      --public-key string   Verify the config's detached signature against this PEM ed25519 public key (fails if invalid)
+      --signature string    Path to the signature sidecar (default CONFIG_FILE.sig)
+      --strict              Treat warnings and scope-widenings as failures (non-zero exit)
 ```
 
 ### Options inherited from parent commands

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -27,7 +28,13 @@ Subcommands:
   iam-policy        Emit the least-privilege IAM policy for one writer
   validate-config   Check a ghostship config (and optionally its scope) before deploy`,
 	}
-	cmd.AddCommand(newGhostshipRunCmd(), newGhostshipIAMPolicyCmd(), newGhostshipValidateConfigCmd())
+	cmd.AddCommand(
+		newGhostshipRunCmd(),
+		newGhostshipIAMPolicyCmd(),
+		newGhostshipValidateConfigCmd(),
+		newGhostshipConfigKeygenCmd(),
+		newGhostshipSignConfigCmd(),
+	)
 	return cmd
 }
 
@@ -98,8 +105,10 @@ Examples:
 
 func newGhostshipValidateConfigCmd() *cobra.Command {
 	var (
-		baseline string
-		strict   bool
+		baseline  string
+		strict    bool
+		publicKey string
+		sigPath   string
 	)
 	cmd := &cobra.Command{
 		Use:   "validate-config CONFIG_FILE",
@@ -120,11 +129,20 @@ Examples:
   cargoship ghostship validate-config new.yaml --baseline deployed.yaml --strict`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadGhostshipConfigFile(args[0])
+			raw, cfg, err := readGhostshipConfig(args[0])
 			if err != nil {
 				return err
 			}
 			out := cmd.OutOrStdout()
+
+			// Signature verification (fail-closed): with --public-key, the config's
+			// detached signature must verify against the trusted key, or this errors.
+			if publicKey != "" {
+				if err := verifyConfigSignature(raw, args[0], publicKey, sigPath); err != nil {
+					return fmt.Errorf("signature: %w", err)
+				}
+				_, _ = fmt.Fprintln(out, "SIGNATURE: ok")
+			}
 
 			var errCount, warnCount int
 			for _, is := range launch.ValidateConfig(cfg) {
@@ -162,18 +180,176 @@ Examples:
 	}
 	cmd.Flags().StringVar(&baseline, "baseline", "", "Path to the currently-deployed config; report how CONFIG_FILE widens watch scope vs it")
 	cmd.Flags().BoolVar(&strict, "strict", false, "Treat warnings and scope-widenings as failures (non-zero exit)")
+	cmd.Flags().StringVar(&publicKey, "public-key", "", "Verify the config's detached signature against this PEM ed25519 public key (fails if invalid)")
+	cmd.Flags().StringVar(&sigPath, "signature", "", "Path to the signature sidecar (default CONFIG_FILE.sig)")
 	return cmd
+}
+
+// verifyConfigSignature verifies raw config bytes against a trusted PEM public key,
+// reading the detached signature from sigPath (default configPath + ".sig").
+func verifyConfigSignature(raw []byte, configPath, publicKeyPath, sigPath string) error {
+	pubPEM, err := os.ReadFile(publicKeyPath)
+	if err != nil {
+		return fmt.Errorf("read public key %s: %w", publicKeyPath, err)
+	}
+	pub, err := fleet.LoadConfigPublicKey(pubPEM)
+	if err != nil {
+		return err
+	}
+	if sigPath == "" {
+		sigPath = configPath + ".sig"
+	}
+	sigData, err := os.ReadFile(sigPath)
+	if err != nil {
+		return fmt.Errorf("read signature %s: %w", sigPath, err)
+	}
+	sig, err := fleet.ParseConfigSignature(sigData)
+	if err != nil {
+		return err
+	}
+	return fleet.VerifyConfigBytes(pub, raw, sig)
+}
+
+func newGhostshipConfigKeygenCmd() *cobra.Command {
+	var outDir string
+	cmd := &cobra.Command{
+		Use:   "config-keygen",
+		Short: "Generate an ed25519 keypair for signing fleet configs (#614)",
+		Long: `Generate an ed25519 signing keypair for the config-over-S3 trust path. The
+operator keeps the private key and signs configs with 'ghostship sign-config'; only
+the public key is baked into an agent at deploy, and the agent refuses any config that
+doesn't verify against it.
+
+Writes config-signing-private.pem (0600) and config-signing-public.pem; neither is
+overwritten if it already exists. This keypair signs configs — it is separate from the
+GPG keys 'cargoship create keys' makes for file encryption.
+
+Example:
+  cargoship ghostship config-keygen --out ./fleet-keys`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			privPEM, pubPEM, err := fleet.GenerateConfigKeypair()
+			if err != nil {
+				return err
+			}
+			dir := outDir
+			if dir == "" {
+				dir = "."
+			}
+			privPath := filepath.Join(dir, "config-signing-private.pem")
+			pubPath := filepath.Join(dir, "config-signing-public.pem")
+			if err := writeNewFile(privPath, privPEM, 0o600); err != nil {
+				return err
+			}
+			if err := writeNewFile(pubPath, pubPEM, 0o644); err != nil {
+				return err
+			}
+			pub, _ := fleet.LoadConfigPublicKey(pubPEM)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+				"Wrote %s (keep secret) and %s\nKey id: %s\nBake the public key into agents; sign configs with 'ghostship sign-config'.\n",
+				privPath, pubPath, fleet.ConfigKeyID(pub))
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&outDir, "out", "", "Directory to write the keypair into (default current directory)")
+	return cmd
+}
+
+func newGhostshipSignConfigCmd() *cobra.Command {
+	var (
+		keyPath string
+		outPath string
+	)
+	cmd := &cobra.Command{
+		Use:   "sign-config CONFIG_FILE",
+		Short: "Sign a ghostship config with an ed25519 private key (#614)",
+		Long: `Produce a detached signature over a ghostship config so agents can verify it
+came from the operator. The config is validated first — a config with validation
+errors is refused, so you never sign a broken config.
+
+Writes a signature sidecar (default CONFIG_FILE.sig) that travels with the config.
+Bump the config's 'version' field before signing so each rollout is identifiable in
+writer heartbeats.
+
+Example:
+  cargoship ghostship sign-config ghost_ship.yaml --key config-signing-private.pem`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			raw, cfg, err := readGhostshipConfig(args[0])
+			if err != nil {
+				return err
+			}
+			var errCount int
+			for _, is := range launch.ValidateConfig(cfg) {
+				if is.Severity == launch.SeverityError {
+					errCount++
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "ERROR: %s: %s\n", is.Field, is.Message)
+				}
+			}
+			if errCount > 0 {
+				return fmt.Errorf("refusing to sign: %d validation error(s)", errCount)
+			}
+			privPEM, err := os.ReadFile(keyPath)
+			if err != nil {
+				return fmt.Errorf("read private key %s: %w", keyPath, err)
+			}
+			priv, err := fleet.LoadConfigPrivateKey(privPEM)
+			if err != nil {
+				return err
+			}
+			sig := fleet.SignConfigBytes(priv, raw)
+			sigData, err := sig.Marshal()
+			if err != nil {
+				return err
+			}
+			if outPath == "" {
+				outPath = args[0] + ".sig"
+			}
+			// #nosec G304,G703 -- operator-supplied signature output path on the control
+			// machine (CLI arg); writing the sidecar there is the command's purpose.
+			if err := os.WriteFile(outPath, append(sigData, '\n'), 0o644); err != nil {
+				return fmt.Errorf("write signature %s: %w", outPath, err)
+			}
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Wrote signature %s (key id %s, config version %d)\n", outPath, sig.KeyID, cfg.Version)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&keyPath, "key", "", "Path to the ed25519 private key PEM (required)")
+	cmd.Flags().StringVarP(&outPath, "output", "o", "", "Write the signature to this path (default CONFIG_FILE.sig)")
+	_ = cmd.MarkFlagRequired("key")
+	return cmd
+}
+
+// writeNewFile writes data to path with perm, failing if the file already exists
+// (never clobbers an existing key). Mirrors pkg/gpg's key-file safety.
+func writeNewFile(path string, data []byte, perm os.FileMode) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return fmt.Errorf("create %s: %w", path, err)
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return f.Close()
 }
 
 // loadGhostshipConfigFile reads and YAML-decodes a ghostship config file.
 func loadGhostshipConfigFile(path string) (*launch.GhostShipConfig, error) {
+	_, cfg, err := readGhostshipConfig(path)
+	return cfg, err
+}
+
+// readGhostshipConfig returns both the raw config bytes (needed for signature
+// verification, which must hash the exact bytes on disk) and the parsed config.
+func readGhostshipConfig(path string) ([]byte, *launch.GhostShipConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read config %s: %w", path, err)
+		return nil, nil, fmt.Errorf("read config %s: %w", path, err)
 	}
 	var cfg launch.GhostShipConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parse config %s: %w", path, err)
+		return nil, nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
-	return &cfg, nil
+	return data, &cfg, nil
 }

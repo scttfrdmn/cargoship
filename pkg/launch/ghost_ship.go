@@ -56,6 +56,12 @@ type GhostShipConfig struct {
 	Name        string `json:"name" yaml:"name"`
 	Description string `json:"description" yaml:"description"`
 
+	// Version is the operator-managed config version (#614). It travels inside the
+	// signed config bytes, so it is authenticated, and each writer reports the version
+	// it is running in its heartbeat — a bad rollout is then immediately visible.
+	// Optional (0 = unversioned); bump it on every intended config change.
+	Version int `json:"version,omitempty" yaml:"version,omitempty"`
+
 	// WriterID is the fleet writer identity (#520/#604) used by `cargoship ghostship
 	// run` to isolate this box's objects under writers/<id>/. Optional: when empty the
 	// daemon falls back to ID; a --writer-id flag overrides both. Unused by the legacy
