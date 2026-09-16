@@ -305,6 +305,8 @@ Example:
 			if outPath == "" {
 				outPath = args[0] + ".sig"
 			}
+			// #nosec G304,G703 -- operator-supplied signature output path on the control
+			// machine (CLI arg); writing the sidecar there is the command's purpose.
 			if err := os.WriteFile(outPath, append(sigData, '\n'), 0o644); err != nil {
 				return fmt.Errorf("write signature %s: %w", outPath, err)
 			}
