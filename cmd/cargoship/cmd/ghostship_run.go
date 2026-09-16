@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/cobra"
 
+	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
 	"github.com/scttfrdmn/cargoship/pkg/launch"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 )
@@ -29,6 +30,7 @@ func newGhostshipRunCmd() *cobra.Command {
 		shardStrategy string
 		compression   int
 		trackDeletes  bool
+		ignoreBudget  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "run [SOURCE_DIR S3_URL]",
@@ -118,7 +120,7 @@ Examples:
 				}
 				sources = []syncRunParams{{
 					bucket: bucket, prefix: pipeline.WriterPrefix(prefix, writerID), sourcePath: sourceDir,
-					region: region, writerID: writerID, storageClass: storageClass, shardCount: shardCount,
+					region: region, writerID: writerID, projectID: writerID, storageClass: storageClass, shardCount: shardCount,
 					shardStrategy: shardStrategy, compressionLevel: compression, trackDeletes: trackDeletes,
 				}}
 			}
@@ -132,8 +134,19 @@ Examples:
 				return fmt.Errorf("failed to load AWS config: %w", cerr)
 			}
 			s3Client := s3.NewFromConfig(cfg)
+
+			// #629: per-writer cap gate. Build the cost manager once; nil = enforcement
+			// off (either --ignore-budget or the manager couldn't load — fail-open, a
+			// backup shouldn't be blocked because cost tracking is unavailable).
+			var costMgr *cost.Manager
+			if !ignoreBudget {
+				if mgr, mErr := loadCostManager(cmd.Context()); mErr == nil {
+					costMgr = mgr
+				}
+			}
 			for i := range sources {
 				sources[i].s3Client = s3Client
+				sources[i].costMgr = costMgr
 			}
 
 			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil)).With(
@@ -185,6 +198,7 @@ Examples:
 		"Shard distribution strategy (round-robin, hash, size, type, directory)")
 	cmd.Flags().IntVar(&compression, "compression-level", 0, "Fixed zstd level (1-22); 0 = content-aware per-chunk selection")
 	cmd.Flags().BoolVar(&trackDeletes, "track-deletes", false, "Record files deleted since the last backup in the manifest")
+	cmd.Flags().BoolVar(&ignoreBudget, "ignore-budget", false, "Skip the per-writer budget/volume cap check (#629)")
 	return cmd
 }
 
@@ -232,6 +246,7 @@ func buildRunPlan(cfg *launch.GhostShipConfig, flagWriterID string, d runDefault
 			sourcePath:       wp.Path,
 			region:           d.region,
 			writerID:         writerID,
+			projectID:        writerID, // #629: per-writer cap key
 			storageClass:     sc,
 			shardCount:       d.shardCount,
 			shardStrategy:    d.shardStrategy,

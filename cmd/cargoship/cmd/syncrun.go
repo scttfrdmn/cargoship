@@ -6,6 +6,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
+	cargoconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
+	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 )
@@ -29,6 +31,8 @@ type syncRunParams struct {
 	trackDeletes     bool
 	force            bool
 	dryRun           bool
+	projectID        string        // #629: cost/cap attribution key (ghostship: the writer id)
+	costMgr          *cost.Manager // #629: pre-write cap gate; nil = enforcement off
 }
 
 // syncRunResult reports what one sync cycle did, for the caller to log.
@@ -75,6 +79,19 @@ func runOneSync(ctx context.Context, p syncRunParams) (*syncRunResult, error) {
 	}
 	if p.dryRun {
 		return &syncRunResult{Delta: delta, SyncType: syncType, PrevUploadID: prevUploadID(previousManifest)}, nil
+	}
+
+	// #629: pre-write cap gate — refuse a cycle that would exceed this writer's
+	// configured volume quota / cost budget, before any bytes move.
+	if p.costMgr != nil {
+		var deltaBytes int64
+		for _, f := range delta.GetChangedFiles() {
+			deltaBytes += f.Size
+		}
+		sizeGB := float64(deltaBytes) / (1024 * 1024 * 1024)
+		if err := enforceBudgetCaps(ctx, p.costMgr, p.projectID, sizeGB, cargoconfig.StorageClass(p.storageClass), p.region); err != nil {
+			return nil, err
+		}
 	}
 
 	includeFiles := make([]string, 0, len(delta.GetChangedFiles()))

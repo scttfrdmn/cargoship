@@ -77,8 +77,9 @@ func NewUploadCmd() *cobra.Command {
 		dvcOutputDir     string
 
 		// Issue #183: DVC budget integration
-		dvcProject string
-		uploadTags []string // "key=value" pairs
+		dvcProject   string
+		uploadTags   []string // "key=value" pairs
+		ignoreBudget bool     // #629: skip the pre-write cap gate
 
 		// Issue #185: DVC pipeline metadata extraction
 		dvcStage           string
@@ -728,6 +729,24 @@ Examples:
 				pipelineConfig.ResumeUploadID = resumeUploadID
 			}
 
+			// #629: pre-write cap gate — refuse an upload that would exceed the
+			// project's configured volume quota / cost budget, before any bytes move.
+			// No-op when no cap is set; --ignore-budget overrides.
+			if !ignoreBudget {
+				if mgr, mErr := loadCostManager(ctx); mErr == nil {
+					var srcBytes int64
+					if sf, sErr := manifest.ScanLocalFiles(absPath); sErr == nil {
+						for _, f := range sf {
+							srcBytes += f.Size
+						}
+					}
+					sizeGB := float64(srcBytes) / (1024 * 1024 * 1024)
+					if err := enforceBudgetCaps(ctx, mgr, dvcProject, sizeGB, cargoconfig.StorageClass(storageClass), region); err != nil {
+						return err
+					}
+				}
+			}
+
 			// Create pipeline
 			pipe, err := pipeline.NewPipeline(pipelineConfig)
 			if err != nil {
@@ -992,6 +1011,7 @@ Examples:
 
 	// Issue #183: DVC budget integration
 	cmd.Flags().StringVar(&dvcProject, "project", "", "Project ID for cost tracking (e.g. 'dvc_cache' for DVC remotes)")
+	cmd.Flags().BoolVar(&ignoreBudget, "ignore-budget", false, "Skip the pre-upload budget/volume cap check (#629)")
 	cmd.Flags().StringArrayVar(&uploadTags, "tag", nil, "Custom tag in key=value format, repeatable (e.g. --tag dvc_cache=true --tag env=prod)")
 
 	// Issue #185: DVC pipeline metadata extraction

@@ -75,6 +75,7 @@ cargoship upload SOURCE_DIR DESTINATION [flags]
       --generate-dvc-files               Generate DVC sidecar .dvc files after upload
       --git-metadata                     Embed Git repository metadata (commit, branch, tag, remote) in the manifest
   -h, --help                             help for upload
+      --ignore-budget                    Skip the pre-upload budget/volume cap check (#629)
       --incremental                      Enable incremental sync: only upload new or changed files
       --kms-key-id string                AWS KMS key ID or ARN for encryption (data chunks encrypted with SSE-KMS)
       --no-file-checksums                Disable per-file content checksums (faster uploads, but 'verify --deep' can't confirm per-file integrity)
