@@ -10,7 +10,9 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,6 +22,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+
+	"github.com/scttfrdmn/cargoship/pkg/fleet"
 )
 
 // e2eS3Client builds an emulator-pointed S3 client (mirrors createBucket).
@@ -95,6 +99,76 @@ func TestGhostshipRun_RoundTrip(t *testing.T) {
 		if string(got) != tc.want {
 			t.Fatalf("restored %s = %q, want %q", tc.base, got, tc.want)
 		}
+	}
+
+	// #615: the cycle wrote a heartbeat under the writer prefix, and it parses.
+	hb := getStatus(t, client, bucket, "archives/writers/lab-nas-1/status.json")
+	if hb.WriterID != "lab-nas-1" {
+		t.Errorf("heartbeat writer_id = %q, want lab-nas-1", hb.WriterID)
+	}
+	if !hb.Healthy() {
+		t.Errorf("heartbeat should be healthy after a clean cycle: %+v", hb.Sources)
+	}
+	if len(hb.Sources) != 1 || hb.Sources[0].Files == 0 {
+		t.Errorf("heartbeat should record the backed-up source with a file count: %+v", hb.Sources)
+	}
+}
+
+// getStatus fetches and parses a writer heartbeat object (#615).
+func getStatus(t *testing.T, client *s3.Client, bucket, key string) fleet.WriterStatus {
+	t.Helper()
+	obj, err := client.GetObject(context.Background(), &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		t.Fatalf("get %s: %v", key, err)
+	}
+	defer func() { _ = obj.Body.Close() }()
+	data, err := io.ReadAll(obj.Body)
+	if err != nil {
+		t.Fatalf("read %s: %v", key, err)
+	}
+	var st fleet.WriterStatus
+	if err := json.Unmarshal(data, &st); err != nil {
+		t.Fatalf("parse %s: %v", key, err)
+	}
+	return st
+}
+
+// TestFleetStatus_ListsWriter proves the control-side read path: after a ghostship
+// cycle writes a heartbeat, `cargoship fleet status` lists that writer as healthy.
+func TestFleetStatus_ListsWriter(t *testing.T) {
+	bucket := "gs-fleet-status"
+	if err := createBucket(substrateURL, bucket); err != nil {
+		t.Fatalf("create bucket: %v", err)
+	}
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "a.txt"), "hello")
+
+	runCargoship(t, "ghostship", "run", src, "s3://"+bucket+"/nas",
+		"--writer-id", "box-1", "--once", "--region", "us-east-1")
+
+	out := runCargoship(t, "fleet", "status", "s3://"+bucket+"/nas", "--region", "us-east-1")
+	if !strings.Contains(out, "box-1") {
+		t.Fatalf("fleet status should list writer box-1, got:\n%s", out)
+	}
+	if !strings.Contains(out, "yes") {
+		t.Fatalf("fleet status should show box-1 as healthy, got:\n%s", out)
+	}
+
+	// --json emits the parsed heartbeat. CombinedOutput may prepend a "Using config
+	// file" notice on stderr, so parse from the first JSON array bracket.
+	jsonOut := runCargoship(t, "fleet", "status", "s3://"+bucket+"/nas", "--region", "us-east-1", "--json")
+	if i := strings.IndexByte(jsonOut, '['); i >= 0 {
+		jsonOut = jsonOut[i:]
+	}
+	var statuses []fleet.WriterStatus
+	if err := json.Unmarshal([]byte(jsonOut), &statuses); err != nil {
+		t.Fatalf("fleet status --json is not valid JSON: %v\n%s", err, jsonOut)
+	}
+	if len(statuses) != 1 || statuses[0].WriterID != "box-1" {
+		t.Fatalf("fleet status --json = %+v, want one writer box-1", statuses)
 	}
 }
 

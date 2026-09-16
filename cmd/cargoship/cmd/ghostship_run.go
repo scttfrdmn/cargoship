@@ -11,9 +11,12 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
+	versionpkg "github.com/scttfrdmn/cargoship/internal/version"
 	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
+	"github.com/scttfrdmn/cargoship/pkg/fleet"
 	"github.com/scttfrdmn/cargoship/pkg/launch"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 )
@@ -156,18 +159,44 @@ Examples:
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
 
+			// #615: heartbeat identity + in-memory per-source accumulator (so LastSuccess
+			// persists across cycles without reading S3 — stays write-only). InstanceID is
+			// per-boot so two live instances under one writer id (a cloned VM) are visible.
+			instanceID := uuid.New().String()
+			host, herr := os.Hostname()
+			if herr != nil || host == "" {
+				host = "unknown"
+			}
+			statusBySource := make(map[string]*fleet.SourceStatus, len(sources))
+			for _, p := range sources {
+				statusBySource[p.sourcePath] = &fleet.SourceStatus{Path: p.sourcePath}
+			}
+
 			cycle := func(ctx context.Context) error {
 				var firstErr error
 				for _, p := range sources {
 					srcLog := logger.With("source", p.sourcePath,
 						"dest", fmt.Sprintf("s3://%s/%s", p.bucket, p.prefix))
+					ss := statusBySource[p.sourcePath]
 					res, rerr := runOneSync(ctx, p)
 					if rerr != nil {
 						srcLog.Error("sync cycle failed", "err", rerr)
+						ss.OK = false
+						ss.LastError = rerr.Error()
 						if firstErr == nil {
 							firstErr = rerr
 						}
 						continue
+					}
+					ss.OK = true
+					ss.LastError = ""
+					ss.LastSuccess = time.Now()
+					ss.NoChanges = res.NoChanges
+					ss.SyncType = res.SyncType
+					if res.Result != nil {
+						ss.UploadID = res.Result.UploadID
+						ss.Files = res.Result.TotalFiles
+						ss.Bytes = res.Result.TotalBytes
 					}
 					switch {
 					case res.NoChanges:
@@ -177,6 +206,23 @@ Examples:
 							"upload_id", res.Result.UploadID, "files", res.Result.TotalFiles,
 							"bytes", res.Result.TotalBytes, "sync_type", res.SyncType)
 					}
+				}
+
+				// #615: write one aggregated heartbeat for this writer (best-effort).
+				sts := make([]fleet.SourceStatus, 0, len(sources))
+				for _, p := range sources {
+					sts = append(sts, *statusBySource[p.sourcePath])
+				}
+				st := fleet.WriterStatus{
+					WriterID:         writerID,
+					Hostname:         host,
+					InstanceID:       instanceID,
+					CargoshipVersion: versionpkg.Version,
+					UpdatedAt:        time.Now(),
+					Sources:          sts,
+				}
+				if werr := fleet.WriteStatus(ctx, sources[0].s3Client, sources[0].bucket, sources[0].prefix, st); werr != nil {
+					logger.Warn("failed to write heartbeat", "err", werr)
 				}
 				return firstErr
 			}

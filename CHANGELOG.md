@@ -32,6 +32,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pkg/pipeline`, and the ghostship E2E (a no-change cycle now uploads nothing).
 
 ### Added
+- **Fleet heartbeats + `cargoship fleet status` (#615).** Every `cargoship ghostship run`
+  cycle now writes a small `writers/<id>/status.json` heartbeat (writer id, hostname, a
+  per-boot instance id, cargoship version, and per-source result: OK, last error, last
+  success, upload id, file/byte counts, sync type). The write is best-effort — a failed
+  heartbeat is logged and never aborts the backup — and stays write-only (no read of the
+  bucket), preserving the outbound-only, delete-free agent posture. A new control-side
+  `cargoship fleet status S3_URL` reads every writer's heartbeat under a fleet prefix and
+  shows each writer's age (time since last check-in), health, source count, and last error
+  (`--json` for the raw records). It only needs bucket read/list — never an agent's write
+  identity. This is slice 1 of the fleet observability arc; a stale-writer monitor/alert
+  (#630) lands next.
 - **Budget/volume caps now enforce before an upload (#629).** Previously the enforcement
   code existed but had no caller, so a configured cost budget or volume quota only *recorded
   and alerted* after the fact — nothing stopped a runaway upload. `cargoship upload`,
