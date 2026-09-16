@@ -35,6 +35,7 @@ func NewRestoreCmd() *cobra.Command {
 		restoreDays    int32
 		noVerify       bool
 		flatten        bool
+		all            bool   // #617: restore every file in the manifest (disaster recovery)
 		datasetID      string // #521: version-aware restore
 		version        int
 		asOfStr        string
@@ -50,6 +51,7 @@ Restoration modes (pick one or combine --file with others):
   --file        : Restore one or more exact file paths
   --git-commit  : Restore all files from a specific git commit
   --dvc-stage   : Restore all files produced by a DVC pipeline stage
+  --all         : Restore every file in the upload (disaster recovery)
 
 Glacier/Deep Archive support:
   --tier        : Retrieval tier: expedited (1-5 min), standard (3-5 h), bulk (5-12 h)
@@ -72,6 +74,10 @@ Examples:
   cargoship restore s3://my-bucket/uploads/20240101-abc123 ./out \
     --dvc-stage preprocess
 
+  # Restore an ENTIRE upload — disaster recovery. Needs only read access + the
+  # decryption key, not the box (or writer id) that produced it.
+  cargoship restore s3://my-bucket/prefix/writers/lab-nas-1/uploads/20240101-abc123 ./out --all
+
   # Restore from Glacier with standard retrieval tier, wait for completion
   cargoship restore s3://my-bucket/uploads/20240101-abc123 ./out \
     --dvc-stage train --tier standard --wait
@@ -89,6 +95,12 @@ Examples:
 			bucket, prefix, err := parseS3URL(s3URL)
 			if err != nil {
 				return fmt.Errorf("invalid S3 URL: %w", err)
+			}
+
+			// --all restores the whole upload; it is standalone (validated before any
+			// AWS call so a bad flag combo fails fast, not after a manifest download).
+			if all && (hash != "" || len(filePaths) > 0 || gitCommit != "" || dvcStage != "") {
+				return fmt.Errorf("--all cannot be combined with --hash/--file/--git-commit/--dvc-stage")
 			}
 
 			cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
@@ -162,6 +174,16 @@ Examples:
 			var chunkKeys []string
 
 			switch {
+			case all:
+				targetPaths = allFilePaths(m)
+				if len(targetPaths) == 0 {
+					return fmt.Errorf("manifest records no files to restore")
+				}
+				chunkKeys = se.ChunkKeysForPaths(targetPaths)
+				// Treat --all as "every recorded path" downstream (Glacier job-save
+				// and the actual BatchRestore both read filePaths).
+				filePaths = targetPaths
+
 			case hash != "":
 				// Resolve hash to path so we can get chunk keys.
 				q := manifest.NewManifestQuery(m)
@@ -334,6 +356,7 @@ Examples:
 	cmd.Flags().StringArrayVar(&filePaths, "file", nil, "Exact file path(s) to restore (repeatable)")
 	cmd.Flags().StringVar(&gitCommit, "git-commit", "", "Restore all files from this git commit SHA")
 	cmd.Flags().StringVar(&dvcStage, "dvc-stage", "", "Restore all files produced by this DVC pipeline stage")
+	cmd.Flags().BoolVar(&all, "all", false, "Restore every file recorded in the upload's manifest (disaster recovery); cannot be combined with --hash/--file/--git-commit/--dvc-stage")
 	cmd.Flags().StringVarP(&region, "region", "r", "us-east-1", "AWS region")
 	cmd.Flags().Int64Var(&cacheGB, "cache-gb", 10, "LRU chunk cache size in GB (0 = default 10 GB)")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output restore statistics as JSON")
@@ -350,6 +373,17 @@ Examples:
 
 	cmd.AddCommand(newRestoreJobsCmd())
 	return cmd
+}
+
+// allFilePaths returns every file path recorded in the manifest (the stored paths
+// `restore --file` expects). Used by `restore --all` for whole-upload disaster
+// recovery. SelectiveExtractor.restorePath strips SourcePath for the on-disk layout.
+func allFilePaths(m *manifest.Manifest) []string {
+	paths := make([]string, 0, len(m.Files))
+	for _, f := range m.Files {
+		paths = append(paths, f.Path)
+	}
+	return paths
 }
 
 // loadEffectiveManifest downloads the manifest for uploadID and, when it is an

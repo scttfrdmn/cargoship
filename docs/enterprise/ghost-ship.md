@@ -73,6 +73,39 @@ docker ps | grep cargoship-ghost
 docker logs cargoship-ghost-container --tail 20
 ```
 
+## Disaster recovery: restore a writer to a new box
+
+A ghostship's backups do not depend on the box that wrote them. If a NAS/server dies,
+recover its **entire** backup onto any machine with read access to the bucket (and, if the
+data is encrypted, `kms:Decrypt` on the key) — you do **not** need the old box, its
+writer id, or any local state.
+
+1. **Find the upload** — list the writer's uploads:
+   ```bash
+   cargoship dashboard s3://my-bucket/backups
+   # or inspect the prefix directly:
+   #   s3://my-bucket/backups/writers/<writer-id>/uploads/<upload-id>/
+   ```
+2. **Provision read / break-glass access** — a restore identity needs only
+   `s3:GetObject` + `s3:ListBucket` on the writer's prefix (plus `kms:Decrypt` on the CMK
+   if encrypted): the read-only inverse of the write-only policy that
+   `cargoship ghostship iam-policy` emits.
+3. **Restore the whole upload** to a fresh directory:
+   ```bash
+   cargoship restore s3://my-bucket/backups/writers/<writer-id>/uploads/<upload-id> ./restored --all
+   ```
+   `--all` reconstructs every file in the upload. Restore is self-describing — the manifest
+   carries the chunk layout and (encrypted) data-key references; no writer identity or agent
+   state is consulted.
+4. **Verify** (optional):
+   ```bash
+   cargoship verify s3://my-bucket/backups/writers/<writer-id>/uploads/<upload-id>
+   ```
+
+This recovery path is exercised end-to-end in the emulator (`TestGhostshipRun_DisasterRecovery`)
+and against real S3 (writer-scoped round-trip), and is surfaced in the per-release
+[verification report](/project/verification-reports).
+
 ## See also
 
 - [Distributed / Enterprise overview](/enterprise/).

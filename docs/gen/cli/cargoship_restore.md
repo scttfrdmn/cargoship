@@ -11,6 +11,7 @@ Restoration modes (pick one or combine --file with others):
   --file        : Restore one or more exact file paths
   --git-commit  : Restore all files from a specific git commit
   --dvc-stage   : Restore all files produced by a DVC pipeline stage
+  --all         : Restore every file in the upload (disaster recovery)
 
 Glacier/Deep Archive support:
   --tier        : Retrieval tier: expedited (1-5 min), standard (3-5 h), bulk (5-12 h)
@@ -33,6 +34,10 @@ Examples:
   cargoship restore s3://my-bucket/uploads/20240101-abc123 ./out \
     --dvc-stage preprocess
 
+  # Restore an ENTIRE upload — disaster recovery. Needs only read access + the
+  # decryption key, not the box (or writer id) that produced it.
+  cargoship restore s3://my-bucket/prefix/writers/lab-nas-1/uploads/20240101-abc123 ./out --all
+
   # Restore from Glacier with standard retrieval tier, wait for completion
   cargoship restore s3://my-bucket/uploads/20240101-abc123 ./out \
     --dvc-stage train --tier standard --wait
@@ -49,6 +54,7 @@ cargoship restore S3_URL OUTPUT_DIR [flags]
 ### Options
 
 ```
+      --all                      Restore every file recorded in the upload's manifest (disaster recovery); cannot be combined with --hash/--file/--git-commit/--dvc-stage
       --as-of string             With --dataset-id: restore the newest version at or before this date (YYYY-MM-DD)
       --cache-gb int             LRU chunk cache size in GB (0 = default 10 GB) (default 10)
       --dataset-id string        Restore a version of this dataset (S3_URL is then the bucket/prefix); see 'cargoship dataset list'
