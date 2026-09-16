@@ -33,6 +33,7 @@ cargoship ghostship run [SOURCE_DIR S3_URL] [flags]
       --compression-level int   Fixed zstd level (1-22); 0 = content-aware per-chunk selection
       --config string           Ghostship config file (fleet mode); backs up each watch_paths entry
   -h, --help                    help for run
+      --ignore-budget           Skip the per-writer budget/volume cap check (#629)
       --interval duration       How often to run a backup cycle (overrides config scan_interval) (default 1h0m0s)
       --once                    Run a single cycle and exit (for cron / testing)
   -r, --region string           AWS region (default "us-west-2")

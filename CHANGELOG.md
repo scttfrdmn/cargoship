@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pkg/pipeline`, and the ghostship E2E (a no-change cycle now uploads nothing).
 
 ### Added
+- **Budget/volume caps now enforce before an upload (#629).** Previously the enforcement
+  code existed but had no caller, so a configured cost budget or volume quota only *recorded
+  and alerted* after the fact — nothing stopped a runaway upload. `cargoship upload`,
+  `cargoship ghostship run`, and the fleet sync path now run a **pre-write cap gate**: if the
+  cycle would exceed the configured volume quota (exact) or cost budget (best-effort via the
+  pricing fallback), it aborts before any bytes move with a clear `VolumeQuotaExceededError`/
+  `BudgetExceededError`. `ghostship run` keys caps per **writer id** (each agent bounded
+  independently, no schema change). No-op when no cap is configured; `--ignore-budget`
+  overrides for emergencies. (Alerting delivery — #630 — is reviewed and sequenced next: the
+  alert channels are built but currently dormant.)
 - **`cargoship restore --all` + disaster-recovery runbook (#617).** A new `--all` flag
   restores every file recorded in an upload's manifest in one command — whole-upload
   recovery without enumerating paths. This makes fleet disaster recovery a one-liner
