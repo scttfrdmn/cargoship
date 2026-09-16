@@ -85,6 +85,24 @@ for p in direct chunked; do
 done
 [ -z "$storage_paths" ] && storage_paths="(none observed)"
 
+# --- Writer isolation evidence (#520/#604) -----------------------------------
+# TestWriterIsolationRoundTrip emits a DISTINCT marker (deliberately NOT summed
+# into the fixed-corpus files/bytes above):
+#   VERIFICATION_WRITER_ISO writer_id=lab-nas-1 files=10 prefix=…
+writer_iso_section=""
+wiso=$(grep -F "VERIFICATION_WRITER_ISO" "$LOG" | head -1 || true)
+if [ -n "$wiso" ]; then
+  wfiles=$(echo "$wiso" | sed -n 's/.*files=\([0-9]*\).*/\1/p')
+  wid=$(echo "$wiso" | sed -n 's/.*writer_id=\([^ ]*\).*/\1/p')
+  writer_iso_section=$(cat <<WISO
+
+## Writer isolation (#520)
+
+- ✅ verified — **${wfiles}** files round-tripped byte-identical under \`writers/${wid}/\` on real S3 (fleet writer isolation).
+WISO
+)
+fi
+
 # --- Parse per-package pass/fail from `go test` summary lines ----------------
 # Lines look like: "ok  \tgithub.com/.../pkg/pipeline\t105.336s"
 #              or:  "FAIL\tgithub.com/.../pkg/foo\t0.5s"
@@ -153,6 +171,7 @@ the source.
 | Bytes round-tripped | **${bytes_h}** (${total_bytes} bytes) |
 | Storage paths exercised | ${storage_paths} |
 | Byte-identity failures | **$([ "$status" = "PASSED" ] && echo 0 || echo "≥1 — SEE CI")** |
+${writer_iso_section}
 
 ## Integration suites (real S3)
 

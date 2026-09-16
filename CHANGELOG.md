@@ -65,6 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guard apply directly to what the daemon runs. `archival_rules` are now **optional** and
   **ignored in sync mode** (a warning is logged if present) — they belong to the legacy
   per-file model. The single-source flag form (`run SOURCE_DIR S3_URL`) is unchanged.
+- **Writer-isolation round-trip on real S3 (#520/#604)** — a new `integration`-tagged
+  round-trip (`TestWriterIsolationRoundTrip`) proves an upload scoped to `--writer-id`
+  lands under `writers/<id>/uploads/` and restores byte-identical, exercising the same
+  pipeline `ghostship run`/`sync` use. It runs against the emulator per-PR and against real
+  S3 in the release/weekly real-AWS lane, and now surfaces as a **"Writer isolation"** line
+  in the per-release verification report (without disturbing the fixed-corpus byte totals).
 - **Ghostship end-to-end tests (emulator)** — the `ghostship` daemon is now exercised
   end-to-end through the real binary against the in-process S3 emulator (in the existing
   Quick Start E2E lane): a writer-scoped round-trip (`ghostship run --once --writer-id` →
