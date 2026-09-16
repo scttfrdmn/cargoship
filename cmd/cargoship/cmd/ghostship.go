@@ -73,8 +73,12 @@ Examples:
 				return fmt.Errorf("invalid --writer-id: %w", err)
 			}
 			eff := pipeline.WriterPrefix(prefix, resolvedWriterID)
+			var ctrl string
+			if resolvedWriterID != "" {
+				ctrl = fleet.ControlPrefix(prefix, resolvedWriterID)
+			}
 
-			policy, err := fleet.WriterIAMPolicy(bucket, eff, kmsKeyARN)
+			policy, err := fleet.WriterIAMPolicy(bucket, eff, ctrl, kmsKeyARN)
 			if err != nil {
 				return err
 			}
@@ -347,9 +351,18 @@ func readGhostshipConfig(path string) ([]byte, *launch.GhostShipConfig, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("read config %s: %w", path, err)
 	}
-	var cfg launch.GhostShipConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, nil, fmt.Errorf("parse config %s: %w", path, err)
+	cfg, err := unmarshalGhostshipConfig(data)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w (%s)", err, path)
 	}
-	return data, &cfg, nil
+	return data, cfg, nil
+}
+
+// unmarshalGhostshipConfig YAML-decodes raw config bytes (from a file or an S3 pull).
+func unmarshalGhostshipConfig(raw []byte) (*launch.GhostShipConfig, error) {
+	var cfg launch.GhostShipConfig
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		return nil, fmt.Errorf("parse config: %w", err)
+	}
+	return &cfg, nil
 }

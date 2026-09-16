@@ -38,8 +38,10 @@ type condKeys map[string][]string
 //
 // effectivePrefix is the writer-scoped key prefix (build it with
 // pipeline.WriterPrefix); an empty prefix scopes to the whole bucket. bucket is
-// required. kmsKeyARN is optional: when set, the policy adds KMS permissions for
-// the given customer master key.
+// required. controlPrefix is optional (#614): when set (build it with
+// fleet.ControlPrefix), the policy adds READ-ONLY GetObject on that control prefix so
+// the agent can pull its signed config — never write it. kmsKeyARN is optional: when
+// set, the policy adds KMS permissions for the given customer master key.
 //
 // The policy is deliberately delete-free and cross-writer-free — that absence,
 // together with the own-prefix scoping, is the durable ransomware guarantee: a
@@ -47,7 +49,7 @@ type condKeys map[string][]string
 // another writer's data. Note it is NOT decrypt-free when a KMS key is supplied:
 // AWS requires kms:Decrypt (alongside kms:GenerateDataKey) to multipart-upload
 // SSE-KMS-encrypted objects, so both are granted on that one key.
-func WriterIAMPolicy(bucket, effectivePrefix, kmsKeyARN string) (string, error) {
+func WriterIAMPolicy(bucket, effectivePrefix, controlPrefix, kmsKeyARN string) (string, error) {
 	if bucket == "" {
 		return "", fmt.Errorf("bucket is required")
 	}
@@ -84,6 +86,17 @@ func WriterIAMPolicy(bucket, effectivePrefix, kmsKeyARN string) (string, error) 
 				Condition: listCond,
 			},
 		},
+	}
+
+	if cp := strings.Trim(controlPrefix, "/"); cp != "" {
+		doc.Statement = append(doc.Statement, statement{
+			// Read-only access to the writer's signed config (#614). GetObject only —
+			// the config is operator-written; the agent never writes the control prefix.
+			Sid:      "WriterConfigRead",
+			Effect:   "Allow",
+			Action:   []string{"s3:GetObject"},
+			Resource: "arn:aws:s3:::" + bucket + "/" + cp + "/*",
+		})
 	}
 
 	if kmsKeyARN != "" {

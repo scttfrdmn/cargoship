@@ -32,6 +32,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pkg/pipeline`, and the ghostship E2E (a no-change cycle now uploads nothing).
 
 ### Added
+- **Signed config-over-S3 pull for ghostship (#614, slice 2a).** `cargoship ghostship run`
+  gains a third mode, `--config-url s3://BUCKET/BASE --public-key pub.pem --writer-id ID`:
+  the agent pulls its config from a **separate control prefix** (`BASE/fleet/<id>/config.yaml`
+  + `.sig`), verifies the ed25519 signature against the baked public key, and validates it
+  before running — an unsigned, wrong-key, or tampered config is refused (fail-closed) and
+  nothing is backed up. The control prefix is distinct from the `writers/<id>/` data prefix
+  (different blast radius), and `cargoship ghostship iam-policy` now emits a **read-only**
+  `s3:GetObject` grant on `fleet/<id>/*` so the delete-free writer can read — never write —
+  its config. (Next: per-cycle re-pull with keep-last-good, then enforce no silent
+  scope-widening.)
 - **Signed fleet configs — signing primitives + `config_version` (#614, slice 1).** Groundwork
   for config-over-S3 trust: an operator can now sign a ghostship config with an ed25519 key and
   agents/tooling can verify it. `cargoship ghostship config-keygen` writes an ed25519 keypair

@@ -10,7 +10,7 @@ func TestWriterIAMPolicy(t *testing.T) {
 	const bucket = "my-bucket"
 
 	t.Run("writer with kms", func(t *testing.T) {
-		out, err := WriterIAMPolicy(bucket, "backups/writers/lab-nas-1", "arn:aws:kms:us-west-2:111122223333:key/abcd")
+		out, err := WriterIAMPolicy(bucket, "backups/writers/lab-nas-1", "", "arn:aws:kms:us-west-2:111122223333:key/abcd")
 		if err != nil {
 			t.Fatalf("WriterIAMPolicy: %v", err)
 		}
@@ -59,7 +59,7 @@ func TestWriterIAMPolicy(t *testing.T) {
 	})
 
 	t.Run("writer without kms omits the kms statement", func(t *testing.T) {
-		out, err := WriterIAMPolicy(bucket, "backups/writers/w1", "")
+		out, err := WriterIAMPolicy(bucket, "backups/writers/w1", "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,7 +73,7 @@ func TestWriterIAMPolicy(t *testing.T) {
 	})
 
 	t.Run("empty prefix scopes to the whole bucket with no prefix condition", func(t *testing.T) {
-		out, err := WriterIAMPolicy(bucket, "", "")
+		out, err := WriterIAMPolicy(bucket, "", "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -85,8 +85,45 @@ func TestWriterIAMPolicy(t *testing.T) {
 		}
 	})
 
+	t.Run("control prefix adds a read-only config statement (#614)", func(t *testing.T) {
+		out, err := WriterIAMPolicy(bucket, "backups/writers/w1", "backups/fleet/w1", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertNoDestructive(t, out)
+		var doc struct {
+			Statement []struct {
+				Sid      string
+				Action   []string
+				Resource string
+			}
+		}
+		if err := json.Unmarshal([]byte(out), &doc); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		var cfg *struct {
+			Sid      string
+			Action   []string
+			Resource string
+		}
+		for i := range doc.Statement {
+			if doc.Statement[i].Sid == "WriterConfigRead" {
+				cfg = &doc.Statement[i]
+			}
+		}
+		if cfg == nil {
+			t.Fatalf("expected a WriterConfigRead statement:\n%s", out)
+		}
+		if cfg.Resource != "arn:aws:s3:::my-bucket/backups/fleet/w1/*" {
+			t.Errorf("config-read resource = %q", cfg.Resource)
+		}
+		if len(cfg.Action) != 1 || cfg.Action[0] != "s3:GetObject" {
+			t.Errorf("config-read must be GetObject-only, got %v", cfg.Action)
+		}
+	})
+
 	t.Run("empty bucket errors", func(t *testing.T) {
-		if _, err := WriterIAMPolicy("", "p", ""); err == nil {
+		if _, err := WriterIAMPolicy("", "p", "", ""); err == nil {
 			t.Error("empty bucket should error")
 		}
 	})
