@@ -360,6 +360,111 @@ func TestGhostshipRun_ConfigPull_RejectsTampered(t *testing.T) {
 	}
 }
 
+// fleetKeypair generates one config-signing keypair and returns its private/public
+// PEM paths, so several config versions can be signed with the SAME key.
+func fleetKeypair(t *testing.T) (privPath, pubPath string) {
+	t.Helper()
+	keyDir := t.TempDir()
+	runCargoship(t, "ghostship", "config-keygen", "--out", keyDir)
+	return filepath.Join(keyDir, "config-signing-private.pem"), filepath.Join(keyDir, "config-signing-public.pem")
+}
+
+// signUploadConfig signs configYAML with privPath and uploads it + its signature to
+// <base>/fleet/<writerID>/, overwriting any previous version.
+func signUploadConfig(t *testing.T, client *s3.Client, bucket, base, writerID, privPath, configYAML string) {
+	t.Helper()
+	box := filepath.Join(t.TempDir(), "config.yaml")
+	writeFile(t, box, configYAML)
+	runCargoship(t, "ghostship", "sign-config", box, "--key", privPath)
+	cp := base + "/fleet/" + writerID
+	putObjectFile(t, client, bucket, cp+"/config.yaml", box)
+	putObjectFile(t, client, bucket, cp+"/config.yaml.sig", box+".sig")
+}
+
+// startPullDaemon starts `ghostship run --config-url` in the background on a 1s interval
+// and returns a waitFor(pred) that polls the writer's heartbeat until pred holds (or
+// fails the test on timeout). The daemon is stopped via t.Cleanup.
+func startPullDaemon(t *testing.T, client *s3.Client, bucket, base, writerID, pubPath string) func(string, func(fleet.WriterStatus) bool) fleet.WriterStatus {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	cmd := exec.CommandContext(ctx, cargoshipBin, "ghostship", "run",
+		"--config-url", "s3://"+bucket+"/"+base, "--public-key", pubPath,
+		"--writer-id", writerID, "--interval", "1s", "--region", "us-east-1")
+	cmd.Env = os.Environ()
+	var buf bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &buf, &buf
+	if err := cmd.Start(); err != nil {
+		cancel()
+		t.Fatalf("start daemon: %v", err)
+	}
+	t.Cleanup(func() { cancel(); _ = cmd.Wait() })
+
+	statusKey := "writers/" + writerID + "/status.json"
+	return func(desc string, pred func(fleet.WriterStatus) bool) fleet.WriterStatus {
+		deadline := time.Now().Add(25 * time.Second)
+		for time.Now().Before(deadline) {
+			obj, err := client.GetObject(context.Background(), &s3.GetObjectInput{
+				Bucket: aws.String(bucket), Key: aws.String(statusKey),
+			})
+			if err == nil {
+				data, _ := io.ReadAll(obj.Body)
+				_ = obj.Body.Close()
+				var st fleet.WriterStatus
+				if json.Unmarshal(data, &st) == nil && pred(st) {
+					return st
+				}
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		t.Fatalf("timeout waiting for %s\ndaemon output:\n%s", desc, buf.String())
+		return fleet.WriterStatus{}
+	}
+}
+
+// TestGhostshipRun_ConfigPull_RefusesSilentScopeWidening proves #614 slice 3: a validly
+// signed config that widens scope (adds a watch path) is refused unless it carries
+// allow_scope_expansion — the daemon keeps last-good until the flag is set.
+func TestGhostshipRun_ConfigPull_RefusesSilentScopeWidening(t *testing.T) {
+	bucket := "gs-config-scope"
+	if err := createBucket(substrateURL, bucket); err != nil {
+		t.Fatalf("create bucket: %v", err)
+	}
+	src1, src2 := t.TempDir(), t.TempDir()
+	writeFile(t, filepath.Join(src1, "a.txt"), "one")
+	writeFile(t, filepath.Join(src2, "b.txt"), "two")
+
+	client := e2eS3Client(t)
+	priv, pub := fleetKeypair(t)
+
+	v1 := fmt.Sprintf("id: sc\nwriter_id: sc-1\nversion: 1\ns3_config:\n  bucket: %s\nwatch_paths:\n  - path: %s\n", bucket, src1)
+	signUploadConfig(t, client, bucket, "nas", "sc-1", priv, v1)
+
+	waitFor := startPullDaemon(t, client, bucket, "nas", "sc-1", pub)
+	waitFor("healthy on v1", func(st fleet.WriterStatus) bool {
+		return st.ConfigVersion == 1 && st.ConfigError == "" && st.Healthy()
+	})
+
+	// v2 adds a second watch path but does NOT set allow_scope_expansion → refused.
+	v2 := fmt.Sprintf("id: sc\nwriter_id: sc-1\nversion: 2\ns3_config:\n  bucket: %s\nwatch_paths:\n  - path: %s\n  - path: %s\n", bucket, src1, src2)
+	signUploadConfig(t, client, bucket, "nas", "sc-1", priv, v2)
+	st := waitFor("silent scope-widening refused (still v1)", func(st fleet.WriterStatus) bool {
+		return st.ConfigError != "" && st.ConfigVersion == 1
+	})
+	if !strings.Contains(st.ConfigError, "scope") {
+		t.Errorf("config_error should mention scope widening, got %q", st.ConfigError)
+	}
+	if len(st.Sources) != 1 {
+		t.Errorf("still-v1 writer should have 1 source, got %d", len(st.Sources))
+	}
+
+	// v3 adds the same path WITH allow_scope_expansion: true → adopted.
+	v3 := fmt.Sprintf("id: sc\nwriter_id: sc-1\nversion: 3\nallow_scope_expansion: true\ns3_config:\n  bucket: %s\nwatch_paths:\n  - path: %s\n  - path: %s\n", bucket, src1, src2)
+	signUploadConfig(t, client, bucket, "nas", "sc-1", priv, v3)
+	waitFor("scope widening adopted with allow_scope_expansion", func(st fleet.WriterStatus) bool {
+		return st.ConfigVersion == 3 && st.ConfigError == "" && len(st.Sources) == 2
+	})
+}
+
 // TestGhostshipRun_ConfigPull_KeepLastGood proves #614 slice 2b: after a good config
 // is running, a later bad (tampered) config on refresh is rejected — the daemon keeps
 // running the last-good config, keeps backing up, and surfaces config_error in its

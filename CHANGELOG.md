@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pkg/pipeline`, and the ghostship E2E (a no-change cycle now uploads nothing).
 
 ### Added
+- **No silent scope-widening for pulled configs (#614, slice 3).** A validly-signed config
+  pulled in `--config-url` mode is now refused if it **widens** what the writer reads or
+  deletes — adding/broadening watch paths, flipping `recursive` on, adding includes, removing
+  excludes, or enabling `delete_after_archive` — relative to the config it is replacing,
+  **unless** it carries an authenticated `allow_scope_expansion: true`. A signature proves the
+  operator authored the config, but expanding a fleet's footprint now takes a second, explicit,
+  signed opt-in; otherwise the daemon keeps the last-good config and surfaces the refusal in its
+  heartbeat (`config_error`). This completes the config-over-S3 trust arc (#614).
 - **Config keep-last-good for ghostship pull mode (#614, slice 2b).** In `--config-url` mode
   the daemon now re-pulls, re-verifies, and re-validates its signed config **every cycle** and
   swaps only if it is a valid signed config. On any refresh failure — unreachable S3, unsigned,

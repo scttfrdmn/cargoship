@@ -62,6 +62,15 @@ type GhostShipConfig struct {
 	// Optional (0 = unversioned); bump it on every intended config change.
 	Version int `json:"version,omitempty" yaml:"version,omitempty"`
 
+	// AllowScopeExpansion authorizes this config to widen what a writer reads or deletes
+	// relative to the config it replaces — adding/broadening watch paths, flipping
+	// recursive on, adding includes, removing excludes, or enabling delete_after_archive
+	// (see WatchScopeWidenings). It is authenticated (inside the signed bytes), so a
+	// pulled config that widens scope without this flag set to true is refused (#614): a
+	// signature alone can't silently expand a fleet's footprint. Set it deliberately on
+	// the rollout that widens.
+	AllowScopeExpansion bool `json:"allow_scope_expansion,omitempty" yaml:"allow_scope_expansion,omitempty"`
+
 	// WriterID is the fleet writer identity (#520/#604) used by `cargoship ghostship
 	// run` to isolate this box's objects under writers/<id>/. Optional: when empty the
 	// daemon falls back to ID; a --writer-id flag overrides both. Unused by the legacy
