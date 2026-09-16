@@ -32,6 +32,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pkg/pipeline`, and the ghostship E2E (a no-change cycle now uploads nothing).
 
 ### Added
+- **Stale-writer monitoring + `cargoship fleet monitor` (#630).** A new control-side
+  `cargoship fleet monitor S3_URL` periodically reads every writer's heartbeat and fires a
+  **stale-writer alert** (new `stale_writer` alert type) for any writer that hasn't checked
+  in within `--threshold` (default 2h) — a down/stuck/offline agent can't report on itself,
+  so this runs on the control machine, not the agent. Alerts go out through the same
+  configured channels as budgets (webhook/Slack/email/CloudWatch, see `cargoship alerts`)
+  and are de-duplicated per writer by the alert cooldown; each pass also evaluates budgets,
+  so one monitor loop covers both fleet-freshness and budget alerting. With no channel
+  configured it still logs the fleet state each pass. Runs on `--interval` (default 15m);
+  `--once` does a single pass for cron. Completes the #615/#630 observability arc's
+  write→read→alert path.
 - **Fleet heartbeats + `cargoship fleet status` (#615).** Every `cargoship ghostship run`
   cycle now writes a small `writers/<id>/status.json` heartbeat (writer id, hostname, a
   per-boot instance id, cargoship version, and per-source result: OK, last error, last

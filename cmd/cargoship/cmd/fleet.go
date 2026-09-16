@@ -1,9 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"os/signal"
 	"sort"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -28,6 +32,7 @@ These commands run on your control machine and only read the bucket — they do 
 need any agent's write identity. See 'cargoship ghostship' for the agent side.`,
 	}
 	cmd.AddCommand(newFleetStatusCmd())
+	cmd.AddCommand(newFleetMonitorCmd())
 	return cmd
 }
 
@@ -85,6 +90,105 @@ Examples:
 	cmd.Flags().String("region", "", "AWS region for the S3 target (auto-detected if empty)")
 	cmd.Flags().String("profile", "", "AWS profile for the S3 target")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit the fleet status as JSON")
+	return cmd
+}
+
+func newFleetMonitorCmd() *cobra.Command {
+	var (
+		threshold time.Duration
+		interval  time.Duration
+		once      bool
+	)
+	cmd := &cobra.Command{
+		Use:   "monitor S3_URL",
+		Short: "Watch a fleet and alert when a writer goes stale (#630)",
+		Long: `Periodically read every writer's heartbeat under a fleet prefix and fire a
+stale-writer alert for any writer that has not checked in within the freshness
+threshold — a writer that is down, stuck, or offline can't report on itself, so this
+runs on the control side. Each pass also evaluates budgets, so both fleet-freshness
+and budget alerts go out through the same configured channels (see 'cargoship alerts').
+
+Alerts are de-duplicated per writer by the alert cooldown; a writer alerts at most
+once per cooldown window. With no alert channel configured, this still logs the fleet
+state on every pass. Runs on an interval; --once does a single pass (for cron).
+
+Examples:
+  cargoship fleet monitor s3://backups/nas --threshold 2h --interval 15m
+  cargoship fleet monitor s3://backups/nas --once`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			bucket, prefix, err := s3pkg.ParseS3URL(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid S3 target %q: %w", args[0], err)
+			}
+			profile, _ := cmd.Flags().GetString("profile")
+			region, _ := cmd.Flags().GetString("region")
+
+			awsCfg, err := loadAWSConfig(cmd.Context(), profile, region)
+			if err != nil {
+				return fmt.Errorf("failed to load AWS config: %w", err)
+			}
+			client := s3.NewFromConfig(awsCfg)
+			if region == "" {
+				if r, rErr := s3pkg.GetBucketRegion(cmd.Context(), client, bucket); rErr == nil {
+					region = r
+					awsCfg.Region = r
+					client = s3.NewFromConfig(awsCfg)
+				}
+			}
+
+			// The Manager owns the notifier (built from the persisted alert config,
+			// #634); alerting is its whole purpose here, so a load failure is fatal.
+			mgr, mErr := loadCostManagerWithRegion(cmd.Context(), region)
+			if mErr != nil {
+				return fmt.Errorf("load cost manager (needed for alerting): %w", mErr)
+			}
+
+			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil)).With("component", "fleet-monitor")
+
+			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
+			defer stop()
+
+			check := func(ctx context.Context) error {
+				statuses, lErr := fleet.ListWriterStatuses(ctx, client, bucket, prefix)
+				if lErr != nil {
+					logger.Error("failed to list writer statuses", "err", lErr)
+					return lErr
+				}
+				now := time.Now()
+				stale := 0
+				for _, st := range statuses {
+					age := now.Sub(st.UpdatedAt)
+					if age > threshold {
+						stale++
+						logger.Warn("writer stale", "writer_id", st.WriterID, "host", st.Hostname, "age", humanizeAge(age))
+						if aErr := mgr.NotifyStaleWriter(ctx, st.WriterID, age, threshold); aErr != nil {
+							logger.Error("failed to send stale-writer alert", "writer_id", st.WriterID, "err", aErr)
+						}
+						continue
+					}
+					logger.Info("writer ok", "writer_id", st.WriterID, "age", humanizeAge(age), "healthy", st.Healthy())
+				}
+				logger.Info("fleet check complete", "writers", len(statuses), "stale", stale)
+				// Evaluate budgets through the same notifier so one monitor loop covers
+				// both fleet-freshness and budget alerting.
+				if bErr := mgr.MonitorBudgets(ctx); bErr != nil {
+					logger.Error("budget monitoring failed", "err", bErr)
+				}
+				return nil
+			}
+
+			if !once {
+				logger.Info("fleet monitor started", "threshold", threshold.String(), "interval", interval.String())
+			}
+			return runLoop(ctx, interval, once, check)
+		},
+	}
+	cmd.Flags().DurationVar(&threshold, "threshold", 2*time.Hour, "Age since last check-in after which a writer is considered stale")
+	cmd.Flags().DurationVar(&interval, "interval", 15*time.Minute, "How often to check the fleet")
+	cmd.Flags().BoolVar(&once, "once", false, "Run a single check and exit (for cron / testing)")
+	cmd.Flags().String("region", "", "AWS region for the S3 target (auto-detected if empty)")
+	cmd.Flags().String("profile", "", "AWS profile for the S3 target")
 	return cmd
 }
 

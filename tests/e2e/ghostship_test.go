@@ -172,6 +172,27 @@ func TestFleetStatus_ListsWriter(t *testing.T) {
 	}
 }
 
+// TestFleetMonitor_DetectsStale proves `fleet monitor --once` reads heartbeats and
+// flags a writer past the freshness threshold. A near-zero threshold makes the
+// just-written heartbeat count as stale, so the check runs without waiting.
+func TestFleetMonitor_DetectsStale(t *testing.T) {
+	bucket := "gs-fleet-monitor"
+	if err := createBucket(substrateURL, bucket); err != nil {
+		t.Fatalf("create bucket: %v", err)
+	}
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "a.txt"), "hello")
+
+	runCargoship(t, "ghostship", "run", src, "s3://"+bucket+"/nas",
+		"--writer-id", "mon-1", "--once", "--region", "us-east-1")
+
+	out := runCargoship(t, "fleet", "monitor", "s3://"+bucket+"/nas",
+		"--once", "--threshold", "1ns", "--interval", "1h", "--region", "us-east-1")
+	if !strings.Contains(out, "writer stale") || !strings.Contains(out, "mon-1") {
+		t.Fatalf("fleet monitor should flag mon-1 as stale, got:\n%s", out)
+	}
+}
+
 // TestGhostshipRun_IncrementalChain proves the writer-scoped incremental chain: a
 // no-change cycle uploads nothing, and a subsequent change produces a second version
 // under the same writer prefix (i.e. the prior manifest is found under writers/<id>/).
