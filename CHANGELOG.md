@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pkg/pipeline`, and the ghostship E2E (a no-change cycle now uploads nothing).
 
 ### Added
+- **`cargoship restore --all` + disaster-recovery runbook (#617).** A new `--all` flag
+  restores every file recorded in an upload's manifest in one command — whole-upload
+  recovery without enumerating paths. This makes fleet disaster recovery a one-liner
+  (`cargoship restore s3://…/writers/<id>/uploads/<uid> ./out --all`) needing only bucket
+  read + the decryption key, not the box (or writer id) that wrote it. Documented as a DR
+  runbook (`docs/enterprise/ghost-ship.md`) and proven end-to-end by
+  `TestGhostshipRun_DisasterRecovery`. `--all` is standalone (rejects combining with
+  `--hash`/`--file`/`--git-commit`/`--dvc-stage`).
 - **Writer isolation (`--writer-id`, #520)** — opt-in per-agent isolation for a fleet
   sharing one bucket. `cargoship upload`/`sync` accept `--writer-id <name>` (or
   `CARGOSHIP_WRITER_ID`; `auto` derives a stable opaque per-host id), which folds a

@@ -198,3 +198,52 @@ archival_rules:
 		t.Fatalf("expected an archival_rules ignore-warning, got:\n%s", out)
 	}
 }
+
+// TestGhostshipRun_DisasterRecovery proves the recovery property that anchors the
+// fleet trust story (#617): after a ghostship writes a backup, the ENTIRE upload can
+// be reconstructed from just the writer URL with `restore --all` — no --writer-id, no
+// --config, no local state, i.e. the box that wrote it need not exist. Every file
+// comes back byte-identical.
+func TestGhostshipRun_DisasterRecovery(t *testing.T) {
+	bucket := "gs-dr"
+	if err := createBucket(substrateURL, bucket); err != nil {
+		t.Fatalf("create bucket: %v", err)
+	}
+	src := t.TempDir()
+	files := map[string]string{
+		"greeting.txt":    "hello disaster recovery",
+		"docs/readme.md":  "# readme\nnested",
+		"data/report.csv": "a,b,c\n1,2,3\n",
+	}
+	for name, content := range files {
+		p := filepath.Join(src, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, p, content)
+	}
+
+	runCargoship(t, "ghostship", "run", src, "s3://"+bucket+"/backups",
+		"--writer-id", "lab-nas-1", "--once", "--region", "us-east-1")
+
+	client := e2eS3Client(t)
+	ids := uploadIDsUnder(t, client, bucket, "backups/writers/lab-nas-1")
+	if len(ids) != 1 {
+		t.Fatalf("want 1 upload, got %v", ids)
+	}
+	uploadURL := "s3://" + bucket + "/backups/writers/lab-nas-1/uploads/" + ids[0]
+
+	// Recover the whole upload to a fresh box — only the URL, no writer identity/state.
+	restoreDir := t.TempDir()
+	runCargoship(t, "restore", uploadURL, restoreDir, "--all", "--region", "us-east-1")
+
+	for name, want := range files {
+		got, err := os.ReadFile(findFileByBase(t, restoreDir, filepath.Base(name)))
+		if err != nil {
+			t.Fatalf("restored file missing for %s: %v", name, err)
+		}
+		if string(got) != want {
+			t.Fatalf("restored %s = %q, want %q", name, got, want)
+		}
+	}
+}
