@@ -193,6 +193,23 @@ func TestFleetMonitor_DetectsStale(t *testing.T) {
 	}
 }
 
+// TestFleetLockStatus_Runs proves the immutability posture audit runs end-to-end and
+// reports all three checks. The emulator may not implement versioning/Object Lock/
+// lifecycle, so those checks can come back UNKNOWN — the point is the command runs
+// read-only and renders every check rather than any specific verdict.
+func TestFleetLockStatus_Runs(t *testing.T) {
+	bucket := "gs-fleet-lock"
+	if err := createBucket(substrateURL, bucket); err != nil {
+		t.Fatalf("create bucket: %v", err)
+	}
+	out := runCargoship(t, "fleet", "lock-status", "s3://"+bucket+"/nas", "--region", "us-east-1")
+	for _, want := range []string{"versioning", "object-lock", "lifecycle-mpu", "Overall:"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("fleet lock-status output missing %q, got:\n%s", want, out)
+		}
+	}
+}
+
 // TestGhostshipRun_IncrementalChain proves the writer-scoped incremental chain: a
 // no-change cycle uploads nothing, and a subsequent change produces a second version
 // under the same writer prefix (i.e. the prior manifest is found under writers/<id>/).

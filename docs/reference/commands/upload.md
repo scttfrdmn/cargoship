@@ -41,3 +41,5 @@ Flag tables below are generated from the CLI and kept in sync by a drift check.
 <!-- @include: ../../gen/cli/cargoship_fleet_status.md -->
 
 <!-- @include: ../../gen/cli/cargoship_fleet_monitor.md -->
+
+<!-- @include: ../../gen/cli/cargoship_fleet_lock-status.md -->

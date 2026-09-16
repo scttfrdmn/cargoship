@@ -37,6 +37,51 @@ func TestFleetMonitor_BadURL(t *testing.T) {
 	}
 }
 
+func TestFleetLockStatus_BadURL(t *testing.T) {
+	cmd := NewFleetCmd()
+	cmd.SetArgs([]string{"lock-status", "not-an-s3-url"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected an error for a non-s3 URL, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid S3 target") {
+		t.Errorf("error = %q, want it to mention the invalid S3 target", err)
+	}
+}
+
+func TestRenderLockStatus(t *testing.T) {
+	report := fleet.ImmutabilityReport{
+		Bucket: "b",
+		Findings: []fleet.ImmutabilityFinding{
+			{Check: "versioning", Severity: fleet.SevOK, Summary: "Enabled"},
+			{Check: "object-lock", Severity: fleet.SevCritical, Summary: "not configured",
+				Detail: "a stolen delete credential can destroy history", Remediation: "enable Object Lock"},
+			{Check: "lifecycle-mpu", Severity: fleet.SevWarn, Summary: "no AbortIncompleteMultipartUpload rule",
+				Remediation: "add an AbortIncompleteMultipartUpload rule"},
+		},
+	}
+	cmd := NewFleetCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	renderLockStatus(cmd, report)
+	s := out.String()
+	for _, want := range []string{
+		"CHECK", "STATUS", "DETAIL", "versioning", "OK",
+		"object-lock", "CRITICAL", "lifecycle-mpu", "WARN",
+		"Overall: CRITICAL", "Remediation:", "enable Object Lock",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("lock-status output missing %q:\n%s", want, s)
+		}
+	}
+	// An OK finding must NOT appear in the remediation block.
+	if idx := strings.Index(s, "Remediation:"); idx >= 0 && strings.Contains(s[idx:], "versioning") {
+		t.Errorf("OK finding should not be listed under Remediation:\n%s", s)
+	}
+}
+
 func TestRenderFleetTable_Empty(t *testing.T) {
 	cmd := NewFleetCmd()
 	var out bytes.Buffer

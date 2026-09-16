@@ -68,10 +68,75 @@ with `--platform linux/amd64` to avoid exec-format errors.
 
 ## Monitoring
 
+Each backup cycle writes a heartbeat to `writers/<id>/status.json`. Read the fleet from
+the control side (read-only — no agent identity needed):
+
+```bash
+cargoship fleet status  s3://my-bucket/backups            # last check-in, health, per writer
+cargoship fleet monitor s3://my-bucket/backups --once     # alert on writers gone stale
+```
+
+`fleet monitor` fires a stale-writer alert (and evaluates budgets) through the channels you
+configure with `cargoship alerts`; run it on a schedule from the control machine. Local
+container health is still just:
+
 ```bash
 docker ps | grep cargoship-ghost
 docker logs cargoship-ghost-container --tail 20
 ```
+
+## Retention, lifecycle & immutability
+
+The agent is **write-only and delete-free** — its IAM policy grants no `s3:DeleteObject`, so
+a compromised agent can only append to its own prefix, never destroy history. The flip side:
+**all deletion happens on the control machine**, where the delete-capable credential lives.
+
+### Control-side retention
+
+Prune old dataset versions from the control machine, never the agent:
+
+```bash
+cargoship dataset prune --dataset-id <id> --keep-last 30 --region <r>
+```
+
+`dataset prune` needs `s3:DeleteObjects` — exactly the permission the agent withholds — so it
+belongs to an operator role, not the fleet. (It does not yet support encrypted-manifest
+datasets; those are retained until that lands.)
+
+### Lifecycle hygiene (the agent never cleans up)
+
+The agent's partial/rollback cleanup is intentionally disabled (it can't delete). Add an S3
+lifecycle rule so failed multipart uploads don't accrue cost forever:
+
+- `AbortIncompleteMultipartUpload` after e.g. 7 days.
+
+You can apply lifecycle rules with `cargoship lifecycle` or the AWS console/CLI.
+
+### Immutability backstop (versioning + Object Lock)
+
+Enable **S3 Versioning + Object Lock (governance mode)** on the fleet bucket so that even a
+*stolen delete-capable control credential* can't destroy history within the retention window.
+Object Lock requires versioning and is set at (or, on a versioned bucket, via
+`PutObjectLockConfiguration` per the AWS docs) bucket setup — it is deliberately **not** agent
+code. Governance mode can be bypassed only by a principal holding
+`s3:BypassGovernanceRetention`; compliance mode cannot be bypassed by anyone, including root.
+
+Verify the backstop is actually in place (read-only, changes nothing):
+
+```bash
+cargoship fleet lock-status s3://my-bucket/backups
+```
+
+It audits versioning, Object Lock (mode + default retention), and the abort-incomplete-MPU
+lifecycle rule, and prints remediation for anything missing.
+
+### CMK custody is the long-term recovery SPOF
+
+Use a **dedicated fleet CMK**: the agent gets `kms:GenerateDataKey` (+ `kms:Decrypt`, which
+AWS requires for SSE-KMS multipart uploads) on that one key; a separate restore/break-glass
+role holds `kms:Decrypt`. Be honest about the trade: with no scheduled deletion and immutable
+history, **losing the CMK means losing the data**. Treat the key as the crown jewel — enable
+key rotation, back up / multi-Region the key material, and guard its key policy accordingly.
 
 ## Disaster recovery: restore a writer to a new box
 
