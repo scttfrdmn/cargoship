@@ -33,6 +33,7 @@ need any agent's write identity. See 'cargoship ghostship' for the agent side.`,
 	}
 	cmd.AddCommand(newFleetStatusCmd())
 	cmd.AddCommand(newFleetMonitorCmd())
+	cmd.AddCommand(newFleetLockStatusCmd())
 	return cmd
 }
 
@@ -190,6 +191,98 @@ Examples:
 	cmd.Flags().String("region", "", "AWS region for the S3 target (auto-detected if empty)")
 	cmd.Flags().String("profile", "", "AWS profile for the S3 target")
 	return cmd
+}
+
+func newFleetLockStatusCmd() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "lock-status S3_URL",
+		Short: "Audit a fleet bucket's immutability posture (versioning, Object Lock, lifecycle hygiene)",
+		Long: `Report whether a fleet bucket can resist a stolen delete-capable credential and
+whether failed-upload hygiene is in place — read-only, it never changes the bucket.
+
+Because the ghostship agent is delete-free by design, the ransomware backstop lives in
+the bucket itself: S3 Versioning + Object Lock protect history even if a delete-capable
+credential is compromised, and a lifecycle AbortIncompleteMultipartUpload rule cleans up
+failed uploads the agent won't. This command checks all three and suggests remediation.
+
+Object Lock, versioning, and lifecycle are bucket-level, so any prefix in the S3 URL is
+ignored — the posture is reported for the whole bucket.
+
+Examples:
+  cargoship fleet lock-status s3://backups/nas
+  cargoship fleet lock-status s3://backups/nas --json`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			bucket, _, err := s3pkg.ParseS3URL(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid S3 target %q: %w", args[0], err)
+			}
+			profile, _ := cmd.Flags().GetString("profile")
+			region, _ := cmd.Flags().GetString("region")
+
+			awsCfg, err := loadAWSConfig(cmd.Context(), profile, region)
+			if err != nil {
+				return fmt.Errorf("failed to load AWS config: %w", err)
+			}
+			client := s3.NewFromConfig(awsCfg)
+			if region == "" {
+				if r, rErr := s3pkg.GetBucketRegion(cmd.Context(), client, bucket); rErr == nil {
+					awsCfg.Region = r
+					client = s3.NewFromConfig(awsCfg)
+				}
+			}
+
+			report, err := fleet.AuditBucketImmutability(cmd.Context(), client, bucket)
+			if err != nil {
+				return fmt.Errorf("audit bucket immutability: %w", err)
+			}
+
+			if asJSON {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(report)
+			}
+			renderLockStatus(cmd, report)
+			return nil
+		},
+	}
+	cmd.Flags().String("region", "", "AWS region for the S3 target (auto-detected if empty)")
+	cmd.Flags().String("profile", "", "AWS profile for the S3 target")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit the posture report as JSON")
+	return cmd
+}
+
+// renderLockStatus prints the posture table, an overall rollup, and remediation for
+// any non-OK finding.
+func renderLockStatus(cmd *cobra.Command, report fleet.ImmutabilityReport) {
+	out := cmd.OutOrStdout()
+	tw := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
+	_, _ = fmt.Fprintln(tw, "CHECK\tSTATUS\tDETAIL")
+	for _, f := range report.Findings {
+		detail := f.Detail
+		if detail == "" {
+			detail = f.Summary
+		} else {
+			detail = f.Summary + " — " + detail
+		}
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", f.Check, f.Severity, detail)
+	}
+	_ = tw.Flush()
+	_, _ = fmt.Fprintf(out, "\nOverall: %s\n", report.Worst())
+
+	var remediations []fleet.ImmutabilityFinding
+	for _, f := range report.Findings {
+		if f.Severity != fleet.SevOK && f.Remediation != "" {
+			remediations = append(remediations, f)
+		}
+	}
+	if len(remediations) > 0 {
+		_, _ = fmt.Fprintln(out, "\nRemediation:")
+		for _, f := range remediations {
+			_, _ = fmt.Fprintf(out, "  %s: %s\n", f.Check, f.Remediation)
+		}
+	}
 }
 
 // renderFleetTable prints a one-row-per-writer table. now is injectable so the age

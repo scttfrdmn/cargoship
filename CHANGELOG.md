@@ -32,6 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pkg/pipeline`, and the ghostship E2E (a no-change cycle now uploads nothing).
 
 ### Added
+- **Fleet-bucket immutability audit + `cargoship fleet lock-status` (#616).** A new read-only
+  control-side command audits whether a fleet bucket can resist a stolen delete-capable
+  credential: **S3 Versioning**, **Object Lock** (enabled? mode + default retention, with a
+  governance-bypass caveat), and a lifecycle **AbortIncompleteMultipartUpload** hygiene rule
+  (the agent is delete-free and can't clean up failed uploads itself). It prints a
+  findings table with an overall rollup + remediation, or `--json`; a check it can't complete
+  (e.g. AccessDenied) is reported as `UNKNOWN` rather than failing the audit. Changes nothing
+  on the bucket. Paired with a new operator guide covering **control-side retention** (why
+  `dataset prune` runs off the control machine, not the agent), **lifecycle hygiene**, the
+  **versioning + Object Lock backstop**, and the **CMK-custody recovery SPOF** (losing the
+  fleet CMK = losing the data). Retention/deletion deliberately stays off the write-only
+  agent; enabling Object Lock is guided setup, not agent code.
 - **Stale-writer monitoring + `cargoship fleet monitor` (#630).** A new control-side
   `cargoship fleet monitor S3_URL` periodically reads every writer's heartbeat and fires a
   **stale-writer alert** (new `stale_writer` alert type) for any writer that hasn't checked
