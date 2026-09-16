@@ -15,10 +15,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -355,6 +357,85 @@ func TestGhostshipRun_ConfigPull_RejectsTampered(t *testing.T) {
 	// Nothing should have been backed up.
 	if ids := uploadIDsUnder(t, client, bucket, "writers/pull-1"); len(ids) != 0 {
 		t.Fatalf("tampered config must not back up anything, got %d uploads", len(ids))
+	}
+}
+
+// TestGhostshipRun_ConfigPull_KeepLastGood proves #614 slice 2b: after a good config
+// is running, a later bad (tampered) config on refresh is rejected — the daemon keeps
+// running the last-good config, keeps backing up, and surfaces config_error in its
+// heartbeat rather than adopting the bad config or stopping.
+func TestGhostshipRun_ConfigPull_KeepLastGood(t *testing.T) {
+	bucket := "gs-config-keeplast"
+	if err := createBucket(substrateURL, bucket); err != nil {
+		t.Fatalf("create bucket: %v", err)
+	}
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "a.txt"), "one")
+
+	client := e2eS3Client(t)
+	good := fmt.Sprintf("id: kl\nwriter_id: kl-1\nversion: 1\ns3_config:\n  bucket: %s\nwatch_paths:\n  - path: %s\n", bucket, src)
+	pub := signAndUploadConfig(t, client, bucket, "nas", "kl-1", good)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, cargoshipBin, "ghostship", "run",
+		"--config-url", "s3://"+bucket+"/nas", "--public-key", pub,
+		"--writer-id", "kl-1", "--interval", "1s", "--region", "us-east-1")
+	cmd.Env = os.Environ()
+	var buf bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &buf, &buf
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start daemon: %v", err)
+	}
+	defer func() { cancel(); _ = cmd.Wait() }()
+
+	tryStatus := func() (fleet.WriterStatus, bool) {
+		obj, err := client.GetObject(context.Background(), &s3.GetObjectInput{
+			Bucket: aws.String(bucket), Key: aws.String("writers/kl-1/status.json"),
+		})
+		if err != nil {
+			return fleet.WriterStatus{}, false
+		}
+		defer func() { _ = obj.Body.Close() }()
+		data, _ := io.ReadAll(obj.Body)
+		var st fleet.WriterStatus
+		if json.Unmarshal(data, &st) != nil {
+			return fleet.WriterStatus{}, false
+		}
+		return st, true
+	}
+	waitFor := func(desc string, pred func(fleet.WriterStatus) bool) fleet.WriterStatus {
+		deadline := time.Now().Add(25 * time.Second)
+		for time.Now().Before(deadline) {
+			if st, ok := tryStatus(); ok && pred(st) {
+				return st
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		cancel()
+		_ = cmd.Wait()
+		t.Fatalf("timeout waiting for %s\ndaemon output:\n%s", desc, buf.String())
+		return fleet.WriterStatus{}
+	}
+
+	// 1) The good config (v1) is running cleanly.
+	waitFor("first healthy heartbeat on config v1", func(st fleet.WriterStatus) bool {
+		return st.ConfigVersion == 1 && st.ConfigError == "" && st.Healthy()
+	})
+
+	// 2) Replace the config object with tampered bytes (the signature no longer matches),
+	//    and change a source file so a backup under the last-good config is observable.
+	tampered := fmt.Sprintf("id: evil\nwriter_id: kl-1\nversion: 99\ns3_config:\n  bucket: %s\nwatch_paths:\n  - path: %s\n", bucket, src)
+	putObjectBytes(t, client, bucket, "nas/fleet/kl-1/config.yaml", []byte(tampered))
+	writeFile(t, filepath.Join(src, "a.txt"), "two")
+
+	// 3) The daemon rejects the bad config: it surfaces config_error, keeps running v1
+	//    (never adopts version 99), and stays healthy (still backing up last-good).
+	st := waitFor("config_error set while still running last-good v1", func(st fleet.WriterStatus) bool {
+		return st.ConfigError != "" && st.ConfigVersion == 1
+	})
+	if !st.Healthy() {
+		t.Errorf("daemon should keep backing up under the last-good config: %+v", st.Sources)
 	}
 }
 

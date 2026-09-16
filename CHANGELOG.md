@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pkg/pipeline`, and the ghostship E2E (a no-change cycle now uploads nothing).
 
 ### Added
+- **Config keep-last-good for ghostship pull mode (#614, slice 2b).** In `--config-url` mode
+  the daemon now re-pulls, re-verifies, and re-validates its signed config **every cycle** and
+  swaps only if it is a valid signed config. On any refresh failure — unreachable S3, unsigned,
+  bad signature, or invalid config — it **keeps running the last-good config**, keeps backing
+  up, and surfaces the failure in its heartbeat (`config_error`) while continuing to report the
+  version it is actually running. A fleet therefore stays up on the last config it trusted
+  rather than stopping or adopting a bad one, and a stale/rejected config is visible via
+  `cargoship fleet status`.
 - **Signed config-over-S3 pull for ghostship (#614, slice 2a).** `cargoship ghostship run`
   gains a third mode, `--config-url s3://BUCKET/BASE --public-key pub.pem --writer-id ID`:
   the agent pulls its config from a **separate control prefix** (`BASE/fleet/<id>/config.yaml`

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"crypto/ed25519"
 	"fmt"
 	"log/slog"
 	"os"
@@ -79,7 +80,14 @@ Examples:
 				sources       []syncRunParams
 				effInterval   = interval
 				configVersion int
+				configError   string
 				err           error
+
+				// Set only in --config-url (pull) mode, so a per-cycle refresh can
+				// re-pull + re-verify the config against the same key/prefix.
+				pullBucket        string
+				pullControlPrefix string
+				pullPub           ed25519.PublicKey
 			)
 
 			// AWS client is built up front because --config-url pulls the config from S3
@@ -117,6 +125,7 @@ Examples:
 					return fmt.Errorf("public key: %w", kerr)
 				}
 				controlPrefix := fleet.ControlPrefix(base, writerID)
+				pullBucket, pullControlPrefix, pullPub = bucket, controlPrefix, pub
 				raw, pErr := fleet.PullSignedConfig(cmd.Context(), s3Client, bucket, controlPrefix, pub)
 				if pErr != nil {
 					return fmt.Errorf("pull signed config: %w", pErr)
@@ -217,13 +226,61 @@ Examples:
 					costMgr = mgr
 				}
 			}
-			for i := range sources {
-				sources[i].s3Client = s3Client
-				sources[i].costMgr = costMgr
+			attachClients := func(srcs []syncRunParams) {
+				for i := range srcs {
+					srcs[i].s3Client = s3Client
+					srcs[i].costMgr = costMgr
+				}
 			}
+			attachClients(sources)
 
 			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil)).With(
 				"component", "ghostship", "writer_id", displayWriterID(writerID))
+
+			// #614 slice 2b: in pull mode, re-pull + re-verify + re-validate the config
+			// each cycle and swap only if it is a valid signed config. On any failure
+			// (unreachable, unsigned, bad signature, invalid) keep running the last-good
+			// config and surface the error in the heartbeat — a fleet stays up on the last
+			// config it trusted rather than stopping or adopting a bad one. nil in the
+			// file/flag modes (config is static there).
+			var refreshConfig func(context.Context)
+			if configURL != "" {
+				refreshConfig = func(ctx context.Context) {
+					raw, rErr := fleet.PullSignedConfig(ctx, s3Client, pullBucket, pullControlPrefix, pullPub)
+					if rErr != nil {
+						configError = rErr.Error()
+						logger.Warn("config refresh failed; keeping last-good", "err", rErr, "running_version", configVersion)
+						return
+					}
+					cfg, uErr := unmarshalGhostshipConfig(raw)
+					if uErr != nil {
+						configError = uErr.Error()
+						logger.Warn("config refresh: parse failed; keeping last-good", "err", uErr)
+						return
+					}
+					if hasConfigErrors(launch.ValidateConfig(cfg)) {
+						configError = "pulled config failed validation"
+						logger.Warn("config refresh: invalid; keeping last-good", "running_version", configVersion)
+						return
+					}
+					_, newSources, warnings, bErr := buildRunPlan(cfg, writerID, d)
+					if bErr != nil {
+						configError = bErr.Error()
+						logger.Warn("config refresh: plan failed; keeping last-good", "err", bErr)
+						return
+					}
+					attachClients(newSources)
+					if cfg.Version != configVersion {
+						logger.Info("adopted new config", "version", cfg.Version, "previous_version", configVersion, "sources", len(newSources))
+					}
+					for _, w := range warnings {
+						logger.Warn("config warning", "warning", w)
+					}
+					sources = newSources
+					configVersion = cfg.Version
+					configError = ""
+				}
+			}
 
 			// Outbound-only daemon; stop cleanly on SIGINT/SIGTERM.
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
@@ -238,11 +295,29 @@ Examples:
 				host = "unknown"
 			}
 			statusBySource := make(map[string]*fleet.SourceStatus, len(sources))
-			for _, p := range sources {
-				statusBySource[p.sourcePath] = &fleet.SourceStatus{Path: p.sourcePath}
-			}
+			firstCycle := true
 
 			cycle := func(ctx context.Context) error {
+				// Re-pull the config before backing up (pull mode), except on the very
+				// first cycle, which uses the config already pulled + verified at startup.
+				if refreshConfig != nil && !firstCycle {
+					refreshConfig(ctx)
+				}
+				firstCycle = false
+
+				// Rebuild the per-source status accumulator for the current sources,
+				// preserving prior state (LastSuccess) for paths that carried over and
+				// dropping paths a new config removed.
+				next := make(map[string]*fleet.SourceStatus, len(sources))
+				for _, p := range sources {
+					if prev, ok := statusBySource[p.sourcePath]; ok {
+						next[p.sourcePath] = prev
+					} else {
+						next[p.sourcePath] = &fleet.SourceStatus{Path: p.sourcePath}
+					}
+				}
+				statusBySource = next
+
 				var firstErr error
 				for _, p := range sources {
 					srcLog := logger.With("source", p.sourcePath,
@@ -289,6 +364,7 @@ Examples:
 					InstanceID:       instanceID,
 					CargoshipVersion: versionpkg.Version,
 					ConfigVersion:    configVersion,
+					ConfigError:      configError,
 					UpdatedAt:        time.Now(),
 					Sources:          sts,
 				}
