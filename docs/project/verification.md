@@ -26,6 +26,7 @@ marketing; a claim with no backing evidence does not belong here as "Verified."
 | Capability | Status | Evidence |
 |---|---|---|
 | Byte-exact round-trip: upload → restore preserves bytes | Verified | `` `make:torture` ``, `` `report` ``, `` `test:TestArchiverStage_Process_NoTruncation` `` |
+| Writer isolation (#520): upload → restore byte-exact under `writers/<id>/` | Verified | `` `test:TestWriterIsolationRoundTrip` `` (emulator + real S3), `` `report` `` |
 | Single-file random access via the 2.1 frame index (one ranged GET) | Verified | `` `test:TestFrameIndexRandomAccess` ``, `` `test:TestSelectiveExtractorFrameRestore` ``, `` `make:torture` `` |
 | Data-level integrity check (`verify --deep`: chunk + file + frame) | Verified | `` `cmd:verify` ``, `` `test:TestDeepVerifyFrameIndex` `` |
 | Per-frame content integrity — a tampered ranged fetch is rejected before decode | Verified | `` `test:TestFrameChecksumCatchesTamperedRange` ``, `` `test:TestArchiverStage_Process_Frames` `` |
