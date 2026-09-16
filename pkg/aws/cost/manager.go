@@ -24,6 +24,7 @@ type Manager struct {
 	reporter      *CostReporter
 	budgetTracker *BudgetTracker
 	notifier      *BudgetAlertNotifier // Issue #133: Budget alert notifier
+	alertConfig   *BudgetAlertConfig   // #630: persisted alert config (nil = defaults); secrets sourced from env
 	store         BudgetStore          // #246: durable budget limits + cost ledger
 	logger        *slog.Logger
 	awsConfig     aws.Config // Issue #147 Phase 4: Needed for alert notification
@@ -128,15 +129,12 @@ func newManagerWithStore(cfg *config.CostControlConfig, awsCfg aws.Config, logge
 		alertCooldown:  24 * time.Hour, // Don't spam alerts
 	}
 
-	// Issue #133: Initialize budget alert notifier
-	alertConfig := DefaultBudgetAlertConfig()
-	notifier := NewBudgetAlertNotifier(alertConfig, awsCfg)
-
 	// Load persisted budget state so `budget set` survives across CLI
 	// invocations (#241) and recorded spend is rehydrated across restarts (#246).
 	// Budgets from the config file (if any) take precedence over the persisted
 	// store for the same project ID; the recorded ledger seeds the reporter so
 	// `budget status` reflects prior uploads.
+	var loadedAlert *BudgetAlertConfig
 	if state, _, err := store.Load(); err != nil {
 		logger.Warn("failed to load persisted budget store", "error", err)
 	} else {
@@ -156,7 +154,17 @@ func newManagerWithStore(cfg *config.CostControlConfig, awsCfg aws.Config, logge
 			cfg.GlobalBudget = state.GlobalBudget
 		}
 		reporter.SeedRecords(state.Records)
+		loadedAlert = state.AlertConfig // #630: persisted alert config (may be nil)
 	}
+
+	// #133/#630: build the alert notifier from the persisted config (secrets from
+	// env), else disabled defaults. A nil loadedAlert leaves m.alertConfig nil so
+	// GetAlertConfig falls back to defaults.
+	effectiveAlert := loadedAlert
+	if effectiveAlert == nil {
+		effectiveAlert = DefaultBudgetAlertConfig()
+	}
+	notifier := NewBudgetAlertNotifier(withSecretsFromEnv(effectiveAlert), awsCfg)
 
 	return &Manager{
 		config:        cfg,
@@ -164,6 +172,7 @@ func newManagerWithStore(cfg *config.CostControlConfig, awsCfg aws.Config, logge
 		reporter:      reporter,
 		budgetTracker: budgetTracker,
 		notifier:      notifier,
+		alertConfig:   loadedAlert,
 		store:         store,
 		logger:        logger.With("component", "cost-manager"),
 		awsConfig:     awsCfg, // Issue #147 Phase 4: For alert notification
@@ -186,6 +195,7 @@ func (m *Manager) saveState() error {
 		ProjectBudgets: m.config.ProjectBudgets,
 		Records:        records,
 		GlobalBudget:   m.config.GlobalBudget,
+		AlertConfig:    m.alertConfig, // #630: persist alert config alongside budgets (secrets are json:"-")
 	}
 	// Load the current token first so a Phase B S3 store can do a CAS write; the
 	// local store ignores it. A load error still attempts an unconditional save.
@@ -690,36 +700,45 @@ func (m *Manager) GenerateNIHComplianceReport(budgetID, grantNumber string) (*Co
 	return m.reporter.GenerateNIHComplianceReport(budgetID, grantNumber)
 }
 
-// GetAlertConfig returns the current alert configuration (Issue #147 Phase 4)
+// GetAlertConfig returns the current alert configuration (Issue #147 Phase 4, #630):
+// the persisted config (or disabled defaults when none has been configured), with
+// secrets filled from the environment.
 func (m *Manager) GetAlertConfig() *BudgetAlertConfig {
-	// TODO: Load from persistent storage (file, database, etc.)
-	// For now, return default config
-	return DefaultBudgetAlertConfig()
+	base := m.alertConfig
+	if base == nil {
+		base = DefaultBudgetAlertConfig()
+	}
+	return withSecretsFromEnv(base)
 }
 
-// UpdateAlertConfig updates the alert configuration (Issue #147 Phase 4)
+// UpdateAlertConfig validates, persists, and activates a new alert configuration
+// (Issue #147 Phase 4, #630). Validation is done against the env-filled config so a
+// secret supplied via the environment (e.g. CARGOSHIP_SLACK_WEBHOOK_URL) satisfies the
+// "required when enabled" checks. The non-secret config is persisted to the budget
+// store (secrets are json:"-" and never written); the live notifier is rebuilt so
+// subsequent alerts actually deliver.
 func (m *Manager) UpdateAlertConfig(config *BudgetAlertConfig) error {
 	if config == nil {
 		return fmt.Errorf("alert config cannot be nil")
 	}
-
-	// TODO: Save to persistent storage (file, database, etc.)
-	// For now, just validate the config
-	if config.EmailEnabled {
-		if config.SMTPHost == "" {
+	effective := withSecretsFromEnv(config)
+	if effective.EmailEnabled {
+		if effective.SMTPHost == "" {
 			return fmt.Errorf("SMTP host is required when email is enabled")
 		}
-		if len(config.EmailRecipients) == 0 {
+		if len(effective.EmailRecipients) == 0 {
 			return fmt.Errorf("email recipients are required when email is enabled")
 		}
 	}
-
-	if config.SlackEnabled {
-		if config.SlackWebhookURL == "" {
-			return fmt.Errorf("slack webhook URL is required when slack is enabled")
-		}
+	if effective.SlackEnabled && effective.SlackWebhookURL == "" {
+		return fmt.Errorf("slack webhook URL is required when slack is enabled (pass --webhook-url, or set %s)", envSlackWebhookURL)
 	}
 
+	m.alertConfig = config
+	if err := m.saveState(); err != nil {
+		return fmt.Errorf("persist alert config: %w", err)
+	}
+	m.notifier = NewBudgetAlertNotifier(effective, m.awsConfig)
 	return nil
 }
 

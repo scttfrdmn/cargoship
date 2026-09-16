@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/smtp"
+	"os"
 	"strings"
 	"time"
 
@@ -16,6 +17,42 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 )
+
+// Alert secret environment variables (#630). Alert secrets are never persisted
+// (they are json:"-" on BudgetAlertConfig); they are sourced from the environment at
+// notifier-build time, matching how the fleet delivers credentials (env / secrets).
+const (
+	envSMTPPassword    = "CARGOSHIP_SMTP_PASSWORD"
+	envSlackWebhookURL = "CARGOSHIP_SLACK_WEBHOOK_URL"
+	envWebhookURL      = "CARGOSHIP_WEBHOOK_URL"
+)
+
+// withSecretsFromEnv returns a shallow copy of cfg with alert secrets filled from the
+// environment when the corresponding variable is set and the field is not already set
+// in-process (so an explicit flag still works for the current process). It never logs
+// or persists secrets.
+func withSecretsFromEnv(cfg *BudgetAlertConfig) *BudgetAlertConfig {
+	if cfg == nil {
+		return nil
+	}
+	c := *cfg
+	if c.SMTPPassword == "" {
+		if v := os.Getenv(envSMTPPassword); v != "" {
+			c.SMTPPassword = v
+		}
+	}
+	if c.SlackWebhookURL == "" {
+		if v := os.Getenv(envSlackWebhookURL); v != "" {
+			c.SlackWebhookURL = v
+		}
+	}
+	if c.WebhookURL == "" {
+		if v := os.Getenv(envWebhookURL); v != "" {
+			c.WebhookURL = v
+		}
+	}
+	return &c
+}
 
 // BudgetAlert represents a budget threshold alert
 type BudgetAlert struct {

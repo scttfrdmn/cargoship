@@ -68,6 +68,10 @@ type s3Store struct {
 	// loadedGlobalBudget is the global budget observed at Load time, carried
 	// through a Save so a records-only write doesn't wipe it.
 	loadedGlobalBudget *config.GlobalBudget
+
+	// loadedAlertConfig is the alert config observed at Load time, carried through a
+	// Save so a records-only write doesn't wipe it (#630).
+	loadedAlertConfig *BudgetAlertConfig
 }
 
 // s3Token is the concrete payload serialized into the opaque cost.Token. It maps
@@ -114,6 +118,7 @@ type globalDoc struct {
 	Version      int                  `json:"version"`
 	Records      []CostRecord         `json:"records,omitempty"`
 	GlobalBudget *config.GlobalBudget `json:"global_budget,omitempty"`
+	AlertConfig  *BudgetAlertConfig   `json:"alert_config,omitempty"` // #630
 }
 
 // parseStoreSpec classifies a budget-store location. An empty spec, or any value
@@ -211,6 +216,8 @@ func (s *s3Store) loadFromS3() (LedgerState, Token, error) {
 			tokenData.Global = etag
 			s.loadedGlobalBudget = gd.GlobalBudget
 			state.GlobalBudget = gd.GlobalBudget
+			s.loadedAlertConfig = gd.AlertConfig
+			state.AlertConfig = gd.AlertConfig
 		}
 	}
 
@@ -275,7 +282,11 @@ func (s *s3Store) Save(state LedgerState, token Token) error {
 	if gb == nil {
 		gb = s.loadedGlobalBudget
 	}
-	gdoc := globalDoc{Version: StoreVersion, Records: globalRecords, GlobalBudget: gb}
+	ac := state.AlertConfig
+	if ac == nil {
+		ac = s.loadedAlertConfig
+	}
+	gdoc := globalDoc{Version: StoreVersion, Records: globalRecords, GlobalBudget: gb, AlertConfig: ac}
 	mineGlobal := recordsForProject(newRecords, "", state.ProjectBudgets)
 	if err := s.saveObject(s.globalKey(), prev.Global, gdoc, mineGlobal); err != nil {
 		return err
@@ -375,6 +386,9 @@ func mergeDoc(doc any, freshBody []byte, mineRecords []CostRecord) ([]byte, erro
 		d.Records = unionRecords(fresh.Records, mineRecords)
 		if d.GlobalBudget == nil {
 			d.GlobalBudget = fresh.GlobalBudget
+		}
+		if d.AlertConfig == nil {
+			d.AlertConfig = fresh.AlertConfig
 		}
 		return json.MarshalIndent(d, "", "  ")
 	default:

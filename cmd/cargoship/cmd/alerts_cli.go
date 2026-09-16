@@ -444,6 +444,15 @@ func runAlertsConfigure(ctx context.Context, channel string, cmd *cobra.Command)
 		return fmt.Errorf("failed to save alert configuration: %w", err)
 	}
 
+	// #630: secrets are deliberately not persisted (they're json:"-"). Tell the user
+	// to provide them to the daemon via the environment so delivery actually works.
+	if pw, _ := cmd.Flags().GetString("smtp-password"); pw != "" {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "note: --smtp-password is not persisted; set CARGOSHIP_SMTP_PASSWORD in the daemon's environment for delivery")
+	}
+	if wh, _ := cmd.Flags().GetString("webhook-url"); wh != "" {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "note: --webhook-url is not persisted; set CARGOSHIP_SLACK_WEBHOOK_URL / CARGOSHIP_WEBHOOK_URL in the daemon's environment for delivery")
+	}
+
 	return nil
 }
 
