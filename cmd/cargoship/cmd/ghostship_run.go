@@ -24,6 +24,8 @@ import (
 func newGhostshipRunCmd() *cobra.Command {
 	var (
 		configPath    string
+		configURL     string
+		publicKeyPath string
 		interval      time.Duration
 		once          bool
 		flagWriterID  string
@@ -43,19 +45,25 @@ func newGhostshipRunCmd() *cobra.Command {
 sync', just scheduled and headless. Each cycle uploads only what changed since the
 previous manifest.
 
-Two forms:
+Three forms:
   Single source (flags):  cargoship ghostship run SOURCE_DIR s3://BUCKET/PREFIX --writer-id ID
   Config file (fleet):    cargoship ghostship run --config box.yaml
+  Signed config (pull):   cargoship ghostship run --config-url s3://BUCKET/BASE \
+                            --public-key pub.pem --writer-id ID
 
 With a config file, each entry in 'watch_paths' is backed up as its own source under
 one writer prefix (writers/<id>/). 'archival_rules' are ignored in sync mode (they
-belong to the legacy per-file model). Outbound-only: no inbound port. Stops cleanly on
-SIGINT/SIGTERM; --once runs a single cycle (for cron).
+belong to the legacy per-file model).
+
+With --config-url, the config is PULLED from BASE/fleet/<id>/config.yaml and must
+verify against the ed25519 --public-key (the agent bakes only the public key). An
+unsigned, wrong-key, or tampered config is refused. Outbound-only: no inbound port.
+Stops cleanly on SIGINT/SIGTERM; --once runs a single cycle (for cron).
 
 Examples:
   cargoship ghostship run /volume1/Documents s3://backups/nas --writer-id lab-nas-1
   cargoship ghostship run --config /etc/cargoship/box.yaml --interval 30m
-  cargoship ghostship run --config box.yaml --once`,
+  cargoship ghostship run --config-url s3://backups/nas --public-key /etc/cargoship/fleet.pub --writer-id lab-nas-1`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := pipeline.ValidateShardStrategy(shardStrategy); err != nil {
@@ -74,7 +82,73 @@ Examples:
 				err           error
 			)
 
-			if configPath != "" {
+			// AWS client is built up front because --config-url pulls the config from S3
+			// before sources are known.
+			awsCfg, cerr := config.LoadDefaultConfig(cmd.Context(), config.WithRegion(region))
+			if cerr != nil {
+				return fmt.Errorf("failed to load AWS config: %w", cerr)
+			}
+			s3Client := s3.NewFromConfig(awsCfg)
+
+			if configURL != "" {
+				if configPath != "" || len(args) != 0 {
+					return fmt.Errorf("--config-url cannot be combined with --config or positional args")
+				}
+				if publicKeyPath == "" {
+					return fmt.Errorf("--public-key is required with --config-url (the trusted config-signing key)")
+				}
+				bucket, base, perr := parseS3URL(configURL)
+				if perr != nil {
+					return fmt.Errorf("invalid --config-url: %w", perr)
+				}
+				writerID, err = pipeline.ResolveWriterID(flagWriterID)
+				if err != nil {
+					return fmt.Errorf("invalid --writer-id: %w", err)
+				}
+				if writerID == "" {
+					return fmt.Errorf("--config-url requires a writer id (--writer-id or CARGOSHIP_WRITER_ID) to locate its config")
+				}
+				pubPEM, rerr := os.ReadFile(publicKeyPath)
+				if rerr != nil {
+					return fmt.Errorf("read public key %s: %w", publicKeyPath, rerr)
+				}
+				pub, kerr := fleet.LoadConfigPublicKey(pubPEM)
+				if kerr != nil {
+					return fmt.Errorf("public key: %w", kerr)
+				}
+				controlPrefix := fleet.ControlPrefix(base, writerID)
+				raw, pErr := fleet.PullSignedConfig(cmd.Context(), s3Client, bucket, controlPrefix, pub)
+				if pErr != nil {
+					return fmt.Errorf("pull signed config: %w", pErr)
+				}
+				cfg, uErr := unmarshalGhostshipConfig(raw)
+				if uErr != nil {
+					return uErr
+				}
+				issues := launch.ValidateConfig(cfg)
+				if hasConfigErrors(issues) {
+					for _, is := range issues {
+						if is.Severity == launch.SeverityError {
+							_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "config error: %s: %s\n", is.Field, is.Message)
+						}
+					}
+					return fmt.Errorf("invalid pulled config from s3://%s/%s", bucket, fleet.ConfigKey(controlPrefix))
+				}
+				var warnings []string
+				// Pin the data writer id to the bootstrap id, so the control prefix the
+				// config was pulled from and the writers/<id>/ data prefix always agree.
+				writerID, sources, warnings, err = buildRunPlan(cfg, writerID, d)
+				if err != nil {
+					return err
+				}
+				configVersion = cfg.Version
+				for _, w := range warnings {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
+				}
+				if !cmd.Flags().Changed("interval") && cfg.ScanInterval > 0 {
+					effInterval = cfg.ScanInterval
+				}
+			} else if configPath != "" {
 				if len(args) != 0 {
 					return fmt.Errorf("--config takes no positional args (got %d); use either --config or SOURCE_DIR S3_URL", len(args))
 				}
@@ -133,12 +207,6 @@ Examples:
 			if len(sources) == 0 {
 				return fmt.Errorf("no sources to back up (config has no watch_paths)")
 			}
-
-			cfg, cerr := config.LoadDefaultConfig(cmd.Context(), config.WithRegion(region))
-			if cerr != nil {
-				return fmt.Errorf("failed to load AWS config: %w", cerr)
-			}
-			s3Client := s3.NewFromConfig(cfg)
 
 			// #629: per-writer cap gate. Build the cost manager once; nil = enforcement
 			// off (either --ignore-budget or the manager couldn't load — fail-open, a
@@ -237,6 +305,8 @@ Examples:
 		},
 	}
 	cmd.Flags().StringVar(&configPath, "config", "", "Ghostship config file (fleet mode); backs up each watch_paths entry")
+	cmd.Flags().StringVar(&configURL, "config-url", "", "Pull a signed config from S3 (s3://BUCKET/BASE); reads BASE/fleet/<id>/config.yaml, verified against --public-key")
+	cmd.Flags().StringVar(&publicKeyPath, "public-key", "", "PEM ed25519 public key the pulled config must verify against (required with --config-url)")
 	cmd.Flags().DurationVar(&interval, "interval", time.Hour, "How often to run a backup cycle (overrides config scan_interval)")
 	cmd.Flags().BoolVar(&once, "once", false, "Run a single cycle and exit (for cron / testing)")
 	cmd.Flags().StringVar(&flagWriterID, "writer-id", "", "Writer identity for fleet isolation (writers/<id>/). 'auto' derives a stable per-host id; overrides the config")

@@ -9,6 +9,7 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -258,6 +259,102 @@ func TestGhostshipRun_IncrementalChain(t *testing.T) {
 	}
 	if got := count(); got != 2 {
 		t.Fatalf("after a change want 2 uploads under data/writers/inc-1/uploads/, got %d", got)
+	}
+}
+
+func putObjectBytes(t *testing.T, client *s3.Client, bucket, key string, data []byte) {
+	t.Helper()
+	if _, err := client.PutObject(context.Background(), &s3.PutObjectInput{
+		Bucket: aws.String(bucket), Key: aws.String(key), Body: bytes.NewReader(data),
+	}); err != nil {
+		t.Fatalf("put %s: %v", key, err)
+	}
+}
+
+func putObjectFile(t *testing.T, client *s3.Client, bucket, key, path string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	putObjectBytes(t, client, bucket, key, data)
+}
+
+// signAndUploadConfig keygens (into keyDir), writes+signs the config, and uploads the
+// config + signature under <base>/fleet/<writerID>/. Returns the public-key path.
+func signAndUploadConfig(t *testing.T, client *s3.Client, bucket, base, writerID, configYAML string) (pubPath string) {
+	t.Helper()
+	keyDir := t.TempDir()
+	runCargoship(t, "ghostship", "config-keygen", "--out", keyDir)
+	priv := filepath.Join(keyDir, "config-signing-private.pem")
+	pubPath = filepath.Join(keyDir, "config-signing-public.pem")
+
+	box := filepath.Join(t.TempDir(), "config.yaml")
+	writeFile(t, box, configYAML)
+	runCargoship(t, "ghostship", "sign-config", box, "--key", priv)
+
+	cp := base + "/fleet/" + writerID
+	putObjectFile(t, client, bucket, cp+"/config.yaml", box)
+	putObjectFile(t, client, bucket, cp+"/config.yaml.sig", box+".sig")
+	return pubPath
+}
+
+// TestGhostshipRun_ConfigPull proves signed config-over-S3 (#614): the daemon pulls its
+// config from the control prefix, verifies the ed25519 signature, and runs it — data
+// lands under the data prefix and the heartbeat reports the config version.
+func TestGhostshipRun_ConfigPull(t *testing.T) {
+	bucket := "gs-config-pull"
+	if err := createBucket(substrateURL, bucket); err != nil {
+		t.Fatalf("create bucket: %v", err)
+	}
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "a.txt"), "hello pull")
+
+	client := e2eS3Client(t)
+	cfgYAML := fmt.Sprintf("id: pull-box\nwriter_id: pull-1\nversion: 5\ns3_config:\n  bucket: %s\nwatch_paths:\n  - path: %s\n", bucket, src)
+	pub := signAndUploadConfig(t, client, bucket, "nas", "pull-1", cfgYAML)
+
+	runCargoship(t, "ghostship", "run", "--config-url", "s3://"+bucket+"/nas",
+		"--public-key", pub, "--writer-id", "pull-1", "--once", "--region", "us-east-1")
+
+	// Data lands under the data prefix (bucket-root writers/<id>/, from the config).
+	if ids := uploadIDsUnder(t, client, bucket, "writers/pull-1"); len(ids) != 1 {
+		t.Fatalf("want 1 upload under writers/pull-1/uploads/, got %d: %v", len(ids), ids)
+	}
+	if hb := getStatus(t, client, bucket, "writers/pull-1/status.json"); hb.ConfigVersion != 5 {
+		t.Fatalf("heartbeat config_version = %d, want 5", hb.ConfigVersion)
+	}
+}
+
+// TestGhostshipRun_ConfigPull_RejectsTampered proves the daemon refuses to run a pulled
+// config whose bytes don't match the signature (fail-closed).
+func TestGhostshipRun_ConfigPull_RejectsTampered(t *testing.T) {
+	bucket := "gs-config-pull-bad"
+	if err := createBucket(substrateURL, bucket); err != nil {
+		t.Fatalf("create bucket: %v", err)
+	}
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "a.txt"), "hello")
+
+	client := e2eS3Client(t)
+	good := fmt.Sprintf("id: pull-box\nwriter_id: pull-1\nversion: 1\ns3_config:\n  bucket: %s\nwatch_paths:\n  - path: %s\n", bucket, src)
+	pub := signAndUploadConfig(t, client, bucket, "nas", "pull-1", good)
+
+	// Overwrite the config object with different bytes; the signature no longer matches.
+	tampered := fmt.Sprintf("id: evil\nwriter_id: pull-1\nversion: 99\ns3_config:\n  bucket: %s\nwatch_paths:\n  - path: %s\n", bucket, src)
+	putObjectBytes(t, client, bucket, "nas/fleet/pull-1/config.yaml", []byte(tampered))
+
+	out, err := runCargoshipAllowErr(t, "ghostship", "run", "--config-url", "s3://"+bucket+"/nas",
+		"--public-key", pub, "--writer-id", "pull-1", "--once", "--region", "us-east-1")
+	if err == nil {
+		t.Fatalf("daemon should refuse a tampered config, but succeeded:\n%s", out)
+	}
+	if !strings.Contains(out, "verify config") && !strings.Contains(out, "signature") {
+		t.Fatalf("expected a signature-verification failure, got:\n%s", out)
+	}
+	// Nothing should have been backed up.
+	if ids := uploadIDsUnder(t, client, bucket, "writers/pull-1"); len(ids) != 0 {
+		t.Fatalf("tampered config must not back up anything, got %d uploads", len(ids))
 	}
 }
 

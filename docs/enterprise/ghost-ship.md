@@ -60,10 +60,40 @@ the environment variable over the config file, and a mismatch causes S3 301
 with `--platform linux/amd64` to avoid exec-format errors.
 :::
 
+## Signed config over S3 (pull mode)
+
+Instead of shipping a config file to every box, the fleet can pull a **signed** config
+from S3. The operator signs the config with an ed25519 key; each agent bakes only the
+**public** key and refuses any config that doesn't verify — so a tampered or
+attacker-substituted config can't tell a box what to back up.
+
+```bash
+# once, on the control machine:
+cargoship ghostship config-keygen --out ./fleet-keys      # private + public PEM
+cargoship ghostship sign-config box.yaml --key ./fleet-keys/config-signing-private.pem
+
+# upload the config + its signature to the control prefix:
+aws s3 cp box.yaml     s3://backups/nas/fleet/lab-nas-1/config.yaml
+aws s3 cp box.yaml.sig s3://backups/nas/fleet/lab-nas-1/config.yaml.sig
+
+# on each agent (bake only the public key):
+cargoship ghostship run --config-url s3://backups/nas \
+  --public-key /etc/cargoship/config-signing-public.pem --writer-id lab-nas-1 --once
+```
+
+The config lives under a **control prefix** `fleet/<id>/`, separate from the
+`writers/<id>/` data prefix, and the writer's IAM grants only read there
+(`cargoship ghostship iam-policy` emits it). Bump the config's `version` before signing
+— each writer reports the version it is running in its heartbeat (`fleet status`), so a
+bad rollout is visible fleet-wide. Verification is fail-closed: an unsigned, wrong-key,
+or tampered config is refused and nothing is backed up.
+
 ## Security
 
 - Runs as a non-root user; data and AWS credentials are mounted read-only.
 - Outbound HTTPS to S3 only; a ghost ship opens no listening port.
+- Config is pulled read-only and signature-verified (see above); the writer cannot write
+  its own control prefix.
 - Optional server-side encryption for archived files.
 
 ## Monitoring
