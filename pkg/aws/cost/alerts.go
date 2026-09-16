@@ -83,6 +83,12 @@ type BudgetAlert struct {
 	VolumeUsedPercent      float64 `json:"volume_used_percent,omitempty"`
 	VolumeThresholdPercent float64 `json:"volume_threshold_percent,omitempty"`
 
+	// Fleet metrics (if stale-writer alert, #615/#630). For a stale_writer alert the
+	// writer id is carried in ProjectID (so per-writer cooldown falls out of the
+	// existing project-keyed cooldown), and StaleSeconds is how long since the writer
+	// last checked in.
+	StaleSeconds float64 `json:"stale_seconds,omitempty"`
+
 	// Actions and recommendations
 	Recommendation string `json:"recommendation,omitempty"`
 	ActionRequired bool   `json:"action_required"`
@@ -109,6 +115,10 @@ const (
 
 	// AlertTypeVolumeProjection indicates projected volume will exceed quota
 	AlertTypeVolumeProjection BudgetAlertType = "volume_projection"
+
+	// AlertTypeStaleWriter indicates a ghostship fleet writer has not checked in
+	// within its freshness threshold — it may be down, stuck, or offline (#615/#630).
+	AlertTypeStaleWriter BudgetAlertType = "stale_writer"
 )
 
 // BudgetAlertSeverity represents the severity of a budget alert
@@ -370,6 +380,39 @@ func (n *BudgetAlertNotifier) sendCloudWatchAlert(ctx context.Context, alert *Bu
 				Value: aws.String(alert.ProjectID),
 			})
 		}
+
+	case AlertTypeStaleWriter:
+		metricName = "WriterStaleSeconds"
+		metricValue = alert.StaleSeconds
+		dimensions = []types.Dimension{
+			{
+				Name:  aws.String("AlertType"),
+				Value: aws.String(string(alert.Type)),
+			},
+		}
+		if alert.ProjectID != "" {
+			dimensions = append(dimensions, types.Dimension{
+				Name:  aws.String("WriterID"),
+				Value: aws.String(alert.ProjectID),
+			})
+		}
+		// A duration metric, not a percentage — put it and return here so the shared
+		// PutMetricData below (which uses StandardUnitPercent) doesn't mislabel it.
+		if _, err := n.cloudwatchSvc.PutMetricData(ctx, &cloudwatch.PutMetricDataInput{
+			Namespace: aws.String(n.config.CloudWatchNamespace),
+			MetricData: []types.MetricDatum{
+				{
+					MetricName: aws.String(metricName),
+					Value:      aws.Float64(metricValue),
+					Timestamp:  aws.Time(alert.Timestamp),
+					Unit:       types.StandardUnitSeconds,
+					Dimensions: dimensions,
+				},
+			},
+		}); err != nil {
+			return fmt.Errorf("failed to put CloudWatch metric: %w", err)
+		}
+		return nil
 
 	default:
 		return fmt.Errorf("unsupported alert type for CloudWatch: %s", alert.Type)
@@ -895,4 +938,32 @@ func (m *Manager) MonitorAllBudgets(ctx context.Context, notifier *BudgetAlertNo
 	}
 
 	return nil
+}
+
+// MonitorBudgets checks every budget and sends alerts through the Manager's own
+// configured notifier (the one built from the persisted alert config, #630). It is
+// the notifier-less convenience wrapper over MonitorAllBudgets for callers that hold
+// a Manager but not its notifier (e.g. `cargoship fleet monitor`).
+func (m *Manager) MonitorBudgets(ctx context.Context) error {
+	return m.MonitorAllBudgets(ctx, m.notifier)
+}
+
+// NotifyStaleWriter sends a stale-writer alert (#615/#630) for a ghostship fleet
+// writer that has not checked in within its freshness threshold, through the
+// Manager's configured notifier. The writer id is carried in the alert's ProjectID
+// so the notifier's existing per-project cooldown gives per-writer de-duplication.
+// A no-op (nil) when alerting is disabled or no channel is configured.
+func (m *Manager) NotifyStaleWriter(ctx context.Context, writerID string, age, threshold time.Duration) error {
+	alert := &BudgetAlert{
+		ID:             fmt.Sprintf("stale-%s-%d", writerID, time.Now().Unix()),
+		Timestamp:      time.Now(),
+		Type:           AlertTypeStaleWriter,
+		Severity:       SeverityCritical,
+		ProjectID:      writerID,
+		Description:    fmt.Sprintf("writer %q has not checked in for %s (threshold %s)", writerID, age.Round(time.Second), threshold),
+		StaleSeconds:   age.Seconds(),
+		Recommendation: "Check the agent host: the ghostship process, its network egress, and its credentials.",
+		ActionRequired: true,
+	}
+	return m.notifier.SendAlert(ctx, alert)
 }

@@ -23,6 +23,20 @@ func TestFleetStatus_BadURL(t *testing.T) {
 	}
 }
 
+func TestFleetMonitor_BadURL(t *testing.T) {
+	cmd := NewFleetCmd()
+	cmd.SetArgs([]string{"monitor", "not-an-s3-url"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected an error for a non-s3 URL, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid S3 target") {
+		t.Errorf("error = %q, want it to mention the invalid S3 target", err)
+	}
+}
+
 func TestRenderFleetTable_Empty(t *testing.T) {
 	cmd := NewFleetCmd()
 	var out bytes.Buffer
