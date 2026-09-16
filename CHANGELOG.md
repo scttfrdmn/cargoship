@@ -32,6 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pkg/pipeline`, and the ghostship E2E (a no-change cycle now uploads nothing).
 
 ### Added
+- **Signed fleet configs — signing primitives + `config_version` (#614, slice 1).** Groundwork
+  for config-over-S3 trust: an operator can now sign a ghostship config with an ed25519 key and
+  agents/tooling can verify it. `cargoship ghostship config-keygen` writes an ed25519 keypair
+  (PEM; private 0600, never overwrites), `cargoship ghostship sign-config CONFIG --key priv.pem`
+  validates then emits a detached signature sidecar (`CONFIG.sig`), and
+  `cargoship ghostship validate-config --public-key pub.pem` verifies it (fail-closed: a bad,
+  wrong-key, or tampered signature errors). Signing uses stdlib `crypto/ed25519` (no new
+  dependency) and is separate from the GPG file-encryption keys. A new authenticated
+  `version` field on the config travels inside the signed bytes, and each writer now reports
+  the **config version it is running** in its heartbeat (`config_version`) so a bad rollout is
+  visible fleet-wide. (Next: the daemon pulls + verifies its config from a `fleet/<id>/`
+  control prefix with keep-last-good, then enforces no silent scope-widening.)
 - **Fleet-bucket immutability audit + `cargoship fleet lock-status` (#616).** A new read-only
   control-side command audits whether a fleet bucket can resist a stolen delete-capable
   credential: **S3 Versioning**, **Object Lock** (enabled? mode + default retention, with a

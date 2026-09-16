@@ -67,10 +67,11 @@ Examples:
 			}
 
 			var (
-				writerID    string
-				sources     []syncRunParams
-				effInterval = interval
-				err         error
+				writerID      string
+				sources       []syncRunParams
+				effInterval   = interval
+				configVersion int
+				err           error
 			)
 
 			if configPath != "" {
@@ -95,6 +96,7 @@ Examples:
 				if err != nil {
 					return err
 				}
+				configVersion = cfg.Version
 				for _, w := range warnings {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
 				}
@@ -218,6 +220,7 @@ Examples:
 					Hostname:         host,
 					InstanceID:       instanceID,
 					CargoshipVersion: versionpkg.Version,
+					ConfigVersion:    configVersion,
 					UpdatedAt:        time.Now(),
 					Sources:          sts,
 				}

@@ -38,12 +38,16 @@ type SourceStatus struct {
 // (`cargoship fleet status`, and the stale-writer monitor). InstanceID is per-boot: two
 // distinct instance ids observed under one writer id indicate a cloned-VM collision.
 type WriterStatus struct {
-	WriterID         string         `json:"writer_id"`
-	Hostname         string         `json:"hostname"`
-	InstanceID       string         `json:"instance_id"`
-	CargoshipVersion string         `json:"cargoship_version"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-	Sources          []SourceStatus `json:"sources"`
+	WriterID         string `json:"writer_id"`
+	Hostname         string `json:"hostname"`
+	InstanceID       string `json:"instance_id"`
+	CargoshipVersion string `json:"cargoship_version"`
+	// ConfigVersion is the fleet config version this writer is running (#614), from the
+	// config's `version` field. Zero (omitted) means unversioned or single-source/flag
+	// mode. Surfacing it here makes a bad config rollout visible across the fleet.
+	ConfigVersion int            `json:"config_version,omitempty"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	Sources       []SourceStatus `json:"sources"`
 }
 
 // Healthy reports whether the writer's most recent cycle succeeded for every source.

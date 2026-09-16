@@ -276,6 +276,7 @@ func TestGhostshipRun_ConfigMultiSource(t *testing.T) {
 	box := filepath.Join(t.TempDir(), "box.yaml")
 	writeFile(t, box, fmt.Sprintf(`id: fleet-box
 writer_id: fleet-box
+version: 42
 s3_config:
   bucket: %s
 watch_paths:
@@ -288,6 +289,11 @@ watch_paths:
 	client := e2eS3Client(t)
 	if ids := uploadIDsUnder(t, client, bucket, "writers/fleet-box"); len(ids) != 2 {
 		t.Fatalf("config multi-source: want 2 uploads under writers/fleet-box/uploads/, got %d: %v", len(ids), ids)
+	}
+
+	// #614: the heartbeat reports the config version this writer is running.
+	if hb := getStatus(t, client, bucket, "writers/fleet-box/status.json"); hb.ConfigVersion != 42 {
+		t.Fatalf("heartbeat config_version = %d, want 42", hb.ConfigVersion)
 	}
 
 	// archival_rules are advisory in sync mode: present → run warns but still succeeds.
