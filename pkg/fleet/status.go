@@ -45,9 +45,13 @@ type WriterStatus struct {
 	// ConfigVersion is the fleet config version this writer is running (#614), from the
 	// config's `version` field. Zero (omitted) means unversioned or single-source/flag
 	// mode. Surfacing it here makes a bad config rollout visible across the fleet.
-	ConfigVersion int            `json:"config_version,omitempty"`
-	UpdatedAt     time.Time      `json:"updated_at"`
-	Sources       []SourceStatus `json:"sources"`
+	ConfigVersion int `json:"config_version,omitempty"`
+	// ConfigError is set when the writer's last config refresh (pull mode) failed and it
+	// is still running the last-good config (#614): a stale-config signal visible to the
+	// control side. Empty when the running config is current.
+	ConfigError string         `json:"config_error,omitempty"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	Sources     []SourceStatus `json:"sources"`
 }
 
 // Healthy reports whether the writer's most recent cycle succeeded for every source.

@@ -88,6 +88,13 @@ The config lives under a **control prefix** `fleet/<id>/`, separate from the
 bad rollout is visible fleet-wide. Verification is fail-closed: an unsigned, wrong-key,
 or tampered config is refused and nothing is backed up.
 
+**Keep-last-good.** When running (not `--once`), the agent re-pulls and re-verifies the
+config every cycle and swaps only if it is a valid signed config. If a refresh fails —
+S3 unreachable, unsigned, bad signature, or invalid — it keeps running the **last-good**
+config, keeps backing up, and reports `config_error` in its heartbeat (visible in
+`fleet status`) while still reporting the version it is actually running. Push a fixed,
+re-signed config and the next cycle adopts it automatically.
+
 ## Security
 
 - Runs as a non-root user; data and AWS credentials are mounted read-only.
