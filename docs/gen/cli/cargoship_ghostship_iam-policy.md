@@ -28,8 +28,9 @@ cargoship ghostship iam-policy S3_URL [flags]
 
 ```
   -h, --help                 help for iam-policy
-      --kms-key-arn string   KMS key ARN for encrypted uploads; adds kms:GenerateDataKey and kms:Decrypt scoped to that key
+      --kms-key-arn string   KMS key ARN for encrypted uploads; adds kms:GenerateDataKey (+kms:Decrypt unless --write-only) scoped to that key
   -o, --output string        Write the policy JSON to this file instead of stdout
+      --write-only           Emit the strict write-only policy: PutObject-only on data (no GetObject/Decrypt); incremental sync degrades to full re-scan each cycle
       --writer-id string     Writer identity to scope the policy to (writers/<id>/). 'auto' derives a stable per-host id; empty scopes to the base prefix
 ```
 

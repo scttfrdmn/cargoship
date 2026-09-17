@@ -10,7 +10,9 @@ func TestWriterIAMPolicy(t *testing.T) {
 	const bucket = "my-bucket"
 
 	t.Run("writer with kms", func(t *testing.T) {
-		out, err := WriterIAMPolicy(bucket, "backups/writers/lab-nas-1", "", "arn:aws:kms:us-west-2:111122223333:key/abcd")
+		out, err := WriterIAMPolicy(WriterPolicyOptions{
+			Bucket: bucket, DataPrefix: "backups/writers/lab-nas-1", KMSKeyARN: "arn:aws:kms:us-west-2:111122223333:key/abcd",
+		})
 		if err != nil {
 			t.Fatalf("WriterIAMPolicy: %v", err)
 		}
@@ -59,7 +61,7 @@ func TestWriterIAMPolicy(t *testing.T) {
 	})
 
 	t.Run("writer without kms omits the kms statement", func(t *testing.T) {
-		out, err := WriterIAMPolicy(bucket, "backups/writers/w1", "", "")
+		out, err := WriterIAMPolicy(WriterPolicyOptions{Bucket: bucket, DataPrefix: "backups/writers/w1"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,7 +75,7 @@ func TestWriterIAMPolicy(t *testing.T) {
 	})
 
 	t.Run("empty prefix scopes to the whole bucket with no prefix condition", func(t *testing.T) {
-		out, err := WriterIAMPolicy(bucket, "", "", "")
+		out, err := WriterIAMPolicy(WriterPolicyOptions{Bucket: bucket})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -86,7 +88,9 @@ func TestWriterIAMPolicy(t *testing.T) {
 	})
 
 	t.Run("control prefix adds a read-only config statement (#614)", func(t *testing.T) {
-		out, err := WriterIAMPolicy(bucket, "backups/writers/w1", "backups/fleet/w1", "")
+		out, err := WriterIAMPolicy(WriterPolicyOptions{
+			Bucket: bucket, DataPrefix: "backups/writers/w1", ControlPrefix: "backups/fleet/w1",
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -122,8 +126,54 @@ func TestWriterIAMPolicy(t *testing.T) {
 		}
 	})
 
+	t.Run("write-only omits GetObject-on-data and Decrypt (#613)", func(t *testing.T) {
+		out, err := WriterIAMPolicy(WriterPolicyOptions{
+			Bucket: bucket, DataPrefix: "backups/writers/w1", ControlPrefix: "backups/fleet/w1",
+			KMSKeyARN: "arn:aws:kms:us-west-2:111122223333:key/abcd", WriteOnly: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertNoDestructive(t, out)
+
+		var doc struct {
+			Statement []struct {
+				Sid      string
+				Action   []string
+				Resource string
+			}
+		}
+		if err := json.Unmarshal([]byte(out), &doc); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		byid := map[string][]string{}
+		for _, s := range doc.Statement {
+			byid[s.Sid] = s.Action
+		}
+		// Data object statement is PutObject-only.
+		if got := byid["WriterObjectAccess"]; len(got) != 1 || got[0] != "s3:PutObject" {
+			t.Errorf("write-only data actions = %v, want [s3:PutObject]", got)
+		}
+		// GetObject is allowed ONLY on the config control prefix, never on data.
+		if strings.Contains(out, `"arn:aws:s3:::my-bucket/backups/writers/w1/*"`) &&
+			hasAll(byid["WriterObjectAccess"], "s3:GetObject") {
+			t.Error("write-only must not grant GetObject on the data prefix")
+		}
+		// KMS is GenerateDataKey-only (no Decrypt).
+		if got := byid["WriterKMS"]; len(got) != 1 || got[0] != "kms:GenerateDataKey" {
+			t.Errorf("write-only KMS actions = %v, want [kms:GenerateDataKey]", got)
+		}
+		if strings.Contains(out, "kms:Decrypt") {
+			t.Errorf("write-only policy must not grant kms:Decrypt:\n%s", out)
+		}
+		// Config read is still present (GetObject on the control prefix).
+		if got := byid["WriterConfigRead"]; len(got) != 1 || got[0] != "s3:GetObject" {
+			t.Errorf("write-only config-read = %v, want [s3:GetObject]", got)
+		}
+	})
+
 	t.Run("empty bucket errors", func(t *testing.T) {
-		if _, err := WriterIAMPolicy("", "p", "", ""); err == nil {
+		if _, err := WriterIAMPolicy(WriterPolicyOptions{DataPrefix: "p"}); err == nil {
 			t.Error("empty bucket should error")
 		}
 	})

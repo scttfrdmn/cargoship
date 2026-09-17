@@ -34,6 +34,28 @@ max_concurrent_jobs: 4
 scan_interval: "5m"
 ```
 
+## Provisioning a writer (`init`)
+
+`cargoship ghostship init` scaffolds a complete, deployable bundle for one writer —
+a **write-only** IAM policy, a signed-config skeleton, a `compose.yaml` that mounts
+credentials as a file (never env), and the baked config-signing public key:
+
+```bash
+cargoship ghostship config-keygen --out ./keys        # once per fleet
+cargoship ghostship init s3://backups/nas --writer-id lab-nas-1 \
+  --kms-key-arn arn:aws:kms:us-west-2:123456789012:key/abcd \
+  --public-key ./keys/config-signing-public.pem --out ./lab-nas-1
+```
+
+It makes no AWS calls — attach the emitted `iam-policy.json` to a new IAM identity with
+your own tooling. That policy is the genuine write-only footprint (`ghostship iam-policy
+--write-only` emits it standalone): `s3:PutObject` on the writer's own prefix, scoped
+`s3:ListBucket`, read-only `s3:GetObject` on its config, and `kms:GenerateDataKey`
+**without** `kms:Decrypt`. A compromised writer can neither read back, decrypt, nor
+delete any data. (Trade-off: without read access to its previous manifest, incremental
+sync degrades to a full re-scan each cycle.) The bundle README walks through signing +
+uploading the config and `docker compose up -d`.
+
 ## Deployment
 
 Ghost ships are distributed as platform-specific container images and run via

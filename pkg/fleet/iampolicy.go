@@ -32,48 +32,70 @@ type statement struct {
 // {"s3:prefix": ["p/writers/w1/*"]}).
 type condKeys map[string][]string
 
-// WriterIAMPolicy returns an indented JSON IAM policy granting a single fleet
-// writer the least privilege it needs to back up to its own subtree of an S3
-// bucket, and nothing more (#520/#613).
+// WriterPolicyOptions configures the emitted writer IAM policy (#520/#613/#614).
+type WriterPolicyOptions struct {
+	// Bucket is required.
+	Bucket string
+	// DataPrefix is the writer-scoped data key prefix (build it with
+	// pipeline.WriterPrefix); empty scopes objects to the whole bucket.
+	DataPrefix string
+	// ControlPrefix is the writer's config control prefix (build it with
+	// fleet.ControlPrefix); when set the policy adds READ-ONLY GetObject there so the
+	// agent can pull its signed config (#614). Empty omits the config-read grant.
+	ControlPrefix string
+	// KMSKeyARN is the optional fleet customer master key.
+	KMSKeyARN string
+	// WriteOnly emits the strict write-only agent policy (#613): PutObject-only on the
+	// data prefix (no GetObject on data, no AbortMultipartUpload) and, with a KMS key,
+	// kms:GenerateDataKey WITHOUT kms:Decrypt. This is the genuine write-only footprint —
+	// a compromised writer can neither read back nor delete any data. Trade-offs: it
+	// assumes CargoShip's application-level (envelope) encryption rather than bucket
+	// SSE-KMS (which needs Decrypt for multipart), and incremental sync degrades to a
+	// full re-scan each cycle because the previous manifest can't be re-read from S3
+	// (a local manifest cache restores incremental — future work). When false, the
+	// policy is delete-free but grants GetObject on the writer's own prefix (chain
+	// re-read) and kms:Decrypt (SSE-KMS multipart).
+	WriteOnly bool
+}
+
+// WriterIAMPolicy returns an indented JSON IAM policy granting a single fleet writer
+// the least privilege it needs to back up to its own subtree of an S3 bucket, and
+// nothing more (#520/#613/#614).
 //
-// effectivePrefix is the writer-scoped key prefix (build it with
-// pipeline.WriterPrefix); an empty prefix scopes to the whole bucket. bucket is
-// required. controlPrefix is optional (#614): when set (build it with
-// fleet.ControlPrefix), the policy adds READ-ONLY GetObject on that control prefix so
-// the agent can pull its signed config — never write it. kmsKeyARN is optional: when
-// set, the policy adds KMS permissions for the given customer master key.
-//
-// The policy is deliberately delete-free and cross-writer-free — that absence,
+// The policy is always deliberately delete-free and cross-writer-free — that absence,
 // together with the own-prefix scoping, is the durable ransomware guarantee: a
 // compromised writer can only append to its own prefix, never delete or overwrite
-// another writer's data. Note it is NOT decrypt-free when a KMS key is supplied:
-// AWS requires kms:Decrypt (alongside kms:GenerateDataKey) to multipart-upload
-// SSE-KMS-encrypted objects, so both are granted on that one key.
-func WriterIAMPolicy(bucket, effectivePrefix, controlPrefix, kmsKeyARN string) (string, error) {
-	if bucket == "" {
+// another writer's data. See WriterPolicyOptions.WriteOnly for the strict variant.
+func WriterIAMPolicy(o WriterPolicyOptions) (string, error) {
+	if o.Bucket == "" {
 		return "", fmt.Errorf("bucket is required")
 	}
 
-	objectResource := "arn:aws:s3:::" + bucket + "/*"
+	objectResource := "arn:aws:s3:::" + o.Bucket + "/*"
 	var listCond map[string]condKeys
-	if p := strings.Trim(effectivePrefix, "/"); p != "" {
-		objectResource = "arn:aws:s3:::" + bucket + "/" + p + "/*"
+	if p := strings.Trim(o.DataPrefix, "/"); p != "" {
+		objectResource = "arn:aws:s3:::" + o.Bucket + "/" + p + "/*"
 		listCond = map[string]condKeys{
 			"StringLike": {"s3:prefix": {p + "/*"}},
 		}
+	}
+
+	// PutObject authorizes create/upload-part/complete-multipart. The non-write-only
+	// variant also grants GetObject (HeadObject skip-existing + reading this writer's
+	// own manifest chain for incremental sync) and AbortMultipartUpload (clean up its
+	// own stale uploads).
+	objectActions := []string{"s3:PutObject"}
+	if !o.WriteOnly {
+		objectActions = []string{"s3:PutObject", "s3:GetObject", "s3:AbortMultipartUpload"}
 	}
 
 	doc := policyDoc{
 		Version: iamPolicyVersion,
 		Statement: []statement{
 			{
-				// PutObject authorizes create/upload-part/complete-multipart;
-				// GetObject covers HeadObject (skip-existing) and reading this
-				// writer's own manifest chain for incremental sync;
-				// AbortMultipartUpload lets it clean up its own stale uploads.
 				Sid:      "WriterObjectAccess",
 				Effect:   "Allow",
-				Action:   []string{"s3:PutObject", "s3:GetObject", "s3:AbortMultipartUpload"},
+				Action:   objectActions,
 				Resource: objectResource,
 			},
 			{
@@ -82,32 +104,36 @@ func WriterIAMPolicy(bucket, effectivePrefix, controlPrefix, kmsKeyARN string) (
 				Sid:       "WriterListOwnPrefix",
 				Effect:    "Allow",
 				Action:    []string{"s3:ListBucket"},
-				Resource:  "arn:aws:s3:::" + bucket,
+				Resource:  "arn:aws:s3:::" + o.Bucket,
 				Condition: listCond,
 			},
 		},
 	}
 
-	if cp := strings.Trim(controlPrefix, "/"); cp != "" {
+	if cp := strings.Trim(o.ControlPrefix, "/"); cp != "" {
 		doc.Statement = append(doc.Statement, statement{
 			// Read-only access to the writer's signed config (#614). GetObject only —
 			// the config is operator-written; the agent never writes the control prefix.
 			Sid:      "WriterConfigRead",
 			Effect:   "Allow",
 			Action:   []string{"s3:GetObject"},
-			Resource: "arn:aws:s3:::" + bucket + "/" + cp + "/*",
+			Resource: "arn:aws:s3:::" + o.Bucket + "/" + cp + "/*",
 		})
 	}
 
-	if kmsKeyARN != "" {
+	if o.KMSKeyARN != "" {
+		// GenerateDataKey for manifest/data envelope encryption. The non-write-only
+		// variant also grants Decrypt, which AWS requires to multipart-upload SSE-KMS
+		// objects. Scoped to the one fleet key.
+		kmsActions := []string{"kms:GenerateDataKey"}
+		if !o.WriteOnly {
+			kmsActions = []string{"kms:GenerateDataKey", "kms:Decrypt"}
+		}
 		doc.Statement = append(doc.Statement, statement{
-			// GenerateDataKey for manifest envelope encryption; Decrypt is required
-			// by AWS for SSE-KMS multipart uploads of data chunks. Scoped to the one
-			// fleet key — the writer still cannot read any other key's data.
 			Sid:      "WriterKMS",
 			Effect:   "Allow",
-			Action:   []string{"kms:GenerateDataKey", "kms:Decrypt"},
-			Resource: kmsKeyARN,
+			Action:   kmsActions,
+			Resource: o.KMSKeyARN,
 		})
 	}
 

@@ -32,6 +32,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pkg/pipeline`, and the ghostship E2E (a no-change cycle now uploads nothing).
 
 ### Added
+- **`cargoship ghostship init` writer bundles + a strict write-only IAM policy (#613).** A new
+  `ghostship init s3://BUCKET/BASE --writer-id ID --public-key pub.pem` scaffolds a deployable,
+  per-writer bundle — a **write-only** IAM policy, a signed-config skeleton, a `compose.yaml`
+  that mounts AWS credentials as a **file (never env)**, the baked config-signing public key,
+  and a README — with no AWS calls (attach the policy with your own tooling). The write-only
+  policy (also available as `ghostship iam-policy --write-only`) grants `s3:PutObject` on the
+  writer's own prefix, scoped `s3:ListBucket`, read-only `s3:GetObject` on its config, and
+  `kms:GenerateDataKey` **without** `kms:Decrypt` — a compromised writer can neither read back,
+  decrypt, nor delete any data. Trade-off: incremental sync degrades to a full re-scan each
+  cycle (the previous manifest can't be re-read); a local manifest cache to restore incremental
+  under write-only is future work. `WriterIAMPolicy` now takes a `WriterPolicyOptions` struct.
 - **No silent scope-widening for pulled configs (#614, slice 3).** A validly-signed config
   pulled in `--config-url` mode is now refused if it **widens** what the writer reads or
   deletes — adding/broadening watch paths, flipping `recursive` on, adding includes, removing

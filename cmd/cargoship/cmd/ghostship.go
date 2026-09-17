@@ -24,11 +24,15 @@ func NewGhostshipCmd() *cobra.Command {
 backup agents that share one S3 bucket without colliding (writer isolation, #520).
 
 Subcommands:
+  init              Scaffold a deployable, write-only writer bundle
   run               Run an unattended, writer-isolated incremental backup on a schedule
   iam-policy        Emit the least-privilege IAM policy for one writer
-  validate-config   Check a ghostship config (and optionally its scope) before deploy`,
+  validate-config   Check a ghostship config (and optionally its scope) before deploy
+  config-keygen     Generate an ed25519 keypair for signing fleet configs
+  sign-config       Sign a config so agents can verify it`,
 	}
 	cmd.AddCommand(
+		newGhostshipInitCmd(),
 		newGhostshipRunCmd(),
 		newGhostshipIAMPolicyCmd(),
 		newGhostshipValidateConfigCmd(),
@@ -43,6 +47,7 @@ func newGhostshipIAMPolicyCmd() *cobra.Command {
 		writerID  string
 		kmsKeyARN string
 		output    string
+		writeOnly bool
 	)
 	cmd := &cobra.Command{
 		Use:   "iam-policy S3_URL",
@@ -78,7 +83,9 @@ Examples:
 				ctrl = fleet.ControlPrefix(prefix, resolvedWriterID)
 			}
 
-			policy, err := fleet.WriterIAMPolicy(bucket, eff, ctrl, kmsKeyARN)
+			policy, err := fleet.WriterIAMPolicy(fleet.WriterPolicyOptions{
+				Bucket: bucket, DataPrefix: eff, ControlPrefix: ctrl, KMSKeyARN: kmsKeyARN, WriteOnly: writeOnly,
+			})
 			if err != nil {
 				return err
 			}
@@ -102,8 +109,9 @@ Examples:
 		},
 	}
 	cmd.Flags().StringVar(&writerID, "writer-id", "", "Writer identity to scope the policy to (writers/<id>/). 'auto' derives a stable per-host id; empty scopes to the base prefix")
-	cmd.Flags().StringVar(&kmsKeyARN, "kms-key-arn", "", "KMS key ARN for encrypted uploads; adds kms:GenerateDataKey and kms:Decrypt scoped to that key")
+	cmd.Flags().StringVar(&kmsKeyARN, "kms-key-arn", "", "KMS key ARN for encrypted uploads; adds kms:GenerateDataKey (+kms:Decrypt unless --write-only) scoped to that key")
 	cmd.Flags().StringVarP(&output, "output", "o", "", "Write the policy JSON to this file instead of stdout")
+	cmd.Flags().BoolVar(&writeOnly, "write-only", false, "Emit the strict write-only policy: PutObject-only on data (no GetObject/Decrypt); incremental sync degrades to full re-scan each cycle")
 	return cmd
 }
 
