@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -81,6 +82,7 @@ Examples:
 				effInterval   = interval
 				configVersion int
 				configError   string
+				runningCfg    *launch.GhostShipConfig // last-good config (pull mode), for scope-widening checks
 				err           error
 
 				// Set only in --config-url (pull) mode, so a per-cycle refresh can
@@ -151,6 +153,7 @@ Examples:
 					return err
 				}
 				configVersion = cfg.Version
+				runningCfg = cfg // baseline for scope-widening checks on refresh
 				for _, w := range warnings {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
 				}
@@ -263,6 +266,16 @@ Examples:
 						logger.Warn("config refresh: invalid; keeping last-good", "running_version", configVersion)
 						return
 					}
+					// #614 slice 3: refuse a config that silently widens what this writer
+					// reads or deletes. A signature proves the operator authored it, but
+					// widening the footprint additionally requires an explicit, signed
+					// allow_scope_expansion — otherwise keep the last-good config.
+					if widenings := launch.WatchScopeWidenings(runningCfg, cfg); len(widenings) > 0 && !cfg.AllowScopeExpansion {
+						configError = "refusing config: widens scope without allow_scope_expansion (" + strings.Join(widenings, "; ") + ")"
+						logger.Warn("config refresh: scope widened without allow_scope_expansion; keeping last-good",
+							"widenings", strings.Join(widenings, "; "), "running_version", configVersion)
+						return
+					}
 					_, newSources, warnings, bErr := buildRunPlan(cfg, writerID, d)
 					if bErr != nil {
 						configError = bErr.Error()
@@ -273,11 +286,15 @@ Examples:
 					if cfg.Version != configVersion {
 						logger.Info("adopted new config", "version", cfg.Version, "previous_version", configVersion, "sources", len(newSources))
 					}
+					if widenings := launch.WatchScopeWidenings(runningCfg, cfg); len(widenings) > 0 {
+						logger.Warn("adopted config that widens scope (allow_scope_expansion=true)", "widenings", strings.Join(widenings, "; "))
+					}
 					for _, w := range warnings {
 						logger.Warn("config warning", "warning", w)
 					}
 					sources = newSources
 					configVersion = cfg.Version
+					runningCfg = cfg
 					configError = ""
 				}
 			}

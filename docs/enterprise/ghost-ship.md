@@ -95,6 +95,16 @@ config, keeps backing up, and reports `config_error` in its heartbeat (visible i
 `fleet status`) while still reporting the version it is actually running. Push a fixed,
 re-signed config and the next cycle adopts it automatically.
 
+**No silent scope-widening.** A signature proves the operator authored a config, but a
+pulled config that *widens* what the writer reads or deletes — adds/broadens a watch
+path, flips `recursive` on, adds includes, removes excludes, or enables
+`delete_after_archive` — is refused unless it also sets `allow_scope_expansion: true`
+(itself inside the signed bytes). Without that explicit opt-in the daemon keeps the
+last-good config and reports `config_error`. Set `allow_scope_expansion: true` on the
+rollout that legitimately widens scope; you can validate this before deploy with
+`cargoship ghostship validate-config new.yaml --baseline deployed.yaml` (it prints
+`WIDENS-SCOPE:` lines).
+
 ## Security
 
 - Runs as a non-root user; data and AWS credentials are mounted read-only.
