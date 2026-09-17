@@ -30,6 +30,10 @@ const (
 	DashboardInventory
 	// DashboardAnalyze shows an on-demand bucket cost/inventory analysis (#449).
 	DashboardAnalyze
+	// DashboardFleet lists ghostship writers reporting under the bucket (#615). It
+	// MUST stay last: the enum ordinal doubles as the index into the tabs slice, and
+	// the S3-backed tabs are appended in this order.
+	DashboardFleet
 )
 
 // CostProvider is the subset of *cost.Manager the dashboard reads. It is an
@@ -80,6 +84,25 @@ type AnalyzeResult struct {
 	Savings          float64
 }
 
+// FleetProvider lists ghostship writers' last-known status from their heartbeats
+// (#615). Nil when no bucket is configured; the command layer adapts
+// fleet.ListWriterStatuses into WriterSummary values.
+type FleetProvider interface {
+	ListWriters(ctx context.Context) ([]WriterSummary, error)
+}
+
+// WriterSummary is one fleet writer's last-known state, projected from its heartbeat.
+type WriterSummary struct {
+	WriterID      string
+	Hostname      string
+	Healthy       bool
+	Sources       int
+	ConfigVersion int
+	ConfigError   string    // non-empty when the writer is running a stale config (#614)
+	LastError     string    // first failing source's error, if any
+	UpdatedAt     time.Time // last check-in; age is derived at render time
+}
+
 // Dashboard is a read-only Bubble Tea dashboard over CargoShip's real local
 // data: the recorded cost ledger (pkg/aws/cost) and in-progress upload state
 // (pkg/resume). It fabricates nothing and performs no live bucket scans — when a
@@ -89,6 +112,7 @@ type Dashboard struct {
 	cost    CostProvider      // nil when the cost manager is unavailable
 	inv     InventoryProvider // nil when no bucket is configured (#449)
 	an      AnalyzeProvider   // nil when no bucket is configured (#449)
+	fleet   FleetProvider     // nil when no bucket is configured (#615)
 	target  string            // "s3://bucket/prefix" for display; "" when none
 	logger  *slog.Logger
 	refresh time.Duration
@@ -105,6 +129,8 @@ type Dashboard struct {
 	analysis   *AnalyzeResult // #449: last on-demand bucket analysis
 	analyzeErr error
 	analyzing  bool
+	writers    []WriterSummary // #615: fleet writers from heartbeats
+	fleetErr   error
 	fetchErr   error
 	lastUpdate time.Time
 
@@ -112,6 +138,7 @@ type Dashboard struct {
 	costTable      table.Model
 	uploadTable    table.Model
 	inventoryTable table.Model
+	fleetTable     table.Model
 
 	// Styles.
 	titleStyle     lipgloss.Style
@@ -125,7 +152,7 @@ type Dashboard struct {
 // spend figures then report as unavailable while Uploads still works). initial
 // selects the opening view; refresh is the data refresh cadence (a sane default
 // is applied when non-positive).
-func NewDashboard(ctx context.Context, costProvider CostProvider, inv InventoryProvider, an AnalyzeProvider, target string, initial DashboardType, refresh time.Duration, logger *slog.Logger) *Dashboard {
+func NewDashboard(ctx context.Context, costProvider CostProvider, inv InventoryProvider, an AnalyzeProvider, fleet FleetProvider, target string, initial DashboardType, refresh time.Duration, logger *slog.Logger) *Dashboard {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -166,9 +193,26 @@ func NewDashboard(ctx context.Context, costProvider CostProvider, inv InventoryP
 		table.WithHeight(12),
 	)
 
+	fleetTable := table.New(
+		table.WithColumns([]table.Column{
+			{Title: "Writer", Width: 18},
+			{Title: "Host", Width: 16},
+			{Title: "Age", Width: 6},
+			{Title: "Healthy", Width: 8},
+			{Title: "Src", Width: 4},
+			{Title: "Cfg", Width: 5},
+			{Title: "Status", Width: 24},
+		}),
+		table.WithFocused(true),
+		table.WithHeight(12),
+	)
+
 	tabs := []string{"🏠 Overview", "💰 Costs", "📦 Uploads"}
-	if inv != nil || an != nil { // S3-backed views only when a bucket is configured
-		tabs = append(tabs, "🗂️  Inventory", "🔎 Analyze")
+	// S3-backed views only when a bucket is configured. These are appended in the same
+	// order as the DashboardInventory/Analyze/Fleet enum values, which double as tab
+	// slice indices — keep Fleet last.
+	if inv != nil || an != nil || fleet != nil {
+		tabs = append(tabs, "🗂️  Inventory", "🔎 Analyze", "🚢 Fleet")
 	}
 
 	return &Dashboard{
@@ -176,6 +220,7 @@ func NewDashboard(ctx context.Context, costProvider CostProvider, inv InventoryP
 		cost:           costProvider,
 		inv:            inv,
 		an:             an,
+		fleet:          fleet,
 		target:         target,
 		logger:         logger.With("component", "tui-dashboard"),
 		refresh:        refresh,
@@ -184,6 +229,7 @@ func NewDashboard(ctx context.Context, costProvider CostProvider, inv InventoryP
 		costTable:      costTable,
 		uploadTable:    uploadTable,
 		inventoryTable: inventoryTable,
+		fleetTable:     fleetTable,
 		titleStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Background(lipgloss.Color("235")).Padding(0, 1),
 		tabStyle:       lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("252")).Background(lipgloss.Color("238")),
 		activeTabStyle: lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("15")).Background(lipgloss.Color("69")).Bold(true),
@@ -207,6 +253,8 @@ type dataMsg struct {
 	uploads   []*resume.UploadState
 	manifests []ManifestSummary
 	invErr    error
+	writers   []WriterSummary
+	fleetErr  error
 	err       error
 }
 
@@ -229,7 +277,7 @@ func (d *Dashboard) tick() tea.Cmd {
 
 // fetch reads the real data sources off the UI goroutine.
 func (d *Dashboard) fetch() tea.Cmd {
-	ctx, cp, inv := d.ctx, d.cost, d.inv
+	ctx, cp, inv, fl := d.ctx, d.cost, d.inv, d.fleet
 	return func() tea.Msg {
 		msg := dataMsg{}
 		// In-progress / resumable uploads (local, no AWS calls).
@@ -255,6 +303,15 @@ func (d *Dashboard) fetch() tea.Cmd {
 				msg.manifests = manifests
 			} else {
 				msg.invErr = err
+			}
+		}
+		// #615: fleet writer heartbeats (a bounded ListObjects + small GetObjects;
+		// cheap like inventory, so it refreshes with the tick).
+		if fl != nil {
+			if writers, err := fl.ListWriters(ctx); err == nil {
+				msg.writers = writers
+			} else {
+				msg.fleetErr = err
 			}
 		}
 		return msg
@@ -296,6 +353,10 @@ func (d *Dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if d.inv != nil || d.an != nil {
 				d.currentView = DashboardAnalyze
 			}
+		case "6":
+			if d.fleet != nil {
+				d.currentView = DashboardFleet
+			}
 		case "a":
 			// #449: run the on-demand bucket analysis (expensive; explicit trigger).
 			if d.an != nil && !d.analyzing {
@@ -314,11 +375,14 @@ func (d *Dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		d.uploads = msg.uploads
 		d.manifests = msg.manifests
 		d.invErr = msg.invErr
+		d.writers = msg.writers
+		d.fleetErr = msg.fleetErr
 		d.fetchErr = msg.err
 		d.lastUpdate = time.Now()
 		d.costTable.SetRows(costRows(msg.summary))
 		d.uploadTable.SetRows(uploadRows(msg.uploads))
 		d.inventoryTable.SetRows(inventoryRows(msg.manifests))
+		d.fleetTable.SetRows(fleetRows(msg.writers, time.Now()))
 		return d, nil
 	case analyzeMsg:
 		d.analyzing = false
@@ -336,6 +400,8 @@ func (d *Dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		d.uploadTable, cmd = d.uploadTable.Update(msg)
 	case DashboardInventory:
 		d.inventoryTable, cmd = d.inventoryTable.Update(msg)
+	case DashboardFleet:
+		d.fleetTable, cmd = d.fleetTable.Update(msg)
 	}
 	return d, cmd
 }
@@ -364,6 +430,8 @@ func (d *Dashboard) View() string {
 		body = d.renderInventory()
 	case DashboardAnalyze:
 		body = d.renderAnalyze()
+	case DashboardFleet:
+		body = d.renderFleet()
 	}
 
 	n := len(d.tabs)
@@ -431,6 +499,14 @@ func (d *Dashboard) renderInventory() string {
 	return body
 }
 
+func (d *Dashboard) renderFleet() string {
+	body := fmt.Sprintf("Fleet — writers reporting under %s\n\n%s", d.target, d.fleetTable.View())
+	if d.fleetErr != nil {
+		body += "\n\n  " + d.errStyle.Render("could not list writers: "+d.fleetErr.Error())
+	}
+	return body
+}
+
 func (d *Dashboard) renderAnalyze() string {
 	head := fmt.Sprintf("Analyze — on-demand bucket scan of %s", d.target)
 	switch {
@@ -473,6 +549,69 @@ func inventoryRows(manifests []ManifestSummary) []table.Row {
 		})
 	}
 	return rows
+}
+
+// fleetRows maps writer summaries into table rows; an empty set yields a single
+// honest "no writers" row. now is passed in so the Age column is deterministic in
+// tests. The Status column surfaces a stale-config error first, then the first source
+// error, else a dash.
+func fleetRows(writers []WriterSummary, now time.Time) []table.Row {
+	if len(writers) == 0 {
+		return []table.Row{{"(no writers reporting)", "", "", "", "", "", ""}}
+	}
+	rows := make([]table.Row, 0, len(writers))
+	for _, w := range writers {
+		healthy := "NO"
+		if w.Healthy {
+			healthy = "yes"
+		}
+		cfg := "—"
+		if w.ConfigVersion > 0 {
+			cfg = fmt.Sprintf("v%d", w.ConfigVersion)
+		}
+		status := "-"
+		switch {
+		case w.ConfigError != "":
+			status = "cfg: " + w.ConfigError
+		case w.LastError != "":
+			status = w.LastError
+		}
+		rows = append(rows, table.Row{
+			orDashTUI(w.WriterID),
+			orDashTUI(w.Hostname),
+			fmtAge(now.Sub(w.UpdatedAt)),
+			healthy,
+			fmt.Sprintf("%d", w.Sources),
+			cfg,
+			status,
+		})
+	}
+	return rows
+}
+
+func orDashTUI(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
+}
+
+// fmtAge renders a heartbeat age compactly (2m, 3h, 5d); a negative age (clock skew)
+// collapses to "0s".
+func fmtAge(d time.Duration) string {
+	if d < 0 {
+		return "0s"
+	}
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
 }
 
 // humanBytes renders a byte count as a compact human-readable size.

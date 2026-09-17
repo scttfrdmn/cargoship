@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pkg/pipeline`, and the ghostship E2E (a no-change cycle now uploads nothing).
 
 ### Added
+- **Dashboard "Fleet" tab (#615).** `cargoship dashboard s3://bucket/prefix` gains a 🚢 Fleet
+  view alongside Inventory and Analyze: it reads every ghostship writer's heartbeat and shows
+  each writer's age (time since last check-in), health, source count, running config version,
+  and any stale-config/last error — refreshing on the normal dashboard tick. Purely read-only
+  over `fleet.ListWriterStatuses`; the tab appears only with an S3 target (`--view fleet` opens
+  on it). Completes the #615 observability arc's UI surface.
 - **`cargoship ghostship init` writer bundles + a strict write-only IAM policy (#613).** A new
   `ghostship init s3://BUCKET/BASE --writer-id ID --public-key pub.pem` scaffolds a deployable,
   per-writer bundle — a **write-only** IAM policy, a signed-config skeleton, a `compose.yaml`
