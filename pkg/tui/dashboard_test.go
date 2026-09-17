@@ -13,7 +13,7 @@ import (
 )
 
 func newTestDashboard() *Dashboard {
-	return NewDashboard(context.Background(), nil, nil, nil, "", DashboardOverview, time.Second, nil)
+	return NewDashboard(context.Background(), nil, nil, nil, nil, "", DashboardOverview, time.Second, nil)
 }
 
 // fakeInventory / fakeAnalyzer are in-memory providers for the S3-backed views.
@@ -32,6 +32,13 @@ type fakeAnalyzer struct {
 }
 
 func (f fakeAnalyzer) Analyze(context.Context) (*AnalyzeResult, error) { return f.result, f.err }
+
+type fakeFleet struct {
+	writers []WriterSummary
+	err     error
+}
+
+func (f fakeFleet) ListWriters(context.Context) ([]WriterSummary, error) { return f.writers, f.err }
 
 // TestDashboard_UpdateSwitchesViews checks the real key handling: number keys and
 // tab move between the three views.
@@ -162,14 +169,57 @@ func TestDashboard_S3TabsOnlyWithTarget(t *testing.T) {
 	if m, _ := d.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")}); m.(*Dashboard).currentView != DashboardOverview {
 		t.Error("key 4 without a target should be a no-op")
 	}
+	if m, _ := d.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("6")}); m.(*Dashboard).currentView != DashboardOverview {
+		t.Error("key 6 without a fleet provider should be a no-op")
+	}
 
-	// With providers → five tabs, key 4 selects Inventory.
-	dd := NewDashboard(context.Background(), nil, fakeInventory{}, fakeAnalyzer{}, "s3://b/p", DashboardOverview, time.Second, nil)
-	if len(dd.tabs) != 5 {
-		t.Fatalf("a target should give 5 tabs, got %d", len(dd.tabs))
+	// With providers → six tabs; key 4 selects Inventory, key 6 selects Fleet.
+	dd := NewDashboard(context.Background(), nil, fakeInventory{}, fakeAnalyzer{}, fakeFleet{}, "s3://b/p", DashboardOverview, time.Second, nil)
+	if len(dd.tabs) != 6 {
+		t.Fatalf("a target should give 6 tabs, got %d", len(dd.tabs))
 	}
 	if m, _ := dd.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")}); m.(*Dashboard).currentView != DashboardInventory {
 		t.Error("key 4 with a target should select Inventory")
+	}
+	if m, _ := dd.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("6")}); m.(*Dashboard).currentView != DashboardFleet {
+		t.Error("key 6 with a fleet provider should select Fleet")
+	}
+}
+
+// TestFleetRows maps writer summaries and stays honest when empty (#615).
+func TestFleetRows(t *testing.T) {
+	now := time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC)
+	rows := fleetRows([]WriterSummary{
+		{WriterID: "lab-nas-1", Hostname: "nas", Healthy: true, Sources: 2, ConfigVersion: 5, UpdatedAt: now.Add(-90 * time.Second)},
+		{WriterID: "lab-nas-2", Hostname: "nas2", Healthy: false, Sources: 1, ConfigVersion: 3, ConfigError: "bad sig", UpdatedAt: now.Add(-3 * time.Hour)},
+	}, now)
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows, got %d", len(rows))
+	}
+	// Columns: Writer, Host, Age, Healthy, Src, Cfg, Status.
+	if rows[0][0] != "lab-nas-1" || rows[0][2] != "1m" || rows[0][3] != "yes" || rows[0][5] != "v5" {
+		t.Errorf("healthy row not mapped: %v", rows[0])
+	}
+	if rows[1][3] != "NO" || rows[1][2] != "3h" || rows[1][6] != "cfg: bad sig" {
+		t.Errorf("unhealthy/stale-config row not mapped: %v", rows[1])
+	}
+	empty := fleetRows(nil, now)
+	if len(empty) != 1 || empty[0][0] == "" || empty[0][3] != "" {
+		t.Fatalf("empty fleet should be one honest row, got %v", empty)
+	}
+}
+
+// TestDashboard_FleetDataMsg feeds heartbeats via dataMsg and checks the table + view.
+func TestDashboard_FleetDataMsg(t *testing.T) {
+	d := NewDashboard(context.Background(), nil, fakeInventory{}, fakeAnalyzer{}, fakeFleet{}, "s3://b/p", DashboardFleet, time.Second, nil)
+	d.Update(dataMsg{writers: []WriterSummary{
+		{WriterID: "w1", Hostname: "h1", Healthy: true, Sources: 1, UpdatedAt: time.Now()},
+	}})
+	if got := len(d.fleetTable.Rows()); got != 1 {
+		t.Fatalf("fleet table should have 1 row, got %d", got)
+	}
+	if out := d.View(); !strings.Contains(out, "w1") || !strings.Contains(out, "Fleet — writers reporting") {
+		t.Errorf("Fleet view should show the writer, got:\n%s", out)
 	}
 }
 
@@ -196,7 +246,7 @@ func TestInventoryRows(t *testing.T) {
 // TestDashboard_AnalyzeOnDemand: pressing 'a' runs the analyzer and the result renders.
 func TestDashboard_AnalyzeOnDemand(t *testing.T) {
 	an := fakeAnalyzer{result: &AnalyzeResult{Objects: 100, Bytes: 2 << 20, CurrentMonthly: 3, ProjectedMonthly: 1, Savings: 2}}
-	d := NewDashboard(context.Background(), nil, fakeInventory{}, an, "s3://b/p", DashboardAnalyze, time.Second, nil)
+	d := NewDashboard(context.Background(), nil, fakeInventory{}, an, fakeFleet{}, "s3://b/p", DashboardAnalyze, time.Second, nil)
 
 	// Before analyzing: honest "press a" prompt, no fabricated numbers.
 	if out := d.View(); !strings.Contains(out, "press a to analyze") {

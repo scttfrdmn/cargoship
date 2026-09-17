@@ -11,6 +11,7 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
 	"github.com/scttfrdmn/cargoship/pkg/aws/costs"
 	s3pkg "github.com/scttfrdmn/cargoship/pkg/aws/s3"
+	"github.com/scttfrdmn/cargoship/pkg/fleet"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 	"github.com/scttfrdmn/cargoship/pkg/tui"
 )
@@ -28,26 +29,27 @@ Views (local, always available):
 - 💰 Costs:    recorded spend this month by storage class, plus budget status
 - 📦 Uploads:  in-progress / resumable uploads and their progress
 
-Passing an S3 target adds two bucket-backed views:
+Passing an S3 target adds three bucket-backed views:
 - 🗂️  Inventory: completed uploads, read from the manifests under the prefix
 - 🔎 Analyze:   an on-demand bucket cost/savings scan (press 'a'; not automatic)
+- 🚢 Fleet:     ghostship writers reporting under the prefix (heartbeat, #615)
 
 Local data comes from the cost ledger (see 'cargoship cost') and upload state
 (see 'cargoship resume'). To browse and restore archived data, use
 'cargoship browse'.
 
 Navigation:
-  Tab / ← →   Switch view      1-5   Jump to a view
+  Tab / ← →   Switch view      1-6   Jump to a view
   ↑ ↓         Move in a table   a     Analyze (with an S3 target)
   R           Refresh now       Q / Ctrl+C   Quit`,
 		Example: `  cargoship dashboard
   cargoship dashboard --view costs
-  cargoship dashboard s3://my-bucket/backups   # adds Inventory + Analyze`,
+  cargoship dashboard s3://my-bucket/backups   # adds Inventory + Analyze + Fleet`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: runDashboard,
 	}
 
-	cmd.Flags().String("view", "overview", "Initial view (overview, costs, uploads, inventory, analyze)")
+	cmd.Flags().String("view", "overview", "Initial view (overview, costs, uploads, inventory, analyze, fleet)")
 	cmd.Flags().Duration("refresh", 0, "Data refresh interval (e.g. 5s, 1m; default 5s)")
 	cmd.Flags().String("region", "", "AWS region for the S3 target (auto-detected if empty)")
 	cmd.Flags().String("profile", "", "AWS profile for the S3 target")
@@ -71,6 +73,8 @@ func runDashboard(cmd *cobra.Command, args []string) error {
 		initial = tui.DashboardInventory
 	case "analyze":
 		initial = tui.DashboardAnalyze
+	case "fleet":
+		initial = tui.DashboardFleet
 	default:
 		initial = tui.DashboardOverview
 	}
@@ -88,37 +92,38 @@ func runDashboard(cmd *cobra.Command, args []string) error {
 		costProvider = mgr
 	}
 
-	// #449: an optional S3 target adds the Inventory + Analyze views.
+	// #449/#615: an optional S3 target adds the Inventory + Analyze + Fleet views.
 	var inv tui.InventoryProvider
 	var an tui.AnalyzeProvider
+	var fleetProvider tui.FleetProvider
 	var target string
 	if len(args) == 1 {
-		i, a, t, err := s3Providers(ctx, cmd, args[0])
+		i, a, f, t, err := s3Providers(ctx, cmd, args[0])
 		if err != nil {
 			return err
 		}
-		inv, an, target = i, a, t
+		inv, an, fleetProvider, target = i, a, f, t
 	}
 
-	if err := tui.NewDashboard(ctx, costProvider, inv, an, target, initial, refresh, logger).Run(); err != nil {
+	if err := tui.NewDashboard(ctx, costProvider, inv, an, fleetProvider, target, initial, refresh, logger).Run(); err != nil {
 		return fmt.Errorf("dashboard failed: %w", err)
 	}
 	return nil
 }
 
-// s3Providers builds the Inventory + Analyze providers for an S3 target, resolving
-// region + credentials the same way 'cargoship analyze' does.
-func s3Providers(ctx context.Context, cmd *cobra.Command, url string) (tui.InventoryProvider, tui.AnalyzeProvider, string, error) {
+// s3Providers builds the Inventory + Analyze + Fleet providers for an S3 target,
+// resolving region + credentials the same way 'cargoship analyze' does.
+func s3Providers(ctx context.Context, cmd *cobra.Command, url string) (tui.InventoryProvider, tui.AnalyzeProvider, tui.FleetProvider, string, error) {
 	bucket, prefix, err := s3pkg.ParseS3URL(url)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("invalid S3 target %q: %w", url, err)
+		return nil, nil, nil, "", fmt.Errorf("invalid S3 target %q: %w", url, err)
 	}
 	profile, _ := cmd.Flags().GetString("profile")
 	region, _ := cmd.Flags().GetString("region")
 
 	awsCfg, err := loadAWSConfig(ctx, profile, region)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("failed to load AWS config: %w", err)
+		return nil, nil, nil, "", fmt.Errorf("failed to load AWS config: %w", err)
 	}
 	client := s3.NewFromConfig(awsCfg)
 	if region == "" {
@@ -132,7 +137,35 @@ func s3Providers(ctx context.Context, cmd *cobra.Command, url string) (tui.Inven
 	target := fmt.Sprintf("s3://%s/%s", bucket, prefix)
 	return dashInventory{client: client, bucket: bucket, prefix: prefix},
 		dashAnalyzer{client: client, bucket: bucket, prefix: prefix, region: region},
+		dashFleet{client: client, bucket: bucket, prefix: prefix},
 		target, nil
+}
+
+// dashFleet adapts fleet.ListWriterStatuses to tui.FleetProvider (#615).
+type dashFleet struct {
+	client         *s3.Client
+	bucket, prefix string
+}
+
+func (d dashFleet) ListWriters(ctx context.Context) ([]tui.WriterSummary, error) {
+	statuses, err := fleet.ListWriterStatuses(ctx, d.client, d.bucket, d.prefix)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]tui.WriterSummary, 0, len(statuses))
+	for _, st := range statuses {
+		out = append(out, tui.WriterSummary{
+			WriterID:      st.WriterID,
+			Hostname:      st.Hostname,
+			Healthy:       st.Healthy(),
+			Sources:       len(st.Sources),
+			ConfigVersion: st.ConfigVersion,
+			ConfigError:   st.ConfigError,
+			LastError:     firstSourceError(st.Sources),
+			UpdatedAt:     st.UpdatedAt,
+		})
+	}
+	return out, nil
 }
 
 // dashInventory adapts manifest.ListAllManifests to tui.InventoryProvider.

@@ -12,16 +12,17 @@ Views (local, always available):
 - 💰 Costs:    recorded spend this month by storage class, plus budget status
 - 📦 Uploads:  in-progress / resumable uploads and their progress
 
-Passing an S3 target adds two bucket-backed views:
+Passing an S3 target adds three bucket-backed views:
 - 🗂️  Inventory: completed uploads, read from the manifests under the prefix
 - 🔎 Analyze:   an on-demand bucket cost/savings scan (press 'a'; not automatic)
+- 🚢 Fleet:     ghostship writers reporting under the prefix (heartbeat, #615)
 
 Local data comes from the cost ledger (see 'cargoship cost') and upload state
 (see 'cargoship resume'). To browse and restore archived data, use
 'cargoship browse'.
 
 Navigation:
-  Tab / ← →   Switch view      1-5   Jump to a view
+  Tab / ← →   Switch view      1-6   Jump to a view
   ↑ ↓         Move in a table   a     Analyze (with an S3 target)
   R           Refresh now       Q / Ctrl+C   Quit
 
@@ -34,7 +35,7 @@ cargoship dashboard [s3://bucket[/prefix]] [flags]
 ```
   cargoship dashboard
   cargoship dashboard --view costs
-  cargoship dashboard s3://my-bucket/backups   # adds Inventory + Analyze
+  cargoship dashboard s3://my-bucket/backups   # adds Inventory + Analyze + Fleet
 ```
 
 ### Options
@@ -44,7 +45,7 @@ cargoship dashboard [s3://bucket[/prefix]] [flags]
       --profile string     AWS profile for the S3 target
       --refresh duration   Data refresh interval (e.g. 5s, 1m; default 5s)
       --region string      AWS region for the S3 target (auto-detected if empty)
-      --view string        Initial view (overview, costs, uploads, inventory, analyze) (default "overview")
+      --view string        Initial view (overview, costs, uploads, inventory, analyze, fleet) (default "overview")
 ```
 
 ### Options inherited from parent commands
