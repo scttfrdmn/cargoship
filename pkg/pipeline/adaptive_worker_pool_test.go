@@ -249,9 +249,14 @@ func TestAdaptiveWorkerPool_PlateauDetection(t *testing.T) {
 
 func TestAdaptiveWorkerPool_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
+	// MaxWorkers must be >= the number of submitted tasks (20). The semaphore is sized
+	// at MaxWorkers, so a smaller cap makes Submit BLOCK once it fills, which couples
+	// the cancel timing to task completion and makes this test flaky (all 20 tasks can
+	// finish before the delayed cancel lands). With enough workers all tasks start
+	// immediately and the 50ms cancel deterministically interrupts the 100ms tasks.
 	config := &AdaptiveWorkerPoolConfig{
 		InitialWorkers: 4,
-		MaxWorkers:     16,
+		MaxWorkers:     24,
 		EnableAdaptive: false,
 	}
 
