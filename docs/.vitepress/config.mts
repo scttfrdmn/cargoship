@@ -173,6 +173,7 @@ const sidebar = {
       items: [
         { text: 'Overview', link: '/enterprise/' },
         { text: 'ghost-ship', link: '/enterprise/ghost-ship' },
+        { text: 'Fleet tutorial (end-to-end)', link: '/enterprise/fleet-tutorial' },
         { text: 'Deployment guide', link: '/enterprise/deployment' },
         { text: 'QNAP / NAS deployment', link: '/enterprise/qnap' },
       ],

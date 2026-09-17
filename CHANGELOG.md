@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pkg/pipeline`, and the ghostship E2E (a no-change cycle now uploads nothing).
 
 ### Added
+- **End-to-end fleet onboarding tutorial (#631).** A new task-oriented guide,
+  `docs/enterprise/fleet-tutorial.md` ("Stand up a ghostship fleet"), walks the full
+  lifecycle: create the signing key → `ghostship init` a writer bundle → attach the
+  write-only IAM identity → fill/validate/sign/upload the config → deploy → watch with
+  `fleet status`/`monitor`/dashboard → verify the immutability backstop → add writers →
+  change configs safely (version bump + scope-widening guard) → recover data → control-side
+  retention. First slice of the #631 docs sweep (core getting-started, trust-page updates,
+  and legacy pruning remain).
 - **Dashboard "Fleet" tab (#615).** `cargoship dashboard s3://bucket/prefix` gains a 🚢 Fleet
   view alongside Inventory and Analyze: it reads every ghostship writer's heartbeat and shows
   each writer's age (time since last check-in), health, source count, running config version,
