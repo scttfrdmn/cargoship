@@ -8,9 +8,12 @@ Ghostship groups the commands for running CargoShip as a fleet of unattended
 backup agents that share one S3 bucket without colliding (writer isolation, #520).
 
 Subcommands:
+  init              Scaffold a deployable, write-only writer bundle
   run               Run an unattended, writer-isolated incremental backup on a schedule
   iam-policy        Emit the least-privilege IAM policy for one writer
   validate-config   Check a ghostship config (and optionally its scope) before deploy
+  config-keygen     Generate an ed25519 keypair for signing fleet configs
+  sign-config       Sign a config so agents can verify it
 
 ### Options
 
