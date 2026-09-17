@@ -130,10 +130,13 @@ func TestPipeline_ProgressTracking(t *testing.T) {
 	t.Logf("Progress updates received: %d (test completed in %v, interval: %v)",
 		updates, result.TotalTime, config.ProgressInterval)
 
-	// Only assert progress if test took significantly longer than interval
-	// (at least 2x to ensure ticker had time to fire)
-	if result.TotalTime > 2*config.ProgressInterval {
-		assert.Greater(t, updates, int64(0), "Should have progress updates for tests much longer than interval")
+	// Only assert progress when the run lasted long enough that the ticker was
+	// guaranteed to fire. At a 1ms interval a 2x (2ms) margin is within scheduler
+	// jitter — a ~2ms run could pass the gate yet see zero ticks, which made this test
+	// flaky. Require a comfortably large margin (25x ≈ 25ms) so ~25 ticks would have
+	// elapsed; faster runs skip the assertion rather than fail spuriously.
+	if result.TotalTime > 25*config.ProgressInterval {
+		assert.Greater(t, updates, int64(0), "Should have progress updates for runs far longer than the interval")
 	}
 }
 
