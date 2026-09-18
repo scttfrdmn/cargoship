@@ -3,8 +3,8 @@ prev:
   text: Your first upload
   link: /start/first-upload
 next:
-  text: Clean up
-  link: /start/cleanup
+  text: Keep it current
+  link: /start/keep-it-current
 ---
 
 # Verify & restore it
@@ -75,6 +75,6 @@ Then `ls`, `cd`, `cat`, `stat`, `find`, and `get` inside the archive. See
 
 ## Next
 
-- [Clean up](/start/cleanup) — remove the test upload safely.
+- [Keep it current](/start/keep-it-current) — sync only what changed, then schedule it.
 - [Verifying integrity](/guides/verifying) and [Restoring files](/guides/restoring)
   for the full commands.

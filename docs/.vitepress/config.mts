@@ -51,6 +51,7 @@ const sidebar = {
         { text: 'AWS setup & credentials', link: '/start/aws-setup' },
         { text: 'Your first upload', link: '/start/first-upload' },
         { text: 'Verify & restore it', link: '/start/verify-and-restore' },
+        { text: 'Keep it current', link: '/start/keep-it-current' },
         { text: 'Clean up', link: '/start/cleanup' },
       ],
     },
