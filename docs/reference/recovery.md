@@ -91,8 +91,29 @@ rewritten. For Glacier/Deep Archive, if the thaw hasn't finished, retry with
 `--wait`, or check pending jobs with `cargoship restore jobs list|check`. See
 [Restoring files](/guides/restoring).
 
+### Recovering a ghostship fleet writer
+
+A [fleet](/enterprise/ghost-ship) writer's backups do not depend on the box that wrote
+them — recovery needs only bucket read + the decryption key, never the writer's
+identity or any local state.
+
+- **Whole-writer recovery.** `cargoship restore s3://BUCKET/writers/<id>/uploads/<upload-id> ./out --all`
+  reconstructs every file in the upload onto any machine. Restore is self-describing (the
+  manifest carries the chunk layout + encrypted data-key references), so a dead box needs no
+  replacement identity.
+- **Use a break-glass role, not the agent.** The restore identity needs `s3:GetObject` +
+  `s3:ListBucket` on the writer's prefix and `kms:Decrypt` on the fleet CMK — the read-only
+  inverse of the write-only agent policy. The agent itself can't decrypt or read back.
+- **Config recovery is automatic.** In pull mode an agent keeps running its last-good signed
+  config if a refresh fails; push a fixed, re-signed config and the next cycle adopts it.
+- **Confirm the immutability backstop** with `cargoship fleet lock-status s3://BUCKET/BASE`
+  (versioning + Object Lock + abort-incomplete-MPU) before you rely on point-in-time recovery.
+- **CMK is the SPOF.** With immutable history and no scheduled deletion, losing the fleet CMK
+  loses the data — back up / multi-Region the key material. See [security](/project/security).
+
 ## See also
 
+- [ghost-ship](/enterprise/ghost-ship) · [Fleet tutorial](/enterprise/fleet-tutorial)
 - [Resuming interrupted uploads](/guides/resuming)
 - [Verifying integrity](/guides/verifying)
 - [Restoring files](/guides/restoring)

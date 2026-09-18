@@ -64,6 +64,30 @@ denies `s3:PutObject` unless `s3:x-amz-server-side-encryption` is `aws:kms`.
 - Enable **CloudTrail** for a KMS audit trail.
 :::
 
+## Fleet (ghostship) trust model
+
+Running a [ghostship fleet](/enterprise/ghost-ship) adds a distinct security posture for
+unattended agents:
+
+- **Write-only, delete-free per-writer IAM.** Each agent gets `s3:PutObject` on its own
+  `writers/<id>/` prefix, scoped `s3:ListBucket`, read-only `s3:GetObject` on its config
+  prefix, and `kms:GenerateDataKey` — **no `s3:DeleteObject`, no `kms:Decrypt`, no access
+  to other writers**. A compromised agent can only append to its own subtree; it can't read
+  back, decrypt, or delete. `cargoship ghostship iam-policy --write-only` emits it and
+  `ghostship init --mint` provisions it.
+- **Signed config over S3.** Agents pull their config from a `fleet/<id>/` control prefix
+  and verify an ed25519 signature against a baked public key (the operator holds the private
+  key). Unsigned/tampered/wrong-key configs are refused; on a bad refresh the agent keeps the
+  last-good config; widening what a writer reads or deletes requires an explicit signed
+  `allow_scope_expansion`.
+- **Break-glass restore is separate.** Recovery uses a distinct role with bucket read +
+  `kms:Decrypt`, never the write-only agent identity — so decryption capability isn't sitting
+  on the backup boxes.
+- **CMK-custody is the long-term SPOF.** Use a dedicated fleet CMK (agent = `GenerateDataKey`
+  only; break-glass role = `Decrypt`). With no scheduled deletion and immutable history,
+  **losing the CMK means losing the data** — enable key rotation and back up / multi-Region the
+  key material. Verify the bucket's immutability posture with `cargoship fleet lock-status`.
+
 ## Compliance
 
 AWS KMS uses FIPS 140-2 validated HSMs and is HIPAA-eligible, PCI DSS, and SOC 2
