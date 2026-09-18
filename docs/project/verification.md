@@ -58,6 +58,21 @@ production soak time.
 | Chain-aware delete (won't strand a dependent version) | Verified | `` `cmd:delete` ``, `` `test:TestDependentUploads` `` |
 | Reference-aware GC (`dataset prune`): mark-sweep by S3Key + verified compaction | Beta | `` `cmd:dataset` ``, `` `test:TestPlanKeepLast` ``, `` `make:torture` `` |
 
+## Fleet mode (ghostship)
+
+Shipped in v0.32.0 (see [ghost-ship](/enterprise/ghost-ship)). Each agent runs the same
+verified incremental-sync + restore engine; the fleet-specific trust claims below are
+gated by unit tests, the emulator E2E suite, and the per-release real-AWS round-trip.
+
+| Capability | Status | Evidence |
+|---|---|---|
+| Writer isolation: own-prefix, delete-free **write-only** IAM (no Delete, no Decrypt) | Verified | `` `test:TestWriterIAMPolicy` ``, real-S3 writer-scoped round-trip (report marker `VERIFICATION_WRITER_ISO`) |
+| Signed config-over-S3: verify + validate + keep-last-good + no silent scope-widening | Verified | `` `test:TestConfigSign_VerifyRoundTrip` ``, `` `test:TestPullSignedConfig_TamperedFails` ``, `` `test:TestGhostshipRun_ConfigPull_KeepLastGood` ``, `` `test:TestGhostshipRun_ConfigPull_RefusesSilentScopeWidening` `` |
+| Heartbeat + control-side `fleet status`/`monitor` (stale-writer alert) | Verified | `` `cmd:fleet` ``, `` `test:TestListWriterStatuses` ``, `` `test:TestFleetStatus_ListsWriter` ``, `` `test:TestFleetMonitor_DetectsStale` `` |
+| Immutability posture audit (`fleet lock-status`: versioning / Object Lock / abort-MPU) | Verified | `` `cmd:fleet` ``, `` `test:TestAuditBucketImmutability_NoBackstop` ``, `` `test:TestFleetLockStatus_Runs` `` |
+| Disaster recovery (`restore --all`, independent of the writer's identity) | Verified | `` `cmd:restore` ``, `` `test:TestGhostshipRun_DisasterRecovery` ``, real-S3 |
+| Live IAM minting / scuttle (`init --mint`, `scuttle`) | Beta | `` `test:TestMintWriter_HappyPath` ``, `` `test:TestScuttleWriterIAM_FullTeardown` `` (mockable interface; live IAM path not CI-tested) |
+
 ## Throughput & scale (priority 2: performance)
 
 | Capability | Status | Evidence |
@@ -83,7 +98,7 @@ production soak time.
 | Capability | Status | Evidence |
 |---|---|---|
 | Multi-region orchestration (`pkg/multiregion`) | Experimental | Off the CLI by design; `` `script:scripts/ci/check-no-dead-imports.sh` `` enforces it stays off until genuinely wired. See [the roadmap](/project/roadmap). |
-| Removed / deferred capabilities (agent+controller, web UI, autonomous archival, …) | Roadmap | [the roadmap](/project/roadmap) |
+| Removed / deferred capabilities (central agent+controller, web UI, the legacy per-file archival daemon, …) | Roadmap | [the roadmap](/project/roadmap) |
 
 ---
 

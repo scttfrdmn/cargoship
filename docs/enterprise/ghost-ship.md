@@ -1,38 +1,41 @@
 # ghost-ship
 
-A ghost ship is an autonomous CargoShip agent deployed to a remote NAS (QNAP or
-Synology) that continuously monitors local files and archives them directly to S3
-— no data round-trip through a central host. It runs fully independently: no
-central coordinator is involved, and archival continues on its own schedule.
+A ghost ship is an unattended, **write-only** CargoShip agent deployed to a remote box
+(a NAS, lab server, or workstation) that backs up its own directories to S3 on a
+schedule — no data round-trip through a central host, and no inbound network. Run a
+**fleet** of them against one bucket: each is isolated to its own `writers/<id>/`
+prefix, pulls a signed config from S3, and can only append to its own subtree — never
+read, decrypt, or delete anyone else's data.
+
+For a step-by-step walkthrough, see the [fleet tutorial](/enterprise/fleet-tutorial).
 
 ## How it works
 
-Ghost ships apply configurable **archival rules** to watched paths: match files by
-pattern and minimum age, pick a storage class, optionally encrypt, and (optionally)
-delete after a successful archive to free local space. Files go straight from the
-NAS to S3.
+Each ghost ship runs `cargoship ghostship run` — CargoShip's real incremental-sync
+engine, scheduled and headless. Every cycle it scans its `watch_paths`, uploads only
+what changed since its last manifest (chunked archives + manifests + dataset
+versioning), and writes a heartbeat you read with `cargoship fleet status`. Its config
+is pulled from S3 and signature-verified (see [Signed config over S3](#signed-config-over-s3-pull-mode)),
+and the writer's IAM is write-only and delete-free.
 
 ```yaml
-# ghost_ship.yaml (excerpt)
-id: "production-ghost-ship"
-name: "Production Ghost Ship"
-
+# box.yaml — a ghostship sync config. Sign it and upload to <base>/fleet/<id>/; the
+# agent pulls + verifies it. See the fleet tutorial for the full flow.
+id: lab-nas-1
+writer_id: lab-nas-1          # isolates this box under writers/lab-nas-1/
+version: 1                    # bump on every change; reported in the heartbeat
 s3_config:
-  bucket: "cargoship-production"
-  region: "us-west-2"          # must match the bucket's region
-  concurrency: 20
-
+  bucket: backups
 watch_paths:
-  - path: "/volume1/research-data"
-    include_patterns: ["*.fastq.gz", "*.bam", "*.vcf.gz"]
-    exclude_patterns: ["*.tmp", "*.lock"]
-    min_age: "1h"
-    storage_class: "STANDARD"
-    recursive: true
-
-max_concurrent_jobs: 4
-scan_interval: "5m"
+  - path: /volume1/research-data
+  - path: /volume1/Documents
+scan_interval: 1h
 ```
+
+`archival_rules` — the legacy per-file model (match by pattern + minimum age, pick a
+storage class, delete-after-archive) — are **advisory-only in sync mode**: `ghostship
+run` does directory sync and ignores them. They remain in the config schema for the
+dormant rule-based daemon, not the fleet.
 
 ## Provisioning a writer (`init`)
 
@@ -67,29 +70,30 @@ deletes that writer's `writers/<id>/` data and `fleet/<id>/` config.
 
 ## Deployment
 
-Ghost ships are distributed as platform-specific container images and run via
-Container Station (QNAP) or Container Manager (Synology). A typical run mounts the
-data directory read-only, the config, and AWS credentials read-only:
+The recommended path is the bundle `cargoship ghostship init` emits (see
+[Provisioning a writer](#provisioning-a-writer-init) above): it writes a `compose.yaml`
+that runs `ghostship run --config-url` in signed-config pull mode, mounts AWS
+credentials as a **file** (never env), and keeps a state volume. Deploy it with:
 
 ```bash
-docker run -d \
-  --name cargoship-ghost-container \
-  --platform linux/amd64 \
-  -e AWS_PROFILE=aws \
-  -e AWS_DEFAULT_REGION=us-west-2 \
-  -v /path/to/.aws:/home/cargoship/.aws:ro \
-  -v /path/to/ghost_ship.yaml:/etc/cargoship/ghost_ship.yaml:ro \
-  -v /volume1/research-data:/volume1/research-data:ro \
-  --restart unless-stopped \
-  cargoship-ghost:latest
+docker compose -f ./lab-nas-1/compose.yaml up -d
 ```
 
-::: warning Region must match
-Set `AWS_DEFAULT_REGION` to the bucket's region explicitly. The AWS SDK prioritizes
-the environment variable over the config file, and a mismatch causes S3 301
-`PermanentRedirect` errors. QNAP/Synology are typically x86_64 — build/run images
-with `--platform linux/amd64` to avoid exec-format errors.
+The image runs on QNAP Container Station / Synology Container Manager and any Docker
+host; mount the data directories read-only. The emitted compose sets `--region`
+explicitly (below) and `restart: unless-stopped`.
+
+::: warning Region and platform
+Set the region explicitly (the emitted compose passes `--region`; if you run the binary
+directly, set `AWS_DEFAULT_REGION` to the bucket's region). The AWS SDK prioritizes the
+environment variable over the config file, and a mismatch causes S3 301
+`PermanentRedirect` errors. QNAP/Synology are typically x86_64 — run images with
+`--platform linux/amd64` to avoid exec-format errors.
 :::
+
+A plain `docker run` also works if you manage the config + credentials yourself
+(mount the signed config's public key + an `~/.aws/credentials` file, and invoke
+`ghostship run --config-url s3://BUCKET/BASE --public-key … --writer-id …`).
 
 ## Signed config over S3 (pull mode)
 
