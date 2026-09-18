@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Getting-started now covers keeping backups current (#631).** A new
+  [Keep it current](https://cargoship.app/start/keep-it-current) step slots into the Get
+  Started arc between "Verify & restore it" and "Clean up", completing the intended
+  first upload → verify → restore → **sync** → **schedule** path: incremental `cargoship
+  sync` (with `--dry-run`/`--checksum`/`--track-deletes`), scheduling via cron, when to
+  graduate to an unattended ghostship fleet instead, and setting budget guardrails before
+  leaving backups unattended. Previously `sync` was reference-only and scheduling appeared
+  nowhere in the getting-started flow.
+
 ### Changed
 - **Trust/verification docs cover the fleet model (#631).** The integrity, security, and
   recovery pages (and root SECURITY.md) now document the fleet trust posture:

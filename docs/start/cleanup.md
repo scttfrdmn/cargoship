@@ -1,7 +1,7 @@
 ---
 prev:
-  text: Verify & restore it
-  link: /start/verify-and-restore
+  text: Keep it current
+  link: /start/keep-it-current
 ---
 
 # Clean up

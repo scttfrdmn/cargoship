@@ -1,7 +1,8 @@
 # Tutorials (by use-case)
 
 The [Get Started](/start/quickstart) path teaches you the mechanics: install,
-upload, verify, restore. These tutorials pick up where that leaves off — they
+upload, verify, restore, then keep it current with scheduled incremental syncs.
+These tutorials pick up where that leaves off — they
 follow a **realistic persona** through an end-to-end workflow, with concrete
 dataset sizes, storage-class choices, and cost trade-offs.
 
