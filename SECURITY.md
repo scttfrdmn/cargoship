@@ -131,5 +131,9 @@ optional KMS) permissions the workflow needs — see
   if you use `--kms-key-id`.
 - Use `--kms-key-id` and `--encrypt-manifest` for sensitive datasets.
 - Prefer the credential chain (profiles, roles, SSO) over long-lived access keys.
-- For ghost ships on a NAS, scope the credentials that agent uses to the prefix it
-  archives to; it needs no inbound network access.
+- For a ghostship fleet, give each agent a **write-only, delete-free** per-writer
+  identity (`cargoship ghostship iam-policy --write-only`, or `ghostship init --mint`):
+  PutObject on its own `writers/<id>/` prefix, no `s3:DeleteObject`, no `kms:Decrypt`, no
+  access to other writers. It needs no inbound network. Distribute config as a **signed**
+  object agents verify (`ghostship sign-config`), keep decryption on a separate break-glass
+  role, and enable S3 Versioning + Object Lock (audit with `cargoship fleet lock-status`).

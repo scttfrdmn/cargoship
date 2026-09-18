@@ -153,7 +153,19 @@ Being explicit about the boundaries is part of the model:
   a chunk and the manifest it's checksummed in could produce a self-consistent
   forgery. For confidentiality and authenticated metadata, use
   [manifest encryption](/project/security); for immutability, use S3 Object
-  Lock.
+  Lock — and audit that it's actually enabled with
+  [`cargoship fleet lock-status`](/enterprise/ghost-ship), which reports bucket
+  versioning + Object Lock + the abort-incomplete-MPU lifecycle rule.
+- **Fleet mode narrows the write-access threat.** A ghostship agent's IAM is
+  **write-only and delete-free** (PutObject on its own `writers/<id>/` prefix, no
+  `s3:DeleteObject`, no `kms:Decrypt`), so a compromised agent can append to its
+  own subtree but cannot overwrite-and-rewrite history, read other writers, or
+  delete anything. Combined with S3 Versioning + Object Lock on the bucket, even a
+  stolen *delete-capable* control credential can't destroy history within the
+  retention window. The agent's config is pulled from S3 and **ed25519
+  signature-verified** (keep-last-good on a bad refresh, and scope-widening
+  requires an explicit signed opt-in), so a tampered config can't redirect what a
+  writer reads or deletes. See [ghost-ship](/enterprise/ghost-ship).
 - **Not verification of data CargoShip never saw.** Deep verify confirms stored
   bytes match what was recorded *at upload time*. It cannot vouch for a file
   that was already corrupt on disk before upload — checksum what matters at the

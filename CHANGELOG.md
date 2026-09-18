@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Trust/verification docs cover the fleet model (#631).** The integrity, security, and
+  recovery pages (and root SECURITY.md) now document the fleet trust posture:
+  write-only/delete-free per-writer IAM (no Delete, no Decrypt), signed config-over-S3 with
+  keep-last-good and no silent scope-widening, the `fleet lock-status` immutability audit,
+  whole-writer `restore --all` via a separate break-glass role, and the CMK-custody recovery
+  SPOF. Previously these pages predated the fleet work and described only single-identity
+  encryption/IAM.
 - **Docs corrected for v0.32.0 fleet mode (#631).** The enterprise docs and roadmap no longer
   describe the old per-file, `archival_rules`-as-primary "autonomous agent" model or classify
   the fleet as removed/deferred: `docs/enterprise/ghost-ship.md` (intro, config example, and
