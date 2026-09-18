@@ -33,9 +33,11 @@ cargoship ghostship init S3_URL [flags]
   -h, --help                 help for init
       --image string         Container image to run in the emitted compose file (default "cargoship:latest")
       --kms-key-arn string   Fleet KMS key ARN; adds kms:GenerateDataKey (write-only, no Decrypt) scoped to that key
+      --mint                 Provision the IAM identity live (create user + write-only policy + access key) and write credentials into the bundle; requires iam:Create* on the caller
       --out string           Directory to write the bundle into (default ./<writer-id>)
+      --profile string       AWS profile to use for --mint
       --public-key string    Path to the config-signing public key (from 'ghostship config-keygen') to bake into the bundle (required)
-  -r, --region string        AWS region for the emitted compose file (default "us-west-2")
+  -r, --region string        AWS region for the emitted compose file (and --mint calls) (default "us-west-2")
       --writer-id string     Writer identity for this bundle (writers/<id>/). 'auto' derives a stable per-host id
 ```
 
@@ -47,7 +49,6 @@ cargoship ghostship init S3_URL [flags]
       --memory-limit string          Set a memory limit for the run. This will slow things down, but will less likely to OOM in certain situations. Avoid this unless you are having memory issues.
       --pprof                        Enable runtime profiling HTTP endpoint at localhost:6060
       --pprof-addr string            Address for runtime profiling HTTP endpoint (default "localhost:6060")
-      --profile                      Enable performance profiling. This will generate profile files in a temp directory
   -t, --trace                        Enable trace messages in output
   -v, --verbose                      Enable verbose output
 ```

@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/cobra"
 
 	"github.com/scttfrdmn/cargoship/pkg/fleet"
@@ -19,6 +21,8 @@ func newGhostshipInitCmd() *cobra.Command {
 		outDir    string
 		image     string
 		region    string
+		profile   string
+		mint      bool
 	)
 	cmd := &cobra.Command{
 		Use:   "init S3_URL",
@@ -98,8 +102,40 @@ Example:
 			}
 
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-				"Wrote a write-only writer bundle for %q to %s/\nNext: see %s/README.md (attach the policy, then fill in + sign config.yaml).\n",
-				id, dir, dir)
+				"Wrote a write-only writer bundle for %q to %s/\n", id, dir)
+
+			// #613 slice 2: optionally mint the IAM identity live (create user + policy +
+			// access key) and write the credentials into the bundle. Off by default so
+			// `init` makes no AWS calls unless asked.
+			if mint {
+				awsCfg, mErr := loadAWSConfig(cmd.Context(), profile, region)
+				if mErr != nil {
+					return fmt.Errorf("mint: load AWS config: %w", mErr)
+				}
+				res, mErr := fleet.MintWriter(cmd.Context(), iam.NewFromConfig(awsCfg), id, policy)
+				if mErr != nil {
+					return fmt.Errorf("mint writer identity: %w", mErr)
+				}
+				creds := fmt.Sprintf("[default]\naws_access_key_id = %s\naws_secret_access_key = %s\n",
+					res.AccessKeyID, res.SecretAccessKey)
+				credsPath := filepath.Join(dir, "aws-credentials")
+				if wErr := writeNewFile(credsPath, []byte(creds), 0o600); wErr != nil {
+					return fmt.Errorf("mint succeeded but writing creds failed (run 'ghostship scuttle %s' to revoke): %w", id, wErr)
+				}
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					"Minted IAM user %s (access key %s); wrote credentials to %s (0600).\n",
+					res.UserName, res.AccessKeyID, credsPath)
+				// Verify the bucket's access posture (#529 preflight; informational).
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Verifying bucket access posture:")
+				if pErr := runAccessPreflight(cmd.Context(), s3.NewFromConfig(awsCfg), region, profile, kmsKeyARN, bucket, dataPrefix, "none"); pErr != nil {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "preflight: %v\n", pErr)
+				}
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Next: fill in + sign config.yaml, then 'docker compose up -d'. Revoke with 'cargoship ghostship scuttle %s'.\n", id)
+				return nil
+			}
+
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+				"Next: see %s/README.md (create the identity + attach the policy, then fill in + sign config.yaml). Or re-run with --mint to provision the identity now.\n", dir)
 			return nil
 		},
 	}
@@ -108,7 +144,9 @@ Example:
 	cmd.Flags().StringVar(&publicKey, "public-key", "", "Path to the config-signing public key (from 'ghostship config-keygen') to bake into the bundle (required)")
 	cmd.Flags().StringVar(&outDir, "out", "", "Directory to write the bundle into (default ./<writer-id>)")
 	cmd.Flags().StringVar(&image, "image", "cargoship:latest", "Container image to run in the emitted compose file")
-	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region for the emitted compose file")
+	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region for the emitted compose file (and --mint calls)")
+	cmd.Flags().StringVar(&profile, "profile", "", "AWS profile to use for --mint")
+	cmd.Flags().BoolVar(&mint, "mint", false, "Provision the IAM identity live (create user + write-only policy + access key) and write credentials into the bundle; requires iam:Create* on the caller")
 	_ = cmd.MarkFlagRequired("public-key")
 	return cmd
 }
