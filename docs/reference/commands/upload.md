@@ -32,6 +32,8 @@ Flag tables below are generated from the CLI and kept in sync by a drift check.
 
 <!-- @include: ../../gen/cli/cargoship_ghostship_init.md -->
 
+<!-- @include: ../../gen/cli/cargoship_ghostship_scuttle.md -->
+
 <!-- @include: ../../gen/cli/cargoship_ghostship_run.md -->
 
 <!-- @include: ../../gen/cli/cargoship_ghostship_iam-policy.md -->

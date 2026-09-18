@@ -47,14 +47,23 @@ cargoship ghostship init s3://backups/nas --writer-id lab-nas-1 \
   --public-key ./keys/config-signing-public.pem --out ./lab-nas-1
 ```
 
-It makes no AWS calls — attach the emitted `iam-policy.json` to a new IAM identity with
-your own tooling. That policy is the genuine write-only footprint (`ghostship iam-policy
---write-only` emits it standalone): `s3:PutObject` on the writer's own prefix, scoped
-`s3:ListBucket`, read-only `s3:GetObject` on its config, and `kms:GenerateDataKey`
-**without** `kms:Decrypt`. A compromised writer can neither read back, decrypt, nor
-delete any data. (Trade-off: without read access to its previous manifest, incremental
-sync degrades to a full re-scan each cycle.) The bundle README walks through signing +
-uploading the config and `docker compose up -d`.
+By default it makes no AWS calls — attach the emitted `iam-policy.json` to a new IAM
+identity with your own tooling. That policy is the genuine write-only footprint
+(`ghostship iam-policy --write-only` emits it standalone): `s3:PutObject` on the writer's
+own prefix, scoped `s3:ListBucket`, read-only `s3:GetObject` on its config, and
+`kms:GenerateDataKey` **without** `kms:Decrypt`. A compromised writer can neither read
+back, decrypt, nor delete any data. (Trade-off: without read access to its previous
+manifest, incremental sync degrades to a full re-scan each cycle.) The bundle README
+walks through signing + uploading the config and `docker compose up -d`.
+
+**`--mint` (turnkey provisioning).** If the control-machine credentials have
+`iam:Create*`, `ghostship init --mint` provisions the identity live: it creates the IAM
+user `cargoship-writer-<id>`, attaches the write-only policy, creates an access key,
+writes `aws-credentials` (0600) into the bundle, and runs the #529 access preflight.
+Decommission with **`cargoship ghostship scuttle <id>`** — it deletes the access keys,
+detaches + deletes the cargoship-managed policy, and deletes the user (idempotent; only
+the cargoship policy is deleted). `--purge-data s3://BUCKET/BASE --yes` additionally
+deletes that writer's `writers/<id>/` data and `fleet/<id>/` config.
 
 ## Deployment
 

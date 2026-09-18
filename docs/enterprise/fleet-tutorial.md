@@ -76,6 +76,23 @@ or the console. That policy grants exactly: `s3:PutObject` on `writers/lab-nas-1
 Put the resulting access key + secret in `./lab-nas-1/aws-credentials` (standard AWS
 credentials-file format). `compose.yaml` mounts it read-only into the container.
 
+::: tip Let CargoShip mint it (turnkey)
+If your control-machine credentials have `iam:Create*`, re-run init with `--mint` and
+CargoShip provisions the identity for you — it creates the IAM user, attaches the
+write-only policy, creates an access key, writes `./lab-nas-1/aws-credentials`, and runs
+the #529 access preflight:
+
+```bash
+cargoship ghostship init s3://backups/nas --writer-id lab-nas-1 \
+  --kms-key-arn arn:… --public-key ./fleet-keys/config-signing-public.pem \
+  --out ./lab-nas-1 --mint
+```
+
+Decommission the writer later with `cargoship ghostship scuttle lab-nas-1` (deletes the
+key, policy, and user; add `--purge-data s3://backups/nas --yes` to also delete its
+backups). Without `--mint`, init makes no AWS calls — you attach the policy yourself.
+:::
+
 ::: tip Write-only trade-off
 Without `GetObject` on its data, the agent can't re-read its previous manifest, so
 incremental sync degrades to a full re-scan each cycle. If you prefer incremental (at

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Live IAM minting for `ghostship init --mint` + `ghostship scuttle` (#613, slice 2).** `init`
+  gains an opt-in `--mint`: it provisions the writer identity live via the AWS IAM SDK —
+  creates the `cargoship-writer-<id>` user, attaches the write-only policy, creates an access
+  key, writes it into the bundle's `aws-credentials` (0600), and runs the #529 access preflight.
+  Fails closed: an existing user/policy is not clobbered. Default `init` still makes no AWS
+  calls. New `cargoship ghostship scuttle <writer-id>` decommissions a writer — deletes its
+  access keys, detaches + deletes the cargoship-managed policy, and deletes the user
+  (idempotent; only the cargoship policy is deleted, other attached policies are left intact);
+  `--purge-data s3://BUCKET/BASE --yes` also deletes that writer's `writers/<id>/` data and
+  `fleet/<id>/` config. Completes #613 (adds the `aws-sdk-go-v2/service/iam` dependency).
+
 ## [0.32.0] - 2026-09-17
 
 ### Fixed
