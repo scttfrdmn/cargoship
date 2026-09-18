@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Docs corrected for v0.32.0 fleet mode (#631).** The enterprise docs and roadmap no longer
+  describe the old per-file, `archival_rules`-as-primary "autonomous agent" model or classify
+  the fleet as removed/deferred: `docs/enterprise/ghost-ship.md` (intro, config example, and
+  deployment now lead with `ghostship run` directory-sync + the `init` compose flow;
+  `archival_rules` documented as advisory-only in sync mode), `docs/enterprise/index.md` (fleet
+  overview + fleet-tutorial link), `docs/project/roadmap.md` (ghostship fleet + dashboard Fleet
+  tab marked shipped in v0.32.0), and `docs/project/verification.md` (new "Fleet mode" capability
+  ledger with test/E2E evidence). Refreshed the stale `v0.23.0` binary pins in
+  `docs/start/install.md` to `v0.32.0`.
+
 ### Added
 - **Live IAM minting for `ghostship init --mint` + `ghostship scuttle` (#613, slice 2).** `init`
   gains an opt-in `--mint`: it provisions the writer identity live via the AWS IAM SDK —

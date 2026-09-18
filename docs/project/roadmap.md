@@ -34,16 +34,17 @@ Status legend:
 
 | Capability | Group | Status | Present in tree? |
 |-----------|-------|--------|------------------|
-| Distributed agent + controller (fleet) | Fleet / remote | removed-as-theater | No |
+| Ghostship fleet (unattended write-only backup agents) | Fleet / remote | **shipped v0.32.0** | Yes |
+| Central controller / agent-push coordinator | Fleet / remote | removed-as-theater | No |
 | Web UI dashboard | Fleet / remote | removed-as-theater | No |
-| Autonomous archival / directory watching (ghost-ship) | Automation | deferred | Yes (dormant) |
+| Autonomous per-file archival daemon (`archival_rules`) | Automation | deferred (fleet does directory sync instead) | Yes (dormant) |
 | Interactive setup wizard (`wizard`) | Automation / legacy | removed-legacy-command | No |
 | `travelagent` server | Automation / legacy | removed-legacy-command | No |
 | `schema` command | Legacy tooling | removed-legacy-command | No |
 | Real-time monitoring / metrics dashboards | Observability | removed-as-theater | No |
 | Predictive prefetch / ML optimization | Optimization | removed-as-theater | No |
 | Multi-region orchestration | Scale | experimental | Yes (unwired) |
-| Advanced dashboard views | TUI | deferred | Partly (base rebuilt) |
+| Advanced dashboard views | TUI | shipped (Inventory, Analyze, 🚢 Fleet tabs) | Yes |
 
 ---
 
@@ -97,30 +98,23 @@ to render, there is nothing to build a UI against.
 
 ## Automation
 
-### Autonomous archival / directory watching (ghost-ship)
+### Ghostship fleet — SHIPPED (v0.32.0)
 
-**What it would do.** Watch configured directories on a host (e.g. a NAS), match
-new/changed files against archival rules (include/exclude patterns, minimum age,
-storage class), and upload matches to S3 on its own on a polling interval — no
-inbound connections, nothing else required to be running.
+Unattended, write-only backup agents landed in v0.32.0 as `cargoship ghostship`
+(`init`/`run`/`scuttle`/`iam-policy`/`config-keygen`/`sign-config`/`validate-config`)
+and the control-side `cargoship fleet` (`status`/`monitor`/`lock-status`) + dashboard
+🚢 Fleet tab. Each agent runs the real incremental-sync engine on a schedule, isolated
+to its own `writers/<id>/` prefix, with a write-only/delete-free IAM identity and a
+signed config it pulls from S3 (validate + keep-last-good + no silent scope-widening).
+It is gated by the same real-AWS round-trip verification as the core upload path. See
+[ghost-ship](/enterprise/ghost-ship) and the [fleet tutorial](/enterprise/fleet-tutorial).
 
-**Status:** deferred — **not deleted.** `cmd/ghost-ship/main.go` and the
-`pkg/launch` core (`GhostShip`, `WatchPath`, `FileWatcher`, `JobState`) remain
-in-tree but dormant. The package doc already records that the central controller
-it once talked to was removed in #340, and the duplicate agent implementation in
-#347.
-
-**Why it's not here now.** It is functional-but-dormant rather than a promoted,
-release-gated command. It has no recovery-time objective and its config/wire
-formats are not frozen. Its earlier framing was entangled with the (now removed)
-distributed controller, so it needs a deliberate pass before being presented as a
-first-class feature.
-
-**Sketch of a real implementation.** Keep it strictly standalone (its current
-no-inbound-connection design is the right one), pin down the watch-rule config
-schema, decide on persistence of job state across restarts, and gate it behind
-the same real-AWS round-trip verification the core upload path uses before
-calling it supported. See the deferred discussion in the ghost-ship notes.
+**Not this — the legacy per-file archival daemon** (`cmd/ghost-ship/main.go` + the
+`pkg/launch` job-queue core: `GhostShip`, `WatchPath`, `FileWatcher`, `JobState`) is a
+separate, dormant thing that predates the fleet. `archival_rules` config is advisory-only
+in sync mode — `ghostship run` does directory sync and ignores it. That daemon remains
+in-tree but is not the shipped fleet; it needs its own deliberate pass before it would be
+presented as first-class.
 
 ### Interactive setup wizard (`wizard` command)
 
