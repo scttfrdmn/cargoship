@@ -67,6 +67,7 @@ gated by unit tests, the emulator E2E suite, and the per-release real-AWS round-
 | Capability | Status | Evidence |
 |---|---|---|
 | Writer isolation: own-prefix, delete-free **write-only** IAM (no Delete, no Decrypt) | Verified | `` `test:TestWriterIAMPolicy` ``, real-S3 writer-scoped round-trip (report marker `VERIFICATION_WRITER_ISO`) |
+| **Fleet data paths byte-exact on real S3** — concurrent multi-writer isolation, real sync cycles (full → no-change → incremental) under a writer prefix with chain-resolved restore, repeated write-only full syncs, and heartbeat/data coexistence | Verified | `` `make:torture` `` `TestTorture/ghostship_*` — byte-identity by **relative path**, run on the emulator and manually against real S3 ([#654](https://github.com/scttfrdmn/cargoship/issues/654)) |
 | Signed config-over-S3: verify + validate + keep-last-good + no silent scope-widening | Verified | `` `test:TestConfigSign_VerifyRoundTrip` ``, `` `test:TestPullSignedConfig_TamperedFails` ``, `` `test:TestGhostshipRun_ConfigPull_KeepLastGood` ``, `` `test:TestGhostshipRun_ConfigPull_RefusesSilentScopeWidening` `` |
 | Heartbeat + control-side `fleet status`/`monitor` (stale-writer alert) | Verified | `` `cmd:fleet` ``, `` `test:TestListWriterStatuses` ``, `` `test:TestFleetStatus_ListsWriter` ``, `` `test:TestFleetMonitor_DetectsStale` `` |
 | Immutability posture audit (`fleet lock-status`: versioning / Object Lock / abort-MPU) | Verified | `` `cmd:fleet` ``, `` `test:TestAuditBucketImmutability_NoBackstop` ``, `` `test:TestFleetLockStatus_Runs` `` |

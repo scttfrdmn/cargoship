@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Ghostship data-path torture subtests (#654).** The real-S3 torture matrix now covers the
+  fleet byte path, which was previously only exercised against the in-process emulator (and
+  there by basename, without SHA verification). Four new `TestTorture/ghostship_*` subtests,
+  all verifying byte-identity **by relative path**: concurrent **multi-writer isolation**
+  (three writers with distinct corpora sharing one base prefix — each restores byte-identical,
+  no cross-prefix leakage); **real sync cycles** (composing `FindLatestManifestForSource` →
+  `ScanLocalFiles` → `ComputeDelta` → `NextVersion` under a writer-folded prefix, full →
+  no-change → incremental, then a chain-resolved restore of the whole current dataset — the
+  no-change assertion is a direct #624 regression guard); **repeated write-only full syncs**
+  (the #613 trade-off: no previous-manifest read ⇒ every cycle full, and later fulls must not
+  corrupt earlier versions); and **heartbeat/data coexistence** (`status.json` in the data
+  prefix must disturb neither manifest discovery, delta, nor restore). Passed on the emulator
+  and against real S3. Stays in the manual/periodic `torture` lane, not CI.
 - **Getting-started now covers keeping backups current (#631).** A new
   [Keep it current](https://cargoship.app/start/keep-it-current) step slots into the Get
   Started arc between "Verify & restore it" and "Clean up", completing the intended
