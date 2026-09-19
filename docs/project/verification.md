@@ -71,7 +71,8 @@ gated by unit tests, the emulator E2E suite, and the per-release real-AWS round-
 | Heartbeat + control-side `fleet status`/`monitor` (stale-writer alert) | Verified | `` `cmd:fleet` ``, `` `test:TestListWriterStatuses` ``, `` `test:TestFleetStatus_ListsWriter` ``, `` `test:TestFleetMonitor_DetectsStale` `` |
 | Immutability posture audit (`fleet lock-status`: versioning / Object Lock / abort-MPU) | Verified | `` `cmd:fleet` ``, `` `test:TestAuditBucketImmutability_NoBackstop` ``, `` `test:TestFleetLockStatus_Runs` `` |
 | Disaster recovery (`restore --all`, independent of the writer's identity) | Verified | `` `cmd:restore` ``, `` `test:TestGhostshipRun_DisasterRecovery` ``, real-S3 |
-| Live IAM minting / scuttle (`init --mint`, `scuttle`) | Beta | `` `test:TestMintWriter_HappyPath` ``, `` `test:TestScuttleWriterIAM_FullTeardown` `` (mockable interface; live IAM path not CI-tested) |
+| Live IAM minting / scuttle (`init --mint`, `scuttle`) | Verified | `` `test:TestMintWriter_HappyPath` ``, `` `test:TestScuttleWriterIAM_FullTeardown` ``, plus a manual real-IAM smoke (the live path is not CI-testable): mint → **12/12 permission assertions** → real cycle with the minted key → break-glass restore byte-identical → fail-closed re-mint → scuttle + idempotent re-scuttle. See [#655](https://github.com/scttfrdmn/cargoship/issues/655). |
+| **Write-only agent guarantee proven against real IAM** — the minted identity can append to its own prefix and read its own config, and nothing else | Verified | Real-IAM smoke [#655](https://github.com/scttfrdmn/cargoship/issues/655): `PutObject` own prefix ✅; **denied** GetObject-own-data, DeleteObject, bucket-wide ListBucket, cross-writer PutObject, DeleteBucket, and PutObject on its own config prefix. |
 
 ## Throughput & scale (priority 2: performance)
 
