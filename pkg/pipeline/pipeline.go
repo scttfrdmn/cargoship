@@ -1102,8 +1102,19 @@ func (p *Pipeline) deleteLocalState() {
 	}
 }
 
-// deletePartialManifest removes the partial manifest from S3 after successful completion (Issue #157)
+// deletePartialManifest removes the partial manifest from S3 after successful
+// completion (Issue #157).
+//
+// It is a no-op unless a partial manifest was actually written — the same condition
+// that gates savePartialManifestPeriodically. Attempting the delete unconditionally
+// was invisible for most identities (S3 DeleteObject on a missing key succeeds), but a
+// delete-free write-only fleet agent (#613) got a 403 AccessDenied and logged a scary
+// warning on every otherwise-healthy cycle (#657). Don't try to clean up something
+// that was never created.
 func (p *Pipeline) deletePartialManifest(ctx context.Context) {
+	if !p.config.EnablePartialManifest || p.manifestBuilder == nil || !p.config.UseRealS3 {
+		return
+	}
 	s3Key := fmt.Sprintf("%s/uploads/%s/manifest.partial.json.gz", p.config.S3Prefix, p.config.UploadID)
 	s3Client := p.config.S3Client.(*s3.Client)
 
