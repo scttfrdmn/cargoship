@@ -303,6 +303,25 @@ func TestTorture(t *testing.T) {
 	t.Run("dataset_prune_gc", func(t *testing.T) {
 		runDatasetPruneGC(t)
 	})
+
+	// #654: the ghostship/fleet data paths. Until now these were only exercised
+	// against the emulator (tests/e2e/ghostship_test.go), and there by basename
+	// without SHA verification. See ghostship_torture_test.go.
+	t.Run("ghostship_multi_writer_isolation", func(t *testing.T) {
+		runGhostshipMultiWriterIsolation(t, rng)
+	})
+	t.Run("ghostship_sync_cycles", func(t *testing.T) {
+		// Both upload modes: direct (raw object per file) and chunked (packed
+		// tar.zst chunks whose ChunkEntry must survive the chain merge).
+		t.Run("direct", func(t *testing.T) { runGhostshipSyncCycles(t, rng, false) })
+		t.Run("chunked", func(t *testing.T) { runGhostshipSyncCycles(t, rng, true) })
+	})
+	t.Run("ghostship_write_only_full_sync", func(t *testing.T) {
+		runGhostshipWriteOnlyFullSync(t, rng)
+	})
+	t.Run("ghostship_heartbeat_coexistence", func(t *testing.T) {
+		runGhostshipHeartbeatCoexistence(t, rng)
+	})
 }
 
 // runIncrementalChainTorture is the end-to-end #552 trust proof: a full sync
