@@ -22,6 +22,26 @@ type PricingManager struct {
 	logger     *slog.Logger
 	cache      *PricingCache
 	mu         sync.RWMutex
+
+	// fallbackWarnOnce keeps the "pricing API unavailable, using fallback" notice to
+	// ONE warning per manager (#657). Falling back is a designed, non-fatal behavior —
+	// e.g. a write-only fleet agent has no pricing:GetProducts by design — so warning
+	// on every lookup made a healthy unattended backup look broken every cycle.
+	// Subsequent occurrences log at Debug.
+	fallbackWarnOnce sync.Once
+}
+
+// logPricingFallback reports that the pricing API is unavailable and the static
+// fallback table is in use: loudly the first time, quietly thereafter.
+func (pm *PricingManager) logPricingFallback(msg string, err error) {
+	warned := false
+	pm.fallbackWarnOnce.Do(func() {
+		pm.logger.Warn(msg+"; using the static fallback table (further occurrences log at debug)", "error", err)
+		warned = true
+	})
+	if !warned {
+		pm.logger.Debug(msg+"; using the static fallback table", "error", err)
+	}
 }
 
 // PricingCache holds cached pricing data
@@ -201,8 +221,11 @@ func (pm *PricingManager) getStoragePrice(ctx context.Context, storageClass conf
 	if pm.config.UseAWSPricingAPI && pm.pricingAPI != nil {
 		price, err = pm.getAWSStoragePrice(ctx, storageClass, region)
 		if err != nil {
-			pm.logger.Warn("Failed to get AWS pricing, using fallback", "error", err)
+			pm.logPricingFallback("AWS storage pricing lookup failed", err)
 			price = pm.getFallbackStoragePrice(storageClass)
+			// Cache the fallback (as the request path already does) so a failing or
+			// unauthorized pricing API is not re-called on every single lookup (#657).
+			pm.setCachedPrice(cacheKey, price, "fallback")
 		} else {
 			pm.setCachedPrice(cacheKey, price, "aws_api")
 		}
@@ -245,7 +268,7 @@ func (pm *PricingManager) getRequestPrice(ctx context.Context, requestType strin
 	if pm.config.UseAWSPricingAPI && pm.pricingAPI != nil {
 		apiPrice, err := pm.getAWSRequestPrice(ctx, strings.ToUpper(requestType), storageClass, region)
 		if err != nil {
-			pm.logger.Warn("Failed to get AWS request pricing, using fallback", "error", err)
+			pm.logPricingFallback("AWS request pricing lookup failed", err)
 			price = pm.getFallbackRequestPrice(requestType, storageClass)
 			pm.setCachedPrice(cacheKey, price, "fallback")
 		} else {

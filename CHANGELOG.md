@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A healthy write-only fleet cycle no longer logs AccessDenied warnings (#657).** A successful
+  `ghostship run` under the strict write-only identity emitted three permission failures per
+  cycle — on every writer, forever — which made a working backup look broken and trained
+  operators to ignore real warnings. Two causes, both fixed:
+  - **Partial-manifest cleanup attempted a delete that was never needed.** The partial manifest
+    is written only when `EnablePartialManifest` is set, but cleanup ran unconditionally. This
+    was invisible for most identities (S3 `DeleteObject` on a missing key succeeds) and only
+    surfaced as a 403 for a delete-free agent. Cleanup is now gated on the same condition that
+    gates the write.
+  - **Pricing fallback warned on every lookup.** Falling back to the static pricing table is
+    designed, non-fatal behavior (a write-only agent has no `pricing:GetProducts` by design), so
+    it now warns **once** per manager and logs at debug thereafter. The storage-price path also
+    now **caches** its fallback like the request path already did, so a failing or unauthorized
+    pricing API is no longer re-called on every single lookup.
+
 ### Added
 - **Ghostship data-path torture subtests (#654).** The real-S3 torture matrix now covers the
   fleet byte path, which was previously only exercised against the in-process emulator (and
