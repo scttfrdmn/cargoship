@@ -7,21 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- **A healthy write-only fleet cycle no longer logs AccessDenied warnings (#657).** A successful
-  `ghostship run` under the strict write-only identity emitted three permission failures per
-  cycle — on every writer, forever — which made a working backup look broken and trained
-  operators to ignore real warnings. Two causes, both fixed:
-  - **Partial-manifest cleanup attempted a delete that was never needed.** The partial manifest
-    is written only when `EnablePartialManifest` is set, but cleanup ran unconditionally. This
-    was invisible for most identities (S3 `DeleteObject` on a missing key succeeds) and only
-    surfaced as a 403 for a delete-free agent. Cleanup is now gated on the same condition that
-    gates the write.
-  - **Pricing fallback warned on every lookup.** Falling back to the static pricing table is
-    designed, non-fatal behavior (a write-only agent has no `pricing:GetProducts` by design), so
-    it now warns **once** per manager and logs at debug thereafter. The storage-price path also
-    now **caches** its fallback like the request path already did, so a failing or unauthorized
-    pricing API is no longer re-called on every single lookup.
+## [0.33.0] - 2026-09-19
 
 ### Added
 - **Ghostship data-path torture subtests (#654).** The real-S3 torture matrix now covers the
@@ -46,7 +32,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   leaving backups unattended. Previously `sync` was reference-only and scheduling appeared
   nowhere in the getting-started flow.
 
+- **Live IAM minting for `ghostship init --mint` + `ghostship scuttle` (#613, slice 2).** `init`
+  gains an opt-in `--mint`: it provisions the writer identity live via the AWS IAM SDK —
+  creates the `cargoship-writer-<id>` user, attaches the write-only policy, creates an access
+  key, writes it into the bundle's `aws-credentials` (0600), and runs the #529 access preflight.
+  Fails closed: an existing user/policy is not clobbered. Default `init` still makes no AWS
+  calls. New `cargoship ghostship scuttle <writer-id>` decommissions a writer — deletes its
+  access keys, detaches + deletes the cargoship-managed policy, and deletes the user
+  (idempotent; only the cargoship policy is deleted, other attached policies are left intact);
+  `--purge-data s3://BUCKET/BASE --yes` also deletes that writer's `writers/<id>/` data and
+  `fleet/<id>/` config. Completes #613 (adds the `aws-sdk-go-v2/service/iam` dependency).
+
 ### Changed
+- **Fleet trust claims re-graded after a real-IAM smoke (#655).** The capability ledger's
+  live-minting row moved **Beta → Verified**, and a new row records that the **write-only agent
+  guarantee is now proven against real IAM** rather than inferred from the emitted policy JSON:
+  with a minted key, `PutObject` on its own prefix and reading its own config are allowed, while
+  GetObject-on-own-data, DeleteObject, bucket-wide ListBucket, cross-writer writes, DeleteBucket,
+  and writing its own config prefix are all denied.
+- **Corrected an invalid CLI example in the contributor instructions (#656).** `CLAUDE.md`
+  documented `budget set --max-budget/--max-volume-gb`; neither flag exists (the real form is
+  `budget set <project-id> --cost N --volume N`, plus `--global`). Added the fleet command block
+  and a note that examples in that file are not drift-gated, so they must be checked against the
+  generated `docs/gen/cli/` reference.
 - **Trust/verification docs cover the fleet model (#631).** The integrity, security, and
   recovery pages (and root SECURITY.md) now document the fleet trust posture:
   write-only/delete-free per-writer IAM (no Delete, no Decrypt), signed config-over-S3 with
@@ -64,17 +72,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ledger with test/E2E evidence). Refreshed the stale `v0.23.0` binary pins in
   `docs/start/install.md` to `v0.32.0`.
 
-### Added
-- **Live IAM minting for `ghostship init --mint` + `ghostship scuttle` (#613, slice 2).** `init`
-  gains an opt-in `--mint`: it provisions the writer identity live via the AWS IAM SDK —
-  creates the `cargoship-writer-<id>` user, attaches the write-only policy, creates an access
-  key, writes it into the bundle's `aws-credentials` (0600), and runs the #529 access preflight.
-  Fails closed: an existing user/policy is not clobbered. Default `init` still makes no AWS
-  calls. New `cargoship ghostship scuttle <writer-id>` decommissions a writer — deletes its
-  access keys, detaches + deletes the cargoship-managed policy, and deletes the user
-  (idempotent; only the cargoship policy is deleted, other attached policies are left intact);
-  `--purge-data s3://BUCKET/BASE --yes` also deletes that writer's `writers/<id>/` data and
-  `fleet/<id>/` config. Completes #613 (adds the `aws-sdk-go-v2/service/iam` dependency).
+### Fixed
+- **A healthy write-only fleet cycle no longer logs AccessDenied warnings (#657).** A successful
+  `ghostship run` under the strict write-only identity emitted three permission failures per
+  cycle — on every writer, forever — which made a working backup look broken and trained
+  operators to ignore real warnings. Two causes, both fixed:
+  - **Partial-manifest cleanup attempted a delete that was never needed.** The partial manifest
+    is written only when `EnablePartialManifest` is set, but cleanup ran unconditionally. This
+    was invisible for most identities (S3 `DeleteObject` on a missing key succeeds) and only
+    surfaced as a 403 for a delete-free agent. Cleanup is now gated on the same condition that
+    gates the write.
+  - **Pricing fallback warned on every lookup.** Falling back to the static pricing table is
+    designed, non-fatal behavior (a write-only agent has no `pricing:GetProducts` by design), so
+    it now warns **once** per manager and logs at debug thereafter. The storage-price path also
+    now **caches** its fallback like the request path already did, so a failing or unauthorized
+    pricing API is no longer re-called on every single lookup.
 
 ## [0.32.0] - 2026-09-17
 
