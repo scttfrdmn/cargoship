@@ -200,11 +200,33 @@ cargoship upload ./mydata s3://mybucket/backup --shard-count 20
 
 ### Budget Management (v0.6.0)
 ```bash
-cargoship budget set --max-budget 1000 --max-volume-gb 500
+cargoship budget set <project-id> --cost 1000 --volume 500   # USD / GB; 0 = unlimited
+cargoship budget set --global --cost 10000 --volume 5000      # org-wide ceiling
 cargoship budget status
 cargoship cost projects
 cargoship cost forecast --model ensemble
 cargoship alerts configure email --smtp-host smtp.gmail.com
 ```
+
+### Fleet Mode (ghostship, v0.32.0)
+```bash
+cargoship ghostship config-keygen --out ./keys                # operator signing key (once)
+cargoship ghostship init s3://bucket/base --writer-id ID \
+  --public-key ./keys/config-signing-public.pem [--mint]      # bundle; --mint provisions IAM live
+cargoship ghostship sign-config box.yaml --key ./keys/config-signing-private.pem
+cargoship ghostship run --config-url s3://bucket/base \
+  --public-key pub.pem --writer-id ID                         # agent: pull + verify signed config
+cargoship fleet status  s3://bucket/base                       # control side (read-only)
+cargoship fleet monitor s3://bucket/base --once                # stale-writer alerts
+cargoship fleet lock-status s3://bucket/base                   # immutability audit
+cargoship ghostship scuttle ID [--purge-data s3://bucket/base --yes]
+```
+
+**Verify examples against the generated reference.** The command examples in this file are
+hand-maintained and **not** covered by a drift gate (`scripts/ci/check-readme-commands.sh`
+guards README.md only). Before trusting or copying one, check
+`docs/gen/cli/cargoship_<command>.md` — generated from cobra and kept current by the CLI-docs
+gate. A stale example here propagates into real work: that is how the invalid
+`budget set --max-budget/--max-volume-gb` form survived until #656 (fixed 2026-09-19).
 
 See full documentation in `docs/` for detailed usage.
