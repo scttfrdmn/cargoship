@@ -29,7 +29,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ghost-ship ./cmd/
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o cargoship-test ./cmd/cargoship-test
 
 # Final stage
-FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 
 # Upgrade base packages first: the pinned alpine:3.24 snapshot ships openssl
 # (libcrypto3/libssl3) 3.5.7-r0, which Trivy flags HIGH; 3.5.8-r0 is already in
