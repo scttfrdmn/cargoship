@@ -14,6 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cargoship` as a non-root user (uid 65532) and opens no inbound port. This is what
   `docs/enterprise/qnap.md` and the `ghostship init` bundle now deploy.
 
+### Changed
+- **The QNAP/NAS deployment guide now deploys fleet mode (#604 follow-up).** It previously
+  described the legacy per-file daemon: build `Dockerfile.astrapi` locally, `docker save`,
+  `scp` the tarball to the NAS, `docker load`, and run it against a `ghost_ship.yaml` with
+  long-lived credentials from `~/.aws`. It now pulls the published multi-arch image and walks
+  the real flow — signing key, `ghostship init` bundle, write-only IAM, signed config over S3,
+  read-only data mounts, `fleet status` from the control machine, a restore rehearsal, and the
+  Object Lock backstop. Keeps the NAS-specific knowledge that was still true (Container
+  Station's docker path, exec-format and region traps, credentials at the container user's
+  home) and states up front that the strict write-only policy re-uploads everything each
+  cycle, so multi-TB NAS deployments should use the non-strict policy.
+
 ### Fixed
 - **`ghostship init` emitted a compose file that could not start (#604 follow-up).** It
   defaulted to `cargoship:latest` — an image published nowhere — so `docker compose up -d`
