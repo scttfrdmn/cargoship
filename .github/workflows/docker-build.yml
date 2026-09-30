@@ -25,6 +25,7 @@ on:
     branches: [main]
     paths:
       - 'docker/**'
+      - '.goreleaser.yml'
       - '.dockerignore'
       - 'go.mod'
       - 'go.sum'
@@ -37,6 +38,7 @@ on:
     branches: [main]
     paths:
       - 'docker/**'
+      - '.goreleaser.yml'
       - '.dockerignore'
       - 'go.mod'
       - 'go.sum'
@@ -63,6 +65,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Needed only by the fleet-image step below, which cross-compiles the binary
+      # to reproduce goreleaser's staged build context.
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
 
       # One job rather than a matrix: Dockerfile.astrapi and Dockerfile.qnap have
       # byte-identical builder stages through `go mod download`, so building them
@@ -131,6 +140,39 @@ jobs:
 
       - name: Compose file is valid
         run: docker compose -f docker/docker-compose.astrapi.yml config >/dev/null
+
+      # The FLEET image (docker/Dockerfile.fleet) is the one a NAS operator actually
+      # pulls — `cargoship ghostship run`, published to GHCR by goreleaser. It is NOT
+      # in DOCKER_IMAGES / `make docker-build` because goreleaser builds it against a
+      # STAGED context (<os>/<arch>/<binary>) rather than the repo root, so the step
+      # above cannot cover it. Reproduce that context here.
+      #
+      # This step exists because of a real failure: a COPY whose glob matched nothing
+      # did NOT fail the build. goreleaser reported "release succeeded" while producing
+      # an image containing no binary at all — bare Alpine that dies with
+      # `exec: cargoship: not found` the moment anyone runs it. Only executing the
+      # binary catches that, so assert it runs rather than that it built.
+      - name: Fleet image contains a working binary
+        run: |
+          set -euo pipefail
+          ctx="$(mktemp -d)"
+          mkdir -p "$ctx/linux/amd64"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$ctx/linux/amd64/cargoship" ./cmd/cargoship
+          cp docker/Dockerfile.fleet "$ctx/Dockerfile"
+          docker build --platform linux/amd64 -f "$ctx/Dockerfile" -t cargoship:fleet "$ctx"
+
+          # Must print a version rather than "not found" (the empty-image symptom).
+          docker run --rm cargoship:fleet --version
+          # Must be the FLEET-capable binary, not merely some cargoship.
+          docker run --rm cargoship:fleet ghostship --help | grep -q 'init'
+          docker run --rm cargoship:fleet fleet --help | grep -q 'lock-status'
+          # An agent never needs root on the NAS.
+          uid="$(docker run --rm --entrypoint /bin/sh cargoship:fleet -c 'id -u')"
+          if [ "$uid" != "65532" ]; then
+            echo "::error::fleet image runs as uid $uid, expected non-root 65532"
+            exit 1
+          fi
+          echo "fleet image OK — version prints, ghostship+fleet present, runs as $uid"
 
       # #348 audited docker/ because that is where the images were believed to
       # live. Three more sat at the repo root — Dockerfile.synology and two NAS

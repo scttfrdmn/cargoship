@@ -207,18 +207,44 @@ scoops:
     license: Apache-2.0
     skip_upload: auto
 
-# Docker images (optional - can be added later)
-# dockers:
-#   - image_templates:
-#       - "scttfrdmn/cargoship:{{ .Version }}"
-#       - "scttfrdmn/cargoship:latest"
-#     dockerfile: Dockerfile
-#     build_flag_templates:
-#       - "--pull"
-#       - "--label=org.opencontainers.image.created={{.Date}}"
-#       - "--label=org.opencontainers.image.title={{.ProjectName}}"
-#       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-#       - "--label=org.opencontainers.image.version={{.Version}}"
+# Container image for the FLEET agent (`cargoship ghostship run`) — the deployable
+# unit for a NAS/lab-box writer. See docker/Dockerfile.fleet and docs/enterprise/qnap.md.
+#
+# Uses `dockers_v2`, which builds a multi-platform image and its manifest list in one
+# step (the older `dockers:` + `docker_manifests:` pair is deprecated upstream, and
+# scripts/ci/check-goreleaser-config.sh deliberately fails on any deprecation that is
+# not in its reviewed allowlist — so taking the modern form avoids adding debt there).
+#
+# The per-platform builds reuse the ALREADY cross-compiled binaries, so there is no
+# in-image `go build` and no QEMU-emulated compile; QEMU+buildx still have to be
+# registered in the workflow so the arm64 layers can be assembled on an amd64 runner.
+#
+# NOTE: images push during the DRAFT release run, like the taps. A tag-based image
+# reference is correct independently of draft state, and goreleaser gives no way to
+# defer only the push (see the release-provenance notes on skip_upload).
+dockers_v2:
+  - id: cargoship
+    ids: [cargoship]
+    dockerfile: docker/Dockerfile.fleet
+    images:
+      - ghcr.io/scttfrdmn/cargoship
+    tags:
+      - "{{ .Version }}"
+      - latest
+    # Synology/QNAP ship both older Intel boxes and newer ARM ones, so a NAS
+    # operator must be able to `docker pull` one reference and get the right arch.
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: "Unattended write-only S3 backup agent (ghostship fleet writer)"
+      org.opencontainers.image.url: "https://cargoship.app"
+      org.opencontainers.image.source: "https://github.com/scttfrdmn/cargoship"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.licenses: "Apache-2.0"
 
 announce:
   skip: true

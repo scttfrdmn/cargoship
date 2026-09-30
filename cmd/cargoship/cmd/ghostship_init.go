@@ -9,9 +9,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/cobra"
 
+	versionpkg "github.com/scttfrdmn/cargoship/internal/version"
 	"github.com/scttfrdmn/cargoship/pkg/fleet"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 )
+
+// defaultFleetImage is the published multi-arch fleet-agent image, pinned to THIS
+// binary's version rather than :latest. A bundle should deploy the agent the operator
+// just ran, and stay reproducible if they re-apply it months later; :latest would
+// silently drift the agent under a running fleet. GHCR serves a manifest list, so the
+// one reference resolves on both Intel and ARM NAS hardware.
+var defaultFleetImage = "ghcr.io/scttfrdmn/cargoship:" + versionpkg.Version
 
 func newGhostshipInitCmd() *cobra.Command {
 	var (
@@ -143,7 +151,11 @@ Example:
 	cmd.Flags().StringVar(&kmsKeyARN, "kms-key-arn", "", "Fleet KMS key ARN; adds kms:GenerateDataKey (write-only, no Decrypt) scoped to that key")
 	cmd.Flags().StringVar(&publicKey, "public-key", "", "Path to the config-signing public key (from 'ghostship config-keygen') to bake into the bundle (required)")
 	cmd.Flags().StringVar(&outDir, "out", "", "Directory to write the bundle into (default ./<writer-id>)")
-	cmd.Flags().StringVar(&image, "image", "cargoship:latest", "Container image to run in the emitted compose file")
+	// Must name a PUBLISHED image: the emitted compose file is meant to be run as-is
+	// on a NAS, and the previous default ("cargoship:latest") existed nowhere, so
+	// `docker compose up -d` failed on an image pull. GHCR publishes a multi-arch
+	// manifest, so one reference resolves on both Intel and ARM NAS boxes.
+	cmd.Flags().StringVar(&image, "image", defaultFleetImage, "Container image to run in the emitted compose file")
 	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region for the emitted compose file (and --mint calls)")
 	cmd.Flags().StringVar(&profile, "profile", "", "AWS profile to use for --mint")
 	cmd.Flags().BoolVar(&mint, "mint", false, "Provision the IAM identity live (create user + write-only policy + access key) and write credentials into the bundle; requires iam:Create* on the caller")
@@ -170,8 +182,15 @@ scan_interval: 1h
 }
 
 func initComposeYAML(id, bucket, base, image, region string) string {
-	return fmt.Sprintf(`# Deploy one write-only ghostship writer. Credentials are provided via a MOUNTED
-# FILE (./aws-credentials -> ~/.aws/credentials), never environment variables.
+	return fmt.Sprintf(`# Deploy one write-only ghostship writer (see README.md in this bundle).
+#
+# Credentials come from a MOUNTED FILE, never environment variables: env vars leak into
+# `+"`docker inspect`"+`, process listings and NAS UI panels.
+#
+# Paths target /home/cargoship because the image runs as the non-root user "cargoship"
+# (uid 65532) — an agent never needs root on the NAS. The AWS SDK reads
+# $HOME/.aws/credentials, so these must match the image's home or the agent starts with
+# no credentials at all.
 services:
   ghostship:
     image: %s
@@ -190,9 +209,16 @@ services:
       - 1h
     volumes:
       - ./config-signing-public.pem:/etc/cargoship/config-signing-public.pem:ro
-      - ./aws-credentials:/root/.aws/credentials:ro
-      - cargoship-state:/root/.cargoship
+      - ./aws-credentials:/home/cargoship/.aws/credentials:ro
+      # Resume/local state. A named volume keeps it across container recreates; losing
+      # it only costs a re-scan, never data.
+      - cargoship-state:/home/cargoship/.cargoship
+      # TODO: mount each directory this writer backs up, READ-ONLY, at the same path
+      # named in config.yaml's watch_paths. Read-only is deliberate: the agent only
+      # ever reads your data.
+      # - /volume1/Documents:/volume1/Documents:ro
     restart: unless-stopped
+    # The agent is outbound-only and opens no inbound port.
 volumes:
   cargoship-state:
 `, image, bucket, base, id, region)
