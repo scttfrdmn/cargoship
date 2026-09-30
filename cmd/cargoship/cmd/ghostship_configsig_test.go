@@ -117,3 +117,20 @@ func TestGhostshipSignConfig_RefusesInvalidConfig(t *testing.T) {
 		t.Error("no signature should be written for an invalid config")
 	}
 }
+
+// TestGhostshipConfigKeygen_CreatesOutDir guards the first command in the documented
+// fleet setup. `config-keygen --out ./keys` used to fail with "no such file or
+// directory" when the directory did not exist, so step one of the tutorial did not work
+// on a fresh machine; `ghostship init --out` had always created its directory.
+func TestGhostshipConfigKeygen_CreatesOutDir(t *testing.T) {
+	// A nested path that does not exist yet — the realistic "fresh machine" shape.
+	dir := filepath.Join(t.TempDir(), "fleet-keys", "nested")
+	if _, err := runGhostship(t, "config-keygen", "--out", dir); err != nil {
+		t.Fatalf("config-keygen should create its output directory: %v", err)
+	}
+	for _, name := range []string{"config-signing-private.pem", "config-signing-public.pem"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("expected %s in a freshly created dir: %v", name, err)
+		}
+	}
+}

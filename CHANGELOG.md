@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Published multi-arch container image for the fleet agent (#604 follow-up).** Releases now
+  push `ghcr.io/scttfrdmn/cargoship:<version>` (and `:latest`) as a **linux/amd64 + linux/arm64**
+  manifest list, so one reference resolves on both Intel and ARM NAS hardware. The image runs
+  `cargoship` as a non-root user (uid 65532) and opens no inbound port. This is what
+  `docs/enterprise/qnap.md` and the `ghostship init` bundle now deploy.
+
+### Fixed
+- **`ghostship init` emitted a compose file that could not start (#604 follow-up).** It
+  defaulted to `cargoship:latest` — an image published nowhere — so `docker compose up -d`
+  failed on the pull; and it mounted credentials/state under `/root`, which the non-root image
+  cannot read or write, so even a hand-built image would have started with no AWS credentials.
+  The default is now the published GHCR image pinned to the emitting binary's version, and the
+  mounts target the image's real `HOME` (`/home/cargoship`). A commented read-only data mount
+  was added as the NAS operator's remaining TODO.
+- **`ghostship config-keygen --out DIR` failed when DIR did not exist**, which is step one of
+  the documented fleet setup, so the first command a new operator ran did not work on a fresh
+  machine. It now creates the directory, as `ghostship init --out` always did.
+
 ## [0.33.0] - 2026-09-20
 
 ### Added
