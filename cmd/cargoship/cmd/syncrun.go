@@ -2,13 +2,17 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
+	versionpkg "github.com/scttfrdmn/cargoship/internal/version"
 	cargoconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
+	"github.com/scttfrdmn/cargoship/pkg/manifestcache"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 )
 
@@ -33,6 +37,12 @@ type syncRunParams struct {
 	dryRun           bool
 	projectID        string        // #629: cost/cap attribution key (ghostship: the writer id)
 	costMgr          *cost.Manager // #629: pre-write cap gate; nil = enforcement off
+
+	// P1: local manifest cache. A write-only identity cannot GET its own previous
+	// manifest, so without this the delta is always computed against nil and every
+	// cycle re-uploads the whole source. nil disables the cache entirely.
+	manifestCache       *manifestcache.Store
+	manifestCacheMaxAge time.Duration // 0 = manifestcache.DefaultMaxAge
 }
 
 // syncRunResult reports what one sync cycle did, for the caller to log.
@@ -42,6 +52,14 @@ type syncRunResult struct {
 	Result       *pipeline.Result
 	SyncType     string
 	PrevUploadID string
+
+	// DeltaSource is "s3", "cache" or "none" — see fleet.SourceStatus.DeltaSource.
+	DeltaSource string
+	// CacheNote carries a non-fatal manifest-cache problem for the caller to log: an
+	// entry that existed but was rejected (corrupt, expired, wrong destination), or a
+	// save that failed. Empty when the cache behaved normally, including when it simply
+	// had no entry yet.
+	CacheNote string
 }
 
 // runOneSync performs exactly one incremental-sync cycle headlessly (no prints, no
@@ -52,14 +70,13 @@ type syncRunResult struct {
 // also treats a non-Success pipeline result as an error, so a daemon cycle that
 // fails is surfaced rather than silently logged as done.
 func runOneSync(ctx context.Context, p syncRunParams) (*syncRunResult, error) {
-	var previousManifest *manifest.Manifest
-	syncType := manifest.SyncTypeFull
-	if !p.force {
-		if pm, err := downloadLatestManifest(ctx, p.s3Client, p.bucket, p.prefix, p.sourcePath); err == nil {
-			previousManifest = pm
-			syncType = manifest.SyncTypeIncremental
-		}
-	}
+	prev := resolvePreviousManifest(p, func() (*manifest.Manifest, error) {
+		return downloadLatestManifest(ctx, p.s3Client, p.bucket, p.prefix, p.sourcePath)
+	})
+	previousManifest := prev.manifest
+	syncType := prev.syncType()
+	deltaSource := prev.source
+	cacheNote := prev.note
 
 	localFiles, err := manifest.ScanLocalFiles(p.sourcePath)
 	if err != nil {
@@ -75,10 +92,16 @@ func runOneSync(ctx context.Context, p syncRunParams) (*syncRunResult, error) {
 	}
 
 	if !delta.HasChanges() {
-		return &syncRunResult{NoChanges: true, Delta: delta, SyncType: syncType}, nil
+		// Deliberately NOT refreshing the cache entry's timestamp here. A no-change cycle
+		// proves the local tree still matches the cached manifest; it proves nothing about
+		// whether the objects are still in S3, which is exactly what the trust window
+		// exists to bound. Letting a quiescent dataset's entry expire forces a periodic
+		// full re-establish, which is the intended cost.
+		return &syncRunResult{NoChanges: true, Delta: delta, SyncType: syncType, DeltaSource: deltaSource, CacheNote: cacheNote}, nil
 	}
 	if p.dryRun {
-		return &syncRunResult{Delta: delta, SyncType: syncType, PrevUploadID: prevUploadID(previousManifest)}, nil
+		return &syncRunResult{Delta: delta, SyncType: syncType, PrevUploadID: prevUploadID(previousManifest),
+			DeltaSource: deltaSource, CacheNote: cacheNote}, nil
 	}
 
 	// #629: pre-write cap gate — refuse a cycle that would exceed this writer's
@@ -133,11 +156,95 @@ func runOneSync(ctx context.Context, p syncRunParams) (*syncRunResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sync run: %w", err)
 	}
-	res := &syncRunResult{Delta: delta, Result: result, SyncType: syncType, PrevUploadID: previousUploadID}
+	res := &syncRunResult{Delta: delta, Result: result, SyncType: syncType, PrevUploadID: previousUploadID,
+		DeltaSource: deltaSource, CacheNote: cacheNote}
 	if !result.Success {
+		// Do NOT cache a partial upload. Its manifest would list files as stored that
+		// never landed, and the next delta would skip them forever — the one failure mode
+		// of this feature that loses data rather than wasting bandwidth.
 		return res, fmt.Errorf("sync completed with %d error(s)", len(result.Errors))
 	}
+
+	// Record what this cycle stored so the next one has a previous manifest even without
+	// read access. Best-effort: a cache failure costs a future full re-upload, so it must
+	// not fail a cycle whose bytes are already safely in S3.
+	if p.manifestCache != nil {
+		if m := pipe.GetManifest(); m != nil {
+			if sErr := p.manifestCache.Save(cacheKeyFor(p), m, versionpkg.Version); sErr != nil {
+				res.CacheNote = sErr.Error()
+			}
+		} else {
+			res.CacheNote = "pipeline reported success but exposed no manifest to cache"
+		}
+	}
 	return res, nil
+}
+
+// Delta sources reported in syncRunResult.DeltaSource and fleet.SourceStatus.
+const (
+	deltaSourceS3    = "s3"
+	deltaSourceCache = "cache"
+	deltaSourceNone  = "none"
+)
+
+// previousManifestResolution is the decision about what this cycle diffs against.
+type previousManifestResolution struct {
+	manifest *manifest.Manifest
+	source   string // deltaSourceS3 | deltaSourceCache | deltaSourceNone
+	note     string // non-fatal cache problem worth logging
+}
+
+func (r previousManifestResolution) syncType() string {
+	if r.manifest == nil {
+		return manifest.SyncTypeFull
+	}
+	return manifest.SyncTypeIncremental
+}
+
+// resolvePreviousManifest picks the manifest to compute this cycle's delta against.
+// fromS3 is injected so the decision can be tested without a live S3 client or pipeline.
+//
+// The ordering is the whole trust argument:
+//
+//   - force: no previous manifest at all, and the cache is NOT consulted. --force must
+//     mean a genuine full re-upload, otherwise there is no way to rebuild from scratch.
+//   - S3 first, always: it reflects what is actually stored. The cache only reflects
+//     what this agent believes it stored, so it must never override a readable S3.
+//   - cache only when S3 is unreadable: the write-only case this exists for.
+//   - a rejected entry yields no manifest and a note. Failing closed means a needless
+//     full re-upload, which costs bandwidth; trusting a bad entry skips files, which
+//     loses data.
+func resolvePreviousManifest(p syncRunParams, fromS3 func() (*manifest.Manifest, error)) previousManifestResolution {
+	if p.force {
+		return previousManifestResolution{source: deltaSourceNone}
+	}
+	if pm, err := fromS3(); err == nil && pm != nil {
+		return previousManifestResolution{manifest: pm, source: deltaSourceS3}
+	}
+	if p.manifestCache == nil {
+		return previousManifestResolution{source: deltaSourceNone}
+	}
+	pm, err := p.manifestCache.Load(cacheKeyFor(p), p.manifestCacheMaxAge)
+	switch {
+	case err == nil:
+		return previousManifestResolution{manifest: pm, source: deltaSourceCache}
+	case errors.Is(err, manifestcache.ErrNotFound):
+		// First cycle for this source: a full sync is correct, not a problem.
+		return previousManifestResolution{source: deltaSourceNone}
+	default:
+		return previousManifestResolution{source: deltaSourceNone, note: err.Error()}
+	}
+}
+
+// cacheKeyFor builds the manifest-cache key for a sync. p.prefix is already
+// writer-folded, so two writers sharing a bucket cannot read each other's entries.
+func cacheKeyFor(p syncRunParams) manifestcache.Key {
+	return manifestcache.Key{
+		Bucket:     p.bucket,
+		Prefix:     p.prefix,
+		SourcePath: p.sourcePath,
+		WriterID:   p.writerID,
+	}
 }
 
 func prevUploadID(m *manifest.Manifest) string {
