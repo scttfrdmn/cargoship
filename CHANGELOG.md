@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.1] - 2026-10-01
+
+### Fixed
+- **A version bump desynced the vendored CLI reference, which wedged the docs site (#674).**
+  v0.34.0 pointed `ghostship init --image` at the newly published GHCR image by making its
+  default embed the binary's version — and cobra prints a flag's default verbatim into
+  `docs/gen/cli`, so from then on *every* version bump left that page stale. The v0.34.0 tag
+  shipped it stale, the "Deploy Documentation" build failed, and because the deploy job is
+  skipped when the build fails, **nothing published**: the site kept serving v0.33.0 content,
+  including an `--image` default (`cargoship:latest`) that exists nowhere. The displayed
+  default is now version-independent; the actual default still pins the emitting binary's
+  version, so bundles stay reproducible.
+- **The CLI-reference drift gate was structurally blind (#674).** It validated only the newest
+  release *tag's* tree, so a desyncing commit passed its own PR and every later push to `main`,
+  surfacing only once a release promoted it to "latest" — at which point the tag is immutable
+  and no commit can fix it. The same check now also runs against `main`, where the failure
+  lands on a commit that can still be corrected. This release exists to move the site's
+  "latest" pointer onto a self-consistent tree.
+
 ## [0.34.0] - 2026-10-01
 
 ### Added
