@@ -648,3 +648,139 @@ func TestGhostshipRun_DisasterRecovery(t *testing.T) {
 		}
 	}
 }
+
+// deleteManifestsUnder removes every manifest object under a writer prefix, which makes
+// downloadLatestManifest fail for the next cycle. A strict write-only identity fails that
+// read because GetObject is denied; here it fails because the object is gone. Both land in
+// the same branch of resolvePreviousManifest (the S3 read returned an error), so this is a
+// faithful stand-in for the permission case, which the emulator cannot model — it has no IAM.
+func deleteManifestsUnder(t *testing.T, client *s3.Client, bucket, prefix string) {
+	t.Helper()
+	out, err := client.ListObjectsV2(context.Background(), &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucket),
+		Prefix: aws.String(strings.TrimSuffix(prefix, "/") + "/uploads/"),
+	})
+	if err != nil {
+		t.Fatalf("list for manifest deletion: %v", err)
+	}
+	deleted := 0
+	for _, o := range out.Contents {
+		key := aws.ToString(o.Key)
+		if !strings.Contains(filepath.Base(key), "manifest") {
+			continue
+		}
+		if _, dErr := client.DeleteObject(context.Background(), &s3.DeleteObjectInput{
+			Bucket: aws.String(bucket), Key: aws.String(key),
+		}); dErr != nil {
+			t.Fatalf("delete %s: %v", key, dErr)
+		}
+		deleted++
+	}
+	if deleted == 0 {
+		t.Fatalf("no manifest objects found under %s; the test would prove nothing", prefix)
+	}
+}
+
+// TestGhostshipRun_WriteOnlyFallsBackToManifestCache is the end-to-end proof of P1: an
+// agent that cannot read its previous manifest still uploads only the delta, because it
+// diffs against the local manifest cache written by the previous cycle.
+//
+// The control subtest is the important half. "Cycle 2 was incremental" on its own does not
+// show the CACHE did it — so the same scenario is run with --no-manifest-cache, where the
+// cycle must fall back to a full re-upload of every file. That is the behaviour this
+// feature exists to remove, and seeing it appear when the cache is switched off is what
+// makes the first subtest's result attributable.
+func TestGhostshipRun_WriteOnlyFallsBackToManifestCache(t *testing.T) {
+	tests := []struct {
+		name          string
+		cacheOn       bool
+		wantSource    string
+		wantSyncType  string
+		wantFilesSent string // files=N on the second cycle
+	}{
+		{
+			name:          "cache on: second cycle diffs against the cache and sends only the delta",
+			cacheOn:       true,
+			wantSource:    "delta_source=cache",
+			wantSyncType:  "sync_type=incremental",
+			wantFilesSent: "files=1",
+		},
+		{
+			name:          "cache off: second cycle has nothing to diff against and resends everything",
+			cacheOn:       false,
+			wantSource:    "delta_source=none",
+			wantSyncType:  "sync_type=full",
+			wantFilesSent: "files=3",
+		},
+	}
+
+	for i, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			bucket := fmt.Sprintf("gs-mcache-%d", i)
+			if err := createBucket(substrateURL, bucket); err != nil {
+				t.Fatalf("create bucket: %v", err)
+			}
+			src := t.TempDir()
+			cacheDir := t.TempDir()
+			writeFile(t, filepath.Join(src, "a.txt"), "alpha")
+			writeFile(t, filepath.Join(src, "b.txt"), "bravo")
+
+			writerID := fmt.Sprintf("wo-%d", i)
+			prefix := "data/writers/" + writerID
+			run := func(label string) string {
+				args := []string{"ghostship", "run", src, "s3://" + bucket + "/data",
+					"--writer-id", writerID, "--once", "--region", "us-east-1",
+					"--manifest-cache-dir", cacheDir}
+				if !tc.cacheOn {
+					args = append(args, "--no-manifest-cache")
+				}
+				out, err := runCargoshipAllowErr(t, args...)
+				if err != nil {
+					t.Fatalf("%s cycle: %v\n%s", label, err, out)
+				}
+				return out
+			}
+			client := e2eS3Client(t)
+			uploads := func() int { return len(uploadIDsUnder(t, client, bucket, prefix)) }
+
+			// Cycle 1: nothing cached and nothing in S3 yet, so a full sync either way.
+			out1 := run("first")
+			if !strings.Contains(out1, "sync_type=full") {
+				t.Fatalf("first cycle should be full, got:\n%s", out1)
+			}
+			if !strings.Contains(out1, "files=2") {
+				t.Fatalf("first cycle should send both files, got:\n%s", out1)
+			}
+			if got := uploads(); got != 1 {
+				t.Fatalf("first cycle should create 1 upload, got %d", got)
+			}
+
+			if tc.cacheOn {
+				entries, err := os.ReadDir(cacheDir)
+				if err != nil || len(entries) == 0 {
+					t.Fatalf("expected a cache entry after a successful cycle, got %d entries (err %v)",
+						len(entries), err)
+				}
+			}
+
+			// Take away the ability to read the previous manifest, then change the tree.
+			deleteManifestsUnder(t, client, bucket, prefix)
+			writeFile(t, filepath.Join(src, "c.txt"), "charlie")
+
+			out2 := run("second")
+			if !strings.Contains(out2, tc.wantSource) {
+				t.Errorf("second cycle: want %q in output, got:\n%s", tc.wantSource, out2)
+			}
+			if !strings.Contains(out2, tc.wantSyncType) {
+				t.Errorf("second cycle: want %q in output, got:\n%s", tc.wantSyncType, out2)
+			}
+			if !strings.Contains(out2, tc.wantFilesSent) {
+				t.Errorf("second cycle: want %q (only the delta when cached, everything when not), got:\n%s",
+					tc.wantFilesSent, out2)
+			}
+			if got := uploads(); got != 2 {
+				t.Errorf("second cycle should add one upload, got %d total", got)
+			}
+		})
+	}
+}
