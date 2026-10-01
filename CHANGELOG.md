@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Local manifest cache: write-only fleet agents now sync incrementally (#604).** A strict
+  write-only identity has `PutObject` but no `GetObject` on its own data, so it could not
+  read its previous manifest; the delta was computed against nothing, every file was marked
+  new, and each cycle re-uploaded the entire source. Correct, but unusable past a few
+  hundred GB — the documented workaround was to drop `--write-only` and grant read access.
+  CargoShip now records each successful cycle's manifest locally (`~/.cargoship/manifest-cache`,
+  inside the fleet container's `cargoship-state` volume) and diffs against it when S3 cannot
+  be read. On by default; `--no-manifest-cache` disables it and `--manifest-cache-dir` moves it.
+  - **S3 stays authoritative** — the cache is consulted only when the previous manifest
+    cannot be read, and never overrides a readable one. `--force` ignores both, so a full
+    rebuild is always reachable.
+  - **Trusted for 30 days**, because the cache cannot detect that objects it vouches for were
+    deleted or lifecycled; expiry forces a periodic full re-establish.
+  - **Fails closed**: an entry that is corrupt, expired, from another schema, or describing a
+    different destination is refused, and the cycle falls back to a full sync. A needless full
+    upload costs bandwidth; trusting a bad entry would silently skip files.
+  - A cycle's heartbeat now reports `delta_source` (`s3` / `cache` / `none`) so an operator can
+    tell a cycle verified against S3 from one that trusted local state.
+
 ## [0.34.1] - 2026-10-01
 
 ### Fixed
