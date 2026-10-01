@@ -9,22 +9,44 @@ Written for QNAP Container Station; Synology Container Manager is the same pictu
 its own volume paths. You drive setup from a **control machine** (your laptop) and the
 NAS only ever runs the agent.
 
-::: warning Read this before you point it at terabytes
-Under the strict write-only identity an agent **cannot read its previous manifest**, so
-every cycle is a **full** sync — it re-uploads everything, every interval. That is fine
-for tens of GB and ruinous for a multi-TB NAS.
+::: tip Incremental sync works under the strict write-only policy
+A strict write-only identity **cannot read its previous manifest** from S3. CargoShip
+therefore keeps a **local manifest cache**: after each successful cycle it records what it
+stored, and the next cycle diffs against that instead of treating every file as new. So a
+write-only agent uploads only the delta — no read permission required.
 
-For a large NAS, emit the non-strict policy instead (drop `--write-only`):
+The cache lives in the container's `cargoship-state` volume
+(`~/.cargoship/manifest-cache`), which is why the compose file mounts it: delete that
+volume and the next cycle is a full sync again.
+
+Two things to know:
+
+- **S3 always wins.** The cache is only consulted when the previous manifest cannot be
+  read. It is a fallback, never an override.
+- **It is trusted for 30 days.** The cache cannot tell that objects it vouches for were
+  deleted or expired by a lifecycle rule, so it expires and forces a periodic full sync
+  that re-establishes what is really there. A quiescent dataset therefore does one full
+  cycle a month by design.
+
+Use `--no-manifest-cache` to switch it off (every cycle becomes a full sync), or
+`--force` on a single run to rebuild from scratch if you ever suspect the cache. The
+heartbeat reports which source each cycle used — `delta_source` is `s3`, `cache` or
+`none`; a writer stuck on `none` is re-uploading everything.
+:::
+
+::: warning The non-strict policy is still an option
+If you would rather the agent read its own manifest from S3 than rely on local state,
+emit the non-strict policy (drop `--write-only`):
 
 ```bash
 cargoship ghostship iam-policy s3://my-bucket/nas --writer-id lab-nas-1 \
   --kms-key-arn arn:aws:kms:… > iam-policy.json
 ```
 
-That grants the writer `GetObject` on **its own prefix only** (plus `kms:Decrypt` on the
-one fleet key) so it can read its last manifest and upload just the delta. It is still
-delete-free and still cannot touch another writer's data. A local manifest cache that
-restores incremental sync *under* the strict policy is planned but not shipped.
+That grants `GetObject` on **its own prefix only** (plus `kms:Decrypt` on the one fleet
+key). It is still delete-free and still cannot touch another writer's data. This is no
+longer required for incremental sync — it is a choice between trusting S3 reads and
+trusting local cached state.
 :::
 
 ## Prerequisites
@@ -122,8 +144,11 @@ directory **read-only, at the same path** the config names:
       - /volume1/Documents:/volume1/Documents:ro
 ```
 
-Read-only is deliberate: the agent only ever reads your data. Keep the
-`cargoship-state` volume — it holds resume state, and losing it costs a re-scan.
+Read-only is deliberate: the agent only ever reads your data.
+
+**Keep the `cargoship-state` volume.** It holds resume state *and* the manifest cache, so
+on a write-only writer losing it costs a full re-upload of everything — not just a
+re-scan. If you recreate the container, keep the volume.
 
 ## 5. Deploy (on the NAS)
 
@@ -191,7 +216,7 @@ CMK loses the data.
 | `Permission denied` reading `aws-credentials` | `chmod 600 ~/cargoship/aws-credentials` on the NAS. |
 | Config refused: signature | The uploaded `config.yaml` no longer matches `config.yaml.sig`. Re-sign after **every** edit and upload both. |
 | Config refused: "widens scope" | You added a watch path (or enabled source deletion). That needs `allow_scope_expansion: true` in the signed config — deliberately, so a config pull cannot silently broaden what the NAS reads. |
-| Every cycle re-uploads everything | Expected under the strict write-only policy — see the warning at the top. Use the non-strict policy for large datasets. |
+| Every cycle re-uploads everything | Check `delta_source` in `cargoship fleet status`. `none` every cycle means the manifest cache is not persisting — most often the `cargoship-state` volume is missing from the compose file, so the cache is recreated empty on each restart. A `manifest cache` warning in the agent log names the reason. Also expected for one cycle a month, when the 30-day trust window expires. |
 | `fleet status` shows nothing | No heartbeat yet (give it one interval), or you pointed it at the wrong base prefix — use the same `s3://bucket/base` you passed to `init`. |
 | Writer shows `config_error` but stays healthy | Working as designed: a bad config refresh keeps the **last-good** config running. Fix and re-upload; the next cycle adopts it. |
 | Looking for a metrics or health endpoint | There isn't one. The agent is outbound-only; `fleet status` and `docker logs` are the status channels. |
