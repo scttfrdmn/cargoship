@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-10-01
+
 ### Added
 - **Published multi-arch container image for the fleet agent (#604 follow-up).** Releases now
   push `ghcr.io/scttfrdmn/cargoship:<version>` (and `:latest`) as a **linux/amd64 + linux/arm64**
