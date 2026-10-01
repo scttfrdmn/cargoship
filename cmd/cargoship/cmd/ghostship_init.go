@@ -156,6 +156,12 @@ Example:
 	// `docker compose up -d` failed on an image pull. GHCR publishes a multi-arch
 	// manifest, so one reference resolves on both Intel and ARM NAS boxes.
 	cmd.Flags().StringVar(&image, "image", defaultFleetImage, "Container image to run in the emitted compose file")
+	// Display a version-independent default. The real default embeds this binary's
+	// version (above), which cobra would print verbatim into docs/gen/cli — making the
+	// vendored CLI reference drift on every single version bump. That is not a
+	// hypothetical: the v0.34.0 bump desynced this exact page and wedged the docs
+	// deploy. Display-only; the value in `image` is untouched.
+	cmd.Flags().Lookup("image").DefValue = "ghcr.io/scttfrdmn/cargoship:<this binary's version>"
 	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region for the emitted compose file (and --mint calls)")
 	cmd.Flags().StringVar(&profile, "profile", "", "AWS profile to use for --mint")
 	cmd.Flags().BoolVar(&mint, "mint", false, "Provision the IAM identity live (create user + write-only policy + access key) and write credentials into the bundle; requires iam:Create* on the caller")

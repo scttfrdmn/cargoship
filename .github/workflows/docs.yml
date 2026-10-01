@@ -112,6 +112,22 @@ jobs:
           git fetch --depth=1 origin main
           git checkout --detach FETCH_HEAD
 
+      # Enforce CLI-reference sync on MAIN, not just on the release tag above.
+      # The tag check alone is structurally blind: it validates the tree of the newest
+      # release, so a commit that desyncs docs/gen/cli passes its own PR and every
+      # later main push, then fails only once a release promotes it to "latest" — by
+      # which point the tag is immutable and the site is wedged. That is how #668's
+      # --image default reached the v0.34.0 tag stale. Failing here puts the error on
+      # the commit that can still be fixed.
+      - name: Check CLI reference is in sync (dev/main)
+        run: |
+          ./docs/scripts/gen-cli.sh
+          if ! git diff --quiet -- docs/gen/cli; then
+            echo "::error::docs/gen/cli is out of date on main. Run ./docs/scripts/gen-cli.sh and commit the result."
+            git --no-pager diff --stat -- docs/gen/cli
+            exit 1
+          fi
+
       - name: Reinstall deps for main
         working-directory: docs
         run: npm ci
