@@ -167,6 +167,7 @@ Full documentation lives at **[cargoship.app](https://cargoship.app)**.
 ### Project
 - [Architecture](https://cargoship.app/project/architecture) — system design
 - [Project Maturity & Compatibility](https://cargoship.app/project/maturity) — what's stable vs. beta
+- [Beta Tester Brief](https://cargoship.app/project/beta-testing) — what to try, what's known-rough, how to report
 - [Capability Verification](https://cargoship.app/project/verification) — every capability mapped to the evidence that proves it (CI-checked)
 - [Roadmap — removed & deferred capabilities](https://cargoship.app/project/roadmap) — candidate future work, not shipping features
 - [Comparison](https://cargoship.app/reference/comparison) — CargoShip vs. other tools
