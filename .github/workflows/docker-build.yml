@@ -163,9 +163,25 @@ jobs:
 
           # Must print a version rather than "not found" (the empty-image symptom).
           docker run --rm cargoship:fleet --version
+
           # Must be the FLEET-capable binary, not merely some cargoship.
-          docker run --rm cargoship:fleet ghostship --help | grep -q 'init'
-          docker run --rm cargoship:fleet fleet --help | grep -q 'lock-status'
+          #
+          # Capture first, match second. Piping `docker run` into `grep -q` is a RACE under
+          # `set -o pipefail`: grep exits on the first match and closes the pipe, docker
+          # then dies of EPIPE writing the rest of the help text ("write /dev/stdout:
+          # broken pipe"), and pipefail fails the step. It only fails when grep wins, so it
+          # passed for three releases before losing the race. A here-string has no producer
+          # left to kill.
+          ghostship_help="$(docker run --rm cargoship:fleet ghostship --help)"
+          fleet_help="$(docker run --rm cargoship:fleet fleet --help)"
+          if ! grep -q 'init' <<<"$ghostship_help"; then
+            echo "::error::fleet image has no 'ghostship init' — wrong or stale binary"
+            exit 1
+          fi
+          if ! grep -q 'lock-status' <<<"$fleet_help"; then
+            echo "::error::fleet image has no 'fleet lock-status' — wrong or stale binary"
+            exit 1
+          fi
           # An agent never needs root on the NAS.
           uid="$(docker run --rm --entrypoint /bin/sh cargoship:fleet -c 'id -u')"
           if [ "$uid" != "65532" ]; then
