@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.35.1] - 2026-10-02
+
+### Fixed
+- **The published install page pinned the previous release (#687 follow-up).** cargoship.app's
+  root docs tree is built from the newest release **tag**, so the v0.35.0 pin fix — which
+  landed on `main` shortly *after* that tag — never reached the published page. Anyone
+  following the copy-pasteable `curl` commands downloaded **v0.34.1**: the one release where
+  a strict write-only fleet agent still re-uploads everything every cycle, so a NAS tester
+  would have hit the exact problem v0.35.0 fixed and reported it as unfixed. Homebrew and
+  `go install` were unaffected. This release exists to republish a correct install page.
+  - The recurrence is now gated rather than remembered: `check-doc-versions` **Check 7**
+    asserts every `releases/download/` URL and archive filename in `install.md` names the
+    current version, and it runs on the release PR — the same PR that bumps `version.txt`.
+    A future release therefore cannot tag with stale pins.
+
 ## [0.35.0] - 2026-10-02
 
 ### Added
