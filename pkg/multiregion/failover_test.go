@@ -10,6 +10,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// fastFailoverDelays shrinks the failover path's simulated pauses to near-zero so a
+// test's deadline is orders of magnitude clear of its own work (#671).
+//
+// Use it for tests that expect a failover to SUCCEED. Before this, those tests cut
+// FailoverTimeout to 100ms while the implementation still spent ~85ms of hardcoded sleeps
+// against it -- ~15ms for scheduler jitter on a shared runner -- and the immediate path's
+// 1s propagation delay could never fit 100ms at all. Shrinking the WORK rather than the
+// DEADLINE is what makes these deterministic.
+//
+// Tests that assert a TIMEOUT or CANCELLATION must NOT use this: they need the work to
+// outlast the budget, which the production defaults still provide.
+func fastFailoverDelays() failoverDelays {
+	return failoverDelays{
+		propagation: time.Millisecond,
+		maxDrain:    time.Millisecond,
+		step:        0,
+		shortStep:   0,
+	}
+}
+
 func TestNewFailoverManager(t *testing.T) {
 	config := createValidMultiRegionConfig()
 	logger := log.New(nil)
@@ -75,10 +95,11 @@ func TestDefaultFailoverManager_DetectFailure(t *testing.T) {
 
 func TestDefaultFailoverManager_ExecuteFailover(t *testing.T) {
 	config := createValidMultiRegionConfig()
-	// Reduce timeout for faster tests
-	config.Failover.FailoverTimeout = 100 * time.Millisecond
+	// #671: budget well clear of the work, and the work itself made negligible.
+	config.Failover.FailoverTimeout = 5 * time.Second
 	logger := log.New(nil)
 	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+	manager.delays = fastFailoverDelays()
 	ctx := context.Background()
 
 	tests := []struct {
@@ -134,10 +155,11 @@ func TestDefaultFailoverManager_ExecuteFailover(t *testing.T) {
 
 func TestDefaultFailoverManager_GetFailoverStatus(t *testing.T) {
 	config := createValidMultiRegionConfig()
-	// Reduce timeout for faster tests
-	config.Failover.FailoverTimeout = 100 * time.Millisecond
+	// #671: budget well clear of the work, and the work itself made negligible.
+	config.Failover.FailoverTimeout = 5 * time.Second
 	logger := log.New(nil)
 	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+	manager.delays = fastFailoverDelays()
 	ctx := context.Background()
 
 	// Initially should have empty status
@@ -215,10 +237,11 @@ func TestDefaultFailoverManager_RecordSuccess(t *testing.T) {
 
 func TestDefaultFailoverManager_GetActiveFailovers(t *testing.T) {
 	config := createValidMultiRegionConfig()
-	// Reduce timeout for faster tests
-	config.Failover.FailoverTimeout = 100 * time.Millisecond
+	// #671: budget well clear of the work, and the work itself made negligible.
+	config.Failover.FailoverTimeout = 5 * time.Second
 	logger := log.New(nil)
 	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+	manager.delays = fastFailoverDelays()
 	ctx := context.Background()
 
 	// Initially should have no active failovers
@@ -263,10 +286,11 @@ func TestDefaultFailoverManager_ResetFailureHistory(t *testing.T) {
 
 func TestDefaultFailoverManager_IsRegionInFailover(t *testing.T) {
 	config := createValidMultiRegionConfig()
-	// Reduce timeout for faster tests
-	config.Failover.FailoverTimeout = 100 * time.Millisecond
+	// #671: budget well clear of the work, and the work itself made negligible.
+	config.Failover.FailoverTimeout = 5 * time.Second
 	logger := log.New(nil)
 	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+	manager.delays = fastFailoverDelays()
 	ctx := context.Background()
 
 	regionName := "us-east-1"
@@ -469,9 +493,11 @@ func TestDefaultFailoverManager_EdgeCases(t *testing.T) {
 // Test executeFailoverStrategy function to improve coverage
 func TestDefaultFailoverManager_executeFailoverStrategy(t *testing.T) {
 	config := createValidMultiRegionConfig()
-	config.Failover.FailoverTimeout = 100 * time.Millisecond
+	// #671: budget well clear of the work, and the work itself made negligible.
+	config.Failover.FailoverTimeout = 5 * time.Second
 	logger := log.New(nil)
 	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+	manager.delays = fastFailoverDelays()
 	ctx := context.Background()
 
 	t.Run("graceful failover strategy", func(t *testing.T) {
@@ -537,9 +563,11 @@ func TestDefaultFailoverManager_executeFailoverStrategy(t *testing.T) {
 // Test executeManualFailover function to improve coverage
 func TestDefaultFailoverManager_executeManualFailover(t *testing.T) {
 	config := createValidMultiRegionConfig()
-	config.Failover.FailoverTimeout = 100 * time.Millisecond
+	// #671: budget well clear of the work, and the work itself made negligible.
+	config.Failover.FailoverTimeout = 5 * time.Second
 	logger := log.New(nil)
 	manager := NewFailoverManager(config, logger).(*DefaultFailoverManager)
+	manager.delays = fastFailoverDelays()
 
 	ctx := context.Background()
 	operation := &FailoverOperation{
