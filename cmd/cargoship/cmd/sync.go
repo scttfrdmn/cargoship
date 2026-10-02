@@ -45,11 +45,9 @@ The sync command provides efficient incremental backups by:
 First sync uploads everything (like 'upload' command).
 Subsequent syncs only upload changed files, saving time and bandwidth.
 
-Change detection (default: fast mode):
-  - Size change: File size differs from manifest
-  - Time change: Modification time is newer than manifest
-
-Use --checksum for guaranteed accuracy (slower, computes SHA256).
+Change detection compares SIZE and MODIFICATION TIME against the previous
+manifest. Content is not hashed, so an edit that preserves both size and mtime is
+not detected. Use --force for a full re-upload when you need certainty.
 
 Examples:
   # First sync: uploads all files
@@ -61,14 +59,25 @@ Examples:
   # Dry run to see what would be synced
   cargoship sync /home/photos s3://my-bucket/backups --dry-run
 
-  # Use checksum comparison (slower but accurate)
-  cargoship sync /data s3://my-bucket/backups --checksum
-
   # Force full sync (ignore previous manifest)
   cargoship sync /data s3://my-bucket/backups --force
 `,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// #678: refuse --checksum rather than accepting it and doing nothing.
+			// manifest.hasChanged takes SyncOptions and never reads UseChecksum, so this
+			// flag has always been inert while its help promised "guaranteed accuracy" —
+			// and the case it exists for (same size, same mtime, different content) is
+			// exactly the one that still slips through. Failing here, before any work, is
+			// the honest behaviour for an integrity option that is not implemented.
+			// Checked against the value, not Changed(), so an explicit --checksum=false
+			// (meaning "don't") stays valid.
+			if useChecksum {
+				return fmt.Errorf("--checksum is not implemented (see issue #678): change detection " +
+					"compares size and modification time only, so this flag would not have done what it says. " +
+					"Use --force for a full re-upload when you need certainty")
+			}
+
 			ctx := context.Background()
 
 			// Parse arguments
@@ -316,7 +325,13 @@ Examples:
 	cmd.Flags().IntVar(&compressionLevel, "compression-level", 3,
 		"Fixed zstd compression level (1-22), overriding per-chunk content-aware selection. Unset = content-aware")
 	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region")
-	cmd.Flags().BoolVar(&useChecksum, "checksum", false, "Use SHA256 checksum comparison (slower but accurate)")
+	// NOT IMPLEMENTED (#678). manifest.hasChanged accepts SyncOptions and never reads
+	// UseChecksum — detection is always size+mtime — so this flag silently did nothing
+	// while promising "guaranteed accuracy". An integrity option that quietly no-ops is
+	// worse than one that refuses, so setting it is now a usage error. Kept registered
+	// rather than deleted so the failure names the reason instead of "unknown flag".
+	cmd.Flags().BoolVar(&useChecksum, "checksum", false,
+		"NOT IMPLEMENTED (#678): rejected if set. Change detection is size+mtime; use --force for a full re-upload")
 	cmd.Flags().BoolVar(&trackDeletes, "track-deletes", false, "Track deleted files in manifest")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be synced without uploading")
 	cmd.Flags().BoolVar(&force, "force", false, "Force full sync (ignore previous manifest)")
