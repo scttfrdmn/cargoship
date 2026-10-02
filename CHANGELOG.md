@@ -46,6 +46,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     encrypted-manifest datasets.
 
 ### Fixed
+- **`sync --checksum` was inert and is now rejected (#678).** The flag promised SHA-256
+  content comparison — the long help recommended it ("Use --checksum for guaranteed
+  accuracy") with a worked example — but `manifest.hasChanged` accepts `SyncOptions` and
+  never reads `UseChecksum`, so detection was always size + modification time. The case the
+  flag exists for (same size, same mtime, different content) was exactly the case it failed
+  to catch. Setting it is now a usage error naming the issue; `--checksum=false` stays
+  valid, and the help no longer claims content is hashed. An integrity option that silently
+  does nothing manufactures false confidence, so refusing is the honest interim behaviour
+  until it is implemented. Only `sync` exposed it — fleet agents were never affected.
 - **macOS: a downloaded binary is SIGKILLed with no explanation, and installation docs did
   not say so (#407).** Gatekeeper quarantines un-notarized downloads and kills them with a
   bare `Killed: 9`. `install.md` now explains the symptom, how to confirm it

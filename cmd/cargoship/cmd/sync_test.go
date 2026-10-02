@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -61,5 +63,45 @@ func TestNewSyncPipelineConfig_UsesRealS3(t *testing.T) {
 	}
 	if cfg.CompressionLevel != 0 {
 		t.Errorf("CompressionLevel = %d, want 0 (content-aware)", cfg.CompressionLevel)
+	}
+}
+
+// --checksum promised SHA256 comparison and never did it (#678): manifest.hasChanged
+// accepts SyncOptions and never reads UseChecksum. A silently inert INTEGRITY flag is
+// worse than one that refuses, so it must be rejected rather than ignored.
+func TestSyncRejectsUnimplementedChecksumFlag(t *testing.T) {
+	cmd := NewSyncCmd()
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"/nonexistent-source", "s3://bucket/prefix", "--checksum"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("sync --checksum succeeded; an unimplemented integrity flag must not be silently accepted")
+	}
+	// Must fail BECAUSE of the flag, not because the path is missing — otherwise the
+	// rejection is not actually wired and this test would pass for the wrong reason.
+	if !strings.Contains(err.Error(), "checksum") {
+		t.Errorf("error %q does not mention the flag; it likely failed for an unrelated reason", err)
+	}
+	if !strings.Contains(err.Error(), "678") {
+		t.Errorf("error %q should point at the tracking issue so the user can see the status", err)
+	}
+}
+
+// Without the flag, sync must still reach its normal validation (here: the missing
+// source path), proving the rejection is scoped to --checksum and did not break sync.
+func TestSyncWithoutChecksumFlagReachesNormalValidation(t *testing.T) {
+	cmd := NewSyncCmd()
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"/nonexistent-source", "s3://bucket/prefix"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected a failure for a nonexistent source path")
+	}
+	if strings.Contains(err.Error(), "678") {
+		t.Errorf("error %q mentions the checksum issue, but --checksum was not passed", err)
 	}
 }

@@ -53,7 +53,7 @@ Reporting these again costs you time and tells us nothing new.
 | Area | Status |
 |---|---|
 | **macOS downloads are SIGKILLed** | Binaries are not notarized ([#407](https://github.com/scttfrdmn/cargoship/issues/407)). Gatekeeper kills them with a bare `Killed: 9`. Use Homebrew, or clear the quarantine attribute — see [installation](/start/install). |
-| **`--use-checksum` does nothing** | The flag is accepted but change detection is always size + mtime ([#678](https://github.com/scttfrdmn/cargoship/issues/678)). Do not rely on it to catch a same-size, same-mtime edit. |
+| **`sync --checksum` is rejected** | It was never implemented — change detection is size + mtime only — and silently did nothing while promising accuracy, so it now **fails with an error** ([#678](https://github.com/scttfrdmn/cargoship/issues/678)). Use `--force` for a full re-upload when you need certainty. Note a same-size, same-mtime edit is still not detected. |
 | **`dataset prune` refuses encrypted manifests** | It needs to read the chain to decide what is safe to delete. It errors clearly rather than deleting the wrong thing, but those datasets accumulate. |
 | **Multi-region is library-only** | `pkg/multiregion` is **not** wired into `cargoship upload`. Use `--region` plus sharding. See [maturity](/project/maturity). |
 | **Legacy Docker images** | `docker/Dockerfile.{ghost-ship,qnap,astrapi}` build a dormant daemon and are not the fleet agent. Use the published `ghcr.io/scttfrdmn/cargoship` image. |
