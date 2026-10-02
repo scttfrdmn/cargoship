@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Beta tester brief** (`docs/project/beta-testing.md`) — what is worth exercising, what is
+  already known-rough (so a tester does not rediscover it), and what a useful report
+  contains. Written for someone evaluating CargoShip who did not build it.
 - **Local manifest cache: write-only fleet agents now sync incrementally (#604).** A strict
   write-only identity has `PutObject` but no `GetObject` on its own data, so it could not
   read its previous manifest; the delta was computed against nothing, every file was marked
@@ -26,6 +29,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     upload costs bandwidth; trusting a bad entry would silently skip files.
   - A cycle's heartbeat now reports `delta_source` (`s3` / `cache` / `none`) so an operator can
     tell a cycle verified against S3 from one that trusted local state.
+
+### Changed
+- **Documentation accuracy sweep ahead of outside beta testing.**
+  - `docs/project/maturity.md`: the fleet row described the pre-v0.32 ghost-ship design.
+    Split into **Ghostship fleet mode (Beta)** — naming what actually shipped across
+    v0.32.0–v0.34.1 — and **Legacy ghost-ship agents (Removed)**, so "removed in v0.20.0"
+    is no longer attached to a capability that currently ships.
+  - `docs/start/install.md`: the download commands pinned **v0.32.0**, two releases stale,
+    so anyone following the page literally installed an old binary. Now v0.34.1.
+  - `docker/Dockerfile.{ghost-ship,qnap,astrapi}` carry a **LEGACY** header. They build the
+    dormant `cmd/ghost-ship` daemon, not the fleet agent, and sat beside the real
+    `Dockerfile.fleet` with nothing to distinguish them.
+  - `maturity.md` now also states three previously undocumented limits: unnotarized macOS
+    binaries, no fleet recovery-time objective, and `dataset prune` refusing
+    encrypted-manifest datasets.
+
+### Fixed
+- **macOS: a downloaded binary is SIGKILLed with no explanation, and installation docs did
+  not say so (#407).** Gatekeeper quarantines un-notarized downloads and kills them with a
+  bare `Killed: 9`. `install.md` now explains the symptom, how to confirm it
+  (`xattr -p com.apple.quarantine`), how to clear it — and that clearing it is exactly what
+  you would do to run a tampered binary, so verify the cosign signature first.
 
 ## [0.34.1] - 2026-10-01
 
