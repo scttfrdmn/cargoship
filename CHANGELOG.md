@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-10-02
+
 ### Added
 - **Beta tester brief** (`docs/project/beta-testing.md`) — what is worth exercising, what is
   already known-rough (so a tester does not rediscover it), and what a useful report
@@ -46,6 +48,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     encrypted-manifest datasets.
 
 ### Fixed
+- **Bumped the OpenTelemetry otlptrace exporter to v1.46.0 (GO-2026-6505, #649).** govulncheck
+  began reporting the advisory as *reachable* rather than merely present — the exporter was
+  pinned at v1.40.0 while otel core had moved to v1.46.0, and the entry point is
+  `tracing.NewTracerProvider` → `otlptracegrpc.New`. Informational-leak only (exporter config
+  logging may emit endpoint URLs into info logs) and CargoShip's tracing is opt-in, so
+  real-world exposure was low; it is fixed here because it tripped the zero-known-vulnerability
+  gate. The coupled otlptrace family moved together rather than to the minimum patched version.
+- **Fixed a timing-flaky failover test that could block a release (#671).** The experimental
+  `pkg/multiregion` suite set a 100 ms failover budget while the implementation spent ~85 ms of
+  hardcoded sleeps against it, leaving ~15 ms for scheduler jitter — and its immediate path's
+  hardcoded 1 s propagation delay could never fit 100 ms at all. The simulated pauses are now
+  injectable so tests shrink the *work* instead of the *deadline*; margin went from ~15 ms to
+  ~500×, and the suite got faster. Timeout/cancellation tests deliberately keep the production
+  delays, since they need the work to outlast the budget.
 - **`sync --checksum` was inert and is now rejected (#678).** The flag promised SHA-256
   content comparison — the long help recommended it ("Use --checksum for guaranteed
   accuracy") with a worked example — but `manifest.hasChanged` accepts `SyncOptions` and
