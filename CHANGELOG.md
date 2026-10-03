@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-10-03
+
+### Upgrade notes
+
+- **File counts may DROP, and that is a correction, not data loss.** `ScanLocalFiles` now
+  emits only regular files (#693). Symlinks, FIFOs, sockets and device nodes were previously
+  *counted* as work to do but were never archivable — the pipeline has always refused them —
+  so a tree containing them will now report fewer files per cycle. Nothing that was being
+  stored has stopped being stored.
+- **One extra full sync on first run after upgrading, for write-only fleet agents.** The
+  manifest cache now holds the *effective* dataset rather than a single cycle's increment
+  (#691), so `manifestcache.SchemaVersion` is **2** and v1 entries are rejected rather than
+  misread. The next cycle re-establishes the baseline and subsequent cycles are incremental
+  again. No action needed.
+- **A minted bundle now requires one extra deploy step.** `chown 65532:65532 aws-credentials`
+  on the host (keep `0600`) — the agent runs as uid 65532 and could never read an
+  operator-owned `0600` file (#692). The bundle README, the emitted compose file and the NAS
+  guide all state it, and `ghostship run` now fails fast naming the file instead of timing
+  out against EC2 IMDS.
+
+
 ### Fixed
 - **Symlinks (and every other irregular entry) were permanently "New" in the delta (#693).**
   `ScanLocalFiles` walks with `filepath.Walk`, which uses `Lstat` and therefore hands over
