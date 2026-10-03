@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A failed manifest upload left uploaded data UNRESTORABLE while reporting success (#704).**
+  The manifest PUT was a printed warning that left `Result.Success` true. Since the manifest
+  cache is written on success, the cache then recorded a dataset whose manifest never
+  reached S3 — so every later cycle reported `no changes` while the chunks already uploaded
+  had no manifest, making them invisible to `restore` and `verify`: billed, unrecoverable,
+  and never retried. Found on a real Synology as 23 chunk objects (2.49 GiB) present,
+  `manifest.json.gz` returning 404, and the next cycle reporting no changes with 26 GB still
+  unprotected behind a healthy heartbeat.
+  - A manifest failure now fails the cycle: `Success = false`, the error is recorded in
+    `Result.Errors`, and the log says plainly that the chunks are not restorable without it.
+    Failing is the recoverable outcome — the next cycle re-uploads.
+  - This closes the gap left by #691's cache guard, which covered chunk failures but not
+    manifest failures, the worse of the two.
+
 ## [0.36.0] - 2026-10-03
 
 ### Upgrade notes

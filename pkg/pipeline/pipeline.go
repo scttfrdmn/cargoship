@@ -865,10 +865,26 @@ func (p *Pipeline) waitForCompletion(ctx context.Context) *Result {
 	result.TotalTime = time.Since(result.Progress.StartTime)
 
 	// Step 5: Upload manifest to S3 after all chunks complete (Issue #97)
+	//
+	// A manifest failure FAILS THE CYCLE (#704). It was previously a printed warning that
+	// left Success true, which was a data-protection hole rather than a cosmetic one:
+	// runOneSync caches the effective manifest on success, so the cache recorded a dataset
+	// whose manifest never reached S3. Every later cycle then reported "no changes" while
+	// the chunks already uploaded had no manifest — unreachable to restore and verify,
+	// billed, and never retried. Seen on a real NAS as 23 chunk objects present,
+	// manifest.json.gz a 404, and 26 GB left unprotected behind a healthy heartbeat.
+	//
+	// The chunks are worthless without the manifest, so there is no partial success to
+	// report here. Failing makes the next cycle re-upload, which is the recoverable
+	// outcome.
 	if p.manifestBuilder != nil && p.config.UseRealS3 {
 		if err := p.uploadManifest(ctx); err != nil {
-			// Log warning but don't fail the upload
-			fmt.Printf("Warning: Failed to upload manifest: %v\n", err)
+			result.Success = false
+			result.Errors = append(result.Errors, fmt.Errorf("upload manifest: %w", err))
+			p.mu.Lock()
+			p.errors = append(p.errors, err)
+			p.mu.Unlock()
+			fmt.Printf("Error: failed to upload manifest (the uploaded chunks are not restorable without it): %v\n", err)
 		}
 	}
 
