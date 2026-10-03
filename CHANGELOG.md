@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.1] - 2026-10-03
+
+### Upgrade notes
+
+- **If a cycle ever reported success while its manifest upload failed, that dataset is not
+  restorable and the agent will not have retried it.** Before this release a failed manifest
+  PUT was a warning, so the cycle looked successful and the manifest cache recorded the
+  dataset as complete. To check a writer: list `writers/<id>/uploads/<id>/` and confirm a
+  `manifest.json.gz` exists beside the chunks. If one is missing, delete that upload prefix
+  (the chunks are unreachable without it), clear the agent's manifest cache
+  (`~/.cargoship/manifest-cache/` inside the state volume), and let the next cycle
+  re-establish the baseline.
+
+
 ### Fixed
 - **A failed manifest upload left uploaded data UNRESTORABLE while reporting success (#704).**
   The manifest PUT was a printed warning that left `Result.Success` true. Since the manifest
