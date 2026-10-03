@@ -155,9 +155,42 @@ re-scan. If you recreate the container, keep the volume.
 ```bash
 ssh admin@nas.local "mkdir -p ~/cargoship"
 scp -r ./lab-nas-1/* admin@nas.local:~/cargoship/
+
+# Make the credentials readable by the container user — see the warning below.
+ssh admin@nas.local "sudo chown 65532:65532 ~/cargoship/aws-credentials"
+
 ssh admin@nas.local "cd ~/cargoship && \
   /share/ZFS530_DATA/.qpkg/container-station/bin/docker compose up -d"
 ```
+
+::: danger The chown is not optional
+`aws-credentials` is written **0600 owned by whoever ran `ghostship init`**. The agent runs
+as **uid 65532**, so without the `chown` it cannot read the file, starts with no
+credentials, and crash-loops — reporting an **EC2 IMDS timeout** that mentions neither the
+file nor permissions ([#692](https://github.com/scttfrdmn/cargoship/issues/692)):
+
+```
+failed to refresh cached credentials, no EC2 IMDS role found,
+operation error ec2imds: GetMetadata, request canceled, context deadline exceeded
+```
+
+Keep the mode at 0600 — change the owner, not the permissions. Current releases fail fast
+with a message naming the file, but older agents show only the IMDS error.
+:::
+
+::: warning Synology: it is `docker-compose`, not `docker compose`
+On DSM, Compose is a **standalone binary**, not a `docker` subcommand
+([#694](https://github.com/scttfrdmn/cargoship/issues/694)):
+
+```bash
+/usr/local/bin/docker-compose -p lab-nas-1 up -d     # Synology DSM
+docker compose up -d                                  # QNAP Container Station
+```
+
+On both, `docker` is **not on `PATH`** for non-interactive SSH, so use the absolute path
+(`/usr/local/bin/docker` on Synology; find it on QNAP with
+`ls -d /share/*/.qpkg/container-station/bin/docker`).
+:::
 
 The agent pulls its config, **verifies the signature** against the baked public key, and
 starts backing up on the interval. An unsigned, tampered, or wrong-key config is refused

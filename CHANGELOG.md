@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A freshly minted bundle could not start an agent: the container cannot read its own
+  credentials (#692).** `ghostship init --mint` writes `aws-credentials` **0600 owned by the
+  operator**, and the emitted compose mounts it into a container running as **uid 65532** —
+  which cannot read it. The AWS SDK then fell through to its last resort and the agent
+  crash-looped reporting an **EC2 IMDS timeout**, an error naming neither the file nor
+  permissions. #668 fixed the credential *path* (`/root` → `/home/cargoship`) but not the
+  *ownership*, so `docker compose up -d` from a bundle had never actually worked. Found on a
+  real Synology on the first deploy cycle.
+  - `ghostship run` now **fails fast** with the path, the file's mode and owner, this
+    process's uid, and the `chown 65532:65532` remedy. A *missing* credentials file stays
+    legitimate (env vars, instance roles, web-identity tokens) — only "present but
+    unreadable" is reported. A bind-mount that silently created a **directory** at the
+    credentials path is reported too, since the SDK's error for that is equally opaque.
+  - The bundle `README.md`, the emitted `compose.yaml`, and the NAS guide all now state the
+    `chown` as a required deploy step, and say to change the owner rather than loosen 0600.
+- **The emitted compose file described the state volume wrongly (#694).** It still said
+  losing it "only costs a re-scan, never data"; since v0.35.0 that volume holds the manifest
+  cache, so on a write-only writer losing it costs a **full re-upload**. `qnap.md` was
+  corrected at the time, but the template an operator actually reads was missed.
+- **NAS guide: Synology deploy commands do not match DSM (#694).** Compose there is a
+  standalone `docker-compose` binary, not a `docker compose` subcommand, and `docker` is not
+  on `PATH` for non-interactive SSH. The guide had claimed Synology was "the same picture"
+  as QNAP.
+
 ## [0.35.1] - 2026-10-02
 
 ### Fixed
