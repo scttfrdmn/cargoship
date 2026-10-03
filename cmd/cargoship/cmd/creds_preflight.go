@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"syscall"
 )
 
 // credentialsPreflight reports a clear error when an AWS credentials file exists at the
@@ -35,6 +34,11 @@ func credentialsPreflight() error {
 		path = filepath.Join(home, ".aws", "credentials")
 	}
 
+	// #nosec G304,G703 -- path is the AWS SDK's OWN credentials location: either
+	// $AWS_SHARED_CREDENTIALS_FILE, which the SDK itself is about to read, or
+	// $HOME/.aws/credentials. gosec flags it as tainted because it comes from the
+	// environment, but we only ask whether it is readable and never use its contents,
+	// so inspecting a file the SDK will open anyway adds no exposure.
 	fi, err := os.Stat(path)
 	if err != nil {
 		return nil // absent, or unstattable: not our call to make
@@ -44,7 +48,7 @@ func credentialsPreflight() error {
 			"(a container bind-mount creates a directory when the host path does not exist)", path)
 	}
 
-	f, err := os.Open(path) // #nosec G304 -- path is the SDK's own credentials location
+	f, err := os.Open(path) // #nosec G304,G703 -- same SDK-owned path as the Stat above
 	if err == nil {
 		_ = f.Close()
 		return nil
@@ -54,8 +58,8 @@ func credentialsPreflight() error {
 	}
 
 	detail := fmt.Sprintf("mode %04o", fi.Mode().Perm())
-	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
-		detail = fmt.Sprintf("mode %04o owned by uid %d", fi.Mode().Perm(), st.Uid)
+	if uid, ok := fileOwnerUID(fi); ok {
+		detail = fmt.Sprintf("mode %04o owned by uid %d", fi.Mode().Perm(), uid)
 	}
 	return fmt.Errorf("aws credentials file %s exists but is not readable by uid %d (%s). "+
 		"A bundle's aws-credentials is 0600 owned by the operator who ran 'ghostship init', so a "+
