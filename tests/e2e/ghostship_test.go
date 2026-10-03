@@ -833,8 +833,16 @@ func TestGhostshipRun_IncrementalConverges(t *testing.T) {
 	uploads := func() int { return len(uploadIDsUnder(t, client, bucket, "data/writers/conv-1")) }
 
 	// 1. Full sync: both files.
-	if out := run("first"); !strings.Contains(out, "sync_type=full") {
-		t.Fatalf("first cycle should be full, got:\n%s", out)
+	out1 := run("first")
+	if !strings.Contains(out1, "sync_type=full") {
+		t.Fatalf("first cycle should be full, got:\n%s", out1)
+	}
+	// #694: the cycle log reported bytes=0 after moving real data, because the
+	// direct-upload path never set job.ArchiveSize and Result.TotalBytes is summed from
+	// it. That made the heartbeat's bytes field useless for exactly the small-file
+	// workloads this fast path exists for.
+	if strings.Contains(out1, "bytes=0 ") || strings.HasSuffix(strings.TrimSpace(out1), "bytes=0") {
+		t.Errorf("cycle reported bytes=0 after uploading real data (#694); got:\n%s", out1)
 	}
 	if got := uploads(); got != 1 {
 		t.Fatalf("after cycle 1 want 1 upload, got %d", got)

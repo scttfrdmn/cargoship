@@ -175,6 +175,22 @@ func ScanLocalFiles(rootPath string) ([]FileInfo, error) {
 			return nil
 		}
 
+		// Emit ONLY regular files: exactly what the pipeline can archive (#693).
+		//
+		// filepath.Walk uses Lstat, so it hands over directories, symlinks, FIFOs, sockets
+		// and device nodes. The pipeline skips symlinks in its scanner and rejects every
+		// non-regular file at open time (ensureRegularFile). Emitting them here made them
+		// permanently "New" in the delta: counted as work, never stored, never present in
+		// the resulting manifest, and so New again next cycle. The delta could not
+		// converge and every cycle produced an upload — on a 30s interval, thousands a day
+		// with nothing changed.
+		//
+		// If FollowSymlinks ever becomes settable (it is declared but never set true), this
+		// rule and the scanner's must move together, or they will drift apart again.
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+
 		files = append(files, FileInfo{
 			Path:    relPath,
 			Size:    info.Size(),

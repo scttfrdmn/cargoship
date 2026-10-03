@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Symlinks (and every other irregular entry) were permanently "New" in the delta (#693).**
+  `ScanLocalFiles` walks with `filepath.Walk`, which uses `Lstat` and therefore hands over
+  directories, symlinks, FIFOs, sockets and device nodes. The pipeline skips symlinks in its
+  scanner and rejects every non-regular file at open time, so those entries were counted as
+  work to do, never stored, never present in the resulting manifest — and New again on the
+  next cycle. The delta could not converge and *every* cycle produced an upload; at the 30s
+  interval a real NAS deployment uses, thousands a day with nothing changed. The scan now
+  emits only regular files, which is exactly what the pipeline can archive.
+- **The cycle log reported `bytes=0` after uploading real data (#694).** `Result.TotalBytes`
+  is summed from `job.ArchiveSize`, which only the archiver ever set — so the direct-upload
+  fast path reported zero bytes, making the heartbeat's `bytes` field useless for precisely
+  the small-file workloads that path exists for. It is now set from the bytes each job
+  actually uploaded, counted per file on success so a partial failure cannot claim bytes
+  that never landed.
 - **Incremental sync did not converge: the cycle after any increment re-uploaded the whole
   dataset (#691).** An incremental manifest lists only **its own increment**, and the delta
   was computed against that single manifest instead of the chain-resolved dataset — so
