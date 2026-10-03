@@ -17,7 +17,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -2182,11 +2181,7 @@ func TestIntegration_DiskSpaceHandling(t *testing.T) {
 	defer suite.Cleanup()
 
 	// Check available disk space
-	var stat syscall.Statfs_t
-	err := syscall.Statfs(suite.TempDir, &stat)
-	require.NoError(t, err)
-
-	availableBytes := stat.Bavail * uint64(stat.Bsize)
+	availableBytes := integrationAvailableDiskBytes(t, suite.TempDir)
 	availableMB := availableBytes / (1024 * 1024)
 
 	t.Logf("Available disk space: %.2f GB", float64(availableMB)/1024)
