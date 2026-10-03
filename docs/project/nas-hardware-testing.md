@@ -48,7 +48,35 @@ levels of nesting, a hardlinked pair, a relative and a **broken** symlink, incom
 and highly-compressible 4 MB files, an already-gzipped file, a sparse 8 MB file, a file
 dated 2000 and one dated **tomorrow**, plus read-only and executable modes.
 
-Copy it to a share on the NAS, e.g. `/volume1/cargoship-test/`.
+Copy it to a **dedicated test directory** on the NAS — not a real share:
+
+```bash
+ssh you@nas "mkdir -p /volume1/docker/cargoship-nastest/corpus"
+tar --no-mac-metadata -cf - -C /tmp/nas-corpus . \
+  | ssh you@nas "tar -xf - -C /volume1/docker/cargoship-nastest/corpus"
+```
+
+::: warning Two transfer traps, both of which silently change the corpus
+**macOS `tar` pollutes it.** `bsdtar` stores Apple metadata by default, which lands on the
+NAS as AppleDouble `._*` sidecars — 47 extra files beside 26 real ones in our run. The
+restore then contains files the source does not, and the verifier correctly reports them as
+`UNEXPECTED`. Use `--no-mac-metadata` (or `COPYFILE_DISABLE=1`), and check the file count on
+the NAS matches the source before starting.
+
+**`rsync` may not use your SSH key.** In our run `ssh` key auth worked while `rsync` fell
+through to password auth and transferred nothing. `tar` over `ssh` uses the connection you
+already proved, so prefer it.
+:::
+
+Confirm the hostile shapes survived the copy — `ext4` keeps all of them, but the transfer
+is where they get lost:
+
+```bash
+ssh you@nas "cd /volume1/docker/cargoship-nastest/corpus && \
+  echo files=\$(find . -type f | wc -l) symlinks=\$(find . -type l | wc -l) && \
+  echo eaDir=\$(find . -path '*@eaDir*' -type f | wc -l) && \
+  stat -c 'hardlink nlink=%h' links/hardlink-a.txt"
+```
 
 ## 2. Provision and deploy
 
