@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -11,11 +12,18 @@ import (
 // letting the SDK time out against EC2 IMDS (#692), so the cases that matter are
 // "unreadable" vs "every other state", and the message has to be actionable.
 func TestCredentialsPreflight(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("running as root: mode 0000 is still readable, so unreadable cannot be simulated")
-	}
-
 	t.Run("unreadable file is reported with the fix", func(t *testing.T) {
+		// Only this subtest needs an unreadable file, and two environments cannot produce
+		// one: root bypasses the mode entirely, and Windows honours only a read-only bit,
+		// so chmod 0000 leaves the file readable. Skipping just this case keeps the other
+		// three running on every platform. The defect itself is a Linux-container concern
+		// (operator-owned 0600 vs uid 65532), so nothing is lost by not exercising it here.
+		if os.Getuid() == 0 {
+			t.Skip("running as root: mode 0000 is still readable")
+		}
+		if runtime.GOOS == "windows" {
+			t.Skip("windows has no POSIX mode bits: chmod 0000 leaves the file readable")
+		}
 		dir := t.TempDir()
 		p := filepath.Join(dir, "credentials")
 		if err := os.WriteFile(p, []byte("[default]\n"), 0o600); err != nil {
