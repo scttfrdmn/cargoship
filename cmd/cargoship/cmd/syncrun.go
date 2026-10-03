@@ -70,8 +70,20 @@ type syncRunResult struct {
 // also treats a non-Success pipeline result as an error, so a daemon cycle that
 // fails is surfaced rather than silently logged as done.
 func runOneSync(ctx context.Context, p syncRunParams) (*syncRunResult, error) {
+	// One fetcher for both chain resolution and NextVersion below.
+	datasetFetch := func(fctx context.Context, id string) (*manifest.Manifest, error) {
+		return manifest.DownloadFromS3(fctx, p.s3Client, p.bucket, p.prefix, id)
+	}
 	prev := resolvePreviousManifest(p, func() (*manifest.Manifest, error) {
-		return downloadLatestManifest(ctx, p.s3Client, p.bucket, p.prefix, p.sourcePath)
+		latest, err := downloadLatestManifest(ctx, p.s3Client, p.bucket, p.prefix, p.sourcePath)
+		if err != nil {
+			return nil, err
+		}
+		// #691: the newest manifest lists only ITS OWN increment, so diffing against it
+		// marks everything stored by earlier versions as New and re-uploads the dataset.
+		// Resolve the chain to the effective dataset first — the same view restore and
+		// verify already use.
+		return manifest.ResolveEffective(ctx, latest, datasetFetch)
 	})
 	previousManifest := prev.manifest
 	syncType := prev.syncType()
@@ -123,9 +135,6 @@ func runOneSync(ctx context.Context, p syncRunParams) (*syncRunResult, error) {
 	}
 
 	previousUploadID := prevUploadID(previousManifest)
-	datasetFetch := func(fctx context.Context, id string) (*manifest.Manifest, error) {
-		return manifest.DownloadFromS3(fctx, p.s3Client, p.bucket, p.prefix, id)
-	}
 	datasetID, versionOrdinal := manifest.NextVersion(ctx, previousManifest, datasetFetch)
 
 	pc := newSyncPipelineConfig(syncPipelineParams{
@@ -170,7 +179,15 @@ func runOneSync(ctx context.Context, p syncRunParams) (*syncRunResult, error) {
 	// not fail a cycle whose bytes are already safely in S3.
 	if p.manifestCache != nil {
 		if m := pipe.GetManifest(); m != nil {
-			if sErr := p.manifestCache.Save(cacheKeyFor(p), m, versionpkg.Version); sErr != nil {
+			// #691: cache the EFFECTIVE dataset, not this cycle's increment. Merging the
+			// new manifest over the previous effective one is the same newest-wins
+			// operation MergeChain performs, done here with what is already in memory so
+			// a write-only agent never needs a read it does not have.
+			effective := m
+			if previousManifest != nil {
+				effective = manifest.MergeChain([]*manifest.Manifest{m, previousManifest})
+			}
+			if sErr := p.manifestCache.Save(cacheKeyFor(p), effective, versionpkg.Version); sErr != nil {
 				res.CacheNote = sErr.Error()
 			}
 		} else {

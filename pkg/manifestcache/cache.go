@@ -38,7 +38,13 @@ import (
 // SchemaVersion is the on-disk format version of a cache entry. Load rejects any
 // entry written by a different version rather than guessing at its meaning, so this
 // must be bumped whenever Entry's semantics change.
-const SchemaVersion = 1
+//
+// 2: the entry holds the EFFECTIVE manifest — the whole dataset as of that cycle — not
+// the raw per-cycle manifest. Version 1 stored the raw one, which lists only that
+// cycle's increment, so a following cycle diffed against a near-empty file set and
+// re-uploaded everything (#691). A v1 entry is rejected by Load, which costs one full
+// sync and then self-corrects.
+const SchemaVersion = 2
 
 // DefaultMaxAge bounds how long a cached manifest is trusted. The cache cannot detect
 // that objects it vouches for were deleted, expired by a lifecycle rule, or lost, so
@@ -123,6 +129,12 @@ func NewStore(dir string) (*Store, error) {
 func (s *Store) Dir() string { return s.dir }
 
 // Save writes m to the cache under k, replacing any existing entry.
+//
+// m must be the EFFECTIVE manifest — the full dataset as of this cycle, not the
+// increment this cycle uploaded. Storing the raw per-cycle manifest is what caused
+// #691: the next cycle diffs against it, sees a near-empty file set, and re-uploads the
+// whole source. A write-only agent cannot walk the chain to work this out later, so the
+// merge has to happen before the entry is written.
 //
 // Call it only after an upload has fully succeeded. Caching a manifest for an upload
 // that failed partway would record files as present that were never stored, and the

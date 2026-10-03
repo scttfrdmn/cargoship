@@ -141,8 +141,18 @@ Examples:
 			var previousManifest *manifest.Manifest
 			var syncType string
 
+			// #691: the newest manifest lists only its own increment, so the delta must be
+			// computed against the chain-resolved dataset. Without this, the cycle after
+			// any incremental sync sees previously-stored files as New and re-uploads the
+			// whole source. Same fetcher the dataset-version resolution uses.
+			syncDatasetFetch := func(fctx context.Context, id string) (*manifest.Manifest, error) {
+				return manifest.DownloadFromS3(fctx, s3Client, bucket, prefix, id)
+			}
 			if !force {
 				previousManifest, err = downloadLatestManifest(ctx, s3Client, bucket, prefix, absPath)
+				if err == nil {
+					previousManifest, err = manifest.ResolveEffective(ctx, previousManifest, syncDatasetFetch)
+				}
 				if err != nil {
 					// No previous manifest found - this is the first sync
 					if !quiet {
@@ -255,10 +265,7 @@ Examples:
 			// #521: inherit the dataset chain identity from the predecessor so every
 			// version shares one DatasetID; a first sync (no predecessor) leaves it
 			// empty and the pipeline starts a new dataset (this upload = root, v1).
-			datasetFetch := func(fctx context.Context, id string) (*manifest.Manifest, error) {
-				return manifest.DownloadFromS3(fctx, s3Client, bucket, prefix, id)
-			}
-			datasetID, versionOrdinal := manifest.NextVersion(ctx, previousManifest, datasetFetch)
+			datasetID, versionOrdinal := manifest.NextVersion(ctx, previousManifest, syncDatasetFetch)
 
 			pipelineConfig := newSyncPipelineConfig(syncPipelineParams{
 				bucket:           bucket,
