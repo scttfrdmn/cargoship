@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Incremental sync did not converge: the cycle after any increment re-uploaded the whole
+  dataset (#691).** An incremental manifest lists only **its own increment**, and the delta
+  was computed against that single manifest instead of the chain-resolved dataset — so
+  every file stored by an earlier version looked New again. Readers (`restore`, `verify`)
+  already resolved the chain via `ResolveEffective`/`MergeChain`; the delta was the one
+  place that did not, and that asymmetry was the bug.
+  - On a real Synology this presented as uploads alternating **26 → 0 → 26 → 0** files with
+    the source never changing. Reproducible on the emulator in seconds with
+    `delta_source=s3`, so it affected the ordinary read-capable path too — not just
+    write-only agents, the manifest cache, or NAS deployments.
+  - **Integrity was never at risk**: restoring from a 0-file manifest still returned every
+    file byte-identical, because readers merge the chain. This was a bandwidth, storage and
+    request-count defect.
+  - Fixed in both `ghostship run` and **`cargoship sync`**, which shared the flaw.
+  - For write-only agents the manifest cache now stores the **effective** dataset rather
+    than the per-cycle increment, merged in memory so an agent that cannot read S3 still
+    gets a correct baseline. `manifestcache.SchemaVersion` is **2**; v1 entries are
+    rejected, which costs one full sync and then self-corrects.
+
+### Fixed
 - **A freshly minted bundle could not start an agent: the container cannot read its own
   credentials (#692).** `ghostship init --mint` writes `aws-credentials` **0600 owned by the
   operator**, and the emitted compose mounts it into a container running as **uid 65532** —

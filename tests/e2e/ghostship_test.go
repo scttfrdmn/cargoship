@@ -781,6 +781,23 @@ func TestGhostshipRun_WriteOnlyFallsBackToManifestCache(t *testing.T) {
 			if got := uploads(); got != 2 {
 				t.Errorf("second cycle should add one upload, got %d total", got)
 			}
+
+			// #691 companion: the CACHE path must settle too. With the cache on, a third
+			// cycle that changes nothing must upload nothing — which only holds if the
+			// cached entry is the EFFECTIVE dataset rather than cycle 2's increment.
+			// (With the cache off there is nothing to diff against, so a full re-upload
+			// is the correct behaviour and the assertion would be meaningless.)
+			if tc.cacheOn {
+				deleteManifestsUnder(t, client, bucket, prefix)
+				out3 := run("settle")
+				if !strings.Contains(out3, "no changes") {
+					t.Errorf("third cycle (cache path) must detect no changes; got:\n%s", out3)
+				}
+				if got := uploads(); got != 2 {
+					t.Errorf("third cycle must not add an upload: want 2, got %d "+
+						"(the cached manifest is not the effective dataset)", got)
+				}
+			}
 		})
 	}
 }
@@ -796,17 +813,6 @@ func TestGhostshipRun_WriteOnlyFallsBackToManifestCache(t *testing.T) {
 // No symlinks here on purpose: this is about what the delta compares against, not about
 // which entries the scanner skips.
 func TestGhostshipRun_IncrementalConverges(t *testing.T) {
-	// SKIPPED because it currently FAILS, and the failure is the bug, not the test:
-	// https://github.com/scttfrdmn/cargoship/issues/691 — the delta is computed against
-	// a single manifest rather than the resolved chain, so a no-change cycle following
-	// an incremental one re-uploads the whole dataset.
-	//
-	// Landed skipped rather than red so the repo keeps a meaningful green, and landed
-	// rather than held back so the reproduction lives with the code instead of in an
-	// issue comment. DELETE THIS SKIP in the PR that fixes #691 — if the fix is right,
-	// the test passes untouched.
-	t.Skip("fails until #691 is fixed: incremental delta does not converge")
-
 	bucket := "gs-converge"
 	if err := createBucket(substrateURL, bucket); err != nil {
 		t.Fatalf("create bucket: %v", err)
