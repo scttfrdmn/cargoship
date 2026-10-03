@@ -784,3 +784,79 @@ func TestGhostshipRun_WriteOnlyFallsBackToManifestCache(t *testing.T) {
 		})
 	}
 }
+
+// TestGhostshipRun_IncrementalConverges proves the delta SETTLES: after a real
+// incremental change, a following no-change cycle must upload nothing.
+//
+// TestGhostshipRun_IncrementalChain stops one cycle too early. It does
+// full -> no-change -> change and asserts two uploads, which passes even if the delta
+// never converges, because it never runs a cycle AFTER an incremental one. This does,
+// and that is the cycle where an incremental manifest is the thing being diffed against.
+//
+// No symlinks here on purpose: this is about what the delta compares against, not about
+// which entries the scanner skips.
+func TestGhostshipRun_IncrementalConverges(t *testing.T) {
+	// SKIPPED because it currently FAILS, and the failure is the bug, not the test:
+	// https://github.com/scttfrdmn/cargoship/issues/691 — the delta is computed against
+	// a single manifest rather than the resolved chain, so a no-change cycle following
+	// an incremental one re-uploads the whole dataset.
+	//
+	// Landed skipped rather than red so the repo keeps a meaningful green, and landed
+	// rather than held back so the reproduction lives with the code instead of in an
+	// issue comment. DELETE THIS SKIP in the PR that fixes #691 — if the fix is right,
+	// the test passes untouched.
+	t.Skip("fails until #691 is fixed: incremental delta does not converge")
+
+	bucket := "gs-converge"
+	if err := createBucket(substrateURL, bucket); err != nil {
+		t.Fatalf("create bucket: %v", err)
+	}
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "a.txt"), "alpha")
+	writeFile(t, filepath.Join(src, "b.txt"), "bravo")
+
+	run := func(label string) string {
+		out, err := runCargoshipAllowErr(t, "ghostship", "run", src, "s3://"+bucket+"/data",
+			"--writer-id", "conv-1", "--once", "--region", "us-east-1")
+		if err != nil {
+			t.Fatalf("%s cycle: %v\n%s", label, err, out)
+		}
+		return out
+	}
+	client := e2eS3Client(t)
+	uploads := func() int { return len(uploadIDsUnder(t, client, bucket, "data/writers/conv-1")) }
+
+	// 1. Full sync: both files.
+	if out := run("first"); !strings.Contains(out, "sync_type=full") {
+		t.Fatalf("first cycle should be full, got:\n%s", out)
+	}
+	if got := uploads(); got != 1 {
+		t.Fatalf("after cycle 1 want 1 upload, got %d", got)
+	}
+
+	// 2. One new file: an incremental upload carrying ONLY that file.
+	writeFile(t, filepath.Join(src, "c.txt"), "charlie")
+	out2 := run("incremental")
+	if !strings.Contains(out2, "sync_type=incremental") {
+		t.Fatalf("second cycle should be incremental, got:\n%s", out2)
+	}
+	if !strings.Contains(out2, "files=1") {
+		t.Errorf("second cycle should send only the new file, got:\n%s", out2)
+	}
+	if got := uploads(); got != 2 {
+		t.Fatalf("after cycle 2 want 2 uploads, got %d", got)
+	}
+
+	// 3. Nothing changed. THIS is the assertion the older test never reaches: the delta
+	// is now computed against cycle 2's manifest, which lists one file rather than the
+	// whole dataset. If the previous manifest is used as-is instead of the resolved
+	// chain, a-txt and b.txt look new again and the whole dataset is re-uploaded.
+	out3 := run("settle")
+	if !strings.Contains(out3, "no changes") {
+		t.Errorf("a no-change cycle after an incremental one must detect no changes; got:\n%s", out3)
+	}
+	if got := uploads(); got != 2 {
+		t.Errorf("a no-change cycle must not create an upload: want 2 total, got %d "+
+			"(the delta is not converging — it re-uploaded the dataset)", got)
+	}
+}
