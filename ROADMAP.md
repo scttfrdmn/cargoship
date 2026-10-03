@@ -1,7 +1,7 @@
 # CargoShip Roadmap
 
 **Last Updated**: September 2026
-**Current Version**: v0.36.0 (Released 2026-10-03)
+**Current Version**: v0.36.1 (Released 2026-10-03)
 
 This is a forward-looking roadmap: it answers "what's next," not "what happened."
 For released-version history, see [CHANGELOG.md](CHANGELOG.md).
