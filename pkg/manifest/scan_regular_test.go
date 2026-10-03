@@ -3,8 +3,6 @@ package manifest
 import (
 	"os"
 	"path/filepath"
-	"runtime"
-	"syscall"
 	"testing"
 )
 
@@ -34,10 +32,9 @@ func TestScanLocalFilesEmitsOnlyRegularFiles(t *testing.T) {
 		t.Fatalf("broken symlink: %v", err)
 	}
 	// A FIFO is the other shape filepath.Walk hands over and the archiver cannot store.
-	if runtime.GOOS != "windows" {
-		if err := syscall.Mkfifo(filepath.Join(root, "pipe"), 0o600); err != nil {
-			t.Logf("mkfifo unavailable (%v); FIFO case not covered here", err)
-		}
+	// Guarded by build tag, not runtime: syscall.Mkfifo does not exist on Windows.
+	if err := mkfifoIfSupported(filepath.Join(root, "pipe")); err != nil {
+		t.Logf("FIFO case not covered here: %v", err)
 	}
 
 	files, err := ScanLocalFiles(root)
