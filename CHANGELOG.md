@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-10-04
+
+### Upgrade notes
+
+- **If your signed fleet config already contains `exclude_patterns`, those exclusions now
+  take effect.** They were previously accepted, validated and silently ignored, so a config
+  that looked like it filtered did not. Files matching them will stop being backed up, and
+  the next cycle will record them as deleted if `track_deletes` is on. Review
+  `watch_paths[].exclude_patterns` before upgrading an agent.
+- **Exclusion matching changed from basename-only to relative-path-and-segment.** A pattern
+  like `cache` previously matched only an entry literally named `cache`; it now also matches
+  any directory named `cache` and everything beneath it. This is the change that makes
+  subtree exclusion possible at all. Nothing in the shipped code set exclusion patterns
+  before, so no default behaviour changes.
+- `include_patterns`, `min_age` and `recursive` remain accepted and **not implemented**
+  (#710). Do not rely on them.
+
+
 ### Fixed
 - **`exclude_patterns` in a signed fleet config is now honoured, and can exclude a whole
   subtree (#710).** The field was accepted by the config, validated by
