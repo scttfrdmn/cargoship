@@ -499,6 +499,10 @@ func buildRunPlan(cfg *launch.GhostShipConfig, flagWriterID string, d runDefault
 			shardStrategy:    d.shardStrategy,
 			compressionLevel: d.compression,
 			trackDeletes:     d.trackDeletes,
+			// #710: honour the signed config's per-path exclusions. Previously accepted,
+			// validated, and silently ignored — an operator could sign exclusions and the
+			// agent would back everything up anyway.
+			excludePatterns: wp.ExcludePatterns,
 		})
 	}
 	if len(cfg.ArchivalRules) > 0 {
