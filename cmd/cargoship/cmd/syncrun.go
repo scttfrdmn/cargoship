@@ -94,7 +94,9 @@ func runOneSync(ctx context.Context, p syncRunParams) (*syncRunResult, error) {
 	deltaSource := prev.source
 	cacheNote := prev.note
 
-	localFiles, err := manifest.ScanLocalFiles(p.sourcePath)
+	// #716: the delta must see the same tree the uploader will, or excluded files are
+	// reported New forever and every cycle writes an empty manifest version.
+	localFiles, err := manifest.ScanLocalFilesExcluding(p.sourcePath, p.excludePatterns)
 	if err != nil {
 		return nil, fmt.Errorf("scan local files: %w", err)
 	}

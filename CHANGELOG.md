@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **An unchanged cycle no longer writes an empty manifest version (#716).** The delta applied no
+  exclusions while the uploader did, so every excluded file was reported `New` on every cycle: it
+  is never stored, so it is never in the previous manifest, so it is `New` again next time.
+  `HasChanges()` was therefore true forever, the no-changes path was never reached, and each cycle
+  uploaded nothing while still writing a new (empty) dataset version. On the deployment that
+  exposed this, 12,622 excluded files produced one empty version every 6 hours and the chain grew
+  without bound — which also inflates chain-resolution cost for every restore and `verify`, and
+  makes `dataset prune --keep-last N` keep mostly empty versions.
+
+  `ScanLocalFilesExcluding` now applies the uploader's exclusions, and **prunes excluded
+  directories** with `filepath.SkipDir` rather than walking and discarding them — on that
+  deployment it stops re-scanning a 20 GB / 12,237-file recycle bin every cycle.
+
+  This is the same defect #693 fixed for non-regular files, in the same function: anything the
+  delta reports that the pipeline will not store prevents the delta from converging. The
+  exclusion matcher now lives in one place (`manifest.MatchesExcludePattern`) and is called by
+  both the scanner and the delta, so they cannot drift apart again.
+
+- **`SyncOptions.IgnorePatterns` now does something (#716).** It was declared and never read, so a
+  caller supplying its own file list had no way to express exclusions — the same
+  accepted-but-ignored shape as `exclude_patterns` (#711), `--checksum` (#678) and
+  `FileChecksums` (#725).
+
 ## [0.38.0] - 2026-10-04
 
 Four integrity fixes found by running a real NAS backup. Three of them meant `verify --deep` gave

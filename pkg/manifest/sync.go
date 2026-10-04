@@ -42,7 +42,13 @@ type SyncOptions struct {
 	// TrackDeletes includes deleted files in delta result
 	TrackDeletes bool
 
-	// IgnorePatterns specifies glob patterns to ignore (like .gitignore)
+	// IgnorePatterns excludes paths from the delta, using the same matching as the
+	// uploader's exclude_patterns (MatchesExcludePattern): a bare pattern matches any
+	// path segment, so it excludes a directory and its whole subtree.
+	//
+	// Prefer ScanLocalFilesExcluding, which also prunes the walk instead of scanning
+	// and then discarding. This field exists for callers that supply their own file
+	// list. It was inert until #716.
 	IgnorePatterns []string
 }
 
@@ -93,6 +99,15 @@ func ComputeDelta(localFiles []FileInfo, previousManifest *Manifest, opts *SyncO
 
 	// Compare local files against manifest
 	for _, localFile := range localFiles {
+		// #716: honour IgnorePatterns, which was declared and never read. Callers that
+		// scan the tree themselves (the library examples do) had no way to express
+		// exclusions, and a field that looks functional but is not is how
+		// exclude_patterns (#711), --checksum (#678) and FileChecksums (#725) each went
+		// wrong. ScanLocalFilesExcluding already filters, so for the CLI paths this is a
+		// no-op second pass; it exists so the option means something for every caller.
+		if MatchesExcludePattern(localFile.Path, opts.IgnorePatterns) {
+			continue
+		}
 		// Skip directories
 		if localFile.IsDir {
 			continue
@@ -148,8 +163,32 @@ func hasChanged(local FileInfo, manifest FileEntry, opts *SyncOptions) bool {
 	return false
 }
 
-// ScanLocalFiles scans a directory and returns file information for sync comparison (Issue #148)
+// ScanLocalFiles scans a directory and returns file information for sync comparison (Issue #148).
+//
+// Equivalent to ScanLocalFilesExcluding with no patterns.
 func ScanLocalFiles(rootPath string) ([]FileInfo, error) {
+	return ScanLocalFilesExcluding(rootPath, nil)
+}
+
+// ScanLocalFilesExcluding scans a directory for sync comparison, omitting anything
+// excludePatterns matches (#716).
+//
+// The delta MUST apply the same exclusions as the uploader. When it did not, every
+// excluded file was reported New on every cycle — it is never stored, so it is never
+// in the previous manifest, so it is New again next time. HasChanges() was therefore
+// true forever, the no-changes path was never reached, and each cycle uploaded nothing
+// while still writing a new (empty) manifest version. On the deployment that exposed
+// this, 12,622 excluded files produced one empty dataset version every 6 hours, and the
+// chain grew without bound.
+//
+// This is the same defect #693 fixed for non-regular files, in the same function, for
+// the same reason: anything the delta reports but the pipeline will not store makes the
+// delta unable to converge. Keep the two rule sets together.
+//
+// Excluded DIRECTORIES are pruned with filepath.SkipDir rather than filtered per entry,
+// so an excluded subtree is never walked — on that deployment it skips a 20 GB,
+// 12,237-file recycle bin per cycle instead of stat-ing all of it to discard it.
+func ScanLocalFilesExcluding(rootPath string, excludePatterns []string) ([]FileInfo, error) {
 	var files []FileInfo
 
 	// Get absolute path for consistent comparisons
@@ -172,6 +211,15 @@ func ScanLocalFiles(rootPath string) ([]FileInfo, error) {
 
 		// Skip root directory itself
 		if relPath == "." {
+			return nil
+		}
+
+		// #716: apply the uploader's exclusions here too. Pruning the directory is
+		// what makes this cheap; returning nil would still descend into it.
+		if MatchesExcludePattern(relPath, excludePatterns) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 

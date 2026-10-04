@@ -1,4 +1,4 @@
-package pipeline
+package manifest
 
 import "testing"
 
@@ -47,8 +47,8 @@ func TestMatchesExcludePattern(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := matchesExcludePattern(tc.relPath, tc.patterns); got != tc.want {
-				t.Errorf("matchesExcludePattern(%q, %v) = %v, want %v",
+			if got := MatchesExcludePattern(tc.relPath, tc.patterns); got != tc.want {
+				t.Errorf("MatchesExcludePattern(%q, %v) = %v, want %v",
 					tc.relPath, tc.patterns, got, tc.want)
 			}
 		})
