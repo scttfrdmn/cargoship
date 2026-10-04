@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-10-04
+
+Four integrity fixes found by running a real NAS backup. Three of them meant `verify --deep` gave
+the **wrong answer about healthy data**, and one meant the fleet agent was recording less than it
+promised.
+
+### Upgrade notes
+
+1. **`verify --deep` starts passing on datasets it used to fail.** If you have been treating a
+   `FAIL` from `--deep` as a signal about your data, re-run it: on every chunked dataset written
+   since v0.27.0 it reported all files `UNVERIFIABLE`, and on every direct-upload dataset it
+   reported all files `MISSING`. Neither was true of the data.
+2. **`sync` and `ghostship` now record a per-file SHA-256.** Nothing changes for data already
+   uploaded — it keeps verifying at chunk granularity — but new and re-uploaded files become
+   verifiable per file. To upgrade an existing dataset in place, clear the agent's manifest cache
+   (or `sync --force`) once so it re-uploads with checksums. Measured cost: ~0.35 s of CPU per GB
+   against an upload path doing 58 MB/s, so roughly 2%, overlapped with transfer.
+3. **`verify` output wording changed**, including the final PASS line, which now states the
+   *granularity* proven. Anything scraping that text needs updating; `--json` consumers gain a
+   `covered_by_chunk` count and a per-file `detail` field.
+4. **The fleet image no longer declares a `VOLUME`.** If you relied on the implicit anonymous
+   volume at `/home/cargoship/.cargoship`, declare the mount explicitly in your compose file —
+   and note that relying on it silently disabled your manifest cache whenever the container ran
+   as a uid other than 65532.
+
 ### Fixed
 - **`verify --deep` no longer reports every file MISSING on direct-upload datasets (#724).** The
   small-file fast path stores one S3 object per file and records no chunks, but `VerifyFiles`
