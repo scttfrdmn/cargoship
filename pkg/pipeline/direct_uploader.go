@@ -167,6 +167,14 @@ func (s *DirectUploaderStage) dispatcher(ctx context.Context) {
 				fileWg   sync.WaitGroup
 				jobErr   error
 				jobErrMu sync.Mutex
+				// #694: bytes this job actually uploaded. waitForCompletion builds
+				// Result.TotalBytes by summing job.ArchiveSize, which only the archiver
+				// ever set — so every direct-upload cycle reported bytes=0 after moving
+				// real data, and the heartbeat's bytes field was useless for exactly the
+				// small-file workloads this fast path exists for. Counted per file on
+				// success rather than summed from the chunk, so a partial failure does not
+				// claim bytes that never landed.
+				jobBytes int64
 			)
 			for _, file := range job.Chunk.Files {
 				// Create a copy of job for each file to avoid race conditions
@@ -179,13 +187,16 @@ func (s *DirectUploaderStage) dispatcher(ctx context.Context) {
 							jobErr = err
 						}
 						jobErrMu.Unlock()
+						return
 					}
+					atomic.AddInt64(&jobBytes, fileCopy.Size)
 				})
 			}
 
 			// Wait for all files in this job to complete
 			fileWg.Wait()
 			job.Error = jobErr
+			atomic.StoreInt64(&job.ArchiveSize, atomic.LoadInt64(&jobBytes))
 
 			// Mark job as processed and send to output
 			atomic.AddInt64(&s.jobsProcessed, 1)

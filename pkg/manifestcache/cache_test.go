@@ -329,3 +329,26 @@ func TestLoadRejectsCorruptFileBytes(t *testing.T) {
 		})
 	}
 }
+
+// A v1 entry holds the RAW per-cycle manifest; v2 holds the EFFECTIVE dataset (#691).
+// Trusting a v1 entry under v2 semantics would diff against one cycle's increment and
+// re-upload everything, so it must be refused. Any agent that ran v0.35.x has v1 entries
+// on disk, making this the actual upgrade path rather than a hypothetical.
+func TestLoadRejectsPreviousSchemaVersion(t *testing.T) {
+	s := newTestStore(t)
+	k := testKey()
+	writeRawEntry(t, s, k, func(e *Entry) { e.SchemaVersion = 1 })
+
+	m, err := s.Load(k, 0)
+	if err == nil {
+		t.Fatal("a v1 entry must be rejected: its manifest is the increment, not the dataset")
+	}
+	if m != nil {
+		t.Error("Load returned a manifest from a v1 entry")
+	}
+	// Rejection costs one full sync and then self-corrects, so it must not look like
+	// corruption to the operator.
+	if errors.Is(err, ErrNotFound) {
+		t.Error("a present-but-outdated entry should not report as ErrNotFound")
+	}
+}

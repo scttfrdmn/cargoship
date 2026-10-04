@@ -72,6 +72,12 @@ Examples:
   cargoship ghostship run --config-url s3://backups/nas --public-key /etc/cargoship/fleet.pub --writer-id lab-nas-1`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// #692: fail here, naming the file, rather than letting the AWS SDK fall
+			// through to EC2 IMDS and time out on an error that points nowhere near a
+			// credentials file the container user cannot read.
+			if err := credentialsPreflight(); err != nil {
+				return err
+			}
 			if err := pipeline.ValidateShardStrategy(shardStrategy); err != nil {
 				return err
 			}
@@ -493,6 +499,10 @@ func buildRunPlan(cfg *launch.GhostShipConfig, flagWriterID string, d runDefault
 			shardStrategy:    d.shardStrategy,
 			compressionLevel: d.compression,
 			trackDeletes:     d.trackDeletes,
+			// #710: honour the signed config's per-path exclusions. Previously accepted,
+			// validated, and silently ignored — an operator could sign exclusions and the
+			// agent would back everything up anyway.
+			excludePatterns: wp.ExcludePatterns,
 		})
 	}
 	if len(cfg.ArchivalRules) > 0 {

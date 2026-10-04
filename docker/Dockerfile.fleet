@@ -23,12 +23,28 @@ RUN apk add --no-cache ca-certificates tzdata
 RUN addgroup -g 65532 -S cargoship \
  && adduser -u 65532 -S cargoship -G cargoship -h /home/cargoship
 
-# State volume: the agent keeps resume/local state here. Declaring it means a NAS
-# operator who forgets `-v` still gets a persistent anonymous volume rather than
-# losing state on every container recreate.
+# State directory: the agent keeps resume state and the manifest cache here.
+#
+# Deliberately NOT declared as a VOLUME (#714). Declaring it looked like a safety
+# net — "an operator who forgets -v still gets a persistent anonymous volume" —
+# but a declared VOLUME is created from the image and therefore owned by uid
+# 65532, AND it SHADOWS a bind-mounted parent. On a NAS the container must run as
+# the uid that owns the data (e.g. `user: "1027:100"`), so the agent could not
+# create .cargoship/manifest-cache even when the operator had correctly
+# bind-mounted a writable home. The cache then silently never persisted and every
+# cycle re-uploaded the entire source, behind a healthy heartbeat — defeating the
+# whole point of the write-only manifest cache. It also orphaned one anonymous
+# volume per container recreate: the state the emitted compose tells operators to
+# KEEP was the state being discarded.
+#
+# The net it provided was mostly illusory anyway: the compose file `ghostship init`
+# emits always declares the mount explicitly, so reaching the fallback required
+# hand-rolling `docker run` without -v. Losing state there costs a re-upload and
+# is recoverable; silently breaking the cache for every correctly-configured NAS
+# was not. The directory is still created and chowned so the default uid works
+# out of the box.
 RUN mkdir -p /home/cargoship/.cargoship /etc/cargoship \
  && chown -R cargoship:cargoship /home/cargoship
-VOLUME ["/home/cargoship/.cargoship"]
 
 # `dockers_v2` stages the already-cross-compiled binaries into the build context as
 # <os>/<arch>/<binary> and builds once per platform, so TARGETOS/TARGETARCH (supplied

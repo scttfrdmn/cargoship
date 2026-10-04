@@ -33,10 +33,14 @@ type syncRunParams struct {
 	compressionLevel int // 0 = content-aware per-chunk selection
 	useChecksum      bool
 	trackDeletes     bool
-	force            bool
-	dryRun           bool
-	projectID        string        // #629: cost/cap attribution key (ghostship: the writer id)
-	costMgr          *cost.Manager // #629: pre-write cap gate; nil = enforcement off
+	// #710: patterns from the signed config's watch_paths[].exclude_patterns. Matched
+	// per path segment relative to the source, so a directory pattern excludes its
+	// whole subtree.
+	excludePatterns []string
+	force           bool
+	dryRun          bool
+	projectID       string        // #629: cost/cap attribution key (ghostship: the writer id)
+	costMgr         *cost.Manager // #629: pre-write cap gate; nil = enforcement off
 
 	// P1: local manifest cache. A write-only identity cannot GET its own previous
 	// manifest, so without this the delta is always computed against nil and every
@@ -70,8 +74,20 @@ type syncRunResult struct {
 // also treats a non-Success pipeline result as an error, so a daemon cycle that
 // fails is surfaced rather than silently logged as done.
 func runOneSync(ctx context.Context, p syncRunParams) (*syncRunResult, error) {
+	// One fetcher for both chain resolution and NextVersion below.
+	datasetFetch := func(fctx context.Context, id string) (*manifest.Manifest, error) {
+		return manifest.DownloadFromS3(fctx, p.s3Client, p.bucket, p.prefix, id)
+	}
 	prev := resolvePreviousManifest(p, func() (*manifest.Manifest, error) {
-		return downloadLatestManifest(ctx, p.s3Client, p.bucket, p.prefix, p.sourcePath)
+		latest, err := downloadLatestManifest(ctx, p.s3Client, p.bucket, p.prefix, p.sourcePath)
+		if err != nil {
+			return nil, err
+		}
+		// #691: the newest manifest lists only ITS OWN increment, so diffing against it
+		// marks everything stored by earlier versions as New and re-uploads the dataset.
+		// Resolve the chain to the effective dataset first — the same view restore and
+		// verify already use.
+		return manifest.ResolveEffective(ctx, latest, datasetFetch)
 	})
 	previousManifest := prev.manifest
 	syncType := prev.syncType()
@@ -123,29 +139,10 @@ func runOneSync(ctx context.Context, p syncRunParams) (*syncRunResult, error) {
 	}
 
 	previousUploadID := prevUploadID(previousManifest)
-	datasetFetch := func(fctx context.Context, id string) (*manifest.Manifest, error) {
-		return manifest.DownloadFromS3(fctx, p.s3Client, p.bucket, p.prefix, id)
-	}
 	datasetID, versionOrdinal := manifest.NextVersion(ctx, previousManifest, datasetFetch)
 
-	pc := newSyncPipelineConfig(syncPipelineParams{
-		bucket:           p.bucket,
-		prefix:           p.prefix,
-		region:           p.region,
-		writerID:         p.writerID,
-		storageClass:     p.storageClass,
-		shardCount:       p.shardCount,
-		shardStrategy:    p.shardStrategy,
-		compressionLevel: p.compressionLevel,
-		sourcePath:       p.sourcePath,
-		includeFiles:     includeFiles,
-		syncType:         syncType,
-		previousUploadID: previousUploadID,
-		deletedPaths:     delta.Deleted,
-		datasetID:        datasetID,
-		versionOrdinal:   versionOrdinal,
-		s3Client:         p.s3Client,
-	})
+	pc := newSyncPipelineConfig(ghostshipPipelineParams(p, includeFiles, syncType,
+		previousUploadID, delta.Deleted, datasetID, versionOrdinal))
 	pc.MagikaConfig = magikaConfigFromViper()
 
 	pipe, err := pipeline.NewPipeline(pc)
@@ -170,7 +167,15 @@ func runOneSync(ctx context.Context, p syncRunParams) (*syncRunResult, error) {
 	// not fail a cycle whose bytes are already safely in S3.
 	if p.manifestCache != nil {
 		if m := pipe.GetManifest(); m != nil {
-			if sErr := p.manifestCache.Save(cacheKeyFor(p), m, versionpkg.Version); sErr != nil {
+			// #691: cache the EFFECTIVE dataset, not this cycle's increment. Merging the
+			// new manifest over the previous effective one is the same newest-wins
+			// operation MergeChain performs, done here with what is already in memory so
+			// a write-only agent never needs a read it does not have.
+			effective := m
+			if previousManifest != nil {
+				effective = manifest.MergeChain([]*manifest.Manifest{m, previousManifest})
+			}
+			if sErr := p.manifestCache.Save(cacheKeyFor(p), effective, versionpkg.Version); sErr != nil {
 				res.CacheNote = sErr.Error()
 			}
 		} else {
@@ -252,4 +257,43 @@ func prevUploadID(m *manifest.Manifest) string {
 		return m.UploadID
 	}
 	return ""
+}
+
+// ghostshipPipelineParams builds the pipeline inputs for one agent cycle.
+//
+// Extracted from runOneSync so the defaults it hard-codes are testable: runOneSync
+// itself needs S3, a delta and a manifest chain, so the only thing that could be
+// asserted about it before was nothing. #725 is exactly the bug that hides in an
+// untestable struct literal — FileChecksums sat at Go's zero value on this path
+// for as long as the path existed.
+func ghostshipPipelineParams(p syncRunParams, includeFiles []string, syncType, previousUploadID string,
+	deletedPaths []string, datasetID string, versionOrdinal int) syncPipelineParams {
+	return syncPipelineParams{
+		bucket:           p.bucket,
+		prefix:           p.prefix,
+		region:           p.region,
+		writerID:         p.writerID,
+		storageClass:     p.storageClass,
+		shardCount:       p.shardCount,
+		shardStrategy:    p.shardStrategy,
+		compressionLevel: p.compressionLevel,
+		sourcePath:       p.sourcePath,
+		includeFiles:     includeFiles,
+		excludePatterns:  p.excludePatterns,
+		// #725: ALWAYS on for the ghostship agent, and deliberately not a config
+		// knob. An unattended, write-only writer is the last place that should
+		// silently lose per-file verifiability: nobody is watching it, its data sits
+		// longest, and its own identity cannot read objects back to check them. A
+		// signed config should not be able to quietly downgrade an integrity
+		// guarantee either. The cost is ~0.35s of CPU per GB (sha256 measured at
+		// ~2.9 GB/s here) against an upload path measured at 58 MB/s on the
+		// deployment that motivated this — roughly 2%, and overlapped with transfer.
+		fileChecksums:    true,
+		syncType:         syncType,
+		previousUploadID: previousUploadID,
+		deletedPaths:     deletedPaths,
+		datasetID:        datasetID,
+		versionOrdinal:   versionOrdinal,
+		s3Client:         p.s3Client,
+	}
 }

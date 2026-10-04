@@ -197,6 +197,15 @@ func initComposeYAML(id, bucket, base, image, region string) string {
 # (uid 65532) — an agent never needs root on the NAS. The AWS SDK reads
 # $HOME/.aws/credentials, so these must match the image's home or the agent starts with
 # no credentials at all.
+#
+# IMPORTANT: aws-credentials is written 0600 owned by whoever ran 'ghostship init', so
+# uid 65532 inside the container CANNOT read it and the agent starts with no credentials.
+# On the host, after copying this bundle:
+#
+#     chown 65532:65532 aws-credentials      # keep 0600
+#
+# Without it the AWS SDK falls through to its last resort (EC2 IMDS) and the agent
+# crash-loops on an error that names IMDS and not this file.
 services:
   ghostship:
     image: %s
@@ -216,8 +225,9 @@ services:
     volumes:
       - ./config-signing-public.pem:/etc/cargoship/config-signing-public.pem:ro
       - ./aws-credentials:/home/cargoship/.aws/credentials:ro
-      # Resume/local state. A named volume keeps it across container recreates; losing
-      # it only costs a re-scan, never data.
+      # Resume state AND the manifest cache. A named volume keeps both across container
+      # recreates. KEEP IT: on a write-only writer the cache is the only record of what
+      # is already in S3, so losing it costs a full re-upload of the source.
       - cargoship-state:/home/cargoship/.cargoship
       # TODO: mount each directory this writer backs up, READ-ONLY, at the same path
       # named in config.yaml's watch_paths. Read-only is deliberate: the agent only
@@ -247,7 +257,13 @@ func initReadme(id, bucket, base string) string {
 		"4. **Upload** the config + signature to the control prefix:\n"+
 		"   - `aws s3 cp config.yaml     s3://%s/%s/fleet/%s/config.yaml`\n"+
 		"   - `aws s3 cp config.yaml.sig s3://%s/%s/fleet/%s/config.yaml.sig`\n"+
-		"5. **Deploy**: `docker compose up -d`.\n\n"+
+		"5. **Make the credentials readable by the container user** on the host. The file is\n"+
+		"   0600 owned by whoever ran `ghostship init`; the agent runs as uid 65532 and\n"+
+		"   cannot read it, so without this it starts with NO credentials and crash-loops on\n"+
+		"   an error that names EC2 IMDS rather than this file:\n"+
+		"   `chown 65532:65532 aws-credentials`   (keep 0600)\n"+
+		"6. **Deploy**: `docker compose up -d` — on Synology DSM use `docker-compose up -d`,\n"+
+		"   which is a standalone binary there rather than a `docker` subcommand.\n\n"+
 		"The agent pulls + verifies its config every cycle (keep-last-good), writes only to\n"+
 		"its own `writers/%s/` prefix, and cannot read back, decrypt, or delete any data.\n",
 		id, bucket, base, id, bucket, base, id, id)
