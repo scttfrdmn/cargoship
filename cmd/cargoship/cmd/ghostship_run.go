@@ -20,6 +20,7 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
 	"github.com/scttfrdmn/cargoship/pkg/fleet"
 	"github.com/scttfrdmn/cargoship/pkg/launch"
+	"github.com/scttfrdmn/cargoship/pkg/manifestcache"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 )
 
@@ -38,6 +39,9 @@ func newGhostshipRunCmd() *cobra.Command {
 		compression   int
 		trackDeletes  bool
 		ignoreBudget  bool
+
+		noManifestCache  bool
+		manifestCacheDir string
 	)
 	cmd := &cobra.Command{
 		Use:   "run [SOURCE_DIR S3_URL]",
@@ -68,6 +72,12 @@ Examples:
   cargoship ghostship run --config-url s3://backups/nas --public-key /etc/cargoship/fleet.pub --writer-id lab-nas-1`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// #692: fail here, naming the file, rather than letting the AWS SDK fall
+			// through to EC2 IMDS and time out on an error that points nowhere near a
+			// credentials file the container user cannot read.
+			if err := credentialsPreflight(); err != nil {
+				return err
+			}
 			if err := pipeline.ValidateShardStrategy(shardStrategy); err != nil {
 				return err
 			}
@@ -229,10 +239,24 @@ Examples:
 					costMgr = mgr
 				}
 			}
+			// P1: one manifest-cache store shared by every source; the per-source key keeps
+			// their entries distinct. On by default -- a write-only writer cannot read its own
+			// previous manifest, so without this every cycle re-uploads the whole source. A
+			// store that cannot be constructed is not fatal: the cycle still runs, without the
+			// incremental fallback.
+			var mcStore *manifestcache.Store
+			if !noManifestCache {
+				if st, sErr := manifestcache.NewStore(manifestCacheDir); sErr == nil {
+					mcStore = st
+				} else {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: manifest cache unavailable (%v); cycles will re-upload everything\n", sErr)
+				}
+			}
 			attachClients := func(srcs []syncRunParams) {
 				for i := range srcs {
 					srcs[i].s3Client = s3Client
 					srcs[i].costMgr = costMgr
+					srcs[i].manifestCache = mcStore
 				}
 			}
 			attachClients(sources)
@@ -355,6 +379,12 @@ Examples:
 					ss.LastSuccess = time.Now()
 					ss.NoChanges = res.NoChanges
 					ss.SyncType = res.SyncType
+					ss.DeltaSource = res.DeltaSource
+					if res.CacheNote != "" {
+						// The cache refused an entry or failed to save. Not fatal, but it means this
+						// or the next cycle re-uploads everything, so it must be visible.
+						srcLog.Warn("manifest cache", "note", res.CacheNote, "delta_source", res.DeltaSource)
+					}
 					if res.Result != nil {
 						ss.UploadID = res.Result.UploadID
 						ss.Files = res.Result.TotalFiles
@@ -366,7 +396,8 @@ Examples:
 					case res.Result != nil:
 						srcLog.Info("backup cycle complete",
 							"upload_id", res.Result.UploadID, "files", res.Result.TotalFiles,
-							"bytes", res.Result.TotalBytes, "sync_type", res.SyncType)
+							"bytes", res.Result.TotalBytes, "sync_type", res.SyncType,
+							"delta_source", res.DeltaSource)
 					}
 				}
 
@@ -411,6 +442,10 @@ Examples:
 	cmd.Flags().IntVar(&compression, "compression-level", 0, "Fixed zstd level (1-22); 0 = content-aware per-chunk selection")
 	cmd.Flags().BoolVar(&trackDeletes, "track-deletes", false, "Record files deleted since the last backup in the manifest")
 	cmd.Flags().BoolVar(&ignoreBudget, "ignore-budget", false, "Skip the per-writer budget/volume cap check (#629)")
+	cmd.Flags().BoolVar(&noManifestCache, "no-manifest-cache", false,
+		"Disable the local manifest cache. A write-only writer then has no previous manifest to diff against and re-uploads every file each cycle")
+	cmd.Flags().StringVar(&manifestCacheDir, "manifest-cache-dir", "",
+		"Directory for the local manifest cache (default ~/.cargoship/manifest-cache)")
 	return cmd
 }
 
@@ -464,6 +499,10 @@ func buildRunPlan(cfg *launch.GhostShipConfig, flagWriterID string, d runDefault
 			shardStrategy:    d.shardStrategy,
 			compressionLevel: d.compression,
 			trackDeletes:     d.trackDeletes,
+			// #710: honour the signed config's per-path exclusions. Previously accepted,
+			// validated, and silently ignored — an operator could sign exclusions and the
+			// agent would back everything up anyway.
+			excludePatterns: wp.ExcludePatterns,
 		})
 	}
 	if len(cfg.ArchivalRules) > 0 {

@@ -62,6 +62,7 @@ pkg/gpg 88
 pkg/ioutils 53
 pkg/launch 29
 pkg/manifest 75
+pkg/manifestcache 75
 pkg/migration 0
 pkg/multiregion 72
 pkg/observability/metrics 79

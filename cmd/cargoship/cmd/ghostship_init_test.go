@@ -81,13 +81,39 @@ func TestGhostshipInit_GeneratesBundle(t *testing.T) {
 
 	// Compose wires the writer + config-url and mounts credentials as a file (no env).
 	compose := mustRead(t, filepath.Join(out, "compose.yaml"))
-	for _, want := range []string{"lab-nas-1", "--config-url", "s3://backups/nas", "/root/.aws/credentials"} {
+	for _, want := range []string{"lab-nas-1", "--config-url", "s3://backups/nas"} {
 		if !strings.Contains(compose, want) {
 			t.Errorf("compose.yaml missing %q", want)
 		}
 	}
 	if strings.Contains(compose, "AWS_SECRET_ACCESS_KEY") || strings.Contains(compose, "environment:") {
 		t.Errorf("compose.yaml must not pass credentials via environment:\n%s", compose)
+	}
+
+	// Credential + state paths must match the HOME of the non-root user the published
+	// image runs as (uid 65532, /home/cargoship). The AWS SDK reads
+	// $HOME/.aws/credentials, so a /root/... mount means the agent starts with no
+	// credentials and cannot write its state — it would fail only at deploy time on the
+	// NAS, which is the worst place to discover it.
+	for _, want := range []string{
+		"/home/cargoship/.aws/credentials",
+		"/home/cargoship/.cargoship",
+	} {
+		if !strings.Contains(compose, want) {
+			t.Errorf("compose.yaml should mount %q (must match the image's non-root HOME)", want)
+		}
+	}
+	if strings.Contains(compose, "/root/") {
+		t.Errorf("compose.yaml must not mount under /root — the image runs as non-root:\n%s", compose)
+	}
+
+	// The image reference must be a PUBLISHED one; the old "cargoship:latest" default
+	// existed nowhere, so `docker compose up -d` failed on the pull.
+	if !strings.Contains(compose, "ghcr.io/scttfrdmn/cargoship:") {
+		t.Errorf("compose.yaml should reference the published GHCR image, got:\n%s", compose)
+	}
+	if strings.Contains(compose, "image: cargoship:latest") {
+		t.Error("compose.yaml references the unpublished cargoship:latest image")
 	}
 }
 

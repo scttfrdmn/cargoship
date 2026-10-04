@@ -52,7 +52,10 @@ constraint-dependencies = [
     # 50.0.0.
     "cryptography>=50.0.0",
     "orjson>=3.11.6",
-    "urllib3>=2.7.0",
+    # CVE-2026-97687 (HIGH): HTTPS-proxy configuration override allows traffic
+    # interception. Plus CVE-2026-97689 (HIGH): unbounded memory allocation in the
+    # chunk parser (DoS). Both fixed in 2.8.0.
+    "urllib3>=2.8.0",
     "dulwich>=1.2.5",
     # GHSA-6p8h-3wgx-97gf / -fjr4-x663-mwxc / -r9mr-m37c-5fr3 / -94p4-4cq8-9g67
     # (HIGH): unsafe git-option denylist bypasses + env-var exfiltration. Fixed
@@ -61,7 +64,10 @@ constraint-dependencies = [
     # (medium), where the denylist omitted --add-file/--add-virtual-file. Both
     # fixed in 3.1.57. Third round of this bug in as many months; the floor is
     # the only thing keeping the resolver off the vulnerable versions.
-    "gitpython>=3.1.57",
+    # FOURTH round of the same class, as this comment's history predicted:
+    # CVE-2026-87817 (HIGH) remote code execution via git-directory impersonation,
+    # and CVE-2026-87819 (HIGH) ReDoS. Both fixed in 3.1.60.
+    "gitpython>=3.1.60",
     # GHSA-cq5v-8q36-5273 (HIGH): out-of-bounds heap read in the C HTTP response
     # parser's error path on a malformed chunked response. Also picks up
     # GHSA-mfx4-hv73-q22v (request smuggling via WebSocket upgrade) and

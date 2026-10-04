@@ -200,7 +200,41 @@ if [ -n "$mfver" ]; then
   fi
 fi
 
+# --- Check 7: install.md's download pins track the current version -------------
+#
+# install.md hardcodes release URLs and filenames so the commands are copy-pasteable.
+# Twice now they have gone stale and silently handed new users an OLD binary: they sat at
+# v0.32.0 for two releases (fixed in the v0.35.0 beta-readiness sweep) and were stale again
+# one release later, because nothing checked them. Check 1 only validates the single
+# authoritative version DECLARATION per file, not example URLs.
+#
+# Surgical on purpose: only the release-download URL pattern is examined, so prose and
+# historical references elsewhere stay untouched.
+install_doc="docs/start/install.md"
+if [ -f "$install_doc" ]; then
+  # Any vX.Y.Z appearing in a releases/download/ URL must be the current version.
+  bad_tags="$(grep -oE 'releases/download/v[0-9]+\.[0-9]+\.[0-9]+' "$install_doc" \
+               | sed 's|releases/download/||' | sort -u | grep -vFx "$vver" || true)"
+  if [ -n "$bad_tags" ]; then
+    while IFS= read -r t; do
+      [ -n "$t" ] || continue
+      echo "::error file=$install_doc::download URL pins $t but the current version is $vver — a reader following this page installs the wrong release"
+    done <<< "$bad_tags"
+    fail=1
+  fi
+  # And the archive filenames embed the bare version (cargoship_0.35.0_linux_x86_64.tar.gz).
+  bad_files="$(grep -oE 'cargoship_[0-9]+\.[0-9]+\.[0-9]+_' "$install_doc" \
+                | sed -E 's/cargoship_(.*)_/\1/' | sort -u | grep -vFx "$ver" || true)"
+  if [ -n "$bad_files" ]; then
+    while IFS= read -r t; do
+      [ -n "$t" ] || continue
+      echo "::error file=$install_doc::archive filename pins $t but the current version is $ver"
+    done <<< "$bad_files"
+    fail=1
+  fi
+fi
+
 if [ "$fail" -eq 0 ]; then
-  echo "✅ doc-consistency: version declarations match ${version_file:+$(tr -d '[:space:]' < "$version_file")}; no denylisted tokens; local links resolve; verification-report table covers all releases; SECURITY.md supported line current; manifest format version ${mfver:-?} consistent across docs."
+  echo "✅ doc-consistency: version declarations match ${version_file:+$(tr -d '[:space:]' < "$version_file")}; no denylisted tokens; local links resolve; verification-report table covers all releases; SECURITY.md supported line current; manifest format version ${mfver:-?} consistent across docs; install.md download pins current."
 fi
 exit $fail

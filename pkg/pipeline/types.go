@@ -342,6 +342,7 @@ type PipelineConfig struct {
 
 	// Incremental sync configuration (Issue #148)
 	IncludeOnlyFiles []string // If set, only upload these files (for incremental sync)
+	ExcludePatterns  []string // #710: skip matching paths; matched per path segment relative to the source, so a directory pattern excludes its whole subtree
 	SyncType         string   // "full" or "incremental" (for manifest)
 	PreviousUploadID string   // Previous upload ID (for manifest chaining)
 	DeletedPaths     []string // Paths removed in this incremental version (Issue #555; recorded in the manifest for the chain-merge tombstone set)

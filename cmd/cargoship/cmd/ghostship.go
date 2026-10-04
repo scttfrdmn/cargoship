@@ -250,6 +250,13 @@ Example:
 			if dir == "" {
 				dir = "."
 			}
+			// Create the directory, as `ghostship init --out` does. Without this,
+			// `config-keygen --out ./keys` failed on a fresh machine ("no such file or
+			// directory") — which is step ONE of the documented fleet setup, so the
+			// first command a new operator ran did not work.
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return fmt.Errorf("create key output dir %s: %w", dir, err)
+			}
 			privPath := filepath.Join(dir, "config-signing-private.pem")
 			pubPath := filepath.Join(dir, "config-signing-public.pem")
 			if err := writeNewFile(privPath, privPEM, 0o600); err != nil {

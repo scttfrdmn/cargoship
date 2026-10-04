@@ -11,6 +11,35 @@ import (
 )
 
 // DefaultFailoverManager implements the FailoverManager interface
+// failoverDelays are the deliberate wall-clock pauses the failover path simulates. They
+// are real durations in production and shrunk by tests.
+//
+// They exist as a field because the alternative failed (#671): the test shrank the
+// FailoverTimeout *budget* to 100ms while the implementation kept spending ~85ms of
+// hardcoded sleeps against it, leaving ~15ms for scheduler jitter on a shared runner. The
+// immediate path was worse than tight -- a hardcoded 1s propagation delay could never fit
+// a 100ms budget at all, so that branch could only ever lose. Shrinking the WORK instead
+// of the DEADLINE is what makes the timing deterministic.
+type failoverDelays struct {
+	// propagation allows an immediate failover's changes to reach the wider system.
+	propagation time.Duration
+	// maxDrain caps the graceful drain period.
+	maxDrain time.Duration
+	// step and shortStep stand in for traffic, DNS and routing-table updates.
+	step      time.Duration
+	shortStep time.Duration
+}
+
+// defaultFailoverDelays are the production values.
+func defaultFailoverDelays() failoverDelays {
+	return failoverDelays{
+		propagation: 1 * time.Second,
+		maxDrain:    30 * time.Second,
+		step:        10 * time.Millisecond,
+		shortStep:   5 * time.Millisecond,
+	}
+}
+
 type DefaultFailoverManager struct {
 	// config holds the multi-region configuration
 	config *MultiRegionConfig
@@ -23,6 +52,9 @@ type DefaultFailoverManager struct {
 
 	// failoverStatus tracks current failover status
 	failoverStatus map[string]string
+
+	// delays holds the simulated wall-clock pauses; see failoverDelays.
+	delays failoverDelays
 
 	// mu protects concurrent access to failure tracking
 	mu sync.RWMutex
@@ -110,6 +142,7 @@ func NewFailoverManager(config *MultiRegionConfig, logger *log.Logger) FailoverM
 		failureHistory:  make(map[string]*RegionFailureHistory),
 		failoverStatus:  make(map[string]string),
 		activeFailovers: make(map[string]*FailoverOperation),
+		delays:          defaultFailoverDelays(),
 	}
 }
 
@@ -384,7 +417,7 @@ func (f *DefaultFailoverManager) executeImmediateFailover(operation *FailoverOpe
 	f.notifyFailoverComplete(operation, "immediate")
 
 	// Step 6: Wait for failover to propagate through system
-	propagationDelay := 1 * time.Second
+	propagationDelay := f.delays.propagation
 	select {
 	case <-operation.Context.Done():
 		return operation.Context.Err()
@@ -409,7 +442,7 @@ func (f *DefaultFailoverManager) executeGracefulFailover(operation *FailoverOper
 		"to_region", operation.ToRegion)
 
 	// Calculate drain period
-	drainPeriod := 30 * time.Second
+	drainPeriod := f.delays.maxDrain
 	if f.config.Failover.FailoverTimeout < drainPeriod {
 		drainPeriod = f.config.Failover.FailoverTimeout / 2
 	}
@@ -658,7 +691,7 @@ func (f *DefaultFailoverManager) stopTrafficToRegion(regionName string) error {
 	// 4. Update internal routing tables
 
 	// Simulate the operation
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(f.delays.step)
 
 	f.logger.Info("Successfully stopped traffic to region", "region", regionName)
 	return nil
@@ -675,7 +708,7 @@ func (f *DefaultFailoverManager) redirectTrafficToRegion(regionName string) erro
 	// 4. Signal traffic routers about new destination
 
 	// Simulate the operation
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(f.delays.step)
 
 	f.logger.Info("Successfully redirected traffic to region", "region", regionName)
 	return nil
@@ -694,7 +727,7 @@ func (f *DefaultFailoverManager) updateRegionStatus(regionName, status string) e
 	// 4. Notify other services of status change
 
 	// Simulate the operation
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(f.delays.shortStep)
 
 	return nil
 }
@@ -712,7 +745,7 @@ func (f *DefaultFailoverManager) updateLoadBalancerWeights(fromRegion, toRegion 
 	// 4. Wait for configuration propagation
 
 	// Simulate the operation
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(f.delays.shortStep)
 
 	return nil
 }
@@ -730,7 +763,7 @@ func (f *DefaultFailoverManager) startGradualTrafficReduction(regionName string,
 	// 4. Coordinate with load balancers for smooth transition
 
 	// Simulate starting the gradual reduction
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(f.delays.shortStep)
 
 	return nil
 }
@@ -761,7 +794,7 @@ func (f *DefaultFailoverManager) completeTrafficCutover(fromRegion, toRegion str
 	// 4. Verify traffic is flowing to target region
 
 	// Simulate the cutover completion
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(f.delays.shortStep)
 
 	return nil
 }
@@ -783,7 +816,7 @@ func (f *DefaultFailoverManager) notifyFailoverComplete(operation *FailoverOpera
 
 	// Simulate notifications
 	go func() {
-		time.Sleep(5 * time.Millisecond)
+		time.Sleep(f.delays.shortStep)
 		f.logger.Debug("Failover notifications sent successfully",
 			"operation_id", operation.ID)
 	}()
@@ -803,7 +836,7 @@ func (f *DefaultFailoverManager) sendManualFailoverNotification(operation *Failo
 	// 4. Send to notification services (PagerDuty, OpsGenie)
 
 	// Simulate sending notifications
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(f.delays.step)
 
 	return nil
 }

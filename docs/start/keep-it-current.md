@@ -42,7 +42,7 @@ Useful flags:
 | Flag | Why |
 | --- | --- |
 | `--dry-run` | Preview the delta; upload nothing. |
-| `--checksum` | Compare by SHA-256 instead of size+mtime — slower, catches same-size edits. |
+| ~~`--checksum`~~ | **Not implemented; rejected with an error** ([#678](https://github.com/scttfrdmn/cargoship/issues/678)). Detection is size+mtime only — use `--force` to re-baseline a tree whose timestamps you do not trust. |
 | `--track-deletes` | Record files deleted locally, so restores reflect removals (opt-in; default is additive). |
 | `--force` | Ignore the previous manifest and do a full sync. |
 | `-q, --quiet` | Minimal output, for cron and scripts. |

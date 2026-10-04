@@ -9,9 +9,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/cobra"
 
+	versionpkg "github.com/scttfrdmn/cargoship/internal/version"
 	"github.com/scttfrdmn/cargoship/pkg/fleet"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 )
+
+// defaultFleetImage is the published multi-arch fleet-agent image, pinned to THIS
+// binary's version rather than :latest. A bundle should deploy the agent the operator
+// just ran, and stay reproducible if they re-apply it months later; :latest would
+// silently drift the agent under a running fleet. GHCR serves a manifest list, so the
+// one reference resolves on both Intel and ARM NAS hardware.
+var defaultFleetImage = "ghcr.io/scttfrdmn/cargoship:" + versionpkg.Version
 
 func newGhostshipInitCmd() *cobra.Command {
 	var (
@@ -143,7 +151,17 @@ Example:
 	cmd.Flags().StringVar(&kmsKeyARN, "kms-key-arn", "", "Fleet KMS key ARN; adds kms:GenerateDataKey (write-only, no Decrypt) scoped to that key")
 	cmd.Flags().StringVar(&publicKey, "public-key", "", "Path to the config-signing public key (from 'ghostship config-keygen') to bake into the bundle (required)")
 	cmd.Flags().StringVar(&outDir, "out", "", "Directory to write the bundle into (default ./<writer-id>)")
-	cmd.Flags().StringVar(&image, "image", "cargoship:latest", "Container image to run in the emitted compose file")
+	// Must name a PUBLISHED image: the emitted compose file is meant to be run as-is
+	// on a NAS, and the previous default ("cargoship:latest") existed nowhere, so
+	// `docker compose up -d` failed on an image pull. GHCR publishes a multi-arch
+	// manifest, so one reference resolves on both Intel and ARM NAS boxes.
+	cmd.Flags().StringVar(&image, "image", defaultFleetImage, "Container image to run in the emitted compose file")
+	// Display a version-independent default. The real default embeds this binary's
+	// version (above), which cobra would print verbatim into docs/gen/cli — making the
+	// vendored CLI reference drift on every single version bump. That is not a
+	// hypothetical: the v0.34.0 bump desynced this exact page and wedged the docs
+	// deploy. Display-only; the value in `image` is untouched.
+	cmd.Flags().Lookup("image").DefValue = "ghcr.io/scttfrdmn/cargoship:<this binary's version>"
 	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region for the emitted compose file (and --mint calls)")
 	cmd.Flags().StringVar(&profile, "profile", "", "AWS profile to use for --mint")
 	cmd.Flags().BoolVar(&mint, "mint", false, "Provision the IAM identity live (create user + write-only policy + access key) and write credentials into the bundle; requires iam:Create* on the caller")
@@ -170,8 +188,24 @@ scan_interval: 1h
 }
 
 func initComposeYAML(id, bucket, base, image, region string) string {
-	return fmt.Sprintf(`# Deploy one write-only ghostship writer. Credentials are provided via a MOUNTED
-# FILE (./aws-credentials -> ~/.aws/credentials), never environment variables.
+	return fmt.Sprintf(`# Deploy one write-only ghostship writer (see README.md in this bundle).
+#
+# Credentials come from a MOUNTED FILE, never environment variables: env vars leak into
+# `+"`docker inspect`"+`, process listings and NAS UI panels.
+#
+# Paths target /home/cargoship because the image runs as the non-root user "cargoship"
+# (uid 65532) — an agent never needs root on the NAS. The AWS SDK reads
+# $HOME/.aws/credentials, so these must match the image's home or the agent starts with
+# no credentials at all.
+#
+# IMPORTANT: aws-credentials is written 0600 owned by whoever ran 'ghostship init', so
+# uid 65532 inside the container CANNOT read it and the agent starts with no credentials.
+# On the host, after copying this bundle:
+#
+#     chown 65532:65532 aws-credentials      # keep 0600
+#
+# Without it the AWS SDK falls through to its last resort (EC2 IMDS) and the agent
+# crash-loops on an error that names IMDS and not this file.
 services:
   ghostship:
     image: %s
@@ -190,9 +224,17 @@ services:
       - 1h
     volumes:
       - ./config-signing-public.pem:/etc/cargoship/config-signing-public.pem:ro
-      - ./aws-credentials:/root/.aws/credentials:ro
-      - cargoship-state:/root/.cargoship
+      - ./aws-credentials:/home/cargoship/.aws/credentials:ro
+      # Resume state AND the manifest cache. A named volume keeps both across container
+      # recreates. KEEP IT: on a write-only writer the cache is the only record of what
+      # is already in S3, so losing it costs a full re-upload of the source.
+      - cargoship-state:/home/cargoship/.cargoship
+      # TODO: mount each directory this writer backs up, READ-ONLY, at the same path
+      # named in config.yaml's watch_paths. Read-only is deliberate: the agent only
+      # ever reads your data.
+      # - /volume1/Documents:/volume1/Documents:ro
     restart: unless-stopped
+    # The agent is outbound-only and opens no inbound port.
 volumes:
   cargoship-state:
 `, image, bucket, base, id, region)
@@ -215,7 +257,13 @@ func initReadme(id, bucket, base string) string {
 		"4. **Upload** the config + signature to the control prefix:\n"+
 		"   - `aws s3 cp config.yaml     s3://%s/%s/fleet/%s/config.yaml`\n"+
 		"   - `aws s3 cp config.yaml.sig s3://%s/%s/fleet/%s/config.yaml.sig`\n"+
-		"5. **Deploy**: `docker compose up -d`.\n\n"+
+		"5. **Make the credentials readable by the container user** on the host. The file is\n"+
+		"   0600 owned by whoever ran `ghostship init`; the agent runs as uid 65532 and\n"+
+		"   cannot read it, so without this it starts with NO credentials and crash-loops on\n"+
+		"   an error that names EC2 IMDS rather than this file:\n"+
+		"   `chown 65532:65532 aws-credentials`   (keep 0600)\n"+
+		"6. **Deploy**: `docker compose up -d` — on Synology DSM use `docker-compose up -d`,\n"+
+		"   which is a standalone binary there rather than a `docker` subcommand.\n\n"+
 		"The agent pulls + verifies its config every cycle (keep-last-good), writes only to\n"+
 		"its own `writers/%s/` prefix, and cannot read back, decrypt, or delete any data.\n",
 		id, bucket, base, id, bucket, base, id, id)

@@ -648,3 +648,308 @@ func TestGhostshipRun_DisasterRecovery(t *testing.T) {
 		}
 	}
 }
+
+// deleteManifestsUnder removes every manifest object under a writer prefix, which makes
+// downloadLatestManifest fail for the next cycle. A strict write-only identity fails that
+// read because GetObject is denied; here it fails because the object is gone. Both land in
+// the same branch of resolvePreviousManifest (the S3 read returned an error), so this is a
+// faithful stand-in for the permission case, which the emulator cannot model — it has no IAM.
+func deleteManifestsUnder(t *testing.T, client *s3.Client, bucket, prefix string) {
+	t.Helper()
+	out, err := client.ListObjectsV2(context.Background(), &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucket),
+		Prefix: aws.String(strings.TrimSuffix(prefix, "/") + "/uploads/"),
+	})
+	if err != nil {
+		t.Fatalf("list for manifest deletion: %v", err)
+	}
+	deleted := 0
+	for _, o := range out.Contents {
+		key := aws.ToString(o.Key)
+		if !strings.Contains(filepath.Base(key), "manifest") {
+			continue
+		}
+		if _, dErr := client.DeleteObject(context.Background(), &s3.DeleteObjectInput{
+			Bucket: aws.String(bucket), Key: aws.String(key),
+		}); dErr != nil {
+			t.Fatalf("delete %s: %v", key, dErr)
+		}
+		deleted++
+	}
+	if deleted == 0 {
+		t.Fatalf("no manifest objects found under %s; the test would prove nothing", prefix)
+	}
+}
+
+// TestGhostshipRun_WriteOnlyFallsBackToManifestCache is the end-to-end proof of P1: an
+// agent that cannot read its previous manifest still uploads only the delta, because it
+// diffs against the local manifest cache written by the previous cycle.
+//
+// The control subtest is the important half. "Cycle 2 was incremental" on its own does not
+// show the CACHE did it — so the same scenario is run with --no-manifest-cache, where the
+// cycle must fall back to a full re-upload of every file. That is the behaviour this
+// feature exists to remove, and seeing it appear when the cache is switched off is what
+// makes the first subtest's result attributable.
+func TestGhostshipRun_WriteOnlyFallsBackToManifestCache(t *testing.T) {
+	tests := []struct {
+		name          string
+		cacheOn       bool
+		wantSource    string
+		wantSyncType  string
+		wantFilesSent string // files=N on the second cycle
+	}{
+		{
+			name:          "cache on: second cycle diffs against the cache and sends only the delta",
+			cacheOn:       true,
+			wantSource:    "delta_source=cache",
+			wantSyncType:  "sync_type=incremental",
+			wantFilesSent: "files=1",
+		},
+		{
+			name:          "cache off: second cycle has nothing to diff against and resends everything",
+			cacheOn:       false,
+			wantSource:    "delta_source=none",
+			wantSyncType:  "sync_type=full",
+			wantFilesSent: "files=3",
+		},
+	}
+
+	for i, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			bucket := fmt.Sprintf("gs-mcache-%d", i)
+			if err := createBucket(substrateURL, bucket); err != nil {
+				t.Fatalf("create bucket: %v", err)
+			}
+			src := t.TempDir()
+			cacheDir := t.TempDir()
+			writeFile(t, filepath.Join(src, "a.txt"), "alpha")
+			writeFile(t, filepath.Join(src, "b.txt"), "bravo")
+
+			writerID := fmt.Sprintf("wo-%d", i)
+			prefix := "data/writers/" + writerID
+			run := func(label string) string {
+				args := []string{"ghostship", "run", src, "s3://" + bucket + "/data",
+					"--writer-id", writerID, "--once", "--region", "us-east-1",
+					"--manifest-cache-dir", cacheDir}
+				if !tc.cacheOn {
+					args = append(args, "--no-manifest-cache")
+				}
+				out, err := runCargoshipAllowErr(t, args...)
+				if err != nil {
+					t.Fatalf("%s cycle: %v\n%s", label, err, out)
+				}
+				return out
+			}
+			client := e2eS3Client(t)
+			uploads := func() int { return len(uploadIDsUnder(t, client, bucket, prefix)) }
+
+			// Cycle 1: nothing cached and nothing in S3 yet, so a full sync either way.
+			out1 := run("first")
+			if !strings.Contains(out1, "sync_type=full") {
+				t.Fatalf("first cycle should be full, got:\n%s", out1)
+			}
+			if !strings.Contains(out1, "files=2") {
+				t.Fatalf("first cycle should send both files, got:\n%s", out1)
+			}
+			if got := uploads(); got != 1 {
+				t.Fatalf("first cycle should create 1 upload, got %d", got)
+			}
+
+			if tc.cacheOn {
+				entries, err := os.ReadDir(cacheDir)
+				if err != nil || len(entries) == 0 {
+					t.Fatalf("expected a cache entry after a successful cycle, got %d entries (err %v)",
+						len(entries), err)
+				}
+			}
+
+			// Take away the ability to read the previous manifest, then change the tree.
+			deleteManifestsUnder(t, client, bucket, prefix)
+			writeFile(t, filepath.Join(src, "c.txt"), "charlie")
+
+			out2 := run("second")
+			if !strings.Contains(out2, tc.wantSource) {
+				t.Errorf("second cycle: want %q in output, got:\n%s", tc.wantSource, out2)
+			}
+			if !strings.Contains(out2, tc.wantSyncType) {
+				t.Errorf("second cycle: want %q in output, got:\n%s", tc.wantSyncType, out2)
+			}
+			if !strings.Contains(out2, tc.wantFilesSent) {
+				t.Errorf("second cycle: want %q (only the delta when cached, everything when not), got:\n%s",
+					tc.wantFilesSent, out2)
+			}
+			if got := uploads(); got != 2 {
+				t.Errorf("second cycle should add one upload, got %d total", got)
+			}
+
+			// #691 companion: the CACHE path must settle too. With the cache on, a third
+			// cycle that changes nothing must upload nothing — which only holds if the
+			// cached entry is the EFFECTIVE dataset rather than cycle 2's increment.
+			// (With the cache off there is nothing to diff against, so a full re-upload
+			// is the correct behaviour and the assertion would be meaningless.)
+			if tc.cacheOn {
+				deleteManifestsUnder(t, client, bucket, prefix)
+				out3 := run("settle")
+				if !strings.Contains(out3, "no changes") {
+					t.Errorf("third cycle (cache path) must detect no changes; got:\n%s", out3)
+				}
+				if got := uploads(); got != 2 {
+					t.Errorf("third cycle must not add an upload: want 2, got %d "+
+						"(the cached manifest is not the effective dataset)", got)
+				}
+			}
+		})
+	}
+}
+
+// TestGhostshipRun_IncrementalConverges proves the delta SETTLES: after a real
+// incremental change, a following no-change cycle must upload nothing.
+//
+// TestGhostshipRun_IncrementalChain stops one cycle too early. It does
+// full -> no-change -> change and asserts two uploads, which passes even if the delta
+// never converges, because it never runs a cycle AFTER an incremental one. This does,
+// and that is the cycle where an incremental manifest is the thing being diffed against.
+//
+// No symlinks here on purpose: this is about what the delta compares against, not about
+// which entries the scanner skips.
+func TestGhostshipRun_IncrementalConverges(t *testing.T) {
+	bucket := "gs-converge"
+	if err := createBucket(substrateURL, bucket); err != nil {
+		t.Fatalf("create bucket: %v", err)
+	}
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "a.txt"), "alpha")
+	writeFile(t, filepath.Join(src, "b.txt"), "bravo")
+
+	run := func(label string) string {
+		out, err := runCargoshipAllowErr(t, "ghostship", "run", src, "s3://"+bucket+"/data",
+			"--writer-id", "conv-1", "--once", "--region", "us-east-1")
+		if err != nil {
+			t.Fatalf("%s cycle: %v\n%s", label, err, out)
+		}
+		return out
+	}
+	client := e2eS3Client(t)
+	uploads := func() int { return len(uploadIDsUnder(t, client, bucket, "data/writers/conv-1")) }
+
+	// 1. Full sync: both files.
+	out1 := run("first")
+	if !strings.Contains(out1, "sync_type=full") {
+		t.Fatalf("first cycle should be full, got:\n%s", out1)
+	}
+	// #694: the cycle log reported bytes=0 after moving real data, because the
+	// direct-upload path never set job.ArchiveSize and Result.TotalBytes is summed from
+	// it. That made the heartbeat's bytes field useless for exactly the small-file
+	// workloads this fast path exists for.
+	if strings.Contains(out1, "bytes=0 ") || strings.HasSuffix(strings.TrimSpace(out1), "bytes=0") {
+		t.Errorf("cycle reported bytes=0 after uploading real data (#694); got:\n%s", out1)
+	}
+	if got := uploads(); got != 1 {
+		t.Fatalf("after cycle 1 want 1 upload, got %d", got)
+	}
+
+	// 2. One new file: an incremental upload carrying ONLY that file.
+	writeFile(t, filepath.Join(src, "c.txt"), "charlie")
+	out2 := run("incremental")
+	if !strings.Contains(out2, "sync_type=incremental") {
+		t.Fatalf("second cycle should be incremental, got:\n%s", out2)
+	}
+	if !strings.Contains(out2, "files=1") {
+		t.Errorf("second cycle should send only the new file, got:\n%s", out2)
+	}
+	if got := uploads(); got != 2 {
+		t.Fatalf("after cycle 2 want 2 uploads, got %d", got)
+	}
+
+	// 3. Nothing changed. THIS is the assertion the older test never reaches: the delta
+	// is now computed against cycle 2's manifest, which lists one file rather than the
+	// whole dataset. If the previous manifest is used as-is instead of the resolved
+	// chain, a-txt and b.txt look new again and the whole dataset is re-uploaded.
+	out3 := run("settle")
+	if !strings.Contains(out3, "no changes") {
+		t.Errorf("a no-change cycle after an incremental one must detect no changes; got:\n%s", out3)
+	}
+	if got := uploads(); got != 2 {
+		t.Errorf("a no-change cycle must not create an upload: want 2 total, got %d "+
+			"(the delta is not converging — it re-uploaded the dataset)", got)
+	}
+}
+
+// TestGhostshipRun_ConfigExcludePatterns proves the signed config's
+// watch_paths[].exclude_patterns is actually HONOURED (#710).
+//
+// It used to be accepted, validated by `ghostship validate-config`, signed, uploaded —
+// and then silently ignored by the agent, which backed everything up anyway. An inert
+// field on an artifact the operator explicitly signs is the worst version of that bug.
+//
+// The corpus mirrors the real case that found it: a directory to exclude wholesale
+// (#recycle, 20 GB of 26 GB on the NAS), a secrets directory that must never reach an
+// archive (.aws), nested metadata dirs (@eaDir), and a basename glob (*.tmp).
+func TestGhostshipRun_ConfigExcludePatterns(t *testing.T) {
+	bucket := "gs-exclude"
+	if err := createBucket(substrateURL, bucket); err != nil {
+		t.Fatalf("create bucket: %v", err)
+	}
+	src := t.TempDir()
+
+	// writeFile does not create parents.
+	for _, d := range []string{"work", "#recycle", filepath.Join("#recycle", "deep"), ".aws", filepath.Join("work", "@eaDir")} {
+		if err := os.MkdirAll(filepath.Join(src, d), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+
+	// Kept.
+	writeFile(t, filepath.Join(src, "keep.txt"), "keep me")
+	writeFile(t, filepath.Join(src, "work", "report.pdf"), "a report")
+	// Excluded by a directory pattern, including nested content.
+	writeFile(t, filepath.Join(src, "#recycle", "deleted.pdf"), "deleted")
+	writeFile(t, filepath.Join(src, "#recycle", "deep", "older.pdf"), "older")
+	// Excluded because secrets must never be archived.
+	writeFile(t, filepath.Join(src, ".aws", "credentials"), "[default]\nsecret")
+	// Excluded by a nested metadata-dir pattern.
+	writeFile(t, filepath.Join(src, "work", "@eaDir", "thumb.jpg"), "thumb")
+	// Excluded by a basename glob.
+	writeFile(t, filepath.Join(src, "work", "scratch.tmp"), "scratch")
+
+	box := filepath.Join(t.TempDir(), "box.yaml")
+	writeFile(t, box, fmt.Sprintf(`id: excl-box
+writer_id: excl-box
+version: 1
+s3_config:
+  bucket: %s
+watch_paths:
+  - path: %s
+    exclude_patterns:
+      - "#recycle"
+      - ".aws"
+      - "@eaDir"
+      - "*.tmp"
+scan_interval: 1h
+`, bucket, src))
+
+	runCargoship(t, "ghostship", "run", "--config", box, "--once", "--region", "us-east-1")
+
+	client := e2eS3Client(t)
+	ids := uploadIDsUnder(t, client, bucket, "writers/excl-box")
+	if len(ids) != 1 {
+		t.Fatalf("want 1 upload, got %d: %v", len(ids), ids)
+	}
+
+	paths := manifestFilePaths(t, bucket,
+		fmt.Sprintf("writers/excl-box/uploads/%s/manifest.json.gz", ids[0]))
+	joined := strings.Join(paths, "\n")
+
+	for _, want := range []string{"keep.txt", "report.pdf"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("%q should have been backed up; manifest had:\n%s", want, joined)
+		}
+	}
+	// Each of these is a different exclusion shape, so they are asserted separately
+	// rather than as one blob — a single pattern working is not evidence the others do.
+	for _, unwanted := range []string{"#recycle", "deleted.pdf", "older.pdf", "credentials", "@eaDir", "thumb.jpg", "scratch.tmp"} {
+		if strings.Contains(joined, unwanted) {
+			t.Errorf("%q was archived despite exclude_patterns; manifest had:\n%s", unwanted, joined)
+		}
+	}
+}

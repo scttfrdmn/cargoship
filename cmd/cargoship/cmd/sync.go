@@ -27,6 +27,7 @@ func NewSyncCmd() *cobra.Command {
 		trackDeletes     bool
 		dryRun           bool
 		force            bool
+		noFileChecksums  bool
 		quiet            bool
 		writerID         string
 	)
@@ -45,11 +46,9 @@ The sync command provides efficient incremental backups by:
 First sync uploads everything (like 'upload' command).
 Subsequent syncs only upload changed files, saving time and bandwidth.
 
-Change detection (default: fast mode):
-  - Size change: File size differs from manifest
-  - Time change: Modification time is newer than manifest
-
-Use --checksum for guaranteed accuracy (slower, computes SHA256).
+Change detection compares SIZE and MODIFICATION TIME against the previous
+manifest. Content is not hashed, so an edit that preserves both size and mtime is
+not detected. Use --force for a full re-upload when you need certainty.
 
 Examples:
   # First sync: uploads all files
@@ -61,14 +60,25 @@ Examples:
   # Dry run to see what would be synced
   cargoship sync /home/photos s3://my-bucket/backups --dry-run
 
-  # Use checksum comparison (slower but accurate)
-  cargoship sync /data s3://my-bucket/backups --checksum
-
   # Force full sync (ignore previous manifest)
   cargoship sync /data s3://my-bucket/backups --force
 `,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// #678: refuse --checksum rather than accepting it and doing nothing.
+			// manifest.hasChanged takes SyncOptions and never reads UseChecksum, so this
+			// flag has always been inert while its help promised "guaranteed accuracy" —
+			// and the case it exists for (same size, same mtime, different content) is
+			// exactly the one that still slips through. Failing here, before any work, is
+			// the honest behaviour for an integrity option that is not implemented.
+			// Checked against the value, not Changed(), so an explicit --checksum=false
+			// (meaning "don't") stays valid.
+			if useChecksum {
+				return fmt.Errorf("--checksum is not implemented (see issue #678): change detection " +
+					"compares size and modification time only, so this flag would not have done what it says. " +
+					"Use --force for a full re-upload when you need certainty")
+			}
+
 			ctx := context.Background()
 
 			// Parse arguments
@@ -132,8 +142,18 @@ Examples:
 			var previousManifest *manifest.Manifest
 			var syncType string
 
+			// #691: the newest manifest lists only its own increment, so the delta must be
+			// computed against the chain-resolved dataset. Without this, the cycle after
+			// any incremental sync sees previously-stored files as New and re-uploads the
+			// whole source. Same fetcher the dataset-version resolution uses.
+			syncDatasetFetch := func(fctx context.Context, id string) (*manifest.Manifest, error) {
+				return manifest.DownloadFromS3(fctx, s3Client, bucket, prefix, id)
+			}
 			if !force {
 				previousManifest, err = downloadLatestManifest(ctx, s3Client, bucket, prefix, absPath)
+				if err == nil {
+					previousManifest, err = manifest.ResolveEffective(ctx, previousManifest, syncDatasetFetch)
+				}
 				if err != nil {
 					// No previous manifest found - this is the first sync
 					if !quiet {
@@ -246,10 +266,7 @@ Examples:
 			// #521: inherit the dataset chain identity from the predecessor so every
 			// version shares one DatasetID; a first sync (no predecessor) leaves it
 			// empty and the pipeline starts a new dataset (this upload = root, v1).
-			datasetFetch := func(fctx context.Context, id string) (*manifest.Manifest, error) {
-				return manifest.DownloadFromS3(fctx, s3Client, bucket, prefix, id)
-			}
-			datasetID, versionOrdinal := manifest.NextVersion(ctx, previousManifest, datasetFetch)
+			datasetID, versionOrdinal := manifest.NextVersion(ctx, previousManifest, syncDatasetFetch)
 
 			pipelineConfig := newSyncPipelineConfig(syncPipelineParams{
 				bucket:           bucket,
@@ -262,6 +279,7 @@ Examples:
 				compressionLevel: effectiveCompression,
 				sourcePath:       absPath,
 				includeFiles:     includeFiles,
+				fileChecksums:    !noFileChecksums, // #725: on unless explicitly disabled
 				syncType:         syncType,
 				previousUploadID: previousUploadID,
 				deletedPaths:     delta.Deleted,  // #555: persist deletions (empty unless --track-deletes)
@@ -316,10 +334,20 @@ Examples:
 	cmd.Flags().IntVar(&compressionLevel, "compression-level", 3,
 		"Fixed zstd compression level (1-22), overriding per-chunk content-aware selection. Unset = content-aware")
 	cmd.Flags().StringVarP(&region, "region", "r", "us-west-2", "AWS region")
-	cmd.Flags().BoolVar(&useChecksum, "checksum", false, "Use SHA256 checksum comparison (slower but accurate)")
+	// NOT IMPLEMENTED (#678). manifest.hasChanged accepts SyncOptions and never reads
+	// UseChecksum — detection is always size+mtime — so this flag silently did nothing
+	// while promising "guaranteed accuracy". An integrity option that quietly no-ops is
+	// worse than one that refuses, so setting it is now a usage error. Kept registered
+	// rather than deleted so the failure names the reason instead of "unknown flag".
+	cmd.Flags().BoolVar(&useChecksum, "checksum", false,
+		"NOT IMPLEMENTED (#678): rejected if set. Change detection is size+mtime; use --force for a full re-upload")
 	cmd.Flags().BoolVar(&trackDeletes, "track-deletes", false, "Track deleted files in manifest")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be synced without uploading")
 	cmd.Flags().BoolVar(&force, "force", false, "Force full sync (ignore previous manifest)")
+	// #725: parity with `upload`. Previously sync had no such flag AND no checksums,
+	// so fleet users got the no-checksum trade silently, with no way to decline it.
+	cmd.Flags().BoolVar(&noFileChecksums, "no-file-checksums", false,
+		"Disable per-file content checksums (faster, but 'verify --deep' can't confirm per-file integrity)")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Quiet mode (minimal output)")
 	// Issue #520: writer isolation (fleet).
 	cmd.Flags().StringVar(&writerID, "writer-id", "", "Writer identity for fleet isolation: objects go under writers/<id>/. 'auto' derives a stable per-host id; empty = single-writer layout (default)")
@@ -341,10 +369,14 @@ type syncPipelineParams struct {
 	shardCount       int
 	compressionLevel int
 	includeFiles     []string
-	deletedPaths     []string
-	datasetID        string // #521: inherited dataset chain identity ("" = new dataset)
-	versionOrdinal   int    // #521: this version's position in the chain
-	s3Client         *s3.Client
+	excludePatterns  []string // #710: watch_paths[].exclude_patterns
+	// #725: record a per-file SHA-256 in the manifest. Defaults ON for every caller
+	// (CSH-SEC-002); only `sync --no-file-checksums` turns it off.
+	fileChecksums  bool
+	deletedPaths   []string
+	datasetID      string // #521: inherited dataset chain identity ("" = new dataset)
+	versionOrdinal int    // #521: this version's position in the chain
+	s3Client       *s3.Client
 }
 
 // newSyncPipelineConfig builds the pipeline config for `cargoship sync`.
@@ -375,8 +407,17 @@ func newSyncPipelineConfig(p syncPipelineParams) *pipeline.PipelineConfig {
 		ShardStrategy:    p.shardStrategy,
 		CompressionLevel: p.compressionLevel,
 
+		// #725: per-file content checksums. This MUST be set here: it was previously
+		// left at Go's zero value on this path, so `cargoship sync` and every
+		// ghostship fleet agent silently recorded NO per-file checksums, while
+		// upload.go set it from --no-file-checksums and the field documented itself as
+		// "on by default". The unattended write-only path — where nobody is watching
+		// and the operator cannot read objects back — had the weaker guarantee.
+		FileChecksums: p.fileChecksums,
+
 		// #148: incremental sync configuration.
 		IncludeOnlyFiles: p.includeFiles,
+		ExcludePatterns:  p.excludePatterns,
 		SyncType:         p.syncType,
 		PreviousUploadID: p.previousUploadID,
 		DeletedPaths:     p.deletedPaths,
