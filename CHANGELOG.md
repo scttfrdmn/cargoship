@@ -30,6 +30,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (CSH-SEC-005) — the cross-version guard that `--deep` must refuse to certify pre-#270 archives
   still holds, because those manifests record no algorithm.
 
+- **The fleet image no longer declares a `VOLUME`, which silently defeated the manifest cache
+  (#714).** `docker/Dockerfile.fleet` declared `VOLUME ["/home/cargoship/.cargoship"]` as a
+  safety net for an operator who forgets `-v`. A declared volume is created from the image, so it
+  is owned by uid 65532, **and it shadows a bind-mounted parent**. On a NAS the container must run
+  as the uid that owns the data (e.g. `user: "1027:100"`), so the agent could not create
+  `.cargoship/manifest-cache` even with a correctly bind-mounted writable home:
+
+  ```
+  Warning: Failed to save local state: ... mkdir /home/cargoship/.cargoship/state: permission denied
+  level=WARN msg="manifest cache" note="... manifest-cache: permission denied" delta_source=none
+  ```
+
+  The cache then never persisted and **every cycle re-uploaded the entire source** — behind a
+  `backup cycle complete` log line and a healthy heartbeat. That defeated the write-only manifest
+  cache for exactly the deployment shape it was built for. It also orphaned one anonymous volume
+  per container recreate: the state the emitted compose tells operators to KEEP was the state
+  being discarded.
+
+  The net was mostly illusory anyway — the compose file `ghostship init` emits always declares the
+  mount explicitly, so reaching the fallback meant hand-rolling `docker run` without `-v`, where
+  losing state costs a recoverable re-upload. The state directory is still created and chowned, so
+  the image works out of the box for its own uid. A CI guard asserts the built image declares no
+  volume and that the state directory is writable.
+
 ### Changed
 - **Plain `verify` no longer says "verified" for a check that downloads nothing (#713).** It now
   reports `Manifest is consistent and describes N files`, because that is what it establishes;

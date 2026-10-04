@@ -188,7 +188,25 @@ jobs:
             echo "::error::fleet image runs as uid $uid, expected non-root 65532"
             exit 1
           fi
-          echo "fleet image OK — version prints, ghostship+fleet present, runs as $uid"
+          # #714: the image must declare NO VOLUME. A declared VOLUME is created
+          # from the image (owned by uid 65532) and SHADOWS a bind-mounted parent,
+          # so on a NAS running as the data-owning uid the agent cannot write
+          # .cargoship/manifest-cache: the cache silently never persists and every
+          # cycle re-uploads everything behind a healthy heartbeat. Asserted against
+          # the BUILT IMAGE's config rather than the Dockerfile text, so it also
+          # catches a VOLUME inherited from a future base image.
+          vols="$(docker image inspect cargoship:fleet --format '{{json .Config.Volumes}}')"
+          if [ "$vols" != "null" ] && [ "$vols" != "{}" ]; then
+            echo "::error::fleet image declares VOLUME(s) $vols — a declared volume shadows a bind-mounted home and silently breaks the manifest cache for any non-65532 uid (see issue #714)"
+            exit 1
+          fi
+          # The state directory must still exist and be writable by the default uid,
+          # so the image works out of the box without a mount.
+          if ! docker run --rm --entrypoint /bin/sh cargoship:fleet -c 'test -w /home/cargoship/.cargoship'; then
+            echo "::error::/home/cargoship/.cargoship is not writable by the image's own user"
+            exit 1
+          fi
+          echo "fleet image OK — version prints, ghostship+fleet present, runs as $uid, declares no VOLUME, state dir writable"
 
       # #348 audited docker/ because that is where the images were believed to
       # live. Three more sat at the repo root — Dockerfile.synology and two NAS
