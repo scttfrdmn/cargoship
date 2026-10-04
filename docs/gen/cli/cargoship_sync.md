@@ -45,6 +45,7 @@ cargoship sync SOURCE_DIR S3_URL [flags]
       --dry-run                 Show what would be synced without uploading
       --force                   Force full sync (ignore previous manifest)
   -h, --help                    help for sync
+      --no-file-checksums       Disable per-file content checksums (faster, but 'verify --deep' can't confirm per-file integrity)
   -q, --quiet                   Quiet mode (minimal output)
   -r, --region string           AWS region (default "us-west-2")
       --shard-count int         Number of shards for parallel uploads (1-100) (default 10)
