@@ -44,34 +44,34 @@ Download the archive for your platform from the
 it, and move the binary onto your PATH. Each archive contains a single
 `cargoship` binary (plus `README.md`, `LICENSE`, and docs).
 
-The commands below pin the current release, `v0.37.1`. For a different version,
+The commands below pin the current release, `v0.38.0`. For a different version,
 swap the tag and the version in the filename (the release assets embed the
-version, e.g. `cargoship_0.37.1_linux_x86_64.tar.gz`).
+version, e.g. `cargoship_0.38.0_linux_x86_64.tar.gz`).
 
 ::: code-group
 
 ```bash [Linux x86_64]
-curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.37.1/cargoship_0.37.1_linux_x86_64.tar.gz | tar -xz
+curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/cargoship_0.38.0_linux_x86_64.tar.gz | tar -xz
 sudo mv cargoship /usr/local/bin/cargoship
 ```
 
 ```bash [Linux ARM64]
-curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.37.1/cargoship_0.37.1_linux_arm64.tar.gz | tar -xz
+curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/cargoship_0.38.0_linux_arm64.tar.gz | tar -xz
 sudo mv cargoship /usr/local/bin/cargoship
 ```
 
 ```bash [macOS (Apple Silicon)]
-curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.37.1/cargoship_0.37.1_darwin_arm64.tar.gz | tar -xz
+curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/cargoship_0.38.0_darwin_arm64.tar.gz | tar -xz
 sudo mv cargoship /usr/local/bin/cargoship
 ```
 
 ```bash [macOS (Intel)]
-curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.37.1/cargoship_0.37.1_darwin_x86_64.tar.gz | tar -xz
+curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/cargoship_0.38.0_darwin_x86_64.tar.gz | tar -xz
 sudo mv cargoship /usr/local/bin/cargoship
 ```
 
 ```bash [Windows x86_64]
-curl -sSL -o cargoship.tar.gz https://github.com/scttfrdmn/cargoship/releases/download/v0.37.1/cargoship_0.37.1_windows_x86_64.tar.gz
+curl -sSL -o cargoship.tar.gz https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/cargoship_0.38.0_windows_x86_64.tar.gz
 tar -xzf cargoship.tar.gz
 # move cargoship.exe onto your PATH
 ```
@@ -114,11 +114,11 @@ to the GitHub Actions build via a keyless cosign Sigstore bundle
 
 ```bash
 # Fetch the checksums file and verify your archive against it
-curl -sSLO https://github.com/scttfrdmn/cargoship/releases/download/v0.37.1/checksums.txt
+curl -sSLO https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/checksums.txt
 sha256sum -c checksums.txt --ignore-missing
 
 # Optionally verify the checksums file itself with cosign (keyless)
-curl -sSLO https://github.com/scttfrdmn/cargoship/releases/download/v0.37.1/checksums.txt.sigstore.json
+curl -sSLO https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/checksums.txt.sigstore.json
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
   --certificate-identity-regexp 'https://github.com/scttfrdmn/cargoship' \

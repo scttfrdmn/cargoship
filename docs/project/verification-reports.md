@@ -34,6 +34,7 @@ release assets to find the evidence.
 
 | Version | Date | Files | Bytes | Paths | Suites | Result | Report |
 |---------|------|-------|-------|-------|--------|--------|--------|
+| v0.38.0 | 2026-10-04 | 20 | 61.01 MB | direct, chunked | 51 / 0 | ✅ Passed | [`v0.38.0-2026-10-04.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/v0.38.0-2026-10-04.md) |
 | v0.37.1 | 2026-10-04 | 20 | 61.01 MB | direct, chunked | 51 / 0 | ✅ Passed | [`v0.37.1-2026-10-04.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.37.1/v0.37.1-2026-10-04.md) |
 | v0.37.0 | 2026-10-04 | 20 | 61.01 MB | direct, chunked | 51 / 0 | ✅ Passed | [`v0.37.0-2026-10-04.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.37.0/v0.37.0-2026-10-04.md) |
 | v0.36.1 | 2026-10-03 | 20 | 61.01 MB | direct, chunked | 51 / 0 | ✅ Passed | [`v0.36.1-2026-10-03.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.36.1/v0.36.1-2026-10-03.md) |

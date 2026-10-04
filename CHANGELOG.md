@@ -7,7 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-10-04
+
+Four integrity fixes found by running a real NAS backup. Three of them meant `verify --deep` gave
+the **wrong answer about healthy data**, and one meant the fleet agent was recording less than it
+promised.
+
+### Upgrade notes
+
+1. **`verify --deep` starts passing on datasets it used to fail.** If you have been treating a
+   `FAIL` from `--deep` as a signal about your data, re-run it: on every chunked dataset written
+   since v0.27.0 it reported all files `UNVERIFIABLE`, and on every direct-upload dataset it
+   reported all files `MISSING`. Neither was true of the data.
+2. **`sync` and `ghostship` now record a per-file SHA-256.** Nothing changes for data already
+   uploaded — it keeps verifying at chunk granularity — but new and re-uploaded files become
+   verifiable per file. To upgrade an existing dataset in place, clear the agent's manifest cache
+   (or `sync --force`) once so it re-uploads with checksums. Measured cost: ~0.35 s of CPU per GB
+   against an upload path doing 58 MB/s, so roughly 2%, overlapped with transfer.
+3. **`verify` output wording changed**, including the final PASS line, which now states the
+   *granularity* proven. Anything scraping that text needs updating; `--json` consumers gain a
+   `covered_by_chunk` count and a per-file `detail` field.
+4. **The fleet image no longer declares a `VOLUME`.** If you relied on the implicit anonymous
+   volume at `/home/cargoship/.cargoship`, declare the mount explicitly in your compose file —
+   and note that relying on it silently disabled your manifest cache whenever the container ran
+   as a uid other than 65532.
+
 ### Fixed
+- **`verify --deep` no longer reports every file MISSING on direct-upload datasets (#724).** The
+  small-file fast path stores one S3 object per file and records no chunks, but `VerifyFiles`
+  resolved files only through their chunk, so a chunk-less manifest matched nothing and the
+  closing "never seen in its chunk" sweep marked all of them missing. Deep verification then
+  failed, announcing data loss for data that restored byte-identically — the worst available
+  wrong answer from an integrity command, on the workload this project is measured fastest at:
+
+  ```
+  📊 File Verify: 0 OK, 0 corrupted, 26 missing, 0 unverifiable (of 26 files)   ← before
+  📊 File Verify: 26 OK, 0 corrupted, 0 missing, 0 unverifiable (of 26 files)   ← after
+  ```
+
+  A file whose key belongs to no chunk is now verified as its own object: fetched, hashed, and
+  compared to the per-file checksum. Absence is still reported Missing, so real data loss stays
+  visible; a size that contradicts the manifest is reported as corruption even when no checksum
+  was recorded; and a dataset with no recorded checksum is reported Unverifiable — still a
+  failure, since nothing vouches for those bytes — with a message stating that the object **is**
+  present and correctly sized, so it cannot be mistaken for loss.
+
+  The chunk phase is now reported as **not applicable** rather than failed when a manifest records
+  no chunks. `DeepVerifyResult.Passed()` requires `TotalChunks > 0` so an empty manifest cannot
+  pass vacuously, which is correct, but combined with "both phases must pass" it meant a
+  direct-upload dataset could never pass however cleanly its files verified. The equivalent guard
+  on the file side (`TotalFiles > 0`) still prevents a vacuous pass.
+
+  Each file-level finding now carries a `detail` explaining it, because the same status arose for
+  materially different reasons and the bare word was what made this dangerous.
+- **`sync` and `ghostship` now record per-file checksums, which they never did (#725).**
+  `PipelineConfig.FileChecksums` documents itself as "on by default, `--no-file-checksums` opts
+  out", but was set in exactly one place in the tree — `upload`. `newSyncPipelineConfig` never set
+  it, so it took Go's zero value `false`, and that config backs both `cargoship sync` and every
+  ghostship fleet agent. Measured on one corpus at one version: `upload` recorded 3/3 per-file
+  checksums, `sync` recorded 0/3. A live 410-file NAS backup had 0/410.
+
+  This was backwards from intent. The unattended, write-only fleet path — nobody watching, data
+  sitting longest, and an identity that cannot read objects back to check them — had the *weaker*
+  guarantee, while the interactive path a human supervises had the stronger one. And it was an
+  opt-*out* flag nobody opted out of: `sync`/`ghostship` exposed no such flag, so fleet users took
+  the no-checksum trade silently with no way to decline. It is also CSH-SEC-002, so the guarantee
+  had been signed off as present.
+
+  `sync` now gains `--no-file-checksums` for parity with `upload`. The ghostship agent records
+  them **unconditionally** and deliberately exposes no knob: a signed config should not be able to
+  quietly downgrade an integrity guarantee. The cost is about 0.35 s of CPU per GB (SHA-256
+  measured at ~2.9 GB/s) against an upload path measured at 58 MB/s on the deployment that
+  motivated this — roughly 2%, overlapped with transfer.
+
+  Datasets already uploaded are unaffected and keep verifying at chunk granularity (#713);
+  re-running a sync records checksums for everything it re-uploads.
 - **`verify --deep` no longer fails on healthy backups (#713).** Every dataset written since
   v0.27.0 reported `UNVERIFIABLE: no checksum recorded` for all of its files and exited FAIL —
   on a real 410-file NAS backup, `0 OK, 410 unverifiable (of 410 files)`. #548 stopped recording
