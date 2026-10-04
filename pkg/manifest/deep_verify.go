@@ -81,6 +81,17 @@ func (r *DeepVerifyResult) Passed() bool {
 	return r.Mismatched == 0 && r.Missing == 0 && r.Unverifiable == 0 && r.TotalChunks > 0
 }
 
+// NotApplicable reports that there was no chunk-level verification to perform
+// because the manifest records no chunks — the direct-upload layout, where every
+// file is its own S3 object (#724).
+//
+// This is distinct from failing. Passed() requires TotalChunks > 0 so that an
+// empty manifest cannot pass vacuously, which is correct; but applying that to a
+// chunk-less manifest reported "Chunk verification FAIL" for a dataset that had
+// nothing to verify at the chunk level and whose files verified perfectly. The
+// caller should skip the chunk phase and let the file-level result decide.
+func (r *DeepVerifyResult) NotApplicable() bool { return r.TotalChunks == 0 }
+
 // DeepVerifier performs data-level integrity verification by re-downloading the
 // stored chunk objects and recomputing their checksums against the manifest
 // (#271). It is the mechanism behind CargoShip's integrity guarantee: it proves
@@ -528,6 +539,13 @@ type FileVerifyResult struct {
 	Status   ChunkVerifyStatus `json:"status"` // reuses ok/mismatch/missing/unverifiable
 	Expected string            `json:"expected,omitempty"`
 	Actual   string            `json:"actual,omitempty"`
+	// Detail explains a non-OK status in words. Needed because the same status can
+	// arise for materially different reasons — a file can be unverifiable because
+	// its chunk recorded no digest, or because it is a standalone direct-mode
+	// object uploaded before per-file checksums were recorded (#724/#725) — and
+	// "unverifiable" alone does not tell an operator which, or whether the bytes
+	// are even present.
+	Detail string `json:"detail,omitempty"`
 }
 
 // FileVerifyResult aggregate.
@@ -634,6 +652,31 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 		}
 		chunk := chunkByKey[key]
 		if chunk == nil {
+			// #724: no chunk owns this key, so the file IS the object (direct-upload
+			// layout). This used to `continue`, which left the file unseen and the
+			// closing sweep reported it MISSING — data loss announced for data that
+			// was present and restorable.
+			for i := range dv.manifest.Files {
+				f := &dv.manifest.Files[i]
+				if f.S3Key != key || f.IsDuplicate {
+					continue
+				}
+				fr := dv.verifyStandaloneObject(ctx, f)
+				seen[fileKey{f.Path, f.PartIndex}] = true
+				switch fr.Status {
+				case ChunkVerifyOK:
+					result.OK++
+				case ChunkVerifyMismatch:
+					result.Mismatched++
+				case ChunkVerifyMissing:
+					result.Missing++
+				case ChunkVerifyUnverifiable:
+					result.Unverifiable++
+				case ChunkVerifyCoveredByChunk:
+					result.CoveredByChunk++
+				}
+				result.Files = append(result.Files, fr)
+			}
 			continue
 		}
 		fileResults, err := dv.verifyChunkFiles(ctx, chunk, expected, offsets, seen)
@@ -679,6 +722,80 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 	}
 
 	return result, nil
+}
+
+// verifyStandaloneObject verifies a file stored as its OWN S3 object rather than
+// inside a chunk — the direct-upload ("fast path") layout, where the manifest has
+// total_chunks=0 and each FileEntry.S3Key names a distinct object (#724).
+//
+// Before this existed, VerifyFiles resolved files only through chunkByKey, so a
+// chunk-less manifest matched nothing, no tar was ever walked, and the final
+// "never seen in its chunk" sweep reported every file MISSING — announcing data
+// loss for data that restored byte-identically. That is the worst available wrong
+// answer from an integrity command, and it fired on the small-file workload this
+// project is measured fastest at.
+//
+// Streams rather than buffers: a direct-mode object is usually small, but nothing
+// guarantees it, and the chunked path already learned to stream (verifyChunk).
+func (dv *DeepVerifier) verifyStandaloneObject(ctx context.Context, f *FileEntry) FileVerifyResult {
+	fr := FileVerifyResult{Path: f.Path, ChunkID: f.ChunkID, Expected: f.Checksum}
+
+	out, err := dv.s3Client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(dv.objectBucket()),
+		Key:    aws.String(dv.objectKey(f.S3Key)),
+	})
+	if err != nil {
+		fr.Status = ChunkVerifyMissing
+		fr.Detail = fmt.Sprintf("object %s could not be fetched: %v", f.S3Key, err)
+		return fr
+	}
+	defer func() { _ = out.Body.Close() }()
+
+	limit := objectReadLimit(f.Size)
+	if cErr := checkContentLength(out.ContentLength, limit, "object "+f.S3Key); cErr != nil {
+		fr.Status = ChunkVerifyMismatch
+		fr.Detail = cErr.Error()
+		return fr
+	}
+
+	h := sha256.New()
+	n, err := io.Copy(h, io.LimitReader(out.Body, limit))
+	if err != nil {
+		fr.Status = ChunkVerifyMissing
+		fr.Detail = fmt.Sprintf("object %s could not be read: %v", f.S3Key, err)
+		return fr
+	}
+	fr.Actual = hex.EncodeToString(h.Sum(nil))
+
+	// A size contradiction is detectable even with no checksum recorded, and it
+	// means the stored object disagrees with the manifest — report it rather than
+	// folding it into "unverifiable".
+	if f.Size > 0 && n != f.Size {
+		fr.Status = ChunkVerifyMismatch
+		fr.Detail = fmt.Sprintf("object is %d bytes, manifest records %d", n, f.Size)
+		return fr
+	}
+
+	switch {
+	case f.Checksum == "":
+		// Honestly unverifiable, NOT a pass: nothing recorded vouches for these
+		// bytes. Unlike the chunked case (#713) there is no chunk digest to fall
+		// back on. The detail says what IS established so this is not mistaken for
+		// the object being absent.
+		fr.Status = ChunkVerifyUnverifiable
+		fr.Detail = fmt.Sprintf("object is present and %d bytes as recorded, but the manifest "+
+			"stores no per-file checksum for it, so its contents cannot be confirmed "+
+			"(uploads before issue #725 recorded none on this path)", n)
+	case !dv.verifiableWithSHA256():
+		fr.Status = ChunkVerifyUnverifiable
+		fr.Detail = fmt.Sprintf("checksum algorithm %q cannot be recomputed", dv.manifest.ChecksumAlgorithm)
+	case fr.Actual == f.Checksum:
+		fr.Status = ChunkVerifyOK
+	default:
+		fr.Status = ChunkVerifyMismatch
+		fr.Detail = "stored bytes do not match the per-file checksum recorded at upload"
+	}
+	return fr
 }
 
 // chunkIdent is a chunk's unique identity: (ShardID, ID). Chunk IDs repeat
