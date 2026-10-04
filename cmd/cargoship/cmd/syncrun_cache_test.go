@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -40,6 +43,57 @@ func accessDenied() func() (*manifest.Manifest, error) {
 	return func() (*manifest.Manifest, error) { return nil, errors.New("AccessDenied") }
 }
 
+// backdateCacheEntry rewrites the stored entry's cached_at to age it by d.
+//
+// Staleness must NOT be expressed as "a trust window narrower than the time that has
+// elapsed since Save" (e.g. maxAge = 1ns). Save stamps CachedAt with time.Now().UTC(),
+// and .UTC() strips the monotonic reading, so Load's time.Since falls back to the wall
+// clock — whose granularity on Windows is coarse enough (~15ms) that both calls can land
+// in the same tick and report an age of exactly 0, which is not > 1ns. The entry then
+// reads as fresh and the case silently asserts the opposite of its name. That is what
+// made this subtest flake on windows-latest while passing everywhere else.
+//
+// Backdating the timestamp instead makes the age explicit and the test independent of
+// clock resolution. Only cached_at is touched: the recorded digest covers the embedded
+// manifest, so the entry stays internally consistent and still exercises the real
+// expiry branch in Load rather than a stub.
+func backdateCacheEntry(t *testing.T, store *manifestcache.Store, d time.Duration) {
+	t.Helper()
+	entries, err := filepath.Glob(filepath.Join(store.Dir(), "*.json"))
+	if err != nil {
+		t.Fatalf("glob cache dir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("want exactly 1 cache entry to backdate, found %d", len(entries))
+	}
+	raw, err := os.ReadFile(entries[0])
+	if err != nil {
+		t.Fatalf("read cache entry: %v", err)
+	}
+	// json.RawMessage, NOT map[string]any: decoding into `any` and re-encoding rewrites
+	// the embedded manifest (key order, number formatting), which changes its bytes and
+	// so breaks the manifest_sha256 recorded at Save. The entry would then be rejected as
+	// CORRUPT rather than EXPIRED — the subtest would still pass, for the wrong reason,
+	// and would no longer detect a broken expiry check at all. Verified by mutation: with
+	// the age comparison in Load disabled, this subtest must fail.
+	var e map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &e); err != nil {
+		t.Fatalf("parse cache entry: %v", err)
+	}
+	stamp, err := json.Marshal(time.Now().UTC().Add(-d))
+	if err != nil {
+		t.Fatalf("encode cached_at: %v", err)
+	}
+	e["cached_at"] = stamp
+	out, err := json.Marshal(e)
+	if err != nil {
+		t.Fatalf("re-encode cache entry: %v", err)
+	}
+	if err := os.WriteFile(entries[0], out, 0o600); err != nil {
+		t.Fatalf("write cache entry: %v", err)
+	}
+}
+
 // The decision table is the whole trust argument for the cache, so it is tested
 // directly rather than inferred from an end-to-end run.
 func TestResolvePreviousManifest(t *testing.T) {
@@ -48,6 +102,7 @@ func TestResolvePreviousManifest(t *testing.T) {
 		force      bool
 		withStore  bool
 		seedCache  *manifest.Manifest
+		backdate   time.Duration // age the seeded entry by this much before resolving
 		maxAge     time.Duration
 		fromS3     func() (*manifest.Manifest, error)
 		wantSource string
@@ -94,9 +149,10 @@ func TestResolvePreviousManifest(t *testing.T) {
 			name:      "an expired entry is refused and reported",
 			withStore: true,
 			seedCache: cachedManifest("stale"),
-			// Save stamps CachedAt to now, so staleness is expressed as a trust window
-			// narrower than any elapsed time rather than by backdating the file or sleeping.
-			maxAge:     time.Nanosecond,
+			// Explicitly aged well past the window, rather than relying on time having
+			// elapsed since Save — see backdateCacheEntry for why that flaked on Windows.
+			backdate:   48 * time.Hour,
+			maxAge:     24 * time.Hour,
 			fromS3:     accessDenied(),
 			wantSource: deltaSourceNone,
 			wantNote:   true,
@@ -128,6 +184,9 @@ func TestResolvePreviousManifest(t *testing.T) {
 			if tc.seedCache != nil {
 				if err := store.Save(cacheKeyFor(p), tc.seedCache, "test"); err != nil {
 					t.Fatalf("seed Save: %v", err)
+				}
+				if tc.backdate > 0 {
+					backdateCacheEntry(t, store, tc.backdate)
 				}
 			}
 
