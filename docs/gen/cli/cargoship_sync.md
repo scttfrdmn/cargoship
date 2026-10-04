@@ -15,11 +15,9 @@ The sync command provides efficient incremental backups by:
 First sync uploads everything (like 'upload' command).
 Subsequent syncs only upload changed files, saving time and bandwidth.
 
-Change detection (default: fast mode):
-  - Size change: File size differs from manifest
-  - Time change: Modification time is newer than manifest
-
-Use --checksum for guaranteed accuracy (slower, computes SHA256).
+Change detection compares SIZE and MODIFICATION TIME against the previous
+manifest. Content is not hashed, so an edit that preserves both size and mtime is
+not detected. Use --force for a full re-upload when you need certainty.
 
 Examples:
   # First sync: uploads all files
@@ -30,9 +28,6 @@ Examples:
 
   # Dry run to see what would be synced
   cargoship sync /home/photos s3://my-bucket/backups --dry-run
-
-  # Use checksum comparison (slower but accurate)
-  cargoship sync /data s3://my-bucket/backups --checksum
 
   # Force full sync (ignore previous manifest)
   cargoship sync /data s3://my-bucket/backups --force
@@ -45,11 +40,12 @@ cargoship sync SOURCE_DIR S3_URL [flags]
 ### Options
 
 ```
-      --checksum                Use SHA256 checksum comparison (slower but accurate)
+      --checksum                NOT IMPLEMENTED (#678): rejected if set. Change detection is size+mtime; use --force for a full re-upload
       --compression-level int   Fixed zstd compression level (1-22), overriding per-chunk content-aware selection. Unset = content-aware (default 3)
       --dry-run                 Show what would be synced without uploading
       --force                   Force full sync (ignore previous manifest)
   -h, --help                    help for sync
+      --no-file-checksums       Disable per-file content checksums (faster, but 'verify --deep' can't confirm per-file integrity)
   -q, --quiet                   Quiet mode (minimal output)
   -r, --region string           AWS region (default "us-west-2")
       --shard-count int         Number of shards for parallel uploads (1-100) (default 10)

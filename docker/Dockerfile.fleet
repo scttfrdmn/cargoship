@@ -1,0 +1,70 @@
+# Container image for the CargoShip FLEET agent (`cargoship ghostship run`).
+#
+# This is NOT the legacy per-file archival daemon in docker/Dockerfile.ghost-ship
+# (that builds ./cmd/ghost-ship, the dormant pkg/launch job-queue model). This image
+# ships the real `cargoship` CLI so a NAS or lab box can run an unattended,
+# write-only fleet writer — see docs/enterprise/qnap.md.
+#
+# goreleaser builds this per-arch with the ALREADY-COMPILED binary in the build
+# context (no in-image `go build`), so amd64 and arm64 images are produced from the
+# same cross-compiled artifacts the release archives use. Building it by hand
+# therefore needs the binary beside it; prefer `goreleaser release --snapshot`.
+#
+# Base pinned by digest, and that digest is an OCI image INDEX covering
+# amd64 + arm64/v8 — a single-arch digest would break the arm64 build.
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+
+# ca-certificates: required for HTTPS to S3/KMS/STS.
+# tzdata: so `scan_interval` and heartbeat timestamps read correctly in local time.
+RUN apk add --no-cache ca-certificates tzdata
+
+# Run as a non-root user. An agent only needs to READ the data it backs up and
+# WRITE to its own S3 prefix; it never needs root on the NAS.
+RUN addgroup -g 65532 -S cargoship \
+ && adduser -u 65532 -S cargoship -G cargoship -h /home/cargoship
+
+# State directory: the agent keeps resume state and the manifest cache here.
+#
+# Deliberately NOT declared as a VOLUME (#714). Declaring it looked like a safety
+# net — "an operator who forgets -v still gets a persistent anonymous volume" —
+# but a declared VOLUME is created from the image and therefore owned by uid
+# 65532, AND it SHADOWS a bind-mounted parent. On a NAS the container must run as
+# the uid that owns the data (e.g. `user: "1027:100"`), so the agent could not
+# create .cargoship/manifest-cache even when the operator had correctly
+# bind-mounted a writable home. The cache then silently never persisted and every
+# cycle re-uploaded the entire source, behind a healthy heartbeat — defeating the
+# whole point of the write-only manifest cache. It also orphaned one anonymous
+# volume per container recreate: the state the emitted compose tells operators to
+# KEEP was the state being discarded.
+#
+# The net it provided was mostly illusory anyway: the compose file `ghostship init`
+# emits always declares the mount explicitly, so reaching the fallback required
+# hand-rolling `docker run` without -v. Losing state there costs a re-upload and
+# is recoverable; silently breaking the cache for every correctly-configured NAS
+# was not. The directory is still created and chowned so the default uid works
+# out of the box.
+RUN mkdir -p /home/cargoship/.cargoship /etc/cargoship \
+ && chown -R cargoship:cargoship /home/cargoship
+
+# `dockers_v2` stages the already-cross-compiled binaries into the build context as
+# <os>/<arch>/<binary> and builds once per platform, so TARGETOS/TARGETARCH (supplied
+# by buildx) select the right one. Verified layout: `linux/amd64/cargoship`.
+#
+# Do NOT "simplify" this to `COPY cargoship …`: the binary is not at the context root,
+# and a COPY whose glob matches nothing does NOT fail the build — it produces an image
+# with no binary that still reports success. That shipped an empty image once; the
+# smoke test in docker-build.yml exists to catch it.
+ARG TARGETOS
+ARG TARGETARCH
+COPY ${TARGETOS}/${TARGETARCH}/cargoship /usr/local/bin/cargoship
+
+USER cargoship
+WORKDIR /home/cargoship
+
+# No inbound port is exposed, deliberately: a fleet writer is outbound-only
+# (see the #340 hardening and docs/enterprise/ghost-ship.md).
+
+# `cargoship` alone prints help; the operator supplies the ghostship subcommand,
+# normally via the compose file that `cargoship ghostship init` emits.
+ENTRYPOINT ["/usr/local/bin/cargoship"]
+CMD ["--help"]

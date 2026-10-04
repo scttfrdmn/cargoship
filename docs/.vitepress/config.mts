@@ -185,6 +185,8 @@ const sidebar = {
       items: [
         { text: 'Architecture', link: '/project/architecture' },
         { text: 'Project maturity & compatibility', link: '/project/maturity' },
+        { text: 'Beta tester brief', link: '/project/beta-testing' },
+        { text: 'NAS hardware test runbook', link: '/project/nas-hardware-testing' },
         { text: 'Capability verification', link: '/project/verification' },
         { text: 'Roadmap (removed & deferred)', link: '/project/roadmap' },
         { text: 'Security model', link: '/project/security' },

@@ -36,20 +36,22 @@ cargoship ghostship run [SOURCE_DIR S3_URL] [flags]
 ### Options
 
 ```
-      --compression-level int   Fixed zstd level (1-22); 0 = content-aware per-chunk selection
-      --config string           Ghostship config file (fleet mode); backs up each watch_paths entry
-      --config-url string       Pull a signed config from S3 (s3://BUCKET/BASE); reads BASE/fleet/<id>/config.yaml, verified against --public-key
-  -h, --help                    help for run
-      --ignore-budget           Skip the per-writer budget/volume cap check (#629)
-      --interval duration       How often to run a backup cycle (overrides config scan_interval) (default 1h0m0s)
-      --once                    Run a single cycle and exit (for cron / testing)
-      --public-key string       PEM ed25519 public key the pulled config must verify against (required with --config-url)
-  -r, --region string           AWS region (default "us-west-2")
-      --shard-count int         Number of shards for parallel uploads (1-100) (default 10)
-      --shard-strategy string   Shard distribution strategy (round-robin, hash, size, type, directory) (default "round-robin")
-      --storage-class string    Default S3 storage class (per-source storage_class in config overrides) (default "STANDARD")
-      --track-deletes           Record files deleted since the last backup in the manifest
-      --writer-id string        Writer identity for fleet isolation (writers/<id>/). 'auto' derives a stable per-host id; overrides the config
+      --compression-level int       Fixed zstd level (1-22); 0 = content-aware per-chunk selection
+      --config string               Ghostship config file (fleet mode); backs up each watch_paths entry
+      --config-url string           Pull a signed config from S3 (s3://BUCKET/BASE); reads BASE/fleet/<id>/config.yaml, verified against --public-key
+  -h, --help                        help for run
+      --ignore-budget               Skip the per-writer budget/volume cap check (#629)
+      --interval duration           How often to run a backup cycle (overrides config scan_interval) (default 1h0m0s)
+      --manifest-cache-dir string   Directory for the local manifest cache (default ~/.cargoship/manifest-cache)
+      --no-manifest-cache           Disable the local manifest cache. A write-only writer then has no previous manifest to diff against and re-uploads every file each cycle
+      --once                        Run a single cycle and exit (for cron / testing)
+      --public-key string           PEM ed25519 public key the pulled config must verify against (required with --config-url)
+  -r, --region string               AWS region (default "us-west-2")
+      --shard-count int             Number of shards for parallel uploads (1-100) (default 10)
+      --shard-strategy string       Shard distribution strategy (round-robin, hash, size, type, directory) (default "round-robin")
+      --storage-class string        Default S3 storage class (per-source storage_class in config overrides) (default "STANDARD")
+      --track-deletes               Record files deleted since the last backup in the manifest
+      --writer-id string            Writer identity for fleet isolation (writers/<id>/). 'auto' derives a stable per-host id; overrides the config
 ```
 
 ### Options inherited from parent commands

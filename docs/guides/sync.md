@@ -14,22 +14,29 @@ cargoship sync SOURCE_DIR s3://BUCKET/PREFIX/
 
 ## How change detection works
 
-By default, sync runs in **fast mode**: a file is re-uploaded when either
+A file is re-uploaded when either
 
 - its **size** differs from the manifest, or
 - its **modification time** is newer than the manifest.
 
-This is quick because it never re-reads file contents. For byte-accurate
-detection — worth it when timestamps are unreliable (restored files, `rsync`
-copies, CI checkouts) — add `--checksum` to compare SHA256 hashes instead.
+This is quick because it never re-reads file contents.
 
 ```bash
-# Fast mode (default): size + mtime
 cargoship sync ./my-data s3://my-bucket/backups/
-
-# Byte-accurate: computes SHA256 (slower, no false negatives)
-cargoship sync ./my-data s3://my-bucket/backups/ --checksum
 ```
+
+::: warning Content is not hashed, so one case is not detected
+An edit that preserves **both** size and modification time is **not** detected. That
+happens in practice with files restored from backup with their mtime preserved, some
+`rsync` modes, and in-place edits that happen to keep the same length.
+
+There is no content-comparison mode today. `--checksum` was supposed to be it, but was
+never implemented and **now fails with an error** rather than silently doing nothing
+([#678](https://github.com/scttfrdmn/cargoship/issues/678)).
+
+When you need certainty for a tree whose timestamps you do not trust, use `--force` to
+re-upload everything and let the manifest chain record a fresh baseline.
+:::
 
 ## Previewing a sync
 
@@ -56,7 +63,7 @@ manifests remain fully restorable. Add `--track-deletes` to record local
 deletions in the new manifest, keeping it a faithful mirror of the source tree:
 
 ```bash
-cargoship sync ./my-data s3://my-bucket/backups/ --checksum --track-deletes
+cargoship sync ./my-data s3://my-bucket/backups/ --track-deletes
 ```
 
 ::: info Deletions are recorded, not purged
@@ -126,8 +133,8 @@ of it.
 ::: tip
 - **Always `--dry-run` first** on a new sync target — confirm the new/changed
   counts look sane before spending bandwidth.
-- **Use `--checksum`** when mtimes can't be trusted (restored trees, CI, `rsync`);
-  stick with the default fast mode for ordinary day-to-day backups.
+- **Use `--force`** when mtimes can't be trusted (restored trees, CI, `rsync`): there
+  is no content-comparison mode, so a full re-upload is the only way to re-baseline.
 - **Add `--track-deletes`** only when you want the archive to mirror the source;
   leave it off when you want an append-only history.
 - **Pin `--region`** (or set `AWS_REGION`) so scheduled syncs never guess wrong.

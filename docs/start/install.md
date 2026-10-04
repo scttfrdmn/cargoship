@@ -44,38 +44,66 @@ Download the archive for your platform from the
 it, and move the binary onto your PATH. Each archive contains a single
 `cargoship` binary (plus `README.md`, `LICENSE`, and docs).
 
-The commands below pin the current release, `v0.32.0`. For a different version,
+The commands below pin the current release, `v0.38.0`. For a different version,
 swap the tag and the version in the filename (the release assets embed the
-version, e.g. `cargoship_0.32.0_linux_x86_64.tar.gz`).
+version, e.g. `cargoship_0.38.0_linux_x86_64.tar.gz`).
 
 ::: code-group
 
 ```bash [Linux x86_64]
-curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.32.0/cargoship_0.32.0_linux_x86_64.tar.gz | tar -xz
+curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/cargoship_0.38.0_linux_x86_64.tar.gz | tar -xz
 sudo mv cargoship /usr/local/bin/cargoship
 ```
 
 ```bash [Linux ARM64]
-curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.32.0/cargoship_0.32.0_linux_arm64.tar.gz | tar -xz
+curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/cargoship_0.38.0_linux_arm64.tar.gz | tar -xz
 sudo mv cargoship /usr/local/bin/cargoship
 ```
 
 ```bash [macOS (Apple Silicon)]
-curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.32.0/cargoship_0.32.0_darwin_arm64.tar.gz | tar -xz
+curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/cargoship_0.38.0_darwin_arm64.tar.gz | tar -xz
 sudo mv cargoship /usr/local/bin/cargoship
 ```
 
 ```bash [macOS (Intel)]
-curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.32.0/cargoship_0.32.0_darwin_x86_64.tar.gz | tar -xz
+curl -sSL https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/cargoship_0.38.0_darwin_x86_64.tar.gz | tar -xz
 sudo mv cargoship /usr/local/bin/cargoship
 ```
 
 ```bash [Windows x86_64]
-curl -sSL -o cargoship.tar.gz https://github.com/scttfrdmn/cargoship/releases/download/v0.32.0/cargoship_0.32.0_windows_x86_64.tar.gz
+curl -sSL -o cargoship.tar.gz https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/cargoship_0.38.0_windows_x86_64.tar.gz
 tar -xzf cargoship.tar.gz
 # move cargoship.exe onto your PATH
 ```
 
+:::
+
+### macOS: the downloaded binary is quarantined
+
+::: warning Gatekeeper will kill a downloaded `cargoship` on first run
+Released macOS binaries are **not yet notarized** by Apple
+([#407](https://github.com/scttfrdmn/cargoship/issues/407)). macOS attaches a
+`com.apple.quarantine` attribute to anything fetched from the internet, and for an
+un-notarized binary Gatekeeper does not merely warn — it **SIGKILLs the process**, which
+shows up as a bare `zsh: killed` or `Killed: 9` with no explanation.
+
+This affects the tarballs above, not Homebrew (`brew install` binaries are not
+quarantined) and not `go install` (you compiled it locally).
+
+Confirm that is what happened, then clear it:
+
+```bash
+xattr -p com.apple.quarantine /usr/local/bin/cargoship   # prints a value if quarantined
+xattr -d com.apple.quarantine /usr/local/bin/cargoship   # remove it
+cargoship --version                                      # now runs
+```
+
+**Verify the download first** (next section). Stripping the quarantine attribute is
+exactly what you would do to run a tampered binary too, so do it only after the cosign
+and checksum verification below has passed — that check, not Gatekeeper, is what
+establishes the binary came from this project's release workflow.
+
+Prefer `brew install scttfrdmn/tap/cargoship` on macOS to avoid this entirely.
 :::
 
 ### Verify the download
@@ -86,11 +114,11 @@ to the GitHub Actions build via a keyless cosign Sigstore bundle
 
 ```bash
 # Fetch the checksums file and verify your archive against it
-curl -sSLO https://github.com/scttfrdmn/cargoship/releases/download/v0.32.0/checksums.txt
+curl -sSLO https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/checksums.txt
 sha256sum -c checksums.txt --ignore-missing
 
 # Optionally verify the checksums file itself with cosign (keyless)
-curl -sSLO https://github.com/scttfrdmn/cargoship/releases/download/v0.32.0/checksums.txt.sigstore.json
+curl -sSLO https://github.com/scttfrdmn/cargoship/releases/download/v0.38.0/checksums.txt.sigstore.json
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
   --certificate-identity-regexp 'https://github.com/scttfrdmn/cargoship' \

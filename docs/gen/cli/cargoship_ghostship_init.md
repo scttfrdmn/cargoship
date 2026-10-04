@@ -31,7 +31,7 @@ cargoship ghostship init S3_URL [flags]
 
 ```
   -h, --help                 help for init
-      --image string         Container image to run in the emitted compose file (default "cargoship:latest")
+      --image string         Container image to run in the emitted compose file (default "ghcr.io/scttfrdmn/cargoship:<this binary's version>")
       --kms-key-arn string   Fleet KMS key ARN; adds kms:GenerateDataKey (write-only, no Decrypt) scoped to that key
       --mint                 Provision the IAM identity live (create user + write-only policy + access key) and write credentials into the bundle; requires iam:Create* on the caller
       --out string           Directory to write the bundle into (default ./<writer-id>)

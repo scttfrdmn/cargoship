@@ -270,20 +270,23 @@ done:
 	return nil
 }
 
-// shouldExclude checks if a path should be excluded
-func (s *ScannerStage) shouldExclude(path string) bool {
+// shouldExclude reports whether path is excluded by the configured patterns.
+//
+// Matching is relative to the scan root and per path segment (see
+// matchesExcludePattern), so a directory pattern excludes everything beneath it. It
+// previously compared only filepath.Base(path), which made subtree exclusion impossible
+// (#710).
+func (s *ScannerStage) shouldExclude(path, rootPath string) bool {
 	if len(s.config.ExcludePatterns) == 0 {
 		return false
 	}
-
-	for _, pattern := range s.config.ExcludePatterns {
-		matched, err := filepath.Match(pattern, filepath.Base(path))
-		if err == nil && matched {
-			return true
-		}
+	relPath, err := filepath.Rel(rootPath, path)
+	if err != nil {
+		// Cannot place it relative to the root: fall back to the basename rather than
+		// silently including something the operator asked to exclude.
+		relPath = filepath.Base(path)
 	}
-
-	return false
+	return matchesExcludePattern(relPath, s.config.ExcludePatterns)
 }
 
 // shouldInclude checks if a file should be included based on IncludeOnlyFiles filter (Issue #148)
@@ -345,7 +348,7 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 			}
 
 			// Check exclude patterns
-			if s.shouldExclude(path) {
+			if s.shouldExclude(path, rootPath) {
 				return nil
 			}
 

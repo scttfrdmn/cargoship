@@ -219,9 +219,13 @@ func TestTracker_ProgressCalculations(t *testing.T) {
 		t.Errorf("Progress PercentComplete = %v, want 50.0", progress.PercentComplete)
 	}
 
-	// Check that elapsed time is positive
-	if progress.ElapsedTime <= 0 {
-		t.Errorf("Progress ElapsedTime = %v, want positive duration", progress.ElapsedTime)
+	// Elapsed time must be non-negative, NOT strictly positive: the tracker is
+	// started and read in the same handful of microseconds, so on a platform with
+	// coarse wall-clock granularity (Windows, ~15ms) both reads land in the same
+	// tick and the elapsed time is exactly 0. Demanding > 0 makes this a race
+	// against clock resolution rather than a test of the tracker.
+	if progress.ElapsedTime < 0 {
+		t.Errorf("Progress ElapsedTime = %v, want a non-negative duration", progress.ElapsedTime)
 	}
 
 	// Check that average speed is calculated

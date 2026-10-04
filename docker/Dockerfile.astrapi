@@ -1,3 +1,16 @@
+# ⚠️  LEGACY IMAGE -- NOT the fleet agent.
+#
+# This builds ./cmd/ghost-ship, the dormant pkg/launch job-queue daemon. It is NOT what
+# `cargoship ghostship run` uses and NOT what the NAS guide deploys.
+#
+# For a NAS or lab box, use the PUBLISHED multi-arch fleet image instead:
+#     ghcr.io/scttfrdmn/cargoship:<version>     (built from docker/Dockerfile.fleet)
+# and follow docs/enterprise/qnap.md. `ghostship init` emits a compose file that already
+# references it, so there is nothing to build or transfer.
+#
+# Kept because the ghost-ship surface is deferred, not deleted (pkg/launch is still
+# referenced by cmd/cargoship-test). Do not treat this file as the deployment path.
+#
 # CargoShip Ghost Ship for astrapi.local QNAP NAS
 # Optimized for autonomous archival operations
 #

@@ -7,6 +7,452 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-10-04
+
+Four integrity fixes found by running a real NAS backup. Three of them meant `verify --deep` gave
+the **wrong answer about healthy data**, and one meant the fleet agent was recording less than it
+promised.
+
+### Upgrade notes
+
+1. **`verify --deep` starts passing on datasets it used to fail.** If you have been treating a
+   `FAIL` from `--deep` as a signal about your data, re-run it: on every chunked dataset written
+   since v0.27.0 it reported all files `UNVERIFIABLE`, and on every direct-upload dataset it
+   reported all files `MISSING`. Neither was true of the data.
+2. **`sync` and `ghostship` now record a per-file SHA-256.** Nothing changes for data already
+   uploaded — it keeps verifying at chunk granularity — but new and re-uploaded files become
+   verifiable per file. To upgrade an existing dataset in place, clear the agent's manifest cache
+   (or `sync --force`) once so it re-uploads with checksums. Measured cost: ~0.35 s of CPU per GB
+   against an upload path doing 58 MB/s, so roughly 2%, overlapped with transfer.
+3. **`verify` output wording changed**, including the final PASS line, which now states the
+   *granularity* proven. Anything scraping that text needs updating; `--json` consumers gain a
+   `covered_by_chunk` count and a per-file `detail` field.
+4. **The fleet image no longer declares a `VOLUME`.** If you relied on the implicit anonymous
+   volume at `/home/cargoship/.cargoship`, declare the mount explicitly in your compose file —
+   and note that relying on it silently disabled your manifest cache whenever the container ran
+   as a uid other than 65532.
+
+### Fixed
+- **`verify --deep` no longer reports every file MISSING on direct-upload datasets (#724).** The
+  small-file fast path stores one S3 object per file and records no chunks, but `VerifyFiles`
+  resolved files only through their chunk, so a chunk-less manifest matched nothing and the
+  closing "never seen in its chunk" sweep marked all of them missing. Deep verification then
+  failed, announcing data loss for data that restored byte-identically — the worst available
+  wrong answer from an integrity command, on the workload this project is measured fastest at:
+
+  ```
+  📊 File Verify: 0 OK, 0 corrupted, 26 missing, 0 unverifiable (of 26 files)   ← before
+  📊 File Verify: 26 OK, 0 corrupted, 0 missing, 0 unverifiable (of 26 files)   ← after
+  ```
+
+  A file whose key belongs to no chunk is now verified as its own object: fetched, hashed, and
+  compared to the per-file checksum. Absence is still reported Missing, so real data loss stays
+  visible; a size that contradicts the manifest is reported as corruption even when no checksum
+  was recorded; and a dataset with no recorded checksum is reported Unverifiable — still a
+  failure, since nothing vouches for those bytes — with a message stating that the object **is**
+  present and correctly sized, so it cannot be mistaken for loss.
+
+  The chunk phase is now reported as **not applicable** rather than failed when a manifest records
+  no chunks. `DeepVerifyResult.Passed()` requires `TotalChunks > 0` so an empty manifest cannot
+  pass vacuously, which is correct, but combined with "both phases must pass" it meant a
+  direct-upload dataset could never pass however cleanly its files verified. The equivalent guard
+  on the file side (`TotalFiles > 0`) still prevents a vacuous pass.
+
+  Each file-level finding now carries a `detail` explaining it, because the same status arose for
+  materially different reasons and the bare word was what made this dangerous.
+- **`sync` and `ghostship` now record per-file checksums, which they never did (#725).**
+  `PipelineConfig.FileChecksums` documents itself as "on by default, `--no-file-checksums` opts
+  out", but was set in exactly one place in the tree — `upload`. `newSyncPipelineConfig` never set
+  it, so it took Go's zero value `false`, and that config backs both `cargoship sync` and every
+  ghostship fleet agent. Measured on one corpus at one version: `upload` recorded 3/3 per-file
+  checksums, `sync` recorded 0/3. A live 410-file NAS backup had 0/410.
+
+  This was backwards from intent. The unattended, write-only fleet path — nobody watching, data
+  sitting longest, and an identity that cannot read objects back to check them — had the *weaker*
+  guarantee, while the interactive path a human supervises had the stronger one. And it was an
+  opt-*out* flag nobody opted out of: `sync`/`ghostship` exposed no such flag, so fleet users took
+  the no-checksum trade silently with no way to decline. It is also CSH-SEC-002, so the guarantee
+  had been signed off as present.
+
+  `sync` now gains `--no-file-checksums` for parity with `upload`. The ghostship agent records
+  them **unconditionally** and deliberately exposes no knob: a signed config should not be able to
+  quietly downgrade an integrity guarantee. The cost is about 0.35 s of CPU per GB (SHA-256
+  measured at ~2.9 GB/s) against an upload path measured at 58 MB/s on the deployment that
+  motivated this — roughly 2%, overlapped with transfer.
+
+  Datasets already uploaded are unaffected and keep verifying at chunk granularity (#713);
+  re-running a sync records checksums for everything it re-uploads.
+- **`verify --deep` no longer fails on healthy backups (#713).** Every dataset written since
+  v0.27.0 reported `UNVERIFIABLE: no checksum recorded` for all of its files and exited FAIL —
+  on a real 410-file NAS backup, `0 OK, 410 unverifiable (of 410 files)`. #548 stopped recording
+  per-file SHA-256 on framed chunks for upload throughput, and deep verify was never updated, so
+  the integrity command condemned data it had no reason to doubt. Worse, plain `verify` passed
+  and then recommended `--deep`, so following the tool's own advice reported a broken backup.
+
+  Chunk-level digests were being recorded the whole time. Deep verify now falls back to them: a
+  file with no checksum of its own is reported **covered by chunk digest** when its chunk hashed
+  byte-identical to the manifest's digest for that chunk, which proves that file's bytes. The
+  weaker property is only the *granularity of localisation* — a corrupt chunk implicates all of
+  its files rather than naming one — so it is reported under its own name and in the summary
+  line, never folded into OK.
+
+  The gate is the same one chunk verification applies, so a file is never called covered by a
+  chunk that `verify --deep` would itself reject: either a matching whole-object checksum, or a
+  frame index in which **every** frame carries a checksum, the frames tile the object, and each
+  frame's bytes hash to its recorded value. `Unverifiable` still fails where nothing vouches for
+  the bytes, and an unrecomputable checksum algorithm cannot launder itself into a pass
+  (CSH-SEC-005) — the cross-version guard that `--deep` must refuse to certify pre-#270 archives
+  still holds, because those manifests record no algorithm.
+
+- **The fleet image no longer declares a `VOLUME`, which silently defeated the manifest cache
+  (#714).** `docker/Dockerfile.fleet` declared `VOLUME ["/home/cargoship/.cargoship"]` as a
+  safety net for an operator who forgets `-v`. A declared volume is created from the image, so it
+  is owned by uid 65532, **and it shadows a bind-mounted parent**. On a NAS the container must run
+  as the uid that owns the data (e.g. `user: "1027:100"`), so the agent could not create
+  `.cargoship/manifest-cache` even with a correctly bind-mounted writable home:
+
+  ```
+  Warning: Failed to save local state: ... mkdir /home/cargoship/.cargoship/state: permission denied
+  level=WARN msg="manifest cache" note="... manifest-cache: permission denied" delta_source=none
+  ```
+
+  The cache then never persisted and **every cycle re-uploaded the entire source** — behind a
+  `backup cycle complete` log line and a healthy heartbeat. That defeated the write-only manifest
+  cache for exactly the deployment shape it was built for. It also orphaned one anonymous volume
+  per container recreate: the state the emitted compose tells operators to KEEP was the state
+  being discarded.
+
+  The net was mostly illusory anyway — the compose file `ghostship init` emits always declares the
+  mount explicitly, so reaching the fallback meant hand-rolling `docker run` without `-v`, where
+  losing state costs a recoverable re-upload. The state directory is still created and chowned, so
+  the image works out of the box for its own uid. A CI guard asserts the built image declares no
+  volume and that the state directory is writable.
+
+### Changed
+- **Plain `verify` no longer says "verified" for a check that downloads nothing (#713).** It now
+  reports `Manifest is consistent and describes N files`, because that is what it establishes;
+  the previous `All N files verified successfully` claimed per-file integrity from a
+  manifest-only check. The `--deep` hint now says it downloads the stored data and checks it
+  against the manifest's checksums.
+
+## [0.37.1] - 2026-10-04
+
+Documentation-only release. No code, dependency or format changes; the binaries are
+functionally identical to v0.37.0.
+
+### Fixed
+- **The published verification-report table showed the three most recent releases as
+  unverified when all three had passed (#717).** `docs/project/verification-reports.md`
+  carried `⏳ Run in progress` rows for v0.36.0, v0.36.1 and v0.37.0. That page defines a
+  pending row as meaning "the run has not passed and the release should be treated as
+  unverified", so cargoship.app was understating the verification status of every current
+  release — including the one a visitor would download. All three lanes had in fact passed
+  (20 files, 61.01 MB, direct + chunked, 51 suites, 0 failures).
+
+  v0.36.1 also had no report attached: its real-AWS lane failed **only** on the attach step
+  (GitHub 503s during that release left an incomplete draft, which was deleted and re-run
+  while the lane was mid-retry). The report survived as a workflow artifact attesting the
+  exact tag commit `d90b721`, so it was uploaded to the release rather than regenerated,
+  preserving the rule that a report comes from the run that gated its release.
+
+  This release exists because the root documentation tree is built from the newest **tag**,
+  so the corrected table on `main` could not reach cargoship.app until a new tag was cut —
+  the same republish-only reason as v0.35.1. Verified on the live site, not inferred:
+  `/dev` was already correct while the root still read `⏳`.
+
+### Known issues
+- `verify --deep` reports every file as `UNVERIFIABLE: no checksum recorded` and exits FAIL
+  on healthy datasets produced by this version (#713). Per-file checksums stopped being
+  recorded in v0.27.0 (#548); chunk-level checksums **are** recorded, so stored bytes remain
+  verifiable at chunk granularity, but deep verify does not yet use them. Plain `verify`
+  (manifest + chunk presence) is unaffected and passes.
+- The fleet image declares `VOLUME /home/cargoship/.cargoship`, which shadows a bind-mounted
+  home with a volume owned by uid 65532 (#714). A container running as any other uid cannot
+  write the manifest cache, so it silently never persists and every cycle re-uploads the
+  whole source behind a healthy heartbeat. Workaround: mount that path explicitly.
+
+## [0.37.0] - 2026-10-04
+
+### Upgrade notes
+
+- **If your signed fleet config already contains `exclude_patterns`, those exclusions now
+  take effect.** They were previously accepted, validated and silently ignored, so a config
+  that looked like it filtered did not. Files matching them will stop being backed up, and
+  the next cycle will record them as deleted if `track_deletes` is on. Review
+  `watch_paths[].exclude_patterns` before upgrading an agent.
+- **Exclusion matching changed from basename-only to relative-path-and-segment.** A pattern
+  like `cache` previously matched only an entry literally named `cache`; it now also matches
+  any directory named `cache` and everything beneath it. This is the change that makes
+  subtree exclusion possible at all. Nothing in the shipped code set exclusion patterns
+  before, so no default behaviour changes.
+- `include_patterns`, `min_age` and `recursive` remain accepted and **not implemented**
+  (#710). Do not rely on them.
+
+
+### Fixed
+- **`exclude_patterns` in a signed fleet config is now honoured, and can exclude a whole
+  subtree (#710).** The field was accepted by the config, validated by
+  `ghostship validate-config`, signed, uploaded — and then silently ignored, so an operator
+  could sign exclusions and the agent would back everything up anyway. An inert field on an
+  artifact the operator explicitly signs is the worst version of that failure.
+  - It is now wired from `watch_paths[].exclude_patterns` through to the scanner.
+  - Matching changed from **basename-only** to the **relative path and every path
+    segment**, which is what makes subtree exclusion expressible at all. Previously
+    `#recycle` matched the directory entry while every file inside it (basename
+    `invoice.pdf`) was archived regardless. Nothing in the tree set `ExcludePatterns`
+    before, so no existing behaviour changes.
+  - Patterns use `filepath.Match` syntax (`*`, `?`, `[...]`), are written with forward
+    slashes, and a trailing `/` is accepted. A pattern containing a separator matches the
+    relative path and its subtree; one without matches any single segment. `**` is not
+    supported — segment matching already covers subtree exclusion.
+  - Still unwired and tracked on #710: `include_patterns`, `min_age`, `recursive`.
+
+## [0.36.1] - 2026-10-03
+
+### Upgrade notes
+
+- **If a cycle ever reported success while its manifest upload failed, that dataset is not
+  restorable and the agent will not have retried it.** Before this release a failed manifest
+  PUT was a warning, so the cycle looked successful and the manifest cache recorded the
+  dataset as complete. To check a writer: list `writers/<id>/uploads/<id>/` and confirm a
+  `manifest.json.gz` exists beside the chunks. If one is missing, delete that upload prefix
+  (the chunks are unreachable without it), clear the agent's manifest cache
+  (`~/.cargoship/manifest-cache/` inside the state volume), and let the next cycle
+  re-establish the baseline.
+
+
+### Fixed
+- **A failed manifest upload left uploaded data UNRESTORABLE while reporting success (#704).**
+  The manifest PUT was a printed warning that left `Result.Success` true. Since the manifest
+  cache is written on success, the cache then recorded a dataset whose manifest never
+  reached S3 — so every later cycle reported `no changes` while the chunks already uploaded
+  had no manifest, making them invisible to `restore` and `verify`: billed, unrecoverable,
+  and never retried. Found on a real Synology as 23 chunk objects (2.49 GiB) present,
+  `manifest.json.gz` returning 404, and the next cycle reporting no changes with 26 GB still
+  unprotected behind a healthy heartbeat.
+  - A manifest failure now fails the cycle: `Success = false`, the error is recorded in
+    `Result.Errors`, and the log says plainly that the chunks are not restorable without it.
+    Failing is the recoverable outcome — the next cycle re-uploads.
+  - This closes the gap left by #691's cache guard, which covered chunk failures but not
+    manifest failures, the worse of the two.
+
+## [0.36.0] - 2026-10-03
+
+### Upgrade notes
+
+- **File counts may DROP, and that is a correction, not data loss.** `ScanLocalFiles` now
+  emits only regular files (#693). Symlinks, FIFOs, sockets and device nodes were previously
+  *counted* as work to do but were never archivable — the pipeline has always refused them —
+  so a tree containing them will now report fewer files per cycle. Nothing that was being
+  stored has stopped being stored.
+- **One extra full sync on first run after upgrading, for write-only fleet agents.** The
+  manifest cache now holds the *effective* dataset rather than a single cycle's increment
+  (#691), so `manifestcache.SchemaVersion` is **2** and v1 entries are rejected rather than
+  misread. The next cycle re-establishes the baseline and subsequent cycles are incremental
+  again. No action needed.
+- **A minted bundle now requires one extra deploy step.** `chown 65532:65532 aws-credentials`
+  on the host (keep `0600`) — the agent runs as uid 65532 and could never read an
+  operator-owned `0600` file (#692). The bundle README, the emitted compose file and the NAS
+  guide all state it, and `ghostship run` now fails fast naming the file instead of timing
+  out against EC2 IMDS.
+
+
+### Fixed
+- **Symlinks (and every other irregular entry) were permanently "New" in the delta (#693).**
+  `ScanLocalFiles` walks with `filepath.Walk`, which uses `Lstat` and therefore hands over
+  directories, symlinks, FIFOs, sockets and device nodes. The pipeline skips symlinks in its
+  scanner and rejects every non-regular file at open time, so those entries were counted as
+  work to do, never stored, never present in the resulting manifest — and New again on the
+  next cycle. The delta could not converge and *every* cycle produced an upload; at the 30s
+  interval a real NAS deployment uses, thousands a day with nothing changed. The scan now
+  emits only regular files, which is exactly what the pipeline can archive.
+- **The cycle log reported `bytes=0` after uploading real data (#694).** `Result.TotalBytes`
+  is summed from `job.ArchiveSize`, which only the archiver ever set — so the direct-upload
+  fast path reported zero bytes, making the heartbeat's `bytes` field useless for precisely
+  the small-file workloads that path exists for. It is now set from the bytes each job
+  actually uploaded, counted per file on success so a partial failure cannot claim bytes
+  that never landed.
+- **Incremental sync did not converge: the cycle after any increment re-uploaded the whole
+  dataset (#691).** An incremental manifest lists only **its own increment**, and the delta
+  was computed against that single manifest instead of the chain-resolved dataset — so
+  every file stored by an earlier version looked New again. Readers (`restore`, `verify`)
+  already resolved the chain via `ResolveEffective`/`MergeChain`; the delta was the one
+  place that did not, and that asymmetry was the bug.
+  - On a real Synology this presented as uploads alternating **26 → 0 → 26 → 0** files with
+    the source never changing. Reproducible on the emulator in seconds with
+    `delta_source=s3`, so it affected the ordinary read-capable path too — not just
+    write-only agents, the manifest cache, or NAS deployments.
+  - **Integrity was never at risk**: restoring from a 0-file manifest still returned every
+    file byte-identical, because readers merge the chain. This was a bandwidth, storage and
+    request-count defect.
+  - Fixed in both `ghostship run` and **`cargoship sync`**, which shared the flaw.
+  - For write-only agents the manifest cache now stores the **effective** dataset rather
+    than the per-cycle increment, merged in memory so an agent that cannot read S3 still
+    gets a correct baseline. `manifestcache.SchemaVersion` is **2**; v1 entries are
+    rejected, which costs one full sync and then self-corrects.
+
+### Fixed
+- **A freshly minted bundle could not start an agent: the container cannot read its own
+  credentials (#692).** `ghostship init --mint` writes `aws-credentials` **0600 owned by the
+  operator**, and the emitted compose mounts it into a container running as **uid 65532** —
+  which cannot read it. The AWS SDK then fell through to its last resort and the agent
+  crash-looped reporting an **EC2 IMDS timeout**, an error naming neither the file nor
+  permissions. #668 fixed the credential *path* (`/root` → `/home/cargoship`) but not the
+  *ownership*, so `docker compose up -d` from a bundle had never actually worked. Found on a
+  real Synology on the first deploy cycle.
+  - `ghostship run` now **fails fast** with the path, the file's mode and owner, this
+    process's uid, and the `chown 65532:65532` remedy. A *missing* credentials file stays
+    legitimate (env vars, instance roles, web-identity tokens) — only "present but
+    unreadable" is reported. A bind-mount that silently created a **directory** at the
+    credentials path is reported too, since the SDK's error for that is equally opaque.
+  - The bundle `README.md`, the emitted `compose.yaml`, and the NAS guide all now state the
+    `chown` as a required deploy step, and say to change the owner rather than loosen 0600.
+- **The emitted compose file described the state volume wrongly (#694).** It still said
+  losing it "only costs a re-scan, never data"; since v0.35.0 that volume holds the manifest
+  cache, so on a write-only writer losing it costs a **full re-upload**. `qnap.md` was
+  corrected at the time, but the template an operator actually reads was missed.
+- **NAS guide: Synology deploy commands do not match DSM (#694).** Compose there is a
+  standalone `docker-compose` binary, not a `docker compose` subcommand, and `docker` is not
+  on `PATH` for non-interactive SSH. The guide had claimed Synology was "the same picture"
+  as QNAP.
+
+## [0.35.1] - 2026-10-02
+
+### Fixed
+- **The published install page pinned the previous release (#687 follow-up).** cargoship.app's
+  root docs tree is built from the newest release **tag**, so the v0.35.0 pin fix — which
+  landed on `main` shortly *after* that tag — never reached the published page. Anyone
+  following the copy-pasteable `curl` commands downloaded **v0.34.1**: the one release where
+  a strict write-only fleet agent still re-uploads everything every cycle, so a NAS tester
+  would have hit the exact problem v0.35.0 fixed and reported it as unfixed. Homebrew and
+  `go install` were unaffected. This release exists to republish a correct install page.
+  - The recurrence is now gated rather than remembered: `check-doc-versions` **Check 7**
+    asserts every `releases/download/` URL and archive filename in `install.md` names the
+    current version, and it runs on the release PR — the same PR that bumps `version.txt`.
+    A future release therefore cannot tag with stale pins.
+
+## [0.35.0] - 2026-10-02
+
+### Added
+- **Beta tester brief** (`docs/project/beta-testing.md`) — what is worth exercising, what is
+  already known-rough (so a tester does not rediscover it), and what a useful report
+  contains. Written for someone evaluating CargoShip who did not build it.
+- **Local manifest cache: write-only fleet agents now sync incrementally (#604).** A strict
+  write-only identity has `PutObject` but no `GetObject` on its own data, so it could not
+  read its previous manifest; the delta was computed against nothing, every file was marked
+  new, and each cycle re-uploaded the entire source. Correct, but unusable past a few
+  hundred GB — the documented workaround was to drop `--write-only` and grant read access.
+  CargoShip now records each successful cycle's manifest locally (`~/.cargoship/manifest-cache`,
+  inside the fleet container's `cargoship-state` volume) and diffs against it when S3 cannot
+  be read. On by default; `--no-manifest-cache` disables it and `--manifest-cache-dir` moves it.
+  - **S3 stays authoritative** — the cache is consulted only when the previous manifest
+    cannot be read, and never overrides a readable one. `--force` ignores both, so a full
+    rebuild is always reachable.
+  - **Trusted for 30 days**, because the cache cannot detect that objects it vouches for were
+    deleted or lifecycled; expiry forces a periodic full re-establish.
+  - **Fails closed**: an entry that is corrupt, expired, from another schema, or describing a
+    different destination is refused, and the cycle falls back to a full sync. A needless full
+    upload costs bandwidth; trusting a bad entry would silently skip files.
+  - A cycle's heartbeat now reports `delta_source` (`s3` / `cache` / `none`) so an operator can
+    tell a cycle verified against S3 from one that trusted local state.
+
+### Changed
+- **Documentation accuracy sweep ahead of outside beta testing.**
+  - `docs/project/maturity.md`: the fleet row described the pre-v0.32 ghost-ship design.
+    Split into **Ghostship fleet mode (Beta)** — naming what actually shipped across
+    v0.32.0–v0.34.1 — and **Legacy ghost-ship agents (Removed)**, so "removed in v0.20.0"
+    is no longer attached to a capability that currently ships.
+  - `docs/start/install.md`: the download commands pinned **v0.32.0**, two releases stale,
+    so anyone following the page literally installed an old binary. Now v0.34.1.
+  - `docker/Dockerfile.{ghost-ship,qnap,astrapi}` carry a **LEGACY** header. They build the
+    dormant `cmd/ghost-ship` daemon, not the fleet agent, and sat beside the real
+    `Dockerfile.fleet` with nothing to distinguish them.
+  - `maturity.md` now also states three previously undocumented limits: unnotarized macOS
+    binaries, no fleet recovery-time objective, and `dataset prune` refusing
+    encrypted-manifest datasets.
+
+### Fixed
+- **Bumped the OpenTelemetry otlptrace exporter to v1.46.0 (GO-2026-6505, #649).** govulncheck
+  began reporting the advisory as *reachable* rather than merely present — the exporter was
+  pinned at v1.40.0 while otel core had moved to v1.46.0, and the entry point is
+  `tracing.NewTracerProvider` → `otlptracegrpc.New`. Informational-leak only (exporter config
+  logging may emit endpoint URLs into info logs) and CargoShip's tracing is opt-in, so
+  real-world exposure was low; it is fixed here because it tripped the zero-known-vulnerability
+  gate. The coupled otlptrace family moved together rather than to the minimum patched version.
+- **Fixed a timing-flaky failover test that could block a release (#671).** The experimental
+  `pkg/multiregion` suite set a 100 ms failover budget while the implementation spent ~85 ms of
+  hardcoded sleeps against it, leaving ~15 ms for scheduler jitter — and its immediate path's
+  hardcoded 1 s propagation delay could never fit 100 ms at all. The simulated pauses are now
+  injectable so tests shrink the *work* instead of the *deadline*; margin went from ~15 ms to
+  ~500×, and the suite got faster. Timeout/cancellation tests deliberately keep the production
+  delays, since they need the work to outlast the budget.
+- **`sync --checksum` was inert and is now rejected (#678).** The flag promised SHA-256
+  content comparison — the long help recommended it ("Use --checksum for guaranteed
+  accuracy") with a worked example — but `manifest.hasChanged` accepts `SyncOptions` and
+  never reads `UseChecksum`, so detection was always size + modification time. The case the
+  flag exists for (same size, same mtime, different content) was exactly the case it failed
+  to catch. Setting it is now a usage error naming the issue; `--checksum=false` stays
+  valid, and the help no longer claims content is hashed. An integrity option that silently
+  does nothing manufactures false confidence, so refusing is the honest interim behaviour
+  until it is implemented. Only `sync` exposed it — fleet agents were never affected.
+- **macOS: a downloaded binary is SIGKILLed with no explanation, and installation docs did
+  not say so (#407).** Gatekeeper quarantines un-notarized downloads and kills them with a
+  bare `Killed: 9`. `install.md` now explains the symptom, how to confirm it
+  (`xattr -p com.apple.quarantine`), how to clear it — and that clearing it is exactly what
+  you would do to run a tampered binary, so verify the cosign signature first.
+
+## [0.34.1] - 2026-10-01
+
+### Fixed
+- **A version bump desynced the vendored CLI reference, which wedged the docs site (#674).**
+  v0.34.0 pointed `ghostship init --image` at the newly published GHCR image by making its
+  default embed the binary's version — and cobra prints a flag's default verbatim into
+  `docs/gen/cli`, so from then on *every* version bump left that page stale. The v0.34.0 tag
+  shipped it stale, the "Deploy Documentation" build failed, and because the deploy job is
+  skipped when the build fails, **nothing published**: the site kept serving v0.33.0 content,
+  including an `--image` default (`cargoship:latest`) that exists nowhere. The displayed
+  default is now version-independent; the actual default still pins the emitting binary's
+  version, so bundles stay reproducible.
+- **The CLI-reference drift gate was structurally blind (#674).** It validated only the newest
+  release *tag's* tree, so a desyncing commit passed its own PR and every later push to `main`,
+  surfacing only once a release promoted it to "latest" — at which point the tag is immutable
+  and no commit can fix it. The same check now also runs against `main`, where the failure
+  lands on a commit that can still be corrected. This release exists to move the site's
+  "latest" pointer onto a self-consistent tree.
+
+## [0.34.0] - 2026-10-01
+
+### Added
+- **Published multi-arch container image for the fleet agent (#604 follow-up).** Releases now
+  push `ghcr.io/scttfrdmn/cargoship:<version>` (and `:latest`) as a **linux/amd64 + linux/arm64**
+  manifest list, so one reference resolves on both Intel and ARM NAS hardware. The image runs
+  `cargoship` as a non-root user (uid 65532) and opens no inbound port. This is what
+  `docs/enterprise/qnap.md` and the `ghostship init` bundle now deploy.
+
+### Changed
+- **The QNAP/NAS deployment guide now deploys fleet mode (#604 follow-up).** It previously
+  described the legacy per-file daemon: build `Dockerfile.astrapi` locally, `docker save`,
+  `scp` the tarball to the NAS, `docker load`, and run it against a `ghost_ship.yaml` with
+  long-lived credentials from `~/.aws`. It now pulls the published multi-arch image and walks
+  the real flow — signing key, `ghostship init` bundle, write-only IAM, signed config over S3,
+  read-only data mounts, `fleet status` from the control machine, a restore rehearsal, and the
+  Object Lock backstop. Keeps the NAS-specific knowledge that was still true (Container
+  Station's docker path, exec-format and region traps, credentials at the container user's
+  home) and states up front that the strict write-only policy re-uploads everything each
+  cycle, so multi-TB NAS deployments should use the non-strict policy.
+
+### Fixed
+- **`ghostship init` emitted a compose file that could not start (#604 follow-up).** It
+  defaulted to `cargoship:latest` — an image published nowhere — so `docker compose up -d`
+  failed on the pull; and it mounted credentials/state under `/root`, which the non-root image
+  cannot read or write, so even a hand-built image would have started with no AWS credentials.
+  The default is now the published GHCR image pinned to the emitting binary's version, and the
+  mounts target the image's real `HOME` (`/home/cargoship`). A commented read-only data mount
+  was added as the NAS operator's remaining TODO.
+- **`ghostship config-keygen --out DIR` failed when DIR did not exist**, which is step one of
+  the documented fleet setup, so the first command a new operator ran did not work on a fresh
+  machine. It now creates the directory, as `ghostship init --out` always did.
+
 ## [0.33.0] - 2026-09-20
 
 ### Added

@@ -401,8 +401,11 @@ func TestExtractor_ExtractGzip(t *testing.T) {
 	if stats.ErrorCount != 0 {
 		t.Errorf("Expected 0 errors, got %d", stats.ErrorCount)
 	}
-	if stats.Duration == 0 {
-		t.Error("Expected non-zero duration")
+	// Not asserted non-zero: three ~9-byte files extract inside a single clock
+	// tick, and on Windows (~15ms wall-clock granularity) the measured duration is
+	// legitimately exactly 0. Negative would be a real defect; zero is not.
+	if stats.Duration < 0 {
+		t.Errorf("Expected a non-negative duration, got %v", stats.Duration)
 	}
 
 	// Verify files exist and have correct content
@@ -775,8 +778,20 @@ func TestExtractor_ProgressCallback(t *testing.T) {
 		if progressUpdates[i].CurrentFile == "" {
 			t.Errorf("Progress update %d: expected current file name, got empty", i)
 		}
-		if progressUpdates[i].ElapsedTime == 0 {
-			t.Errorf("Progress update %d: expected non-zero elapsed time", i)
+		// NOT asserted non-zero. Extracting three ~9-byte files finishes well inside
+		// one clock tick, and ElapsedTime is derived from a wall-clock difference, so
+		// on Windows (~15ms granularity) both reads land in the same tick and the
+		// elapsed time is legitimately exactly 0. That made this fail on
+		// windows-latest while passing on Linux and macOS — a race against clock
+		// resolution, not a progress-reporting defect. What is actually worth
+		// asserting is that the field is populated and sane: never negative, and
+		// never going backwards between updates.
+		if progressUpdates[i].ElapsedTime < 0 {
+			t.Errorf("Progress update %d: negative elapsed time %v", i, progressUpdates[i].ElapsedTime)
+		}
+		if i > 0 && progressUpdates[i].ElapsedTime < progressUpdates[i-1].ElapsedTime {
+			t.Errorf("Progress update %d: elapsed time went backwards (%v after %v)",
+				i, progressUpdates[i].ElapsedTime, progressUpdates[i-1].ElapsedTime)
 		}
 	}
 }

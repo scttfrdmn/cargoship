@@ -45,7 +45,8 @@ it (and CI enforces those citations resolve) on the
 | **DVC integration** | **Beta** | The Go `dvc` commands and Python plugin work; command surface and metadata may change between minor releases (changes are documented per release). |
 | **Magika AI file detection** | **Beta / opt-in** | Requires `pip install magika`; degrades gracefully when absent. |
 | **Multi-region** | **Experimental** | A library capability in `pkg/multiregion`, **not** wired into `cargoship upload` today — see the [multi-region note](/guides/features/multi-region). Use `--region` + sharding for in-region parallelism. |
-| **Ghost-ship agents** | **Beta** | Functional; configuration and wire formats may change. The central controller, `cargoship-launch` agent and `webui` were **removed in v0.20.0** — see [Distributed / Enterprise](/enterprise/). |
+| **Ghostship fleet mode** | **Beta** | Unattended write-only agents with per-writer isolation, signed config over S3, heartbeats, budget caps and an immutability audit — shipped across v0.32.0–v0.35.0 ([#604](https://github.com/scttfrdmn/cargoship/issues/604)). Functional and exercised against real S3 and real IAM, but the config schema and the `fleet`/`ghostship` command surface may still change between minor releases. See [fleet mode](/enterprise/ghost-ship) and the [NAS guide](/enterprise/qnap). |
+| **Legacy ghost-ship agents** | **Removed** | The central controller, `cargoship-launch` agent and `webui` were **removed in v0.20.0** ([#340](https://github.com/scttfrdmn/cargoship/issues/340)); nothing accepts remote commands. The current fleet mode is outbound-only and unrelated to that design — see [Distributed / Enterprise](/enterprise/). |
 | **Public Go API** | **Mixed** | Stability is per-package — some packages are stable, others beta. See [API stability](/project/versioning#stability-levels-for-the-go-library). |
 
 ## Guarantees
@@ -64,7 +65,15 @@ it (and CI enforces those citations resolve) on the
 
 - **No support SLA.** Issues and vulnerability reports are handled best-effort by
   a small team — there is no contractual response or resolution time.
-- **No recovery-time objective** for the ghost-ship agents.
+- **No recovery-time objective** for fleet agents. A writer that stops is reported as
+  stale by `cargoship fleet monitor`, but nothing restarts it for you.
+- **macOS binaries are not notarized** ([#407](https://github.com/scttfrdmn/cargoship/issues/407)),
+  so a downloaded release is quarantined by Gatekeeper — see
+  [installation](/start/install).
+- **`dataset prune` cannot prune encrypted-manifest datasets.** It needs to read the
+  manifest chain to decide what is safe to delete, which it cannot do for
+  `--encrypt-manifest` datasets, so those grow until pruned by hand or by an S3
+  lifecycle rule.
 - **Pre-1.0 API churn.** Beta and experimental components may change shape between
   minor releases; pin a version if you need stability.
 

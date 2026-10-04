@@ -31,6 +31,14 @@ type SourceStatus struct {
 	Bytes       int64     `json:"bytes"`
 	SyncType    string    `json:"sync_type,omitempty"`
 	NoChanges   bool      `json:"no_changes"`
+
+	// DeltaSource records where the previous manifest for this cycle's delta came
+	// from: "s3" (authoritative), "cache" (the local manifest cache, used because the
+	// agent could not read S3 — normal for a write-only identity), or "none" (no
+	// previous manifest, so a full sync). An operator needs this to tell an
+	// incremental cycle that was verified against S3 from one that trusted local
+	// state, and to notice a writer silently stuck on "none" re-uploading everything.
+	DeltaSource string `json:"delta_source,omitempty"`
 }
 
 // WriterStatus is a ghostship writer's heartbeat, PUT to writers/<id>/status.json each

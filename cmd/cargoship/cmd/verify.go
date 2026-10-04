@@ -212,6 +212,7 @@ Exit Codes:
 				// not just that the manifest is internally consistent.
 				if deep {
 					if err := runDeepVerify(ctx, s3Client, m, bucket, verbose); err != nil {
+
 						// runDeepVerify prints its own per-file diagnostics, so
 						// report failure by exit code alone. Returning instead of
 						// calling os.Exit lets PersistentPostRun close the CPU
@@ -221,8 +222,13 @@ Exit Codes:
 					return nil
 				}
 
-				fmt.Printf("✅ All %s files verified successfully\n", humanize.Comma(m.TotalFiles))
-				fmt.Printf("   💡 Run with --deep to re-download and checksum the stored data\n")
+				// "verified" would overstate this: nothing was downloaded or hashed
+				// here. This path checks that the manifest is internally consistent
+				// and describes the files it claims; it does not touch the stored
+				// bytes. Saying "verified" here and then recommending --deep (which
+				// until #713 failed on healthy data) was actively misleading.
+				fmt.Printf("✅ Manifest is consistent and describes %s files\n", humanize.Comma(m.TotalFiles))
+				fmt.Printf("   💡 Run with --deep to download the stored data and check it against the manifest's checksums\n")
 				return nil
 			}
 
@@ -283,6 +289,23 @@ func printValidationFailure(result *manifest.ValidationResult, verbose bool) {
 	fmt.Println()
 }
 
+// deepVerifyPassed is the overall verdict: both phases must be clean, except
+// that the chunk phase is SKIPPED when the manifest records no chunks (#724).
+//
+// Extracted so the policy is testable. Inline, it was `chunksPassed &&
+// filesPassed`, and because DeepVerifyResult.Passed() requires TotalChunks > 0 to
+// avoid a vacuous pass, a direct-upload dataset — which legitimately has no
+// chunks — could never pass no matter how cleanly its files verified.
+//
+// The vacuous-pass concern still holds on the file side: FilesVerifyResult.Passed()
+// requires TotalFiles > 0, so a manifest describing nothing cannot pass here either.
+func deepVerifyPassed(chunks *manifest.DeepVerifyResult, files *manifest.FilesVerifyResult) bool {
+	if !files.Passed() {
+		return false
+	}
+	return chunks.NotApplicable() || chunks.Passed()
+}
+
 // runDeepVerify re-downloads each chunk object, recomputes its checksum, and
 // compares it to the manifest. It prints a per-chunk report and returns an
 // error if any chunk is corrupted, missing, or unverifiable (#271).
@@ -327,10 +350,15 @@ func runDeepVerify(ctx context.Context, s3Client manifest.S3Downloader, m *manif
 	fmt.Printf("📊 Deep Verify: %d OK, %d corrupted, %d missing, %d unverifiable (of %d chunks)\n",
 		result.OK, result.Mismatched, result.Missing, result.Unverifiable, result.TotalChunks)
 
-	chunksPassed := result.Passed()
-	if chunksPassed {
+	// #724: a direct-upload dataset records no chunks, so there is nothing to verify
+	// at the chunk level. That is "not applicable", not a failure — reporting FAIL
+	// here condemned datasets whose files all verified.
+	switch {
+	case result.NotApplicable():
+		fmt.Printf("⊘ Chunk objects: not applicable — this dataset stores one object per file (direct upload), so integrity is established per file below\n")
+	case result.Passed():
 		fmt.Printf("✅ Chunk objects PASS — all %d chunk objects match the manifest\n", result.TotalChunks)
-	} else {
+	default:
 		fmt.Printf("❌ Chunk verification FAIL\n")
 	}
 
@@ -347,11 +375,30 @@ func runDeepVerify(ctx context.Context, s3Client manifest.S3Downloader, m *manif
 		for _, f := range fileRes.Files {
 			switch f.Status {
 			case manifest.ChunkVerifyMismatch:
-				fmt.Printf("   ✗ %s CORRUPTED: expected %s, got %s\n", f.Path, f.Expected, f.Actual)
+				if f.Detail != "" {
+					fmt.Printf("   ✗ %s CORRUPTED: %s\n", f.Path, f.Detail)
+				} else {
+					fmt.Printf("   ✗ %s CORRUPTED: expected %s, got %s\n", f.Path, f.Expected, f.Actual)
+				}
 			case manifest.ChunkVerifyMissing:
-				fmt.Printf("   ✗ %s MISSING from its chunk\n", f.Path)
+				// #724: say WHICH kind of absence. "MISSING from its chunk" was printed
+				// for direct-mode files that were present all along, because verify
+				// resolved them only through chunks.
+				if f.Detail != "" {
+					fmt.Printf("   ✗ %s MISSING: %s\n", f.Path, f.Detail)
+				} else {
+					fmt.Printf("   ✗ %s MISSING from its chunk\n", f.Path)
+				}
 			case manifest.ChunkVerifyUnverifiable:
-				fmt.Printf("   ⚠ %s UNVERIFIABLE: no checksum recorded\n", f.Path)
+				if f.Detail != "" {
+					fmt.Printf("   ⚠ %s UNVERIFIABLE: %s\n", f.Path, f.Detail)
+				} else {
+					fmt.Printf("   ⚠ %s UNVERIFIABLE: no per-file checksum, and its chunk's bytes could not be proven either\n", f.Path)
+				}
+			case manifest.ChunkVerifyCoveredByChunk:
+				if verbose {
+					fmt.Printf("   ✓ %s (via chunk %d digest)\n", f.Path, f.ChunkID)
+				}
 			case manifest.ChunkVerifyOK:
 				if verbose {
 					fmt.Printf("   ✓ %s\n", f.Path)
@@ -361,13 +408,27 @@ func runDeepVerify(ctx context.Context, s3Client manifest.S3Downloader, m *manif
 		fmt.Println()
 	}
 
-	fmt.Printf("📊 File Verify: %d OK, %d corrupted, %d missing, %d unverifiable (of %d files)\n",
-		fileRes.OK, fileRes.Mismatched, fileRes.Missing, fileRes.Unverifiable, fileRes.TotalFiles)
+	fmt.Printf("📊 File Verify: %d OK, %d covered by chunk digest, %d corrupted, %d missing, %d unverifiable (of %d files)\n",
+		fileRes.OK, fileRes.CoveredByChunk, fileRes.Mismatched, fileRes.Missing,
+		fileRes.Unverifiable, fileRes.TotalFiles)
 
-	filesPassed := fileRes.Passed()
-	if chunksPassed && filesPassed {
-		fmt.Printf("✅ Deep verification PASS — %d chunks and %d files match the manifest\n",
-			result.TotalChunks, fileRes.TotalFiles)
+	if deepVerifyPassed(result, fileRes) {
+		// Be explicit about the granularity actually proven. Uploads since #548
+		// record no per-file checksum on framed chunks, so most datasets are proven
+		// per chunk — a full proof of the stored bytes, but a corrupt chunk
+		// implicates all of its files rather than naming one. Saying "files match
+		// the manifest" without that distinction would overstate it (#713).
+		if result.NotApplicable() {
+			// No chunks exist, so saying "N chunks ... match" would be nonsense.
+			fmt.Printf("✅ Deep verification PASS — %d files match the manifest, each verified by its own checksum against its own stored object\n",
+				fileRes.TotalFiles)
+		} else if fileRes.FullyVerifiedPerFile() {
+			fmt.Printf("✅ Deep verification PASS — %d chunks and %d files match the manifest, every file by its own checksum\n",
+				result.TotalChunks, fileRes.TotalFiles)
+		} else {
+			fmt.Printf("✅ Deep verification PASS — %d chunks and %d files match the manifest (%d proven by their chunk's digest: the bytes are confirmed, but corruption localises to a chunk rather than a single file)\n",
+				result.TotalChunks, fileRes.TotalFiles, fileRes.CoveredByChunk)
+		}
 		return nil
 	}
 

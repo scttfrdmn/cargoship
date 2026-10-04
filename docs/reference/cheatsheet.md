@@ -31,7 +31,7 @@ cargoship estimate ./my-data --storage-class GLACIER_IR --show-comparison
 ```bash
 cargoship sync ./my-data s3://my-bucket/backups/
 cargoship sync ./my-data s3://my-bucket/backups/ --dry-run
-cargoship sync ./my-data s3://my-bucket/backups/ --checksum --track-deletes
+cargoship sync ./my-data s3://my-bucket/backups/ --track-deletes
 ```
 
 ## Inspect

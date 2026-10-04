@@ -32,6 +32,23 @@ const (
 	// ChunkVerifyUnverifiable means the manifest recorded no checksum for this
 	// chunk, so its integrity cannot be confirmed.
 	ChunkVerifyUnverifiable ChunkVerifyStatus = "unverifiable"
+	// ChunkVerifyCoveredByChunk is a file-level status: the file carries no
+	// per-file checksum of its own, but the chunk object holding it hashed
+	// byte-identical to the digest the manifest recorded for that chunk, so the
+	// file's stored bytes ARE proven (#713).
+	//
+	// This exists because #548 stopped recording per-file SHA-256 on framed
+	// chunks for upload throughput, leaving FileEntry.Checksum empty on every
+	// dataset written since v0.27.0. Treating that as Unverifiable made
+	// `verify --deep` fail on every healthy backup, which is worse than having no
+	// deep verify at all: it trains people to ignore the integrity command.
+	//
+	// It is a pass, not a silent downgrade. A matching chunk digest proves every
+	// byte of that chunk is as recorded, which includes each file's bytes within
+	// it; what is weaker is only the GRANULARITY OF LOCALISATION — a corrupt
+	// chunk implicates all its files rather than naming one. Reported under its
+	// own name so that distinction stays visible instead of being folded into OK.
+	ChunkVerifyCoveredByChunk ChunkVerifyStatus = "covered-by-chunk"
 )
 
 // ChunkVerifyResult is the per-chunk outcome of a deep verification.
@@ -63,6 +80,17 @@ type DeepVerifyResult struct {
 func (r *DeepVerifyResult) Passed() bool {
 	return r.Mismatched == 0 && r.Missing == 0 && r.Unverifiable == 0 && r.TotalChunks > 0
 }
+
+// NotApplicable reports that there was no chunk-level verification to perform
+// because the manifest records no chunks — the direct-upload layout, where every
+// file is its own S3 object (#724).
+//
+// This is distinct from failing. Passed() requires TotalChunks > 0 so that an
+// empty manifest cannot pass vacuously, which is correct; but applying that to a
+// chunk-less manifest reported "Chunk verification FAIL" for a dataset that had
+// nothing to verify at the chunk level and whose files verified perfectly. The
+// caller should skip the chunk phase and let the file-level result decide.
+func (r *DeepVerifyResult) NotApplicable() bool { return r.TotalChunks == 0 }
 
 // DeepVerifier performs data-level integrity verification by re-downloading the
 // stored chunk objects and recomputing their checksums against the manifest
@@ -255,6 +283,54 @@ func (dv *DeepVerifier) objectKey(chunkKey string) string {
 // (CSH-SEC-005).
 func (dv *DeepVerifier) verifiableWithSHA256() bool {
 	return dv.manifest.ChecksumAlgorithm == ChecksumAlgorithmSHA256
+}
+
+// chunkBytesMatchManifest reports whether objectBytes are provably the bytes the
+// manifest recorded for this chunk, using digests already in the manifest and the
+// object this caller has in hand (no extra download).
+//
+// Used to decide whether a file lacking its own checksum is nonetheless covered
+// (#713). The bar is deliberately the same one verifyChunk applies, so a file is
+// never reported covered by a chunk that chunk-level verification would reject:
+//
+//   - a recorded whole-object checksum must match the object's hash, OR
+//   - the chunk must carry a frame index in which EVERY frame has a checksum,
+//     the frames must tile the object, and each frame's bytes must hash to its
+//     recorded checksum.
+//
+// A frame index with any checksum-less frame is rejected: those bytes are
+// unverified, so files sitting in them are not covered. Frame-level coverage is
+// checked up front rather than read off the streaming verifier afterwards,
+// because frameStreamVerifier.hashing advances with each frame and ends up
+// describing the frame AFTER the last one consumed.
+func (dv *DeepVerifier) chunkBytesMatchManifest(chunk *ChunkEntry, objectBytes []byte) bool {
+	// An unknown or tampered algorithm cannot be recomputed, so nothing here
+	// proves anything (CSH-SEC-005).
+	if !dv.verifiableWithSHA256() {
+		return false
+	}
+	if chunk.Checksum != "" {
+		sum := sha256.Sum256(objectBytes)
+		return hex.EncodeToString(sum[:]) == chunk.Checksum
+	}
+	if len(chunk.Frames) == 0 {
+		return false
+	}
+	for i := range chunk.Frames {
+		if chunk.Frames[i].Checksum == "" {
+			return false
+		}
+	}
+	if err := validateFrameTiling(chunk.Frames, int64(len(objectBytes))); err != nil {
+		return false
+	}
+	fv := newFrameStreamVerifier(chunk.Frames, true)
+	if _, err := fv.Write(objectBytes); err != nil {
+		return false
+	}
+	// idx advances only on a frame that passed both magic and checksum, so a
+	// fully-advanced index with no error means every frame was proven.
+	return fv.err == nil && fv.idx == len(chunk.Frames)
 }
 
 // verifyChunk fetches and hashes a single chunk object.
@@ -463,22 +539,47 @@ type FileVerifyResult struct {
 	Status   ChunkVerifyStatus `json:"status"` // reuses ok/mismatch/missing/unverifiable
 	Expected string            `json:"expected,omitempty"`
 	Actual   string            `json:"actual,omitempty"`
+	// Detail explains a non-OK status in words. Needed because the same status can
+	// arise for materially different reasons — a file can be unverifiable because
+	// its chunk recorded no digest, or because it is a standalone direct-mode
+	// object uploaded before per-file checksums were recorded (#724/#725) — and
+	// "unverifiable" alone does not tell an operator which, or whether the bytes
+	// are even present.
+	Detail string `json:"detail,omitempty"`
 }
 
 // FileVerifyResult aggregate.
 type FilesVerifyResult struct {
-	Algorithm    string             `json:"algorithm"`
-	TotalFiles   int                `json:"total_files"`
-	OK           int                `json:"ok"`
-	Mismatched   int                `json:"mismatched"`
-	Missing      int                `json:"missing"`
-	Unverifiable int                `json:"unverifiable"`
-	Files        []FileVerifyResult `json:"files"`
+	Algorithm    string `json:"algorithm"`
+	TotalFiles   int    `json:"total_files"`
+	OK           int    `json:"ok"`
+	Mismatched   int    `json:"mismatched"`
+	Missing      int    `json:"missing"`
+	Unverifiable int    `json:"unverifiable"`
+	// CoveredByChunk counts files proven via their chunk's digest because they
+	// carry no per-file checksum (#713). A pass, at chunk granularity.
+	CoveredByChunk int                `json:"covered_by_chunk"`
+	Files          []FileVerifyResult `json:"files"`
 }
 
-// Passed reports a clean file-level pass: every file hashed and matched.
+// Passed reports a clean file-level pass: every file's stored bytes were proven,
+// either by its own checksum (OK) or by its chunk's digest (CoveredByChunk, #713).
+//
+// CoveredByChunk counts as a pass because a matching chunk digest proves the
+// bytes of every file in that chunk. Excluding it would fail every dataset
+// written since #548 stopped recording per-file checksums — which is exactly the
+// bug this replaced. Unverifiable still fails: that is the case where nothing
+// vouches for the bytes at all.
 func (r *FilesVerifyResult) Passed() bool {
 	return r.Mismatched == 0 && r.Missing == 0 && r.Unverifiable == 0 && r.TotalFiles > 0
+}
+
+// FullyVerifiedPerFile reports whether every file was proven by its OWN
+// recorded checksum, with nothing relying on chunk-granularity coverage. Lets a
+// caller distinguish "proven per file" from "proven per chunk" without
+// re-deriving it from the counters.
+func (r *FilesVerifyResult) FullyVerifiedPerFile() bool {
+	return r.Passed() && r.CoveredByChunk == 0
 }
 
 // tarNameToFileKey maps a tar entry name back to the key used in the manifest's
@@ -499,7 +600,13 @@ func tarNameToFileKey(tarName string) (path string, partIndex int, isPart bool) 
 // content SHA-256, and compares to FileEntry.Checksum (#271). This is the
 // end-to-end source->restore integrity check: it proves each restored file's
 // bytes match what was recorded at upload, not merely that the chunk object is
-// intact. Files whose FileEntry carries no checksum are reported unverifiable.
+// intact.
+//
+// A file whose FileEntry carries no checksum is reported CoveredByChunk when its
+// chunk hashed byte-identical to the manifest's digest for that chunk, and only
+// Unverifiable when nothing vouches for the bytes (#713). Since #548 stopped
+// recording per-file checksums on framed chunks, the covered case is the norm
+// rather than the exception.
 func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, error) {
 	result := &FilesVerifyResult{Algorithm: dv.manifest.ChecksumAlgorithm}
 
@@ -545,6 +652,31 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 		}
 		chunk := chunkByKey[key]
 		if chunk == nil {
+			// #724: no chunk owns this key, so the file IS the object (direct-upload
+			// layout). This used to `continue`, which left the file unseen and the
+			// closing sweep reported it MISSING — data loss announced for data that
+			// was present and restorable.
+			for i := range dv.manifest.Files {
+				f := &dv.manifest.Files[i]
+				if f.S3Key != key || f.IsDuplicate {
+					continue
+				}
+				fr := dv.verifyStandaloneObject(ctx, f)
+				seen[fileKey{f.Path, f.PartIndex}] = true
+				switch fr.Status {
+				case ChunkVerifyOK:
+					result.OK++
+				case ChunkVerifyMismatch:
+					result.Mismatched++
+				case ChunkVerifyMissing:
+					result.Missing++
+				case ChunkVerifyUnverifiable:
+					result.Unverifiable++
+				case ChunkVerifyCoveredByChunk:
+					result.CoveredByChunk++
+				}
+				result.Files = append(result.Files, fr)
+			}
 			continue
 		}
 		fileResults, err := dv.verifyChunkFiles(ctx, chunk, expected, offsets, seen)
@@ -568,6 +700,8 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 				result.Mismatched++
 			case ChunkVerifyUnverifiable:
 				result.Unverifiable++
+			case ChunkVerifyCoveredByChunk:
+				result.CoveredByChunk++
 			}
 			result.Files = append(result.Files, fr)
 		}
@@ -588,6 +722,80 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 	}
 
 	return result, nil
+}
+
+// verifyStandaloneObject verifies a file stored as its OWN S3 object rather than
+// inside a chunk — the direct-upload ("fast path") layout, where the manifest has
+// total_chunks=0 and each FileEntry.S3Key names a distinct object (#724).
+//
+// Before this existed, VerifyFiles resolved files only through chunkByKey, so a
+// chunk-less manifest matched nothing, no tar was ever walked, and the final
+// "never seen in its chunk" sweep reported every file MISSING — announcing data
+// loss for data that restored byte-identically. That is the worst available wrong
+// answer from an integrity command, and it fired on the small-file workload this
+// project is measured fastest at.
+//
+// Streams rather than buffers: a direct-mode object is usually small, but nothing
+// guarantees it, and the chunked path already learned to stream (verifyChunk).
+func (dv *DeepVerifier) verifyStandaloneObject(ctx context.Context, f *FileEntry) FileVerifyResult {
+	fr := FileVerifyResult{Path: f.Path, ChunkID: f.ChunkID, Expected: f.Checksum}
+
+	out, err := dv.s3Client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(dv.objectBucket()),
+		Key:    aws.String(dv.objectKey(f.S3Key)),
+	})
+	if err != nil {
+		fr.Status = ChunkVerifyMissing
+		fr.Detail = fmt.Sprintf("object %s could not be fetched: %v", f.S3Key, err)
+		return fr
+	}
+	defer func() { _ = out.Body.Close() }()
+
+	limit := objectReadLimit(f.Size)
+	if cErr := checkContentLength(out.ContentLength, limit, "object "+f.S3Key); cErr != nil {
+		fr.Status = ChunkVerifyMismatch
+		fr.Detail = cErr.Error()
+		return fr
+	}
+
+	h := sha256.New()
+	n, err := io.Copy(h, io.LimitReader(out.Body, limit))
+	if err != nil {
+		fr.Status = ChunkVerifyMissing
+		fr.Detail = fmt.Sprintf("object %s could not be read: %v", f.S3Key, err)
+		return fr
+	}
+	fr.Actual = hex.EncodeToString(h.Sum(nil))
+
+	// A size contradiction is detectable even with no checksum recorded, and it
+	// means the stored object disagrees with the manifest — report it rather than
+	// folding it into "unverifiable".
+	if f.Size > 0 && n != f.Size {
+		fr.Status = ChunkVerifyMismatch
+		fr.Detail = fmt.Sprintf("object is %d bytes, manifest records %d", n, f.Size)
+		return fr
+	}
+
+	switch {
+	case f.Checksum == "":
+		// Honestly unverifiable, NOT a pass: nothing recorded vouches for these
+		// bytes. Unlike the chunked case (#713) there is no chunk digest to fall
+		// back on. The detail says what IS established so this is not mistaken for
+		// the object being absent.
+		fr.Status = ChunkVerifyUnverifiable
+		fr.Detail = fmt.Sprintf("object is present and %d bytes as recorded, but the manifest "+
+			"stores no per-file checksum for it, so its contents cannot be confirmed "+
+			"(uploads before issue #725 recorded none on this path)", n)
+	case !dv.verifiableWithSHA256():
+		fr.Status = ChunkVerifyUnverifiable
+		fr.Detail = fmt.Sprintf("checksum algorithm %q cannot be recomputed", dv.manifest.ChecksumAlgorithm)
+	case fr.Actual == f.Checksum:
+		fr.Status = ChunkVerifyOK
+	default:
+		fr.Status = ChunkVerifyMismatch
+		fr.Detail = "stored bytes do not match the per-file checksum recorded at upload"
+	}
+	return fr
 }
 
 // chunkIdent is a chunk's unique identity: (ShardID, ID). Chunk IDs repeat
@@ -625,6 +833,10 @@ func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry,
 		return nil, fmt.Errorf("read chunk object: %w", err)
 	}
 	body := bytes.NewReader(objectBytes)
+
+	// #713: decide once, from the bytes already in hand, whether this chunk is
+	// provably intact. Files with no per-file checksum are covered by it.
+	chunkCovered := dv.chunkBytesMatchManifest(chunk, objectBytes)
 
 	// #452: decode by the chunk's key extension, not the manifest's top-level
 	// compression_type — a mixed upload holds both .tar.zst and plain .tar chunks.
@@ -703,6 +915,11 @@ func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry,
 
 		fr := FileVerifyResult{Path: path, ChunkID: chunk.ID, Expected: exp, Actual: actual}
 		switch {
+		case exp == "" && chunkCovered:
+			// #713: no per-file checksum was recorded (the #548 framed-chunk case),
+			// but this chunk's bytes matched the digest the manifest recorded for
+			// it, which proves this file's bytes too.
+			fr.Status = ChunkVerifyCoveredByChunk
 		case exp == "" || !dv.verifiableWithSHA256():
 			fr.Status = ChunkVerifyUnverifiable // CSH-SEC-005: unrecomputable algorithm is not a pass
 		case actual == exp:
