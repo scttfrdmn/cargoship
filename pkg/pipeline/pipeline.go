@@ -477,6 +477,7 @@ func buildScannerConfig(cfg *PipelineConfig, rootPath string) *ScannerConfig {
 		RootPath:                   rootPath,
 		Workers:                    cfg.ScannerWorkers,
 		IncludeOnlyFiles:           cfg.IncludeOnlyFiles,              // Issue #148: Incremental sync file filtering
+		ExcludePatterns:            cfg.ExcludePatterns,               // #710: operator exclusions from the signed config
 		UseCompressedAwareChunking: cfg.EnableCompressedAwareChunking, // Phase 3.3
 		ChunkTargetSizeMB:          cfg.ForceChunkSizeMB,              // Phase 3.3
 		ChunkingConfig:             cfg.ChunkingConfig,                // Phase 5: Pass chunking config

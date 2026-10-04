@@ -33,10 +33,14 @@ type syncRunParams struct {
 	compressionLevel int // 0 = content-aware per-chunk selection
 	useChecksum      bool
 	trackDeletes     bool
-	force            bool
-	dryRun           bool
-	projectID        string        // #629: cost/cap attribution key (ghostship: the writer id)
-	costMgr          *cost.Manager // #629: pre-write cap gate; nil = enforcement off
+	// #710: patterns from the signed config's watch_paths[].exclude_patterns. Matched
+	// per path segment relative to the source, so a directory pattern excludes its
+	// whole subtree.
+	excludePatterns []string
+	force           bool
+	dryRun          bool
+	projectID       string        // #629: cost/cap attribution key (ghostship: the writer id)
+	costMgr         *cost.Manager // #629: pre-write cap gate; nil = enforcement off
 
 	// P1: local manifest cache. A write-only identity cannot GET its own previous
 	// manifest, so without this the delta is always computed against nil and every
@@ -148,6 +152,7 @@ func runOneSync(ctx context.Context, p syncRunParams) (*syncRunResult, error) {
 		compressionLevel: p.compressionLevel,
 		sourcePath:       p.sourcePath,
 		includeFiles:     includeFiles,
+		excludePatterns:  p.excludePatterns,
 		syncType:         syncType,
 		previousUploadID: previousUploadID,
 		deletedPaths:     delta.Deleted,

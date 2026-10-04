@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`exclude_patterns` in a signed fleet config is now honoured, and can exclude a whole
+  subtree (#710).** The field was accepted by the config, validated by
+  `ghostship validate-config`, signed, uploaded — and then silently ignored, so an operator
+  could sign exclusions and the agent would back everything up anyway. An inert field on an
+  artifact the operator explicitly signs is the worst version of that failure.
+  - It is now wired from `watch_paths[].exclude_patterns` through to the scanner.
+  - Matching changed from **basename-only** to the **relative path and every path
+    segment**, which is what makes subtree exclusion expressible at all. Previously
+    `#recycle` matched the directory entry while every file inside it (basename
+    `invoice.pdf`) was archived regardless. Nothing in the tree set `ExcludePatterns`
+    before, so no existing behaviour changes.
+  - Patterns use `filepath.Match` syntax (`*`, `?`, `[...]`), are written with forward
+    slashes, and a trailing `/` is accepted. A pattern containing a separator matches the
+    relative path and its subtree; one without matches any single segment. `**` is not
+    supported — segment matching already covers subtree exclusion.
+  - Still unwired and tracked on #710: `include_patterns`, `min_age`, `recursive`.
+
 ## [0.36.1] - 2026-10-03
 
 ### Upgrade notes

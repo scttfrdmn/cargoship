@@ -874,3 +874,82 @@ func TestGhostshipRun_IncrementalConverges(t *testing.T) {
 			"(the delta is not converging — it re-uploaded the dataset)", got)
 	}
 }
+
+// TestGhostshipRun_ConfigExcludePatterns proves the signed config's
+// watch_paths[].exclude_patterns is actually HONOURED (#710).
+//
+// It used to be accepted, validated by `ghostship validate-config`, signed, uploaded —
+// and then silently ignored by the agent, which backed everything up anyway. An inert
+// field on an artifact the operator explicitly signs is the worst version of that bug.
+//
+// The corpus mirrors the real case that found it: a directory to exclude wholesale
+// (#recycle, 20 GB of 26 GB on the NAS), a secrets directory that must never reach an
+// archive (.aws), nested metadata dirs (@eaDir), and a basename glob (*.tmp).
+func TestGhostshipRun_ConfigExcludePatterns(t *testing.T) {
+	bucket := "gs-exclude"
+	if err := createBucket(substrateURL, bucket); err != nil {
+		t.Fatalf("create bucket: %v", err)
+	}
+	src := t.TempDir()
+
+	// writeFile does not create parents.
+	for _, d := range []string{"work", "#recycle", filepath.Join("#recycle", "deep"), ".aws", filepath.Join("work", "@eaDir")} {
+		if err := os.MkdirAll(filepath.Join(src, d), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+
+	// Kept.
+	writeFile(t, filepath.Join(src, "keep.txt"), "keep me")
+	writeFile(t, filepath.Join(src, "work", "report.pdf"), "a report")
+	// Excluded by a directory pattern, including nested content.
+	writeFile(t, filepath.Join(src, "#recycle", "deleted.pdf"), "deleted")
+	writeFile(t, filepath.Join(src, "#recycle", "deep", "older.pdf"), "older")
+	// Excluded because secrets must never be archived.
+	writeFile(t, filepath.Join(src, ".aws", "credentials"), "[default]\nsecret")
+	// Excluded by a nested metadata-dir pattern.
+	writeFile(t, filepath.Join(src, "work", "@eaDir", "thumb.jpg"), "thumb")
+	// Excluded by a basename glob.
+	writeFile(t, filepath.Join(src, "work", "scratch.tmp"), "scratch")
+
+	box := filepath.Join(t.TempDir(), "box.yaml")
+	writeFile(t, box, fmt.Sprintf(`id: excl-box
+writer_id: excl-box
+version: 1
+s3_config:
+  bucket: %s
+watch_paths:
+  - path: %s
+    exclude_patterns:
+      - "#recycle"
+      - ".aws"
+      - "@eaDir"
+      - "*.tmp"
+scan_interval: 1h
+`, bucket, src))
+
+	runCargoship(t, "ghostship", "run", "--config", box, "--once", "--region", "us-east-1")
+
+	client := e2eS3Client(t)
+	ids := uploadIDsUnder(t, client, bucket, "writers/excl-box")
+	if len(ids) != 1 {
+		t.Fatalf("want 1 upload, got %d: %v", len(ids), ids)
+	}
+
+	paths := manifestFilePaths(t, bucket,
+		fmt.Sprintf("writers/excl-box/uploads/%s/manifest.json.gz", ids[0]))
+	joined := strings.Join(paths, "\n")
+
+	for _, want := range []string{"keep.txt", "report.pdf"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("%q should have been backed up; manifest had:\n%s", want, joined)
+		}
+	}
+	// Each of these is a different exclusion shape, so they are asserted separately
+	// rather than as one blob — a single pattern working is not evidence the others do.
+	for _, unwanted := range []string{"#recycle", "deleted.pdf", "older.pdf", "credentials", "@eaDir", "thumb.jpg", "scratch.tmp"} {
+		if strings.Contains(joined, unwanted) {
+			t.Errorf("%q was archived despite exclude_patterns; manifest had:\n%s", unwanted, joined)
+		}
+	}
+}

@@ -363,6 +363,7 @@ type syncPipelineParams struct {
 	shardCount       int
 	compressionLevel int
 	includeFiles     []string
+	excludePatterns  []string // #710: watch_paths[].exclude_patterns
 	deletedPaths     []string
 	datasetID        string // #521: inherited dataset chain identity ("" = new dataset)
 	versionOrdinal   int    // #521: this version's position in the chain
@@ -399,6 +400,7 @@ func newSyncPipelineConfig(p syncPipelineParams) *pipeline.PipelineConfig {
 
 		// #148: incremental sync configuration.
 		IncludeOnlyFiles: p.includeFiles,
+		ExcludePatterns:  p.excludePatterns,
 		SyncType:         p.syncType,
 		PreviousUploadID: p.previousUploadID,
 		DeletedPaths:     p.deletedPaths,
