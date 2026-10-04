@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`verify --deep` no longer fails on healthy backups (#713).** Every dataset written since
+  v0.27.0 reported `UNVERIFIABLE: no checksum recorded` for all of its files and exited FAIL —
+  on a real 410-file NAS backup, `0 OK, 410 unverifiable (of 410 files)`. #548 stopped recording
+  per-file SHA-256 on framed chunks for upload throughput, and deep verify was never updated, so
+  the integrity command condemned data it had no reason to doubt. Worse, plain `verify` passed
+  and then recommended `--deep`, so following the tool's own advice reported a broken backup.
+
+  Chunk-level digests were being recorded the whole time. Deep verify now falls back to them: a
+  file with no checksum of its own is reported **covered by chunk digest** when its chunk hashed
+  byte-identical to the manifest's digest for that chunk, which proves that file's bytes. The
+  weaker property is only the *granularity of localisation* — a corrupt chunk implicates all of
+  its files rather than naming one — so it is reported under its own name and in the summary
+  line, never folded into OK.
+
+  The gate is the same one chunk verification applies, so a file is never called covered by a
+  chunk that `verify --deep` would itself reject: either a matching whole-object checksum, or a
+  frame index in which **every** frame carries a checksum, the frames tile the object, and each
+  frame's bytes hash to its recorded value. `Unverifiable` still fails where nothing vouches for
+  the bytes, and an unrecomputable checksum algorithm cannot launder itself into a pass
+  (CSH-SEC-005) — the cross-version guard that `--deep` must refuse to certify pre-#270 archives
+  still holds, because those manifests record no algorithm.
+
+### Changed
+- **Plain `verify` no longer says "verified" for a check that downloads nothing (#713).** It now
+  reports `Manifest is consistent and describes N files`, because that is what it establishes;
+  the previous `All N files verified successfully` claimed per-file integrity from a
+  manifest-only check. The `--deep` hint now says it downloads the stored data and checks it
+  against the manifest's checksums.
+
 ## [0.37.1] - 2026-10-04
 
 Documentation-only release. No code, dependency or format changes; the binaries are
