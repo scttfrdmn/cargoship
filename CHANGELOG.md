@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.1] - 2026-10-04
+
+Documentation-only release. No code, dependency or format changes; the binaries are
+functionally identical to v0.37.0.
+
+### Fixed
+- **The published verification-report table showed the three most recent releases as
+  unverified when all three had passed (#717).** `docs/project/verification-reports.md`
+  carried `⏳ Run in progress` rows for v0.36.0, v0.36.1 and v0.37.0. That page defines a
+  pending row as meaning "the run has not passed and the release should be treated as
+  unverified", so cargoship.app was understating the verification status of every current
+  release — including the one a visitor would download. All three lanes had in fact passed
+  (20 files, 61.01 MB, direct + chunked, 51 suites, 0 failures).
+
+  v0.36.1 also had no report attached: its real-AWS lane failed **only** on the attach step
+  (GitHub 503s during that release left an incomplete draft, which was deleted and re-run
+  while the lane was mid-retry). The report survived as a workflow artifact attesting the
+  exact tag commit `d90b721`, so it was uploaded to the release rather than regenerated,
+  preserving the rule that a report comes from the run that gated its release.
+
+  This release exists because the root documentation tree is built from the newest **tag**,
+  so the corrected table on `main` could not reach cargoship.app until a new tag was cut —
+  the same republish-only reason as v0.35.1. Verified on the live site, not inferred:
+  `/dev` was already correct while the root still read `⏳`.
+
+### Known issues
+- `verify --deep` reports every file as `UNVERIFIABLE: no checksum recorded` and exits FAIL
+  on healthy datasets produced by this version (#713). Per-file checksums stopped being
+  recorded in v0.27.0 (#548); chunk-level checksums **are** recorded, so stored bytes remain
+  verifiable at chunk granularity, but deep verify does not yet use them. Plain `verify`
+  (manifest + chunk presence) is unaffected and passes.
+- The fleet image declares `VOLUME /home/cargoship/.cargoship`, which shadows a bind-mounted
+  home with a volume owned by uid 65532 (#714). A container running as any other uid cannot
+  write the manifest cache, so it silently never persists and every cycle re-uploads the
+  whole source behind a healthy heartbeat. Workaround: mount that path explicitly.
+
 ## [0.37.0] - 2026-10-04
 
 ### Upgrade notes
