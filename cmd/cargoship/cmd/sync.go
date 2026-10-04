@@ -27,6 +27,7 @@ func NewSyncCmd() *cobra.Command {
 		trackDeletes     bool
 		dryRun           bool
 		force            bool
+		noFileChecksums  bool
 		quiet            bool
 		writerID         string
 	)
@@ -278,6 +279,7 @@ Examples:
 				compressionLevel: effectiveCompression,
 				sourcePath:       absPath,
 				includeFiles:     includeFiles,
+				fileChecksums:    !noFileChecksums, // #725: on unless explicitly disabled
 				syncType:         syncType,
 				previousUploadID: previousUploadID,
 				deletedPaths:     delta.Deleted,  // #555: persist deletions (empty unless --track-deletes)
@@ -342,6 +344,10 @@ Examples:
 	cmd.Flags().BoolVar(&trackDeletes, "track-deletes", false, "Track deleted files in manifest")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be synced without uploading")
 	cmd.Flags().BoolVar(&force, "force", false, "Force full sync (ignore previous manifest)")
+	// #725: parity with `upload`. Previously sync had no such flag AND no checksums,
+	// so fleet users got the no-checksum trade silently, with no way to decline it.
+	cmd.Flags().BoolVar(&noFileChecksums, "no-file-checksums", false,
+		"Disable per-file content checksums (faster, but 'verify --deep' can't confirm per-file integrity)")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Quiet mode (minimal output)")
 	// Issue #520: writer isolation (fleet).
 	cmd.Flags().StringVar(&writerID, "writer-id", "", "Writer identity for fleet isolation: objects go under writers/<id>/. 'auto' derives a stable per-host id; empty = single-writer layout (default)")
@@ -364,10 +370,13 @@ type syncPipelineParams struct {
 	compressionLevel int
 	includeFiles     []string
 	excludePatterns  []string // #710: watch_paths[].exclude_patterns
-	deletedPaths     []string
-	datasetID        string // #521: inherited dataset chain identity ("" = new dataset)
-	versionOrdinal   int    // #521: this version's position in the chain
-	s3Client         *s3.Client
+	// #725: record a per-file SHA-256 in the manifest. Defaults ON for every caller
+	// (CSH-SEC-002); only `sync --no-file-checksums` turns it off.
+	fileChecksums  bool
+	deletedPaths   []string
+	datasetID      string // #521: inherited dataset chain identity ("" = new dataset)
+	versionOrdinal int    // #521: this version's position in the chain
+	s3Client       *s3.Client
 }
 
 // newSyncPipelineConfig builds the pipeline config for `cargoship sync`.
@@ -397,6 +406,14 @@ func newSyncPipelineConfig(p syncPipelineParams) *pipeline.PipelineConfig {
 		// #316: forwarded sync flags.
 		ShardStrategy:    p.shardStrategy,
 		CompressionLevel: p.compressionLevel,
+
+		// #725: per-file content checksums. This MUST be set here: it was previously
+		// left at Go's zero value on this path, so `cargoship sync` and every
+		// ghostship fleet agent silently recorded NO per-file checksums, while
+		// upload.go set it from --no-file-checksums and the field documented itself as
+		// "on by default". The unattended write-only path — where nobody is watching
+		// and the operator cannot read objects back — had the weaker guarantee.
+		FileChecksums: p.fileChecksums,
 
 		// #148: incremental sync configuration.
 		IncludeOnlyFiles: p.includeFiles,
