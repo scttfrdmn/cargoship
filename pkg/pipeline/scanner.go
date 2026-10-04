@@ -286,7 +286,7 @@ func (s *ScannerStage) shouldExclude(path, rootPath string) bool {
 		// silently including something the operator asked to exclude.
 		relPath = filepath.Base(path)
 	}
-	return matchesExcludePattern(relPath, s.config.ExcludePatterns)
+	return manifest.MatchesExcludePattern(relPath, s.config.ExcludePatterns)
 }
 
 // shouldInclude checks if a file should be included based on IncludeOnlyFiles filter (Issue #148)

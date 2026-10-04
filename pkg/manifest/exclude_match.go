@@ -1,11 +1,19 @@
-package pipeline
+package manifest
 
 import (
 	"path/filepath"
 	"strings"
 )
 
-// matchesExcludePattern reports whether relPath — a path relative to the scan root — is
+// Lives in pkg/manifest, not pkg/pipeline, because BOTH the uploader and the
+// delta computation must apply the same rules. They did not (#716): the scanner
+// excluded files while ComputeDelta did not, so excluded files were reported New
+// on every single cycle, the no-changes path was never reached, and each cycle
+// wrote an empty manifest version forever. Two copies of this logic would let
+// them drift apart again, so there is exactly one — the same reasoning that keeps
+// a single canonical pricing fallback table in one leaf package.
+//
+// MatchesExcludePattern reports whether relPath — a path relative to the scan root — is
 // excluded by any of the patterns (#710).
 //
 // A pattern matches when it matches the whole relative path, or ANY single path segment.
@@ -22,7 +30,7 @@ import (
 // a separator is matched against the relative path, so "a/b" still works.
 //
 // Patterns use filepath.Match syntax (`*`, `?`, `[...]`), which does not cross separators.
-func matchesExcludePattern(relPath string, patterns []string) bool {
+func MatchesExcludePattern(relPath string, patterns []string) bool {
 	if len(patterns) == 0 || relPath == "" {
 		return false
 	}
