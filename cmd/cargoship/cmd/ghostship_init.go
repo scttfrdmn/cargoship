@@ -98,6 +98,7 @@ Example:
 
 			files := map[string][]byte{
 				"iam-policy.json":           []byte(policy + "\n"),
+				"bucket-lifecycle.json":     []byte(initBucketLifecycleJSON()),
 				"config.yaml":               []byte(initConfigYAML(id, bucket, base)),
 				"config-signing-public.pem": pubPEM,
 				"compose.yaml":              []byte(initComposeYAML(id, bucket, base, image, region)),
@@ -167,6 +168,39 @@ Example:
 	cmd.Flags().BoolVar(&mint, "mint", false, "Provision the IAM identity live (create user + write-only policy + access key) and write credentials into the bundle; requires iam:Create* on the caller")
 	_ = cmd.MarkFlagRequired("public-key")
 	return cmd
+}
+
+// initBucketLifecycleJSON emits a bucket lifecycle policy that aborts incomplete
+// multipart uploads (#715).
+//
+// Needed because a cancelled cycle leaves in-progress multipart uploads that are
+// never aborted: the uploaded parts are billed as storage indefinitely, they are
+// INVISIBLE to `aws s3 ls`, and they SURVIVE `aws s3 rm --recursive` — so a prefix
+// can read as 0 objects while still accruing charges. That is how two of them went
+// unnoticed on a real deployment. A NAS agent on a slow uplink with large chunks is
+// the likely case to be interrupted mid-upload, not an edge case.
+//
+// Applied by the OPERATOR, not the writer. The writer's IAM policy deliberately
+// excludes s3:AbortMultipartUpload to keep the delete-free guarantee simple and
+// auditable, so the agent cannot clean up after itself even in principle. A
+// lifecycle rule is the right layer: it is set once at provisioning time, needs no
+// permission the writer holds, and self-heals regardless of how the agent dies —
+// including SIGKILL, where no shutdown hook would run either.
+//
+// `cargoship fleet lock-status` reports this rule's absence as a warning, so the
+// gap is detectable as well as fixable.
+func initBucketLifecycleJSON() string {
+	return `{
+  "Rules": [
+    {
+      "ID": "abort-incomplete-multipart-uploads",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    }
+  ]
+}
+`
 }
 
 func initConfigYAML(id, bucket, base string) string {
@@ -245,6 +279,7 @@ func initReadme(id, bucket, base string) string {
 		"This bundle deploys one **write-only, delete-free** CargoShip backup agent.\n\n"+
 		"## Files\n"+
 		"- `iam-policy.json` — least-privilege, write-only IAM policy for this writer.\n"+
+		"- `bucket-lifecycle.json` — bucket rule that aborts incomplete multipart uploads.\n"+
 		"- `config.yaml` — config skeleton; fill in `watch_paths`, then sign + upload.\n"+
 		"- `config-signing-public.pem` — the operator public key the agent verifies against.\n"+
 		"- `compose.yaml` — runs the agent in signed config-over-S3 (pull) mode.\n\n"+
@@ -262,9 +297,15 @@ func initReadme(id, bucket, base string) string {
 		"   cannot read it, so without this it starts with NO credentials and crash-loops on\n"+
 		"   an error that names EC2 IMDS rather than this file:\n"+
 		"   `chown 65532:65532 aws-credentials`   (keep 0600)\n"+
-		"6. **Deploy**: `docker compose up -d` — on Synology DSM use `docker-compose up -d`,\n"+
+		"6. **Apply the bucket lifecycle rule** (once per bucket, as an operator — the writer's\n"+
+		"   own policy excludes `s3:AbortMultipartUpload` by design, so it cannot do this):\n"+
+		"   `aws s3api put-bucket-lifecycle-configuration --bucket %s --lifecycle-configuration file://bucket-lifecycle.json`\n"+
+		"   Without it, a cycle interrupted mid-upload leaves incomplete multipart uploads that\n"+
+		"   are billed indefinitely, are invisible to `aws s3 ls`, and survive\n"+
+		"   `aws s3 rm --recursive`. Confirm with `cargoship fleet lock-status`.\n"+
+		"7. **Deploy**: `docker compose up -d` — on Synology DSM use `docker-compose up -d`,\n"+
 		"   which is a standalone binary there rather than a `docker` subcommand.\n\n"+
 		"The agent pulls + verifies its config every cycle (keep-last-good), writes only to\n"+
 		"its own `writers/%s/` prefix, and cannot read back, decrypt, or delete any data.\n",
-		id, bucket, base, id, bucket, base, id, id)
+		id, bucket, base, id, bucket, base, id, bucket, id)
 }

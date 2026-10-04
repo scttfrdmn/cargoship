@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`ghostship init` now emits `bucket-lifecycle.json`, a rule that aborts incomplete multipart
+  uploads (#715).** A cycle interrupted mid-upload leaves in-progress multipart uploads that are
+  never aborted: the parts are billed as storage indefinitely, they are **invisible to
+  `aws s3 ls`**, and they **survive `aws s3 rm --recursive`** — so a purged prefix can read as 0
+  objects while still accruing cost. That asymmetry is how two of them went unnoticed on a real
+  deployment.
+
+  Applied by the operator, not the writer: the writer's IAM policy deliberately excludes
+  `s3:AbortMultipartUpload` to keep the delete-free guarantee simple and auditable, so the agent
+  cannot clean up after itself even in principle. A lifecycle rule is the right layer — set once
+  at provisioning, needing no permission the writer holds, and self-healing however the agent
+  dies, including SIGKILL where no shutdown hook would run either.
+
+  The bundle README gains an apply step with the exact command. `cargoship fleet lock-status`
+  already reports the rule's absence as a warning, so the gap was detectable; what was missing was
+  anything to apply.
+
 ### Fixed
 - **An unchanged cycle no longer writes an empty manifest version (#716).** The delta applied no
   exclusions while the uploader did, so every excluded file was reported `New` on every cycle: it
