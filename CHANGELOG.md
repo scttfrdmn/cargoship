@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`sync` and `ghostship` now record per-file checksums, which they never did (#725).**
+  `PipelineConfig.FileChecksums` documents itself as "on by default, `--no-file-checksums` opts
+  out", but was set in exactly one place in the tree — `upload`. `newSyncPipelineConfig` never set
+  it, so it took Go's zero value `false`, and that config backs both `cargoship sync` and every
+  ghostship fleet agent. Measured on one corpus at one version: `upload` recorded 3/3 per-file
+  checksums, `sync` recorded 0/3. A live 410-file NAS backup had 0/410.
+
+  This was backwards from intent. The unattended, write-only fleet path — nobody watching, data
+  sitting longest, and an identity that cannot read objects back to check them — had the *weaker*
+  guarantee, while the interactive path a human supervises had the stronger one. And it was an
+  opt-*out* flag nobody opted out of: `sync`/`ghostship` exposed no such flag, so fleet users took
+  the no-checksum trade silently with no way to decline. It is also CSH-SEC-002, so the guarantee
+  had been signed off as present.
+
+  `sync` now gains `--no-file-checksums` for parity with `upload`. The ghostship agent records
+  them **unconditionally** and deliberately exposes no knob: a signed config should not be able to
+  quietly downgrade an integrity guarantee. The cost is about 0.35 s of CPU per GB (SHA-256
+  measured at ~2.9 GB/s) against an upload path measured at 58 MB/s on the deployment that
+  motivated this — roughly 2%, overlapped with transfer.
+
+  Datasets already uploaded are unaffected and keep verifying at chunk granularity (#713);
+  re-running a sync records checksums for everything it re-uploads.
 - **`verify --deep` no longer fails on healthy backups (#713).** Every dataset written since
   v0.27.0 reported `UNVERIFIABLE: no checksum recorded` for all of its files and exited FAIL —
   on a real 410-file NAS backup, `0 OK, 410 unverifiable (of 410 files)`. #548 stopped recording
