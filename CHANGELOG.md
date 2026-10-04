@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`verify --deep` no longer reports every file MISSING on direct-upload datasets (#724).** The
+  small-file fast path stores one S3 object per file and records no chunks, but `VerifyFiles`
+  resolved files only through their chunk, so a chunk-less manifest matched nothing and the
+  closing "never seen in its chunk" sweep marked all of them missing. Deep verification then
+  failed, announcing data loss for data that restored byte-identically — the worst available
+  wrong answer from an integrity command, on the workload this project is measured fastest at:
+
+  ```
+  📊 File Verify: 0 OK, 0 corrupted, 26 missing, 0 unverifiable (of 26 files)   ← before
+  📊 File Verify: 26 OK, 0 corrupted, 0 missing, 0 unverifiable (of 26 files)   ← after
+  ```
+
+  A file whose key belongs to no chunk is now verified as its own object: fetched, hashed, and
+  compared to the per-file checksum. Absence is still reported Missing, so real data loss stays
+  visible; a size that contradicts the manifest is reported as corruption even when no checksum
+  was recorded; and a dataset with no recorded checksum is reported Unverifiable — still a
+  failure, since nothing vouches for those bytes — with a message stating that the object **is**
+  present and correctly sized, so it cannot be mistaken for loss.
+
+  The chunk phase is now reported as **not applicable** rather than failed when a manifest records
+  no chunks. `DeepVerifyResult.Passed()` requires `TotalChunks > 0` so an empty manifest cannot
+  pass vacuously, which is correct, but combined with "both phases must pass" it meant a
+  direct-upload dataset could never pass however cleanly its files verified. The equivalent guard
+  on the file side (`TotalFiles > 0`) still prevents a vacuous pass.
+
+  Each file-level finding now carries a `detail` explaining it, because the same status arose for
+  materially different reasons and the bare word was what made this dangerous.
 - **`sync` and `ghostship` now record per-file checksums, which they never did (#725).**
   `PipelineConfig.FileChecksums` documents itself as "on by default, `--no-file-checksums` opts
   out", but was set in exactly one place in the tree — `upload`. `newSyncPipelineConfig` never set
