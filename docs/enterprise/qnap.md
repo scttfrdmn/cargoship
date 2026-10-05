@@ -111,9 +111,21 @@ s3_config:
   bucket: my-bucket
 watch_paths:
   - path: /volume1/research-data
+    storage_class: STANDARD_IA
+    exclude_patterns: ["#recycle", "@eaDir", ".aws", ".ssh", ".DS_Store"]
   - path: /volume1/Documents
 scan_interval: 1h
 ```
+
+On a NAS the exclusions matter more than anywhere else. `#recycle` (Synology) and
+`@Recycle` (QNAP) hold *already-deleted* files and are routinely the largest thing on
+a volume — on one real deployment, 20 GB of a 26 GB home directory. `@eaDir` is
+Synology thumbnail and index metadata, regenerated locally and nested throughout the
+tree. And `.aws`/`.ssh` should never reach an archive at all.
+
+A bare pattern matches any path segment, so it excludes the directory *and everything
+under it*; see the [`watch_paths` reference](/enterprise/ghost-ship#watch-paths-reference)
+for the exact rules.
 
 Check it, then sign it:
 
