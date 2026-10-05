@@ -18,6 +18,16 @@ func TestEnforceBudgetCaps(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 
 	dc := cargoconfig.DefaultAWSConfig()
+	// #731: DefaultAWSConfig enables the live AWS Pricing API, so this test — which is
+	// about budget ENFORCEMENT, not pricing — made a real outbound GetProducts call on
+	// every run of the "short, credential-free" lane. It failed with
+	// MissingAuthenticationTokenException, fell back to the static table, and passed, so
+	// the only visible symptom was a warning nobody read.
+	//
+	// Disabling it is not merely test hygiene: the static fallback IS the production path
+	// for every fleet writer, whose write-only IAM policy deliberately excludes
+	// pricing:GetProducts. Exercising the fallback is exercising what actually ships.
+	dc.CostControl.Pricing.UseAWSPricingAPI = false
 	mgr, err := cost.NewManager(&dc.CostControl, aws.Config{}, slog.Default())
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
