@@ -43,7 +43,12 @@ docs/archive/
 # Temporary development artifacts
 temp_*
 working_*
-public/
+# Anchored to the REPO ROOT on purpose. `public/` (unanchored) also matched
+# docs/public/, the VitePress static-asset source directory, so the site's logo,
+# hero image, OG card and CNAME were never committed: the site built fine locally
+# and shipped with all three images 404 on cargoship.app. The root ./public/ this
+# is actually for is a stale generated site tree (404.html, sitemap.xml, ...).
+/public/
 site/
 
 # Quality reports (generated artifacts)

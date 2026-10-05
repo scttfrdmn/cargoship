@@ -98,6 +98,23 @@ jobs:
           DOCS_VERSION_LABEL: latest
         run: npm run build
 
+      # The build succeeds whether or not the static assets exist, so a green docs
+      # deploy shipped a site whose logo, hero image and Open Graph card all 404'd
+      # for as long as docs/public/ was gitignored. Assert the built tree actually
+      # contains what the pages reference, rather than trusting the exit code.
+      - name: Assert the built site contains its static assets
+        run: |
+          missing=0
+          for f in logo-512.png hero.png og-cover.png CNAME; do
+            if [ -s "docs/.vitepress/dist/$f" ]; then
+              echo "ok: $f ($(wc -c <"docs/.vitepress/dist/$f") bytes)"
+            else
+              echo "::error::docs/.vitepress/dist/$f is missing or empty; the site references it, so it would 404 in production"
+              missing=1
+            fi
+          done
+          exit $missing
+
       - name: Stage latest tree
         run: |
           mkdir -p site
