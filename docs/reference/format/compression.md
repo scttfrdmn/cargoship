@@ -95,10 +95,19 @@ field-level signal, but the key extension is always definitive.
 By default a compressed chunk is a single zstd frame, so restoring one file means
 downloading and decoding the whole chunk. With `--frame-size N` (default
 `16MiB`; `0` disables it), the archiver cuts the zstd stream into multiple
-independently-decodable frames at file boundaries — a new frame once `N`
-uncompressed bytes have accumulated — and records a **frame index** in the
-manifest. A file never spans a frame, so a reader can fetch and decode just the
-one frame that contains it.
+independently-decodable frames — a new frame once `N` uncompressed bytes have
+accumulated — and records a **frame index** in the manifest.
+
+Cuts normally land on a file boundary, so a small file sits wholly inside one
+frame and a reader can fetch and decode just that frame. **A file larger than
+`--frame-size` does span frames**: since v0.24.4 the archiver also cuts
+*mid-entry* once the frame fills, rather than emitting one unseekable multi-GB
+frame ([#502](https://github.com/scttfrdmn/cargoship/issues/502)). A mid-entry cut
+ends a complete, valid frame — a zstd frame boundary need not align with a tar
+block — so readers are unaffected except that retrieving such a file means
+fetching the *range* of frames its bytes occupy, not a single one. The procedure
+below covers both cases: locate frames by the file's byte range, not by assuming
+one frame holds it.
 
 The index lives in three additive fields (all `omitempty`):
 
@@ -113,9 +122,11 @@ Each frame also carries `checksum` — the SHA-256 (hex) of its **compressed**
 bytes, i.e. exactly what a ranged `GET` of `[compressed_offset, compressed_size)`
 returns.
 
-To read a single file with the index: find the frame whose
-`[uncompressed_offset, uncompressed_offset+uncompressed_size)` contains the
-file's `archive_offset`; ranged-`GET` `[compressed_offset, compressed_size)`;
+To read a single file with the index: find every frame whose
+`[uncompressed_offset, uncompressed_offset+uncompressed_size)` overlaps the file's
+byte range `[archive_offset, archive_offset+size)` — one frame for a file smaller
+than `--frame-size`, several for a larger one; ranged-`GET` each frame's
+`[compressed_offset, compressed_size)`;
 **verify the fetched bytes against the frame's `checksum` before decoding**;
 zstd-decode that one frame; slice at `archive_offset − uncompressed_offset` for
 the file's `size` (or `length` for a split part). Frames tile the object
@@ -146,9 +157,13 @@ whole object.
 **Fallbacks.** These fields are additive and may be absent:
 - A chunk without `frames` (a single-frame chunk, or any pre-2.1 archive) has no
   per-frame hashes; verify at whole-file or whole-object granularity instead.
-- An archive written before per-file checksums existed may lack `files[].checksum`
-  (and `checksum_algorithm`); `verify --deep` reports such data as *unverifiable*
-  rather than assuming it. A reader must decide its own policy for that case.
+- An archive may lack `files[].checksum` — either written before per-file checksums
+  existed, or (v0.27.0–v0.38.0) a framed chunk, where they were skipped for upload
+  throughput. `verify --deep` then falls back to the chunk's own digest and reports
+  those files as *covered by chunk digest*: a pass that proves the bytes at chunk
+  granularity. Only when nothing vouches for the bytes — no per-file checksum, no
+  usable chunk digest, or an unrecomputable `checksum_algorithm` — are they
+  *unverifiable*, which fails. A reader must decide its own policy for that case.
 
 ## Manifest compression (separate concern)
 
