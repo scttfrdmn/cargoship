@@ -28,6 +28,8 @@ s3_config:
   bucket: backups
 watch_paths:
   - path: /volume1/research-data
+    storage_class: STANDARD_IA
+    exclude_patterns: ["#recycle", ".aws", ".ssh", "@eaDir", ".DS_Store"]
   - path: /volume1/Documents
 scan_interval: 1h
 ```
@@ -36,6 +38,69 @@ scan_interval: 1h
 storage class, delete-after-archive) — are **advisory-only in sync mode**: `ghostship
 run` does directory sync and ignores them. They remain in the config schema for the
 dormant rule-based daemon, not the fleet.
+
+## `watch_paths` reference
+
+Each entry names one directory to back up. Only `path` is required.
+
+| Field | Status | What it does |
+|---|---|---|
+| `path` | **works** | Absolute path to back up. Mount it into the container read-only at the same path. |
+| `exclude_patterns` | **works** | Patterns to omit (see below). |
+| `storage_class` | **works** | Per-path S3 storage class, e.g. `STANDARD_IA`, `GLACIER_IR`. |
+| `include_patterns` | **accepted, not implemented** | Parsed and validated, then ignored ([#710](https://github.com/scttfrdmn/cargoship/issues/710)). |
+| `min_age` | **accepted, not implemented** | Same. |
+| `recursive` | **accepted, not implemented** | Directories are always walked recursively. |
+
+::: warning The three unimplemented fields are silently inert
+`validate-config` accepts them and `sign-config` signs them, so a config can *look*
+like it filters and not. Until [#710](https://github.com/scttfrdmn/cargoship/issues/710)
+lands, express every exclusion through `exclude_patterns`.
+:::
+
+### `exclude_patterns`
+
+Matched against each entry's path **relative to `path`**, using
+[`filepath.Match`](https://pkg.go.dev/path/filepath#Match) syntax (`*`, `?`, `[...]`,
+none of which cross `/`). A pattern matches when it matches:
+
+1. the whole relative path; **or**
+2. for a pattern containing `/`, that path **or anything beneath it** (subtree); **or**
+3. otherwise, **any single path segment** — which is what makes directory exclusion work.
+
+Rule 3 is the important one: `#recycle` excludes the directory *and everything under
+it*, because the first segment of `#recycle/2026/notes.txt` matches. A trailing slash
+is optional (`cache/` is the same as `cache`).
+
+`**` is deliberately **not** supported: per-segment matching already covers subtree
+exclusion. Patterns like `erebus-work/**/*.log` are tracked in
+[#710](https://github.com/scttfrdmn/cargoship/issues/710).
+
+```yaml
+watch_paths:
+  - path: /volume1/homes/alice
+    exclude_patterns:
+      - "#recycle"        # the NAS recycle bin - often most of the volume
+      - ".aws"            # never archive credentials
+      - ".ssh"            # never archive private keys
+      - "@eaDir"          # Synology thumbnail/index metadata, nested everywhere
+      - ".DS_Store"
+      - "*.tmp"           # basename glob, in any directory
+      - "build/cache"     # one specific subtree
+```
+
+::: tip Credentials
+`.aws` and `.ssh` are worth excluding on principle. A backup is a copy you will later
+restore somewhere else, and an archive is only as private as the bucket it sits in.
+:::
+
+Exclusions apply to **both** the uploader and the change-detection pass, so excluded
+files are not merely skipped — they stop being reported as new work on every cycle
+([#716](https://github.com/scttfrdmn/cargoship/issues/716)). Excluded directories are
+pruned rather than walked, so a large excluded tree costs nothing per cycle.
+
+Changing `exclude_patterns` for a path that is already backed up stops those files
+being uploaded; with `track_deletes` on, the next cycle records them as deleted.
 
 ## Provisioning a writer (`init`)
 

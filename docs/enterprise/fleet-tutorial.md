@@ -61,6 +61,7 @@ The `./lab-nas-1/` bundle contains:
 | File | Purpose |
 | --- | --- |
 | `iam-policy.json` | The **write-only** IAM policy for this writer. |
+| `bucket-lifecycle.json` | Bucket rule that aborts incomplete multipart uploads. Apply once per bucket — the writer's own IAM cannot ([#715](https://github.com/scttfrdmn/cargoship/issues/715)). |
 | `config.yaml` | Config skeleton — fill in `watch_paths`, then sign + upload. |
 | `config-signing-public.pem` | The public key the agent verifies against. |
 | `compose.yaml` | Runs the agent in signed config-over-S3 (pull) mode; credentials mount as a **file**, never env. |
@@ -114,8 +115,17 @@ s3_config:
 watch_paths:
   - path: /volume1/Documents
   - path: /volume1/Research
+    storage_class: STANDARD_IA
+    exclude_patterns: [".aws", ".ssh", "*.tmp"]
 scan_interval: 1h
 ```
+
+`exclude_patterns` is how you keep things out of the archive — a NAS recycle bin can be
+most of a volume, and `.aws`/`.ssh` should never be backed up at all. A bare pattern
+matches any path segment, so it excludes a directory and everything under it. See the
+[`watch_paths` reference](/enterprise/ghost-ship#watch-paths-reference) for the full
+matching rules, and note that `include_patterns`, `min_age` and `recursive` are accepted
+but **not yet implemented** ([#710](https://github.com/scttfrdmn/cargoship/issues/710)).
 
 Validate before you sign (no AWS calls):
 
