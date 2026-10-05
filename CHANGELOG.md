@@ -7,7 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.2] - 2026-10-05
+
+Documentation and CI. **No code changes to the archiver, uploader or verifier** — the binaries are
+functionally identical to v0.38.1.
+
+This release exists mainly to *publish* a fix. The documentation site's root tree is built from the
+newest tag, so the asset fix below could not reach cargoship.app on merge — the logo, hero image
+and Open Graph card kept 404'ing in production until a tag carried them.
+
 ### Fixed
+- **The site's static assets were never committed, so cargoship.app served a 404 for its
+  logo/favicon, its landing-page hero image and its Open Graph card** — every link shared to
+  Slack, Twitter or Discord rendered with no preview. `.gitignore` had an unanchored `public/`
+  under "temporary development artifacts", intended for a stale generated tree at the repo root
+  but also matching `docs/public/`, VitePress's static-asset *source* directory. The files existed
+  only on a maintainer's disk, so the site built correctly locally and shipped broken. The same
+  pattern swallowed `docs/public/CNAME`, making the deploy workflow's CNAME handling a no-op.
+  Guarded in CI against the built tree, since the build exits 0 either way.
+
+- **Documentation claims about `verify --deep` overstated its strictness.** v0.38.0 made a file
+  with no per-file checksum *pass* as "covered by chunk digest" when its chunk digest verifies
+  (#713), but the integrity page, the verifying guide and the format spec all still said such data
+  fails. For the integrity page that is the dangerous direction to be wrong in. Replaced with the
+  three real outcomes and what each proves.
+
+- **The archive format spec said "a file never spans a frame" (#627)**, false since v0.24.4 added
+  mid-entry frame cuts (#502), and its single-file read procedure told readers to find *the* frame
+  containing a file — instructions that would silently truncate any file larger than
+  `--frame-size` for a third-party reader implementing against the spec.
+
+- **`exclude_patterns` was documented nowhere**, despite shipping in v0.37.0, being how `.aws` and
+  `.ssh` are kept out of an archive, and being the remedy named in v0.38.1's unreadable-source
+  error message. The fleet page now has a `watch_paths` reference marking which fields work and
+  which are accepted-but-ignored (#710).
+
 - **The "short, credential-free" unit lane no longer makes live AWS Pricing calls (#731).**
   `TestEnforceBudgetCaps` built its cost manager from `DefaultAWSConfig()`, which enables the AWS
   Pricing API, so every run of that lane issued a real `GetProducts` request. It failed with
