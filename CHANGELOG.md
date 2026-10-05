@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The "short, credential-free" unit lane no longer makes live AWS Pricing calls (#731).**
+  `TestEnforceBudgetCaps` built its cost manager from `DefaultAWSConfig()`, which enables the AWS
+  Pricing API, so every run of that lane issued a real `GetProducts` request. It failed with
+  `MissingAuthenticationTokenException`, fell back to the static table and passed — so the only
+  symptom was a warning nobody read, plus a unit lane that depended on the network.
+
+  Disabling it is more than test hygiene: the static fallback **is** the production path for every
+  fleet writer, whose write-only IAM policy deliberately excludes `pricing:GetProducts`.
+  Exercising the fallback exercises what actually ships.
+
 ## [0.38.1] - 2026-10-05
 
 Follow-up to v0.38.0's integrity work, plus the last of the "reports success, did nothing" bugs.
