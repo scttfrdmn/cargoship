@@ -134,8 +134,17 @@ if [ -f "$reports_doc" ] && [ -f CHANGELOG.md ]; then
     lowest="$(printf '%s\n%s\n' "$v" "$first_report_version" | sort -V | head -1)"
     [ "$lowest" = "$first_report_version" ] || continue
 
-    if ! grep -qE "^\| v${v//./\\.} " "$reports_doc"; then
+    rows="$(grep -cE "^\| v${v//./\\.} " "$reports_doc" || true)"
+    if [ "$rows" -eq 0 ]; then
       echo "::error file=$reports_doc::no published-reports row for v$v; add it with the report's direct asset URL (see the table in that file)"
+      fail=1
+    elif [ "$rows" -gt 1 ]; then
+      # Presence alone was not enough: the v0.38.0 pending row shipped TWICE (a
+      # retried edit re-ran an insert that had already succeeded) and every gate
+      # passed, so the published trust table carried a duplicated release row.
+      # Uniqueness is cheap and, unlike "the row must not be pending", it IS
+      # satisfiable at tag time: the numbers only exist after the tag (#717).
+      echo "::error file=$reports_doc::$rows published-reports rows for v$v; expected exactly 1 (a duplicated row passes a presence-only check)"
       fail=1
     fi
   done
