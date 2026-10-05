@@ -31,7 +31,7 @@ require (
 	github.com/olekukonko/tablewriter v1.1.4
 	github.com/pierrec/lz4/v4 v4.1.29
 	github.com/prometheus/client_golang v1.24.1
-	github.com/scttfrdmn/substrate v0.110.0
+	github.com/scttfrdmn/substrate v0.120.0
 	github.com/sethvargo/go-retry v0.3.0
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8
 	github.com/spf13/cobra v1.10.2
@@ -154,5 +154,5 @@ require (
 	modernc.org/libc v1.75.7 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	modernc.org/sqlite v1.57.0 // indirect
+	modernc.org/sqlite v1.58.0 // indirect
 )
