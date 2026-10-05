@@ -2,7 +2,9 @@ package manifest
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -197,9 +199,50 @@ func ScanLocalFilesExcluding(rootPath string, excludePatterns []string) ([]FileI
 		return nil, fmt.Errorf("failed to get absolute path: %w", err)
 	}
 
+	// #705: paths the walk could not read. Collected rather than returned immediately so
+	// the error names the full extent of the problem instead of whichever path happened
+	// to fail first.
+	var unreadable []string
+
 	err = filepath.Walk(absRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			// Log error but continue walking
+			// #705: this used to `return nil` under a comment claiming it logged. It did
+			// not log, and it did not stop: an unreadable SOURCE ROOT produced zero files,
+			// an empty delta, and a cheerful "no changes; nothing to back up" — an
+			// unattended agent reporting success while backing up nothing at all.
+			//
+			// A root that cannot be walked is never a legitimate empty tree, so it fails
+			// immediately and separately: the message needs to say "could not read your
+			// source", not "N paths were skipped".
+			if path == absRoot {
+				return fmt.Errorf("cannot read source directory %s: %w", absRoot, err)
+			}
+
+			// A file that vanished mid-walk is NORMAL on a live filesystem — something was
+			// deleted between readdir and lstat. Failing on that would make an unattended
+			// agent flaky on exactly the churn it exists to capture, so it is skipped
+			// silently. Everything else (permission denied, I/O error) means the source
+			// contains data we cannot see, which must not be silently omitted from a
+			// backup.
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+
+			// An EXCLUDED path must not be reported, or the escape hatch this error
+			// recommends ("exclude them deliberately") would not work. Checked here,
+			// before recording, because the exclusion test further down is never reached
+			// on the error path. Caught by the test for exactly that remedy.
+			if rel, relErr := filepath.Rel(absRoot, path); relErr == nil &&
+				MatchesExcludePattern(rel, excludePatterns) {
+				return filepath.SkipDir
+			}
+
+			unreadable = append(unreadable, path)
+			// Cannot descend into an unreadable directory anyway, and reporting it once is
+			// more useful than reporting every child it contains.
+			if info != nil && info.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
@@ -253,7 +296,44 @@ func ScanLocalFilesExcluding(rootPath string, excludePatterns []string) ([]FileI
 		return nil, fmt.Errorf("failed to scan directory: %w", err)
 	}
 
+	// #705: fail rather than return a partial tree. Silently omitting files the source
+	// contains is the one outcome a backup must never produce: the cycle would report
+	// success, the manifest would describe less than the source, and nothing downstream
+	// could distinguish "not backed up" from "not present". Failing is loud, persists
+	// until fixed, and uploads nothing in the meantime, so it cannot corrupt the dataset
+	// or the version chain.
+	if len(unreadable) > 0 {
+		return nil, &UnreadablePathsError{Root: absRoot, Paths: unreadable}
+	}
+
 	return files, nil
+}
+
+// UnreadablePathsError reports source paths the scan could not read (#705).
+//
+// A distinct type because the remedy is specific and worth stating: the agent needs read
+// access to the data, which on a container deployment usually means running as the uid
+// that owns it rather than the image's default. Paths that merely vanished mid-walk are
+// NOT reported here — that is normal churn on a live filesystem.
+type UnreadablePathsError struct {
+	Root  string
+	Paths []string
+}
+
+func (e *UnreadablePathsError) Error() string {
+	const show = 5
+	shown := e.Paths
+	suffix := ""
+	if len(shown) > show {
+		shown = shown[:show]
+		suffix = fmt.Sprintf(" (and %d more)", len(e.Paths)-show)
+	}
+	return fmt.Sprintf("cannot read %d path(s) under %s: %s%s. "+
+		"Refusing to back up a partial source: these files would be silently missing from the "+
+		"backup with nothing to distinguish them from files that never existed. Grant the agent "+
+		"read access (in a container, run as the uid that owns the data), or exclude them "+
+		"deliberately via exclude_patterns",
+		len(e.Paths), e.Root, strings.Join(shown, ", "), suffix)
 }
 
 // FindLatestManifestForSource finds the most recent manifest for a given source path from S3 (Issue #148)
