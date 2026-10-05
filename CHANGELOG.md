@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.1] - 2026-10-05
+
+Follow-up to v0.38.0's integrity work, plus the last of the "reports success, did nothing" bugs.
+
+### Upgrade notes
+
+1. **A cycle whose source cannot be fully read now FAILS where it previously reported success**
+   (#705). If an agent has been quietly backing up less than you expected — a directory it lacks
+   permission to read — it will start failing loudly and naming the path. That is the intended
+   behaviour, but it will look like a new failure on upgrade. The remedy is in the error: grant
+   read access (in a container, run as the uid that owns the data) or exclude the path
+   deliberately via `exclude_patterns`.
+2. **Fleet agents stop writing an empty dataset version on idle cycles** (#716). Existing empty
+   versions are harmless and are not removed; `dataset prune` can clear them if the chain has
+   grown. Nothing needs to be re-uploaded.
+3. **`ghostship init` emits one new bundle file**, `bucket-lifecycle.json` (#715). Apply it once
+   per bucket — the writer's IAM cannot, by design. Existing deployments are unaffected until you
+   choose to apply it; `cargoship fleet lock-status` reports whether it is in place.
+
 ### Added
 - **`ghostship init` now emits `bucket-lifecycle.json`, a rule that aborts incomplete multipart
   uploads (#715).** A cycle interrupted mid-upload leaves in-progress multipart uploads that are
