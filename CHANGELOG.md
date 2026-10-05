@@ -7,24 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- **An unreadable source no longer reports "no changes; nothing to back up" (#705).** The scan's
-  walk callback swallowed every error — under a comment claiming it logged, which it did not — so
-  an unreadable source root produced zero files, an empty delta, and a successful cycle that
-  backed up nothing. On an unattended agent that is the worst possible outcome: a healthy
-  heartbeat over a backup that is not happening.
-
-  An unreadable root is now a hard error naming the source. Unreadable entries *below* the root
-  fail the cycle too, listing up to five paths: silently omitting files the source contains is the
-  one thing a backup must never do, because nothing downstream can distinguish "not backed up"
-  from "never existed". Failing is loud, persists until fixed, and uploads nothing meanwhile, so
-  it cannot corrupt the dataset or the version chain.
-
-  Two deliberate exceptions. A path that **vanishes mid-walk** is normal churn on a live
-  filesystem and is skipped silently, so an agent is not flaky on exactly the changes it exists to
-  capture. And a path matched by **`exclude_patterns` is pruned before it is read**, so the escape
-  hatch the error recommends actually works.
-
 ### Added
 - **`ghostship init` now emits `bucket-lifecycle.json`, a rule that aborts incomplete multipart
   uploads (#715).** A cycle interrupted mid-upload leaves in-progress multipart uploads that are
@@ -44,6 +26,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   anything to apply.
 
 ### Fixed
+- **An unreadable source no longer reports "no changes; nothing to back up" (#705).** The scan's
+  walk callback swallowed every error — under a comment claiming it logged, which it did not — so
+  an unreadable source root produced zero files, an empty delta, and a successful cycle that
+  backed up nothing. On an unattended agent that is the worst possible outcome: a healthy
+  heartbeat over a backup that is not happening.
+
+  An unreadable root is now a hard error naming the source. Unreadable entries *below* the root
+  fail the cycle too, listing up to five paths: silently omitting files the source contains is the
+  one thing a backup must never do, because nothing downstream can distinguish "not backed up"
+  from "never existed". Failing is loud, persists until fixed, and uploads nothing meanwhile, so
+  it cannot corrupt the dataset or the version chain.
+
+  Two deliberate exceptions. A path that **vanishes mid-walk** is normal churn on a live
+  filesystem and is skipped silently, so an agent is not flaky on exactly the changes it exists to
+  capture. And a path matched by **`exclude_patterns` is pruned before it is read**, so the escape
+  hatch the error recommends actually works.
 - **`cmd/cargoship/cmd` is buildable on Windows under `-tags integration` again (#699).**
   `filesystem_integration_test.go` used `syscall.Statfs_t`, which does not exist on Windows, so
   the whole package failed to compile for anyone running the integration tag there. Split behind
