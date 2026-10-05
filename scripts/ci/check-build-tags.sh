@@ -82,8 +82,36 @@ for t in "${custom[@]}"; do
   fi
 done
 
+# Cross-platform: the loop above only ever vets the HOST platform (ubuntu in CI), so a
+# tagged file that cannot compile on another GOOS passes silently. That is exactly how
+# #699 escaped -- filesystem_integration_test.go used syscall.Statfs_t, which does not
+# exist on Windows, under `-tags integration`; no lane ever built that combination, so
+# the breakage was invisible until someone ran it. A runtime GOOS check cannot guard a
+# missing symbol, so this has to be caught at compile time.
+#
+# Vet only, and only for the tag matrix: `go vet` type-checks without producing
+# binaries, so this is cheap next to the suites.
+for goos in windows darwin; do
+  echo "→ GOOS=$goos go vet ./...  (no tags)"
+  if ! out="$(GOOS="$goos" go vet ./... 2>&1)"; then
+    echo "::error::go vet failed for GOOS=$goos with no build tags set"
+    echo "$out"
+    fail=1
+  fi
+  for t in "${custom[@]}"; do
+    echo "→ GOOS=$goos go vet -tags $t ./..."
+    if ! out="$(GOOS="$goos" go vet -tags "$t" ./... 2>&1)"; then
+      echo "::error::build tag '$t' does not compile for GOOS=$goos. A platform-specific"
+      echo "::error::symbol behind a build tag is built by no other lane, so this rot is"
+      echo "::error::invisible until someone runs that combination (see issue #699)."
+      echo "$out"
+      fail=1
+    fi
+  done
+done
+
 echo
 if [ "$fail" -eq 0 ]; then
-  echo "✅ build tags: default build plus ${#custom[@]} custom tag(s) all compile."
+  echo "✅ build tags: default build plus ${#custom[@]} custom tag(s) compile for the host, windows and darwin."
 fi
 exit $fail

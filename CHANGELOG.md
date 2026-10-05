@@ -26,6 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   anything to apply.
 
 ### Fixed
+- **`cmd/cargoship/cmd` is buildable on Windows under `-tags integration` again (#699).**
+  `filesystem_integration_test.go` used `syscall.Statfs_t`, which does not exist on Windows, so
+  the whole package failed to compile for anyone running the integration tag there. Split behind
+  build tags (`integration && unix` / `integration && !unix`), with the non-Unix side skipping —
+  a runtime `GOOS` check cannot guard a missing symbol.
+
+  Also closes the hole that let it through: `check-build-tags.sh` only ever vetted the **host**
+  platform, so a tagged file that cannot compile on another `GOOS` passed silently, and nothing
+  else builds that combination either. It now cross-vets the whole tag matrix for `windows` and
+  `darwin`. Verified in both directions — reverting the fix makes the gate exit 1 naming
+  `undefined: syscall.Statfs_t`.
+
 - **An unchanged cycle no longer writes an empty manifest version (#716).** The delta applied no
   exclusions while the uploader did, so every excluded file was reported `New` on every cycle: it
   is never stored, so it is never in the previous manifest, so it is `New` again next time.
