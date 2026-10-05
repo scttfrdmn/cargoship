@@ -28,8 +28,12 @@ checkable**. Three things make the claim real.
 Every upload records a SHA-256 checksum at two levels:
 
 - **Per chunk** — the exact bytes of each stored `.tar.zst` object.
-- **Per file** — the content of each individual file inside the archive (on by
-  default; see `--no-file-checksums`).
+- **Per file** — the content of each individual file inside the archive. On by
+  default for `upload` and `sync` (opt out with `--no-file-checksums`); the
+  `ghostship` fleet agent always records them and offers no opt-out, so a signed
+  config cannot quietly weaken an unattended writer's verifiability. Framed chunks
+  written between v0.27.0 and v0.38.0 have no per-file checksum — see the
+  granularity note below.
 
 The algorithm is recorded in the manifest (`checksum_algorithm`), so a reader
 always knows how to recompute.
@@ -48,17 +52,40 @@ cargoship verify s3://bucket/prefix/uploads/<upload-id>
 cargoship verify s3://bucket/prefix/uploads/<upload-id> --deep
 ```
 
-Deep verify is the mechanism behind the core claim. It is deliberately strict:
-a manifest that *can't* be verified (no checksums recorded) fails in deep mode
-rather than passing silently — the whole point is to confirm data, and a
-manifest without checksums can't.
+Deep verify is the mechanism behind the core claim, and it is deliberately strict
+about one thing: it never reports data as verified when nothing recorded vouches
+for the bytes. What it does *not* do is insist on a particular granularity.
 
-::: tip What "unverifiable" means
-Deep verify treats a chunk or file with no recorded checksum as a **failure**,
-not a pass. Archives written before checksum capture existed (or with
-`--no-file-checksums`) are reported honestly as unverifiable rather than
-waved through.
+::: tip The three outcomes, and what each proves
+- **OK** — the file's own recorded SHA-256 matched the bytes fetched back. The
+  strongest result: corruption is localised to that file.
+- **Covered by chunk digest** — the file records no checksum of its own, but the
+  chunk holding it hashed byte-identical to the digest the manifest recorded for
+  that chunk. **This is a pass**: a matching chunk digest proves every byte of the
+  chunk, which includes this file's bytes. What is weaker is only the *granularity
+  of localisation* — a corrupt chunk implicates all of its files rather than naming
+  one. It is counted and reported under its own name so the distinction stays
+  visible instead of being folded into OK.
+- **Unverifiable** — nothing recorded vouches for the bytes: no per-file checksum
+  *and* no usable chunk digest, or a `checksum_algorithm` that cannot be
+  recomputed. **This fails.**
+
+A file is never reported covered by a chunk that chunk-level verification would
+itself reject, and a per-file checksum that *mismatches* always fails even when
+the surrounding chunk is intact.
 :::
+
+Uploads from v0.27.0 onward do not record a per-file SHA-256 on framed chunks, so
+**covered by chunk digest is the normal result for those datasets**, not an
+exception. Before this was implemented, deep verify reported every such file as
+unverifiable and exited non-zero — failing on healthy data
+([#713](https://github.com/scttfrdmn/cargoship/issues/713)).
+
+Direct uploads (the small-file fast path) store one object per file and record no
+chunks at all; those files are verified as individual objects against their own
+checksums ([#724](https://github.com/scttfrdmn/cargoship/issues/724)). An object
+that is absent is reported missing; one whose size contradicts the manifest is
+reported corrupt even when no checksum was recorded.
 
 ### Verify on restore, too
 

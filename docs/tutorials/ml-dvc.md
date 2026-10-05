@@ -112,9 +112,10 @@ uploaded files remain accessible.
   omits it.
 - **In-remote `copy()` is not implemented** (DVC dedups by content hash, so it's
   rarely needed).
-- DVC validates remote URLs against an internal schema; strict setups may need a
-  patched DVC build (see
-  [iterative/dvc#9711](https://github.com/iterative/dvc/issues/9711)).
+- DVC validates remote URLs against a central internal schema; strict setups may
+  need a patched DVC build. Upstream declined to make the schema pluggable
+  ([treeverse/dvc#9711](https://github.com/treeverse/dvc/issues/9711), closed as
+  **not planned**), so this is a standing constraint rather than a pending fix.
 :::
 
 See [Python dvc-cargoship plugin](/guides/dvc/plugin) for the full reference.
