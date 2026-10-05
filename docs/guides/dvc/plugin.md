@@ -94,9 +94,12 @@ cargoship cost projects
   create a new incremental upload that omits it.
 - **In-remote copy** — `copy()` is not implemented; DVC's content-hash
   deduplication rarely needs it.
-- **DVC URL validation** — DVC validates remote URLs against an internal schema
-  ([iterative/dvc#9711](https://github.com/iterative/dvc/issues/9711)); strict
-  validation may require a patched DVC build until that is resolved.
+- **DVC URL validation** — DVC validates remote URLs against a *central* internal
+  schema, so a custom remote scheme can be rejected outright. Upstream declined to
+  make that schema pluggable
+  ([treeverse/dvc#9711](https://github.com/treeverse/dvc/issues/9711), closed as
+  **not planned** in March 2024), so this will not be fixed upstream: strict
+  validation may require a patched DVC build indefinitely.
 
 ## See also
 

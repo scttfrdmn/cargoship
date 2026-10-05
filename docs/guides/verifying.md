@@ -87,10 +87,17 @@ cargoship verify s3://my-bucket/archives/uploads/20260721-a1b2c3 --quick
 cargoship verify s3://my-bucket/archives/uploads/20260721-a1b2c3 --deep
 ```
 
-Deep verify depends on the per-file checksums recorded at upload time (on by
-default; disabled by `upload --no-file-checksums`). It also checks chunk-level
-checksums regardless. For the full mechanics, see the
-[Integrity model](/project/integrity).
+Deep verify uses the per-file checksums recorded at upload time when they are
+present (on by default for `upload` and `sync`; opt out with
+`--no-file-checksums`, which the `ghostship` agent deliberately does not offer).
+When a file has no checksum of its own, it is verified through its chunk's digest
+instead and reported as **covered by chunk digest** — a pass, since a matching
+chunk digest proves the bytes, but one that localises corruption to a chunk rather
+than to a single file. A file is only **unverifiable**, and only then a failure,
+when nothing recorded vouches for its bytes.
+
+Chunk-level checksums are checked regardless. For the full mechanics and the three
+outcomes, see the [Integrity model](/project/integrity).
 
 Add `--verbose` for per-error and per-warning detail. Like `info` and `verify`'s
 sibling commands, you can address the upload with an S3 URL or with
