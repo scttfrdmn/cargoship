@@ -98,23 +98,6 @@ jobs:
           DOCS_VERSION_LABEL: latest
         run: npm run build
 
-      # The build succeeds whether or not the static assets exist, so a green docs
-      # deploy shipped a site whose logo, hero image and Open Graph card all 404'd
-      # for as long as docs/public/ was gitignored. Assert the built tree actually
-      # contains what the pages reference, rather than trusting the exit code.
-      - name: Assert the built site contains its static assets
-        run: |
-          missing=0
-          for f in logo-512.png hero.png og-cover.png CNAME; do
-            if [ -s "docs/.vitepress/dist/$f" ]; then
-              echo "ok: $f ($(wc -c <"docs/.vitepress/dist/$f") bytes)"
-            else
-              echo "::error::docs/.vitepress/dist/$f is missing or empty; the site references it, so it would 404 in production"
-              missing=1
-            fi
-          done
-          exit $missing
-
       - name: Stage latest tree
         run: |
           mkdir -p site
@@ -162,6 +145,33 @@ jobs:
           cp -r docs/.vitepress/dist/. site/dev/
           # One CNAME at the root serves both trees; drop the nested copy.
           rm -f site/dev/CNAME
+
+      # Asserted on the tree built from MAIN, deliberately not on the latest/root
+      # tree. The root tree is built from the newest TAG, so it can only contain
+      # assets that existed when that tag was cut — the same structural property
+      # behind #717. Asserting there turned a missing asset into a hard block on
+      # every docs deploy until the next release, which is worse than the bug: it
+      # stops publishing entirely rather than publishing an imperfect page.
+      #
+      # On main the assets are guaranteed present going forward, so this catches a
+      # regression at the commit that causes it. The root tree picks them up at the
+      # next tag.
+      #
+      # The build itself exits 0 whether or not they exist, which is exactly how a
+      # green deploy shipped a site with its logo, hero image and Open Graph card
+      # all 404'ing for as long as docs/public/ was gitignored.
+      - name: Assert the built site contains its static assets (main tree)
+        run: |
+          missing=0
+          for f in logo-512.png hero.png og-cover.png; do
+            if [ -s "docs/.vitepress/dist/$f" ]; then
+              echo "ok: $f ($(wc -c <"docs/.vitepress/dist/$f") bytes)"
+            else
+              echo "::error::docs/.vitepress/dist/$f is missing or empty; the site references it, so it would 404 in production"
+              missing=1
+            fi
+          done
+          exit $missing
 
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
