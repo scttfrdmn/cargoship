@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,9 +16,7 @@ import (
 // success while backing up nothing at all. The walk callback swallowed every
 // error under a comment claiming it logged, which it did not.
 func TestScanLocalFiles_UnreadableRootIsAnError(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("running as root: mode 0000 is still readable")
-	}
+	requireUnreadablePathsArePossible(t)
 	root := filepath.Join(t.TempDir(), "src")
 	require.NoError(t, os.Mkdir(root, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "a.txt"), []byte("x"), 0o644))
@@ -35,9 +34,7 @@ func TestScanLocalFiles_UnreadableRootIsAnError(t *testing.T) {
 // see. Backing up the rest and reporting success would omit those files with
 // nothing downstream able to tell "not backed up" from "never existed".
 func TestScanLocalFiles_UnreadableSubdirectoryIsAnError(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("running as root: mode 0000 is still readable")
-	}
+	requireUnreadablePathsArePossible(t)
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "visible.txt"), []byte("x"), 0o644))
 	secret := filepath.Join(root, "locked")
@@ -62,9 +59,7 @@ func TestScanLocalFiles_UnreadableSubdirectoryIsAnError(t *testing.T) {
 // An operator who deliberately excludes an unreadable path must not be blocked by
 // it — otherwise the escape hatch named in the error message does not work.
 func TestScanLocalFilesExcluding_ExcludedUnreadablePathIsNotAnError(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("running as root: mode 0000 is still readable")
-	}
+	requireUnreadablePathsArePossible(t)
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "visible.txt"), []byte("x"), 0o644))
 	secret := filepath.Join(root, "locked")
@@ -110,4 +105,24 @@ func TestUnreadablePathsError_TruncatesTheList(t *testing.T) {
 	msg := e.Error()
 	assert.Contains(t, msg, "cannot read 12 path(s)")
 	assert.Contains(t, msg, "and 7 more", "shows 5 then summarises the rest")
+}
+
+// requireUnreadablePathsArePossible skips when the environment cannot produce a
+// genuinely unreadable path, which is not the same as the behaviour being wrong
+// there.
+//
+// Two environments cannot: root bypasses the mode entirely, and WINDOWS HAS NO
+// POSIX MODE BITS -- chmod 0000 leaves the path readable, so the walk succeeds and
+// there is no error to surface. The production behaviour (report what cannot be
+// read instead of claiming nothing changed) is still correct on Windows; only the
+// test fixture is unconstructible. The defect itself is a Linux-container concern
+// anyway: an agent running as a uid that does not own the data.
+func requireUnreadablePathsArePossible(t *testing.T) {
+	t.Helper()
+	if os.Getuid() == 0 {
+		t.Skip("running as root: mode 0000 is still readable")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("windows has no POSIX mode bits: chmod 0000 leaves the path readable")
+	}
 }

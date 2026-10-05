@@ -129,14 +129,14 @@ func TestScanLocalFilesExcluding_PrunesExcludedDirectories(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{"keep.txt": "a", "skipme/inner/f.txt": "b"})
 
-	// Make the excluded directory unreadable. filepath.Walk would surface an error
-	// for its children if it descended; pruning means it never looks.
+	// Make the excluded directory unreadable. filepath.Walk would surface an error for
+	// its children if it descended; pruning means it never looks. Guarded first: where
+	// an unreadable path cannot be created the assertion still PASSES but proves
+	// nothing, since the exclusion alone produces the same result.
+	requireUnreadablePathsArePossible(t)
 	inner := filepath.Join(root, "skipme")
 	require.NoError(t, os.Chmod(inner, 0o000))
 	t.Cleanup(func() { _ = os.Chmod(inner, 0o755) })
-	if os.Getuid() == 0 {
-		t.Skip("running as root: mode 0000 does not prevent descent")
-	}
 
 	got, err := ScanLocalFilesExcluding(root, []string{"skipme"})
 	require.NoError(t, err)
