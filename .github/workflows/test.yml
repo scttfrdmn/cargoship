@@ -20,7 +20,15 @@ jobs:
   build-tags:
     name: Build Tags Compile
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 20, not 10: this job cross-vets the tag matrix for windows and darwin as well
+    # as the host (#699's escape route), which is 14 extra `go vet ./...` passes.
+    # Each new GOOS has a cold build cache and recompiles the whole dependency
+    # graph for that platform, so the job legitimately grew past 10 minutes. It was
+    # cancelled at 10m18s having reached the very last darwin tag -- close enough to
+    # the limit that it passed or failed on cache warmth, which is the worst kind of
+    # required check. Raised rather than trimmed because the cross-platform coverage
+    # is the point.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
