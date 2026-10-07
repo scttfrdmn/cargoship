@@ -264,3 +264,43 @@ func BenchmarkDefaultHTTPTransportConfig(b *testing.B) {
 		_ = DefaultHTTPTransportConfig()
 	}
 }
+
+// x/net v0.59.0 deprecated http2.ConfigureTransport in favour of
+// http.Transport.Protocols, so the enabling mechanism changed. The old call
+// installed an HTTP/2 implementation as a side effect and left nothing on the
+// transport to assert; the field is observable, so it is now checked directly —
+// HTTP/2 to S3 is a throughput property, and silently losing it would not fail
+// any other test.
+func TestBuildTransportProtocols(t *testing.T) {
+	t.Run("HTTP/2 enabled advertises h2 and keeps an HTTP/1.1 fallback", func(t *testing.T) {
+		cfg := DefaultHTTPTransportConfig()
+		cfg.EnableHTTP2 = true
+		tr := cfg.BuildTransport()
+
+		if tr.Protocols == nil {
+			t.Fatal("Transport.Protocols must be set when EnableHTTP2 is true")
+		}
+		if !tr.Protocols.HTTP2() {
+			t.Error("HTTP/2 must be enabled")
+		}
+		// Without HTTP/1.1 a proxy or endpoint that cannot negotiate h2 fails
+		// outright rather than falling back.
+		if !tr.Protocols.HTTP1() {
+			t.Error("HTTP/1.1 must stay enabled as a fallback")
+		}
+		// ALPN still has to offer both, which is a separate mechanism from Protocols.
+		want := []string{"h2", "http/1.1"}
+		if got := tr.TLSClientConfig.NextProtos; len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+			t.Errorf("NextProtos = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("HTTP/2 disabled leaves Protocols unset", func(t *testing.T) {
+		cfg := DefaultHTTPTransportConfig()
+		cfg.EnableHTTP2 = false
+		tr := cfg.BuildTransport()
+		if tr.Protocols != nil {
+			t.Errorf("Protocols = %v, want nil when EnableHTTP2 is false", tr.Protocols)
+		}
+	})
+}

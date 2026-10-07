@@ -40,6 +40,11 @@ DEVELOPMENT_NOTES.md
 docs/archive/
 .archive/
 
+# macOS Finder metadata. Unignored until now, so simply opening a directory in
+# Finder could stage a .DS_Store into a commit -- which is exactly how one reached
+# a docs commit. Matched at any depth.
+.DS_Store
+
 # Temporary development artifacts
 temp_*
 working_*
