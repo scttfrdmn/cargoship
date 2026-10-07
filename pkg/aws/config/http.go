@@ -5,8 +5,6 @@ import (
 	"net"
 	"net/http"
 	"time"
-
-	"golang.org/x/net/http2"
 )
 
 // HTTPTransportConfig configures HTTP/2 and TCP settings for S3 uploads
@@ -115,16 +113,25 @@ func (c *HTTPTransportConfig) BuildTransport() *http.Transport {
 
 	// Configure HTTP/2 settings if enabled
 	if c.EnableHTTP2 {
-		// Configure HTTP/2 transport
-		// Note: Error is safe to ignore here as http2.ConfigureTransport only
-		// returns an error if transport is nil, which cannot happen here
-		_ = http2.ConfigureTransport(transport)
+		// Transport.Protocols, not http2.ConfigureTransport: x/net v0.59.0
+		// deprecated the latter in favour of this field. The old call reached into
+		// the transport to install an HTTP/2 implementation; the field states the
+		// intent declaratively and is what net/http itself now honours.
+		//
+		// Both HTTP/2 and HTTP/1.1 are enabled so a proxy or endpoint that cannot
+		// negotiate h2 still works -- the same fallback NextProtos expressed below,
+		// which is left in place because it drives ALPN on the TLS handshake.
+		protocols := new(http.Protocols)
+		protocols.SetHTTP2(true)
+		protocols.SetHTTP1(true)
+		transport.Protocols = protocols
 
 		// Apply custom HTTP/2 settings
 		transport.TLSClientConfig.NextProtos = []string{"h2", "http/1.1"}
 
-		// Note: MaxConcurrentStreams, InitialWindowSize, MaxFrameSize
-		// are set at the HTTP/2 transport level via http2.Transport
+		// MaxConcurrentStreams, InitialWindowSize and MaxFrameSize are not
+		// settable through Transport.Protocols; tuning those still requires
+		// constructing an http2.Transport directly, which this code does not do.
 	}
 
 	return transport
