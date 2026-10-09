@@ -20,7 +20,11 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26'
+          # EXACT patch, deliberately. govulncheck reports against the stdlib of the
+          # toolchain it runs under, so a minor spec like '1.26' resolving to a stale
+          # cached patch makes this job scan — and vouch for — a Go we do not ship.
+          # Keep in step with GO_VERSION in test.yml; see the note there.
+          go-version: '1.26.9'
       - name: Install govulncheck
         # Pinned: govulncheck v1.4.0 panics ("ForEachElement called on type
         # containing *types.TypeParam") analyzing generics, so @latest crashes the
@@ -49,7 +53,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26'
+          go-version: '1.26.9'
       - name: Install gosec
         run: go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
       - name: gosec scan
