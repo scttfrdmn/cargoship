@@ -78,33 +78,44 @@ tar -xzf cargoship.tar.gz
 
 :::
 
-### macOS: the downloaded binary is quarantined
+### macOS: signing and Gatekeeper
 
-::: warning Gatekeeper will kill a downloaded `cargoship` on first run
-Released macOS binaries are **not yet notarized** by Apple
-([#407](https://github.com/scttfrdmn/cargoship/issues/407)). macOS attaches a
-`com.apple.quarantine` attribute to anything fetched from the internet, and for an
-un-notarized binary Gatekeeper does not merely warn — it **SIGKILLs the process**, which
-shows up as a bare `zsh: killed` or `Killed: 9` with no explanation.
+The macOS binaries are signed with an Apple Developer ID and notarized by Apple, so
+they run from a download with no extra steps.
 
-This affects the tarballs above, not Homebrew (`brew install` binaries are not
-quarantined) and not `go install` (you compiled it locally).
-
-Confirm that is what happened, then clear it:
+**Earlier releases were not.** They carried only an ad-hoc linker signature, and macOS
+attaches a `com.apple.quarantine` attribute to anything a browser downloads.
+Gatekeeper's response to a quarantined, un-notarized binary is not a warning dialog —
+it **SIGKILLs the process**, which surfaces as a bare `zsh: killed` or `Killed: 9` with
+no explanation. If `cargoship` appears to do nothing at all on an older release, that is
+what happened. Either upgrade, or clear the attribute yourself:
 
 ```bash
 xattr -p com.apple.quarantine /usr/local/bin/cargoship   # prints a value if quarantined
 xattr -d com.apple.quarantine /usr/local/bin/cargoship   # remove it
-cargoship --version                                      # now runs
 ```
 
-**Verify the download first** (next section). Stripping the quarantine attribute is
-exactly what you would do to run a tampered binary too, so do it only after the cosign
-and checksum verification below has passed — that check, not Gatekeeper, is what
+**Verify the download before stripping quarantine** (next section). Removing that
+attribute is exactly what you would do to run a tampered binary too, so do it only after
+the cosign and checksum verification has passed — that check, not Gatekeeper, is what
 establishes the binary came from this project's release workflow.
 
-Prefer `brew install scttfrdmn/tap/cargoship` on macOS to avoid this entirely.
-:::
+Homebrew and `go install` avoid this on any version: neither path sets the quarantine
+attribute.
+
+You can confirm any binary for yourself, which is more reliable than reasoning from a
+version number:
+
+```bash
+codesign -dvvv $(which cargoship) 2>&1 | grep Authority
+# Authority=Developer ID Application: ...
+
+spctl -a -vvv -t install $(which cargoship)
+# source=Notarized Developer ID
+```
+
+Note that `codesign --verify --strict` is *not* the check to use: it returns success for
+an ad-hoc signed binary too, so it cannot tell signed from unsigned.
 
 ### Verify the download
 
