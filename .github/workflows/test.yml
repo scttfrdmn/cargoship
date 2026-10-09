@@ -10,7 +10,13 @@ on:
       - main
 
 env:
-  GO_VERSION: '1.26'
+  # Pinned to an EXACT patch, not the '1.26' minor track. setup-go resolves a minor
+  # spec against the runner's tool cache first, so '1.26' silently kept using the
+  # cached go1.26.8 even after go1.26.9 shipped fixes for 12 stdlib advisories that
+  # our code calls — and `GOTOOLCHAIN: local` blocks Go's own auto-upgrade. The
+  # Security workflow's govulncheck job is the thing that catches this, so when it
+  # goes red on stdlib findings, bump this (and the other pins) to the fixed patch.
+  GO_VERSION: '1.26.9'
 
 jobs:
   # The plain unit-test run lives in the Code Coverage job below, which runs the
