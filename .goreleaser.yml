@@ -145,7 +145,11 @@ notarize:
         # still queued is the exact failure this stanza exists to prevent, and
         # the draft→verify→promote flow means waiting costs only wall-clock.
         wait: true
-        timeout: 30m
+        # 20m is goreleaser's hard ceiling, not a preference: it rejects anything
+        # longer because Apple refuses authentication tokens with a lifetime above
+        # that, so a larger value cannot work even though it looks more generous.
+        # This PR was written against 30m, which `goreleaser check` now fails.
+        timeout: 20m
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
