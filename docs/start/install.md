@@ -22,7 +22,7 @@ brew install scttfrdmn/tap/cargoship
 
 ## Go install
 
-If you already have Go 1.26+:
+If you already have Go 1.27+:
 
 ```bash
 go install github.com/scttfrdmn/cargoship/cmd/cargoship@latest

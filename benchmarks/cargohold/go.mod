@@ -1,6 +1,6 @@
 module github.com/scttfrdmn/cargoship/benchmarks/cargohold
 
-go 1.26.0
+go 1.27.0
 
 // Use local cargoship module during development
 replace github.com/scttfrdmn/cargoship => ../..
