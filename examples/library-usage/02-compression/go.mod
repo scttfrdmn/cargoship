@@ -1,6 +1,6 @@
 module github.com/scttfrdmn/cargoship/examples/library-usage/02-compression
 
-go 1.26.0
+go 1.27.0
 
 replace github.com/scttfrdmn/cargoship => ../../..
 

@@ -16,7 +16,9 @@ env:
   # our code calls — and `GOTOOLCHAIN: local` blocks Go's own auto-upgrade. The
   # Security workflow's govulncheck job is the thing that catches this, so when it
   # goes red on stdlib findings, bump this (and the other pins) to the fixed patch.
-  GO_VERSION: '1.26.9'
+  # "The other pins" includes the digest-pinned golang bases in docker/Dockerfile.*:
+  # #775 missed them, and the images kept building on go1.26.8 until #547.
+  GO_VERSION: '1.27.3'
 
 jobs:
   # The plain unit-test run lives in the Code Coverage job below, which runs the
@@ -225,7 +227,7 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.10.1
+          version: v2.15.0
           args: --timeout=10m
 
   # Validate the release config on every PR (#381). release.yml pins goreleaser

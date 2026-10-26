@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Built with Go 1.27.3.** Clears GO-2026-6809 (crypto/x509: man-in-the-middle via untrusted
+  intermediate certificates, fixed in 1.26.10/1.27.3). `go.mod` now requires Go 1.27. The Docker
+  images had also been building on **go1.26.8**: their `golang:1.26-alpine` base was pinned by
+  digest, and #775's Go bump missed it, so they carried four HIGH stdlib CVEs that the released
+  binaries didn't. The bases now pin `golang:1.27.3-alpine` by digest, so the tag names the patch
+  the image actually contains.
+
+### Fixed
+- The experimental `pkg/multiregion` parallel failover discarded each region's error and returned a
+  bare "all parallel failover attempts failed". The per-region errors are now joined into the
+  returned error. (Found by golangci-lint v2.15.0, which CI now uses because older releases can't
+  lint Go 1.27 code.)
+
 ## [0.38.2] - 2026-10-05
 
 Documentation and CI. **No code changes to the archiver, uploader or verifier** — the binaries are

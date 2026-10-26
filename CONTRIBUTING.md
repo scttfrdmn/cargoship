@@ -10,7 +10,7 @@ Thank you for your interest in contributing to CargoShip! This project builds up
 
 ### Prerequisites
 
-- **Go 1.26+** - CargoShip is written in Go (see `go.mod`)
+- **Go 1.27+** - CargoShip is written in Go (see `go.mod`)
 - **AWS CLI** (optional) - Only for opt-in real-AWS testing
 - **Pre-commit hooks** - Automatic code quality/security checks
 

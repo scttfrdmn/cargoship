@@ -1,6 +1,6 @@
 module github.com/scttfrdmn/cargoship
 
-go 1.26.0
+go 1.27.0
 
 require (
 	github.com/ProtonMail/go-crypto v1.4.1
@@ -9,6 +9,9 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.47.1
 	github.com/aws/aws-sdk-go-v2/config v1.33.3
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.3
+	// #384: migrated the upload path off the deprecated feature/s3/manager Uploader.
+	// NOTE: transfermanager is still pre-1.0 (v0.x) — watch for breaking changes on bump.
+	github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager v0.4.3
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.73.0
 	github.com/aws/aws-sdk-go-v2/service/iam v1.64.0
 	github.com/aws/aws-sdk-go-v2/service/kms v1.61.1
@@ -46,10 +49,6 @@ require (
 	golang.org/x/term v0.46.0
 	gopkg.in/yaml.v3 v3.0.1
 )
-
-// #384: migrated the upload path off the deprecated feature/s3/manager Uploader.
-// NOTE: transfermanager is still pre-1.0 (v0.x) — watch for breaking changes on bump.
-require github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager v0.4.3
 
 require (
 	dario.cat/mergo v1.0.2 // indirect

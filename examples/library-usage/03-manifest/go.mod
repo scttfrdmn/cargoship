@@ -1,6 +1,6 @@
 module github.com/scttfrdmn/cargoship/examples/library-usage/03-manifest
 
-go 1.24.0
+go 1.27.0
 
 replace github.com/scttfrdmn/cargoship => ../../..
 
