@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   digest, and #775's Go bump missed it, so they carried four HIGH stdlib CVEs that the released
   binaries didn't. The bases now pin `golang:1.27.3-alpine` by digest, so the tag names the patch
   the image actually contains.
+- **dvc-cargoship: patched filelock, certifi and gitpython** (#799), each raised by a
+  `constraint-dependencies` floor: filelock ≥ 4.2.1 (CVE-2026-112940, HIGH), certifi ≥ 2026.10.18
+  (GHSA-6q48-6c7w-9gw2, CRITICAL: compromised emSign roots) and gitpython ≥ 3.2.1
+  (CVE-2026-114145, HIGH: RCE).
+
+### Changed
+- **dvc-cargoship now requires Python 3.11+.** filelock's fix exists only in releases that need
+  Python ≥ 3.11, so a 3.10 install couldn't be patched. Python 3.10 reached end-of-life in
+  October 2026.
 
 ### Fixed
 - The experimental `pkg/multiregion` parallel failover discarded each region's error and returned a
