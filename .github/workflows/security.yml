@@ -55,7 +55,7 @@ jobs:
         with:
           go-version: '1.27.3'
       - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
       - name: gosec scan
         # Gated at HIGH severity AND HIGH confidence, which is currently zero
         # findings and so is enforceable. The lower tiers are dominated by
