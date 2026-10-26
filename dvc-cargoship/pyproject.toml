@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "DVC remote plugin for CargoShip bulk S3 uploads"
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 keywords = ["dvc", "cargoship", "s3", "remote", "data-version-control"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -16,7 +16,6 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering",
@@ -67,7 +66,18 @@ constraint-dependencies = [
     # FOURTH round of the same class, as this comment's history predicted:
     # CVE-2026-87817 (HIGH) remote code execution via git-directory impersonation,
     # and CVE-2026-87819 (HIGH) ReDoS. Both fixed in 3.1.60.
-    "gitpython>=3.1.60",
+    # FIFTH: CVE-2026-114145 / GHSA-83vg-56qc-22m7 (HIGH) RCE, because a
+    # submodule's ".git" path was validated only after cloning into it. Fixed in
+    # 3.2.1.
+    "gitpython>=3.2.1",
+    # GHSA-6q48-6c7w-9gw2 (CRITICAL): bundled emSign root CAs whose intermediate
+    # CA keys were compromised. Fixed in 2026.10.18.
+    "certifi>=2026.10.18",
+    # CVE-2026-112940 / GHSA-v4x8-3wr5-3wq8 (HIGH): ReadWriteLock reopens its
+    # SQLite lock database by name, so a planted symlink or journal file makes
+    # the locking process overwrite or unlink its own files. Fixed in 4.2.1,
+    # which needs Python >= 3.11. That's why requires-python is >= 3.11.
+    "filelock>=4.2.1",
     # GHSA-cq5v-8q36-5273 (HIGH): out-of-bounds heap read in the C HTTP response
     # parser's error path on a malformed chunked response. Also picks up
     # GHSA-mfx4-hv73-q22v (request smuggling via WebSocket upgrade) and
