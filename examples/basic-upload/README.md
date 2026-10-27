@@ -13,7 +13,7 @@ This example demonstrates how to use CargoShip as a library for optimized S3 upl
 
 ## Prerequisites
 
-- Go 1.21 or later
+- Go 1.27 or later
 - AWS credentials configured (`~/.aws/credentials` or environment variables)
 - An S3 bucket with write permissions
 
