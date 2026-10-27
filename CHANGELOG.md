@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-10-27
+
+A security and toolchain release. **No changes to the archive format, the upload pipeline or
+`verify`**, so archives written by v0.38.x restore identically. It's a minor bump because two
+minimums moved: the Go module now needs **Go 1.27**, and the dvc-cargoship plugin needs
+**Python 3.11+**. The prebuilt binaries are unaffected by either.
+
 ### Security
 - **Built with Go 1.27.3.** Clears GO-2026-6809 (crypto/x509: man-in-the-middle via untrusted
   intermediate certificates, fixed in 1.26.10/1.27.3). `go.mod` now requires Go 1.27. The Docker
@@ -18,11 +25,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `constraint-dependencies` floor: filelock ≥ 4.2.1 (CVE-2026-112940, HIGH), certifi ≥ 2026.10.18
   (GHSA-6q48-6c7w-9gw2, CRITICAL: compromised emSign roots) and gitpython ≥ 3.2.1
   (CVE-2026-114145, HIGH: RCE).
+- **golang.org/x/net 0.60.0** (#775) fixes four HTTP/2 *server* advisories (GO-2026-6617, -6612,
+  -6611, -6603). Practical exposure was low: CargoShip ships no HTTP/2 server, and its optional
+  metrics and pprof listeners are plain HTTP with no TLS, so h2 is never negotiated. Go was also
+  pinned to an exact patch in CI from this change on, because a minor-version spec had silently
+  kept CI on a stale cached Go.
+- dvc-cargoship: aiohttp 3.14.4 (#793) and multidict/hydra-core (#774).
 
 ### Changed
 - **dvc-cargoship now requires Python 3.11+.** filelock's fix exists only in releases that need
   Python ≥ 3.11, so a 3.10 install couldn't be patched. Python 3.10 reached end-of-life in
   October 2026.
+- `pkg/aws/config` sets `http.Transport.Protocols` instead of calling the deprecated
+  `http2.ConfigureTransport` (#761). HTTP/2 behaviour is unchanged.
+- Dependency updates: the aws-sdk-go-v2 group (#764, #770, #801), klauspost/compress 1.20.1
+  (#802), modernc.org/sqlite 1.60.1 and libc 1.79.0, gopenpgp 2.11.1, go-git 5.19.3, brotli 1.2.6,
+  chi 5.4.0, grpc-gateway 2.31.0, otel/metric 1.47.0, bubbles 1.0.0 and substrate 0.120.0 (test
+  emulator), plus pinned CI action bumps.
+- The documentation site's hero image went from 2.4 MB to 314 KB (#760).
 
 ### Fixed
 - The experimental `pkg/multiregion` parallel failover discarded each region's error and returned a
