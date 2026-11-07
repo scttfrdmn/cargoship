@@ -4,4 +4,4 @@ go 1.27.0
 
 replace github.com/scttfrdmn/cargoship => ../../..
 
-require github.com/klauspost/compress v1.18.7
+require github.com/klauspost/compress v1.20.2
