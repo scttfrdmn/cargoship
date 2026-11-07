@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **klauspost/compress 1.20.2** (#824) fixes GO-2026-6865 (CVE-2026-116591): the zstd decoder's
+  `fse`/`huff0` stages could panic on a crafted two-block frame, so a malicious or corrupted chunk
+  could crash `restore` or `verify`. It never affected archive bytes. 1.20.3, which rewrites the
+  zstd hot loops for speed, is deliberately held back for separate round-trip validation.
+
 ## [0.39.0] - 2026-10-27
 
 A security and toolchain release. **No changes to the archive format, the upload pipeline or
