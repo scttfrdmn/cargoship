@@ -3,10 +3,10 @@
 CargoShip ships tab-completion for Bash, Zsh, fish, and PowerShell. With it
 enabled, you get completion of subcommands, flags, and flag values as you type.
 
-If you installed CargoShip from the Homebrew or `.deb` / `.rpm` packages,
-completion is already wired up — skip to [verifying](#verify). If you installed
-another way, generate the completion script for your shell with the built-in
-`cargoship completion` command.
+If you installed CargoShip with Homebrew (v0.40.0 or later), bash, zsh and fish
+completion is already wired up — skip to [verifying](#verify). Otherwise, generate
+the completion script for your shell with the built-in `cargoship completion`
+command.
 
 ```bash
 cargoship completion --help          # list supported shells
@@ -72,8 +72,8 @@ cargoship upload --sh<Tab> # suggests --shard-count, --shard-strategy
 - **Start a fresh shell** after installing — completion loads at shell startup, so
   it won't appear in the session where you generated it.
 - **Regenerate after upgrades** so newly added commands and flags complete.
-- **Use package installs** (Homebrew / deb / rpm) when you can — completion is set
-  up for you and stays current with the binary.
+- **Use Homebrew** when you can — completion is set up for you and is regenerated
+  from the binary on every upgrade.
 :::
 
 ## See also

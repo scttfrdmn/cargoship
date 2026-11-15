@@ -21,8 +21,8 @@
 #
 # The distinction is the useful part, and it is why this wraps `check` instead of
 # calling it directly in the workflow. A deprecation is a scheduling problem: the
-# release still works today and there may be a deliberate reason to wait (for
-# `brews:` there is — see the KNOWN_DEPRECATIONS note below). A hard error is
+# release still works today and there may be a deliberate reason to wait (as
+# there was for `brews:` until #381 — see KNOWN_DEPRECATIONS below). A hard error is
 # never acceptable. Collapsing both into one red X would mean either blocking
 # every PR on a known-and-accepted deprecation, or ignoring the lane entirely.
 #
@@ -40,16 +40,9 @@ cd "$REPO_ROOT" || exit 1
 # needs an issue and a reason — the point is that the decision is written down,
 # not that the warning is hidden.
 #
-#   brews  → #381. Migrating to `homebrew_casks:` is NOT a rename: `test:` and
-#            `install:` do not exist on a cask, and casks propagate macOS
-#            quarantine. Our darwin artifacts are adhoc/linker-signed only, not
-#            notarized, and a quarantined v0.22.0 darwin_arm64 binary is
-#            SIGKILLed by Gatekeeper (rc=137, measured). Migrating before we
-#            notarize would break `brew install` on macOS, so `brews:` stays
-#            until the signing question is settled.
-KNOWN_DEPRECATIONS=(
-  "brews"
-)
+#   (none) `brews` was carried here until #381 moved Homebrew publishing to
+#          `homebrew_casks:` once the darwin binaries were notarized (#407).
+KNOWN_DEPRECATIONS=()
 
 if ! command -v goreleaser >/dev/null 2>&1; then
   echo "::error::goreleaser not installed — this check needs it on PATH"
@@ -113,7 +106,7 @@ fi
 unexpected=()
 for dep in "${found[@]}"; do
   known=false
-  for allowed in "${KNOWN_DEPRECATIONS[@]}"; do
+  for allowed in ${KNOWN_DEPRECATIONS[@]+"${KNOWN_DEPRECATIONS[@]}"}; do
     if [ "$dep" = "$allowed" ]; then
       known=true
       break
