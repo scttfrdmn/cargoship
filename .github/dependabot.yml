@@ -34,6 +34,11 @@ updates:
       # (The feature/s3/manager pin held for #384 was removed once that migration
       # landed — the upload path now uses feature/s3/transfermanager, so manager
       # is no longer a dependency and needs no ignore rule.)
+      # pflag 1.1 rewrites every bool flag in --help as `--flag[=true|false]` and
+      # rewords parse errors. Held at 1.0.10 (upstream's own advice) until cobra
+      # adopts 1.1; patch updates within 1.0.x still flow.
+      - dependency-name: "github.com/spf13/pflag"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
     groups:
       aws-sdk:
         patterns:
