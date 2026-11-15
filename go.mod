@@ -31,7 +31,7 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/muesli/mango-cobra v1.3.0
 	github.com/muesli/roff v0.1.0
-	github.com/olekukonko/tablewriter v1.1.4
+	github.com/olekukonko/tablewriter v1.1.5
 	github.com/pierrec/lz4/v4 v4.1.31
 	github.com/prometheus/client_golang v1.24.1
 	github.com/scttfrdmn/substrate v0.120.0
