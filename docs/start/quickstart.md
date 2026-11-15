@@ -14,6 +14,7 @@ links to a page with the full detail.
 ::: code-group
 
 ```bash [Homebrew]
+brew tap scttfrdmn/tap && brew trust scttfrdmn/tap
 brew install scttfrdmn/tap/cargoship
 ```
 

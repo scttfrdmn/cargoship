@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Homebrew install instructions** (#846): Homebrew 7 refuses to load anything from an untrusted
+  third-party tap, so the documented `brew install scttfrdmn/tap/cargoship` failed for every new user.
+  The docs now run `brew tap scttfrdmn/tap && brew trust scttfrdmn/tap` first.
+
 ### Security
 - **klauspost/compress 1.20.2** (#824) fixes GO-2026-6865 (CVE-2026-116591): the zstd decoder's
   `fse`/`huff0` stages could panic on a crafted two-block frame, so a malicious or corrupted chunk

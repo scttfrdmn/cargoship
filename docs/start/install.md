@@ -17,8 +17,13 @@ your platform; all of them leave you with a `cargoship` command on your PATH.
 The easiest option on macOS and Linux:
 
 ```bash
+brew tap scttfrdmn/tap && brew trust scttfrdmn/tap
 brew install scttfrdmn/tap/cargoship
 ```
+
+Homebrew 7 refuses to load anything from a third-party tap until you trust it
+(`Refusing to load … from untrusted tap`), and only you can grant that trust, not the
+tap's owner. `brew trust` records it once, in Homebrew's per-user trust store.
 
 ## Go install
 
