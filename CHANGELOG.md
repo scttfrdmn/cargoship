@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **golang.org/x/net 0.62.0** fixes CVE-2026-78661, a DoS in `x/net/html`. CargoShip never
   calls that package (govulncheck reports nothing), but the module ships in the binaries and Trivy
   flags it.
+- **Built with Go 1.27.4** (#842), fixing GO-2026-6859 (CVE-2026-97054): an `net/http` HTTP/1
+  server could crash on a MaxBytesReader header race. CargoShip's only HTTP servers are the
+  optional metrics and pprof endpoints. The Docker image bases now pin `golang:1.27.4-alpine`.
 
 ## [0.39.0] - 2026-10-27
 
