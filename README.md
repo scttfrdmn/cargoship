@@ -41,6 +41,7 @@ for a side-by-side breakdown.
 
 ```bash
 # Homebrew (macOS/Linux)
+brew tap scttfrdmn/tap && brew trust scttfrdmn/tap
 brew install scttfrdmn/tap/cargoship
 
 # Scoop (Windows)

@@ -68,6 +68,7 @@ and reversibly. Pick the path that fits you:
 ::: code-group
 
 ```bash [Homebrew]
+brew tap scttfrdmn/tap && brew trust scttfrdmn/tap
 brew install scttfrdmn/tap/cargoship
 ```
 
