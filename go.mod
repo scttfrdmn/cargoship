@@ -111,7 +111,7 @@ require (
 	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/olekukonko/cat v0.0.0-20250911104152-50322a0618f6 // indirect
 	github.com/olekukonko/errors v1.3.0 // indirect
-	github.com/olekukonko/ll v0.1.8 // indirect
+	github.com/olekukonko/ll v0.1.9 // indirect
 	github.com/onsi/gomega v1.44.0 // indirect
 	github.com/pandatix/go-abnf v0.5.3 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
