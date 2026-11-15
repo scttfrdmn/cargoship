@@ -13,6 +13,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The docs now run `brew tap scttfrdmn/tap && brew trust scttfrdmn/tap` first.
 
 ### Security
+- **macOS binaries are now signed with an Apple Developer ID and notarized**
+  ([#381](https://github.com/scttfrdmn/cargoship/issues/381)). Previously they
+  carried only an ad-hoc linker signature, which is fine until the file picks up
+  `com.apple.quarantine` — as anything downloaded by a browser does. Gatekeeper's
+  response to that is not a warning dialog: it **SIGKILLs the process**, rc=137,
+  no output and no diagnostic. Measured on the published v0.22.0 `darwin_arm64`
+  binary, so "cargoship does nothing at all" was a real and undiagnosable
+  experience for anyone who installed from a direct download.
+
+  Signing runs on the existing `ubuntu-latest` runner — goreleaser uses `quill`,
+  a pure-Go Mach-O signer, not Apple's `codesign`. A new macOS job then downloads
+  the draft release's actual artifacts and asserts all four properties (Developer
+  ID authority, hardened runtime, `spctl` notarization verdict, and that the
+  binary *runs* while quarantined) **before** the release is promoted, so a
+  release that would be killed on a user's Mac cannot become public. Note that
+  `codesign --verify --strict` is not used for this: it returns success for an
+  ad-hoc signed binary too, so it cannot tell signed from unsigned.
+
+  This also unblocks migrating the Homebrew formula to a cask, which was waiting
+  on notarization because casks propagate quarantine and formulae do not.
+
 - **klauspost/compress 1.20.2** (#824) fixes GO-2026-6865 (CVE-2026-116591): the zstd decoder's
   `fse`/`huff0` stages could panic on a crafted two-block frame, so a malicious or corrupted chunk
   could crash `restore` or `verify`. It never affected archive bytes. 1.20.3, which rewrites the
@@ -23,6 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Built with Go 1.27.4** (#842), fixing GO-2026-6859 (CVE-2026-97054): an `net/http` HTTP/1
   server could crash on a MaxBytesReader header race. CargoShip's only HTTP servers are the
   optional metrics and pprof endpoints. The Docker image bases now pin `golang:1.27.4-alpine`.
+
+### Changed
+- `id-token: write` is now scoped to the one release job that runs cosign, rather
+  than the whole workflow. It was workflow-level when the workflow had a single
+  job; it now has three, and neither the notarization nor the publish job needs to
+  assert an identity.
 
 ## [0.39.0] - 2026-10-27
 
