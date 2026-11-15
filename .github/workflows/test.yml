@@ -18,7 +18,7 @@ env:
   # goes red on stdlib findings, bump this (and the other pins) to the fixed patch.
   # "The other pins" includes the digest-pinned golang bases in docker/Dockerfile.*:
   # #775 missed them, and the images kept building on go1.26.8 until #547.
-  GO_VERSION: '1.27.3'
+  GO_VERSION: '1.27.4'
 
 jobs:
   # The plain unit-test run lives in the Code Coverage job below, which runs the
