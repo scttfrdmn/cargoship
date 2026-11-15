@@ -237,22 +237,39 @@ release:
 # deprecation. Short version: casks propagate macOS quarantine, our darwin
 # binaries are not notarized, and a quarantined release binary is SIGKILLed by
 # Gatekeeper. Migrating before notarization would break `brew install` on macOS.
-brews:
-  - repository:
+homebrew_casks:
+  # #381: binary-installing formulas are deprecated (goreleaser v2.10/v2.16) in
+  # favour of casks. This waited on notarization, because casks propagate macOS
+  # quarantine and a quarantined un-notarized binary is SIGKILLed (rc=137,
+  # measured). The darwin binaries are now Developer ID signed and notarized, so
+  # there is deliberately NO `xattr -dr com.apple.quarantine` hook: that bypass
+  # is goreleaser's recipe for UNSIGNED binaries, and defeats the check it exists
+  # to pass. The release's notarization job proves a quarantined binary runs.
+  - name: cargoship
+    ids:
+      - cargoship
+    binaries:
+      - cargoship
+    repository:
       owner: scttfrdmn
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
+    # No `directory:`; casks must live in Casks/, which is the default.
     homepage: https://github.com/scttfrdmn/cargoship
     description: High-performance S3 upload tool with intelligent sharding and compression
-    # The repo is Apache-2.0 (see LICENSE). This said MIT, so every published
-    # formula has declared the wrong license — including the live tap today.
-    license: Apache-2.0
     skip_upload: auto
-    test: |
-      system "#{bin}/cargoship", "--version"
-    install: |
-      bin.install "cargoship"
+    # The formula never installed completions, though the completion guide said
+    # Homebrew did. cobra generates them from the binary, so they always match it.
+    generate_completions_from_executable:
+      executable: cargoship
+      args:
+        - completion
+      base_name: cargoship
+      shell_parameter_format: cobra
+      shells:
+        - bash
+        - zsh
+        - fish
 
 # Scoop bucket
 scoops:

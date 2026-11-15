@@ -88,7 +88,7 @@ tar -xzf cargoship.tar.gz
 The macOS binaries are signed with an Apple Developer ID and notarized by Apple, so
 they run from a download with no extra steps.
 
-**Earlier releases were not.** They carried only an ad-hoc linker signature, and macOS
+**Releases before v0.40.0 were not.** They carried only an ad-hoc linker signature, and macOS
 attaches a `com.apple.quarantine` attribute to anything a browser downloads.
 Gatekeeper's response to a quarantined, un-notarized binary is not a warning dialog —
 it **SIGKILLs the process**, which surfaces as a bare `zsh: killed` or `Killed: 9` with
@@ -105,8 +105,9 @@ attribute is exactly what you would do to run a tampered binary too, so do it on
 the cosign and checksum verification has passed — that check, not Gatekeeper, is what
 establishes the binary came from this project's release workflow.
 
-Homebrew and `go install` avoid this on any version: neither path sets the quarantine
-attribute.
+`go install` avoids this on any version, because you compile the binary yourself. Homebrew
+installs CargoShip as a cask from v0.40.0 on, and a cask *does* quarantine what it
+downloads; that is fine because those binaries are notarized.
 
 You can confirm any binary for yourself, which is more reliable than reasoning from a
 version number:

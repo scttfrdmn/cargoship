@@ -46,6 +46,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   optional metrics and pprof endpoints. The Docker image bases now pin `golang:1.27.4-alpine`.
 
 ### Changed
+- **Homebrew now installs CargoShip as a cask** (#381), replacing the formula. goreleaser
+  deprecated binary-installing formulas, and the switch waited until the macOS binaries were
+  notarized, because a cask quarantines what it downloads. Existing installs are moved across
+  automatically on `brew upgrade` via the tap's `tap_migrations.json`. The cask also installs
+  **bash, zsh and fish completion**, generated from the binary. The completion guide had claimed
+  Homebrew and `.deb`/`.rpm` installs already did this; neither was true, and no `.deb`/`.rpm`
+  packages are published, so the guide no longer mentions them.
 - `id-token: write` is now scoped to the one release job that runs cosign, rather
   than the whole workflow. It was workflow-level when the workflow had a single
   job; it now has three, and neither the notarization nor the publish job needs to
