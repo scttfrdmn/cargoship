@@ -26,7 +26,10 @@ func createTestReporterWithHistoricalData(t *testing.T, days int, dailyCost floa
 	// Generate historical cost records based on trend
 	for i := 0; i < days; i++ {
 		dayOffset := -days + i
-		timestamp := now.Add(time.Duration(dayOffset) * 24 * time.Hour)
+		// AddDate, not 24h steps: the engine buckets by local calendar date, and
+		// across a DST change a 24h step taken late in the evening can land
+		// twice on one date, yielding 29 distinct days instead of 30.
+		timestamp := now.AddDate(0, 0, dayOffset)
 
 		var cost float64
 		switch trend {

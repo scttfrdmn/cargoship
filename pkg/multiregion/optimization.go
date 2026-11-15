@@ -2,6 +2,7 @@ package multiregion
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -307,21 +308,19 @@ func (fo *FailoverOptimizer) parallelFailover(ctx context.Context, request *Uplo
 	}
 
 	// Wait for first successful result or all failures
-	successCount := 0
-	errorCount := 0
-
-	for successCount == 0 && errorCount < concurrency {
+	var errs []error
+	for len(errs) < concurrency {
 		select {
 		case result := <-resultChan:
 			return result, nil
-		case <-errorChan:
-			errorCount++
+		case err := <-errorChan:
+			errs = append(errs, err)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
 	}
 
-	return nil, fmt.Errorf("all parallel failover attempts failed")
+	return nil, fmt.Errorf("all parallel failover attempts failed: %w", errors.Join(errs...))
 }
 
 // attemptOptimizedFailover performs a single optimized failover attempt

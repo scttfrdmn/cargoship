@@ -3,7 +3,7 @@
 ## Project Context
 CargoShip is a high-performance S3 upload optimization tool for large-scale data transfers with advanced staging, compression, and chunking. (Multi-region is an experimental/roadmap library, not a shipping upload feature — see the Multi-Region section.)
 
-**Current Version**: v0.38.2 (Released 2026-10-05)
+**Current Version**: v0.39.0 (Released 2026-10-27)
 
 ## Response Style
 - Concise by default. No explanations unless asked.
@@ -11,7 +11,7 @@ CargoShip is a high-performance S3 upload optimization tool for large-scale data
 - Fix bugs silently unless cause is non-obvious.
 
 ## Go Standards
-- Go 1.23+ with modules
+- Go 1.27+ with modules
 - `gofmt`, `goimports` on all code
 - Pass `go vet`, `staticcheck`, `golangci-lint` before done
 - Godoc comments on all exported identifiers

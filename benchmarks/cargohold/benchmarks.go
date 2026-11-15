@@ -211,7 +211,7 @@ func runRcloneBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir stri
 	dest := fmt.Sprintf(":s3,provider=AWS,env_auth=true,region=%s:%s/%s/rclone-%s",
 		region, config.Bucket, config.Prefix, config.Scenario)
 
-	cmd := exec.Command(rclonePath, "copy", dataDir, dest,
+	cmd := exec.Command(rclonePath, "copy", dataDir, dest, // #nosec G702 -- benchmark harness: execs rclone from LookPath with argv, no shell
 		"--transfers", fmt.Sprintf("%d", config.Concurrency),
 		"--s3-no-check-bucket",
 	)
@@ -240,7 +240,7 @@ func runMinIOMcBenchmark(config *BenchmarkConfig, spec ScenarioSpec, dataDir str
 	if region := os.Getenv("AWS_REGION"); region != "" {
 		endpoint = fmt.Sprintf("https://s3.%s.amazonaws.com", region)
 	}
-	aliasCmd := exec.Command(mcPath, "alias", "set", "s3bench", endpoint,
+	aliasCmd := exec.Command(mcPath, "alias", "set", "s3bench", endpoint, // #nosec G702 -- benchmark harness: execs mc from LookPath with argv, no shell
 		os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"))
 	if output, err := aliasCmd.CombinedOutput(); err != nil {
 		return result, fmt.Errorf("mc alias setup failed: %w\nOutput: %s", err, string(output))

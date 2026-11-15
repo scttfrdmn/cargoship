@@ -28,7 +28,7 @@ func main() {
 	searchTerm := os.Args[2]
 
 	// Load manifest
-	data, err := os.ReadFile(manifestPath)
+	data, err := os.ReadFile(manifestPath) // #nosec G703 -- example CLI: the path is the user's own command-line argument
 	if err != nil {
 		log.Fatalf("Failed to read manifest: %v", err)
 	}

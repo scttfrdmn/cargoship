@@ -49,7 +49,7 @@ func main() {
 	fmt.Println()
 
 	// Create cache directory
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+	if err := os.MkdirAll(cacheDir, 0755); err != nil { // #nosec G703 -- example CLI: the path is the user's own command-line argument
 		log.Fatalf("Failed to create cache directory: %v", err)
 	}
 
@@ -72,7 +72,7 @@ func main() {
 	fmt.Println()
 
 	// Parse manifest
-	data, err := os.ReadFile(manifestPath)
+	data, err := os.ReadFile(manifestPath) // #nosec G703 -- example CLI: the path is the user's own command-line argument
 	if err != nil {
 		log.Fatalf("Failed to read manifest: %v", err)
 	}
@@ -119,7 +119,7 @@ func main() {
 	fmt.Println()
 
 	// Verify download
-	info, err := os.Stat(chunkPath)
+	info, err := os.Stat(chunkPath) // #nosec G703 -- example CLI: the path is the user's own command-line argument
 	if err != nil {
 		log.Fatalf("Failed to stat chunk: %v", err)
 	}
@@ -159,7 +159,7 @@ func downloadS3File(ctx context.Context, client *s3.Client, bucket, key, localPa
 	defer result.Body.Close()
 
 	// Create local file
-	file, err := os.Create(localPath)
+	file, err := os.Create(localPath) // #nosec G703 -- example CLI: the path is the user's own command-line argument
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}

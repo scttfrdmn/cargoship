@@ -37,12 +37,12 @@ func main() {
 	fmt.Println()
 
 	// Verify chunk file exists
-	if _, err := os.Stat(chunkPath); os.IsNotExist(err) {
+	if _, err := os.Stat(chunkPath); os.IsNotExist(err) { // #nosec G703 -- example CLI: the path is the user's own command-line argument
 		log.Fatalf("Chunk file not found: %s", chunkPath)
 	}
 
 	// Create output directory
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0755); err != nil { // #nosec G703 -- example CLI: the path is the user's own command-line argument
 		log.Fatalf("Failed to create output directory: %v", err)
 	}
 
@@ -85,7 +85,7 @@ func main() {
 // extractFileFromChunk extracts a specific file from a compressed tar chunk
 func extractFileFromChunk(chunkPath, targetFile, outputDir string) (string, error) {
 	// Open chunk file
-	file, err := os.Open(chunkPath)
+	file, err := os.Open(chunkPath) // #nosec G703 -- example CLI: the path is the user's own command-line argument
 	if err != nil {
 		return "", fmt.Errorf("failed to open chunk: %w", err)
 	}
@@ -124,7 +124,7 @@ func extractFileFromChunk(chunkPath, targetFile, outputDir string) (string, erro
 		outputPath := filepath.Join(outputDir, filepath.Base(targetFile))
 
 		// Create output file
-		outFile, err := os.Create(outputPath)
+		outFile, err := os.Create(outputPath) // #nosec G703 -- filepath.Base of the user-named target, joined under the user's output dir
 		if err != nil {
 			return "", fmt.Errorf("failed to create output file: %w", err)
 		}
