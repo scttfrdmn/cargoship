@@ -165,6 +165,13 @@ jobs:
           sudo sysctl -w net.ipv4.tcp_allowed_congestion_control="reno cubic bbr"
           cat /proc/sys/net/ipv4/tcp_available_congestion_control
 
+      # Visible evidence that the bbr subtest RAN (not skipped): -v shows it.
+      - name: Prove the dialer sets BBR on a real socket
+        run: |
+          set -o pipefail
+          go test -count=1 -run 'TestDialerSetsCongestionOnRealSocket' -v ./pkg/aws/config/ | tee test-cc.log
+          grep -q -- '--- PASS: TestDialerSetsCongestionOnRealSocket/bbr' test-cc.log
+
       - name: Run tests with race detector
         run: go test ./... -short -race -timeout=15m
 

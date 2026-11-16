@@ -52,11 +52,19 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      # Loopback's 64 KB MTU makes each netem "packet" a 64 KB GSO super-segment,
+      # which caps both algorithms near one segment per RTT (first run: cubic
+      # 5.2 vs bbr 5.1 Mbps). Use a real MTU, a netem queue deep enough for the
+      # bandwidth-delay product, and buffers that don't bind before the
+      # congestion controller does.
       - name: Allow BBR and shape loopback (+100 ms RTT, 0.1% loss)
         run: |
           sudo modprobe tcp_bbr
           sudo sysctl -w net.ipv4.tcp_allowed_congestion_control="reno cubic bbr"
-          sudo tc qdisc add dev lo root netem delay 50ms loss 0.1%
+          sudo ip link set dev lo mtu 1500
+          sudo sysctl -w net.core.rmem_max=67108864 net.core.wmem_max=67108864
+          sudo sysctl -w net.ipv4.tcp_rmem="4096 131072 67108864" net.ipv4.tcp_wmem="4096 131072 67108864"
+          sudo tc qdisc add dev lo root netem delay 50ms loss 0.1% limit 1000000
           tc qdisc show dev lo
 
       - name: Run the A/B
