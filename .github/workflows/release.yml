@@ -308,6 +308,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
+          # This job has no checkout, so `gh` cannot infer the repo from a .git
+          # directory. Without GH_REPO it fails with "not a git repository" and
+          # leaves a fully verified release stuck as a draft (v0.40.0, promoted by
+          # hand with the same command plus -R).
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           # --verify-tag: refuse to publish if the tag somehow is not on the
