@@ -201,8 +201,28 @@ Examples:
 				return fmt.Errorf("cannot use both --auto-tier and --storage-class (they are mutually exclusive)")
 			}
 
+			// #881: --congestion-control sets the kernel TCP algorithm on every
+			// S3 socket (Linux). Resolve it against the host first, so an
+			// explicit request that can't be honoured is reported, not ignored.
+			cc, err := cargoconfig.NormalizeCongestionControl(congestionControl)
+			if err != nil {
+				return fmt.Errorf("%w: --congestion-control: %w", ErrUsage, err)
+			}
+			congestionControl = cc
+			ccReport := cargoconfig.ResolveCongestionControl(cc)
+			if ccReport.Warning != "" {
+				fmt.Fprintf(os.Stderr, "⚠️  %s\n", ccReport.Warning)
+			}
+			if !quiet {
+				fmt.Printf("TCP congestion control: %s\n", ccReport)
+			}
+
 			// Create S3 client with optimized HTTP transport
 			httpConfig := cargoconfig.DefaultHTTPTransportConfig()
+			httpConfig.CongestionControl = ccReport.Effective
+			httpConfig.OnCongestionError = func(err error) {
+				fmt.Fprintf(os.Stderr, "⚠️  %v\n", err)
+			}
 			s3Client, err := cargoconfig.GetOrCreateS3Client(ctx, bucket, region, "", httpConfig)
 			if err != nil {
 				return fmt.Errorf("failed to create S3 client: %w", err)
@@ -961,7 +981,7 @@ Examples:
 	// v0.6.2: Advanced transporter flags
 	cmd.Flags().StringVar(&transporterType, "transporter", "staging", "S3 transporter type: basic, staging, adaptive, optimized, none")
 	cmd.Flags().BoolVar(&enableOptimization, "optimization", true, "Enable optimization features (BBR/CUBIC, adaptive staging, BDP)")
-	cmd.Flags().StringVar(&congestionControl, "congestion-control", "auto", "Congestion control algorithm: bbr, cubic, auto")
+	cmd.Flags().StringVar(&congestionControl, "congestion-control", "auto", "TCP congestion control for S3 sockets (Linux): bbr, cubic, or auto (bbr when the kernel allows it, else the kernel default)")
 	cmd.Flags().BoolVar(&disableStaging, "disable-staging", false, "Disable adaptive staging (reduces memory usage)")
 
 	// Issue #155: Observability flags
