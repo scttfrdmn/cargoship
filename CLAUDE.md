@@ -103,7 +103,7 @@ Tests automatically create and clean up test buckets. Use custom bucket name via
 Streaming architecture: Scanner → Chunker → Archiver → S3 Uploader
 - Zero local disk usage (io.Pipe streaming)
 - Bounded memory: O(chunk_size × workers)
-- Multi-prefix S3 sharding (8× request rate capacity)
+- Multi-prefix S3 sharding: shards × 2 workers × 4 parts of upload concurrency (S3 per-prefix limits apply only after S3 scales a prefix, #882)
 - Adaptive shard count: Automatically optimizes S3 prefix count based on workload size, file count, and system resources (Issue #106)
 
 ### Budget & Cost Management (pkg/aws/cost/)

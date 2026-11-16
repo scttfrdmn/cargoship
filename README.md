@@ -114,8 +114,8 @@ cargoship upload /data/project-2024 s3://my-bucket/project-2024 --shard-count 16
 
 - **Zero-disk streaming pipeline** — files stream from disk through compression
   to S3 with no local staging; memory stays bounded to `chunk_size × workers`.
-- **Multi-prefix sharding** — chunks are distributed across S3 prefixes, so
-  request-rate capacity scales with the shard count. CargoShip automatically
+- **Multi-prefix sharding** — chunks are distributed across S3 prefixes, each
+  with its own upload workers, so the shard count sets upload concurrency. CargoShip automatically
   selects between 4 and 32 shards when `--shard-count` is 0 (the default); if
   automatic selection fails, it falls back to 8. See
   [sharding](https://cargoship.app/guides/features/sharding).

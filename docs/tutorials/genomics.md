@@ -75,7 +75,7 @@ cargoship upload /cluster/data/WGS/cohort-2026 \
 
 The [shard count is adaptive](/guides/features/sharding) (4–32), tuned to the
 file count and total size, and CargoShip spreads chunks across multiple S3
-prefixes so you don't hit per-prefix request limits on a big cohort. Leave it on
+prefixes, each with its own upload workers, so a big cohort uploads in parallel. Leave it on
 auto unless you're benchmarking; override with `--shard-count` if you must.
 
 ::: tip Sharing the network

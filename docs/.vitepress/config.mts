@@ -107,6 +107,7 @@ const sidebar = {
         { text: 'Encryption (KMS & GPG)', link: '/guides/features/encryption' },
         { text: 'Tier-aware storage', link: '/guides/features/tiering' },
         { text: 'Performance tuning', link: '/guides/features/optimization' },
+        { text: 'Running on EC2', link: '/guides/features/ec2' },
         { text: 'Observability & tracing', link: '/guides/features/observability' },
         { text: 'Benchmarking', link: '/guides/features/benchmarking' },
       ],

@@ -13,6 +13,9 @@ tiny logs. See [Benchmarking](/guides/features/benchmarking) for a repeatable
 harness.
 :::
 
+On EC2, check the network path first: see [Running on EC2](/guides/features/ec2)
+for the S3 gateway endpoint and the instance types that exceed 5 Gbps.
+
 ## Find the bottleneck first
 
 Every upload is limited by one of three things. Identify which before tuning:
@@ -56,7 +59,7 @@ leave it on auto unless benchmarking:
 cargoship upload ./big-dataset s3://my-bucket/archives/ --shard-count 24
 ```
 
-More shards multiply S3 request headroom; they don't create bandwidth. If you're
+More shards add upload concurrency; they don't create bandwidth. If you're
 already network-bound, adding shards does nothing.
 
 ## Direct-upload mode for small files

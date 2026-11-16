@@ -1,5 +1,9 @@
 # Realistic Scientific Data Benchmarks
 
+> **On EC2, the link speeds below are not the binding numbers.** Instances under 32 vCPUs
+> (except the `*8in` families) cap internet-bound traffic at 5 Gbps, and S3 traffic avoids that cap
+> only through an S3 gateway endpoint. See [Running on EC2](../../docs/guides/features/ec2.md) (#883).
+
 This document describes the realistic benchmark suite for CargoShip, designed to accurately measure performance with genomic and scientific imaging workloads.
 
 ## Problem
