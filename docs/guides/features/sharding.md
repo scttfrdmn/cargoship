@@ -1,28 +1,36 @@
 # Multi-prefix sharding
 
-CargoShip spreads a single upload across multiple S3 **prefixes** — shards — and
-uploads them in parallel. This is the main reason it's faster than uploading
-files one at a time: S3 scales request throughput *per prefix*, so more prefixes
-means proportionally more aggregate throughput. The shard count is adaptive by
-default, so most people never touch it.
+CargoShip spreads a single upload across multiple S3 **prefixes** (shards) and
+uploads them in parallel. Each shard gets its own pool of upload workers, so the
+shard count is the main control on **how many uploads run at once**. It's
+adaptive by default, so most people never touch it.
 
 For where shards land in the archive layout, see the
 [archive layout spec](/reference/format/archive-layout).
 
-## Why prefixes scale throughput
+## What sharding buys
 
-S3 limits requests per prefix, not per bucket: roughly **3,500 PUT/s and 5,500
-GET/s per prefix**. A single-prefix uploader hits that ceiling and stops
-scaling. By writing chunks across N prefixes, CargoShip multiplies the effective
-limit:
+- **Parallelism.** Each shard runs 2 upload workers, and each upload sends 4
+  parts at once. So 4 shards keep up to 32 parts in flight, and 32 shards up to
+  256. Per-connection S3 throughput is limited (roughly 75–90 MB/s per stream),
+  so concurrency is what fills a fast link.
+- **Spread across prefixes.** S3 scales request capacity per prefix, so spreading
+  writes across prefixes keeps any one prefix from becoming a hot spot.
 
-```
-aggregate PUT/s ≈ shard_count × 3,500
-```
+### S3's per-prefix limits are not instant
 
-Eight shards give ~28,000 PUT/s of headroom — enough that your network, not S3,
-becomes the bottleneck. Each shard is an independent S3 prefix uploaded
-concurrently.
+AWS documents roughly **3,500 PUT/s and 5,500 GET/s per prefix**. Those rates are
+reached only **after** S3 has scaled a prefix's partitions, which it does
+gradually under sustained load. A new bucket or a new prefix starts far lower.
+In aws-elastic-gcs's measurements, small-object writes into a new bucket drew
+**503 `SlowDown` at about 50 PUT/s**.
+
+CargoShip is mostly insulated from this. It packs files into large chunks, so it
+makes few requests: 64 MB parts at 10 Gbps is about 20 PUT/s. When S3 does
+return `503 SlowDown`, the upload pacer backs off (see
+[Performance tuning](/guides/features/optimization)). Don't read the shard count
+as multiplying S3's request ceiling; read it as how much upload concurrency you
+get.
 
 ## Adaptive shard count (the default)
 

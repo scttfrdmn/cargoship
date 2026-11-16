@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+- **Running on EC2** (#883), a new guide covering the S3 gateway endpoint (without one, S3 traffic is
+  capped at 5 Gbps through the internet gateway on most instances under 32 vCPUs, or pays NAT gateway
+  per-GB processing), the `*8in` instance families, and the fact that `estimate` doesn't include
+  NAT or cross-region transfer charges.
+- **Sharding** (#882): corrected why sharding helps. S3's ~3,500 PUT/s per prefix is reached only
+  after S3 scales a prefix, and new prefixes throttle far lower. The shard count's real effect is
+  upload concurrency (shards × 2 workers × 4 parts). The "×3,500 PUT/s" arithmetic and the "8×
+  request rate capacity" claim are removed from the docs and README.
+
 ### Changed
 - **klauspost/compress 1.20.3** (#860), held back from v0.39.1/v0.40.0 because it rewrites the zstd
   encode/decode hot loops for speed. It was validated separately against 1.20.2 with a cross-version

@@ -265,5 +265,5 @@ blanket claim.
   (concurrency, chunk size, sharding) these benchmarks exercise
 - [CargoShip vs. other tools](/reference/comparison) — when CargoShip is and isn't
   the right choice
-- [Sharding](/guides/features/sharding) — how multi-prefix parallelism affects
-  request-rate ceilings
+- [Sharding](/guides/features/sharding) — how multi-prefix parallelism sets
+  upload concurrency, and why S3's per-prefix limits aren't instant
