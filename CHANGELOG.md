@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-11-16
+
+The first release whose **macOS binaries are Developer ID signed and notarized** by Apple,
+and the first published to Homebrew as a **cask**. Downloaded darwin binaries now run
+instead of being silently killed by Gatekeeper, and Homebrew installs gain shell
+completion. Also carries security fixes for the zstd decoder, `net/http` and two
+dvc-cargoship dependencies. **No changes to the archive format, the upload pipeline or
+`verify`**, so archives from earlier releases restore identically.
+
+**Homebrew 7 users:** run `brew trust scttfrdmn/tap` once (see Fixed). Existing formula
+installs move to the cask automatically on `brew upgrade`.
+
 ### Fixed
 - **Homebrew install instructions** (#846): Homebrew 7 refuses to load anything from an untrusted
   third-party tap, so the documented `brew install scttfrdmn/tap/cargoship` failed for every new user.
@@ -44,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Built with Go 1.27.4** (#842), fixing GO-2026-6859 (CVE-2026-97054): an `net/http` HTTP/1
   server could crash on a MaxBytesReader header race. CargoShip's only HTTP servers are the
   optional metrics and pprof endpoints. The Docker image bases now pin `golang:1.27.4-alpine`.
+- dvc-cargoship: `constraint-dependencies` floors for hydra-core ≥ 1.3.8 (GHSA-wf6j-7hvr-gr93,
+  HIGH) and setuptools ≥ 84.1.0 (GHSA-xmj3-9gf7-h52w, low) (#827).
 
 ### Changed
 - **Homebrew now installs CargoShip as a cask** (#381), replacing the formula. goreleaser
@@ -57,6 +71,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   than the whole workflow. It was workflow-level when the workflow had a single
   job; it now has three, and neither the notarization nor the publish job needs to
   assert an identity.
+- Dependency updates, including the aws-sdk-go-v2 group and `feature/s3/transfermanager` 0.4.3 →
+  **0.5.2** on the upload path. That version is pre-1.0, so it was validated with the emulator
+  integration and e2e round-trip suites (#828, #848). Also substrate 0.124.0 (test emulator),
+  sqlite 1.61.1, lz4 4.1.33, prometheus client_golang 1.25.0 and pinned CI action bumps.
+  `spf13/pflag` is held at 1.0.10, because 1.1.0 rewrites every boolean flag in `--help` as
+  `--flag[=true|false]` (#851). klauspost/compress 1.20.3 is held for separate round-trip
+  validation.
 
 ## [0.39.0] - 2026-10-27
 
