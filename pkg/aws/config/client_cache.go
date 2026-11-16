@@ -19,11 +19,18 @@ type ClientCacheKey struct {
 	Bucket  string
 	Region  string
 	Profile string
+	// CongestionControl keeps clients whose transports set different TCP
+	// algorithms apart (#881).
+	CongestionControl string
 }
 
 // String returns a string representation of the cache key
 func (k ClientCacheKey) String() string {
-	return fmt.Sprintf("%s:%s:%s", k.Bucket, k.Region, k.Profile)
+	s := fmt.Sprintf("%s:%s:%s", k.Bucket, k.Region, k.Profile)
+	if k.CongestionControl != "" {
+		s += ":cc=" + k.CongestionControl
+	}
+	return s
 }
 
 // Hash returns a hash of the cache key for map lookups
@@ -55,6 +62,9 @@ func GetOrCreateS3Client(ctx context.Context, bucket, region, profile string, ht
 		Bucket:  bucket,
 		Region:  region,
 		Profile: profile,
+	}
+	if httpConfig != nil {
+		key.CongestionControl = httpConfig.CongestionControl
 	}
 
 	return globalS3ClientCache.GetOrCreate(ctx, key, httpConfig)

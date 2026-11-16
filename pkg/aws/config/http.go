@@ -31,6 +31,14 @@ type HTTPTransportConfig struct {
 	DialTimeout           time.Duration
 	ExpectContinueTimeout time.Duration
 	ResponseHeaderTimeout time.Duration
+
+	// CongestionControl is the TCP congestion-control algorithm set on every
+	// new S3 socket (#881), normally CongestionReport.Effective. Empty leaves
+	// the OS default. Only Linux supports setting it per socket.
+	CongestionControl string
+	// OnCongestionError, if set, is called once when the algorithm could not
+	// be set on a socket at dial time.
+	OnCongestionError func(error)
 }
 
 // DefaultHTTPTransportConfig returns balanced settings for general use
@@ -87,14 +95,25 @@ func ConservativeHTTPTransportConfig() *HTTPTransportConfig {
 	return cfg
 }
 
+// dialer builds the TCP dialer, installing the congestion-control hook when an
+// algorithm is configured.
+func (c *HTTPTransportConfig) dialer() *net.Dialer {
+	d := &net.Dialer{
+		Timeout:   c.DialTimeout,
+		KeepAlive: c.TCPKeepAlive,
+	}
+	if c.CongestionControl != "" {
+		stats := &congestionDialStats{warn: c.OnCongestionError}
+		d.Control = stats.controlFunc(c.CongestionControl)
+	}
+	return d
+}
+
 // BuildTransport creates an http.Transport with configured settings
 func (c *HTTPTransportConfig) BuildTransport() *http.Transport {
 	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   c.DialTimeout,
-			KeepAlive: c.TCPKeepAlive,
-		}).DialContext,
+		Proxy:             http.ProxyFromEnvironment,
+		DialContext:       c.dialer().DialContext,
 		ForceAttemptHTTP2: c.EnableHTTP2,
 		// Issue #34 Phase 2.3: Increased MaxIdleConns from 200 to 1024 for better connection reuse
 		// Allows more idle connections to be cached across multiple hosts/regions

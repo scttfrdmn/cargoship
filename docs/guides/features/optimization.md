@@ -102,12 +102,47 @@ cargoship upload ./data s3://my-bucket/archives/ --memory-limit 2GB
 of adaptive behaviors; leave it on unless you're isolating a variable in a
 benchmark.
 
-::: details Congestion control
-`--congestion-control` selects the TCP congestion algorithm: `auto` (default),
-`bbr`, or `cubic`. `auto` picks a sensible default for your platform. Pinning
-`bbr` can help on high-latency or lossy links where it's available; `cubic` is
-the conservative fallback. This is a marginal knob — exhaust compression and
-shard tuning first.
+## TCP congestion control on long or lossy links
+
+`--congestion-control` sets the kernel's TCP congestion-control algorithm on
+every S3 connection. This works on **Linux** only; on other platforms the OS
+default applies and an explicit value prints a warning.
+
+| Value | Effect |
+|---|---|
+| `auto` (default) | `bbr` if the kernel has it and this process may use it, otherwise the kernel default |
+| `bbr` | BBR on every S3 socket, or a warning that names the reason and the fix |
+| `cubic` | CUBIC on every S3 socket |
+
+`upload` prints the algorithm in effect, for example
+`TCP congestion control: bbr (requested auto)`.
+
+**It matters most on a NAS or other host uploading over a long or lossy WAN.**
+On a clean path the algorithm barely matters. With loss, CUBIC collapses: on a
++100 ms path with 0.1% packet loss, the sister project aws-elastic-gcs measured
+**0.16 Gbps with CUBIC against 0.97 Gbps with BBR**.
+
+To make BBR available to an unprivileged process, once per boot (or
+persistently in `/etc/sysctl.d/`):
+
+```bash
+sudo modprobe tcp_bbr
+sudo sysctl -w net.ipv4.tcp_allowed_congestion_control="reno cubic bbr"
+# Optional host-wide tuning (ESnet fasterdata): BBR as default, fq pacing,
+# and TCP buffers that can grow to 32 MB.
+sudo sysctl -w net.core.default_qdisc=fq net.ipv4.tcp_congestion_control=bbr
+sudo sysctl -w net.core.rmem_max=33554432 net.core.wmem_max=33554432
+sudo sysctl -w net.ipv4.tcp_rmem="4096 87380 33554432" net.ipv4.tcp_wmem="4096 65536 33554432"
+```
+
+A container uses its host's kernel, so for Docker or a NAS app this is set on
+the host. Within those limits, cargoship sets the algorithm per socket itself.
+
+::: info Separate from upload pacing
+`--optimization` (on by default) also runs an application-level pacer that
+backs off when S3 returns `503 SlowDown`. That pacer is independent of the TCP
+algorithm above. Before v0.41.0, `--congestion-control` only reached the pacer
+and never changed TCP, despite what these docs said (#881).
 :::
 
 ## Storage class is a cost knob, not a speed knob
