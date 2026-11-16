@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **klauspost/compress 1.20.3** (#860), held back from v0.39.1/v0.40.0 because it rewrites the zstd
+  encode/decode hot loops for speed. It was validated separately against 1.20.2 with a cross-version
+  codec harness: 182 encoded outputs (zstd at all four archive levels via the streaming writer with
+  concurrency 1 and NumCPU, `EncodeAll`, and s2) over a hostile corpus. Every output decodes
+  byte-identical under **both** versions (728 checks, 0 mismatches), so archives written by this
+  release stay restorable by older cargoship binaries. Encoder output bytes differ for 48 of 182 but
+  are never more than 1% larger. That's harmless: frame checksums are computed over the compressed
+  bytes at write time, and `sync` decides changes by source size/mtime. Also passes the e2e
+  cross-version restore suite, emulator integration and the fuzz targets.
+
 ## [0.40.0] - 2026-11-16
 
 The first release whose **macOS binaries are Developer ID signed and notarized** by Apple,
