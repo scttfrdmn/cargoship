@@ -19,6 +19,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/kms v1.62.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.6 // indirect
 	github.com/aws/smithy-go v1.28.8 // indirect
-	github.com/klauspost/compress v1.20.2 // indirect
+	github.com/klauspost/compress v1.20.3 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
