@@ -57,7 +57,7 @@ cargoship upload SOURCE_DIR DESTINATION [flags]
   -b, --bucket string                    S3 bucket name (or use s3:// URL in DESTINATION)
       --check-access                     Report the target bucket's access-control posture before uploading (see the 'access-check' command)
       --compression-level int            Fixed zstd compression level (1-22), overriding per-chunk content-aware selection. Unset = content-aware (default 3)
-      --congestion-control string        Congestion control algorithm: bbr, cubic, auto (default "auto")
+      --congestion-control string        TCP congestion control for S3 sockets (Linux): bbr, cubic, or auto (bbr when the kernel allows it, else the kernel default) (default "auto")
       --direct-upload                    Enable direct upload mode (bypasses archiving/compression for small files)
       --direct-upload-threshold-mb int   Max total size in MB for auto direct upload (default: 500) (default 500)
       --direct-upload-workers int        Worker count for direct upload (default: 256) (default 256)

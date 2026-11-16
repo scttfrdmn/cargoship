@@ -33,6 +33,37 @@ env:
   GO_VERSION: '1.27.4'
 
 jobs:
+  # #881 acceptance: on a long, lossy path, BBR set per socket through cargoship's
+  # dialer must clearly beat CUBIC. Shapes loopback only, in its own job, so no
+  # other test sees the delay. Non-blocking, like the rest of this workflow.
+  congestion-ab:
+    name: Congestion control A/B (netem)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Allow BBR and shape loopback (+100 ms RTT, 0.1% loss)
+        run: |
+          sudo modprobe tcp_bbr
+          sudo sysctl -w net.ipv4.tcp_allowed_congestion_control="reno cubic bbr"
+          sudo tc qdisc add dev lo root netem delay 50ms loss 0.1%
+          tc qdisc show dev lo
+
+      - name: Run the A/B
+        env:
+          CARGOSHIP_NETEM_AB: '1'
+        run: go test -count=1 -run TestCongestionControlNetemAB -v ./pkg/aws/config/
+
   benchmark:
     name: Run Performance Benchmarks
     runs-on: ubuntu-latest

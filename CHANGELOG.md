@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`--congestion-control` now actually sets TCP congestion control** (#881). It used to be
+  accepted, validated, and then only reach an application-level pacer, so `bbr` and `cubic` behaved
+  identically and every S3 socket used the kernel default, despite the docs. On Linux, cargoship
+  now sets the algorithm on each S3 socket.
+  - `auto` (the default) uses BBR when the kernel offers it and the process may use it, otherwise
+    the kernel default.
+  - An explicit `bbr` or `cubic` that can't be honoured prints a warning naming the fix
+    (`modprobe tcp_bbr`, `net.ipv4.tcp_allowed_congestion_control`).
+  - An unknown value is a usage error (exit 2).
+  - `upload` reports the algorithm in effect.
+  - This matters on long or lossy WANs: at +100 ms and 0.1% loss, kernel CUBIC fell to 0.16 Gbps
+    against 0.97 Gbps for BBR in the sister project aws-elastic-gcs's measurements. The optimization
+    guide now covers host tuning for NAS and fleet boxes.
+
 ### Changed
 - **klauspost/compress 1.20.3** (#860), held back from v0.39.1/v0.40.0 because it rewrites the zstd
   encode/decode hot loops for speed. It was validated separately against 1.20.2 with a cross-version

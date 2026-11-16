@@ -157,6 +157,14 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      # #881: let unprivileged sockets use BBR, so TestDialerSetsCongestionOnRealSocket/bbr
+      # runs instead of skipping and proves the dialer sets it in the kernel.
+      - name: Allow BBR for the per-socket congestion-control test
+        run: |
+          sudo modprobe tcp_bbr
+          sudo sysctl -w net.ipv4.tcp_allowed_congestion_control="reno cubic bbr"
+          cat /proc/sys/net/ipv4/tcp_available_congestion_control
+
       - name: Run tests with race detector
         run: go test ./... -short -race -timeout=15m
 

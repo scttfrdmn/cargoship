@@ -42,6 +42,9 @@ func TestExitCode_UsageErrors(t *testing.T) {
 		{"too few args (MinimumNArgs)", []string{"create", "upload"}},
 		{"parent command without subcommand", []string{"create"}},
 		{"unknown subcommand of a parent", []string{"create", "bogus-sub"}},
+		// #881: an unknown --congestion-control value is a usage error, not a
+		// silently ignored setting.
+		{"bad congestion-control value", []string{"upload", os.TempDir(), "s3://b/p", "--congestion-control", "bogus"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
