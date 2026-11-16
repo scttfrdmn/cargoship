@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-11-16
+
+Acts on what the sister project aws-elastic-gcs learned about AWS transfer limits.
+`--congestion-control` now really sets the kernel's TCP algorithm on Linux, which matters most for
+a NAS uploading over a long or lossy WAN. The docs no longer overstate S3's request ceiling, and a
+new guide covers running on EC2. **No changes to the archive format, the upload pipeline's data
+path or `verify`**, so archives from earlier releases restore identically.
+
+Behaviour change: on Linux, the default `--congestion-control auto` now uses **BBR** for S3 sockets
+when the kernel offers it to unprivileged processes. Previously every socket used the kernel default.
+Pass `--congestion-control cubic` to keep CUBIC.
+
 ### Fixed
 - **`--congestion-control` now actually sets TCP congestion control** (#881). It used to be
   accepted, validated, and then only reach an application-level pacer, so `bbr` and `cubic` behaved
@@ -33,6 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request rate capacity" claim are removed from the docs and README.
 
 ### Changed
+- Dependency updates: nine Dependabot bumps batched with the nested-module tidy (#869):
+  smithy-go 1.28.8, sqlite 1.62.0 (modernc libc 1.80.1), brotli 1.2.8, chi 5.5.0, x/sys 0.50.0 and
+  others. Also the alpine base digest for the Docker images (#853).
+- The release workflow's publish step now has its repository context (#866/#867). v0.40.0's publish
+  job failed with "not a git repository" after every check had passed, and that release was promoted
+  by hand.
 - **klauspost/compress 1.20.3** (#860), held back from v0.39.1/v0.40.0 because it rewrites the zstd
   encode/decode hot loops for speed. It was validated separately against 1.20.2 with a cross-version
   codec harness: 182 encoded outputs (zstd at all four archive levels via the streaming writer with
