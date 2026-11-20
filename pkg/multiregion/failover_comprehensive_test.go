@@ -31,7 +31,6 @@ func TestComprehensiveFailoverScenarios(t *testing.T) {
 		ctx := context.Background()
 		err := coordinator.Initialize(ctx, config)
 		require.NoError(t, err)
-		defer func() { _ = coordinator.Shutdown(ctx) }()
 
 		// Get a region to test failure conditions on
 		coordinator.mu.RLock()
@@ -44,6 +43,13 @@ func TestComprehensiveFailoverScenarios(t *testing.T) {
 		}
 		coordinator.mu.RUnlock()
 		require.NotNil(t, testRegion)
+
+		// The subtests below call shouldTriggerFailover directly and mutate
+		// config and testRegion between calls. Stop the background detection
+		// loop first: with AutoFailover on and a 10ms DetectionInterval it calls
+		// the same function on the same state concurrently, which the race
+		// detector reported on CI (#708).
+		require.NoError(t, coordinator.Shutdown(ctx))
 
 		t.Run("HighErrorRateTrigger", func(t *testing.T) {
 			// Set high error rate to trigger failover
