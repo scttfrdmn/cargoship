@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Config files are YAML only, and both config readers now agree on which file is in use** (#890).
+  The startup reader searched for `.cargoship` with *any* extension, so a `~/.cargoship.toml` (or
+  `.json`) was "used", while `config --show`/`--validate` then decoded the same file as YAML and
+  failed. Now a non-YAML `.cargoship.*` is ignored with a warning naming the YAML file to create,
+  `config --file x.toml` is a usage error (exit 2), and the startup reader searches the same three
+  documented locations as `config`. A YAML config that exists but fails to parse is now reported;
+  it used to be silently skipped.
+
 ## [0.41.0] - 2026-11-16
 
 Acts on what the sister project aws-elastic-gcs learned about AWS transfer limits.

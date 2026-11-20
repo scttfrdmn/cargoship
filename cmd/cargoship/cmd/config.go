@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -87,6 +88,9 @@ func runConfig(cmd *cobra.Command, args []string) error {
 	// Load configuration if file is specified or for validation/show
 	if configFile != "" || configValidate || configShow {
 		if err := manager.LoadConfig(configFile); err != nil {
+			if errors.Is(err, config.ErrUnsupportedConfigFormat) {
+				return fmt.Errorf("%w: %w", ErrUsage, err)
+			}
 			return fmt.Errorf("failed to load config: %w", err)
 		}
 	}

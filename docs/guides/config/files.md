@@ -34,8 +34,14 @@ CargoShip searches these paths in order and uses the first that exists:
 2. `~/.config/cargoship/.cargoship.yaml`
 3. `./.cargoship.yaml` (current directory)
 
-A project-local `./.cargoship.yaml` is handy for per-dataset defaults committed
-alongside the data. Point at an explicit file anywhere with `--file`.
+`.cargoship.yml` is accepted in each location too. A project-local
+`./.cargoship.yaml` is handy for per-dataset defaults committed alongside the
+data. Point at an explicit file anywhere with `--file`.
+
+The config file is **YAML only**. A `.cargoship.toml`, `.json` or other format
+is ignored with a warning saying what to rename it to, and `--file` with a
+non-YAML extension is a usage error. If a YAML config exists but can't be
+parsed, CargoShip says so instead of silently running without it.
 
 ## Generate a starter config
 

@@ -45,6 +45,8 @@ func TestExitCode_UsageErrors(t *testing.T) {
 		// #881: an unknown --congestion-control value is a usage error, not a
 		// silently ignored setting.
 		{"bad congestion-control value", []string{"upload", os.TempDir(), "s3://b/p", "--congestion-control", "bogus"}},
+		// #890: CargoShip config is YAML only; an explicit TOML file is a usage error.
+		{"non-YAML config file", []string{"config", "--validate", "--file", "/tmp/x.toml"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
