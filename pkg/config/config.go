@@ -222,23 +222,15 @@ func (m *Manager) LoadConfig(configPath string) error {
 	// Set defaults
 	m.setDefaults()
 
-	// Load from config file if it exists
-	if configPath != "" {
-		m.viper.SetConfigFile(configPath)
-	} else {
-		// Look for config in standard locations
-		home, err := os.UserHomeDir()
-		if err == nil {
-			m.viper.AddConfigPath(home)
-			m.viper.AddConfigPath(filepath.Join(home, ".config", "cargoship"))
-		}
-		m.viper.AddConfigPath(".")
-		m.viper.SetConfigName(".cargoship")
+	// #890: resolve the file ourselves, YAML only. Letting viper search by
+	// name found .cargoship.toml (or .json, ...) and then decoded it as YAML.
+	resolved, _, err := ResolveConfigFile(configPath)
+	if err != nil {
+		return err
 	}
-
-	// Read config file (ignore if not found)
-	if err := m.viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+	if resolved != "" {
+		m.viper.SetConfigFile(resolved)
+		if err := m.viper.ReadInConfig(); err != nil {
 			return fmt.Errorf("failed to read config file: %w", err)
 		}
 	}

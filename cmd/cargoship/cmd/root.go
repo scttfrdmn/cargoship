@@ -15,14 +15,15 @@ import (
 
 	"github.com/charmbracelet/log"
 
+	"math"
+
 	"github.com/charmbracelet/lipgloss"
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
-	"math"
 
-	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 
+	"github.com/scttfrdmn/cargoship/pkg/config"
 	contextpkg "github.com/scttfrdmn/cargoship/pkg/context"
 	"github.com/scttfrdmn/cargoship/pkg/observability/bindguard"
 	"github.com/scttfrdmn/cargoship/pkg/profiling"
@@ -139,26 +140,33 @@ func init() {
 }
 
 // initConfig reads in config file and ENV variables if set.
+//
+// #890: the file is resolved by config.ResolveConfigFile (YAML only, the same
+// rule the config command applies), so both readers agree on which file is in
+// use. A non-YAML .cargoship.* is reported as ignored, and a YAML file that
+// exists but can't be read is reported rather than silently skipped.
 func initConfig() {
-	if cfgFile != "" {
-		// Use config file from the flag.
-		viper.SetConfigFile(cfgFile)
-	} else {
-		// Find home directory.
-		home, err := homedir.Dir()
-		cobra.CheckErr(err)
-
-		// Search config in home directory with name ".cli" (without extension).
-		viper.AddConfigPath(home)
-		viper.SetConfigName(".cargoship")
+	explicit := cfgFile
+	path, warning, err := config.ResolveConfigFile(explicit)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Warning:", err)
+	}
+	if warning != "" {
+		fmt.Fprintln(os.Stderr, "Warning:", warning)
 	}
 
 	viper.AutomaticEnv() // read in environment variables that match
 
-	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+	if path == "" {
+		return
 	}
+	viper.SetConfigType("yaml")
+	viper.SetConfigFile(path)
+	if err := viper.ReadInConfig(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not read config file %s: %v\n", path, err)
+		return
+	}
+	fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
 }
 
 /*
