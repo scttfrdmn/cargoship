@@ -14,6 +14,7 @@ func isolate(t *testing.T) (home, cwd string) {
 	t.Helper()
 	home, cwd = t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads this on Windows
 	t.Chdir(cwd)
 	return home, cwd
 }

@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`config --show` no longer rewrites your config file** (#891). With the default YAML format it
+  re-marshalled the loaded config over `~/.cargoship.yaml` (or the file it loaded) and read it back
+  to print it. That silently deleted comments and every key the config struct doesn't model,
+  including the documented **`cost_control:` global budget block**, so later uploads ran without
+  their budget. It now prints to stdout and never writes. **If you ran `config --show` on an
+  earlier version, check that your `cost_control` settings are still there.**
 - **Config files are YAML only, and both config readers now agree on which file is in use** (#890).
   The startup reader searched for `.cargoship` with *any* extension, so a `~/.cargoship.toml` (or
   `.json`) was "used", while `config --show`/`--validate` then decoded the same file as YAML and

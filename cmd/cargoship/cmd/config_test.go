@@ -788,3 +788,46 @@ func TestRunConfigFlagPrecedence(t *testing.T) {
 	// Should not contain validation output
 	assert.NotContains(t, output, "✅ Configuration is valid!")
 }
+
+// TestShowConfigYAMLIsReadOnly pins #891: `config --show` must print the config,
+// never write it. It used to call SaveConfig, which re-marshalled the struct
+// over ~/.cargoship.yaml and silently deleted comments and every key the struct
+// doesn't model — including the documented cost_control budget block.
+func TestShowConfigYAMLIsReadOnly(t *testing.T) {
+	originalFormat := configFormat
+	defer func() { configFormat = originalFormat }()
+	configFormat = "yaml"
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := filepath.Join(home, ".cargoship.yaml")
+	original := "# my comment\naws:\n  region: eu-west-1 # keep\ncost_control:\n  enabled: true\n  max_budget: 10000.0\n"
+	require.NoError(t, os.WriteFile(path, []byte(original), 0o600))
+
+	manager := config.NewManager()
+	require.NoError(t, manager.LoadConfig(path))
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	stdout := os.Stdout
+	os.Stdout = w
+	showErr := showConfig(manager)
+	_ = w.Close()
+	os.Stdout = stdout
+	require.NoError(t, showErr)
+	var out bytes.Buffer
+	_, _ = out.ReadFrom(r)
+
+	after, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, original, string(after), "config --show must not modify the config file")
+	assert.Contains(t, out.String(), "region: eu-west-1", "the effective config must still be printed")
+
+	// And it must not create one where none existed.
+	require.NoError(t, os.Remove(path))
+	os.Stdout = w // closed pipe: output is irrelevant here
+	_ = showConfig(config.NewManager())
+	os.Stdout = stdout
+	_, statErr := os.Stat(path)
+	assert.True(t, os.IsNotExist(statErr), "config --show must not create ~/.cargoship.yaml")
+}
