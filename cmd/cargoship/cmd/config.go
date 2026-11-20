@@ -17,6 +17,7 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/config"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -418,21 +419,15 @@ func showConfig(manager *config.Manager) error {
 		encoder.SetIndent("", "  ")
 		return encoder.Encode(cfg)
 	case "yaml", "yml":
-		if err := manager.SaveConfig(""); err != nil {
+		// #891: print, never write. This used to SaveConfig over the user's
+		// file and read it back, deleting comments and every key the struct
+		// doesn't model (including cost_control budgets).
+		enc := yaml.NewEncoder(os.Stdout)
+		enc.SetIndent(4)
+		if err := enc.Encode(cfg); err != nil {
 			return fmt.Errorf("failed to format config as YAML: %w", err)
 		}
-		// Read the saved config and print it
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
-		}
-		configPath := filepath.Join(home, ".cargoship.yaml")
-		data, err := os.ReadFile(configPath)
-		if err != nil {
-			return fmt.Errorf("failed to read config file: %w", err)
-		}
-		fmt.Print(string(data))
-		return nil
+		return enc.Close()
 	default:
 		return fmt.Errorf("unsupported format: %s (use yaml or json)", configFormat)
 	}
