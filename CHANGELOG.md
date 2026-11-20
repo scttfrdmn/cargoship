@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`config --show` no longer rewrites your config file** (#891). With the default YAML format it
+  re-marshalled the loaded config over `~/.cargoship.yaml` (or the file it loaded) and read it back
+  to print it. That silently deleted comments and every key the config struct doesn't model,
+  including the documented **`cost_control:` global budget block**, so later uploads ran without
+  their budget. It now prints to stdout and never writes. **If you ran `config --show` on an
+  earlier version, check that your `cost_control` settings are still there.**
+
 ## [0.41.0] - 2026-11-16
 
 Acts on what the sister project aws-elastic-gcs learned about AWS transfer limits.
