@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.1] - 2026-11-20
+
+A patch release for a **data-loss bug**: on any earlier version, `cargoship config --show` rewrote
+`~/.cargoship.yaml` and could delete your global budget settings. **If you have run
+`config --show`, check that your `cost_control:` block is still in your config file.** No
+changes to the archive format, uploads or `verify`.
+
 ### Fixed
 - **`config --show` no longer rewrites your config file** (#891). With the default YAML format it
   re-marshalled the loaded config over `~/.cargoship.yaml` (or the file it loaded) and read it back
@@ -21,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `config --file x.toml` is a usage error (exit 2), and the startup reader searches the same three
   documented locations as `config`. A YAML config that exists but fails to parse is now reported;
   it used to be silently skipped.
+
+### Changed
+- Dependency updates (#889): grpc 1.85.0, grpc-gateway 2.33.0, otlp 1.11.1, otlptracehttp 1.47.0,
+  procfs 0.23.0, modernc libc 1.80.2, go-abnf 0.5.5, objx 0.8.0 (test-only), and go-toml 2.4.3. go-toml
+  2.4 reimplements the TOML parser; TOML decoding through viper was checked byte-identical to 2.2.4.
 
 ## [0.41.0] - 2026-11-16
 
