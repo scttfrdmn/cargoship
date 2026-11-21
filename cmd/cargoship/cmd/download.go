@@ -229,7 +229,15 @@ Examples:
 			duration := time.Since(startTime)
 			throughput := float64(stats.Bytes) / duration.Seconds() / 1024 / 1024 // MB/s
 
-			fmt.Printf("✅ Download complete!\n")
+			// #905: no success banner over a partial or failed download.
+			switch {
+			case stats.Failed == 0:
+				fmt.Printf("✅ Download complete!\n")
+			case stats.Restored == 0:
+				fmt.Printf("❌ Download failed: no files were extracted\n")
+			default:
+				fmt.Printf("⚠️  Download incomplete\n")
+			}
 			fmt.Printf("   Files extracted: %d files\n", stats.Restored)
 			fmt.Printf("   Chunks downloaded: %d\n", stats.ChunksDownloaded)
 			fmt.Printf("   Data size: %s\n", humanize.Bytes(uint64(stats.Bytes)))
@@ -237,10 +245,7 @@ Examples:
 			fmt.Printf("   Throughput: %.2f MB/s\n", throughput)
 			fmt.Printf("   Output directory: %s\n", outputDir)
 
-			if stats.Failed > 0 {
-				return fmt.Errorf("%d file(s) failed to download", stats.Failed)
-			}
-			return nil
+			return restoreOutcomeError(stats)
 		},
 	}
 

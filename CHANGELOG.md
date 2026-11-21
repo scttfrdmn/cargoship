@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Restore now fails loudly when files are missing** (#905). A chunk that ended cleanly without a
+  requested file used to count as success, so `restore` (and `download`, `browse`,
+  `restore jobs download`) could exit 0 with files silently absent. That defeated the
+  `restore && rm -rf ./local` safety, and it hid the upload-side bugs found by the #900 audit.
+  Now:
+  - a requested file absent from its chunk is a failure;
+  - a chunk object smaller than its recorded size (an empty or truncated upload) is rejected, where
+    the manifest's size is trustworthy (format 2.1+ with a whole-object checksum or frames);
+  - a direct-upload object whose size differs from the file's is rejected (unless `--no-verify`);
+  - failed restores print the **reasons**, not just a count, and `restore --json` includes an
+    `errors` array;
+  - `download` and `restore jobs download` no longer print a success banner over failures, and a
+    partially failed restore job is recorded as failed.
+
+### Fixed
 - **The docs site no longer stays on the previous release after a tag** (#898). The release-prep
   merge and its tag are the same commit. The main-push docs run deployed first, with the previous
   tag's root tree, and GitHub Pages then kept serving that deployment even after the tag run deployed

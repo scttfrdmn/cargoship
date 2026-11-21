@@ -273,11 +273,24 @@ The job must be in 'ready' status (run 'restore jobs check' first if unsure).`,
 			job.CompletedAt = &now
 			job.FilesRestored = stats.Restored
 			job.BytesWritten = stats.Bytes
+			// #905: a job that restored some files and failed others is not complete.
+			if outcome := restoreOutcomeError(stats); outcome != nil {
+				job.Status = restore.JobStatusFailed
+				job.Error = outcome.Error()
+			}
 			if err := store.Save(job); err != nil {
 				fmt.Printf("⚠️  could not save final job status: %v\n", err)
 			}
 
-			fmt.Printf("✅ Restore complete!\n")
+			// #905: the banner and exit code must agree with the counts.
+			switch {
+			case stats.Failed == 0:
+				fmt.Printf("✅ Restore complete!\n")
+			case stats.Restored == 0:
+				fmt.Printf("❌ Restore failed: no files were restored\n")
+			default:
+				fmt.Printf("⚠️  Restore incomplete\n")
+			}
 			fmt.Printf("   Files restored:    %d\n", stats.Restored)
 			if stats.Failed > 0 {
 				fmt.Printf("   Files failed:      %d\n", stats.Failed)
@@ -285,7 +298,7 @@ The job must be in 'ready' status (run 'restore jobs check' first if unsure).`,
 			fmt.Printf("   Data written:      %s\n", humanize.Bytes(uint64(stats.Bytes)))
 			fmt.Printf("   Chunks downloaded: %d\n", stats.ChunksDownloaded)
 			fmt.Printf("   Output directory:  %s\n", job.OutputDir)
-			return nil
+			return restoreOutcomeError(stats)
 		},
 	}
 
