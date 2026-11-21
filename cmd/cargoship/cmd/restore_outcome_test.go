@@ -1,7 +1,11 @@
 package cmd
 
 import (
+	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
@@ -65,4 +69,23 @@ func TestRestoreOutcomeError(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRestoreOutcomeError_IncludesReasons pins #905: a failed restore must say
+// why, not only how many, and must cap a long list.
+func TestRestoreOutcomeError_IncludesReasons(t *testing.T) {
+	stats := &manifest.RestoreStats{Restored: 1, Failed: 7}
+	for i := 0; i < 7; i++ {
+		stats.Errors = append(stats.Errors, fmt.Sprintf("reason-%d", i))
+	}
+	err := restoreOutcomeError(stats)
+	require.Error(t, err)
+	msg := err.Error()
+	assert.Contains(t, msg, "restore incomplete: 7 of 8 file(s) failed")
+	assert.Contains(t, msg, "reason-0")
+	assert.Contains(t, msg, "reason-4")
+	assert.NotContains(t, msg, "reason-5", "only the first few reasons are listed")
+	assert.Contains(t, msg, "and 2 more reason(s)")
+
+	assert.NoError(t, restoreOutcomeError(&manifest.RestoreStats{Restored: 3}))
 }

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -325,8 +326,13 @@ Examples:
 			// on an empty restore is what deletes someone's only copy. The exit
 			// code has to agree with the numbers printed beside it.
 			if jsonOutput {
-				fmt.Printf(`{"restored":%d,"failed":%d,"bytes":%d,"chunks_downloaded":%d,"retrieval_cost_usd":%.4f}`+"\n",
-					stats.Restored, stats.Failed, stats.Bytes, stats.ChunksDownloaded, report.EstimatedCostUSD)
+				errs := stats.Errors
+				if errs == nil {
+					errs = []string{}
+				}
+				errJSON, _ := json.Marshal(errs)
+				fmt.Printf(`{"restored":%d,"failed":%d,"bytes":%d,"chunks_downloaded":%d,"retrieval_cost_usd":%.4f,"errors":%s}`+"\n",
+					stats.Restored, stats.Failed, stats.Bytes, stats.ChunksDownloaded, report.EstimatedCostUSD, errJSON)
 				return restoreOutcomeError(stats)
 			}
 
@@ -423,9 +429,23 @@ func restoreOutcomeError(stats *manifest.RestoreStats) error {
 	if stats.Failed == 0 {
 		return nil
 	}
+	var err error
 	if stats.Restored == 0 {
-		return fmt.Errorf("restore failed: 0 of %d file(s) restored", stats.Failed)
+		err = fmt.Errorf("restore failed: 0 of %d file(s) restored", stats.Failed)
+	} else {
+		err = fmt.Errorf("restore incomplete: %d of %d file(s) failed",
+			stats.Failed, stats.Restored+stats.Failed)
 	}
-	return fmt.Errorf("restore incomplete: %d of %d file(s) failed",
-		stats.Failed, stats.Restored+stats.Failed)
+	// #905: say why. The counts alone left a failed restore undiagnosable.
+	if len(stats.Errors) > 0 {
+		reasons := stats.Errors
+		const show = 5
+		more := ""
+		if len(reasons) > show {
+			more = fmt.Sprintf("\n  ... and %d more reason(s)", len(reasons)-show)
+			reasons = reasons[:show]
+		}
+		err = fmt.Errorf("%w:\n  %s%s", err, strings.Join(reasons, "\n  "), more)
+	}
+	return err
 }

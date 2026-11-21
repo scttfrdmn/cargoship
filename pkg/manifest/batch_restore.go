@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,7 +40,14 @@ type RestoreStats struct {
 	Bytes int64
 	// ChunksDownloaded is the number of distinct S3 objects fetched.
 	ChunksDownloaded int64
+	// Errors holds the reasons behind Failed, at most maxRecordedErrors of them,
+	// so a failed restore says why instead of only how many (#905).
+	Errors []string
 }
+
+// maxRecordedErrors caps RestoreStats.Errors so a restore of a huge, broken
+// archive doesn't hold a reason for every file.
+const maxRecordedErrors = 20
 
 // chunkCacheEntry is a single node in the ChunkCache doubly-linked list.
 type chunkCacheEntry struct {
@@ -143,6 +151,9 @@ type SelectiveExtractor struct {
 	query    *ManifestQuery
 	s3Client S3Downloader
 	cache    *ChunkCache
+
+	// errMu guards RestoreStats.Errors, which concurrent chunk groups append to.
+	errMu sync.Mutex
 
 	// verify enables restore-time integrity checking: each restored file's
 	// content is hashed and compared to the manifest's recorded checksum, and a
@@ -566,7 +577,7 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 	for _, target := range targets {
 		entry := se.resolveEntry(target)
 		if entry == nil {
-			stats.Failed++
+			se.noteFailure(stats, 1, fmt.Errorf("%s: not found in manifest", target))
 			continue
 		}
 		// #436: fetch and decode just this file's frame when the chunk carries a
@@ -614,6 +625,24 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 // win) without holding too many decompressed chunks in memory at once.
 const restoreConcurrency = 16
 
+// noteFailure counts n files as failed and records why. Every failure path goes
+// through here so Failed and its reasons can't drift apart. Safe for concurrent
+// use.
+func (se *SelectiveExtractor) noteFailure(stats *RestoreStats, n int64, err error) {
+	if n <= 0 {
+		return
+	}
+	atomic.AddInt64(&stats.Failed, n)
+	if err == nil {
+		return
+	}
+	se.errMu.Lock()
+	if len(stats.Errors) < maxRecordedErrors {
+		stats.Errors = append(stats.Errors, err.Error())
+	}
+	se.errMu.Unlock()
+}
+
 // restoreGroup downloads one chunk group (unless cached) and writes its files,
 // updating stats atomically. Safe to call concurrently across distinct groups.
 func (se *SelectiveExtractor) restoreGroup(ctx context.Context, grp *chunkGroup, directMode bool, root *os.Root, destDir string, stats *RestoreStats) {
@@ -621,7 +650,7 @@ func (se *SelectiveExtractor) restoreGroup(ctx context.Context, grp *chunkGroup,
 	if data == nil {
 		fetched, err := se.downloadChunk(ctx, grp.s3Key)
 		if err != nil {
-			atomic.AddInt64(&stats.Failed, int64(len(grp.files)))
+			se.noteFailure(stats, int64(len(grp.files)), err)
 			return
 		}
 		data = fetched
@@ -641,7 +670,7 @@ func (se *SelectiveExtractor) restoreGroup(ctx context.Context, grp *chunkGroup,
 	atomic.AddInt64(&stats.Restored, int64(restored))
 	atomic.AddInt64(&stats.Bytes, written)
 	if err != nil {
-		atomic.AddInt64(&stats.Failed, int64(len(grp.files))-int64(restored))
+		se.noteFailure(stats, int64(len(grp.files))-int64(restored), err)
 	}
 }
 
@@ -701,6 +730,13 @@ func (se *SelectiveExtractor) writeDirectFiles(data []byte, files []*FileEntry, 
 		// failed rather than restoring a bad file.
 		if se.checksumMismatch(entry, data) {
 			return restored, totalBytes, fmt.Errorf("checksum mismatch for %s: stored object does not match manifest", entry.Path)
+		}
+		// #905: a direct object is the file's raw bytes, so its length must match
+		// the recorded size. Without this, a file with no recorded checksum and an
+		// empty or short object was written short and counted as restored. Part of
+		// verification: --no-verify restores the stored bytes as they are.
+		if se.verify && int64(len(data)) != entry.Size {
+			return restored, totalBytes, fmt.Errorf("%s: stored object is %d bytes but the manifest records %d", entry.Path, len(data), entry.Size)
 		}
 		// #282: preserve directory structure under destDir, escape-safe.
 		outPath, err := se.restorePath(destDir, entry.Path)
@@ -772,6 +808,45 @@ func (se *SelectiveExtractor) expectedObjectBytes(s3Key string) int64 {
 	return 0
 }
 
+// trustedChunkSize returns the chunk object's recorded CompressedSize when it is
+// known to be the true size of the uploaded bytes, else 0 (unknown). It is a
+// lower bound for the stored object only when:
+//   - the manifest is format 2.1 or later: before #445 (first released with 2.1,
+//     in v0.24.0) CompressedSize held the UNCOMPRESSED estimate, so a v0.16-v0.18
+//     chunk records 12 MiB for an 1.8 KB object; and
+//   - the size was counted from the written bytes, which a whole-object checksum
+//     or a frame index proves. Without either, the writer fell back to the
+//     uncompressed estimate.
+//
+// Direct-upload objects are not covered here; writeDirectFiles checks their size
+// against FileEntry.Size, under verification so --no-verify keeps its meaning.
+func (se *SelectiveExtractor) trustedChunkSize(s3Key string) int64 {
+	if !manifestAtLeast(se.manifest.Version, 2, 1) {
+		return 0
+	}
+	for i := range se.manifest.Chunks {
+		c := &se.manifest.Chunks[i]
+		if c.S3Key != s3Key {
+			continue
+		}
+		if c.Checksum == "" && len(c.Frames) == 0 {
+			return 0
+		}
+		return c.CompressedSize
+	}
+	return 0
+}
+
+// manifestAtLeast reports whether a "major.minor" manifest version is at least
+// major.minor. An unparseable version is treated as older (no new guarantees).
+func manifestAtLeast(version string, major, minor int) bool {
+	var gotMajor, gotMinor int
+	if _, err := fmt.Sscanf(version, "%d.%d", &gotMajor, &gotMinor); err != nil {
+		return false
+	}
+	return gotMajor > major || (gotMajor == major && gotMinor >= minor)
+}
+
 // downloadChunk fetches the S3 object at s3Key from the manifest's bucket and
 // returns its raw bytes.
 func (se *SelectiveExtractor) downloadChunk(ctx context.Context, s3Key string) ([]byte, error) {
@@ -796,6 +871,13 @@ func (se *SelectiveExtractor) downloadChunk(ctx context.Context, s3Key string) (
 	data, err := readAllLimited(out.Body, limit, "chunk object "+s3Key)
 	if err != nil {
 		return nil, fmt.Errorf("read S3 body %q: %w", s3Key, err)
+	}
+	// #905: the read limit already rejects an object LARGER than declared; also
+	// reject a SHORTER one. A truncated or empty object (e.g. an upload retry
+	// that re-sent a drained stream, #901) otherwise decodes to fewer entries
+	// than the manifest promises.
+	if want := se.trustedChunkSize(s3Key); want > 0 && int64(len(data)) < want {
+		return nil, fmt.Errorf("object %q is %d bytes but the manifest records %d: truncated or incomplete upload", s3Key, len(data), want)
 	}
 	return data, nil
 }
@@ -908,7 +990,7 @@ func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEn
 
 	comp, partial, err := se.downloadChunkRange(ctx, entry.S3Key, fr.CompressedOffset, fr.CompressedSize)
 	if err != nil {
-		stats.Failed++
+		se.noteFailure(stats, 1, fmt.Errorf("%s: %w", entry.Path, err))
 		return true
 	}
 	stats.ChunksDownloaded++
@@ -919,19 +1001,20 @@ func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEn
 	// the Range was honored (otherwise comp is the whole object, not the frame).
 	if partial && fr.Checksum != "" {
 		if !canRecomputeChecksum(se.manifest.ChecksumAlgorithm) {
-			stats.Failed++ // CSH-SEC-005: unverifiable frame witness, fail closed
+			// CSH-SEC-005: unverifiable frame witness, fail closed
+			se.noteFailure(stats, 1, fmt.Errorf("%s: frame checksum algorithm %q cannot be verified", entry.Path, se.manifest.ChecksumAlgorithm))
 			return true
 		}
 		got := sha256.Sum256(comp)
 		if hex.EncodeToString(got[:]) != fr.Checksum {
-			stats.Failed++
+			se.noteFailure(stats, 1, fmt.Errorf("%s: frame checksum mismatch in %s", entry.Path, entry.S3Key))
 			return true
 		}
 	}
 
 	raw, err := decodeZstdFrame(comp)
 	if err != nil {
-		stats.Failed++
+		se.noteFailure(stats, 1, fmt.Errorf("%s: %w", entry.Path, err))
 		return true
 	}
 	// The decoded bytes start at fr.UncompressedOffset when the Range was honored;
@@ -942,7 +1025,7 @@ func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEn
 	}
 	sliceStart := entry.ArchiveOffset - decodedStart
 	if sliceStart < 0 || sliceStart+entry.Size > int64(len(raw)) {
-		stats.Failed++
+		se.noteFailure(stats, 1, fmt.Errorf("%s: not within its frame in %s (truncated or mismatched chunk)", entry.Path, entry.S3Key))
 		return true
 	}
 	content := raw[sliceStart : sliceStart+entry.Size]
@@ -951,26 +1034,26 @@ func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEn
 	// recorded checksum. No algorithm pre-gate: checksumMismatch fails closed on
 	// an unverifiable algorithm (CSH-SEC-005).
 	if se.checksumMismatch(entry, content) {
-		stats.Failed++
+		se.noteFailure(stats, 1, fmt.Errorf("checksum mismatch for %s: stored data does not match manifest", entry.Path))
 		return true
 	}
 
 	outPath, err := se.restorePath(destDir, entry.Path)
 	if err != nil {
-		stats.Failed++
+		se.noteFailure(stats, 1, fmt.Errorf("%s: %w", entry.Path, err))
 		return true
 	}
 	rel, err := destRelPath(destDir, outPath)
 	if err != nil {
-		stats.Failed++
+		se.noteFailure(stats, 1, fmt.Errorf("%s: %w", entry.Path, err))
 		return true
 	}
 	if err := prepareParents(root, rel); err != nil {
-		stats.Failed++
+		se.noteFailure(stats, 1, fmt.Errorf("%s: %w", entry.Path, err))
 		return true
 	}
 	if err := writeContained(root, rel, content); err != nil {
-		stats.Failed++
+		se.noteFailure(stats, 1, fmt.Errorf("%s: %w", entry.Path, err))
 		return true
 	}
 	restoreModTime(root, rel, entry.ModTime)
@@ -1082,6 +1165,7 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 			restoreModTime(root, rel, entry.ModTime)
 			restored++
 			totalBytes += int64(len(content))
+			delete(want, hdr.Name)
 			continue
 		}
 
@@ -1116,7 +1200,33 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 		restoreModTime(root, rel, entry.ModTime)
 		restored++
 		totalBytes += written
+		delete(want, hdr.Name)
 	}
 
+	// #905: a clean end of archive is not success if requested entries never
+	// appeared. A truncated or mismatched chunk (an empty object, a chunk
+	// rebound by resume, a manifest written for a failed upload) used to return
+	// nil here, so restore exited 0 with the files silently absent.
+	if len(want) > 0 {
+		return restored, totalBytes, missingEntriesError(want, chunkKeyOf(files))
+	}
 	return restored, totalBytes, nil
+}
+
+// missingEntriesError reports requested entries that a chunk did not contain,
+// naming a few so the failure is actionable.
+func missingEntriesError(want map[string]*FileEntry, s3Key string) error {
+	names := make([]string, 0, len(want))
+	for name := range want {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	const show = 3
+	more := ""
+	if len(names) > show {
+		more = fmt.Sprintf(" and %d more", len(names)-show)
+		names = names[:show]
+	}
+	return fmt.Errorf("%d requested file(s) missing from chunk %s: %s%s",
+		len(want), s3Key, strings.Join(names, ", "), more)
 }
