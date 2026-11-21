@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The docs site no longer stays on the previous release after a tag** (#898). The release-prep
+  merge and its tag are the same commit. The main-push docs run deployed first, with the previous
+  tag's root tree, and GitHub Pages then kept serving that deployment even after the tag run deployed
+  the same commit. After v0.41.1, cargoship.app showed v0.41.0 for about 70 minutes. While a release
+  is pending (the version at HEAD has no tag yet), the main-push run now builds but leaves the deploy
+  to the tag run.
+
 ## [0.41.1] - 2026-11-20
 
 A patch release for a **data-loss bug**: on any earlier version, `cargoship config --show` rewrote

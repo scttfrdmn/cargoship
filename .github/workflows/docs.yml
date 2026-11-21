@@ -26,6 +26,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      release_pending: ${{ steps.refs.outputs.release_pending }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -71,6 +73,24 @@ jobs:
           done
           echo "latest_ref=${latest_ref}" >> "$GITHUB_OUTPUT"
           echo "Latest (root) tree builds from: ${latest_ref}"
+
+          # #898: a release-prep merge and its tag are the SAME commit. If this
+          # main-push run deploys first, it publishes the PREVIOUS tag's root
+          # tree, and GitHub Pages then keeps serving that deployment even after
+          # the tag run deploys the same SHA (marked active, not served; a forced
+          # redeploy didn't help either). So while a release is pending -- the
+          # version at HEAD has no tag yet -- build (the drift gates still run)
+          # but leave the deploy to the tag run, which is then the first deploy
+          # for this commit. Tag runs and manual dispatches always deploy.
+          pending=false
+          if [ "${GITHUB_REF_TYPE}" = "branch" ] && [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            ver="$(git show "${GITHUB_SHA}:internal/version/version.txt" 2>/dev/null | tr -d '[:space:]')"
+            if [ -n "$ver" ] && ! git rev-parse -q --verify "refs/tags/v${ver}" >/dev/null; then
+              pending=true
+              echo "::notice::Release v${ver} is pending (version.txt bumped, tag not pushed yet): building only; the v${ver} tag run will deploy (#898)."
+            fi
+          fi
+          echo "release_pending=${pending}" >> "$GITHUB_OUTPUT"
 
       # --- latest (root) tree -------------------------------------------------
       - name: Check out latest docs ref
@@ -195,6 +215,8 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
+    # #898: skip while a release is pending so the tag run deploys this SHA first.
+    if: needs.build.outputs.release_pending != 'true'
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
