@@ -324,6 +324,10 @@ func (v *Validator) validateFileConsistency(result *ValidationResult) {
 	// Validate total size
 	var calculatedSize int64
 	filePathsSeen := make(map[string]bool)
+	chunkIDs := make(map[int]bool, len(v.manifest.Chunks))
+	for _, c := range v.manifest.Chunks {
+		chunkIDs[c.ID] = true
+	}
 
 	for i, file := range v.manifest.Files {
 		// Check for duplicate file paths
@@ -356,9 +360,12 @@ func (v *Validator) validateFileConsistency(result *ValidationResult) {
 					fmt.Sprintf("Direct-upload file %s has no S3 key", file.Path))
 				valid = false
 			}
-		} else if file.ChunkID < 0 || file.ChunkID >= v.manifest.TotalChunks {
+		} else if !chunkIDs[file.ChunkID] {
+			// Membership, not a 0..TotalChunks-1 range: chunk IDs need not be
+			// contiguous. A resumed upload numbers its new chunks above the stored
+			// ones (#904), so a valid manifest can hold IDs past its chunk count.
 			result.AddError(fmt.Sprintf("file[%d].chunk_id", i),
-				fmt.Sprintf("0-%d", v.manifest.TotalChunks-1),
+				"the ID of a chunk in this manifest",
 				fmt.Sprintf("%d", file.ChunkID),
 				fmt.Sprintf("File %s has invalid chunk ID %d", file.Path, file.ChunkID))
 			valid = false

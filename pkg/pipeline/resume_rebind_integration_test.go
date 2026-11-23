@@ -147,6 +147,10 @@ func runResumeScenario(t *testing.T, change func(*testing.T, string), wantFiles 
 	m, err := manifest.DownloadFromS3(ctx, plain, bucket, prefix, uploadID)
 	require.NoError(t, err)
 	assert.Len(t, m.Files, wantFiles, "every source file exactly once")
+	// `verify` runs this validator: a correct resumed manifest must pass it, even
+	// though its new chunk IDs sit above the stored ones.
+	v := manifest.NewValidator(m).Validate()
+	assert.True(t, v.Valid, "validation errors: %v", v.Errors)
 
 	var targets []string
 	for _, f := range m.Files {
