@@ -9,13 +9,16 @@ operations are designed to be re-runnable.
 - **Automatic retries.** Transient S3 errors are retried automatically — 3
   attempts per chunk by default (configurable via the `aws.max_retries` config
   key). Each retry is traced when tracing is enabled.
-- **Chunk-level idempotency.** Object keys are deterministic
-  (`…/uploads/<id>/shard-N/chunk-M.tar.zst`), so re-running an upload overwrites
-  the same keys rather than duplicating data. Re-uploading is safe.
+- **Uploads are isolated.** Every upload writes under its own
+  `…/uploads/<id>/` prefix, so re-running an upload never overwrites another
+  upload's data. Re-uploading is safe.
 - **Resume, don't restart.** An interrupted `cargoship upload` leaves a state
   file in `~/.cargoship/state/`; re-running the same command resumes from it.
-  The streaming variant additionally offers `--skip-existing` (HeadObject check
-  to skip chunks already in S3).
+  Resume skips a chunk only when a chunk already stored holds exactly the same
+  files with the same sizes and modification times, so changes to the source
+  between the runs are uploaded, not lost. A completed upload can't be resumed.
+  The streaming variant additionally offers `--skip-existing`, which also
+  requires each skipped chunk's object to still be in S3 at its recorded size.
 
 ## Scenarios
 

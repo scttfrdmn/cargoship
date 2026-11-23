@@ -23,6 +23,7 @@ func TestNewResumePipelineConfig_EnablesResume(t *testing.T) {
 		StorageClass: "GLACIER",
 		KMSKeyID:     "kms-1",
 		ShardCount:   6,
+		ChunkSizeMB:  48,
 	}
 
 	cfg := newResumePipelineConfig(state, client)
@@ -55,6 +56,9 @@ func TestNewResumePipelineConfig_EnablesResume(t *testing.T) {
 	}
 	if cfg.ShardCount != 6 {
 		t.Errorf("ShardCount = %d, want 6", cfg.ShardCount)
+	}
+	if cfg.ForceChunkSizeMB != 48 {
+		t.Errorf("#904: ForceChunkSizeMB = %d, want the saved 48", cfg.ForceChunkSizeMB)
 	}
 	if !cfg.EnablePartialManifest {
 		t.Error("EnablePartialManifest must be true — it is the resume skip source")

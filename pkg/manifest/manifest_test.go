@@ -49,7 +49,7 @@ func TestNewBuilderFromExisting(t *testing.T) {
 		Bucket:           "existing-bucket",
 		Prefix:           "existing-prefix",
 		Region:           "us-east-1",
-		TotalFiles:       10,
+		TotalFiles:       2, // what a builder records: one per entry
 		TotalBytes:       1000,
 		TotalChunks:      2,
 		ShardCount:       4,
@@ -57,8 +57,8 @@ func TestNewBuilderFromExisting(t *testing.T) {
 		CompressionLevel: 3,
 		CompressionRatio: 0.5,
 		Files: []FileEntry{
-			{Path: "file1.txt", Size: 500},
-			{Path: "file2.txt", Size: 500},
+			{Path: "file1.txt", Size: 500, S3Key: "uploads/test-123/shard-0/chunk-0.tar.zst"},
+			{Path: "file2.txt", Size: 500, S3Key: "uploads/test-123/shard-1/chunk-1.tar.zst"},
 		},
 		Chunks: []ChunkEntry{
 			{ID: 0, CompressedSize: 250},

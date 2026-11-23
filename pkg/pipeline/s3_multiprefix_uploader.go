@@ -16,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	tmtypes "github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager/types"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	smithy "github.com/aws/smithy-go"
 	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
@@ -230,50 +229,13 @@ func (s *S3MultiPrefixUploaderStage) prefixWorker(ctx context.Context, prefix st
 }
 
 // processJob processes a single upload job
-// shouldSkipUpload checks if a chunk should be skipped (already uploaded) - Issue #157
+// shouldSkipUpload reports whether a resumed run may skip job because a stored
+// chunk already holds exactly its files (#157, #904; see Pipeline.alreadyStored).
 func (s *S3MultiPrefixUploaderStage) shouldSkipUpload(ctx context.Context, job *Job) (bool, error) {
-	// Check if resume mode is enabled
-	if s.pipeline == nil || s.pipeline.config == nil || !s.pipeline.config.ResumeMode {
+	if s.pipeline == nil {
 		return false, nil
 	}
-
-	// Check manifest for already uploaded chunks
-	if s.pipeline.manifestBuilder != nil {
-		builder := s.pipeline.manifestBuilder.(*manifest.Builder)
-		manifestData := builder.Build()
-
-		// Look for existing chunk with same ID
-		for _, chunk := range manifestData.Chunks {
-			if chunk.ID == job.Chunk.ID {
-				// Check if UploadedAt is set (non-zero time)
-				if !chunk.UploadedAt.IsZero() {
-					// Chunk already uploaded
-					return true, nil
-				}
-			}
-		}
-	}
-
-	// Optional: Check S3 existence with HeadObject if SkipExisting is enabled
-	if s.pipeline.config.SkipExisting {
-		s3Key := job.S3Key
-		if s.config.Prefix != "" {
-			s3Key = s.config.Prefix + "/" + job.S3Key
-		}
-
-		_, err := s.config.S3Client.HeadObject(ctx, &s3.HeadObjectInput{
-			Bucket: aws.String(s.config.Bucket),
-			Key:    aws.String(s3Key),
-		})
-
-		if err == nil {
-			// Object exists in S3
-			return true, nil
-		}
-		// If HeadObject fails, continue with upload (object may not exist or permission issue)
-	}
-
-	return false, nil
+	return s.pipeline.alreadyStored(ctx, job, s.config.S3Client, s.config.Bucket, s.config.Prefix)
 }
 
 func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, prefix string) error {
@@ -403,8 +365,8 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 
 			s.pipeline.manifestMu.Lock()
 
-			// Update file entries with S3 key and shard ID
-			builder.UpdateFileS3Keys(job.Chunk.ID, shardID, job.S3Key)
+			// Bind the chunk's files to it by path (#904), not by chunk ID.
+			builder.BindChunkFiles(job.Chunk.ID, shardID, job.S3Key, chunkFiles(job.Chunk.Files))
 
 			// #271: record per-file content checksums captured during archiving
 			// (no-op when file checksums are disabled).

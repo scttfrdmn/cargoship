@@ -193,6 +193,13 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 
 		// Issue #157: Resume mode - load existing partial manifest
 		if config.ResumeMode && config.ResumeUploadID != "" {
+			// #904: a completed upload has nothing to resume. Resuming one used to
+			// fall through to a fresh upload under the SAME ID, overwriting the
+			// finished archive's chunks and manifest.
+			if err := refuseCompletedResume(ctx, config.S3Client.(*s3.Client), config.S3Bucket,
+				config.S3Prefix, config.ResumeUploadID); err != nil {
+				return nil, err
+			}
 			// Download partial manifest from S3
 			partialManifest, downloadErr := manifest.DownloadPartialManifestFromS3(
 				ctx,
@@ -275,6 +282,11 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 		}
 
 		p.manifestBuilder = builder
+		if config.ResumeMode {
+			// #904: what the interrupted run stored, for content-based chunk skipping
+			// and for numbering new chunks clear of the stored ones.
+			p.resumeIdx = newResumeIndex(builder.Build())
+		}
 	}
 
 	// Initialize deduplication index if enabled (Issue #108)
@@ -450,6 +462,28 @@ func (p *Pipeline) shouldUseDirectUpload(fileCount int64, totalSize int64) bool 
 }
 
 // startStages initializes and starts all pipeline stages
+// refuseCompletedResume returns an error if uploadID already has a final manifest
+// (#904). An error other than not-found also stops the resume, since it means the
+// check could not rule out overwriting a completed upload.
+func refuseCompletedResume(ctx context.Context, client headObjectAPI, bucket, prefix, uploadID string) error {
+	for _, name := range []string{
+		manifest.ManifestFileNameGZ, manifest.ManifestFileName,
+		"manifest.encrypted.json.gz", "manifest.encrypted.json",
+	} {
+		key := fmt.Sprintf("%s/uploads/%s/%s", prefix, uploadID, name)
+		_, err := client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
+		if err == nil {
+			return fmt.Errorf("upload %s already completed (s3://%s/%s exists); refusing to resume it, "+
+				"since a resumed run would overwrite its chunks and manifest", uploadID, bucket, key)
+		}
+		if !isNoSuchKeyErr(err) {
+			return fmt.Errorf("check whether upload %s already completed (s3://%s/%s; HeadObject on a missing key "+
+				"returns 403 without s3:ListBucket): %w", uploadID, bucket, key, err)
+		}
+	}
+	return nil
+}
+
 // isNoSuchKeyErr reports whether err is an S3 "object not found" (NoSuchKey /
 // NotFound / 404). Used to treat a missing partial manifest as "no saved
 // progress" during resume (#119) rather than a hard failure.
@@ -495,6 +529,11 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 	p.scanner, err = NewScannerStage(scannerConfig, p.chunkChan, p) // Pass pipeline reference for manifest tracking
 	if err != nil {
 		return fmt.Errorf("failed to create scanner: %w", err)
+	}
+	if p.resumeIdx != nil {
+		// #904: number this run's chunks above every stored one, so a re-uploaded
+		// chunk's key can't overwrite a stored chunk that other entries still use.
+		p.scanner.chunkIDSeq = int64(p.resumeIdx.nextChunkID)
 	}
 
 	// Issue #166: Check if we should use direct upload (fast path for small files)

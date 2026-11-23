@@ -73,7 +73,7 @@ architecture that provides:
 	// Resume capability flags (Issue #157)
 	cmd.Flags().Bool("resume", false, "Resume a previous incomplete upload")
 	cmd.Flags().String("upload-id", "", "Upload ID to resume (auto-detect if not specified)")
-	cmd.Flags().Bool("skip-existing", false, "Skip chunks that already exist in S3 (HeadObject check)")
+	cmd.Flags().Bool("skip-existing", false, "On resume, also require a skipped chunk's stored object to still exist in S3 at its recorded size (HeadObject check)")
 
 	// Cleanup flags (Issue #158)
 	cmd.Flags().Bool("cleanup-on-failure", true, "Automatically delete partial uploads on error")
