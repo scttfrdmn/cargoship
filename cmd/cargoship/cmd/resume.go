@@ -248,8 +248,11 @@ func newResumePipelineConfig(state *resume.UploadState, s3Client *s3.Client) *pi
 		S3Client:   s3Client,
 		SourcePath: state.SourceDir,
 
-		EnableMultiPrefix:     true,
-		ShardCount:            shardCount,
+		EnableMultiPrefix: true,
+		ShardCount:        shardCount,
+		// #904: the interrupted run's chunk size, so the re-scan groups files the
+		// same way and matching chunks can be skipped (0 = adaptive, as before).
+		ForceChunkSizeMB:      state.ChunkSizeMB,
 		WorkersPerPrefix:      2,
 		ArchiveBufferSize:     100,
 		EnableManifest:        true,

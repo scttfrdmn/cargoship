@@ -241,8 +241,9 @@ type Pipeline struct {
 	uploadStateMu sync.Mutex  // Protects uploadState updates
 
 	// Cleanup tracking (Issue #158)
-	uploadedKeys   []string   // All uploaded S3 keys for cleanup on failure
-	uploadedKeysMu sync.Mutex // Protects uploadedKeys list
+	resumeIdx      *resumeIndex // #904: stored state of a resumed upload (nil unless ResumeMode)
+	uploadedKeys   []string     // All uploaded S3 keys for cleanup on failure
+	uploadedKeysMu sync.Mutex   // Protects uploadedKeys list
 }
 
 // PipelineConfig contains configuration for the pipeline
@@ -366,7 +367,7 @@ type PipelineConfig struct {
 	// Resume configuration (Issue #157: Resume capability)
 	ResumeMode     bool   // Enable resume capability
 	ResumeUploadID string // Upload ID to resume (empty = auto-detect)
-	SkipExisting   bool   // Skip chunks that exist in S3 (HeadObject check)
+	SkipExisting   bool   // On resume, also require a skipped chunk's object to exist at its recorded size (#904)
 
 	// Partial manifest saving (Issue #157: Resume capability)
 	EnablePartialManifest       bool          // Enable periodic manifest saves (default: true for real S3)

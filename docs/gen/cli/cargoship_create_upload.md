@@ -53,7 +53,7 @@ cargoship create upload SOURCE_DIR... [flags]
       --region string                AWS region (default "us-west-2")
       --resume                       Resume a previous incomplete upload
       --shards int                   Number of S3 prefix shards for parallel uploads (default 8)
-      --skip-existing                Skip chunks that already exist in S3 (HeadObject check)
+      --skip-existing                On resume, also require a skipped chunk's stored object to still exist in S3 at its recorded size (HeadObject check)
       --storage-class string         S3 storage class (STANDARD, INTELLIGENT_TIERING, GLACIER, etc.) (default "STANDARD")
       --upload-id string             Upload ID to resume (auto-detect if not specified)
       --workers int                  Workers per stage (scanner, archiver, uploader) (default 4)

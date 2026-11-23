@@ -167,50 +167,13 @@ func (s *S3UploaderStage) Stop() error {
 	return nil
 }
 
-// shouldSkipUpload checks if a chunk should be skipped (already uploaded) - Issue #157
+// shouldSkipUpload reports whether a resumed run may skip job because a stored
+// chunk already holds exactly its files (#157, #904; see Pipeline.alreadyStored).
 func (s *S3UploaderStage) shouldSkipUpload(ctx context.Context, job *Job) (bool, error) {
-	// Check if resume mode is enabled
-	if s.pipeline == nil || s.pipeline.config == nil || !s.pipeline.config.ResumeMode {
+	if s.pipeline == nil {
 		return false, nil
 	}
-
-	// Check manifest for already uploaded chunks
-	if s.pipeline.manifestBuilder != nil {
-		builder := s.pipeline.manifestBuilder.(*manifest.Builder)
-		manifestData := builder.Build()
-
-		// Look for existing chunk with same ID
-		for _, chunk := range manifestData.Chunks {
-			if chunk.ID == job.Chunk.ID {
-				// Check if UploadedAt is set (non-zero time)
-				if !chunk.UploadedAt.IsZero() {
-					// Chunk already uploaded
-					return true, nil
-				}
-			}
-		}
-	}
-
-	// Optional: Check S3 existence with HeadObject if SkipExisting is enabled
-	if s.pipeline.config.SkipExisting {
-		s3Key := job.S3Key
-		if s.config.Prefix != "" {
-			s3Key = s.config.Prefix + "/" + job.S3Key
-		}
-
-		_, err := s.config.S3Client.HeadObject(ctx, &s3.HeadObjectInput{
-			Bucket: aws.String(s.config.Bucket),
-			Key:    aws.String(s3Key),
-		})
-
-		if err == nil {
-			// Object exists in S3
-			return true, nil
-		}
-		// If HeadObject fails, continue with upload (object may not exist or permission issue)
-	}
-
-	return false, nil
+	return s.pipeline.alreadyStored(ctx, job, s.config.S3Client, s.config.Bucket, s.config.Prefix)
 }
 
 // Process processes a single upload job (called by workers)

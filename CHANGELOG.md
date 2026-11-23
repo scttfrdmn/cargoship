@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Resume no longer binds files to the wrong chunks** (#904). Resume skipped a chunk whenever a
+  stored chunk had the same ID, and bound files to chunks by ID. Chunk IDs come from a per-run counter
+  and are not stable between runs, so after any change to the source (and sometimes without one), a
+  resumed upload could report success with files bound to objects that don't hold them, or bound to
+  nothing: the audit saw 1506 of 2506 files missing. Now:
+  - a chunk is skipped only when a stored chunk holds exactly the same files, with the same sizes and
+    modification times; otherwise it is uploaded and its files are rebound to it by path;
+  - new chunks are numbered above every stored one, so they can't overwrite a stored chunk;
+  - resume uses the interrupted run's saved chunk size again;
+  - resuming an upload that already completed is refused, instead of re-uploading under the same ID
+    over the finished archive;
+  - `--skip-existing` no longer skips a chunk just because an object exists at its key. It now adds
+    a check that a matched chunk's stored object still exists at its recorded size.
 - **A failed upload no longer writes a final manifest that hides its failed files** (#902). When a
   chunk failed, the run still wrote `manifest.json.gz`, listing that chunk's files with no S3 key,
   and deleted the partial manifest and local resume state. The next `sync` saw those files as

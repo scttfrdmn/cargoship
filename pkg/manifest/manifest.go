@@ -138,7 +138,7 @@ func NewBuilderFromExisting(existing *Manifest) (*Builder, error) {
 		CompressionRatio:  existing.CompressionRatio,
 		ChecksumAlgorithm: existing.ChecksumAlgorithm,
 		FormatFeatures:    append([]string(nil), existing.FormatFeatures...),
-		Files:             append([]FileEntry(nil), existing.Files...),
+		Files:             storedFiles(existing.Files),
 		Chunks:            append([]ChunkEntry(nil), existing.Chunks...),
 		Shards:            append([]ShardEntry(nil), existing.Shards...),
 		VersionInfo:       existing.VersionInfo,
@@ -150,8 +150,11 @@ func NewBuilderFromExisting(existing *Manifest) (*Builder, error) {
 	// #447: seed the dedup set from the preloaded files so a resumed run that
 	// re-scans the same corpus doesn't append them again (which doubled TotalFiles).
 	seen := make(map[string]bool, len(cloned.Files))
+	cloned.TotalFiles, cloned.TotalBytes = 0, 0
 	for _, f := range cloned.Files {
 		seen[fileEntryKey(f)] = true
+		cloned.TotalFiles++
+		cloned.TotalBytes += f.Size
 	}
 
 	return &Builder{
@@ -159,6 +162,70 @@ func NewBuilderFromExisting(existing *Manifest) (*Builder, error) {
 		hostname: hostname,
 		seen:     seen,
 	}, nil
+}
+
+// storedFiles returns the entries that reached S3 (non-empty S3Key). A partial
+// manifest also lists files whose chunk had not been uploaded yet, bound to that
+// run's chunk IDs. Those IDs mean nothing to the resumed run, whose scan assigns new
+// ones (#904), so the entries are dropped and the re-scan records them afresh.
+func storedFiles(files []FileEntry) []FileEntry {
+	out := make([]FileEntry, 0, len(files))
+	for _, f := range files {
+		if f.S3Key != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// ChunkFile identifies one file, or one part of a split file, packed into a chunk,
+// with the size and modification time the scan recorded for it.
+type ChunkFile struct {
+	Path      string
+	PartIndex int
+	Size      int64
+	ModTime   time.Time
+}
+
+// BindChunkFiles points the entries for files at the chunk that now holds them,
+// matching by path and part rather than by chunk ID, and records the new chunk ID,
+// shard, S3 key, size and modification time (thread-safe).
+//
+// Binding by chunk ID was wrong on resume (#904). The scan skips a file already
+// preloaded from the partial manifest, so its entry keeps the PREVIOUS run's chunk
+// ID. Chunk IDs are not stable between runs, so that old ID could belong to an
+// unrelated new chunk, and binding by ID pointed entries at objects that do not
+// hold them. Binding by path is right in both cases, and on a fresh run it is the
+// same as binding by ID.
+func (b *Builder) BindChunkFiles(chunkID, shardID int, s3Key string, files []ChunkFile) {
+	if len(files) == 0 {
+		return
+	}
+	want := make(map[string]ChunkFile, len(files))
+	for _, f := range files {
+		want[f.Path+"#"+strconv.Itoa(f.PartIndex)] = f
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for i := range b.manifest.Files {
+		e := &b.manifest.Files[i]
+		f, ok := want[fileEntryKey(*e)]
+		if !ok {
+			continue
+		}
+		b.manifest.TotalBytes += f.Size - e.Size
+		e.ChunkID = chunkID
+		e.ShardID = shardID
+		e.S3Key = s3Key
+		e.Size = f.Size
+		e.ModTime = f.ModTime
+		// A rebound entry's checksum and tar offset described the old chunk's copy.
+		// The caller sets this chunk's values next; clear them so a stale value
+		// can't survive when checksums or framing are off.
+		e.Checksum = ""
+		e.ArchiveOffset = 0
+	}
 }
 
 // AddFile adds a file to the manifest (thread-safe)
@@ -358,6 +425,9 @@ func (b *Builder) UpdateShardStats(shardID int, chunkKey string, fileCount int64
 }
 
 // UpdateFileS3Keys updates all files in a chunk with the chunk's S3 key and shard ID (thread-safe)
+//
+// Deprecated: it binds by chunk ID, which misbinds a resumed upload's preloaded
+// entries (#904). Use BindChunkFiles.
 func (b *Builder) UpdateFileS3Keys(chunkID int, shardID int, s3Key string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

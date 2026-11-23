@@ -469,14 +469,7 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 				// Build entries array without holding any locks
 				entries := make([]manifest.FileEntry, 0, len(chunk.Files))
 				for _, file := range chunk.Files {
-					entries = append(entries, manifest.FileEntry{
-						Path:    file.Path,
-						Size:    file.Size,
-						ModTime: file.ModTime,
-						ChunkID: chunk.ID,
-						ShardID: -1, // Will be determined by archiver
-						S3Key:   "", // Will be filled by uploader
-					})
+					entries = append(entries, chunkFileEntry(file, chunk.ID))
 				}
 
 				// Add all entries at once (Builder.AddFileBatch handles locking internally)
@@ -524,14 +517,7 @@ func (s *ScannerStage) processBatch(ctx context.Context, files []chunking.File, 
 				// Build entries array without holding any locks
 				entries := make([]manifest.FileEntry, 0, len(chunk.Files))
 				for _, file := range chunk.Files {
-					entries = append(entries, manifest.FileEntry{
-						Path:    file.Path,
-						Size:    file.Size,
-						ModTime: file.ModTime,
-						ChunkID: chunk.ID,
-						ShardID: -1, // Will be determined by archiver
-						S3Key:   "", // Will be filled by uploader
-					})
+					entries = append(entries, chunkFileEntry(file, chunk.ID))
 				}
 
 				// Add all entries at once (Builder.AddFileBatch handles locking internally)
@@ -753,4 +739,22 @@ func (s *ScannerStage) filterDuplicates(ctx context.Context, files []chunking.Fi
 	}
 
 	return uniqueFiles
+}
+
+// chunkFileEntry is the manifest entry the scan records for a file packed into
+// chunk chunkID. The uploader fills in ShardID and S3Key once the chunk is stored.
+// The part fields matter for split files: an entry is keyed by path and part, both
+// when deduplicating and when the uploader binds a chunk's files (#904).
+func chunkFileEntry(file chunking.File, chunkID int) manifest.FileEntry {
+	return manifest.FileEntry{
+		Path:       file.Path,
+		Size:       file.Size,
+		ModTime:    file.ModTime,
+		ChunkID:    chunkID,
+		ShardID:    -1, // determined by the archiver
+		Offset:     file.Offset,
+		Length:     file.Length,
+		PartIndex:  file.PartIndex,
+		TotalParts: file.TotalParts,
+	}
 }
