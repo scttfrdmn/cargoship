@@ -28,7 +28,7 @@ func cachedManifest(uploadID string) *manifest.Manifest {
 		UploadID:   uploadID,
 		SourcePath: "/share/data",
 		Files: []manifest.FileEntry{
-			{Path: "/share/data/a.txt", Size: 11, ModTime: time.Unix(1_700_000_000, 0).UTC()},
+			{Path: "/share/data/a.txt", Size: 11, ModTime: time.Unix(1_700_000_000, 0).UTC(), S3Key: "uploads/u/shard-0/chunk-0.tar.zst"},
 		},
 	}
 }

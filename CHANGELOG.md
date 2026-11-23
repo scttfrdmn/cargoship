@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **A failed upload no longer writes a final manifest that hides its failed files** (#902). When a
+  chunk failed, the run still wrote `manifest.json.gz`, listing that chunk's files with no S3 key,
+  and deleted the partial manifest and local resume state. The next `sync` saw those files as
+  unchanged and never uploaded them, `--resume` had nothing to resume from, and in a version chain
+  the unstored entry hid the previous version's good copy. Now:
+  - the final manifest is written only when every chunk succeeded;
+  - on failure the local resume state is kept, and so is the partial manifest, which gets a last
+    snapshot. The exception is a run that cleans up after a failure (`upload`, and `create` with
+    `--cleanup-on-failure`), which deletes the partial upload as before;
+  - `sync` exits non-zero when the upload did not succeed, instead of printing "Sync complete!";
+  - a manifest entry with no S3 key counts as not stored: delta uploads it again, and merging a
+    version chain no longer lets it shadow an older stored copy.
 - **A retried chunk upload no longer stores an empty object while reporting success** (#901). The
   archive is a one-shot stream, but a failed upload attempt was retried by re-reading it. Once the SDK's
   own retries were exhausted (e.g. by 500s or 503 SlowDown), the retry sent whatever was left, often

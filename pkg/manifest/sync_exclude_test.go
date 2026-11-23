@@ -70,7 +70,7 @@ func TestComputeDelta_ConvergesWithExclusions(t *testing.T) {
 
 	// The manifest the uploader would then write: exactly what it stored.
 	stored := &Manifest{SourcePath: root, Files: []FileEntry{
-		{Path: filepath.Join(root, "keep.txt"), Size: 1, ModTime: local[0].ModTime},
+		{Path: filepath.Join(root, "keep.txt"), Size: 1, ModTime: local[0].ModTime, S3Key: "uploads/u/shard-0/chunk-0.tar.zst"},
 	}}
 
 	// Cycle 2: nothing changed on disk.
@@ -97,7 +97,7 @@ func TestComputeDelta_WithoutExclusionsCannotConverge(t *testing.T) {
 	local, err := ScanLocalFiles(root) // no exclusions: sees everything
 	require.NoError(t, err)
 	stored := &Manifest{SourcePath: root, Files: []FileEntry{
-		{Path: filepath.Join(root, "keep.txt"), Size: 1, ModTime: fileModTime(t, local, "keep.txt")},
+		{Path: filepath.Join(root, "keep.txt"), Size: 1, ModTime: fileModTime(t, local, "keep.txt"), S3Key: "uploads/u/shard-0/chunk-0.tar.zst"},
 	}}
 
 	d, err := ComputeDelta(local, stored, &SyncOptions{})

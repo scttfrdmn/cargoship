@@ -121,8 +121,10 @@ func ComputeDelta(localFiles []FileInfo, previousManifest *Manifest, opts *SyncO
 			// New file - doesn't exist in previous manifest
 			result.New = append(result.New, localFile)
 		} else {
-			// File exists in manifest - check if changed
-			if hasChanged(localFile, manifestFile, opts) {
+			// File exists in manifest - check if changed. An entry with no S3Key
+			// was never stored (#902: a failed run used to write its manifest
+			// anyway), so it must be uploaded again however unchanged it looks.
+			if manifestFile.S3Key == "" || hasChanged(localFile, manifestFile, opts) {
 				result.Modified = append(result.Modified, localFile)
 			} else {
 				result.Same = append(result.Same, localFile)

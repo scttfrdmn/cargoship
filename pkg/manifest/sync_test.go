@@ -16,8 +16,8 @@ func TestComputeDelta_NewFiles(t *testing.T) {
 	// Previous manifest with 2 files
 	previousManifest := &Manifest{
 		Files: []FileEntry{
-			{Path: "file1.txt", Size: 100, ModTime: now.Add(-1 * time.Hour)},
-			{Path: "file2.txt", Size: 200, ModTime: now.Add(-1 * time.Hour)},
+			{Path: "file1.txt", Size: 100, ModTime: now.Add(-1 * time.Hour), S3Key: "uploads/u/shard-0/chunk-0.tar.zst"},
+			{Path: "file2.txt", Size: 200, ModTime: now.Add(-1 * time.Hour), S3Key: "uploads/u/shard-0/chunk-0.tar.zst"},
 		},
 	}
 
@@ -44,8 +44,8 @@ func TestComputeDelta_ModifiedFiles(t *testing.T) {
 	// Previous manifest
 	previousManifest := &Manifest{
 		Files: []FileEntry{
-			{Path: "file1.txt", Size: 100, ModTime: now.Add(-2 * time.Hour)},
-			{Path: "file2.txt", Size: 200, ModTime: now.Add(-2 * time.Hour)},
+			{Path: "file1.txt", Size: 100, ModTime: now.Add(-2 * time.Hour), S3Key: "uploads/u/shard-0/chunk-0.tar.zst"},
+			{Path: "file2.txt", Size: 200, ModTime: now.Add(-2 * time.Hour), S3Key: "uploads/u/shard-0/chunk-0.tar.zst"},
 		},
 	}
 
@@ -75,9 +75,9 @@ func TestComputeDelta_DeletedFiles(t *testing.T) {
 	// Previous manifest with 3 files
 	previousManifest := &Manifest{
 		Files: []FileEntry{
-			{Path: "file1.txt", Size: 100, ModTime: now},
-			{Path: "file2.txt", Size: 200, ModTime: now},
-			{Path: "file3.txt", Size: 300, ModTime: now},
+			{Path: "file1.txt", Size: 100, ModTime: now, S3Key: "uploads/u/shard-0/chunk-0.tar.zst"},
+			{Path: "file2.txt", Size: 200, ModTime: now, S3Key: "uploads/u/shard-0/chunk-0.tar.zst"},
+			{Path: "file3.txt", Size: 300, ModTime: now, S3Key: "uploads/u/shard-0/chunk-0.tar.zst"},
 		},
 	}
 
@@ -110,8 +110,8 @@ func TestComputeDelta_NoChanges(t *testing.T) {
 	// Previous manifest
 	previousManifest := &Manifest{
 		Files: []FileEntry{
-			{Path: "file1.txt", Size: 100, ModTime: now},
-			{Path: "file2.txt", Size: 200, ModTime: now},
+			{Path: "file1.txt", Size: 100, ModTime: now, S3Key: "uploads/u/shard-0/chunk-0.tar.zst"},
+			{Path: "file2.txt", Size: 200, ModTime: now, S3Key: "uploads/u/shard-0/chunk-0.tar.zst"},
 		},
 	}
 
@@ -156,7 +156,7 @@ func TestComputeDelta_SkipsDirectories(t *testing.T) {
 
 	previousManifest := &Manifest{
 		Files: []FileEntry{
-			{Path: "file1.txt", Size: 100, ModTime: now},
+			{Path: "file1.txt", Size: 100, ModTime: now, S3Key: "uploads/u/shard-0/chunk-0.tar.zst"},
 		},
 	}
 

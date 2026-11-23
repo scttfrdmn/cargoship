@@ -878,7 +878,18 @@ func (p *Pipeline) waitForCompletion(ctx context.Context) *Result {
 	// The chunks are worthless without the manifest, so there is no partial success to
 	// report here. Failing makes the next cycle re-upload, which is the recoverable
 	// outcome.
-	if p.manifestBuilder != nil && p.config.UseRealS3 {
+	//
+	// The final manifest is written ONLY when every chunk succeeded (#902). It used to be
+	// written regardless: a failed chunk's files went into it with an empty S3Key, and
+	// uploadManifest then deleted the partial manifest and the local resume state. The
+	// next sync's delta saw those files as unchanged, so they were never uploaded, and
+	// --resume had nothing left to resume from. In a version chain the bad entry also
+	// shadowed the previous version's good one. With no final manifest the next run
+	// treats the whole dataset as not yet stored, and resume keeps its state.
+	if p.manifestBuilder != nil && p.config.UseRealS3 && !result.Success {
+		p.keepResumeState(ctx)
+	}
+	if p.manifestBuilder != nil && p.config.UseRealS3 && result.Success {
 		if err := p.uploadManifest(ctx); err != nil {
 			result.Success = false
 			result.Errors = append(result.Errors, fmt.Errorf("upload manifest: %w", err))
@@ -969,6 +980,21 @@ func (p *Pipeline) uploadManifest(ctx context.Context) error {
 	p.deleteLocalState()
 
 	return nil
+}
+
+// keepResumeState runs instead of uploadManifest when a chunk failed (#902). It writes
+// one last partial-manifest snapshot so resume starts from the latest state rather than
+// the last periodic save, and it leaves the local state file alone. With
+// CleanupOnFailure the uploaded chunks and the partial manifest are deleted next
+// anyway, so the snapshot is skipped.
+func (p *Pipeline) keepResumeState(ctx context.Context) {
+	fmt.Println("Upload incomplete: the final manifest was not written, so the next run uploads the failed files again")
+	if !p.config.EnablePartialManifest || p.config.CleanupOnFailure {
+		return
+	}
+	if err := p.savePartialManifest(ctx); err != nil {
+		fmt.Printf("Warning: failed to save the partial manifest for resume: %v\n", err)
+	}
 }
 
 // savePartialManifestPeriodically periodically saves the partial manifest to S3 (Issue #157: Resume capability)
