@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/ProtonMail/go-crypto v1.5.2
 	github.com/ProtonMail/gopenpgp/v2 v2.11.1
-	github.com/andybalholm/brotli v1.2.8
+	github.com/andybalholm/brotli v1.3.0
 	github.com/aws/aws-sdk-go-v2 v1.47.5
 	github.com/aws/aws-sdk-go-v2/config v1.33.13
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.13
