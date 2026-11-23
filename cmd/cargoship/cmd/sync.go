@@ -309,6 +309,9 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("sync failed: %w", err)
 			}
+			if err := syncResultError(result); err != nil {
+				return err
+			}
 
 			// Success summary
 			if !quiet {
@@ -442,4 +445,22 @@ func downloadLatestManifest(ctx context.Context, s3Client *s3.Client, bucket, pr
 	}
 
 	return m, nil
+}
+
+// syncResultError turns a pipeline run that returned no error but did not succeed
+// into one. `sync` used to check only Run's error, print "Sync complete!" and exit 0
+// when a chunk had failed (#902), so the failure was invisible to the operator and to
+// any scheduler running it.
+func syncResultError(result *pipeline.Result) error {
+	if result == nil {
+		return fmt.Errorf("sync failed: no result from the upload pipeline")
+	}
+	if result.Success {
+		return nil
+	}
+	if len(result.Errors) == 0 {
+		return fmt.Errorf("sync failed: the upload did not complete; no manifest was written, so rerun sync to upload the remaining files")
+	}
+	return fmt.Errorf("sync failed with %d error(s); no manifest was written, so rerun sync to upload the remaining files: %w",
+		len(result.Errors), result.Errors[0])
 }

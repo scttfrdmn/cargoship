@@ -212,6 +212,12 @@ func MergeChain(chain []*Manifest) *Manifest {
 			}
 		}
 		for _, f := range mm.Files {
+			// #902: an entry with no S3Key was never stored (a failed run's manifest
+			// recorded it anyway). Letting it win would hide an older version's
+			// restorable copy behind an unrestorable one, so it decides nothing.
+			if f.S3Key == "" {
+				continue
+			}
 			if !decided[f.Path] {
 				decided[f.Path] = true
 				fileByPath[f.Path] = f

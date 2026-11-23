@@ -36,7 +36,7 @@ func TestComputeDelta_FullPathManifest_Unchanged(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			prev := &Manifest{
 				SourcePath: tc.sourcePath,
-				Files:      []FileEntry{{Path: tc.entryPath, Size: 3, ModTime: mod}},
+				Files:      []FileEntry{{Path: tc.entryPath, Size: 3, ModTime: mod, S3Key: "uploads/u/shard-0/chunk-0.tar.zst"}},
 			}
 			local := []FileInfo{{Path: tc.local, Size: 3, ModTime: mod}}
 			d, err := ComputeDelta(local, prev, &SyncOptions{TrackDeletes: true})
