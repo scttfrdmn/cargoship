@@ -2,6 +2,8 @@ package pipeline
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -401,5 +403,41 @@ func TestCreateRebalancePlan_SkipDuplicates(t *testing.T) {
 		if move.File.IsDuplicate {
 			t.Error("Duplicate files should not be moved")
 		}
+	}
+}
+
+// TestRebalanceShards_RefusesEncryptedUpload pins #903: execution re-uploads chunks
+// without the upload's KMS settings and the caller rewrites the manifest in
+// plaintext, so an encrypted upload is refused. A dry run is still allowed.
+func TestRebalanceShards_RefusesEncryptedUpload(t *testing.T) {
+	for _, enc := range []*manifest.EncryptionMetadata{
+		{Enabled: true},
+		{ManifestEncrypted: true},
+		{DataKMSKeyID: "arn:aws:kms:us-east-1:111122223333:key/k"},
+	} {
+		m := &manifest.Manifest{
+			UploadID: "u", ShardCount: 4, Encryption: enc,
+			Shards: []manifest.ShardEntry{
+				{ID: 0, FileCount: 1, UncompressedSize: 8 << 30},
+				{ID: 1}, {ID: 2}, {ID: 3},
+			},
+			Files: []manifest.FileEntry{{Path: "big", Size: 8 << 30, ShardID: 0, S3Key: "uploads/u/shard-0/chunk-0.tar.zst"}},
+		}
+		_, err := RebalanceShards(context.Background(), m, &RebalanceConfig{ImbalanceThreshold: 2.0})
+		if err == nil || !strings.Contains(err.Error(), "encrypted upload") {
+			t.Errorf("encryption %+v: err = %v, want a refusal", enc, err)
+		}
+
+		dry, err := RebalanceShards(context.Background(), m, &RebalanceConfig{ImbalanceThreshold: 2.0, DryRun: true})
+		if err != nil || !dry.Success {
+			t.Errorf("encryption %+v: a dry run should still work: %v", enc, err)
+		}
+	}
+}
+
+func TestSortedShardIDs(t *testing.T) {
+	got := sortedShardIDs(map[int][]extractedFile{5: nil, 0: nil, 3: nil})
+	if fmt.Sprint(got) != "[0 3 5]" {
+		t.Errorf("sortedShardIDs = %v, want [0 3 5]", got)
 	}
 }
