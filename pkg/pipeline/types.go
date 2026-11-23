@@ -45,6 +45,13 @@ type Job struct {
 	// read via ArchiveChecksum(). Nil when checksum capture isn't wired.
 	archiveHasher *hashingReadCloser
 
+	// #901: counts bytes read from Archive, so a failed upload attempt that
+	// consumed part of the one-shot stream is not retried. See retryableAfter.
+	archiveCounter *countingReadCloser
+	// paced records that the congestion pacer already wraps Archive, so a retry
+	// doesn't stack another pacer on top.
+	paced bool
+
 	// #271: per-file content SHA-256 (hex) captured by the archiver, keyed by
 	// FileEntry.Path. For split files the value is the hash of that part, keyed
 	// by "path#partIndex". Populated only when FileChecksums is enabled; read

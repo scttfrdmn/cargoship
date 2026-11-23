@@ -332,7 +332,9 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 
 	// Upload with retries
 	var lastErr error
+	attempts := 0
 	for attempt := 0; attempt < s.config.MaxRetries; attempt++ {
+		attempts++
 		// Create retry span if this is a retry (Issue #155)
 		var retrySpan trace.Span
 		retryCtx := ctx
@@ -357,6 +359,10 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 			if retrySpan != nil && s.pipeline != nil && s.pipeline.tracer != nil {
 				tracer := s.pipeline.tracer.(*tracing.PipelineTracer)
 				tracer.RecordError(retrySpan, err)
+			}
+			if ok, giveUp := retryableAfter(job, err); !ok {
+				lastErr = giveUp
+				break
 			}
 			continue
 		}
@@ -483,7 +489,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 		tracer.RecordError(jobSpan, lastErr)
 	}
 
-	return fmt.Errorf("upload failed after %d attempts: %w", s.config.MaxRetries, lastErr)
+	return fmt.Errorf("upload failed after %d attempt(s): %w", attempts, lastErr)
 }
 
 // uploadToS3 performs the actual S3 upload using transporter or AWS SDK
@@ -507,13 +513,17 @@ func (s *S3MultiPrefixUploaderStage) uploadToS3(ctx context.Context, job *Job) e
 		job.archiveHasher = newHashingReadCloser(job.Archive)
 		job.Archive = job.archiveHasher
 	}
+	// #901: count what attempts read, so a failed one that consumed the stream
+	// is not retried (retryableAfter). Outermost, so it counts what S3 was sent.
+	job.trackArchiveReads()
 
 	// #424: pace the stream through the real congestion controller. After the
 	// hashing wrap so the checksum still covers the exact uploaded bytes; a
 	// passthrough when optimization is off. Both upload paths below read
 	// job.Archive, so wrapping here covers transporter and manager alike.
-	if s.pacer != nil && job.Archive != nil {
+	if s.pacer != nil && job.Archive != nil && !job.paced {
 		job.Archive = s.pacer.WrapReadCloser(job.Archive)
+		job.paced = true
 	}
 
 	// Prepare metadata

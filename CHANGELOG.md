@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **A retried chunk upload no longer stores an empty object while reporting success** (#901). The
+  archive is a one-shot stream, but a failed upload attempt was retried by re-reading it. Once the SDK's
+  own retries were exhausted (e.g. by 500s or 503 SlowDown), the retry sent whatever was left, often
+  nothing. S3 stored a 0-byte or partial chunk, the manifest recorded its full size and checksum, and
+  the upload reported success, so only `verify --deep` could notice. An attempt that has read any of
+  the stream is no longer retried: the job fails and says why, and the chunk is uploaded again from
+  source next time. (Restore also rejects such short chunks since #905.)
 - **Restore now fails loudly when files are missing** (#905). A chunk that ended cleanly without a
   requested file used to count as success, so `restore` (and `download`, `browse`,
   `restore jobs download`) could exit 0 with files silently absent. That defeated the

@@ -268,7 +268,9 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 
 	// Upload with retries
 	var lastErr error
+	attempts := 0
 	for attempt := 0; attempt < s.config.MaxRetries; attempt++ {
+		attempts++
 		// Issue #103: Track attempt number for error reporting
 		job.AttemptNumber = attempt + 1
 
@@ -301,6 +303,10 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 			if retrySpan != nil && s.pipeline != nil && s.pipeline.tracer != nil {
 				tracer := s.pipeline.tracer.(*tracing.PipelineTracer)
 				tracer.RecordError(retrySpan, err)
+			}
+			if ok, giveUp := retryableAfter(job, err); !ok { // #901
+				lastErr = giveUp
+				break
 			}
 			continue
 		}
@@ -365,11 +371,12 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 		tracer.RecordError(jobSpan, lastErr)
 	}
 
-	return fmt.Errorf("upload failed after %d attempts: %w", s.config.MaxRetries, lastErr)
+	return fmt.Errorf("upload failed after %d attempt(s): %w", attempts, lastErr)
 }
 
 // uploadToS3 performs the actual S3 upload using transporter or AWS SDK
 func (s *S3UploaderStage) uploadToS3(ctx context.Context, job *Job) error {
+	job.trackArchiveReads() // #901: see retryableAfter
 	// Build S3 key with prefix
 	s3Key := job.S3Key
 	if s.config.Prefix != "" {
