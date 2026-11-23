@@ -110,7 +110,9 @@ func (s *UploaderStage) Process(ctx context.Context, job *Job) error {
 
 	// Upload with retries
 	var lastErr error
+	attempts := 0
 	for attempt := 0; attempt < s.config.MaxRetries; attempt++ {
+		attempts++
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
@@ -122,6 +124,10 @@ func (s *UploaderStage) Process(ctx context.Context, job *Job) error {
 		if err := s.uploadToS3(ctx, job); err != nil {
 			lastErr = err
 			atomic.AddInt64(&s.jobsFailed, 1)
+			if ok, giveUp := retryableAfter(job, err); !ok { // #901
+				lastErr = giveUp
+				break
+			}
 			continue
 		}
 
@@ -136,7 +142,7 @@ func (s *UploaderStage) Process(ctx context.Context, job *Job) error {
 		return nil
 	}
 
-	return fmt.Errorf("upload failed after %d attempts: %w", s.config.MaxRetries, lastErr)
+	return fmt.Errorf("upload failed after %d attempt(s): %w", attempts, lastErr)
 }
 
 // Stats returns stage statistics
@@ -186,6 +192,7 @@ func (s *UploaderStage) worker(ctx context.Context) {
 
 // uploadToS3 uploads the archive to S3 using multipart upload
 func (s *UploaderStage) uploadToS3(ctx context.Context, job *Job) error {
+	job.trackArchiveReads() // #901: see retryableAfter
 	// Check if we should use multipart upload
 	useMultipart := atomic.LoadInt64(&job.ArchiveSize) > s.config.PartSize
 
