@@ -194,7 +194,17 @@ func runRebalancing(ctx context.Context, m *manifest.Manifest, s3Client *s3.Clie
 	// Upload updated manifest
 	fmt.Printf("📤 Uploading updated manifest...\n")
 	if err := m.UploadToS3(ctx, s3Client, true); err != nil {
-		return fmt.Errorf("failed to upload manifest: %w", err)
+		return fmt.Errorf("failed to upload manifest (no chunks were deleted; the previous manifest is intact): %w", err)
+	}
+
+	// #903: delete the vacated source chunks only now that the manifest that no
+	// longer references them is stored.
+	if len(result.ObsoleteChunkKeys) > 0 {
+		deleted, errs := pipeline.DeleteObsoleteChunks(ctx, s3Client, bucket, result.ObsoleteChunkKeys)
+		fmt.Printf("🧹 Deleted %d of %d vacated chunk(s)\n", deleted, len(result.ObsoleteChunkKeys))
+		for _, err := range errs {
+			_, _ = fmt.Fprintf(os.Stderr, "Warning: %v (left in place; nothing references it)\n", err)
+		}
 	}
 
 	fmt.Printf("✅ Rebalancing complete!\n")

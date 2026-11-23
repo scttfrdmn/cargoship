@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`balance --execute` no longer deletes chunks that still hold files** (#903). Execution extracted
+  only the files it moved, but then deleted every source chunk it had touched, so the files that
+  stayed pointed at deleted objects. At the bucket root the audit lost 3000 of 3000 files; under a
+  prefix the command failed with a 404 because keys were used without the prefix. Now:
+  - a source chunk is deleted only when no entry references it any more, and only **after** the
+    updated manifest is stored;
+  - chunk keys are resolved against the manifest's prefix, and new chunks get keys relative to it
+    (and `.tar` rather than `.tar.zst` when uncompressed), with IDs that can't collide;
+  - new chunks record a whole-object SHA-256, so `verify --deep` and restore can check them;
+  - an encrypted upload is refused, since its new chunks and manifest would not carry its
+    encryption (`--dry-run` still works).
 - **Resume no longer binds files to the wrong chunks** (#904). Resume skipped a chunk whenever a
   stored chunk had the same ID, and bound files to chunks by ID. Chunk IDs come from a per-run counter
   and are not stable between runs, so after any change to the source (and sometimes without one), a

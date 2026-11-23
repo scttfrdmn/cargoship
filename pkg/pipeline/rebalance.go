@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
@@ -75,6 +77,13 @@ type RebalanceResult struct {
 	Recommendation  string             // Human-readable recommendation
 	Plan            *RebalancePlan     // Detailed rebalancing plan
 	Error           error              // Error if rebalancing failed
+
+	// ObsoleteChunkKeys are the object keys (resolved against the manifest's
+	// prefix) of source chunks that no entry references after the moves. They are
+	// NOT deleted by RebalanceShards: delete them with DeleteObsoleteChunks only
+	// after the updated manifest is stored, or a failure in between would leave
+	// the old manifest pointing at deleted objects (#903).
+	ObsoleteChunkKeys []string
 }
 
 // RebalancePlan represents a plan for redistributing files between shards
@@ -404,6 +413,14 @@ func RebalanceShards(ctx context.Context, m *manifest.Manifest, config *Rebalanc
 		return result, nil
 	}
 
+	// #903: rebalancing re-uploads chunks without the upload's KMS settings and the
+	// caller rewrites the manifest in plaintext, so an encrypted upload would be
+	// silently downgraded (and an encrypted manifest left pointing at the old keys).
+	if e := m.Encryption; e != nil && (e.Enabled || e.ManifestEncrypted || e.DataKMSKeyID != "") {
+		return nil, fmt.Errorf("rebalancing an encrypted upload is not supported: " +
+			"the new chunks and manifest would not carry its encryption")
+	}
+
 	// Execute rebalancing
 	err = executeRebalancing(ctx, m, plan, result, config)
 	if err != nil {
@@ -645,6 +662,7 @@ func createAndUploadChunk(ctx context.Context, s3Client *s3.Client, bucket strin
 	// Get compressed data
 	compressedData := buf.Bytes()
 	compressedSize := int64(len(compressedData))
+	sum := sha256.Sum256(compressedData)
 
 	// Upload to S3
 	_, err := s3Client.PutObject(ctx, &s3.PutObjectInput{
@@ -668,6 +686,9 @@ func createAndUploadChunk(ctx context.Context, s3Client *s3.Client, bucket strin
 		CompressedSize:   compressedSize,
 		CreatedAt:        now,
 		UploadedAt:       now,
+		// Whole-object SHA-256, as the uploader records for unframed chunks, so
+		// verify --deep and restore's size check can trust this chunk too.
+		Checksum: hex.EncodeToString(sum[:]),
 	}
 
 	return chunk, nil
@@ -694,7 +715,7 @@ func executeRebalancing(ctx context.Context, m *manifest.Manifest, plan *Rebalan
 
 	// Step 2: Download and extract files from source chunks
 	extractedFilesByTarget := make(map[int][]extractedFile)
-	chunksToDelete := make(map[int]bool)
+	sourceChunkKeys := make(map[string]bool)
 
 	for sourceChunkID, moves := range movesBySourceChunk {
 		// Find chunk metadata
@@ -716,7 +737,10 @@ func executeRebalancing(ctx context.Context, m *manifest.Manifest, plan *Rebalan
 		}
 
 		// Download and extract files
-		extracted, err := downloadAndExtractFiles(ctx, config.S3Client, config.Bucket, chunk.S3Key, filesToExtract, config.CompressionType)
+		// #903: S3Key is relative to the manifest's prefix; fetching it raw 404'd
+		// under any prefix.
+		extracted, err := downloadAndExtractFiles(ctx, config.S3Client, config.Bucket,
+			manifest.ResolveObjectKey(m.Prefix, m.Bucket, chunk.S3Key), filesToExtract, config.CompressionType)
 		if err != nil {
 			return fmt.Errorf("failed to extract files from chunk %d: %w", sourceChunkID, err)
 		}
@@ -734,25 +758,43 @@ func executeRebalancing(ctx context.Context, m *manifest.Manifest, plan *Rebalan
 			extractedFilesByTarget[targetShard] = append(extractedFilesByTarget[targetShard], ef)
 		}
 
-		// Mark source chunk for deletion
-		chunksToDelete[sourceChunkID] = true
+		// A candidate for deletion only: whether it can go is decided after the
+		// moves, by whether anything still references it (#903).
+		sourceChunkKeys[chunk.S3Key] = true
 	}
 
 	// Step 3: Create and upload new chunks for each target shard
 	newChunks := make(map[int]*manifest.ChunkEntry)
 
-	for targetShardID, files := range extractedFilesByTarget {
-		chunkID := len(m.Chunks) // New chunk ID
-		s3Key := fmt.Sprintf("%s/uploads/%s/shard-%d/chunk-rebalance-%d.tar.zst",
-			config.Prefix, config.UploadID, targetShardID, chunkID)
+	// #903: number new chunks above every existing ID (len(m.Chunks) could reuse
+	// one), and store their keys relative to the manifest's prefix like every
+	// other chunk. Building them from config.Prefix put a leading "/" on every key
+	// of an upload at the bucket root.
+	nextID := 0
+	for _, c := range m.Chunks {
+		if c.ID >= nextID {
+			nextID = c.ID + 1
+		}
+	}
+	ext := ".tar.zst"
+	if config.CompressionType == "none" || config.CompressionType == "" {
+		ext = ".tar" // restore decodes by key extension (#452)
+	}
+	for _, targetShardID := range sortedShardIDs(extractedFilesByTarget) {
+		files := extractedFilesByTarget[targetShardID]
+		chunkID := nextID
+		nextID++
+		relKey := fmt.Sprintf("uploads/%s/shard-%d/chunk-rebalance-%d%s", m.UploadID, targetShardID, chunkID, ext)
 
 		// Create chunk with extracted files
-		chunk, err := createAndUploadChunk(ctx, config.S3Client, config.Bucket, s3Key, files, config.CompressionType, config.StorageClass)
+		chunk, err := createAndUploadChunk(ctx, config.S3Client, config.Bucket,
+			manifest.ResolveObjectKey(m.Prefix, m.Bucket, relKey), files, config.CompressionType, config.StorageClass)
 		if err != nil {
 			return fmt.Errorf("failed to create chunk for shard %d: %w", targetShardID, err)
 		}
 
 		chunk.ID = chunkID
+		chunk.S3Key = relKey
 		chunk.ShardID = targetShardID
 		newChunks[targetShardID] = chunk
 
@@ -767,12 +809,35 @@ func executeRebalancing(ctx context.Context, m *manifest.Manifest, plan *Rebalan
 				m.Files[i].ShardID = move.TargetShard
 				m.Files[i].ChunkID = newChunks[move.TargetShard].ID
 				m.Files[i].S3Key = newChunks[move.TargetShard].S3Key
+				m.Files[i].ArchiveOffset = 0 // the offset was into the source chunk's tar
 				break
 			}
 		}
 	}
 
-	// Step 5: Update shard statistics
+	// Step 5: drop only the source chunks nothing references any more (#903). The
+	// moves extract just the moved files, so a source chunk usually still holds
+	// files that stayed. Deleting every affected source chunk, as this used to,
+	// left those entries pointing at deleted objects: 3000 of 3000 files became
+	// unrestorable in the audit's reproduction. A chunk that is still referenced
+	// stays in place, moved files and all.
+	referenced := make(map[string]bool, len(m.Files))
+	for _, f := range m.Files {
+		referenced[manifest.ResolveObjectKey(m.Prefix, m.Bucket, f.S3Key)] = true
+	}
+	kept := m.Chunks[:0]
+	for _, c := range m.Chunks {
+		key := manifest.ResolveObjectKey(m.Prefix, m.Bucket, c.S3Key)
+		if sourceChunkKeys[c.S3Key] && !referenced[key] {
+			result.ObsoleteChunkKeys = append(result.ObsoleteChunkKeys, key)
+			continue
+		}
+		kept = append(kept, c)
+	}
+	m.Chunks = kept
+	m.TotalChunks = len(m.Chunks)
+
+	// Step 6: Update shard statistics
 	for i := range m.Shards {
 		shardID := m.Shards[i].ID
 
@@ -812,26 +877,36 @@ func executeRebalancing(ctx context.Context, m *manifest.Manifest, plan *Rebalan
 		m.Shards[i].ChunkKeys = keys
 	}
 
-	// Step 6: Delete old chunks from S3 (only those affected by moves)
-	for chunkID := range chunksToDelete {
-		for i, chunk := range m.Chunks {
-			if chunk.ID == chunkID {
-				// Delete from S3
-				_, err := config.S3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
-					Bucket: aws.String(config.Bucket),
-					Key:    aws.String(chunk.S3Key),
-				})
-				if err != nil {
-					// Log error but don't fail - chunk will be orphaned
-					fmt.Printf("Warning: failed to delete old chunk %s: %v\n", chunk.S3Key, err)
-				}
-
-				// Remove from manifest
-				m.Chunks = append(m.Chunks[:i], m.Chunks[i+1:]...)
-				break
-			}
-		}
-	}
-
 	return nil
+}
+
+// sortedShardIDs returns the keys of byShard in ascending order, so new chunk IDs
+// are assigned deterministically.
+func sortedShardIDs(byShard map[int][]extractedFile) []int {
+	ids := make([]int, 0, len(byShard))
+	for id := range byShard {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+	return ids
+}
+
+// DeleteObsoleteChunks deletes the chunk objects a rebalance left unreferenced
+// (RebalanceResult.ObsoleteChunkKeys). Call it only after the updated manifest has
+// been stored (#903). It returns how many were deleted and the failures, which
+// leave an unreferenced object behind but lose no data.
+func DeleteObsoleteChunks(ctx context.Context, s3Client *s3.Client, bucket string, keys []string) (int, []error) {
+	var deleted int
+	var errs []error
+	for _, key := range keys {
+		if _, err := s3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(key),
+		}); err != nil {
+			errs = append(errs, fmt.Errorf("delete obsolete chunk %s: %w", key, err))
+			continue
+		}
+		deleted++
+	}
+	return deleted, errs
 }
