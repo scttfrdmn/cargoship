@@ -15,7 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing: the audit saw 1506 of 2506 files missing. Now:
   - a chunk is skipped only when a stored chunk holds exactly the same files, with the same sizes and
     modification times; otherwise it is uploaded and its files are rebound to it by path;
-  - new chunks are numbered above every stored one, so they can't overwrite a stored chunk;
+  - new chunks are numbered above every stored one, so they can't overwrite a stored chunk. `verify`
+    now checks that each file's chunk exists, rather than that its ID is below the chunk count, so it
+    accepts the non-contiguous IDs this produces;
   - resume uses the interrupted run's saved chunk size again;
   - resuming an upload that already completed is refused, instead of re-uploading under the same ID
     over the finished archive;

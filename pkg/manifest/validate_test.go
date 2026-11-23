@@ -501,3 +501,26 @@ func TestCompressedSizeUnusual(t *testing.T) {
 		t.Error("zero uncompressed must not be flagged")
 	}
 }
+
+// TestValidator_NonContiguousChunkIDs: a resumed upload numbers new chunks above the
+// stored ones (#904), so chunk IDs can exceed the chunk count. A file must reference
+// a chunk that exists, not an ID below TotalChunks.
+func TestValidator_NonContiguousChunkIDs(t *testing.T) {
+	m := createValidManifest()
+	m.Chunks[1].ID = 7
+	m.Files[2].ChunkID = 7
+
+	r := NewValidator(m).Validate()
+	assert.True(t, r.Valid, "errors: %v", r.Errors)
+
+	m.Files[2].ChunkID = 1 // below TotalChunks, but no such chunk
+	r = NewValidator(m).Validate()
+	assert.False(t, r.Valid)
+	found := false
+	for _, e := range r.Errors {
+		if e.Field == "file[2].chunk_id" {
+			found = true
+		}
+	}
+	assert.True(t, found, "a file referencing a missing chunk must be flagged: %v", r.Errors)
+}
