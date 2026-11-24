@@ -11,7 +11,6 @@ import (
 )
 
 // copyFileToArchive uses standard zero-copy optimization on non-Linux platforms
-func (s *ArchiverStage) copyFileToArchive(tw *tar.Writer, f *os.File, length int64) error {
-	_, err := ioutils.CopyOptimized(tw, io.LimitReader(f, length))
-	return err
+func (s *ArchiverStage) copyFileToArchive(tw *tar.Writer, f *os.File, length int64) (int64, error) {
+	return ioutils.CopyOptimized(tw, io.LimitReader(f, length))
 }

@@ -58,6 +58,10 @@ type Job struct {
 	// into FileEntry.Checksum by the uploader when the chunk is recorded.
 	fileChecksums   map[string]string
 	fileChecksumsMu sync.Mutex
+	// archived records, per file (keyed like fileChecksums), the size and
+	// modification time actually archived when they differ from the scan's (#910).
+	archived   map[string]archivedFile
+	archivedMu sync.Mutex
 
 	// #436: per-file data offset within the chunk's uncompressed tar stream,
 	// captured by the archiver's framer, keyed like fileChecksums (path, or

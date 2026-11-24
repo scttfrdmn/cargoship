@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **A file that changes between scan and upload is archived and restored correctly** (#910).
+  - **Before:** the manifest kept the scan-time size while the archive held the file's new length.
+    - A shrunk file restored padded with the next file's bytes (with `--no-file-checksums`, unnoticed).
+    - A grown one was cut short.
+    - In chunks of one or two files, a shrunk file left a truncated tar that went unnoticed, because
+      the tar and zstd `Close` errors were discarded.
+  - **Now:** each file is archived whole as it is when read, and the manifest records that size and
+    modification time, so the next sync uploads it again.
+    - A file that changes during the read itself fails the chunk with a clear reason.
+    - The tar and encoder `Close` errors fail the upload.
+    - Restore cross-checks the tar header's size before slicing a file out of a frame, which also
+      protects archives written by earlier versions.
 - **`setup` no longer replaces an existing configuration with defaults** (#909). It started from the
   built-in defaults, never read `~/.cargoship.yaml`, treated an empty answer or end of input as
   "yes", ignored `--non-interactive`, and rewrote the whole file.

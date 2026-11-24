@@ -1163,6 +1163,16 @@ func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEn
 		se.noteFailure(stats, 1, fmt.Errorf("%s: not within its frame in %s (truncated or mismatched chunk)", entry.Path, entry.S3Key))
 		return true
 	}
+	// #910: bound the slice by the tar header too. Archives written before #910
+	// recorded the scan-time size for a file that changed before archiving, so the
+	// manifest size can disagree with the tar entry; slicing it padded a shrunk
+	// file with the next file's bytes. The entry's 512-byte header sits right
+	// before ArchiveOffset; when it's in this frame, its size must agree.
+	if hdrSize, ok := tarHeaderSizeBefore(raw, sliceStart); ok && hdrSize != entry.Size {
+		se.noteFailure(stats, 1, fmt.Errorf("%s: the archive holds %d bytes but the manifest records %d "+
+			"(the file changed while it was being uploaded)", entry.Path, hdrSize, entry.Size))
+		return true
+	}
 	content := raw[sliceStart : sliceStart+entry.Size]
 
 	// #270: mirror the whole-chunk path — never write bytes that fail the
@@ -1195,6 +1205,22 @@ func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEn
 	stats.Restored++
 	stats.Bytes += int64(len(content))
 	return true
+}
+
+// tarHeaderSizeBefore parses the tar header block that ends at dataStart in raw
+// and returns the entry's size. ok is false when there is no valid header there
+// (it lies in an earlier frame, or the size is carried in a PAX record, in which
+// case the header's own size field is zero).
+func tarHeaderSizeBefore(raw []byte, dataStart int64) (int64, bool) {
+	const block = 512
+	if dataStart < block || dataStart > int64(len(raw)) {
+		return 0, false
+	}
+	hdr, err := tar.NewReader(bytes.NewReader(raw[dataStart-block : dataStart])).Next()
+	if err != nil || hdr.Size == 0 {
+		return 0, false
+	}
+	return hdr.Size, true
 }
 
 // decodeZstdFrame decompresses a single self-contained zstd frame (#436).
