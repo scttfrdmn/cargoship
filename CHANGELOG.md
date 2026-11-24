@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-11-24
+
+Fixes the ten critical and high-severity findings from a data-loss audit of the whole codebase
+(#900). Each one could lose data silently, or report success over a loss: an upload retry that
+stored an empty chunk, a failed upload that wrote a manifest hiding its failed files, resume binding
+files to the wrong chunks, `balance --execute` deleting chunks still in use, deletes aimed at the
+wrong keys, restores that destroyed the existing file or dropped same-named files, `setup`
+replacing the config, and files that changed while being archived. Every fix has a regression test
+that fails without it. **The archive and manifest formats are unchanged**, and archives from
+earlier releases restore as before; restore now also catches some damage in them that it used to
+miss.
+
+Behaviour changes, each refusing something that used to lose data:
+- restore fails loudly when a requested file is missing, truncated or short, and refuses when two
+  files would land on the same output path (`--flatten`, or case-only differences on macOS and
+  Windows);
+- resuming an upload that already completed is refused, and `--skip-existing` no longer skips a
+  chunk just because an object exists at its key;
+- `balance --execute` refuses encrypted uploads;
+- `setup` needs a typed `yes` or `--force` to update an existing config, and `--non-interactive`
+  refuses without `--force`.
+
 ### Fixed
 - **A file that changes between scan and upload is archived and restored correctly** (#910).
   - **Before:** the manifest kept the scan-time size while the archive held the file's new length.
@@ -110,8 +132,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `errors` array;
   - `download` and `restore jobs download` no longer print a success banner over failures, and a
     partially failed restore job is recorded as failed.
-
-### Fixed
 - **The docs site no longer stays on the previous release after a tag** (#898). The release-prep
   merge and its tag are the same commit. The main-push docs run deployed first, with the previous
   tag's root tree, and GitHub Pages then kept serving that deployment even after the tag run deployed
