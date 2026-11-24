@@ -110,10 +110,7 @@ func (p *Pipeline) alreadyStored(ctx context.Context, job *Job, client headObjec
 	if !p.config.SkipExisting {
 		return true, nil
 	}
-	key := chunk.S3Key
-	if prefix != "" {
-		key = prefix + "/" + key
-	}
+	key := objectKeyFor(prefix, chunk.S3Key)
 	out, err := client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
 	if err != nil {
 		if isNoSuchKeyErr(err) {

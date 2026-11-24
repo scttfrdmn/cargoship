@@ -1368,6 +1368,15 @@ func (p *Pipeline) GetStats() map[string]StageStats {
 	return stats
 }
 
+// objectKeyFor is the object key the uploaders write a prefix-relative chunk key
+// to. Cleanup uses it too, so it deletes exactly what was uploaded (#906).
+func objectKeyFor(prefix, relKey string) string {
+	if prefix == "" {
+		return relKey
+	}
+	return prefix + "/" + relKey
+}
+
 // trackUploadedKey adds an S3 key to the list of uploaded keys for cleanup (Issue #158)
 func (p *Pipeline) trackUploadedKey(s3Key string) {
 	p.uploadedKeysMu.Lock()
@@ -1383,8 +1392,14 @@ func (p *Pipeline) cleanupPartialUpload(ctx context.Context) error {
 
 	s3Client := p.config.S3Client.(*s3.Client)
 
+	// #906: the tracked keys are the prefix-relative job keys. Deleting them raw
+	// missed every chunk of an upload under a prefix (while reporting them
+	// deleted) and could delete an unrelated object at the bucket root.
 	p.uploadedKeysMu.Lock()
-	keys := append([]string(nil), p.uploadedKeys...)
+	keys := make([]string, 0, len(p.uploadedKeys)+1)
+	for _, k := range p.uploadedKeys {
+		keys = append(keys, objectKeyFor(p.config.S3Prefix, k))
+	}
 	p.uploadedKeysMu.Unlock()
 
 	if len(keys) == 0 {

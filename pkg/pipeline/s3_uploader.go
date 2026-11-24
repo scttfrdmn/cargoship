@@ -341,10 +341,7 @@ func (s *S3UploaderStage) Process(ctx context.Context, job *Job) error {
 func (s *S3UploaderStage) uploadToS3(ctx context.Context, job *Job) error {
 	job.trackArchiveReads() // #901: see retryableAfter
 	// Build S3 key with prefix
-	s3Key := job.S3Key
-	if s.config.Prefix != "" {
-		s3Key = s.config.Prefix + "/" + job.S3Key
-	}
+	s3Key := objectKeyFor(s.config.Prefix, job.S3Key)
 
 	// Prepare metadata
 	metadata := map[string]string{

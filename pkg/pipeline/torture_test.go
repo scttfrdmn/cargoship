@@ -595,6 +595,13 @@ func runDatasetPruneGC(t *testing.T) {
 	merged.Bucket, merged.Prefix, merged.UploadID = bucket, testPrefix, "20260103-p3"
 	require.NoError(t, merged.UploadToS3(ctx, s3Client, true))
 
+	// #906: the prune set must name REAL objects (resolved against the prefix).
+	// With raw prefix-relative keys the "gone" check below passed trivially.
+	for _, k := range prunable {
+		_, herr := s3Client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(k)})
+		require.NoError(t, herr, "prunable key %s must name an existing object", k)
+	}
+
 	// Delete the pruned data objects + pruned manifests.
 	delKeys := append([]string{}, prunable...)
 	for _, id := range []string{"20260101-p1", "20260102-p2"} {
@@ -801,12 +808,10 @@ func tortureRoundTrip(t *testing.T, corpus []genFile, srcDir string, mutate func
 	return m
 }
 
-// runResumeTorture proves the #119 wiring produces a working, non-corrupting
-// resume: a resume-mode run of a prior upload (same UploadID) completes and the
-// data still restores byte-identically. It does NOT assert skip efficiency —
-// demonstrating a partial skip deterministically requires an interrupted run,
-// and seeding an artificial partial manifest exposed a separate #157 rough edge
-// (files re-added / ChunksSkipped not reflected in Result) tracked separately.
+// runResumeTorture proves a resume-mode run of a COMPLETED upload (same UploadID)
+// is refused without touching it, and the data still restores byte-identically
+// (#904). Interrupted-run resume, with skipping and source changes, is covered by
+// TestResume_AfterSourceChangeRestoresEveryFile.
 func runResumeTorture(t *testing.T, rng *rand.Rand) {
 	bucket := tortureEnv("CARGOSHIP_TEST_BUCKET", "cargoship-pipeline-test")
 	region := tortureEnv("AWS_REGION", "us-east-1")
@@ -846,14 +851,15 @@ func runResumeTorture(t *testing.T, rng *rand.Rand) {
 	require.NoError(t, err)
 	require.True(t, r1.Success)
 
-	// Run 2: resume mode (same UploadID). Must complete without error.
-	p2, err := NewPipeline(newCfg(true))
-	require.NoError(t, err)
-	r2, err := p2.Run(ctx, src)
-	require.NoError(t, err)
-	require.True(t, r2.Success, "resume-mode run must complete")
+	// Run 2: resume mode (same UploadID). The upload already completed, so
+	// resuming it is refused (#904): it used to re-upload under the same ID over
+	// the finished archive. Interrupted-run resume is covered by
+	// TestResume_AfterSourceChangeRestoresEveryFile.
+	_, err = NewPipeline(newCfg(true))
+	require.Error(t, err, "resuming a completed upload must be refused")
+	require.Contains(t, err.Error(), "already completed")
 
-	// After the resume, the data must still restore byte-identically.
+	// The refused resume must have left the data restoring byte-identically.
 	finalKey := fmt.Sprintf("%s/uploads/%s/manifest.json.gz", prefix, uploadID)
 	obj, err := s3Client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(bucket), Key: aws.String(finalKey)})
 	require.NoError(t, err)
@@ -880,7 +886,7 @@ func runResumeTorture(t *testing.T, rng *rand.Rand) {
 		require.NoError(t, err)
 		require.Equal(t, want.sum, sha256hex(got), "BYTE MISMATCH after resume for %s", want.relPath)
 	}
-	t.Logf("resume-mode round-trip OK: %d files byte-identical (run1 chunks=%d, resume chunks=%d)", len(corpus), r1.ChunksUploaded, r2.ChunksUploaded)
+	t.Logf("completed-upload resume refused; %d files still byte-identical (chunks=%d)", len(corpus), r1.ChunksUploaded)
 }
 
 func tortureEnv(key, def string) string {

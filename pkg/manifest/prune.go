@@ -16,7 +16,7 @@ type PrunePlan struct {
 	Keep           []*Manifest     // versions retained (newest-first)
 	Prune          []*Manifest     // versions whose objects/manifest become deletion candidates (newest-first)
 	CompactID      string          // upload ID of the oldest kept version to rewrite self-contained; "" if none needed
-	KeepObjectKeys map[string]bool // stored S3Keys referenced by a kept version's effective view — MUST NOT be deleted
+	KeepObjectKeys map[string]bool // object keys (resolved, #906) a kept version's effective view references — MUST NOT be deleted
 }
 
 // PlanKeepLast computes a keep-last-N prune plan for the dataset `members` (all
@@ -80,8 +80,9 @@ func PlanKeepLast(ctx context.Context, members []*Manifest, n int, fetch ChainFe
 	return plan, nil
 }
 
-// PrunableObjectKeys returns the stored S3Keys of the pruned versions' own data
-// objects that no kept version references — i.e. the objects safe to delete.
+// PrunableObjectKeys returns the object keys (resolved against each manifest's
+// prefix, #906) of the pruned versions' own data objects that no kept version
+// references — i.e. the objects safe to delete.
 func (p *PrunePlan) PrunableObjectKeys() []string {
 	seen := map[string]bool{}
 	var out []string
@@ -97,16 +98,20 @@ func (p *PrunePlan) PrunableObjectKeys() []string {
 	return out
 }
 
-// objectKeysOf returns the stored S3Keys of the data objects a manifest lists:
+// objectKeysOf returns the object keys of the data objects a manifest lists:
 // chunk keys for a chunked upload, or per-file keys for a direct upload (no
 // chunks). On a delta manifest these are the version's OWN objects; on an
 // effective (merged) manifest they are the full set the version references.
 func objectKeysOf(m *Manifest) []string {
+	// #906: keys are resolved against the manifest's prefix, as restore resolves
+	// them. Using the stored, prefix-relative keys as object keys made prune miss
+	// every object of a dataset under a prefix, and could delete an unrelated
+	// object at the bucket root with the same key.
 	if len(m.Chunks) == 0 {
 		keys := make([]string, 0, len(m.Files))
 		for i := range m.Files {
 			if m.Files[i].S3Key != "" {
-				keys = append(keys, m.Files[i].S3Key)
+				keys = append(keys, ResolveObjectKey(m.Prefix, m.Bucket, m.Files[i].S3Key))
 			}
 		}
 		return keys
@@ -114,7 +119,7 @@ func objectKeysOf(m *Manifest) []string {
 	keys := make([]string, 0, len(m.Chunks))
 	for i := range m.Chunks {
 		if m.Chunks[i].S3Key != "" {
-			keys = append(keys, m.Chunks[i].S3Key)
+			keys = append(keys, ResolveObjectKey(m.Prefix, m.Bucket, m.Chunks[i].S3Key))
 		}
 	}
 	return keys
