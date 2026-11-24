@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Restore refuses instead of silently losing files that map to the same path** (#908). With
+  `--flatten`, `src/a/config.txt` and `src/b/config.txt` both became `config.txt`, and nothing checked.
+  Restore could report both restored with one on disk and exit 0. The same happened without
+  `--flatten` on case-insensitive filesystems (macOS, Windows) for `README` and `readme` from a Linux
+  source. Restore now checks every output path before writing anything. Paths are compared
+  case-folded when the destination ignores case (probed, not assumed). If two different files would
+  collide, restore refuses and lists them.
 - **A failed restore no longer deletes the file it was restoring over** (#907). Restore opened the
   destination with `O_TRUNC` and removed it when the write failed. Restoring over an existing file
   from a truncated chunk, onto a full disk, or through a crash therefore emptied the user's file and

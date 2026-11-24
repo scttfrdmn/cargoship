@@ -16,6 +16,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -619,8 +620,18 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 		}
 	}
 
-	for _, target := range targets {
-		entry := se.resolveEntry(target)
+	entries := make([]*FileEntry, len(targets))
+	for i, target := range targets {
+		entries[i] = se.resolveEntry(target)
+	}
+	// #908: refuse before writing anything if two different files would land on
+	// the same output path, so one can't silently replace the other.
+	if err := se.checkOutputCollisions(root, destDir, entries); err != nil {
+		return nil, err
+	}
+
+	for i, target := range targets {
+		entry := entries[i]
 		if entry == nil {
 			se.noteFailure(stats, 1, fmt.Errorf("%s: not found in manifest", target))
 			continue
@@ -663,6 +674,85 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 	wg.Wait()
 
 	return stats, nil
+}
+
+// maxListedCollisions caps how many collisions the refusal names.
+const maxListedCollisions = 10
+
+// checkOutputCollisions returns an error naming the collisions if two different
+// manifest entries would restore to the same output path (#908).
+//
+// --flatten reduces every entry to its basename, so src/a/config.txt and
+// src/b/config.txt both became config.txt. Nothing checked, and the concurrent
+// group pool assumed distinct outputs: restore could report both files restored
+// with one on disk, fail on a racing create, or let the second overwrite the
+// first. The same happens without --flatten on a case-insensitive filesystem
+// (macOS, Windows) for README and readme from a case-sensitive source, so paths
+// are compared case-folded when destDir's filesystem ignores case. Parts of one
+// split file share a path legitimately and are not collisions.
+func (se *SelectiveExtractor) checkOutputCollisions(root *os.Root, destDir string, entries []*FileEntry) error {
+	fold := caseInsensitive(root)
+	owner := make(map[string]string, len(entries))
+	var collisions []string
+	n := 0
+	for _, e := range entries {
+		if e == nil {
+			continue
+		}
+		out, err := se.restorePath(destDir, e.Path)
+		if err != nil {
+			continue // fails on its own later, with its own reason
+		}
+		key := out
+		if fold {
+			key = strings.ToLower(out)
+		}
+		prev, seen := owner[key]
+		switch {
+		case !seen:
+			owner[key] = e.Path
+		case prev != e.Path:
+			n++
+			if len(collisions) < maxListedCollisions {
+				rel, _ := filepath.Rel(destDir, out)
+				collisions = append(collisions, fmt.Sprintf("%s and %s both restore to %s", prev, e.Path, rel))
+			}
+		}
+	}
+	if n == 0 {
+		return nil
+	}
+	hint := "restore them to separate directories or without --flatten"
+	if fold {
+		hint += "; the destination filesystem ignores case"
+	}
+	return fmt.Errorf("refusing to restore: %d output path collision(s), so a file would be silently lost (%s): %s",
+		n, hint, strings.Join(collisions, "; "))
+}
+
+// caseInsensitive reports whether the filesystem holding root ignores case, by
+// creating a probe file and looking it up under a different case. If the probe
+// can't be created it assumes the platform default.
+func caseInsensitive(root *os.Root) bool {
+	var suffix [6]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return platformCaseInsensitive()
+	}
+	name := ".cargoship-case-probe-" + hex.EncodeToString(suffix[:]) + "-Aa"
+	f, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return platformCaseInsensitive()
+	}
+	_ = f.Close()
+	defer func() { _ = root.Remove(name) }()
+	_, err = root.Stat(strings.ToLower(name))
+	return err == nil
+}
+
+// platformCaseInsensitive is the usual default: macOS and Windows filesystems
+// ignore case, Linux ones don't.
+func platformCaseInsensitive() bool {
+	return runtime.GOOS == "darwin" || runtime.GOOS == "windows"
 }
 
 // restoreConcurrency bounds how many chunk groups BatchRestore downloads and
