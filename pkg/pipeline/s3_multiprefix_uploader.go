@@ -366,7 +366,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 			s.pipeline.manifestMu.Lock()
 
 			// Bind the chunk's files to it by path (#904), not by chunk ID.
-			builder.BindChunkFiles(job.Chunk.ID, shardID, job.S3Key, chunkFiles(job.Chunk.Files))
+			builder.BindChunkFiles(job.Chunk.ID, shardID, job.S3Key, job.boundFiles()) // #910: archived sizes
 
 			// #271: record per-file content checksums captured during archiving
 			// (no-op when file checksums are disabled).

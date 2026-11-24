@@ -726,15 +726,21 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 		// encoder, (2) flush/close the encoder into the pipe, (3) close the
 		// pipe. Closing pw before the encoder flushes its final zstd frame
 		// truncates the last file — the bug this ordering fixes.
+		//
+		// #910: the tar and encoder Close errors were discarded, and the pipe was
+		// closed cleanly regardless, so the uploader saw a normal EOF after a
+		// failed flush. Now the first error closes the pipe WITH that error, and
+		// the upload fails. Each Close still runs exactly once (#397).
+		var streamErr error // the pipe was already closed with this error
 		defer func() {
-			_ = pw.Close() // (3) runs last: reader gets EOF only after all data
-		}()
-		if useCompression {
-			defer func() {
+			err := tw.Close() // (1) flush all tar data into the encoder/pipe
+			if useCompression {
 				// (2) flush the encoder's final (trailing) frame into pw. Record
 				// that frame before returning the encoder, then hand the index to
 				// the uploader — cwU/cwC are final once Close returns (#436).
-				_ = encoder.Close()
+				if cerr := encoder.Close(); err == nil {
+					err = cerr
+				}
 				if fr.active() {
 					fr.finalize()
 					job.SetFrames(fr.frames)
@@ -742,16 +748,19 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 				if encoderPool != nil {
 					encoderPool.Put(encoder)
 				}
-			}()
-		}
-		// (1) runs first: flush all tar data into the encoder/pipe.
-		defer func() {
-			_ = tw.Close()
+			}
+			// (3) runs last: the reader gets EOF only after all data.
+			if err != nil && streamErr == nil {
+				_ = pw.CloseWithError(fmt.Errorf("finish archive %s: %w", job.S3Key, err))
+				return
+			}
+			_ = pw.Close()
 		}()
 
 		// Add all files to archive with parallel I/O optimization
 		var totalSize int64
 		if err := s.addFilesWithParallelIO(tw, fr, job, job.Chunk.Files, &totalSize); err != nil {
+			streamErr = err
 			_ = pw.CloseWithError(err)
 			return
 		}
@@ -1134,16 +1143,28 @@ func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, fr *framer,
 		}
 	}
 
-	// Determine read length
-	length := file.Length
-	if length == 0 {
-		length = file.Size
-	}
-
 	// Get file info for tar header
 	info, err := f.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	// Determine read length. #910: a whole file is archived at its size NOW, not
+	// the scan's, and that size is what the manifest records (noteArchivedSize).
+	// Using the scan size wrote a header the content couldn't match: a shrunk file
+	// left a truncated tar and a grown one was silently cut to a prefix. A split
+	// part can't be re-cut here, so a changed split file fails.
+	length := file.Length
+	if length == 0 {
+		length = file.Size
+	}
+	if file.TotalParts > 1 {
+		if info.Size() != file.Size {
+			return fmt.Errorf("%s changed size since the scan (%d to %d bytes); upload it again", file.Path, file.Size, info.Size())
+		}
+	} else {
+		length = info.Size()
+		noteArchivedSize(job, file, length, info.ModTime())
 	}
 
 	// Create tar header
@@ -1188,24 +1209,36 @@ func (s *ArchiverStage) addFileToArchiveWithMetadata(tw *tar.Writer, fr *framer,
 	// checksum-off, unframed case keeps the platform zero-copy (splice/sendfile)
 	// fast path.
 	var hasher hash.Hash
-	src := io.LimitReader(f, length)
+	counted := &countingReader{r: io.LimitReader(f, length)}
+	var src io.Reader = counted
 	if job != nil && s.config.FileChecksums {
 		hasher = sha256.New()
 		src = io.TeeReader(src, hasher)
 	}
+	var copied int64
 	switch {
 	case fr.active():
 		if err := s.copyFileFramed(tw, fr, src); err != nil {
 			return fmt.Errorf("failed to write file content: %w", err)
 		}
+		copied = counted.n
 	case hasher != nil:
 		if err := s.copyFileToArchivePlain(tw, src); err != nil {
 			return fmt.Errorf("failed to write file content: %w", err)
 		}
+		copied = counted.n
 	default:
-		if err := s.copyFileToArchive(tw, f, length); err != nil {
+		n, err := s.copyFileToArchive(tw, f, length)
+		if err != nil {
 			return fmt.Errorf("failed to write file content: %w", err)
 		}
+		copied = n
+	}
+	// #910: the file shrank while it was being read. The tar entry would be
+	// short (a truncated archive that only file-level checks catch), so fail the
+	// chunk loudly; the next run archives the file as it is then.
+	if copied != length {
+		return fmt.Errorf("%s changed while being archived: copied %d of %d bytes; upload it again", file.Path, copied, length)
 	}
 	if hasher != nil {
 		job.SetFileChecksum(fileChecksumKey(file), hex.EncodeToString(hasher.Sum(nil)))
@@ -1277,6 +1310,23 @@ func (s *ArchiverStage) addFileToArchiveFromMemoryWithMetadata(tw *tar.Writer, f
 
 	// Update header with actual data size (for partial reads)
 	header.Size = int64(len(data))
+
+	// #910: the header holds the length actually read, so the manifest must
+	// record it too, or frame restore slices the scan-time size and pads a
+	// shrunk file with the next file's bytes. A split part must match its planned
+	// length exactly.
+	if file.TotalParts > 1 {
+		want := file.Length
+		if want == 0 {
+			want = file.Size
+		}
+		if int64(len(data)) != want {
+			return fmt.Errorf("%s changed size since the scan (part %d read %d of %d bytes); upload it again",
+				file.Path, file.PartIndex, len(data), want)
+		}
+	} else {
+		noteArchivedSize(job, file, int64(len(data)), info.ModTime())
+	}
 
 	// For split files, modify the name to include part information
 	if file.TotalParts > 1 {
@@ -1374,4 +1424,16 @@ func (r *StreamingArchiveReader) SetProgressCallback(callback func(int64)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.onProgress = callback
+}
+
+// countingReader counts the bytes read through it.
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
 }
