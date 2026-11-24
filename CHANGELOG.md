@@ -119,6 +119,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is pending (the version at HEAD has no tag yet), the main-push run now builds but leaves the deploy
   to the tag run.
 
+### Changed
+- Dependency updates: the ten Dependabot bumps (#927–#936) batched with the nested-module tidy. That
+  covers the aws-sdk group (aws-sdk-go-v2 1.48.0, sts 1.52.0, iam 1.66.0, cloudwatch 1.76.0 and their
+  internals), smithy-go 1.28.9, modernc libc 1.81.2 and memory 1.13.0, substrate 0.129.0 (the test
+  emulator), brotli 1.3.0, prometheus/common 0.74.0, x/term 0.48.0 and x/text 0.44.0.
+- **klauspost/compress 1.20.4** (#933). Its zstd changes (literal-table reuse #1299, stream state on
+  reset #1266, faster decoders) touch the archive path, so it was checked with the cross-version codec
+  harness against 1.20.3. The corpus was 11 hostile inputs, encoded at all four archive levels with
+  concurrency 1 and NumCPU. It covered streaming writes, `Close`/`Reset` framing within one stream as
+  the framer does, a pooled encoder reused across inputs via `Reset`, and `EncodeAll`, plus s2.
+  - All 275 encodings are **byte-identical** to 1.20.3's.
+  - Every encoding decodes under both versions: 539 checks in each direction, 0 mismatches.
+
 ## [0.41.1] - 2026-11-20
 
 A patch release for a **data-loss bug**: on any earlier version, `cargoship config --show` rewrote
