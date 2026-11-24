@@ -8,6 +8,7 @@ import (
 	"compress/gzip"
 	"container/list"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -400,47 +401,91 @@ func prepareParents(root *os.Root, relPath string) error {
 	return nil
 }
 
-// createContained opens relPath for writing inside root, refusing to write
-// through a symlink at the leaf.
+// atomicFile is a restore target being written. The bytes go to a temporary file
+// in the destination's directory, which replaces the destination only once it is
+// complete and synced (#907).
+//
+// Restore used to open the destination itself with O_TRUNC and remove it when the
+// write failed. Restoring over an existing file from a truncated chunk, onto a full
+// disk, or through a crash therefore first emptied the user's file and then
+// deleted it: the restore failed AND the local copy was gone. Now a failure removes
+// only the temporary file, and the existing file is untouched until a complete
+// replacement is ready.
+type atomicFile struct {
+	root *os.Root
+	rel  string // destination, relative to root
+	tmp  string // temporary file, relative to root
+	f    *os.File
+}
+
+// createAtomic starts writing relPath inside root, refusing to write through a
+// symlink at the leaf.
 //
 // os.Root alone already refuses a leaf symlink that points outside the root —
-// that is the escape this issue is about. The extra Lstat rejects a leaf symlink
-// pointing *inside* the root too, because a restore should write the file it was
-// asked to write rather than through whatever link happens to sit at that path.
-// That second case is a correctness guard, not a containment one, and it carries
-// an unavoidable TOCTOU window (the link could be introduced between the Lstat
-// and the open). The containment guarantee does not depend on it: os.Root
-// re-validates every component at open time, so even if the race is won the
-// write still cannot leave destDir. O_NOFOLLOW would close the window but is not
-// portable — it is absent on Windows, which goreleaser builds.
-//
-// O_TRUNC preserves the existing overwrite behavior for real files.
-func createContained(root *os.Root, relPath string) (*os.File, error) {
+// the escape #341 is about. The extra Lstat rejects a leaf symlink pointing
+// *inside* the root too, because a restore should write the file it was asked to
+// write rather than whatever a link at that path names. That second case is a
+// correctness guard, not a containment one, and it has an unavoidable TOCTOU
+// window. Containment does not depend on it: os.Root re-validates every component
+// at open time, and the final rename replaces the link itself rather than
+// following it.
+func createAtomic(root *os.Root, relPath string) (*atomicFile, error) {
 	if fi, err := root.Lstat(relPath); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("refusing to restore %s: destination path is a symlink", relPath)
 	}
-	f, err := root.OpenFile(relPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	var suffix [6]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return nil, fmt.Errorf("create %s: temporary name: %w", relPath, err)
+	}
+	dir, base := path.Split(relPath)
+	tmp := dir + ".cargoship-restore-" + base + "-" + hex.EncodeToString(suffix[:]) + ".tmp"
+	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("create %s: %w", relPath, err)
 	}
-	return f, nil
+	return &atomicFile{root: root, rel: relPath, tmp: tmp, f: f}, nil
 }
 
-// writeContained writes data to relPath inside root with the same symlink
-// refusal as createContained.
+// Write implements io.Writer.
+func (a *atomicFile) Write(p []byte) (int, error) { return a.f.Write(p) }
+
+// commit syncs and closes the temporary file, checking both, then renames it over
+// the destination. On any failure the temporary file is removed and the
+// destination is left as it was.
+func (a *atomicFile) commit() error {
+	if err := a.f.Sync(); err != nil {
+		a.abort()
+		return fmt.Errorf("write %s: sync: %w", a.rel, err)
+	}
+	if err := a.f.Close(); err != nil {
+		_ = a.root.Remove(a.tmp)
+		return fmt.Errorf("write %s: close: %w", a.rel, err)
+	}
+	if err := a.root.Rename(a.tmp, a.rel); err != nil {
+		_ = a.root.Remove(a.tmp)
+		return fmt.Errorf("write %s: %w", a.rel, err)
+	}
+	return nil
+}
+
+// abort discards the temporary file. The destination is never touched.
+func (a *atomicFile) abort() {
+	_ = a.f.Close()
+	_ = a.root.Remove(a.tmp)
+}
+
+// writeContained writes data to relPath inside root, atomically and with the
+// same symlink refusal as createAtomic.
 func writeContained(root *os.Root, relPath string, data []byte) error {
-	f, err := createContained(root, relPath)
+	a, err := createAtomic(root, relPath)
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(data); err != nil {
-		_ = f.Close()
+	if _, err := a.Write(data); err != nil {
+		a.abort()
 		return fmt.Errorf("write %s: %w", relPath, err)
 	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("write %s: %w", relPath, err)
-	}
-	return nil
+	return a.commit()
 }
 
 // relativeEntryPath returns entryPath relative to the manifest's SourcePath (the
@@ -1169,7 +1214,7 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 			continue
 		}
 
-		f, err := createContained(root, rel)
+		f, err := createAtomic(root, rel)
 		if err != nil {
 			return restored, totalBytes, err
 		}
@@ -1185,11 +1230,15 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 		// archives most likely to be truncated took the one path that could not
 		// notice.
 		written, err := io.CopyN(f, tarReader, hdr.Size) // nosemgrep: go.lang.security.decompression_bomb.potential-dos-via-decompression-bomb -- bounded by the manifest's declared size
-		_ = f.Close()
+		if err == nil {
+			err = f.commit() // #907: the Close error was discarded here
+		} else {
+			// Discard the partial copy. An absent file is a correct, loud
+			// outcome; a short one that looks complete is not. A file that
+			// already existed at this path is left untouched (#907).
+			f.abort()
+		}
 		if err != nil {
-			// Remove the partial file. An absent file is a correct, loud
-			// outcome; a short one that looks complete is not.
-			_ = root.Remove(rel)
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				return restored, totalBytes, fmt.Errorf(
 					"truncated archive: %s declares %d bytes but the stored chunk ended after %d",

@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **A failed restore no longer deletes the file it was restoring over** (#907). Restore opened the
+  destination with `O_TRUNC` and removed it when the write failed. Restoring over an existing file
+  from a truncated chunk, onto a full disk, or through a crash therefore emptied the user's file and
+  then deleted it: the restore failed and the local copy was gone. Each file is now written to a
+  temporary file in the same directory, synced, closed (with its error checked, which it wasn't),
+  and renamed over the destination. On failure only the temporary file is removed.
 - **`delete`, `dataset prune` and failure cleanup now delete the right objects** (#906). Manifest
   keys are relative to the upload prefix, but these paths used them as full keys. Under a prefix they
   missed the upload's own objects, reporting them deleted while they stayed in S3 and kept costing
