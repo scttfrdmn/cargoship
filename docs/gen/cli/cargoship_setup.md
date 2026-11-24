@@ -12,11 +12,16 @@ This wizard will help you:
   • Set optimal upload parameters based on your use case
   • Test your configuration
 
-The wizard will create a .cargoship.yaml file in your home directory.
+The wizard writes ~/.cargoship.yaml. If that file exists, its current values
+are the defaults, setup asks before changing it (or needs --force), only the
+settings it asks about are updated, and the previous file is kept as .bak.
 
 Examples:
   # Run interactive setup
   cargoship setup
+
+  # Accept every default without prompting (needs --force to update an existing file)
+  cargoship setup --non-interactive
 
   # Save configuration to custom location
   cargoship setup --output /path/to/config.yaml
@@ -28,8 +33,9 @@ cargoship setup [flags]
 ### Options
 
 ```
+      --force             Update an existing configuration file without asking
   -h, --help              help for setup
-      --non-interactive   Run in non-interactive mode with defaults
+      --non-interactive   Accept every default without prompting (the existing file's values, if any)
       --output string     Custom configuration file path (default: ~/.cargoship.yaml)
 ```
 

@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`setup` no longer replaces an existing configuration with defaults** (#909). It started from the
+  built-in defaults, never read `~/.cargoship.yaml`, treated an empty answer or end of input as
+  "yes", ignored `--non-interactive`, and rewrote the whole file.
+  `cargoship setup --non-interactive </dev/null` exited 0 having lost the region, profile, default
+  bucket, `cost_control` budgets and comments. Now:
+  - the existing file's values are the defaults;
+  - updating an existing file needs a typed `yes` or the new `--force`, and end of input never
+    confirms;
+  - only the sections setup asks about (`aws`, `storage`, `upload`, `metrics`, `logging`) are
+    written, merged key by key, so other sections, unknown keys and comments survive, and the
+    previous file is kept as `.bak`;
+  - `--non-interactive` really accepts every default without prompting;
+  - the file is written atomically, keeping its mode, and a new one is created `0600`.
 - **Restore refuses instead of silently losing files that map to the same path** (#908). With
   `--flatten`, `src/a/config.txt` and `src/b/config.txt` both became `config.txt`, and nothing checked.
   Restore could report both restored with one on disk and exit 0. The same happened without

@@ -54,6 +54,16 @@ func TestReadLine(t *testing.T) {
 			input:    "\n",
 			expected: "",
 		},
+		{
+			name:     "last line without newline",
+			input:    "us-east-2",
+			expected: "us-east-2",
+		},
+		{
+			name:     "end of input",
+			input:    "",
+			expected: "",
+		},
 	}
 
 	for _, tt := range tests {
@@ -65,60 +75,36 @@ func TestReadLine(t *testing.T) {
 	}
 }
 
-func TestConfirmYesNo(t *testing.T) {
+func TestConfirmDefault(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		expected bool
+		name  string
+		input string
+		def   bool
+		want  bool
 	}{
-		{
-			name:     "yes lowercase",
-			input:    "yes\n",
-			expected: true,
-		},
-		{
-			name:     "y lowercase",
-			input:    "y\n",
-			expected: true,
-		},
-		{
-			name:     "YES uppercase",
-			input:    "YES\n",
-			expected: true,
-		},
-		{
-			name:     "Y uppercase",
-			input:    "Y\n",
-			expected: true,
-		},
-		{
-			name:     "empty default yes",
-			input:    "\n",
-			expected: true,
-		},
-		{
-			name:     "no",
-			input:    "no\n",
-			expected: false,
-		},
-		{
-			name:     "n",
-			input:    "n\n",
-			expected: false,
-		},
-		{
-			name:     "invalid input",
-			input:    "maybe\n",
-			expected: false,
-		},
+		{"yes", "yes\n", false, true},
+		{"y", "y\n", false, true},
+		{"YES", "YES\n", false, true},
+		{"empty takes default yes", "\n", true, true},
+		{"empty takes default no", "\n", false, false},
+		{"EOF takes the default", "", false, false},
+		{"no", "no\n", true, false},
+		{"n", "n\n", true, false},
+		{"invalid input is no", "maybe\n", true, false},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reader := bufio.NewReader(strings.NewReader(tt.input))
-			result := confirmYesNo(reader, "Test prompt?")
-			assert.Equal(t, tt.expected, result)
+			got := confirmDefault(bufio.NewReader(strings.NewReader(tt.input)), "Test prompt?", tt.def)
+			assert.Equal(t, tt.want, got)
 		})
+	}
+}
+
+// TestConfirmTyped pins #909: only an explicit "yes" confirms. An empty answer
+// or end of input used to count as yes.
+func TestConfirmTyped(t *testing.T) {
+	for in, want := range map[string]bool{"yes\n": true, "YES\n": true, "y\n": false, "\n": false, "": false, "no\n": false} {
+		assert.Equal(t, want, confirmTyped(bufio.NewReader(strings.NewReader(in)), "Type 'yes':"), "input %q", in)
 	}
 }
 
@@ -183,12 +169,12 @@ func BenchmarkReadLine(b *testing.B) {
 	}
 }
 
-func BenchmarkConfirmYesNo(b *testing.B) {
+func BenchmarkConfirmDefault(b *testing.B) {
 	input := "yes\n"
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		reader := bufio.NewReader(strings.NewReader(input))
-		_ = confirmYesNo(reader, "Test?")
+		_ = confirmDefault(reader, "Test?", true)
 	}
 }
