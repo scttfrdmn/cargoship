@@ -264,11 +264,20 @@ Examples:
 // empty keys (dedup duplicates reference the original's key). It does NOT include
 // the manifest object(s). Enumerating direct-upload file keys is what keeps
 // `delete` from orphaning a direct upload's objects (#487).
+//
+// Keys are resolved against the manifest's prefix with ResolveObjectKey, as
+// restore resolves them (#906). Manifest keys are prefix-relative; deleting them
+// raw missed every chunk of an upload under a prefix while reporting them deleted,
+// and could delete an unrelated object at the bucket root with the same key.
 func uploadObjectKeys(m *manifest.Manifest) []string {
 	seen := make(map[string]bool)
 	var keys []string
 	add := func(k string) {
-		if k != "" && !seen[k] {
+		if k == "" {
+			return
+		}
+		k = manifest.ResolveObjectKey(m.Prefix, m.Bucket, k)
+		if !seen[k] {
 			seen[k] = true
 			keys = append(keys, k)
 		}

@@ -91,3 +91,35 @@ func ids(ms []*Manifest) []string {
 	}
 	return out
 }
+
+// TestPlanKeepLast_ResolvesKeysAgainstPrefix pins #906 for prune: the stored keys
+// are relative to the manifest's prefix, so the objects to delete (and to protect)
+// are the resolved keys, not the raw ones. Raw keys named objects at the bucket
+// root: prune missed the dataset's own objects and could delete someone else's.
+func TestPlanKeepLast_ResolvesKeysAgainstPrefix(t *testing.T) {
+	v1, v2, v3, _ := buildChain3()
+	for _, m := range []*Manifest{v1, v2, v3} {
+		m.Prefix, m.Bucket = "team/data", "bkt"
+		for i := range m.Files {
+			m.Files[i].S3Key = "uploads/" + m.UploadID + "/shard-0/chunk-0.tar.zst"
+		}
+		for i := range m.Chunks {
+			m.Chunks[i].S3Key = "uploads/" + m.UploadID + "/shard-0/chunk-0.tar.zst"
+		}
+	}
+	fetch := chainFetch(map[string]*Manifest{"u1": v1, "u2": v2, "u3": v3})
+
+	plan, err := PlanKeepLast(context.Background(), []*Manifest{v1, v2, v3}, 1, fetch)
+	if err != nil {
+		t.Fatalf("PlanKeepLast: %v", err)
+	}
+	got := plan.PrunableObjectKeys()
+	want := "team/data/uploads/u1/shard-0/chunk-0.tar.zst"
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("PrunableObjectKeys = %v, want [%s]", got, want)
+	}
+	if !plan.KeepObjectKeys["team/data/uploads/u2/shard-0/chunk-0.tar.zst"] ||
+		!plan.KeepObjectKeys["team/data/uploads/u3/shard-0/chunk-0.tar.zst"] {
+		t.Errorf("KeepObjectKeys must hold the resolved keys of u2 and u3; got %v", plan.KeepObjectKeys)
+	}
+}

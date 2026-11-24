@@ -457,10 +457,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 // uploadToS3 performs the actual S3 upload using transporter or AWS SDK
 func (s *S3MultiPrefixUploaderStage) uploadToS3(ctx context.Context, job *Job) error {
 	// Build S3 key with prefix
-	s3Key := job.S3Key
-	if s.config.Prefix != "" {
-		s3Key = s.config.Prefix + "/" + job.S3Key
-	}
+	s3Key := objectKeyFor(s.config.Prefix, job.S3Key)
 
 	// #271: wrap the archive stream so we hash the exact bytes uploaded to S3.
 	// Both upload paths (transporter, manager) read job.Archive, so wrapping

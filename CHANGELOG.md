@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`delete`, `dataset prune` and failure cleanup now delete the right objects** (#906). Manifest
+  keys are relative to the upload prefix, but these paths used them as full keys. Under a prefix they
+  missed the upload's own objects, reporting them deleted while they stayed in S3 and kept costing
+  money, and they could delete an unrelated object at the bucket root under the same key (certain
+  with an explicit or reused upload ID). Keys are now resolved against the manifest's prefix, as
+  restore resolves them, and failure cleanup deletes exactly the keys the uploader wrote.
 - **`balance --execute` no longer deletes chunks that still hold files** (#903). Execution extracted
   only the files it moved, but then deleted every source chunk it had touched, so the files that
   stayed pointed at deleted objects. At the bucket root the audit lost 3000 of 3000 files; under a
