@@ -83,6 +83,8 @@ Examples:
 
 			s3Client := s3.NewFromConfig(cfg)
 
+			prefix = scuttlePrefix(prefix) // #920: whole path segments only
+
 			// List all objects to delete
 			fmt.Printf("🔍 Scanning S3 bucket: s3://%s/%s\n", bucket, prefix)
 
@@ -297,4 +299,15 @@ Examples:
 	}
 
 	return cmd
+}
+
+// scuttlePrefix makes a --prefix match a whole path segment (#920). S3 prefixes
+// are raw string prefixes, so "backup" also matched "backup-2024/...", and
+// scuttle deleted another dataset's objects. A trailing "/" limits it to
+// backup/... .
+func scuttlePrefix(p string) string {
+	if p == "" || strings.HasSuffix(p, "/") {
+		return p
+	}
+	return p + "/"
 }

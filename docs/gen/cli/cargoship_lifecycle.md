@@ -39,7 +39,7 @@ cargoship lifecycle [flags]
       --import string         Import policy from file
       --list-templates        List available policy templates
       --region string         AWS region (default "us-east-1")
-      --remove                Remove existing lifecycle policy
+      --remove                Remove CargoShip's lifecycle rules (rules with other IDs are kept)
       --template string       Lifecycle policy template to apply
 ```
 
