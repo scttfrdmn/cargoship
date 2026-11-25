@@ -276,8 +276,10 @@ CMK loses the data.
   otherwise be visible in `docker inspect` and NAS UI panels.
 - No inbound port is opened or needed.
 - Decommission a writer with
-  `cargoship ghostship scuttle lab-nas-1` (add `--purge-data s3://my-bucket/nas --yes` to
-  delete its backups too).
+  `cargoship ghostship scuttle lab-nas-1`. Adding `--purge-data s3://my-bucket/nas --yes`
+  deletes its config. Its backups live at `writers/lab-nas-1/` in the bucket root, so the
+  purge reports them and prints the command to delete them (see
+  [Ghost Ship](/enterprise/ghost-ship)).
 
 ## See also
 

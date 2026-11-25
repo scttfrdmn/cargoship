@@ -131,7 +131,16 @@ writes `aws-credentials` (0600) into the bundle, and runs the #529 access prefli
 Decommission with **`cargoship ghostship scuttle <id>`** — it deletes the access keys,
 detaches + deletes the cargoship-managed policy, and deletes the user (idempotent; only
 the cargoship policy is deleted). `--purge-data s3://BUCKET/BASE --yes` additionally
-deletes that writer's `writers/<id>/` data and `fleet/<id>/` config.
+deletes that writer's `<BASE>/fleet/<id>/` config and any `<BASE>/writers/<id>/` data. The
+base is required, so the purge can't reach another fleet in the same bucket.
+
+::: warning Data written from a signed config
+An agent running `ghostship run --config-url` writes its backups to `writers/<id>/` at
+the **bucket root**. Every fleet in the bucket with a writer of that name shares that
+path, so `--purge-data` reports it instead of deleting it. Once you've checked no other
+fleet uses the writer name, delete it with
+`cargoship scuttle --bucket BUCKET --prefix writers/<id>`.
+:::
 
 ## Deployment
 

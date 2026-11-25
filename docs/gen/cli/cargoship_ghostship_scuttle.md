@@ -10,8 +10,11 @@ policy, and the user. Idempotent — a writer that is already gone is a no-op, a
 only the cargoship-managed policy is deleted (any other attached policy is detached
 but left intact).
 
-With --purge-data it ALSO deletes that writer's S3 data (writers/&lt;id&gt;/) and config
-(&lt;base&gt;/fleet/&lt;id&gt;/) under the given bucket — irreversible, so it requires --yes.
+With --purge-data it ALSO deletes that writer's S3 data (&lt;base&gt;/writers/&lt;id&gt;/) and
+config (&lt;base&gt;/fleet/&lt;id&gt;/) under the given fleet base — irreversible, so it requires
+--yes. The base is required, so one fleet's purge can't reach another's data. Data an
+agent wrote from a signed config, at writers/&lt;id&gt;/ in the bucket root, is shared by
+every fleet with that writer name; it is reported, not deleted.
 
 This is the fleet-writer counterpart to 'cargoship scuttle' (which wipes bucket data).
 
