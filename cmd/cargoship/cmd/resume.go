@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
@@ -75,8 +77,21 @@ Each state file contains upload progress, configuration, and file hashes.
 				return fmt.Errorf("failed to create S3 client: %w", err)
 			}
 
+			// #913: an --encrypt-manifest upload resumes encrypted, which needs KMS.
+			var kmsClient *kms.Client
+			if state.EncryptManifest {
+				if state.KMSKeyID == "" {
+					return fmt.Errorf("upload %s was started with --encrypt-manifest but its saved state has no KMS key", state.UploadID)
+				}
+				awsCfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(state.Region))
+				if err != nil {
+					return fmt.Errorf("failed to load AWS config for KMS: %w", err)
+				}
+				kmsClient = kms.NewFromConfig(awsCfg)
+			}
+
 			fmt.Printf("\n🔄 Resuming — already-uploaded chunks will be skipped.\n\n")
-			pipe, err := pipeline.NewPipeline(newResumePipelineConfig(state, s3Client))
+			pipe, err := pipeline.NewPipeline(newResumePipelineConfig(state, s3Client, kmsClient))
 			if err != nil {
 				return fmt.Errorf("failed to create pipeline: %w", err)
 			}
@@ -227,12 +242,12 @@ Each file is typically 10-50 KB.
 // closure is not). Knobs not persisted in UploadState (compression level, shard
 // strategy) fall back to defaults; the remaining chunks still upload correctly
 // because compression is content-aware per chunk.
-func newResumePipelineConfig(state *resume.UploadState, s3Client *s3.Client) *pipeline.PipelineConfig {
+func newResumePipelineConfig(state *resume.UploadState, s3Client *s3.Client, kmsClient *kms.Client) *pipeline.PipelineConfig {
 	shardCount := state.ShardCount
 	if shardCount <= 0 {
 		shardCount = 8
 	}
-	return &pipeline.PipelineConfig{
+	cfg := &pipeline.PipelineConfig{
 		ScannerWorkers:  2,
 		ArchiverWorkers: 4,
 		UploaderWorkers: 4,
@@ -243,6 +258,9 @@ func newResumePipelineConfig(state *resume.UploadState, s3Client *s3.Client) *pi
 		S3StorageClass: state.StorageClass,
 		S3PartSize:     64 * 1024 * 1024,
 		KMSKeyID:       state.KMSKeyID, // #946: S3SSEKMSKeyId was never read
+		// #913: resumed uploads kept the data key but dropped manifest encryption,
+		// so an --encrypt-manifest upload resumed into a plaintext manifest.
+		EncryptManifest: state.EncryptManifest,
 
 		UseRealS3:  true,
 		S3Client:   s3Client,
@@ -264,6 +282,10 @@ func newResumePipelineConfig(state *resume.UploadState, s3Client *s3.Client) *pi
 		ResumeMode:     true,
 		ResumeUploadID: state.UploadID,
 	}
+	if kmsClient != nil {
+		cfg.KMSClient = kmsClient // a nil *kms.Client in the interface would look configured
+	}
+	return cfg
 }
 
 func displayUploadInfo(state *resume.UploadState) {
@@ -300,7 +322,7 @@ func displayUploadInfo(state *resume.UploadState) {
 		fmt.Printf("   📦 Storage:      %s\n", state.StorageClass)
 	}
 	if state.KMSKeyID != "" {
-		fmt.Printf("   🔐 Encryption:   KMS (key: %s...)\n", state.KMSKeyID[:20])
+		fmt.Printf("   🔐 Encryption:   KMS (key: %s)\n", truncateKey(state.KMSKeyID)) // [:20] panicked on a short alias
 	}
 	if state.ShardCount > 0 {
 		fmt.Printf("   🎯 Shards:       %d\n", state.ShardCount)
@@ -358,4 +380,12 @@ func cleanCompletedStates() (int, error) {
 	}
 
 	return count, nil
+}
+
+// truncateKey shortens a KMS key ID or ARN for display.
+func truncateKey(k string) string {
+	if len(k) <= 20 {
+		return k
+	}
+	return k[:20] + "..."
 }
