@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/scttfrdmn/cargoship/pkg/extraction"
+	"github.com/scttfrdmn/cargoship/pkg/manifest"
 	"github.com/scttfrdmn/cargoship/pkg/pipeline"
 )
 
@@ -131,8 +132,22 @@ func (m *Migrator) Migrate(ctx context.Context, req *MigrateRequest) (*MigrateRe
 		Message: "Finalizing migration",
 	})
 
-	// Delete original archive if requested and upload succeeded
+	// Delete original archive if requested and upload succeeded.
+	//
+	// #911: success of the re-upload was not enough. Hard links were dropped by the
+	// extractor, symlinks are skipped by the upload scanner, and devices and FIFOs
+	// can't be stored, so "success" could mean part of the archive. The original,
+	// the only complete copy, was then deleted. It is deleted now only when every
+	// regular file extracted from it is in the new manifest at its size, and the
+	// archive held nothing the new format can't represent.
+	var deleteBlocker error
 	if req.DeleteOriginal && uploadResult.Success {
+		deleteBlocker = verifyUploadCovers(tempDir, extractStats.Raw, uploadResult.Manifest)
+	}
+	if deleteBlocker != nil {
+		result.OriginalDeleteRefused = deleteBlocker.Error()
+		result.Errors = append(result.Errors, fmt.Errorf("original archive kept: %w", deleteBlocker))
+	} else if req.DeleteOriginal && uploadResult.Success {
 		if err := m.deleteOriginalArchive(ctx, source); err != nil {
 			slog.Warn("failed to delete original archive",
 				"bucket", source.Bucket,
@@ -144,8 +159,9 @@ func (m *Migrator) Migrate(ctx context.Context, req *MigrateRequest) (*MigrateRe
 		}
 	}
 
-	// Success!
-	result.Success = true
+	// Success! A refused --delete-original is not: the caller asked for the
+	// original to be gone and it isn't, so a script must not proceed as if it were.
+	result.Success = deleteBlocker == nil
 	result.Duration = time.Since(startTime)
 	result.ExtractionTime = extractDuration
 	result.UploadTime = uploadDuration
@@ -279,6 +295,7 @@ func (m *Migrator) extractArchive(ctx context.Context, req *MigrateRequest, sour
 	extractStats := &extractionStats{
 		FilesExtracted: int64(stats.FilesExtracted),
 		BytesExtracted: stats.BytesExtracted,
+		Raw:            stats,
 	}
 
 	slog.Info("extraction complete",
@@ -356,6 +373,7 @@ func (m *Migrator) uploadCargoHold(ctx context.Context, req *MigrateRequest, des
 		CompressionRatio: 0.0, // Not directly available from Result
 		ManifestLocation: fmt.Sprintf("s3://%s/%s/uploads/%s/manifest.json.gz",
 			dest.Bucket, dest.Key, result.UploadID),
+		Manifest: pipe.GetManifest(),
 	}
 
 	slog.Info("upload complete",
@@ -503,6 +521,7 @@ func ParseS3URL(s3url string) (*S3Location, error) {
 type extractionStats struct {
 	FilesExtracted int64
 	BytesExtracted int64
+	Raw            *extraction.ExtractionStats // the extractor's full stats (#911)
 }
 
 // uploadStats contains statistics from the upload phase
@@ -515,4 +534,5 @@ type uploadStats struct {
 	ChunksCreated    int
 	CompressionRatio float64
 	ManifestLocation string
+	Manifest         *manifest.Manifest // the uploaded manifest, for verification (#911)
 }

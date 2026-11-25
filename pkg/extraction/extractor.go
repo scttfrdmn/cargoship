@@ -77,6 +77,16 @@ type ExtractionStats struct {
 	Duration       time.Duration // Total extraction duration
 	SkippedFiles   int           // Files skipped (already exist)
 	ErrorCount     int           // Number of errors encountered
+
+	// HardLinksExtracted counts hard-link entries, restored as files (#911).
+	HardLinksExtracted int
+	// SymlinksExtracted counts symbolic-link entries.
+	SymlinksExtracted int
+	// UnsupportedEntries counts entries not extracted (devices, FIFOs, ...), and
+	// UnsupportedExamples names up to 20 of them. A caller about to delete the
+	// source archive must treat any as data it would lose (#911).
+	UnsupportedEntries  int
+	UnsupportedExamples []string
 }
 
 // NewExtractor creates a new archive extractor
@@ -245,9 +255,26 @@ func (e *Extractor) extractFile(tarReader *tar.Reader, header *tar.Header, root 
 	case tar.TypeReg:
 		return e.createRegularFile(tarReader, root, relPath, header)
 	case tar.TypeSymlink:
-		return e.createSymlink(root, relPath, outputPath, header)
+		if err := e.createSymlink(root, relPath, outputPath, header); err != nil {
+			return err
+		}
+		e.stats.SymlinksExtracted++
+		return nil
+	case tar.TypeLink:
+		// #911: hard links were silently skipped, so an archive's second name
+		// for a file vanished and `migrate --delete-original` then deleted the
+		// only complete copy.
+		return e.createHardLink(root, relPath, header)
+	case tar.TypeXGlobalHeader:
+		return nil // PAX global metadata, not an entry
 	default:
-		// Skip unsupported file types (devices, FIFOs, etc.)
+		// Devices, FIFOs and the like can't be extracted. Record them rather
+		// than dropping them silently.
+		e.stats.UnsupportedEntries++
+		if len(e.stats.UnsupportedExamples) < 20 {
+			e.stats.UnsupportedExamples = append(e.stats.UnsupportedExamples,
+				fmt.Sprintf("%s (type %q)", header.Name, string(header.Typeflag)))
+		}
 		return nil
 	}
 }
@@ -357,19 +384,24 @@ func (e *Extractor) createRegularFile(tarReader *tar.Reader, root *os.Root, relP
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer func() { _ = outFile.Close() }()
 
 	// Copy file content (bounded memory)
 	n, err := io.Copy(outFile, tarReader)
 	if err != nil {
+		_ = outFile.Close()
 		return fmt.Errorf("failed to write file content: %w", err)
 	}
 
 	// Set permissions
 	if e.config.PreservePermissions {
 		if err := outFile.Chmod(header.FileInfo().Mode()); err != nil {
+			_ = outFile.Close()
 			return fmt.Errorf("failed to set permissions: %w", err)
 		}
+	}
+	// #911: a failed Close (a full disk, a flush error) used to be discarded.
+	if err := outFile.Close(); err != nil {
+		return fmt.Errorf("failed to write file content: %w", err)
 	}
 
 	// Update statistics
@@ -476,4 +508,71 @@ func detectCompressionFormat(key string) CompressionFormat {
 // GetStats returns extraction statistics
 func (e *Extractor) GetStats() ExtractionStats {
 	return e.stats
+}
+
+// createHardLink restores a hard-link entry. The target must be a regular file
+// already extracted inside OutputDir. A real hard link is made where the
+// filesystem allows it; otherwise the target's content is copied, so the second
+// name always exists with the same bytes (#911).
+func (e *Extractor) createHardLink(root *os.Root, relPath string, header *tar.Header) error {
+	targetPath := filepath.Join(e.config.OutputDir, header.Linkname) // #nosec G305 -- containment is verified immediately below
+	if !strings.HasPrefix(targetPath, filepath.Clean(e.config.OutputDir)+string(os.PathSeparator)) {
+		return fmt.Errorf("invalid hard link target: %s (possible path traversal)", header.Linkname)
+	}
+	targetRel, err := e.relOutputPath(targetPath)
+	if err != nil {
+		return err
+	}
+	fi, err := root.Lstat(targetRel)
+	if err != nil {
+		return fmt.Errorf("hard link %s: target %s was not extracted: %w", header.Name, header.Linkname, err)
+	}
+	if !fi.Mode().IsRegular() {
+		return fmt.Errorf("hard link %s: target %s is not a regular file", header.Name, header.Linkname)
+	}
+	if !e.config.OverwriteExisting {
+		if _, err := root.Lstat(relPath); err == nil {
+			e.stats.SkippedFiles++
+			return nil
+		}
+	}
+	if err := mkdirParentsContained(root, relPath); err != nil {
+		return err
+	}
+	if lfi, err := root.Lstat(relPath); err == nil {
+		if lfi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing to extract %s: destination path is a symlink", relPath)
+		}
+		if err := root.Remove(relPath); err != nil {
+			return fmt.Errorf("replace %s: %w", relPath, err)
+		}
+	}
+
+	if err := root.Link(targetRel, relPath); err != nil {
+		if err := copyContained(root, targetRel, relPath, fi.Mode().Perm()); err != nil {
+			return fmt.Errorf("hard link %s: %w", header.Name, err)
+		}
+	}
+	e.stats.HardLinksExtracted++
+	e.stats.FilesExtracted++
+	e.stats.BytesExtracted += fi.Size()
+	return nil
+}
+
+// copyContained copies the file src to dst, both inside root.
+func copyContained(root *os.Root, src, dst string, perm os.FileMode) error {
+	in, err := root.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	out, err := root.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
