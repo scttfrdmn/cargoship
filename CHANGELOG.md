@@ -34,6 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-encrypt them, copy them in place with SSE-KMS, or upload again.
 
 ### Fixed
+- **`lifecycle` and `scuttle --prefix` no longer touch other people's data on a shared bucket**
+  (#920, parts 2 and 3).
+  - **`lifecycle`:** applying a template replaced the bucket's whole lifecycle configuration,
+    deleting every other team's rules. `--remove` deleted all of them. Templates now merge:
+    CargoShip's own rules (ID prefix `cargoship-`) and any rule with the same ID are replaced, and
+    everything else is kept. `--remove` removes only CargoShip's rules. If the current rules can't
+    be read, nothing is written.
+  - **`scuttle --prefix backup`:** this also matched `backup-2024/...`. A prefix now matches whole
+    path segments only (`backup/...`).
 - **Encrypted manifests stay readable after their KMS alias is re-pointed** (#912).
   - **The bug:** the manifest recorded the key ID you passed. With `--kms-key-id alias/my-key`
     that's the alias, and `Decrypt` named it. After the alias was re-pointed to a new key (AWS's

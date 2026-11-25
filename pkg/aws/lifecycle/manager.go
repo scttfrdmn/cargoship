@@ -4,11 +4,14 @@ package lifecycle
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 )
 
 // S3Client defines the interface for S3 lifecycle operations
@@ -190,22 +193,59 @@ func (m *Manager) ApplyPolicy(ctx context.Context, template PolicyTemplate) erro
 		awsRules = append(awsRules, awsRule)
 	}
 
-	// Create the lifecycle configuration
-	config := &types.BucketLifecycleConfiguration{
-		Rules: awsRules,
+	// #920: merge into the bucket's existing configuration instead of replacing
+	// it. PutBucketLifecycleConfiguration replaces the WHOLE configuration, so
+	// applying a template deleted every other team's rules on a shared bucket.
+	// Rules CargoShip manages (ID prefix "cargoship-") and rules with the same ID
+	// as one being applied are replaced; everything else is kept.
+	existing, err := m.currentRules(ctx)
+	if err != nil {
+		return err
 	}
+	applying := make(map[string]bool, len(awsRules))
+	for _, r := range awsRules {
+		applying[aws.ToString(r.ID)] = true
+	}
+	merged := make([]types.LifecycleRule, 0, len(existing)+len(awsRules))
+	for _, r := range existing {
+		id := aws.ToString(r.ID)
+		if applying[id] || isManagedRule(id) {
+			continue
+		}
+		merged = append(merged, r)
+	}
+	merged = append(merged, awsRules...)
 
-	// Apply the policy
-	_, err := m.s3Client.PutBucketLifecycleConfiguration(ctx, &s3.PutBucketLifecycleConfigurationInput{
+	_, err = m.s3Client.PutBucketLifecycleConfiguration(ctx, &s3.PutBucketLifecycleConfigurationInput{
 		Bucket:                 aws.String(m.bucket),
-		LifecycleConfiguration: config,
+		LifecycleConfiguration: &types.BucketLifecycleConfiguration{Rules: merged},
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to apply lifecycle policy: %w", err)
 	}
-
 	return nil
+}
+
+// managedRulePrefix marks the lifecycle rules CargoShip's templates create.
+const managedRulePrefix = "cargoship-"
+
+func isManagedRule(id string) bool { return strings.HasPrefix(id, managedRulePrefix) }
+
+// currentRules returns the bucket's lifecycle rules, or none if it has no
+// configuration. Any other error stops the change, since writing without the
+// current rules would drop them.
+func (m *Manager) currentRules(ctx context.Context) ([]types.LifecycleRule, error) {
+	out, err := m.s3Client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{
+		Bucket: aws.String(m.bucket),
+	})
+	if err != nil {
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NoSuchLifecycleConfiguration" {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read the bucket's current lifecycle rules (not changing them without): %w", err)
+	}
+	return out.Rules, nil
 }
 
 // GetCurrentPolicy retrieves the current lifecycle policy
@@ -224,11 +264,33 @@ func (m *Manager) GetCurrentPolicy(ctx context.Context) (*types.BucketLifecycleC
 }
 
 // RemovePolicy removes the lifecycle policy from the bucket
+//
+// #920: only CargoShip's own rules (ID prefix "cargoship-") are removed. This
+// used to delete the bucket's entire lifecycle configuration, including rules
+// other teams depend on. The configuration is deleted only when no other rule
+// remains.
 func (m *Manager) RemovePolicy(ctx context.Context) error {
-	_, err := m.s3Client.DeleteBucketLifecycle(ctx, &s3.DeleteBucketLifecycleInput{
-		Bucket: aws.String(m.bucket),
+	existing, err := m.currentRules(ctx)
+	if err != nil {
+		return err
+	}
+	var kept []types.LifecycleRule
+	for _, r := range existing {
+		if !isManagedRule(aws.ToString(r.ID)) {
+			kept = append(kept, r)
+		}
+	}
+	if len(kept) == len(existing) && len(existing) > 0 {
+		return nil // nothing of ours to remove
+	}
+	if len(kept) == 0 {
+		_, err = m.s3Client.DeleteBucketLifecycle(ctx, &s3.DeleteBucketLifecycleInput{Bucket: aws.String(m.bucket)})
+		return err
+	}
+	_, err = m.s3Client.PutBucketLifecycleConfiguration(ctx, &s3.PutBucketLifecycleConfigurationInput{
+		Bucket:                 aws.String(m.bucket),
+		LifecycleConfiguration: &types.BucketLifecycleConfiguration{Rules: kept},
 	})
-
 	return err
 }
 

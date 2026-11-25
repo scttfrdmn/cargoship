@@ -56,7 +56,7 @@ Examples:
 	cmd.Flags().StringVar(&lifecycleBucket, "bucket", "", "S3 bucket name (required unless listing templates)")
 	cmd.Flags().StringVar(&lifecycleTemplate, "template", "", "Lifecycle policy template to apply")
 	cmd.Flags().BoolVar(&lifecycleListOnly, "list-templates", false, "List available policy templates")
-	cmd.Flags().BoolVar(&lifecycleRemove, "remove", false, "Remove existing lifecycle policy")
+	cmd.Flags().BoolVar(&lifecycleRemove, "remove", false, "Remove CargoShip's lifecycle rules (rules with other IDs are kept)")
 	cmd.Flags().StringVar(&lifecycleExport, "export", "", "Export current policy to file")
 	cmd.Flags().StringVar(&lifecycleImport, "import", "", "Import policy from file")
 	cmd.Flags().StringVar(&lifecycleRegion, "region", "us-east-1", "AWS region")
