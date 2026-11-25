@@ -22,3 +22,7 @@ func isNotFound(err error) bool {
 	}
 	return false
 }
+
+// IsNotFound reports whether err (from a manifest download) means the object
+// doesn't exist, as opposed to existing but being unreadable (#919).
+func IsNotFound(err error) bool { return isNotFound(err) }
