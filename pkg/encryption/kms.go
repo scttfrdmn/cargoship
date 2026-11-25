@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
@@ -159,10 +160,19 @@ func (e *KMSEncryptor) EncryptManifest(ctx context.Context, manifestJSON []byte,
 	// the KMS EncryptionContext (CSH-SEC-004).
 	encryptedData := gcm.Seal(nil, iv, manifestJSON, id.aad())
 
+	// #912: record the key KMS actually used (its ARN), not the string the caller
+	// passed. That is often an alias, and an alias can later be re-pointed to a
+	// new key (AWS's manual-rotation procedure). Decrypt naming the alias then
+	// fails with IncorrectKeyException, so every older manifest became unreadable.
+	keyID := aws.ToString(generateOutput.KeyId)
+	if keyID == "" {
+		keyID = e.kmsKeyID
+	}
+
 	// Step 3: Return encrypted manifest with metadata
 	return &EncryptedManifest{
 		Algorithm:      "AES-256-GCM",
-		KMSKeyID:       e.kmsKeyID,
+		KMSKeyID:       keyID,
 		EncryptedDEK:   base64.StdEncoding.EncodeToString(encryptedDEK),
 		IV:             base64.StdEncoding.EncodeToString(iv),
 		EncryptedData:  base64.StdEncoding.EncodeToString(encryptedData),
@@ -215,11 +225,16 @@ func (e *KMSEncryptor) DecryptManifest(ctx context.Context, encrypted *Encrypted
 	// Step 1: Decrypt the DEK using KMS. For a bound manifest the same
 	// EncryptionContext used at encrypt time is required; KMS refuses the unwrap
 	// if it doesn't match, so a substituted manifest from another upload fails.
-	decryptOutput, err := e.kmsClient.Decrypt(ctx, &kms.DecryptInput{
-		CiphertextBlob:    encryptedDEK,
-		KeyId:             aws.String(encrypted.KMSKeyID), // Optional but recommended for verification
-		EncryptionContext: kmsContext,
-	})
+	//
+	// #912: KeyId is passed only when it names a specific key, where it is a
+	// useful check. A symmetric ciphertext identifies its own key, so for an alias
+	// (stored by manifests written before #912) it is omitted: the alias may point
+	// at a different key now, and naming it would make KMS refuse.
+	in := &kms.DecryptInput{CiphertextBlob: encryptedDEK, EncryptionContext: kmsContext}
+	if isSpecificKeyID(encrypted.KMSKeyID) {
+		in.KeyId = aws.String(encrypted.KMSKeyID)
+	}
+	decryptOutput, err := e.kmsClient.Decrypt(ctx, in)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt DEK using KMS: %w", err)
 	}
@@ -262,4 +277,13 @@ func EncryptManifestBytes(ctx context.Context, kmsClient KMSClient, kmsKeyID str
 func DecryptManifestBytes(ctx context.Context, kmsClient KMSClient, encrypted *EncryptedManifest, expected ManifestIdentity) ([]byte, error) {
 	encryptor := NewKMSEncryptor(kmsClient, encrypted.KMSKeyID)
 	return encryptor.DecryptManifest(ctx, encrypted, expected)
+}
+
+// isSpecificKeyID reports whether id names one KMS key (a key ARN or key ID)
+// rather than an alias, which can be re-pointed. Empty is not specific.
+func isSpecificKeyID(id string) bool {
+	if id == "" || strings.HasPrefix(id, "alias/") || strings.Contains(id, ":alias/") {
+		return false
+	}
+	return true
 }
