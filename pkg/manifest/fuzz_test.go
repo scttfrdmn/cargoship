@@ -47,6 +47,7 @@ func FuzzManifestRoundTrip(f *testing.F) {
 	f.Add("2.0", "upload-1", "bucket", "prefix", "us-east-1", int64(3), int64(1024), "file.txt")
 	f.Add("", "", "", "", "", int64(0), int64(0), "")
 	f.Add("2.0", "id", "b", "p", "eu-west-1", int64(-5), int64(1<<62), "π/日本語/file")
+	f.Add("7", "id", "b", "p", "us-east-1", int64(1), int64(1), "f") // a refused major version (#921)
 
 	f.Fuzz(func(t *testing.T, version, uploadID, bucket, prefix, region string,
 		totalFiles, totalBytes int64, filePath string) {
@@ -85,6 +86,11 @@ func FuzzManifestRoundTrip(f *testing.F) {
 
 		m2, err := FromJSON(data1)
 		if err != nil {
+			// #921: a newer major format version is refused by design; the
+			// round-trip property covers only versions this build reads.
+			if checkMajorVersion(version) != nil {
+				return
+			}
 			t.Fatalf("FromJSON failed to parse output of ToJSON: %v\ndata: %q", err, data1)
 		}
 
