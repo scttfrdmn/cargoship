@@ -680,8 +680,13 @@ func (s *ArchiverStage) Process(ctx context.Context, job *Job) error {
 		job.Metadata["compression_level"] = fmt.Sprintf("%d", compressionLevel)
 	}
 
-	// Archive creation goroutine
+	// Archive creation goroutine. #914: archiveDone closes when it has fully
+	// exited, after its last write and the pipe close, so the pipe isn't returned
+	// to the pool (and reused) while this goroutine can still touch it.
+	archiveDone := make(chan struct{})
+	job.archiveDone = archiveDone
 	go func() {
+		defer close(archiveDone) // registered first, so it runs last
 		var tw *tar.Writer
 		// fr is active only for compressed chunks with a positive --frame-size;
 		// it cuts the zstd stream into random-access frames (#436). Left nil (and

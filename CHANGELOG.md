@@ -34,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-encrypt them, copy them in place with SSE-KMS, or upload again.
 
 ### Fixed
+- **A chunk's upload pipe is reused only after its archiver has finished with it** (#914).
+  - **The bug:** the multi-prefix uploader returned a job's pipe to the pool as soon as it had read
+    it, while the archiver goroutine could still be closing it. Returning a pipe to the pool also
+    reset the old writer's closed flag. A stale writer from one chunk could then write into, or
+    close, the next chunk's reused pipe, which meant a panic or a silently truncated chunk whose
+    checksum still matched.
+  - **Now:** the pipe goes back only after the archiver goroutine has exited, and the old reader
+    and writer stay closed.
 - **Encrypted manifests stay readable after their KMS alias is re-pointed** (#912).
   - **The bug:** the manifest recorded the key ID you passed. With `--kms-key-id alias/my-key`
     that's the alias, and `Decrypt` named it. After the alias was re-pointed to a new key (AWS's
