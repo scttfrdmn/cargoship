@@ -34,15 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-encrypt them, copy them in place with SSE-KMS, or upload again.
 
 ### Fixed
-- **`lifecycle` and `scuttle --prefix` no longer touch other people's data on a shared bucket**
-  (#920, parts 2 and 3).
-  - **`lifecycle`:** applying a template replaced the bucket's whole lifecycle configuration,
-    deleting every other team's rules. `--remove` deleted all of them. Templates now merge:
-    CargoShip's own rules (ID prefix `cargoship-`) and any rule with the same ID are replaced, and
-    everything else is kept. `--remove` removes only CargoShip's rules. If the current rules can't
-    be read, nothing is written.
-  - **`scuttle --prefix backup`:** this also matched `backup-2024/...`. A prefix now matches whole
-    path segments only (`backup/...`).
+- **`delete` and `dataset prune` refuse when a manifest can't be read** (#919). The guard that
+  stops `delete` from stranding a newer version that depends on the upload skipped any manifest it
+  couldn't read, and so did prune's membership scan. That covered throttling, a 403, an oversized
+  object, a KMS denial, or a corrupt file, which was even reported as missing. They then decided it
+  was safe from the readable versions alone. Now an unreadable manifest under the prefix makes
+  `delete` refuse, naming it, unless `--force`, and makes `prune` refuse. A manifest that exists but
+  can't be parsed is reported as such rather than as `NoSuchKey`.
 - **Encrypted manifests stay readable after their KMS alias is re-pointed** (#912).
   - **The bug:** the manifest recorded the key ID you passed. With `--kms-key-id alias/my-key`
     that's the alias, and `Decrypt` named it. After the alias was re-pointed to a new key (AWS's
