@@ -34,6 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-encrypt them, copy them in place with SSE-KMS, or upload again.
 
 ### Fixed
+- **`dvc export` and `--generate-dvc-files` write only inside their output directory and keep
+  existing `.dvc` files** (#916).
+  - **The bug:** each manifest path was joined onto the output directory as recorded. An entry
+    with `..` could overwrite a `.dvc` file elsewhere, such as a git-tracked one with a `remote:`
+    field. Because uploads record absolute paths, `--generate-dvc-files` built a nested
+    `<source>/Users/...` tree inside the user's data, which the next sync then uploaded.
+  - **Now:** the `.dvc` path is taken relative to the upload's source directory, and every write
+    stays inside the output directory. Entries that would leave it are refused. An existing `.dvc`
+    file is kept and reported, unless `dvc export --force`.
 - **Encrypted manifests stay readable after their KMS alias is re-pointed** (#912).
   - **The bug:** the manifest recorded the key ID you passed. With `--kms-key-id alias/my-key`
     that's the alias, and `Decrypt` named it. After the alias was re-pointed to a new key (AWS's

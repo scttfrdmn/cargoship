@@ -171,6 +171,7 @@ func newDVCExportCmd() *cobra.Command {
 		region    string
 		cacheDir  string
 		outputDir string
+		force     bool
 	)
 
 	cmd := &cobra.Command{
@@ -193,13 +194,18 @@ func newDVCExportCmd() *cobra.Command {
 				return err
 			}
 
-			opts := &manifest.DVCGenerateOptions{CacheDir: cacheDir}
+			skipped := 0
+			opts := &manifest.DVCGenerateOptions{CacheDir: cacheDir, Overwrite: force, OnSkip: func(string) { skipped++ }}
 			n, err := m.GenerateDVCFiles(out, opts)
 			if err != nil {
 				return fmt.Errorf("generate DVC files: %w", err)
 			}
 
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "📄 %d .dvc file(s) written to %s\n", n, out)
+			if skipped > 0 {
+				// #916: existing .dvc files are kept, not replaced.
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   %d existing .dvc file(s) kept; use --force to replace them\n", skipped)
+			}
 			return nil
 		},
 	}
@@ -207,6 +213,7 @@ func newDVCExportCmd() *cobra.Command {
 	cmd.Flags().StringVar(&region, "region", "us-east-1", "AWS region")
 	cmd.Flags().StringVar(&cacheDir, "cache-dir", ".dvc/cache", "Local DVC cache directory (recorded in manifest)")
 	cmd.Flags().StringVar(&outputDir, "output-dir", "", "Directory to write .dvc files (default: dvc-files)")
+	cmd.Flags().BoolVar(&force, "force", false, "Replace existing .dvc files (by default they are kept)")
 	return cmd
 }
 
