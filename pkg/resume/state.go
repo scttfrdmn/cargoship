@@ -58,13 +58,16 @@ func SaveState(state *UploadState) error {
 	}
 
 	// Write to temporary file first
-	tempFile := filepath.Join(stateDir, state.UploadID+StateTempExtension)
+	finalFile, err := statePath(stateDir, state.UploadID)
+	if err != nil {
+		return err
+	}
+	tempFile := strings.TrimSuffix(finalFile, StateFileExtension) + StateTempExtension
 	if err := os.WriteFile(tempFile, data, 0644); err != nil {
 		return fmt.Errorf("failed to write temp state file: %w", err)
 	}
 
 	// Atomic rename
-	finalFile := filepath.Join(stateDir, state.UploadID+StateFileExtension)
 	if err := os.Rename(tempFile, finalFile); err != nil {
 		// Clean up temp file on failure
 		_ = os.Remove(tempFile)
@@ -85,7 +88,10 @@ func LoadState(uploadID string) (*UploadState, error) {
 		return nil, fmt.Errorf("failed to get state directory: %w", err)
 	}
 
-	stateFile := filepath.Join(stateDir, uploadID+StateFileExtension)
+	stateFile, err := statePath(stateDir, uploadID)
+	if err != nil {
+		return nil, err
+	}
 
 	// Read state file
 	data, err := os.ReadFile(stateFile)
@@ -179,7 +185,10 @@ func DeleteState(uploadID string) error {
 		return fmt.Errorf("failed to get state directory: %w", err)
 	}
 
-	stateFile := filepath.Join(stateDir, uploadID+StateFileExtension)
+	stateFile, err := statePath(stateDir, uploadID)
+	if err != nil {
+		return err
+	}
 
 	// Remove state file
 	if err := os.Remove(stateFile); err != nil {
@@ -227,7 +236,10 @@ func StateExists(uploadID string) bool {
 		return false
 	}
 
-	stateFile := filepath.Join(stateDir, uploadID+StateFileExtension)
+	stateFile, err := statePath(stateDir, uploadID)
+	if err != nil {
+		return false
+	}
 	_, err = os.Stat(stateFile)
 	return err == nil
 }
@@ -251,4 +263,16 @@ func FindStateBySource(sourceDir, bucket, prefix string) (*UploadState, error) {
 	}
 
 	return nil, nil // No match found
+}
+
+// statePath returns the state file for uploadID inside stateDir, refusing an
+// ID that would place it elsewhere (#921). The ID comes from user input or from
+// the JSON of a state file found on disk, and was joined unchecked, so a crafted
+// ID like "../x" made DeleteState remove a file outside the state directory.
+func statePath(stateDir, uploadID string) (string, error) {
+	if uploadID == "" || uploadID == "." || uploadID == ".." ||
+		strings.ContainsAny(uploadID, `/\`) || strings.Contains(uploadID, "..") {
+		return "", fmt.Errorf("invalid upload ID %q", uploadID)
+	}
+	return filepath.Join(stateDir, uploadID+StateFileExtension), nil
 }

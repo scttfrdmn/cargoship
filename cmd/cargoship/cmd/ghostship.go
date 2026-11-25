@@ -259,10 +259,18 @@ Example:
 			}
 			privPath := filepath.Join(dir, "config-signing-private.pem")
 			pubPath := filepath.Join(dir, "config-signing-public.pem")
+			// #921: check both before writing either. Writing the private key and
+			// then failing on an existing public key left a mismatched pair.
+			for _, p := range []string{privPath, pubPath} {
+				if _, err := os.Lstat(p); err == nil {
+					return fmt.Errorf("%s already exists; refusing to overwrite a signing key (move it or use another --out)", p)
+				}
+			}
 			if err := writeNewFile(privPath, privPEM, 0o600); err != nil {
 				return err
 			}
 			if err := writeNewFile(pubPath, pubPEM, 0o644); err != nil {
+				_ = os.Remove(privPath) // don't leave half a pair behind
 				return err
 			}
 			pub, _ := fleet.LoadConfigPublicKey(pubPEM)

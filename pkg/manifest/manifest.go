@@ -683,7 +683,33 @@ func FromJSON(data []byte) (*Manifest, error) {
 	if err := validateManifestCounts(len(m.Files), len(m.Chunks)); err != nil {
 		return nil, err
 	}
+	if err := checkMajorVersion(m.Version); err != nil {
+		return nil, err
+	}
 	return &m, nil
+}
+
+// supportedMajorVersion is the manifest format major version this build reads.
+const supportedMajorVersion = 2
+
+// checkMajorVersion refuses a manifest from a newer major format version
+// (#921). Per the reader contract, a major bump is a breaking change, and
+// reading one as 2.x would silently misread it. A version with no parseable
+// major (absent in early manifests) is accepted as before.
+func checkMajorVersion(v string) error {
+	digits := strings.TrimPrefix(strings.TrimSpace(v), "v")
+	if i := strings.IndexByte(digits, '.'); i >= 0 {
+		digits = digits[:i]
+	}
+	major, err := strconv.Atoi(digits)
+	if err != nil {
+		return nil
+	}
+	if major > supportedMajorVersion {
+		return fmt.Errorf("manifest format version %s is newer than this cargoship reads (%d.x); upgrade cargoship to read it",
+			v, supportedMajorVersion)
+	}
+	return nil
 }
 
 // FromJSONCompressed deserializes a manifest from gzip-compressed JSON
