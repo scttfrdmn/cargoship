@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -170,6 +171,7 @@ are accessible. If a job ID is given, only that job is checked.`,
 // newRestoreJobsDownloadCmd downloads files from a ready restore job.
 func newRestoreJobsDownloadCmd() *cobra.Command {
 	var cacheGB int64
+	var outputOverride string
 
 	cmd := &cobra.Command{
 		Use:   "download <job-id>",
@@ -203,6 +205,10 @@ The job must be in 'ready' status (run 'restore jobs check' first if unsure).`,
 				return fmt.Errorf("job %s appears to be downloading already (or was interrupted — delete and re-run if stuck)", jobID)
 			}
 
+			if job.OutputDir, err = jobOutputDir(job, outputOverride); err != nil {
+				return err
+			}
+
 			// Mark downloading.
 			job.Status = restore.JobStatusDownloading
 			if err := store.Save(job); err != nil {
@@ -216,21 +222,14 @@ The job must be in 'ready' status (run 'restore jobs check' first if unsure).`,
 			s3Client := s3.NewFromConfig(cfg)
 			kmsClient := kms.NewFromConfig(cfg)
 
-			bucket, prefix, err := parseS3URL(job.S3URL)
+			bucket, actualPrefix, uploadID, err := jobUploadLocation(job)
 			if err != nil {
-				return fmt.Errorf("invalid S3 URL in job: %w", err)
+				return err
 			}
 
-			var actualPrefix, uploadID string
-			if idx := strings.Index(prefix, "/uploads/"); idx != -1 {
-				actualPrefix = prefix[:idx]
-				uploadID = prefix[idx+9:]
-			} else {
-				uploadID = prefix
-			}
-
-			fmt.Printf("📥 Loading manifest: s3://%s/%s\n", bucket, prefix)
-			m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
+			// #917: resolve the chain like `restore` does (#552); a plain download
+			// of an incremental version restored only its own changed files.
+			m, err := loadEffectiveManifest(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
 			if err != nil {
 				job.Status = restore.JobStatusFailed
 				job.Error = err.Error()
@@ -241,7 +240,9 @@ The job must be in 'ready' status (run 'restore jobs check' first if unsure).`,
 			maxCacheBytes := cacheGB * 1024 * 1024 * 1024
 			// SetBucket: fetch from the bucket in the job's own S3 URL, not the
 			// one recorded in the manifest (#335).
-			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes).SetBucket(bucket)
+			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes).SetBucket(bucket).
+				SetVerify(!job.NoVerify).
+				SetFlatten(job.Flatten)
 
 			fmt.Printf("🚀 Restoring files to %s…\n", job.OutputDir)
 
@@ -303,6 +304,7 @@ The job must be in 'ready' status (run 'restore jobs check' first if unsure).`,
 	}
 
 	cmd.Flags().Int64Var(&cacheGB, "cache-gb", 10, "LRU chunk cache size in GB")
+	cmd.Flags().StringVar(&outputOverride, "output", "", "Restore into this directory instead of the one saved with the job")
 	return cmd
 }
 
@@ -343,4 +345,42 @@ func newRestoreJobsCleanCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&olderThan, "older-than", "24h", "Remove jobs older than this duration (e.g. 72h, 7d)")
 	return cmd
+}
+
+// jobUploadLocation returns where a job's upload lives: the location the
+// restore resolved (#917), or, for a job saved before that, the one parsed from
+// its S3 URL.
+func jobUploadLocation(job *restore.Job) (bucket, prefix, uploadID string, err error) {
+	bucket, urlPrefix, err := parseS3URL(job.S3URL)
+	if err != nil {
+		return "", "", "", fmt.Errorf("invalid S3 URL in job: %w", err)
+	}
+	if job.Bucket != "" {
+		bucket = job.Bucket
+	}
+	if job.UploadID != "" {
+		return bucket, job.Prefix, job.UploadID, nil
+	}
+	if idx := strings.Index(urlPrefix, "/uploads/"); idx != -1 {
+		return bucket, urlPrefix[:idx], urlPrefix[idx+9:], nil
+	}
+	return bucket, "", urlPrefix, nil
+}
+
+// jobOutputDir is where a job's download writes: override if given, else the
+// saved directory. It never resolves a relative directory against the current
+// one (#917); a relative path saved by an earlier version is refused.
+func jobOutputDir(job *restore.Job, override string) (string, error) {
+	if override != "" {
+		abs, err := filepath.Abs(override)
+		if err != nil {
+			return "", fmt.Errorf("resolve --output: %w", err)
+		}
+		return abs, nil
+	}
+	if !filepath.IsAbs(job.OutputDir) {
+		return "", fmt.Errorf("job %s was saved with the relative output directory %q (before v0.43.0), so where it "+
+			"meant is unknown; re-run with --output <dir>", job.ID, job.OutputDir)
+	}
+	return job.OutputDir, nil
 }

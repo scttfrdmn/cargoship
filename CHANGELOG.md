@@ -34,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-encrypt them, copy them in place with SSE-KMS, or upload again.
 
 ### Fixed
+- **`restore jobs download` writes where the restore was asked to** (#917). The saved job kept the
+  output directory as typed, so `./out` was later resolved against whatever directory `jobs
+  download` ran in, writing into (and overwriting files in) the wrong project. The job also dropped
+  `--flatten` and `--no-verify`, ignored a `--dataset-id` version, and loaded only the version's
+  own manifest rather than its full chain. Jobs now store an absolute directory, the resolved
+  upload and the restore options, and downloads resolve the chain like `restore` does. A job saved
+  earlier with a relative directory is refused, with a new `--output` flag to say where it should
+  go. A restore that can't save its job now says so instead of failing silently.
 - **Encrypted manifests stay readable after their KMS alias is re-pointed** (#912).
   - **The bug:** the manifest recorded the key ID you passed. With `--kms-key-id alias/my-key`
     that's the alias, and `Decrypt` named it. After the alias was re-pointed to a new key (AWS's

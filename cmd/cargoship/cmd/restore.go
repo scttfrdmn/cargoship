@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -283,10 +284,22 @@ Examples:
 							string(restoreTier), restoreDays, bucket, chunkKeys, sel,
 							report.EstimatedCostUSD)
 						if jobErr == nil {
+							// #917: the download repeats THIS restore: the resolved
+							// upload (a --dataset-id version) and its options.
+							job.Prefix, job.UploadID = actualPrefix, uploadID
+							job.Flatten, job.NoVerify = flatten, noVerify
+							jobErr = jobStore.Save(job)
+						}
+						if jobErr == nil {
 							fmt.Printf("\n💾 Restore job saved: %s\n", job.ID)
 							fmt.Printf("   Check status:  cargoship restore jobs check %s\n", job.ID)
 							fmt.Printf("   Download when ready: cargoship restore jobs download %s\n", job.ID)
+						} else {
+							storeErr = jobErr
 						}
+					}
+					if storeErr != nil {
+						fmt.Fprintf(os.Stderr, "⚠️  Could not save a restore job (%v); re-run this restore once the chunks are accessible.\n", storeErr)
 					}
 					fmt.Printf("\n⚠️  %d chunk(s) are not yet accessible.\n", len(report.Frozen)+len(report.InProgress))
 					return nil
