@@ -118,17 +118,10 @@ func (p *BufferedPipePool) Put(reader *BufferedPipeReader, writer *BufferedPipeW
 	pipe.done = make(chan struct{})
 	pipe.once = sync.Once{}
 
-	// Reset reader state
-	reader.mu.Lock()
-	reader.closed = false
-	reader.mu.Unlock()
-	reader.current = nil
-	reader.currentPos = 0
-
-	// Reset writer state
-	writer.mu.Lock()
-	writer.closed = false
-	writer.mu.Unlock()
+	// #914: the old reader and writer are NOT reset. Get hands out fresh
+	// wrappers for the pipe, so these are dead; resetting closed=false let a
+	// stale writer still held by an exited job's code write into the reused
+	// pipe. Left closed, any late call on them fails.
 
 	// Return to pool
 	p.pool <- pipe
