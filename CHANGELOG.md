@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **`--kms-key-id` now encrypts every data object, not just those written by the transporter**
+  (#946). Only the optional transporter applied the key. Direct uploads (the default for up to 1000
+  files), uploads with `--transporter none`, and every resumed upload stored their data with the
+  bucket's default encryption instead of SSE-KMS under the customer's key, while the manifest
+  recorded the data as KMS-encrypted. That data was outside the key's policy, auditing and
+  revocation. All data writes now use the key, and direct uploads also honour `--storage-class`,
+  which they ignored. **Objects already uploaded keep the encryption they were stored with**: to
+  re-encrypt them, copy them in place with SSE-KMS, or upload again.
+
 ## [0.42.0] - 2026-11-24
 
 Fixes the ten critical and high-severity findings from a data-loss audit of the whole codebase

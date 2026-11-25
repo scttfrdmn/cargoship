@@ -51,8 +51,8 @@ func TestNewResumePipelineConfig_EnablesResume(t *testing.T) {
 	if cfg.SourcePath != "/data/src" {
 		t.Errorf("SourcePath = %q, want /data/src", cfg.SourcePath)
 	}
-	if cfg.S3StorageClass != "GLACIER" || cfg.S3SSEKMSKeyId != "kms-1" {
-		t.Errorf("storage class / KMS not mapped: class=%q kms=%q", cfg.S3StorageClass, cfg.S3SSEKMSKeyId)
+	if cfg.S3StorageClass != "GLACIER" || cfg.KMSKeyID != "kms-1" {
+		t.Errorf("storage class / KMS not mapped: class=%q kms=%q", cfg.S3StorageClass, cfg.KMSKeyID)
 	}
 	if cfg.ShardCount != 6 {
 		t.Errorf("ShardCount = %d, want 6", cfg.ShardCount)

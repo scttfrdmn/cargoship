@@ -20,12 +20,14 @@ type mockS3Client struct {
 	mu             sync.Mutex
 	putObjectCalls int
 	failAfter      int // Fail after N calls (for retry testing)
+	last           *s3.PutObjectInput
 }
 
 func (m *mockS3Client) PutObject(ctx context.Context, input *s3.PutObjectInput, opts ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 	m.mu.Lock()
 	m.putObjectCalls++
 	calls := m.putObjectCalls
+	m.last = input
 	m.mu.Unlock()
 
 	if m.failAfter > 0 && calls <= m.failAfter {
