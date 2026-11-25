@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
@@ -74,5 +77,16 @@ func TestUploadObjectKeys_ResolvesAgainstPrefix(t *testing.T) {
 	got = uploadObjectKeys(direct)
 	if len(got) != 1 || got[0] != "team/data/uploads/id/a" {
 		t.Errorf("direct keys = %v, want [team/data/uploads/id/a] (no double prefix, deduplicated)", got)
+	}
+}
+
+func TestUnreadableSummary(t *testing.T) {
+	var u []unreadableManifest
+	for i := 0; i < 7; i++ {
+		u = append(u, unreadableManifest{UploadID: fmt.Sprintf("u%d", i), Err: errors.New("AccessDenied")})
+	}
+	got := unreadableSummary(u)
+	if !strings.Contains(got, "u0 (AccessDenied)") || !strings.Contains(got, "and 2 more") || strings.Contains(got, "u6") {
+		t.Errorf("summary = %q, want five named and the rest counted", got)
 	}
 }
