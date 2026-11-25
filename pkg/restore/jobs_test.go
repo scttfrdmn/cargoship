@@ -2,6 +2,7 @@ package restore
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -200,4 +201,23 @@ func TestNewDefaultStore(t *testing.T) {
 	dir, _ := DefaultStoreDir()
 	_, statErr := os.Stat(dir)
 	assert.NoError(t, statErr)
+}
+
+// TestNewJob_StoresAbsoluteOutputDir pins #917: a relative output directory was
+// saved as given and later resolved against wherever `restore jobs download` ran.
+func TestNewJob_StoresAbsoluteOutputDir(t *testing.T) {
+	s := newTestStore(t)
+	job, err := s.NewJob("s3://b/uploads/u", "out/sub", "us-east-1", "bulk", 1, "b", nil, SelectionCriteria{FilePaths: []string{"f"}}, 0)
+	require.NoError(t, err)
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(wd, "out", "sub"), job.OutputDir)
+
+	job.Prefix, job.UploadID, job.Flatten, job.NoVerify = "p", "u2", true, true
+	require.NoError(t, s.Save(job))
+	got, err := s.Load(job.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "u2", got.UploadID)
+	assert.True(t, got.Flatten)
+	assert.True(t, got.NoVerify)
 }

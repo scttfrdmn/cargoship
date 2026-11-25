@@ -48,8 +48,17 @@ type Job struct {
 	Status JobStatus `json:"status"`
 	// S3URL is the original source URL (e.g. "s3://bucket/uploads/abc123").
 	S3URL string `json:"s3_url"`
-	// OutputDir is the local destination directory.
+	// OutputDir is the local destination directory, absolute since #917. A job
+	// saved by an earlier version may hold a relative path, which is ambiguous.
 	OutputDir string `json:"output_dir"`
+	// Prefix and UploadID are the resolved location of the upload to restore
+	// (#917), so a --dataset-id restore downloads the version it selected.
+	// Empty in jobs saved before #917, which fall back to parsing S3URL.
+	Prefix   string `json:"prefix,omitempty"`
+	UploadID string `json:"upload_id,omitempty"`
+	// Flatten and NoVerify repeat the restore's --flatten and --no-verify (#917).
+	Flatten  bool `json:"flatten,omitempty"`
+	NoVerify bool `json:"no_verify,omitempty"`
 	// Region is the AWS region of the bucket.
 	Region string `json:"region"`
 	// Selection records what was targeted in the manifest.
@@ -216,6 +225,12 @@ func (s *Store) NewJob(
 	id, err := generateID()
 	if err != nil {
 		return nil, fmt.Errorf("generate job ID: %w", err)
+	}
+	// #917: a relative output directory was later resolved against whatever
+	// directory `restore jobs download` ran in, writing (and overwriting) files
+	// in the wrong project.
+	if outputDir, err = filepath.Abs(outputDir); err != nil {
+		return nil, fmt.Errorf("resolve output directory: %w", err)
 	}
 	job := &Job{
 		ID:               id,

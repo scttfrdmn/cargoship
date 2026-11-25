@@ -14,8 +14,9 @@ cargoship restore jobs download <job-id> [flags]
 ### Options
 
 ```
-      --cache-gb int   LRU chunk cache size in GB (default 10)
-  -h, --help           help for download
+      --cache-gb int    LRU chunk cache size in GB (default 10)
+  -h, --help            help for download
+      --output string   Restore into this directory instead of the one saved with the job
 ```
 
 ### Options inherited from parent commands
