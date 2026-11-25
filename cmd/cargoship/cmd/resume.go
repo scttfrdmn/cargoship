@@ -242,7 +242,7 @@ func newResumePipelineConfig(state *resume.UploadState, s3Client *s3.Client) *pi
 		S3Region:       state.Region,
 		S3StorageClass: state.StorageClass,
 		S3PartSize:     64 * 1024 * 1024,
-		S3SSEKMSKeyId:  state.KMSKeyID,
+		KMSKeyID:       state.KMSKeyID, // #946: S3SSEKMSKeyId was never read
 
 		UseRealS3:  true,
 		S3Client:   s3Client,

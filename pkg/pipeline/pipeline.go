@@ -575,6 +575,9 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 			MaxRetries:      3,
 			RetryDelay:      time.Second,
 			ManifestBuilder: directManifest,
+			// #946: the KMS key and storage class apply to direct objects too.
+			SSEKMSKeyID:  p.config.dataKMSKeyID(),
+			StorageClass: types.StorageClass(p.config.S3StorageClass),
 		}
 
 		p.directUploader, err = NewDirectUploaderStage(directConfig, p.chunkChan, p.resultChan)
@@ -657,7 +660,11 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				Bucket:       p.config.S3Bucket,
 				Prefix:       p.config.S3Prefix,
 				StorageClass: types.StorageClass(p.config.S3StorageClass),
-				TierSelector: p.config.TierSelector,
+				// #946: SSE-KMS under the configured key on the SDK path, which
+				// writes every chunk when no transporter is set (and on resume).
+				ServerSideEncryption: p.config.dataSSE(),
+				SSEKMSKeyId:          p.config.dataKMSKeyID(),
+				TierSelector:         p.config.TierSelector,
 				// #424: real congestion control on the multi-prefix upload path.
 				EnableOptimization: p.config.EnableOptimization,
 				CongestionControl:  p.config.CongestionControl,
@@ -725,7 +732,11 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				Bucket:       p.config.S3Bucket,
 				Prefix:       p.config.S3Prefix,
 				StorageClass: types.StorageClass(p.config.S3StorageClass),
-				TierSelector: p.config.TierSelector,
+				// #946: SSE-KMS under the configured key on the SDK path, which
+				// writes every chunk when no transporter is set (and on resume).
+				ServerSideEncryption: p.config.dataSSE(),
+				SSEKMSKeyId:          p.config.dataKMSKeyID(),
+				TierSelector:         p.config.TierSelector,
 				// #424: real congestion control on the multi-prefix upload path.
 				EnableOptimization: p.config.EnableOptimization,
 				CongestionControl:  p.config.CongestionControl,
@@ -771,7 +782,11 @@ func (p *Pipeline) startStages(ctx context.Context, rootPath string) error {
 				Bucket:       p.config.S3Bucket,
 				Prefix:       p.config.S3Prefix,
 				StorageClass: types.StorageClass(p.config.S3StorageClass),
-				TierSelector: p.config.TierSelector,
+				// #946: SSE-KMS under the configured key on the SDK path, which
+				// writes every chunk when no transporter is set (and on resume).
+				ServerSideEncryption: p.config.dataSSE(),
+				SSEKMSKeyId:          p.config.dataKMSKeyID(),
+				TierSelector:         p.config.TierSelector,
 				// #424: real congestion control on the multi-prefix upload path.
 				EnableOptimization: p.config.EnableOptimization,
 				CongestionControl:  p.config.CongestionControl,

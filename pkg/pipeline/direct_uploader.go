@@ -16,6 +16,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
 )
 
@@ -49,6 +50,10 @@ type DirectUploaderConfig struct {
 	RetryDelay      time.Duration         // Delay between retries
 	WorkerPool      *AdaptiveWorkerPool   // Optional: Use adaptive worker pool
 	ManifestBuilder directManifestBuilder // Optional: records S3Key per file after upload
+	// SSEKMSKeyID, when set, stores every object with SSE-KMS under this key, and
+	// StorageClass sets the objects' class (#946: direct uploads applied neither).
+	SSEKMSKeyID  string
+	StorageClass types.StorageClass
 }
 
 // DirectUploaderStage uploads files directly to S3 without archiving or compression
@@ -284,16 +289,22 @@ func (s *DirectUploaderStage) uploadFile(ctx context.Context, file chunking.File
 		}
 
 		// Upload to S3 (body is the seekable *os.File; retries re-seek to 0).
-		_, err := s.config.S3Client.PutObject(ctx, &s3.PutObjectInput{
-			Bucket: aws.String(s.config.Bucket),
-			Key:    aws.String(s3Key),
-			Body:   f,
+		input := &s3.PutObjectInput{
+			Bucket:       aws.String(s.config.Bucket),
+			Key:          aws.String(s3Key),
+			Body:         f,
+			StorageClass: s.config.StorageClass,
 			Metadata: map[string]string{
 				"cargoship-mode":      "direct",
 				"cargoship-file-path": file.Path,
 				"cargoship-file-size": fmt.Sprintf("%d", file.Size),
 			},
-		})
+		}
+		if s.config.SSEKMSKeyID != "" {
+			input.ServerSideEncryption = types.ServerSideEncryptionAwsKms
+			input.SSEKMSKeyId = aws.String(s.config.SSEKMSKeyID)
+		}
+		_, err := s.config.S3Client.PutObject(ctx, input)
 
 		if err != nil {
 			lastErr = err
