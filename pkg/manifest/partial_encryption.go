@@ -5,12 +5,9 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/aws/smithy-go"
 
 	"github.com/scttfrdmn/cargoship/pkg/encryption"
 )
@@ -98,20 +95,4 @@ func DownloadPartialManifestFromS3WithDecryption(ctx context.Context, s3Client *
 		return nil, fmt.Errorf("download encrypted partial manifest: %w", err)
 	}
 	return DownloadPartialManifestFromS3(ctx, s3Client, bucket, prefix, uploadID)
-}
-
-// isNotFound reports whether err is S3's "no such object".
-func isNotFound(err error) bool {
-	var nsk *types.NoSuchKey
-	if errors.As(err, &nsk) {
-		return true
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		switch apiErr.ErrorCode() {
-		case "NoSuchKey", "NotFound", "404":
-			return true
-		}
-	}
-	return false
 }
