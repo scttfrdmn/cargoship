@@ -65,7 +65,8 @@ type EncryptedManifest struct {
 	// Algorithm used for encryption
 	Algorithm string `json:"algorithm"`
 
-	// KMS key ID used to encrypt the data key
+	// ARN of the KMS key that encrypted the data key (the key KMS reported,
+	// never an alias; manifests written before v0.43.0 may hold the alias given)
 	KMSKeyID string `json:"kms_key_id"`
 
 	// Base64-encoded encrypted data encryption key (DEK)
@@ -135,7 +136,10 @@ To recover the manifest JSON:
 3. Base64-decode `encrypted_dek`, `iv`, and `encrypted_data`.
 4. Call KMS `Decrypt` on the encrypted DEK to recover the plaintext 32-byte key.
    For a `binding_version ≥ 1` manifest, pass the `EncryptionContext` derived from
-   the upload you are reading; KMS refuses the unwrap if it doesn't match.
+   the upload you are reading; KMS refuses the unwrap if it doesn't match. Pass
+   `KeyId` only when `kms_key_id` is a key ARN or key ID. A symmetric ciphertext
+   identifies its own key, and an alias may since have been re-pointed to another
+   key, in which case naming it makes KMS refuse.
 5. AES-256-GCM `Open` the ciphertext with the DEK, IV, and — for a bound manifest
    — the identity AAD. A GCM authentication failure means the data was tampered
    with, substituted from another upload, or the wrong key was used — treat it as

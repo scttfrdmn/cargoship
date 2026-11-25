@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -842,49 +843,63 @@ func DownloadFromS3(ctx context.Context, s3Client *s3.Client, bucket, prefix, up
 }
 
 // DownloadFromS3WithDecryption downloads a manifest from S3 with optional KMS decryption (Issue #163)
+//
+// #912: when an encrypted manifest exists but can't be read (a KMS error, a
+// key policy, a corrupt object), that error is returned. It used to be
+// swallowed, and the fallback to the plaintext name reported NoSuchKey, so the
+// user saw "manifest missing" for an archive that is intact, which invites
+// deleting it. The plaintext manifest is tried only when no encrypted one exists.
 func DownloadFromS3WithDecryption(ctx context.Context, s3Client *s3.Client, kmsClient encryption.KMSClient, bucket, prefix, uploadID string) (*Manifest, error) {
 	// CSH-SEC-004: the identity a bound manifest must decrypt under is derived
 	// from the upload we are fetching, not from the ciphertext — so a manifest
 	// swapped in from another upload fails to decrypt.
 	expected := encryption.ManifestIdentity{UploadID: uploadID}
 
-	// Try encrypted compressed version first
-	key := fmt.Sprintf("%s/uploads/%s/manifest.encrypted.json.gz", prefix, uploadID)
-	data, err := downloadS3Object(ctx, s3Client, bucket, key)
-	if err == nil {
-		// Decompress
-		gzipReader, err := gzip.NewReader(bytes.NewReader(data))
-		if err == nil {
-			defer func() { _ = gzipReader.Close() }()
-			decompressed, err := readAllLimited(gzipReader, MaxManifestJSONBytes, "decompressed encrypted manifest")
-			if err == nil {
-				// Decrypt
-				var encryptedManifest encryption.EncryptedManifest
-				if err := json.Unmarshal(decompressed, &encryptedManifest); err == nil {
-					manifestJSON, err := encryption.DecryptManifestBytes(ctx, kmsClient, &encryptedManifest, expected)
-					if err == nil {
-						return parseManifestJSON(manifestJSON)
-					}
-				}
+	for _, name := range []string{"manifest.encrypted.json.gz", "manifest.encrypted.json"} {
+		key := fmt.Sprintf("%s/uploads/%s/%s", prefix, uploadID, name)
+		data, err := downloadS3Object(ctx, s3Client, bucket, key)
+		if err != nil {
+			if isNotFound(err) {
+				continue
 			}
+			return nil, fmt.Errorf("download encrypted manifest s3://%s/%s: %w", bucket, key, err)
 		}
+		m, err := openEncryptedManifest(ctx, kmsClient, data, strings.HasSuffix(name, ".gz"), expected)
+		if err != nil {
+			return nil, fmt.Errorf("encrypted manifest s3://%s/%s exists but could not be read "+
+				"(the archive is not missing; check the KMS key and your access to it): %w", bucket, key, err)
+		}
+		return m, nil
 	}
 
-	// Try encrypted uncompressed version
-	key = fmt.Sprintf("%s/uploads/%s/manifest.encrypted.json", prefix, uploadID)
-	data, err = downloadS3Object(ctx, s3Client, bucket, key)
-	if err == nil {
-		var encryptedManifest encryption.EncryptedManifest
-		if err := json.Unmarshal(data, &encryptedManifest); err == nil {
-			manifestJSON, err := encryption.DecryptManifestBytes(ctx, kmsClient, &encryptedManifest, expected)
-			if err == nil {
-				return parseManifestJSON(manifestJSON)
-			}
-		}
-	}
-
-	// Fall back to regular (non-encrypted) manifest download
+	// No encrypted manifest: fall back to the regular (non-encrypted) one.
 	return DownloadFromS3(ctx, s3Client, bucket, prefix, uploadID)
+}
+
+// openEncryptedManifest decodes and decrypts an encrypted manifest object.
+func openEncryptedManifest(ctx context.Context, kmsClient encryption.KMSClient, data []byte, gzipped bool, expected encryption.ManifestIdentity) (*Manifest, error) {
+	if kmsClient == nil {
+		return nil, fmt.Errorf("a KMS client is required to decrypt it")
+	}
+	if gzipped {
+		zr, err := gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return nil, fmt.Errorf("decompress: %w", err)
+		}
+		defer func() { _ = zr.Close() }()
+		if data, err = readAllLimited(zr, MaxManifestJSONBytes, "decompressed encrypted manifest"); err != nil {
+			return nil, err
+		}
+	}
+	var sealed encryption.EncryptedManifest
+	if err := json.Unmarshal(data, &sealed); err != nil {
+		return nil, fmt.Errorf("parse: %w", err)
+	}
+	plain, err := encryption.DecryptManifestBytes(ctx, kmsClient, &sealed, expected)
+	if err != nil {
+		return nil, err
+	}
+	return parseManifestJSON(plain)
 }
 
 // DownloadPartialManifestFromS3 downloads a partial manifest from S3 (Issue #157: Resume capability)
