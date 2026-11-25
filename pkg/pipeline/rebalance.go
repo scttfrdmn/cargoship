@@ -104,8 +104,6 @@ type FileMove struct {
 }
 
 // extractedFile holds file data extracted from a chunk
-//
-//nolint:unused // Will be used in full rebalancing execution implementation
 type extractedFile struct {
 	Entry manifest.FileEntry // File metadata
 	Data  []byte             // File contents
@@ -590,8 +588,6 @@ func downloadAndExtractFiles(ctx context.Context, s3Client *s3.Client, bucket st
 }
 
 // createAndUploadChunk creates a tar.zst archive from extracted files and uploads to S3
-//
-//nolint:unused // Will be used in full rebalancing execution implementation
 func createAndUploadChunk(ctx context.Context, s3Client *s3.Client, bucket string, s3Key string, files []extractedFile, compressionType string, storageClass types.StorageClass) (*manifest.ChunkEntry, error) {
 	// Create buffer for compressed archive
 	var buf bytes.Buffer
@@ -604,9 +600,6 @@ func createAndUploadChunk(ctx context.Context, s3Client *s3.Client, bucket strin
 		if err != nil {
 			return nil, fmt.Errorf("failed to create zstd encoder: %w", err)
 		}
-		defer func() {
-			_ = encoder.Close()
-		}()
 		compressor = encoder
 	case "gzip", "gz":
 		return nil, fmt.Errorf("gzip compression not yet supported for rebalancing")
@@ -618,8 +611,15 @@ func createAndUploadChunk(ctx context.Context, s3Client *s3.Client, bucket strin
 
 	// Create tar writer
 	tarWriter := tar.NewWriter(compressor)
+	// #921: close each writer exactly once (#397). Deferred closes on top of the
+	// explicit ones below closed both twice; a second zstd Close can emit a second
+	// end-of-frame marker. The defer now only releases them on an error path.
+	closed := false
 	defer func() {
-		_ = tarWriter.Close()
+		if !closed {
+			_ = tarWriter.Close()
+			_ = compressor.Close()
+		}
 	}()
 
 	var uncompressedSize int64
@@ -649,12 +649,12 @@ func createAndUploadChunk(ctx context.Context, s3Client *s3.Client, bucket strin
 		filePaths = append(filePaths, file.Entry.Path)
 	}
 
-	// Close tar writer to flush
+	// Close tar writer, then the compressor, to flush; each exactly once.
+	closed = true
 	if err := tarWriter.Close(); err != nil {
+		_ = compressor.Close()
 		return nil, fmt.Errorf("failed to close tar writer: %w", err)
 	}
-
-	// Close compressor to flush
 	if err := compressor.Close(); err != nil {
 		return nil, fmt.Errorf("failed to close compressor: %w", err)
 	}

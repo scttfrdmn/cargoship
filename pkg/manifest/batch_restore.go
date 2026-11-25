@@ -621,8 +621,9 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 	}
 
 	entries := make([]*FileEntry, len(targets))
+	resolveErrs := make([]error, len(targets))
 	for i, target := range targets {
-		entries[i] = se.resolveEntry(target)
+		entries[i], resolveErrs[i] = se.resolveEntryErr(target)
 	}
 	// #908: refuse before writing anything if two different files would land on
 	// the same output path, so one can't silently replace the other.
@@ -633,7 +634,11 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 	for i, target := range targets {
 		entry := entries[i]
 		if entry == nil {
-			se.noteFailure(stats, 1, fmt.Errorf("%s: not found in manifest", target))
+			if resolveErrs[i] != nil {
+				se.noteFailure(stats, 1, resolveErrs[i])
+			} else {
+				se.noteFailure(stats, 1, fmt.Errorf("%s: not found in manifest", target))
+			}
 			continue
 		}
 		// #436: fetch and decode just this file's frame when the chunk carries a
@@ -814,8 +819,17 @@ func (se *SelectiveExtractor) restoreGroup(ctx context.Context, grp *chunkGroup,
 // suffix / basename — so `--file greeting.txt` resolves even though manifests
 // currently store the file's absolute source path. (Issue #228)
 func (se *SelectiveExtractor) resolveEntry(target string) *FileEntry {
+	e, _ := se.resolveEntryErr(target)
+	return e
+}
+
+// resolveEntryErr resolves target like resolveEntry, and says why when it can't:
+// an ambiguous suffix or basename is an error naming the candidates (#921). The
+// first suffix match used to win, so --file a/b.txt silently restored x/a/b.txt
+// when y/a/b.txt also existed.
+func (se *SelectiveExtractor) resolveEntryErr(target string) (*FileEntry, error) {
 	if entry := se.query.FindFile(target); entry != nil {
-		return entry
+		return entry, nil
 	}
 	// Manifest paths are always slash-separated (the portable format convention),
 	// so resolve in slash space regardless of host OS. filepath here would use "\"
@@ -831,26 +845,65 @@ func (se *SelectiveExtractor) resolveEntry(target string) *FileEntry {
 	// earlier in the manifest — 46% of a random ~/src sample, since source trees are
 	// full of repeated names like abort.d.ts / __init__.py.)
 	if strings.ContainsRune(clean, '/') {
+		var suffix []*FileEntry
 		for i := range se.manifest.Files {
 			p := filepath.ToSlash(se.manifest.Files[i].Path)
-			if p == clean || strings.HasSuffix(p, "/"+clean) {
-				return &se.manifest.Files[i]
+			if p == clean {
+				return &se.manifest.Files[i], nil
 			}
+			if strings.HasSuffix(p, "/"+clean) && !containsPath(suffix, se.manifest.Files[i].Path) {
+				suffix = append(suffix, &se.manifest.Files[i])
+			}
+		}
+		switch len(suffix) {
+		case 1:
+			return suffix[0], nil
+		case 0:
+		default:
+			return nil, ambiguousTarget(target, suffix)
 		}
 	}
 	// Bare basename (e.g. `--file greeting.txt`), or a path with no suffix match:
 	// resolve by basename, but only when it is unambiguous.
 	base := path.Base(clean)
-	var basenameMatch *FileEntry
+	var matches []*FileEntry
 	for i := range se.manifest.Files {
-		if path.Base(filepath.ToSlash(se.manifest.Files[i].Path)) == base {
-			if basenameMatch != nil {
-				return nil // ambiguous basename; require a more specific target
-			}
-			basenameMatch = &se.manifest.Files[i]
+		if path.Base(filepath.ToSlash(se.manifest.Files[i].Path)) == base && !containsPath(matches, se.manifest.Files[i].Path) {
+			matches = append(matches, &se.manifest.Files[i])
 		}
 	}
-	return basenameMatch
+	switch len(matches) {
+	case 0:
+		return nil, nil
+	case 1:
+		return matches[0], nil
+	default:
+		return nil, ambiguousTarget(target, matches) // require a more specific target
+	}
+}
+
+// containsPath reports whether es already holds an entry for p (split-file
+// parts share a path and are one file).
+func containsPath(es []*FileEntry, p string) bool {
+	for _, e := range es {
+		if e.Path == p {
+			return true
+		}
+	}
+	return false
+}
+
+// ambiguousTarget names up to five of the entries a restore target matches.
+func ambiguousTarget(target string, es []*FileEntry) error {
+	var names []string
+	for i, e := range es {
+		if i == 5 {
+			names = append(names, fmt.Sprintf("and %d more", len(es)-5))
+			break
+		}
+		names = append(names, e.Path)
+	}
+	return fmt.Errorf("%s: matches %d files (%s); give more of the path", target, len(es), strings.Join(names, ", "))
 }
 
 // writeDirectFiles writes direct-upload objects (raw file bytes, one object per
