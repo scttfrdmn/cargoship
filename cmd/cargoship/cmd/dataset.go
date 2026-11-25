@@ -73,9 +73,15 @@ datasets and mixed direct/chunked chains are not yet supported.`,
 			if err != nil {
 				return err
 			}
-			all, err := listUploadManifests(ctx, s3Client, kmsClient, bucket, prefix)
+			all, unreadable, err := listUploadManifestsChecked(ctx, s3Client, kmsClient, bucket, prefix)
 			if err != nil {
 				return err
+			}
+			// #919: an unreadable manifest could be a member (or a kept version) of
+			// this dataset, and pruning without it could delete objects it needs.
+			if len(unreadable) > 0 {
+				return fmt.Errorf("refusing to prune: %d upload manifest(s) under this prefix could not be read, so the dataset's "+
+					"versions can't be determined safely (%s)", len(unreadable), unreadableSummary(unreadable))
 			}
 			fetch := inMemoryFetch(all)
 
@@ -149,9 +155,12 @@ datasets and mixed direct/chunked chains are not yet supported.`,
 				_, _ = fmt.Fprintf(out, "✅ Compacted upload %s (self-contained).\n", plan.CompactID)
 			}
 			// 2. Concurrency guard: refuse if a new version appeared meanwhile.
-			after, err := listUploadManifests(ctx, s3Client, kmsClient, bucket, prefix)
+			after, afterUnreadable, err := listUploadManifestsChecked(ctx, s3Client, kmsClient, bucket, prefix)
 			if err != nil {
 				return fmt.Errorf("re-list before delete: %w", err)
+			}
+			if len(afterUnreadable) > 0 {
+				return fmt.Errorf("a manifest became unreadable during prune (%s); aborting before any delete", unreadableSummary(afterUnreadable))
 			}
 			if datasetHead(ctx, after, inMemoryFetch(after), datasetID) != datasetHead(ctx, all, fetch, datasetID) {
 				return fmt.Errorf("a new version appeared during prune; aborting before any delete")
