@@ -34,6 +34,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-encrypt them, copy them in place with SSE-KMS, or upload again.
 
 ### Fixed
+- **`sync` backs up a file replaced by an older copy of the same size** (#918). A file counted as
+  changed only if its size changed or its modification time was newer. A same-size copy with an
+  older time (`cp -p`, `rsync -t` of an earlier version, a snapshot restore) looked unchanged, so
+  its current content was never uploaded. Any time difference now counts. A time that is just the
+  recorded one rounded down to a coarser filesystem's precision (1µs, 1s, FAT's 2s) still matches,
+  so restoring onto such a filesystem doesn't make every file look changed.
+- **`restore jobs download` writes where the restore was asked to** (#917). The saved job kept the
+  output directory as typed, so `./out` was later resolved against whatever directory `jobs
+  download` ran in, writing into (and overwriting files in) the wrong project. The job also dropped
+  `--flatten` and `--no-verify`, ignored a `--dataset-id` version, and loaded only the version's
+  own manifest rather than its full chain. Jobs now store an absolute directory, the resolved
+  upload and the restore options, and downloads resolve the chain like `restore` does. A job saved
+  earlier with a relative directory is refused, with a new `--output` flag to say where it should
+  go. A restore that can't save its job now says so instead of failing silently.
+- **`dvc export` and `--generate-dvc-files` write only inside their output directory and keep
+  existing `.dvc` files** (#916).
+  - **The bug:** each manifest path was joined onto the output directory as recorded. An entry
+    with `..` could overwrite a `.dvc` file elsewhere, such as a git-tracked one with a `remote:`
+    field. Because uploads record absolute paths, `--generate-dvc-files` built a nested
+    `<source>/Users/...` tree inside the user's data, which the next sync then uploaded.
+  - **Now:** the `.dvc` path is taken relative to the upload's source directory, and every write
+    stays inside the output directory. Entries that would leave it are refused. An existing `.dvc`
+    file is kept and reported, unless `dvc export --force`.
+- **A chunk's upload pipe is reused only after its archiver has finished with it** (#914).
+  - **The bug:** the multi-prefix uploader returned a job's pipe to the pool as soon as it had read
+    it, while the archiver goroutine could still be closing it. Returning a pipe to the pool also
+    reset the old writer's closed flag. A stale writer from one chunk could then write into, or
+    close, the next chunk's reused pipe, which meant a panic or a silently truncated chunk whose
+    checksum still matched.
+  - **Now:** the pipe goes back only after the archiver goroutine has exited, and the old reader
+    and writer stay closed.
+- **`lifecycle` and `scuttle --prefix` no longer touch other people's data on a shared bucket**
+  (#920, parts 2 and 3).
+  - **`lifecycle`:** applying a template replaced the bucket's whole lifecycle configuration,
+    deleting every other team's rules. `--remove` deleted all of them. Templates now merge:
+    CargoShip's own rules (ID prefix `cargoship-`) and any rule with the same ID are replaced, and
+    everything else is kept. `--remove` removes only CargoShip's rules. If the current rules can't
+    be read, nothing is written.
+  - **`scuttle --prefix backup`:** this also matched `backup-2024/...`. A prefix now matches whole
+    path segments only (`backup/...`).
+- **`ghostship scuttle --purge-data` can't delete another fleet's backups** (#920, part 1).
+  - **The bug:** the purge deleted `writers/<id>/` at the bucket root. Every fleet in the bucket
+    with a writer of that name shares that path, so purging one fleet's writer could delete
+    another's backups.
+  - **Now:** the purge needs the fleet base (`s3://BUCKET/BASE`) and deletes only
+    `<BASE>/writers/<id>/` and `<BASE>/fleet/<id>/`. Data an agent wrote from a signed config,
+    which still lands at the bucket root (#958), is reported with the command to delete it,
+    instead of being deleted.
+- **Low-severity data-safety hardening from the audit** (#921):
+  - **Manifest version:** a manifest with a newer major format version (3.x) is refused with
+    "upgrade cargoship" instead of being misread.
+  - **Ambiguous restore targets:** `restore --file a/b.txt` that matches more than one file
+    (`x/a/b.txt`, `y/a/b.txt`) fails and names the candidates, instead of restoring the first.
+  - **Signing keys:** `ghostship config-keygen` checks both key files before writing either, so it
+    can't leave a mismatched pair.
+  - **Upload IDs:** an upload ID that would leave the resume state directory is refused. Before,
+    `../x` made state cleanup delete a file outside it.
+  - **Rebalance:** each writer is closed exactly once.
 - **`delete` and `dataset prune` refuse when a manifest can't be read** (#919). The guard that
   stops `delete` from stranding a newer version that depends on the upload skipped any manifest it
   couldn't read, and so did prune's membership scan. That covered throttling, a 403, an oversized
@@ -62,6 +120,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Deleting the original:** it happens only when every extracted file is in the new upload at
     its size and the archive held nothing the new format can't store. Otherwise the original is
     kept, the reason is printed, and `migrate` exits non-zero.
+
+### Changed
+- **Restore no longer replaces existing local files unless you ask it to** (#915). This changes the
+  default behaviour.
+  - **Before:** `restore`, `download`, `browse`, `restore jobs download` and shell `get` overwrote
+    existing files with no prompt or flag, so restoring into a working copy silently replaced newer
+    local edits with the backed-up version.
+  - **Now:** if any destination file already exists, the restore is refused before anything is
+    written, and the conflicts are listed.
+  - **New flags:** `--overwrite` replaces existing files (atomically), and `--skip-existing` keeps
+    them and restores the rest. In `cargoship shell`, `get -f` overwrites. `restore --json` reports
+    `skipped`.
+  - **Restore jobs:** a job refused this way stays ready to retry with a flag.
 
 ## [0.42.0] - 2026-11-24
 
