@@ -55,7 +55,7 @@ Archive shell commands:
   find <pattern>    Find files by glob pattern (e.g. *.csv, data/*.parquet)
   stage list        List all DVC pipeline stages and their file counts
   stage <name>      List files belonging to a DVC stage
-  get <file> [dst]  Extract file to a local path (default: current directory)
+  get [-f] <file> [dst]  Extract file to a local path (default: current directory; -f replaces an existing file)
   help              Show this help
   exit / quit       Exit the shell`,
 		Args: cobra.MaximumNArgs(1),
@@ -225,7 +225,7 @@ func (sh *archiveShell) cmdHelp() {
   find <pattern>    Find files by glob (e.g. *.csv, data/*.parquet)
   stage list        List all DVC pipeline stages
   stage <name>      List files in a DVC stage
-  get <file> [dst]  Extract file to local path (default: .)
+  get [-f] <file> [dst]  Extract file to local path (default: .; -f replaces an existing file)
   help              Show this help
   exit / quit       Exit the shell`)
 }
@@ -401,10 +401,27 @@ func (sh *archiveShell) cmdStage(args []string) {
 }
 
 func (sh *archiveShell) cmdGet(ctx context.Context, args []string) {
+	// #915: an existing local file is kept unless asked otherwise (the default
+	// destination is ".", so a get used to replace a same-named local file).
+	policy := manifest.ExistingRefuse
+	var rest []string
+	for _, a := range args {
+		switch a {
+		case "-f", "--overwrite":
+			policy = manifest.ExistingOverwrite
+		case "--skip-existing":
+			policy = manifest.ExistingSkip
+		default:
+			rest = append(rest, a)
+		}
+	}
+	args = rest
 	if len(args) == 0 {
-		sh.writeln("usage: get <file> [dest]")
+		sh.writeln("usage: get [--overwrite|-f] <file> [dest]")
 		return
 	}
+	sh.se.SetExisting(policy)
+	defer sh.se.SetExisting(manifest.ExistingRefuse)
 	p := sh.vfs.Resolve(sh.cwd, args[0])
 	if sh.vfs.Stat(p) == nil {
 		sh.writef("get: %s: no such file\n", args[0])

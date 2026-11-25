@@ -69,8 +69,21 @@ escape it).
 
 - `--flatten` writes each restored file by **basename** directly into
   `OUTPUT_DIR`, ignoring its directory structure — convenient for pulling a
-  handful of specific files without recreating deep trees. Basenames must be
-  unique across your selection to avoid collisions.
+  handful of specific files without recreating deep trees. If two selected files
+  share a basename, the restore is refused rather than one replacing the other.
+
+### Files that already exist
+
+Restore never replaces a local file silently. If any file it would write already
+exists in `OUTPUT_DIR`, the restore is **refused before anything is written**, and
+the conflicting files are listed. Choose what you want:
+
+- `--overwrite` replaces the existing files. Each one is replaced atomically, so
+  a failed restore leaves the existing file as it was.
+- `--skip-existing` keeps the existing files and restores everything else.
+
+The same flags apply to `download`, `browse` and `restore jobs download`. In
+`cargoship shell`, use `get -f` to replace an existing file.
 
 ```bash
 # Recreate the directory structure (default)

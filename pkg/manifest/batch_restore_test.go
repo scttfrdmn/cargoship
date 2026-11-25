@@ -1392,6 +1392,7 @@ func TestBatchRestore_SymlinkedLeafDirect(t *testing.T) {
 	client := &mockS3Client{chunks: map[string][]byte{"k": content}}
 
 	stats, err := NewSelectiveExtractor(m, client, 0).
+		SetExisting(ExistingOverwrite). // past the #915 refusal, to the symlink guard
 		BatchRestore(context.Background(), []string{"config.txt"}, dest)
 
 	got, rerr := os.ReadFile(outsideFile)
@@ -1425,6 +1426,7 @@ func TestBatchRestore_SymlinkedLeafChunked(t *testing.T) {
 	client := &mockS3Client{chunks: map[string][]byte{"c0": chunk}}
 
 	stats, err := NewSelectiveExtractor(m, client, 0).
+		SetExisting(ExistingOverwrite). // past the #915 refusal, to the symlink guard
 		BatchRestore(context.Background(), []string{srcPath}, dest)
 
 	got, rerr := os.ReadFile(outsideFile)

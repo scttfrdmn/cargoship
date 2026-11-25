@@ -84,8 +84,8 @@ distinction.
   archive saves both time and egress cost.
 - **`--dry-run` before big pulls** to confirm the match count and size.
 - **Match the region** with `-r` (or `AWS_REGION`) to avoid cross-region latency.
-- **Reconstruct into a fresh directory** so a partial extraction can't shadow
-  existing files.
+- **Download into a fresh directory.** `download` refuses to replace existing
+  files unless you pass `--overwrite` (or `--skip-existing` to keep them).
 :::
 
 ## See also

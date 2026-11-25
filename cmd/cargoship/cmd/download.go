@@ -29,6 +29,7 @@ func NewDownloadCmd() *cobra.Command {
 		workers  int
 		noVerify bool
 		flatten  bool
+		existing existingFileFlags // #915
 	)
 
 	cmd := &cobra.Command{
@@ -220,7 +221,8 @@ Examples:
 			extractor := manifest.NewSelectiveExtractor(m, s3Client, 0).
 				SetBucket(bucket). // where the manifest actually came from (#335)
 				SetVerify(!noVerify).
-				SetFlatten(flatten)
+				SetFlatten(flatten).
+				SetExisting(existing.policy())
 			stats, err := extractor.BatchRestore(ctx, targets, outputDir)
 			if err != nil {
 				return fmt.Errorf("failed to download files: %w", err)
@@ -239,6 +241,9 @@ Examples:
 				fmt.Printf("⚠️  Download incomplete\n")
 			}
 			fmt.Printf("   Files extracted: %d files\n", stats.Restored)
+			if stats.Skipped > 0 {
+				fmt.Printf("   Kept (existing): %d files\n", stats.Skipped)
+			}
 			fmt.Printf("   Chunks downloaded: %d\n", stats.ChunksDownloaded)
 			fmt.Printf("   Data size: %s\n", humanize.Bytes(uint64(stats.Bytes)))
 			fmt.Printf("   Duration: %s\n", duration.Round(time.Millisecond))
@@ -258,6 +263,7 @@ Examples:
 	cmd.Flags().IntVar(&workers, "workers", 4, "Number of parallel download workers (future use)")
 	cmd.Flags().BoolVar(&noVerify, "no-verify", false, "Skip restore-time checksum verification (faster, but won't detect corrupted stored data)")
 	cmd.Flags().BoolVar(&flatten, "flatten", false, "Write downloaded files by basename into the output dir instead of recreating their directory structure")
+	existing.add(cmd)
 
 	return cmd
 }

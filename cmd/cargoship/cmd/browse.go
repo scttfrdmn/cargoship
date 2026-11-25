@@ -19,6 +19,7 @@ import (
 // NewBrowseCmd creates the 'browse' command for interactive TUI file browsing
 // and selective restore (Issue #190, #200, #201).
 func NewBrowseCmd() *cobra.Command {
+	var existing existingFileFlags // #915
 	var (
 		region         string
 		cacheGB        int64
@@ -160,7 +161,8 @@ Examples:
 			// not the one recorded inside it. Without it the Glacier pre-flight
 			// below checks `bucket` while the download goes somewhere else — the
 			// same split that made #334 undetectable. (#335)
-			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes).SetBucket(bucket)
+			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes).SetBucket(bucket).
+				SetExisting(existing.policy())
 
 			// Glacier pre-flight check on the chunks needed for selected files.
 			restoreTier := s3pkg.RestoreTier(tier)
@@ -216,6 +218,9 @@ Examples:
 				fmt.Printf("❌ Restore failed: no files were restored\n")
 			}
 			fmt.Printf("   Files restored:    %d\n", stats.Restored)
+			if stats.Skipped > 0 {
+				fmt.Printf("   Kept (existing):   %d\n", stats.Skipped)
+			}
 			if stats.Failed > 0 {
 				fmt.Printf("   Files failed:      %d\n", stats.Failed)
 			}
@@ -230,6 +235,7 @@ Examples:
 
 	cmd.Flags().StringVarP(&region, "region", "r", "us-east-1", "AWS region")
 	cmd.Flags().Int64Var(&cacheGB, "cache-gb", 10, "LRU chunk cache size in GB")
+	existing.add(cmd)
 	cmd.Flags().StringVar(&tier, "tier", "", "Glacier retrieval tier: expedited, standard (default), bulk")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Block until Glacier restoration completes before downloading")
 	cmd.Flags().Float64Var(&maxRestoreCost, "max-restore-cost", 0, "Abort if estimated retrieval cost exceeds this USD amount")
