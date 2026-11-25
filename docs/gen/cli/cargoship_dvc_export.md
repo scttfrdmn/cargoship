@@ -10,6 +10,7 @@ cargoship dvc export S3_URL [OUTPUT_DIR] [flags]
 
 ```
       --cache-dir string    Local DVC cache directory (recorded in manifest) (default ".dvc/cache")
+      --force               Replace existing .dvc files (by default they are kept)
   -h, --help                help for export
       --output-dir string   Directory to write .dvc files (default: dvc-files)
       --region string       AWS region (default "us-east-1")

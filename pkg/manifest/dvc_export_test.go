@@ -252,10 +252,18 @@ func TestGenerateDVCFiles_Idempotent(t *testing.T) {
 	n1, err := m.GenerateDVCFiles(dir, nil)
 	require.NoError(t, err)
 
-	n2, err := m.GenerateDVCFiles(dir, nil)
+	// #916: a second run keeps the existing .dvc file (it may be git-tracked and
+	// carry fields CargoShip doesn't write) and reports it skipped.
+	var skipped []string
+	n2, err := m.GenerateDVCFiles(dir, &DVCGenerateOptions{OnSkip: func(p string) { skipped = append(skipped, p) }})
 	require.NoError(t, err)
+	assert.Equal(t, 1, n1)
+	assert.Zero(t, n2)
+	assert.Equal(t, []string{"data.txt.dvc"}, skipped)
 
-	assert.Equal(t, n1, n2)
+	n3, err := m.GenerateDVCFiles(dir, &DVCGenerateOptions{Overwrite: true})
+	require.NoError(t, err)
+	assert.Equal(t, 1, n3, "Overwrite rewrites it")
 
 	got, err := os.ReadFile(filepath.Join(dir, "data.txt.dvc"))
 	require.NoError(t, err)
