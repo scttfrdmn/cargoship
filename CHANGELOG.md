@@ -34,14 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-encrypt them, copy them in place with SSE-KMS, or upload again.
 
 ### Fixed
-- **`restore jobs download` writes where the restore was asked to** (#917). The saved job kept the
-  output directory as typed, so `./out` was later resolved against whatever directory `jobs
-  download` ran in, writing into (and overwriting files in) the wrong project. The job also dropped
-  `--flatten` and `--no-verify`, ignored a `--dataset-id` version, and loaded only the version's
-  own manifest rather than its full chain. Jobs now store an absolute directory, the resolved
-  upload and the restore options, and downloads resolve the chain like `restore` does. A job saved
-  earlier with a relative directory is refused, with a new `--output` flag to say where it should
-  go. A restore that can't save its job now says so instead of failing silently.
+- **`delete` and `dataset prune` refuse when a manifest can't be read** (#919). The guard that
+  stops `delete` from stranding a newer version that depends on the upload skipped any manifest it
+  couldn't read, and so did prune's membership scan. That covered throttling, a 403, an oversized
+  object, a KMS denial, or a corrupt file, which was even reported as missing. They then decided it
+  was safe from the readable versions alone. Now an unreadable manifest under the prefix makes
+  `delete` refuse, naming it, unless `--force`, and makes `prune` refuse. A manifest that exists but
+  can't be parsed is reported as such rather than as `NoSuchKey`.
 - **Encrypted manifests stay readable after their KMS alias is re-pointed** (#912).
   - **The bug:** the manifest recorded the key ID you passed. With `--kms-key-id alias/my-key`
     that's the alias, and `Decrypt` named it. After the alias was re-pointed to a new key (AWS's

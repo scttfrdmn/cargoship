@@ -127,3 +127,26 @@ func readSealed(t *testing.T, s3c *s3.Client, prefix, uploadID string) *encrypti
 	require.NoError(t, json.NewDecoder(zr).Decode(&sealed))
 	return &sealed
 }
+
+// TestDownloadFromS3_CorruptManifestIsNotReportedMissing pins #919's reader half:
+// a manifest.json.gz that exists but can't be parsed fell through to the
+// uncompressed name and reported NoSuchKey, so a damaged manifest looked absent
+// and the delete chain guard skipped that version.
+func TestDownloadFromS3_CorruptManifestIsNotReportedMissing(t *testing.T) {
+	ctx := context.Background()
+	s3c, _ := kmsTestClients(t)
+	prefix := fmt.Sprintf("corrupt-%d", time.Now().UnixNano())
+	_, err := s3c.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(integTestBucket), Key: aws.String(prefix + "/uploads/u-x/manifest.json.gz"),
+		Body: bytes.NewReader([]byte("not gzip")),
+	})
+	require.NoError(t, err)
+
+	_, err = DownloadFromS3(ctx, s3c, integTestBucket, prefix, "u-x")
+	require.Error(t, err)
+	assert.False(t, IsNotFound(err), "a corrupt manifest must not read as missing: %v", err)
+	assert.Contains(t, err.Error(), "could not be parsed")
+
+	_, err = DownloadFromS3(ctx, s3c, integTestBucket, prefix, "u-absent")
+	assert.True(t, IsNotFound(err), "an absent manifest is still not-found: %v", err)
+}
