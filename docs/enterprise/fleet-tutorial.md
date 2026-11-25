@@ -90,8 +90,10 @@ cargoship ghostship init s3://backups/nas --writer-id lab-nas-1 \
 ```
 
 Decommission the writer later with `cargoship ghostship scuttle lab-nas-1` (deletes the
-key, policy, and user; add `--purge-data s3://backups/nas --yes` to also delete its
-backups). Without `--mint`, init makes no AWS calls — you attach the policy yourself.
+key, policy, and user; add `--purge-data s3://backups/nas --yes` to also delete its config).
+Its backups are under `writers/lab-nas-1/` at the bucket root, a path every fleet in the
+bucket with that writer name shares. The purge reports them and prints the
+`cargoship scuttle` command that deletes them, rather than deleting them itself. Without `--mint`, init makes no AWS calls — you attach the policy yourself.
 :::
 
 ::: tip Write-only trade-off
