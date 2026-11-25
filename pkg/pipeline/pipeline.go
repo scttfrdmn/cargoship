@@ -200,14 +200,45 @@ func NewPipeline(config *PipelineConfig) (*Pipeline, error) {
 				config.S3Prefix, config.ResumeUploadID); err != nil {
 				return nil, err
 			}
-			// Download partial manifest from S3
-			partialManifest, downloadErr := manifest.DownloadPartialManifestFromS3(
-				ctx,
-				config.S3Client.(*s3.Client),
-				config.S3Bucket,
-				config.S3Prefix,
-				config.ResumeUploadID,
-			)
+			// Download partial manifest from S3. #913: an --encrypt-manifest
+			// upload's partial is encrypted, so read it with the KMS client.
+			var partialManifest *manifest.Manifest
+			var downloadErr error
+			if config.EncryptManifest {
+				kmsClient, ok := config.KMSClient.(*kms.Client)
+				if !ok || kmsClient == nil || config.KMSKeyID == "" {
+					return nil, fmt.Errorf("resuming an --encrypt-manifest upload needs its KMS key and client")
+				}
+				partialManifest, downloadErr = manifest.DownloadPartialManifestFromS3WithDecryption(
+					ctx, config.S3Client.(*s3.Client), kmsClient, config.S3Bucket, config.S3Prefix, config.ResumeUploadID)
+			} else {
+				partialManifest, downloadErr = manifest.DownloadPartialManifestFromS3(
+					ctx,
+					config.S3Client.(*s3.Client),
+					config.S3Bucket,
+					config.S3Prefix,
+					config.ResumeUploadID,
+				)
+				if isNoSuchKeyErr(downloadErr) {
+					// Without the KMS settings an encrypted partial is invisible here,
+					// and the resume would restart the upload in plaintext under the
+					// same ID.
+					encKey := fmt.Sprintf("%s/uploads/%s/%s", config.S3Prefix, config.ResumeUploadID, manifest.PartialEncryptedManifestFileNameGZ)
+					if _, herr := config.S3Client.(*s3.Client).HeadObject(ctx, &s3.HeadObjectInput{
+						Bucket: aws.String(config.S3Bucket), Key: aws.String(encKey),
+					}); herr == nil {
+						return nil, fmt.Errorf("upload %s was started with --encrypt-manifest; resume it with the same KMS settings "+
+							"(refusing to write its manifest in plaintext)", config.ResumeUploadID)
+					}
+				}
+			}
+			if downloadErr == nil && partialManifest.Encryption != nil &&
+				partialManifest.Encryption.ManifestEncrypted && !config.EncryptManifest {
+				// The upload was started with --encrypt-manifest; resuming it
+				// without would write its manifest in plaintext.
+				return nil, fmt.Errorf("upload %s was started with --encrypt-manifest; resume it with the same KMS settings "+
+					"(refusing to write its manifest in plaintext)", config.ResumeUploadID)
+			}
 			switch {
 			case downloadErr == nil:
 				// Create builder from existing manifest
@@ -999,17 +1030,24 @@ func (p *Pipeline) uploadManifest(ctx context.Context) error {
 	s3Client := p.config.S3Client.(*s3.Client)
 
 	// Check if manifest encryption is enabled (Issue #163)
-	if p.config.EncryptManifest && p.config.KMSKeyID != "" && p.config.KMSClient != nil {
-		// Get KMS client from config (implements encryption.KMSClient interface)
-		kmsClient := p.config.KMSClient.(*kms.Client)
-
-		// Update manifest encryption metadata with KMS key ID for manifest
-		if manifestData.Encryption != nil {
-			manifestData.Encryption.ManifestKMSKeyID = p.config.KMSKeyID
+	//
+	// #913: an --encrypt-manifest upload that can't be encrypted fails. It used to
+	// fall through to a plaintext upload whenever the KMS client or key was
+	// missing, and UploadToS3WithEncryption also went plaintext when the manifest
+	// had lost its Encryption block, as every resumed upload's had.
+	if p.config.EncryptManifest {
+		kmsClient, err := p.manifestKMS()
+		if err != nil {
+			return err
 		}
+		if manifestData.Encryption == nil {
+			manifestData.Encryption = &manifest.EncryptionMetadata{Enabled: true}
+		}
+		manifestData.Encryption.ManifestEncrypted = true
+		manifestData.Encryption.ManifestKMSKeyID = p.config.KMSKeyID
 
 		// Upload with encryption
-		err := manifestData.UploadToS3WithEncryption(ctx, s3Client, kmsClient, true)
+		err = manifestData.UploadToS3WithEncryption(ctx, s3Client, kmsClient, true)
 		if err != nil {
 			return fmt.Errorf("failed to upload encrypted manifest: %w", err)
 		}
@@ -1092,14 +1130,25 @@ func (p *Pipeline) savePartialManifest(ctx context.Context) error {
 		return nil
 	}
 
-	// Serialize to JSON and compress with gzip
-	manifestBytes, err := manifestData.ToJSONCompressed()
+	// Serialize to JSON and compress with gzip. #913: an --encrypt-manifest
+	// upload's partial manifest is encrypted too; it used to be written in
+	// plaintext, leaving the full file list readable for an interrupted upload.
+	var manifestBytes []byte
+	var err error
+	if p.config.EncryptManifest {
+		kmsClient, kerr := p.manifestKMS()
+		if kerr != nil {
+			return kerr
+		}
+		manifestBytes, err = manifestData.EncryptedPartialBytes(ctx, kmsClient, p.config.KMSKeyID)
+	} else {
+		manifestBytes, err = manifestData.ToJSONCompressed()
+	}
 	if err != nil {
 		return fmt.Errorf("failed to serialize partial manifest: %w", err)
 	}
 
-	// Construct S3 key: prefix/uploads/{uploadID}/manifest.partial.json.gz
-	s3Key := fmt.Sprintf("%s/uploads/%s/manifest.partial.json.gz", p.config.S3Prefix, p.config.UploadID)
+	s3Key := p.partialManifestKeys()[0]
 
 	// Upload to S3 using the same S3 client (#384: transfermanager).
 	s3Client := p.config.S3Client.(*s3.Client)
@@ -1212,18 +1261,42 @@ func (p *Pipeline) deletePartialManifest(ctx context.Context) {
 	if !p.config.EnablePartialManifest || p.manifestBuilder == nil || !p.config.UseRealS3 {
 		return
 	}
-	s3Key := fmt.Sprintf("%s/uploads/%s/manifest.partial.json.gz", p.config.S3Prefix, p.config.UploadID)
 	s3Client := p.config.S3Client.(*s3.Client)
-
-	_, err := s3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
-		Bucket: aws.String(p.config.S3Bucket),
-		Key:    aws.String(s3Key),
-	})
-
-	if err != nil {
-		// Log warning but don't fail - partial manifest cleanup is non-critical
-		fmt.Printf("Warning: Failed to delete partial manifest: %v\n", err)
+	for _, s3Key := range p.partialManifestKeys() {
+		_, err := s3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
+			Bucket: aws.String(p.config.S3Bucket),
+			Key:    aws.String(s3Key),
+		})
+		if err != nil {
+			// Log warning but don't fail - partial manifest cleanup is non-critical
+			fmt.Printf("Warning: Failed to delete partial manifest: %v\n", err)
+		}
 	}
+}
+
+// partialManifestKeys lists the partial manifest objects this upload may have
+// written, the one it writes first. An --encrypt-manifest upload writes the
+// encrypted partial, and also cleans up a plaintext one left by a run before
+// #913, which exposed the file list.
+func (p *Pipeline) partialManifestKeys() []string {
+	base := fmt.Sprintf("%s/uploads/%s/", p.config.S3Prefix, p.config.UploadID)
+	if p.config.EncryptManifest {
+		return []string{base + manifest.PartialEncryptedManifestFileNameGZ, base + manifest.PartialManifestFileNameGZ}
+	}
+	return []string{base + manifest.PartialManifestFileNameGZ}
+}
+
+// manifestKMS returns the KMS client and checks the key that --encrypt-manifest
+// needs, so a missing one is an error rather than a plaintext manifest (#913).
+func (p *Pipeline) manifestKMS() (*kms.Client, error) {
+	if p.config.KMSKeyID == "" {
+		return nil, fmt.Errorf("manifest encryption is on but no KMS key is configured; refusing to write a plaintext manifest")
+	}
+	kmsClient, ok := p.config.KMSClient.(*kms.Client)
+	if !ok || kmsClient == nil {
+		return nil, fmt.Errorf("manifest encryption is on but no KMS client is configured; refusing to write a plaintext manifest")
+	}
+	return kmsClient, nil
 }
 
 // trackProgress periodically reports progress
@@ -1424,8 +1497,7 @@ func (p *Pipeline) cleanupPartialUpload(ctx context.Context) error {
 	fmt.Printf("\n🧹 Cleaning up %d partial chunks...\n", len(keys))
 
 	// Add partial manifest to cleanup list
-	partialManifestKey := fmt.Sprintf("%s/uploads/%s/manifest.partial.json.gz", p.config.S3Prefix, p.config.UploadID)
-	keys = append(keys, partialManifestKey)
+	keys = append(keys, p.partialManifestKeys()...)
 
 	// DeleteObjects supports up to 1000 keys per request
 	var deletedCount int

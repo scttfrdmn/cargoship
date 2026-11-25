@@ -191,6 +191,15 @@ name depends on compression and encryption:
 | `manifest.encrypted.json` | KMS-envelope-encrypted wrapper (plain). |
 | `manifest.encrypted.json.gz` | Encrypted wrapper, gzip-compressed. |
 
+While an upload is running, and after one is interrupted, a **partial manifest**
+records what has been stored so far so the upload can be resumed. It is removed
+when the upload completes.
+
+| Object name | Content |
+|-------------|---------|
+| `manifest.partial.json.gz` | Partial manifest, gzip-compressed JSON. |
+| `manifest.partial.encrypted.json.gz` | Partial manifest of an `--encrypt-manifest` upload: the same encrypted wrapper, gzip-compressed, bound to the identity `<upload-id>#partial` so it can't stand in for the final manifest. |
+
 ::: warning `manifest.json.gz` is **gzip**, not zstd
 The manifest uses gzip (`compress/gzip`), unlike the chunks which use zstd.
 Decompress it with `gzip -d` / `zcat`, not `zstd -d`.

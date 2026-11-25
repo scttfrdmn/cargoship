@@ -308,6 +308,12 @@ Examples:
 						resumeThis = promptForResume(detectedState)
 					}
 					if resumeThis {
+						// #913: resume with the encryption the upload started with.
+						var aerr error
+						kmsKeyID, encryptManifest, aerr = resumeEncryption(detectedState, kmsKeyID, encryptManifest)
+						if aerr != nil {
+							return aerr
+						}
 						resumeUploadID = detectedState.UploadID
 						fmt.Printf("🔄 Resuming upload %s — already-uploaded chunks will be skipped.\n\n", resumeUploadID)
 					} else if !resumeFlag && resume.ShouldPromptForResume(detectedState) {
@@ -1206,4 +1212,28 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%.1f hours", d.Hours())
 	}
 	return fmt.Sprintf("%.1f days", d.Hours()/24)
+}
+
+// resumeEncryption reconciles the encryption flags of a resuming `upload` with
+// the settings the interrupted upload started with (#913). Unset flags adopt the
+// saved ones, so resuming an --encrypt-manifest upload without repeating its
+// flags no longer writes a plaintext manifest, and resumed chunks keep their KMS
+// key. Flags that contradict the saved settings are an error.
+func resumeEncryption(state *resume.UploadState, kmsKeyID string, encryptManifest bool) (string, bool, error) {
+	if state.KMSKeyID != "" {
+		switch {
+		case kmsKeyID == "":
+			kmsKeyID = state.KMSKeyID
+		case kmsKeyID != state.KMSKeyID:
+			return "", false, fmt.Errorf("upload %s was started with --kms-key-id %s; resume it with the same key, or use --force-restart",
+				state.UploadID, state.KMSKeyID)
+		}
+	}
+	if state.EncryptManifest {
+		if kmsKeyID == "" {
+			return "", false, fmt.Errorf("upload %s was started with --encrypt-manifest but its saved state has no KMS key", state.UploadID)
+		}
+		encryptManifest = true
+	}
+	return kmsKeyID, encryptManifest, nil
 }

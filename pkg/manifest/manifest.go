@@ -145,6 +145,17 @@ func NewBuilderFromExisting(existing *Manifest) (*Builder, error) {
 		GitMetadata:       existing.GitMetadata,
 		DVCCompatibility:  existing.DVCCompatibility,
 		DVCPipeline:       existing.DVCPipeline,
+		// #913: these were dropped, so a resumed upload lost its encryption
+		// settings (and wrote a plaintext manifest for an --encrypt-manifest
+		// upload) and could detach from its dataset chain.
+		PreviousManifestID: existing.PreviousManifestID,
+		SyncType:           existing.SyncType,
+		DatasetID:          existing.DatasetID,
+		VersionOrdinal:     existing.VersionOrdinal,
+		WriterID:           existing.WriterID,
+		DeletedPaths:       append([]string(nil), existing.DeletedPaths...),
+		Encryption:         cloneEncryption(existing.Encryption),
+		Deduplication:      existing.Deduplication,
 	}
 
 	// #447: seed the dedup set from the preloaded files so a resumed run that
@@ -162,6 +173,15 @@ func NewBuilderFromExisting(existing *Manifest) (*Builder, error) {
 		hostname: hostname,
 		seen:     seen,
 	}, nil
+}
+
+// cloneEncryption copies e so a resumed builder can't alias the source manifest.
+func cloneEncryption(e *EncryptionMetadata) *EncryptionMetadata {
+	if e == nil {
+		return nil
+	}
+	c := *e
+	return &c
 }
 
 // storedFiles returns the entries that reached S3 (non-empty S3Key). A partial

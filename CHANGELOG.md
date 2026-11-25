@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **A resumed `--encrypt-manifest` upload stays encrypted** (#913).
+  - **Plaintext partial manifests:** the partial manifest an upload saves for resume was always
+    written in plaintext, so an interrupted encrypted upload left its full file list readable in
+    S3. It is now encrypted (`manifest.partial.encrypted.json.gz`), and a plaintext one left by an
+    earlier version is deleted when the upload completes.
+  - **Plaintext final manifest after resume:** resuming dropped the upload's encryption settings, so
+    the final manifest was written in plaintext while the success message named the encrypted file.
+    `resume` and `upload --resume` now carry the saved KMS key and `--encrypt-manifest` through.
+    Resuming an encrypted upload without its KMS settings is refused.
+  - **Silent plaintext fallback:** an upload that asks for manifest encryption but has no KMS key or
+    client now fails instead of falling back to a plaintext manifest.
+  - **Detached from its dataset:** resume also kept the upload's dataset chain (previous version,
+    dataset ID, ordinal), deletions and writer ID, which it had dropped. That could detach a resumed
+    version from its dataset.
+  - **Display crash:** `resume` no longer crashes displaying a KMS key shorter than 20 characters
+    (an alias).
 - **`--kms-key-id` now encrypts every data object, not just those written by the transporter**
   (#946). Only the optional transporter applied the key. Direct uploads (the default for up to 1000
   files), uploads with `--transporter none`, and every resumed upload stored their data with the
