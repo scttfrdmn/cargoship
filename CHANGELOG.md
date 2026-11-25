@@ -28,6 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     it's a specific key, so manifests that already recorded an alias decrypt again too. An
     encrypted manifest that exists but can't be read now reports that, with the KMS error, instead
     of claiming the manifest is missing.
+- **`migrate --delete-original` no longer deletes an archive it didn't fully migrate** (#911).
+  - **The bug:** the extractor silently skipped hard links, and the original archive was deleted
+    whenever the re-upload reported success. An archive holding a file and a hard link to it
+    migrated one of the two names and then deleted the only complete copy. Symlinks and special
+    files (devices, FIFOs) were lost the same way, and a failed write's `Close` error was ignored.
+  - **Extraction:** hard links are now restored, as a real hard link where the filesystem allows
+    it and otherwise as a copy. Entries that can't be extracted are counted and named, and the
+    `Close` error is checked.
+  - **Deleting the original:** it happens only when every extracted file is in the new upload at
+    its size and the archive held nothing the new format can't store. Otherwise the original is
+    kept, the reason is printed, and `migrate` exits non-zero.
 
 ## [0.42.0] - 2026-11-24
 

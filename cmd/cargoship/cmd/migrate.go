@@ -135,6 +135,9 @@ Examples:
 			}
 
 			if !result.Success {
+				if result.OriginalDeleteRefused != "" {
+					return fmt.Errorf("migration uploaded the data but kept the original archive: %s", result.OriginalDeleteRefused)
+				}
 				return fmt.Errorf("migration completed with errors")
 			}
 
@@ -296,6 +299,9 @@ func displayResult(result *migration.MigrateResult, sourceArchive, destination s
 	fmt.Printf("  Location: %s\n", sourceArchive)
 	if result.OriginalArchiveDeleted {
 		fmt.Printf("  Status:   🗑️  Deleted\n")
+	} else if result.OriginalDeleteRefused != "" {
+		// #911: --delete-original was asked for, but deleting would lose data.
+		fmt.Printf("  Status:   ⛔ Kept, NOT deleted: %s\n", result.OriginalDeleteRefused)
 	} else {
 		fmt.Printf("  Status:   ⚠️  Preserved (use --delete-original to remove)\n")
 	}

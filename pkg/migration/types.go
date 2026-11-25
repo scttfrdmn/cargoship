@@ -90,6 +90,11 @@ type MigrateResult struct {
 	// OriginalArchiveDeleted indicates if the original was deleted
 	OriginalArchiveDeleted bool
 
+	// OriginalDeleteRefused, when --delete-original was requested but the new
+	// upload doesn't hold everything the archive did, says why the original was
+	// kept (#911).
+	OriginalDeleteRefused string
+
 	// Errors contains any non-fatal errors encountered
 	Errors []error
 }
