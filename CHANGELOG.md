@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-encrypt them, copy them in place with SSE-KMS, or upload again.
 
 ### Fixed
+- **Encrypted manifests stay readable after their KMS alias is re-pointed** (#912).
+  - **The bug:** the manifest recorded the key ID you passed. With `--kms-key-id alias/my-key`
+    that's the alias, and `Decrypt` named it. After the alias was re-pointed to a new key (AWS's
+    manual rotation), KMS refused to decrypt, so every older encrypted manifest became unreadable,
+    though the data was intact. The decrypt error was then swallowed and reported as `NoSuchKey`,
+    which looked like a missing archive.
+  - **Now:** the manifest records the key ARN KMS actually used, and `Decrypt` names a key only when
+    it's a specific key, so manifests that already recorded an alias decrypt again too. An
+    encrypted manifest that exists but can't be read now reports that, with the KMS error, instead
+    of claiming the manifest is missing.
 - **`migrate --delete-original` no longer deletes an archive it didn't fully migrate** (#911).
   - **The bug:** the extractor silently skipped hard links, and the original archive was deleted
     whenever the re-upload reported success. An archive holding a file and a hard link to it
