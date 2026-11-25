@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -753,11 +754,16 @@ func (se *SelectiveExtractor) checkExisting(root *os.Root, destDir string, entri
 		}
 	}
 	if n > 0 {
-		return nil, fmt.Errorf("refusing to restore: %d file(s) already exist at the destination and would be replaced "+
-			"(%s); re-run with --overwrite to replace them or --skip-existing to keep them", n, strings.Join(conflicts, ", "))
+		return nil, fmt.Errorf("%w: %d file(s) already exist at the destination and would be replaced "+
+			"(%s); re-run with --overwrite to replace them or --skip-existing to keep them", ErrExistingFiles, n, strings.Join(conflicts, ", "))
 	}
 	return skip, nil
 }
+
+// ErrExistingFiles is returned (wrapped) when a restore is refused because
+// files already exist at the destination (#915). Nothing has been written, so
+// the restore can simply be retried with a policy.
+var ErrExistingFiles = errors.New("refusing to restore")
 
 // maxListedCollisions caps how many collisions the refusal names.
 const maxListedCollisions = 10

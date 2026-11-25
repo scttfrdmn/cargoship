@@ -29,6 +29,7 @@ func TestBatchRestore_ExistingFilePolicy(t *testing.T) {
 		dest, existing := setup(t)
 		_, err := NewSelectiveExtractor(m, client, 0).BatchRestore(context.Background(), targets, dest)
 		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrExistingFiles, "callers can tell a refusal from a failure")
 		assert.Contains(t, err.Error(), "notes/a.txt")
 		assert.Contains(t, err.Error(), "--overwrite")
 		got, _ := os.ReadFile(existing)
