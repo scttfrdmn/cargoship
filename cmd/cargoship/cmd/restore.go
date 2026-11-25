@@ -37,8 +37,9 @@ func NewRestoreCmd() *cobra.Command {
 		restoreDays    int32
 		noVerify       bool
 		flatten        bool
-		all            bool   // #617: restore every file in the manifest (disaster recovery)
-		datasetID      string // #521: version-aware restore
+		existing       existingFileFlags // #915
+		all            bool              // #617: restore every file in the manifest (disaster recovery)
+		datasetID      string            // #521: version-aware restore
 		version        int
 		asOfStr        string
 	)
@@ -169,7 +170,8 @@ Examples:
 			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes).
 				SetBucket(bucket).
 				SetVerify(!noVerify).
-				SetFlatten(flatten)
+				SetFlatten(flatten).
+				SetExisting(existing.policy())
 
 			// Resolve target paths/keys.
 			var targetPaths []string
@@ -344,8 +346,8 @@ Examples:
 					errs = []string{}
 				}
 				errJSON, _ := json.Marshal(errs)
-				fmt.Printf(`{"restored":%d,"failed":%d,"bytes":%d,"chunks_downloaded":%d,"retrieval_cost_usd":%.4f,"errors":%s}`+"\n",
-					stats.Restored, stats.Failed, stats.Bytes, stats.ChunksDownloaded, report.EstimatedCostUSD, errJSON)
+				fmt.Printf(`{"restored":%d,"failed":%d,"skipped":%d,"bytes":%d,"chunks_downloaded":%d,"retrieval_cost_usd":%.4f,"errors":%s}`+"\n",
+					stats.Restored, stats.Failed, stats.Skipped, stats.Bytes, stats.ChunksDownloaded, report.EstimatedCostUSD, errJSON)
 				return restoreOutcomeError(stats)
 			}
 
@@ -357,6 +359,9 @@ Examples:
 				fmt.Printf("❌ Restore failed: no files were restored\n")
 			}
 			fmt.Printf("   Files restored:    %d\n", stats.Restored)
+			if stats.Skipped > 0 {
+				fmt.Printf("   Kept (existing):   %d\n", stats.Skipped)
+			}
 			if stats.Failed > 0 {
 				fmt.Printf("   Files failed:      %d\n", stats.Failed)
 			}
@@ -386,6 +391,7 @@ Examples:
 	cmd.Flags().Int32Var(&restoreDays, "restore-days", 7, "Days to keep Glacier restored copy available")
 	cmd.Flags().BoolVar(&noVerify, "no-verify", false, "Skip restore-time checksum verification (faster, but won't detect corrupted stored data)")
 	cmd.Flags().BoolVar(&flatten, "flatten", false, "Write restored files by basename into the output dir instead of recreating their directory structure")
+	existing.add(cmd)
 	cmd.Flags().StringVar(&datasetID, "dataset-id", "", "Restore a version of this dataset (S3_URL is then the bucket/prefix); see 'cargoship dataset list'")
 	cmd.Flags().IntVar(&version, "version", 0, "With --dataset-id: the version ordinal to restore (default: latest)")
 	cmd.Flags().StringVar(&asOfStr, "as-of", "", "With --dataset-id: restore the newest version at or before this date (YYYY-MM-DD)")

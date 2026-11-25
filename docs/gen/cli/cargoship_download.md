@@ -49,9 +49,11 @@ cargoship download S3_URL OUTPUT_DIR [flags]
       --flatten          Write downloaded files by basename into the output dir instead of recreating their directory structure
   -h, --help             help for download
       --no-verify        Skip restore-time checksum verification (faster, but won't detect corrupted stored data)
+      --overwrite        Replace files that already exist at the destination (by default the restore is refused)
       --pattern string   Filter files by glob pattern (e.g., '*.log')
   -r, --region string    AWS region (default "us-west-2")
       --shard-ids ints   Comma-separated list of shard IDs to download (0-7)
+      --skip-existing    Keep files that already exist at the destination and restore the rest
       --verbose          Show verbose output (list each file as extracted)
       --workers int      Number of parallel download workers (future use) (default 4)
 ```

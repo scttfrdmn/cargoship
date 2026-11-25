@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -172,6 +173,7 @@ are accessible. If a job ID is given, only that job is checked.`,
 func newRestoreJobsDownloadCmd() *cobra.Command {
 	var cacheGB int64
 	var outputOverride string
+	var existing existingFileFlags // #915
 
 	cmd := &cobra.Command{
 		Use:   "download <job-id>",
@@ -242,7 +244,8 @@ The job must be in 'ready' status (run 'restore jobs check' first if unsure).`,
 			// one recorded in the manifest (#335).
 			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes).SetBucket(bucket).
 				SetVerify(!job.NoVerify).
-				SetFlatten(job.Flatten)
+				SetFlatten(job.Flatten).
+				SetExisting(existing.policy())
 
 			fmt.Printf("🚀 Restoring files to %s…\n", job.OutputDir)
 
@@ -263,6 +266,13 @@ The job must be in 'ready' status (run 'restore jobs check' first if unsure).`,
 			}
 
 			if err != nil {
+				if errors.Is(err, manifest.ErrExistingFiles) {
+					// #915: nothing was written; leave the job ready to retry with
+					// --overwrite or --skip-existing rather than marking it failed.
+					job.Status = restore.JobStatusReady
+					_ = store.Save(job)
+					return err
+				}
 				job.Status = restore.JobStatusFailed
 				job.Error = err.Error()
 				_ = store.Save(job)
@@ -305,6 +315,7 @@ The job must be in 'ready' status (run 'restore jobs check' first if unsure).`,
 
 	cmd.Flags().Int64Var(&cacheGB, "cache-gb", 10, "LRU chunk cache size in GB")
 	cmd.Flags().StringVar(&outputOverride, "output", "", "Restore into this directory instead of the one saved with the job")
+	existing.add(cmd)
 	return cmd
 }
 

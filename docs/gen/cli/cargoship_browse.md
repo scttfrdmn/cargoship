@@ -45,8 +45,10 @@ cargoship browse S3_URL [OUTPUT_DIR] [flags]
       --dataset-id string        Browse a version of this dataset (S3_URL is then the bucket/prefix); see 'cargoship dataset list'
   -h, --help                     help for browse
       --max-restore-cost float   Abort if estimated retrieval cost exceeds this USD amount
+      --overwrite                Replace files that already exist at the destination (by default the restore is refused)
   -r, --region string            AWS region (default "us-east-1")
       --restore-days int32       Days to keep Glacier restored copy available (default 7)
+      --skip-existing            Keep files that already exist at the destination and restore the rest
       --tier string              Glacier retrieval tier: expedited, standard (default), bulk
       --version int              With --dataset-id: the version ordinal to browse (default: latest)
       --wait                     Block until Glacier restoration completes before downloading

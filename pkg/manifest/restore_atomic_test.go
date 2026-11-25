@@ -68,7 +68,7 @@ func TestBatchRestore_FailedRestoreKeepsExistingFile(t *testing.T) {
 	precious := []byte("the user's only local copy")
 	require.NoError(t, os.WriteFile(target, precious, 0o600))
 
-	se := NewSelectiveExtractor(singleFileManifest(filePath, len(content)), client, 0)
+	se := NewSelectiveExtractor(singleFileManifest(filePath, len(content)), client, 0).SetExisting(ExistingOverwrite)
 	stats, err := se.BatchRestore(context.Background(), []string{filePath}, dest)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), stats.Failed)
@@ -92,7 +92,7 @@ func TestBatchRestore_OverwriteReplacesCompletely(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(target), 0o755))
 	require.NoError(t, os.WriteFile(target, bytes.Repeat([]byte("x"), 1000), 0o600)) // longer than content
 
-	se := NewSelectiveExtractor(singleFileManifest(filePath, len(content)), client, 0)
+	se := NewSelectiveExtractor(singleFileManifest(filePath, len(content)), client, 0).SetExisting(ExistingOverwrite)
 	stats, err := se.BatchRestore(context.Background(), []string{filePath}, dest)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), stats.Restored, "reasons: %v", stats.Errors)

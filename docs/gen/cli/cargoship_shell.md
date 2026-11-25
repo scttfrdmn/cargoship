@@ -21,7 +21,7 @@ Archive shell commands:
   find &lt;pattern&gt;    Find files by glob pattern (e.g. *.csv, data/*.parquet)
   stage list        List all DVC pipeline stages and their file counts
   stage &lt;name&gt;      List files belonging to a DVC stage
-  get &lt;file&gt; [dst]  Extract file to a local path (default: current directory)
+  get [-f] &lt;file&gt; [dst]  Extract file to a local path (default: current directory; -f replaces an existing file)
   help              Show this help
   exit / quit       Exit the shell
 

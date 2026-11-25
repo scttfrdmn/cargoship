@@ -17,6 +17,8 @@ cargoship restore jobs download <job-id> [flags]
       --cache-gb int    LRU chunk cache size in GB (default 10)
   -h, --help            help for download
       --output string   Restore into this directory instead of the one saved with the job
+      --overwrite       Replace files that already exist at the destination (by default the restore is refused)
+      --skip-existing   Keep files that already exist at the destination and restore the rest
 ```
 
 ### Options inherited from parent commands

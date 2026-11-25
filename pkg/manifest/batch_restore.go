@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -42,6 +43,9 @@ type RestoreStats struct {
 	Bytes int64
 	// ChunksDownloaded is the number of distinct S3 objects fetched.
 	ChunksDownloaded int64
+	// Skipped is the number of files not restored because a file already
+	// existed at the destination and the policy is ExistingSkip (#915).
+	Skipped int64
 	// Errors holds the reasons behind Failed, at most maxRecordedErrors of them,
 	// so a failed restore says why instead of only how many (#905).
 	Errors []string
@@ -169,6 +173,10 @@ type SelectiveExtractor struct {
 	// restores. Set with SetFlatten(true).
 	flatten bool
 
+	// existing says what to do about a file already at a destination path
+	// (#915). The zero value refuses the whole restore.
+	existing ExistingFilePolicy
+
 	// bucket overrides the bucket objects are fetched from. Empty means use
 	// manifest.Bucket, which is the historical behavior.
 	//
@@ -223,11 +231,32 @@ func (se *SelectiveExtractor) objectBucket() string {
 	return se.manifest.Bucket
 }
 
+// ExistingFilePolicy says what a restore does about a file already at a
+// destination path (#915).
+type ExistingFilePolicy int
+
+const (
+	// ExistingRefuse refuses the whole restore, listing the conflicts, and writes
+	// nothing. The default: restoring into a working copy used to replace newer
+	// local edits with the backed-up version, silently.
+	ExistingRefuse ExistingFilePolicy = iota
+	// ExistingOverwrite replaces existing files (atomically, #907).
+	ExistingOverwrite
+	// ExistingSkip keeps existing files and restores the rest.
+	ExistingSkip
+)
+
+// SetExisting sets the policy for files already at the destination. Returns
+// the receiver for chaining.
+func (se *SelectiveExtractor) SetExisting(p ExistingFilePolicy) *SelectiveExtractor {
+	se.existing = p
+	return se
+}
+
 // SetFlatten toggles flat restore layout (destDir/<basename> per file) instead
 // of the default dataset-relative layout. Returns the receiver for chaining.
 // Handy for targeted restores where the caller just wants the file(s) in one
-// directory; not recommended for full restores that contain same-named files in
-// different directories (later wins).
+// directory. Two files with the same basename are refused (#908).
 func (se *SelectiveExtractor) SetFlatten(f bool) *SelectiveExtractor {
 	se.flatten = f
 	return se
@@ -629,9 +658,18 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 	if err := se.checkOutputCollisions(root, destDir, entries); err != nil {
 		return nil, err
 	}
+	// #915: decide about files already at the destination before writing any.
+	skip, err := se.checkExisting(root, destDir, entries)
+	if err != nil {
+		return nil, err
+	}
 
 	for i, target := range targets {
 		entry := entries[i]
+		if skip[i] {
+			stats.Skipped++
+			continue
+		}
 		if entry == nil {
 			se.noteFailure(stats, 1, fmt.Errorf("%s: not found in manifest", target))
 			continue
@@ -675,6 +713,57 @@ func (se *SelectiveExtractor) BatchRestore(ctx context.Context, targets []string
 
 	return stats, nil
 }
+
+// checkExisting applies the existing-file policy (#915). It returns the indexes
+// of entries to skip, or, under ExistingRefuse, an error naming the files that
+// already exist.
+func (se *SelectiveExtractor) checkExisting(root *os.Root, destDir string, entries []*FileEntry) (map[int]bool, error) {
+	if se.existing == ExistingOverwrite {
+		return nil, nil
+	}
+	skip := map[int]bool{}
+	var conflicts []string
+	n := 0
+	seen := map[string]bool{}
+	for i, e := range entries {
+		if e == nil {
+			continue
+		}
+		out, err := se.restorePath(destDir, e.Path)
+		if err != nil {
+			continue
+		}
+		rel, err := destRelPath(destDir, out)
+		if err != nil {
+			continue
+		}
+		if _, err := root.Lstat(rel); err != nil {
+			continue
+		}
+		if se.existing == ExistingSkip {
+			skip[i] = true
+			continue
+		}
+		if seen[rel] {
+			continue
+		}
+		seen[rel] = true
+		n++
+		if len(conflicts) < maxListedCollisions {
+			conflicts = append(conflicts, rel)
+		}
+	}
+	if n > 0 {
+		return nil, fmt.Errorf("%w: %d file(s) already exist at the destination and would be replaced "+
+			"(%s); re-run with --overwrite to replace them or --skip-existing to keep them", ErrExistingFiles, n, strings.Join(conflicts, ", "))
+	}
+	return skip, nil
+}
+
+// ErrExistingFiles is returned (wrapped) when a restore is refused because
+// files already exist at the destination (#915). Nothing has been written, so
+// the restore can simply be retried with a policy.
+var ErrExistingFiles = errors.New("refusing to restore")
 
 // maxListedCollisions caps how many collisions the refusal names.
 const maxListedCollisions = 10
