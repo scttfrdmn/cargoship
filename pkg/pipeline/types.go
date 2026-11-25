@@ -41,6 +41,9 @@ type Job struct {
 	pipeReader *BufferedPipeReader // Reader side of pipe (for pool cleanup)
 	pipeWriter *BufferedPipeWriter // Writer side of pipe (for pool cleanup)
 	pipePool   *BufferedPipePool   // Pool to return pipe to after upload
+	// archiveDone is closed when the archiver goroutine writing this job's pipe
+	// has exited (#914). Nil when no goroutine writes the archive.
+	archiveDone chan struct{}
 
 	// #271: SHA-256 of the compressed archive stream, computed as the uploader
 	// reads job.Archive. Valid only after the upload has consumed the stream;
@@ -618,4 +621,21 @@ func (c *PipelineConfig) dataSSE() types.ServerSideEncryption {
 		return types.ServerSideEncryptionAwsKms
 	}
 	return ""
+}
+
+// releasePipe returns the job's pipe to its pool, but only once the archiver
+// goroutine writing it has exited (#914). The reader can drain, or be closed,
+// while that goroutine is still in its deferred tar/encoder/pipe Close.
+// Returning the pipe then let the stale writer close or write into the next
+// job's reused pipe: a panic, or an early clean EOF, which is a truncated chunk
+// with a self-consistent checksum. The caller closes the reader first, which
+// unblocks any write the goroutine is stuck in, so the wait is bounded.
+func (j *Job) releasePipe() {
+	if j.archiveDone != nil {
+		<-j.archiveDone
+	}
+	if j.pipePool != nil && j.pipeReader != nil && j.pipeWriter != nil {
+		j.pipePool.Put(j.pipeReader, j.pipeWriter)
+		j.pipeReader, j.pipeWriter = nil, nil // a second release can't Put it again
+	}
 }

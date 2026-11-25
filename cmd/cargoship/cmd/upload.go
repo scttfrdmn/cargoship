@@ -870,7 +870,8 @@ Examples:
 				if outDir == "" {
 					outDir = absPath // default: write .dvc files alongside source data
 				}
-				dvcOpts := &manifest.DVCGenerateOptions{CacheDir: dvcCacheDir}
+				dvcKept := 0
+				dvcOpts := &manifest.DVCGenerateOptions{CacheDir: dvcCacheDir, OnSkip: func(string) { dvcKept++ }}
 
 				// Retrieve the completed manifest to generate .dvc files from it.
 				// The pipeline exposes the finalized manifest via GetManifest().
@@ -880,7 +881,11 @@ Examples:
 						_, _ = fmt.Fprintf(cmd.OutOrStderr(),
 							"⚠️  DVC file generation failed: %v\n", dvcErr)
 					} else if !quiet {
-						fmt.Printf("📄 DVC files generated: %d .dvc files → %s\n\n", n, outDir)
+						fmt.Printf("📄 DVC files generated: %d .dvc files → %s\n", n, outDir)
+						if dvcKept > 0 {
+							fmt.Printf("   %d existing .dvc file(s) kept unchanged (#916)\n", dvcKept)
+						}
+						fmt.Println()
 					}
 				} else if !quiet {
 					fmt.Println("⚠️  DVC file generation skipped: manifest not available")

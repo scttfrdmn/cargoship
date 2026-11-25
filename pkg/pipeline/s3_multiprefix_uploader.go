@@ -247,9 +247,7 @@ func (s *S3MultiPrefixUploaderStage) processJob(ctx context.Context, job *Job, p
 
 		// Issue #34 Phase 1.1: Return BufferedPipe to pool after upload completes
 		// This prevents memory leak by reusing pipes instead of creating new ones
-		if job.pipePool != nil && job.pipeReader != nil && job.pipeWriter != nil {
-			job.pipePool.Put(job.pipeReader, job.pipeWriter)
-		}
+		job.releasePipe()
 	}()
 
 	// Create job span if tracing enabled (Issue #155)

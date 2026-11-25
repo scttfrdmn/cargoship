@@ -154,9 +154,12 @@ func hasChanged(local FileInfo, manifest FileEntry, opts *SyncOptions) bool {
 		return true
 	}
 
-	// ModTime change indicates possible modification
-	// Use After() to avoid false positives from clock skew
-	if local.ModTime.After(manifest.ModTime) {
+	// #918: any modification-time difference is a change, not only a newer one.
+	// After() missed a file replaced by a same-size OLDER copy (cp -p, rsync -t
+	// of an earlier version, a snapshot restore), so its current content was
+	// never backed up. Both times come from the same filesystem's stat, so clock
+	// skew doesn't enter into it.
+	if !sameModTime(local.ModTime, manifest.ModTime) {
 		return true
 	}
 
@@ -164,6 +167,23 @@ func hasChanged(local FileInfo, manifest FileEntry, opts *SyncOptions) bool {
 	// This would require computing SHA256 of local file and comparing
 	// to manifest.Checksum (when available)
 
+	return false
+}
+
+// sameModTime reports whether a local modification time matches a recorded one.
+// Besides exact equality, it accepts the recorded time truncated to a coarser
+// filesystem's precision (1µs, 1s, or FAT's 2s). Restoring onto such a filesystem
+// rounds the time down, and that must not make every restored file look changed.
+// An older copy almost never lands exactly on that truncation.
+func sameModTime(local, recorded time.Time) bool {
+	if local.Equal(recorded) {
+		return true
+	}
+	for _, d := range []time.Duration{time.Microsecond, time.Second, 2 * time.Second} {
+		if local.Equal(recorded.Truncate(d)) {
+			return true
+		}
+	}
 	return false
 }
 
