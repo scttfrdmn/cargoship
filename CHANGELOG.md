@@ -34,12 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-encrypt them, copy them in place with SSE-KMS, or upload again.
 
 ### Fixed
-- **`sync` backs up a file replaced by an older copy of the same size** (#918). A file counted as
-  changed only if its size changed or its modification time was newer. A same-size copy with an
-  older time (`cp -p`, `rsync -t` of an earlier version, a snapshot restore) looked unchanged, so
-  its current content was never uploaded. Any time difference now counts. A time that is just the
-  recorded one rounded down to a coarser filesystem's precision (1µs, 1s, FAT's 2s) still matches,
-  so restoring onto such a filesystem doesn't make every file look changed.
+- **`delete` and `dataset prune` refuse when a manifest can't be read** (#919). The guard that
+  stops `delete` from stranding a newer version that depends on the upload skipped any manifest it
+  couldn't read, and so did prune's membership scan. That covered throttling, a 403, an oversized
+  object, a KMS denial, or a corrupt file, which was even reported as missing. They then decided it
+  was safe from the readable versions alone. Now an unreadable manifest under the prefix makes
+  `delete` refuse, naming it, unless `--force`, and makes `prune` refuse. A manifest that exists but
+  can't be parsed is reported as such rather than as `NoSuchKey`.
 - **Encrypted manifests stay readable after their KMS alias is re-pointed** (#912).
   - **The bug:** the manifest recorded the key ID you passed. With `--kms-key-id alias/my-key`
     that's the alias, and `Decrypt` named it. After the alias was re-pointed to a new key (AWS's

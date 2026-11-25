@@ -104,12 +104,21 @@ Examples:
 			// version chains through would make that version unrestorable — so refuse
 			// unless --force. Enumerate decryption-aware so encrypted-manifest chains
 			// are covered too.
-			allManifests, listErr := listUploadManifests(ctx, s3Client, kmsClient, bucket, prefix)
+			allManifests, unreadable, listErr := listUploadManifestsChecked(ctx, s3Client, kmsClient, bucket, prefix)
 			if listErr != nil && !force {
 				return fmt.Errorf("unable to verify no other upload depends on %s (re-run with --force to skip this check): %w", uploadID, listErr)
 			}
 			deps := manifest.DependentUploads(m.UploadID, allManifests)
-			blocked := len(deps) > 0 && !force
+			blocked := (len(deps) > 0 || len(unreadable) > 0) && !force
+			if len(unreadable) > 0 {
+				// #919: an unreadable manifest could belong to a version that chains
+				// through this upload; deleting would strand it.
+				fmt.Printf("\n⛔ %d upload manifest(s) here exist but could not be read, so whether they depend on %s is unknown:\n   %s\n",
+					len(unreadable), m.UploadID, unreadableSummary(unreadable))
+				if force {
+					fmt.Println("   --force set: proceeding anyway — any of them that depends on this upload WILL be corrupted.")
+				}
+			}
 			if len(deps) > 0 {
 				fmt.Printf("\n⛔ %d newer upload(s) chain through %s and reference its objects:\n   %s\n",
 					len(deps), m.UploadID, strings.Join(deps, ", "))
@@ -158,6 +167,11 @@ Examples:
 
 			// #592: refuse a chain-stranding delete before touching S3.
 			if blocked {
+				if len(deps) == 0 {
+					return fmt.Errorf("refusing to delete %s: %d upload manifest(s) under this prefix could not be read, so a version that "+
+						"depends on it can't be ruled out (%s); fix access and retry, or re-run with --force to override",
+						m.UploadID, len(unreadable), unreadableSummary(unreadable))
+				}
 				return fmt.Errorf("refusing to delete %s: %d dependent upload(s) (%s) would be stranded; re-run with --force to override",
 					m.UploadID, len(deps), strings.Join(deps, ", "))
 			}
@@ -334,7 +348,40 @@ func deleteS3Objects(ctx context.Context, s3Client *s3.Client, bucket string, ke
 // included (ListAllManifests matches only the plaintext names). Uploads whose
 // manifest can't be read are skipped. Used by the #592 chain-aware delete guard
 // to walk the PreviousManifestID graph in memory.
+// unreadableManifest is an upload whose manifest exists but couldn't be read.
+type unreadableManifest struct {
+	UploadID string
+	Err      error
+}
+
+// unreadableSummary names up to five unreadable uploads with their errors.
+func unreadableSummary(u []unreadableManifest) string {
+	var parts []string
+	for i, m := range u {
+		if i == 5 {
+			parts = append(parts, fmt.Sprintf("and %d more", len(u)-5))
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s (%v)", m.UploadID, m.Err))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// listUploadManifests returns the readable manifests under prefix, skipping
+// any that can't be read. For read-only callers; anything that deletes uses
+// listUploadManifestsChecked.
 func listUploadManifests(ctx context.Context, s3Client *s3.Client, kmsClient *kms.Client, bucket, prefix string) ([]*manifest.Manifest, error) {
+	ms, _, err := listUploadManifestsChecked(ctx, s3Client, kmsClient, bucket, prefix)
+	return ms, err
+}
+
+// listUploadManifestsChecked returns the readable manifests under prefix, plus
+// the uploads whose manifest exists but couldn't be read (#919). A delete that
+// decides it's safe from the readable set alone can strand a version it
+// couldn't read: throttling, a 403, an oversized object, or a KMS denial made the
+// guard skip a dependent version, and the delete then removed chunks it needs.
+// An upload with no final manifest at all (only a partial) is not unreadable.
+func listUploadManifestsChecked(ctx context.Context, s3Client *s3.Client, kmsClient *kms.Client, bucket, prefix string) ([]*manifest.Manifest, []unreadableManifest, error) {
 	listPrefix := prefix
 	if listPrefix != "" && !strings.HasSuffix(listPrefix, "/") {
 		listPrefix += "/"
@@ -350,7 +397,7 @@ func listUploadManifests(ctx context.Context, s3Client *s3.Client, kmsClient *km
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to list uploads: %w", err)
+			return nil, nil, fmt.Errorf("failed to list uploads: %w", err)
 		}
 		for _, obj := range page.Contents {
 			key := aws.ToString(obj.Key)
@@ -376,12 +423,16 @@ func listUploadManifests(ctx context.Context, s3Client *s3.Client, kmsClient *km
 	}
 
 	var manifests []*manifest.Manifest
+	var unreadable []unreadableManifest
 	for _, id := range ids {
 		m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, prefix, id)
 		if err != nil {
-			continue // unreadable upload — skip; the guard errs toward the readable set
+			if !manifest.IsNotFound(err) {
+				unreadable = append(unreadable, unreadableManifest{UploadID: id, Err: err})
+			}
+			continue
 		}
 		manifests = append(manifests, m)
 	}
-	return manifests, nil
+	return manifests, unreadable, nil
 }

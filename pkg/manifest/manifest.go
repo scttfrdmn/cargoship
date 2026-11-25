@@ -841,15 +841,24 @@ func (m *Manifest) UploadToS3WithEncryption(ctx context.Context, s3Client *s3.Cl
 }
 
 // DownloadFromS3 downloads a manifest from S3
+//
+// #919: a compressed manifest that exists but can't be read (corrupt, a 403,
+// throttling) is an error. It used to fall through to the uncompressed name and
+// report NoSuchKey, so a damaged manifest looked absent, and the delete chain
+// guard skipped it as if the version didn't exist.
 func DownloadFromS3(ctx context.Context, s3Client *s3.Client, bucket, prefix, uploadID string) (*Manifest, error) {
 	// Try compressed version first
 	key := fmt.Sprintf("%s/uploads/%s/%s", prefix, uploadID, ManifestFileNameGZ)
 	data, err := downloadS3Object(ctx, s3Client, bucket, key)
 	if err == nil {
 		manifest, err := FromJSONCompressed(data)
-		if err == nil {
-			return manifest, nil
+		if err != nil {
+			return nil, fmt.Errorf("manifest s3://%s/%s exists but could not be parsed: %w", bucket, key, err)
 		}
+		return manifest, nil
+	}
+	if !isNotFound(err) {
+		return nil, fmt.Errorf("download manifest s3://%s/%s: %w", bucket, key, err)
 	}
 
 	// Fall back to uncompressed version
