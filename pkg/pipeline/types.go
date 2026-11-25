@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
 	"github.com/scttfrdmn/cargoship/pkg/config"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
@@ -274,7 +276,9 @@ type PipelineConfig struct {
 	S3StorageClass       string               // S3 storage class (STANDARD, INTELLIGENT_TIERING, etc.)
 	TierSelector         *StorageTierSelector // Issue #32: Automatic storage tier selection (nil = disabled, uses S3StorageClass)
 	TierChunkingStrategy string               // Issue #164: Tier chunking strategy ("youngest-file" = v1 default, "tier-aware" = v2 opt-in)
-	S3SSEKMSKeyId        string               // Optional KMS key ID for encryption
+	// Deprecated: S3SSEKMSKeyId was never read (#946); set KMSKeyID. It is still
+	// honoured as a fallback so existing callers don't silently lose encryption.
+	S3SSEKMSKeyId string
 
 	// Encryption configuration (Issue #163)
 	KMSKeyID        string      // KMS key ID or ARN for data chunk encryption
@@ -596,4 +600,22 @@ func (p *WorkerPool) Stop() {
 // AvailableWorkers returns the number of available workers
 func (p *WorkerPool) AvailableWorkers() int {
 	return len(p.semaphore)
+}
+
+// dataKMSKeyID is the KMS key every data object must be stored under with
+// SSE-KMS, or "" for the bucket's default encryption (#946).
+func (c *PipelineConfig) dataKMSKeyID() string {
+	if c.KMSKeyID != "" {
+		return c.KMSKeyID
+	}
+	return c.S3SSEKMSKeyId
+}
+
+// dataSSE is the server-side encryption mode for data objects: aws:kms when a
+// key is configured, otherwise unset (the bucket default).
+func (c *PipelineConfig) dataSSE() types.ServerSideEncryption {
+	if c.dataKMSKeyID() != "" {
+		return types.ServerSideEncryptionAwsKms
+	}
+	return ""
 }
