@@ -191,6 +191,19 @@ func TestDefaultStoreDir_XDGOverride(t *testing.T) {
 	assert.Contains(t, dir, os.Getenv("XDG_DATA_HOME"))
 }
 
+// TestDefaultStoreDir_HomeFallback covers the no-XDG branch against a temp HOME.
+// It used to be covered only incidentally, by tests that wrote the developer's
+// real ~/.cargoship/restore-jobs (#1048).
+func TestDefaultStoreDir_HomeFallback(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	dir, err := DefaultStoreDir()
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(home, ".cargoship", "restore-jobs"), dir)
+}
+
 func TestNewDefaultStore(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	store, err := NewDefaultStore()
