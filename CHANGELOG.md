@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-11-26
+
+Finishes the data-loss audit (#900): every remaining finding, #911–#921, is fixed, plus a
+security bug found along the way. `--kms-key-id` was applied only by the optional transporter, so
+direct uploads, `--transporter none` and resumed uploads stored data without SSE-KMS under the
+customer's key (#946). Each fix has a regression test that fails without it. **The archive and
+manifest formats are unchanged.** The partial manifest of an `--encrypt-manifest` upload is now
+encrypted too.
+
+**Behaviour change:** restore, `download`, `browse`, `restore jobs download` and shell `get` no
+longer replace existing local files. If a destination file exists the restore is refused before
+anything is written; pass `--overwrite` or `--skip-existing`. Also refused now, where they used to
+lose data:
+- `delete` and `dataset prune` when a manifest can't be read;
+- resuming an encrypted upload without its KMS settings;
+- `ghostship scuttle --purge-data` without a fleet base;
+- `migrate --delete-original` unless the new upload holds the whole archive.
+
 ### Security
 - **A resumed `--encrypt-manifest` upload stays encrypted** (#913).
   - **Plaintext partial manifests:** the partial manifest an upload saves for resume was always
@@ -32,6 +50,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   revocation. All data writes now use the key, and direct uploads also honour `--storage-class`,
   which they ignored. **Objects already uploaded keep the encryption they were stored with**: to
   re-encrypt them, copy them in place with SSE-KMS, or upload again.
+
+### Changed
+- **Restore no longer replaces existing local files unless you ask it to** (#915). This changes the
+  default behaviour.
+  - **Before:** `restore`, `download`, `browse`, `restore jobs download` and shell `get` overwrote
+    existing files with no prompt or flag, so restoring into a working copy silently replaced newer
+    local edits with the backed-up version.
+  - **Now:** if any destination file already exists, the restore is refused before anything is
+    written, and the conflicts are listed.
+  - **New flags:** `--overwrite` replaces existing files (atomically), and `--skip-existing` keeps
+    them and restores the rest. In `cargoship shell`, `get -f` overwrites. `restore --json` reports
+    `skipped`.
+  - **Restore jobs:** a job refused this way stays ready to retry with a flag.
 
 ### Fixed
 - **`sync` backs up a file replaced by an older copy of the same size** (#918). A file counted as
@@ -120,19 +151,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Deleting the original:** it happens only when every extracted file is in the new upload at
     its size and the archive held nothing the new format can't store. Otherwise the original is
     kept, the reason is printed, and `migrate` exits non-zero.
-
-### Changed
-- **Restore no longer replaces existing local files unless you ask it to** (#915). This changes the
-  default behaviour.
-  - **Before:** `restore`, `download`, `browse`, `restore jobs download` and shell `get` overwrote
-    existing files with no prompt or flag, so restoring into a working copy silently replaced newer
-    local edits with the backed-up version.
-  - **Now:** if any destination file already exists, the restore is refused before anything is
-    written, and the conflicts are listed.
-  - **New flags:** `--overwrite` replaces existing files (atomically), and `--skip-existing` keeps
-    them and restores the rest. In `cargoship shell`, `get -f` overwrites. `restore --json` reports
-    `skipped`.
-  - **Restore jobs:** a job refused this way stays ready to retry with a flag.
 
 ## [0.42.0] - 2026-11-24
 
