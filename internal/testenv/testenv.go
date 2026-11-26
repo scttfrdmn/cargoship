@@ -48,7 +48,8 @@ var (
 	initErr error
 )
 
-// Isolate points HOME, USERPROFILE and the XDG base directories at a fresh
+// Isolate points HOME, USERPROFILE, the XDG base directories and (for Windows)
+// APPDATA/LOCALAPPDATA at a fresh
 // temporary directory and, unless the run opted into real AWS, points the AWS
 // shared config and credentials files at empty files and clears AWS credential
 // variables. Go's build and module caches are pinned to their real locations
@@ -104,6 +105,9 @@ func isolate() (string, error) {
 		"XDG_CACHE_HOME":  filepath.Join(dir, ".cache"),
 		"XDG_DATA_HOME":   filepath.Join(dir, ".local", "share"),
 		"XDG_STATE_HOME":  filepath.Join(dir, ".local", "state"),
+		// Windows resolves os.UserConfigDir/UserCacheDir from these, not HOME.
+		"APPDATA":      filepath.Join(dir, "AppData", "Roaming"),
+		"LOCALAPPDATA": filepath.Join(dir, "AppData", "Local"),
 	}
 	if RealAWS() {
 		// Keep the developer's profile resolvable under the new HOME.

@@ -81,3 +81,14 @@ func TestRealAWS(t *testing.T) {
 		})
 	}
 }
+
+func TestIsolateCoversUserCacheDir(t *testing.T) {
+	Isolate()
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatalf("UserCacheDir: %v", err)
+	}
+	if !strings.HasPrefix(cache, HomeDir()) {
+		t.Fatalf("UserCacheDir %q escapes the isolated home %q", cache, HomeDir())
+	}
+}
