@@ -25,6 +25,9 @@ import (
 // every resumed upload) wrote objects without it, while the manifest recorded the
 // data as KMS-encrypted.
 func TestUpload_KMSKeyEncryptsEveryDataObject(t *testing.T) {
+	if substrateURL == "" {
+		t.Skip("needs the emulator: it creates KMS keys and uses a placeholder key ARN, which real AWS (the CI role) refuses")
+	}
 	const key = "arn:aws:kms:us-east-1:000000000000:key/cargoship-test"
 	for _, tc := range []struct {
 		name   string

@@ -28,6 +28,9 @@ import (
 // partial manifest was always plaintext, so an interrupted encrypted upload left
 // its full file list readable in S3.
 func TestResume_EncryptedUploadStaysEncrypted(t *testing.T) {
+	if substrateURL == "" {
+		t.Skip("needs the emulator: it creates KMS keys and uses a placeholder key ARN, which real AWS (the CI role) refuses")
+	}
 	bucket := os.Getenv("CARGOSHIP_TEST_BUCKET")
 	if bucket == "" {
 		bucket = "cargoship-pipeline-test"
