@@ -66,6 +66,13 @@ jobs:
       - name: Check nested modules resolve against root
         run: bash scripts/ci/check-nested-modules.sh
 
+      # The suite used to write the developer's real ~/.cargoship.yaml,
+      # ~/.cargoship-context and resume state, and could load a real AWS profile
+      # (#1048). Every test package linking home-reading code (or the AWS SDK
+      # config loader) must isolate itself via internal/testenv.
+      - name: Check test packages isolate HOME
+        run: bash scripts/ci/check-test-home-isolation.sh
+
       # Anti-theater ratchet (#424 audit): fail on NEW stub/mock/fabricated-metric
       # markers in production code. Known, tracked instances are allowlisted in
       # scripts/ci/theater-allowlist.txt and burn down as each is wired or deleted.
