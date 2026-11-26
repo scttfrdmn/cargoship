@@ -42,6 +42,9 @@ func TestShouldCompress_CRAMMagic(t *testing.T) {
 // an unknown extension and no magic match, but incompressible content, is probed
 // and stored frameless; a compressible one of the same shape is still compressed;
 // a SMALL incompressible one is below the probe threshold and left compressible.
+// noMagicPrefix starts test data that must not look like any known file type.
+var noMagicPrefix = []byte("cargoship-test-data:")
+
 func TestShouldCompress_LargeIncompressibleProbe(t *testing.T) {
 	dir := t.TempDir()
 
@@ -50,6 +53,10 @@ func TestShouldCompress_LargeIncompressibleProbe(t *testing.T) {
 	buf := make([]byte, 9<<20)
 	_, err := rand.Read(buf)
 	require.NoError(t, err)
+	// Random bytes occasionally start with a file signature ("MZ" is 1 in 65,536)
+	// and get classified by magic instead of by the probe. A fixed prefix that
+	// matches no signature keeps the test deterministic.
+	copy(buf, noMagicPrefix)
 	require.NoError(t, os.WriteFile(incompressible, buf, 0o600))
 
 	should, reason := NewCompressionDetector().ShouldCompress(incompressible)
@@ -68,6 +75,7 @@ func TestShouldCompress_LargeIncompressibleProbe(t *testing.T) {
 	sbuf := make([]byte, 64<<10)
 	_, err = rand.Read(sbuf)
 	require.NoError(t, err)
+	copy(sbuf, noMagicPrefix)
 	require.NoError(t, os.WriteFile(small, sbuf, 0o600))
 	should, reason = NewCompressionDetector().ShouldCompress(small)
 	assert.True(t, should, "a small file is not probed")
