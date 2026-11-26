@@ -34,6 +34,9 @@ func kmsTestClients(t *testing.T) (*s3.Client, *kms.Client) {
 // the alias was re-pointed to a new key (AWS's manual rotation), KMS refused, and
 // the failure surfaced as NoSuchKey ("manifest missing") for an intact archive.
 func TestEncryptedManifest_ReadableAfterAliasRotation(t *testing.T) {
+	if substrateURL == "" {
+		t.Skip("needs the emulator: it creates KMS keys and uses a placeholder key ARN, which real AWS (the CI role) refuses")
+	}
 	ctx := context.Background()
 	s3c, kc := kmsTestClients(t)
 	k1, err := kc.CreateKey(ctx, &kms.CreateKeyInput{})
@@ -69,6 +72,9 @@ func TestEncryptedManifest_ReadableAfterAliasRotation(t *testing.T) {
 // before #912, which recorded the alias. Decrypt omits an alias KeyId, since a
 // symmetric ciphertext identifies its own key.
 func TestEncryptedManifest_LegacyAliasRecordStillDecrypts(t *testing.T) {
+	if substrateURL == "" {
+		t.Skip("needs the emulator: it creates KMS keys and uses a placeholder key ARN, which real AWS (the CI role) refuses")
+	}
 	ctx := context.Background()
 	_, kc := kmsTestClients(t)
 	k1, err := kc.CreateKey(ctx, &kms.CreateKeyInput{})
