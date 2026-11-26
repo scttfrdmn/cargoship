@@ -34,7 +34,8 @@ release assets to find the evidence.
 
 | Version | Date | Files | Bytes | Paths | Suites | Result | Report |
 |---------|------|-------|-------|-------|--------|--------|--------|
-| v0.43.0 | 2026-11-26 | — | — | — | ⏳ Run in progress | ⏳ | [`v0.43.0-2026-11-26.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.43.0/v0.43.0-2026-11-26.md) |
+| v0.43.1 | 2026-11-26 | — | — | — | ⏳ Run in progress | ⏳ | [`v0.43.1-2026-11-26.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.43.1/v0.43.1-2026-11-26.md) |
+| v0.43.0 | 2026-11-26 | 20 | 61.01 MB | direct, chunked | 50 / 2 | ❌ Failed ([#965](https://github.com/scttfrdmn/cargoship/issues/965)) | [`v0.43.0-2026-11-26.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.43.0/v0.43.0-2026-11-26.md) |
 | v0.42.0 | 2026-11-24 | 20 | 61.01 MB | direct, chunked | 51 / 0 | ✅ Passed | [`v0.42.0-2026-11-24.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.42.0/v0.42.0-2026-11-24.md) |
 | v0.41.1 | 2026-11-20 | 20 | 61.01 MB | direct, chunked | 51 / 0 | ✅ Passed | [`v0.41.1-2026-11-20.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.41.1/v0.41.1-2026-11-20.md) |
 | v0.41.0 | 2026-11-16 | 20 | 61.01 MB | direct, chunked | 51 / 0 | ✅ Passed | [`v0.41.0-2026-11-16.md`](https://github.com/scttfrdmn/cargoship/releases/download/v0.41.0/v0.41.0-2026-11-16.md) |
@@ -93,6 +94,12 @@ being accounted for — but the numbers are deliberately left blank until the ru
 produces them, because they come from that run and cannot be known in advance.
 If a row stays pending, the run has not passed and the release should be
 treated as unverified.
+
+A row reading **❌ Failed** is kept, not removed: the run that gated that release
+failed, and its report is attached as evidence. The linked issue says why and what
+followed. v0.43.0 failed because four tests that need the local emulator also ran
+against real AWS (#965). Its corpus still round-tripped byte-identical, and v0.43.1
+ships the test fix with a passing report.
 
 The corpus is fixed, so the file and byte counts are expected to be identical
 across releases — what each row attests is that *that build* preserved them. A

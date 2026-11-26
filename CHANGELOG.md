@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.1] - 2026-11-26
+
+Identical code to v0.43.0, released so that the current version carries a passing real-AWS
+verification report.
+
+### Fixed
+- **The real-AWS verification run no longer fails on emulator-only tests** (#965, #964). v0.43.0's
+  run failed: 50 of 52 suites passed and the 20-file corpus round-tripped byte-identical. The two
+  failing suites held four KMS tests that create KMS keys and use a placeholder key ARN, which only
+  the local emulator accepts. Those tests now skip against real AWS. **No product code changed.**
+  The failed report stays attached to the v0.43.0 release, and its row in the verification table
+  is kept.
+
 ## [0.43.0] - 2026-11-26
 
 Finishes the data-loss audit (#900): every remaining finding, #911–#921, is fixed, plus a
