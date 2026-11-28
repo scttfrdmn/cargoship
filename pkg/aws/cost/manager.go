@@ -509,8 +509,12 @@ func (m *Manager) PerformScheduledTasks(ctx context.Context) error {
 	return nil
 }
 
-// checkBudgetLimits checks if the operation would exceed budget limits
+// checkBudgetLimits checks if the operation would exceed the legacy monthly
+// budget. A MaxMonthlyBudget of 0 means none is set (#1030).
 func (m *Manager) checkBudgetLimits(additionalCost float64) error {
+	if m.config.MaxMonthlyBudget <= 0 {
+		return nil
+	}
 	currentSpend := m.GetCurrentMonthSpend()
 	projectedSpend := currentSpend + additionalCost
 
