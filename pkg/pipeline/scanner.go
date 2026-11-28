@@ -2,7 +2,9 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -351,6 +353,34 @@ func (s *ScannerStage) shouldInclude(path string, rootPath string) bool {
 	return false
 }
 
+// walkError decides what the walk does with a path it could not stat or read. It
+// follows manifest.ScanLocalFilesExcluding, which computes the delta for sync, so
+// the delta and the upload agree on which files exist (#1007). The walk used to
+// fail on any error, before it looked at the exclusions:
+//   - The source root itself is always an error.
+//   - A path that vanished mid-walk is routine churn on a live filesystem and is
+//     skipped. Failing the upload on it made unattended agents flaky.
+//   - An excluded path is skipped; an excluded directory is pruned. Excluding an
+//     unreadable directory (a NAS #recycle, say) is the remedy #705's error
+//     suggests, and it used to pass the delta and then fail the upload.
+//   - Anything else (permission denied, an I/O error) fails the walk, because the
+//     source holds data the upload can't see.
+func (s *ScannerStage) walkError(rootPath, path string, info os.FileInfo, err error) error {
+	if path == rootPath {
+		return err
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if s.shouldExclude(path, rootPath) {
+		if info != nil && info.IsDir() {
+			return filepath.SkipDir
+		}
+		return nil
+	}
+	return err
+}
+
 // streamFiles streams files from the root path via a channel instead of loading all into memory
 func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan chunking.File, <-chan error) {
 	fileChan := make(chan chunking.File, 100) // Buffer for 100 files
@@ -359,7 +389,7 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 	go func() {
 		err := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
-				return err
+				return s.walkError(rootPath, path, info, err)
 			}
 
 			// Check context cancellation
@@ -369,8 +399,12 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 			default:
 			}
 
-			// Skip directories
+			// Skip directories. An excluded one is pruned, as the delta scan does
+			// (#1007), so nothing under it is read.
 			if info.IsDir() {
+				if path != rootPath && s.shouldExclude(path, rootPath) {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 
