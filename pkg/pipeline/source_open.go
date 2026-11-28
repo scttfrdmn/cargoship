@@ -23,6 +23,11 @@ import (
 // check only. Callers must Close the returned file.
 func openContainedSourceFile(sourceDir, fullPath string) (*os.File, error) {
 	if sourceDir == "" {
+		// #1010: refuse a non-regular file before opening it. Opening a FIFO blocks
+		// until a writer appears, so the check after the open came too late.
+		if fi, serr := os.Stat(fullPath); serr == nil && !fi.Mode().IsRegular() {
+			return nil, notRegularFile(fullPath, fi.Mode())
+		}
 		f, err := os.Open(fullPath) //nolint:gosec // path is from the pipeline's own scan
 		if err != nil {
 			return nil, err
@@ -47,8 +52,18 @@ func openContainedSourceFile(sourceDir, fullPath string) (*os.File, error) {
 	// scanner skips symlinks at scan time; this catches one introduced afterward.
 	// os.Root.Open additionally refuses any symlink that escapes the root, so a
 	// swap targeting a file outside the source tree fails.
-	if fi, lerr := root.Lstat(rel); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
-		return nil, fmt.Errorf("refusing to read %q: path is now a symlink (source-file TOCTOU)", fullPath)
+	//
+	// #1010: anything else that isn't a regular file is refused before the open
+	// too. Opening a FIFO blocks until a writer appears (the archiver hung on one),
+	// and opening a socket fails, so ensureRegularFile after the open was too late.
+	// The scanner skips them; this catches one introduced afterward.
+	if fi, lerr := root.Lstat(rel); lerr == nil {
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("refusing to read %q: path is now a symlink (source-file TOCTOU)", fullPath)
+		}
+		if !fi.Mode().IsRegular() {
+			return nil, notRegularFile(fullPath, fi.Mode())
+		}
 	}
 
 	f, err := root.Open(rel)
@@ -67,7 +82,12 @@ func ensureRegularFile(f *os.File, name string) error {
 	}
 	if !st.Mode().IsRegular() {
 		_ = f.Close()
-		return fmt.Errorf("refusing to read %q: not a regular file (%s)", name, st.Mode().Type())
+		return notRegularFile(name, st.Mode())
 	}
 	return nil
+}
+
+// notRegularFile is the error for a source path that isn't a regular file.
+func notRegularFile(name string, mode os.FileMode) error {
+	return fmt.Errorf("refusing to read %q: not a regular file (%s)", name, mode.Type())
 }

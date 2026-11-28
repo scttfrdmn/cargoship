@@ -535,38 +535,70 @@ func (s *ArchiverStage) Stop() error {
 }
 
 // getMmapReader gets or creates a memory-mapped reader for a file (Phase 5)
-// Returns the reader and true if mmap was used, nil and false if file is too small
+// Returns the reader, the mapped file's info and true if mmap was used, or nils
+// and false if the file is too small.
 // Issue #34 Phase 2.1: Now uses LRU cache with automatic eviction
-func (s *ArchiverStage) getMmapReader(path string) (*ioutils.MmapReader, bool, error) {
+func (s *ArchiverStage) getMmapReader(path string) (*ioutils.MmapReader, os.FileInfo, bool, error) {
 	// Try to load from cache first
-	if reader, _, ok := s.mmapCache.Get(path); ok {
-		return reader, true, nil
+	if reader, file, ok := s.mmapCache.Get(path); ok {
+		info, err := file.Stat()
+		if err != nil {
+			s.releaseMmapReader(path)
+			return nil, nil, false, err
+		}
+		return reader, info, true, nil
 	}
 
 	// Open through a root anchored at the source dir (CSH-SEC-001): a path
 	// swapped to a symlink after scanning can't redirect the read outside the tree.
 	file, err := openContainedSourceFile(s.config.SourcePath, path)
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
 
 	// Check if file is suitable for mmap
 	if !ioutils.MmapSupported(file) {
 		_ = file.Close()
-		return nil, false, nil // Too small or not regular file
+		return nil, nil, false, nil // Too small or not regular file
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, nil, false, err
 	}
 
 	// Create mmap reader
 	reader, err := ioutils.NewMmapReader(file)
 	if err != nil {
 		_ = file.Close()
-		return nil, false, err
+		return nil, nil, false, err
 	}
 
 	// Store in cache (handles LRU eviction if needed)
 	s.mmapCache.Put(path, reader, file)
 
-	return reader, true, nil
+	return reader, info, true, nil
+}
+
+// readContainedFile reads a whole source file through openContainedSourceFile,
+// and returns its contents and the opened file's info (CSH-SEC-001, #1010).
+func (s *ArchiverStage) readContainedFile(path string) ([]byte, os.FileInfo, error) {
+	f, err := openContainedSourceFile(s.config.SourcePath, path)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, nil, err
+	}
+	// Sized from the open file, as os.ReadFile does; ReadAll grows the buffer if
+	// the file has grown since.
+	buf := bytes.NewBuffer(make([]byte, 0, info.Size()+bytes.MinRead))
+	if _, err := buf.ReadFrom(f); err != nil {
+		return nil, nil, err
+	}
+	return buf.Bytes(), info, nil
 }
 
 // releaseMmapReader decrements reference count (Phase 5)
@@ -984,11 +1016,16 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, fr *framer, job *
 		go func() {
 			defer wg.Done()
 
+			// #1010: every read goes through openContainedSourceFile, like the
+			// streaming path. This path used os.Stat and os.ReadFile, which skipped
+			// the CSH-SEC-001 containment (a path swapped to a symlink after the scan
+			// was followed out of the tree) and blocked forever opening a FIFO. The
+			// header's file info now comes from the opened file, too.
 			for fd := range fileChan {
 				// Phase 5 Optimized: Use mmap for split files to enable zero-copy sharing
 				if fd.File.TotalParts > 1 {
 					// Try to use mmap for large files (shared across all parts)
-					mmapReader, usedMmap, err := s.getMmapReader(fd.Path)
+					mmapReader, info, usedMmap, err := s.getMmapReader(fd.Path)
 					if err != nil {
 						fd.Err = fmt.Errorf("failed to open file: %w", err)
 						close(fd.Done)
@@ -996,6 +1033,7 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, fr *framer, job *
 					}
 
 					if usedMmap {
+						fd.Info = info
 						// Use mmap - read directly from mapped memory at offset
 						offset := fd.File.Offset
 						length := fd.File.Length
@@ -1016,12 +1054,13 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, fr *framer, job *
 						s.releaseMmapReader(fd.Path)
 					} else {
 						// File too small for mmap - use regular read
-						data, err := os.ReadFile(fd.Path)
+						data, info, err := s.readContainedFile(fd.Path)
 						if err != nil {
 							fd.Err = fmt.Errorf("failed to read file: %w", err)
 							close(fd.Done)
 							continue
 						}
+						fd.Info = info
 
 						// Slice the data based on offset/length
 						offset := fd.File.Offset
@@ -1047,11 +1086,12 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, fr *framer, job *
 					}
 				} else {
 					// Not a split file - read entire file normally
-					data, err := os.ReadFile(fd.Path)
+					data, info, err := s.readContainedFile(fd.Path)
 					if err != nil {
 						fd.Err = fmt.Errorf("failed to read file: %w", err)
 					} else {
 						fd.Data = data
+						fd.Info = info
 					}
 				}
 
@@ -1069,17 +1109,10 @@ func (s *ArchiverStage) addFilesWithParallelIO(tw *tar.Writer, fr *framer, job *
 
 	// Process files: dispatch reads in parallel, write to tar sequentially
 	for _, file := range files {
-		// Get file info first (fast, doesn't read data)
-		info, err := os.Stat(file.Path)
-		if err != nil {
-			close(fileChan)
-			return fmt.Errorf("failed to stat file %s: %w", file.Path, err)
-		}
-
-		// Create file data structure
+		// Create file data structure; the worker fills in Info from the file it
+		// opens (#1010).
 		fd := &fileData{
 			Path: file.Path,
-			Info: info,
 			Done: make(chan struct{}),
 			File: file, // Phase 5: Store full file metadata for partial reads
 		}

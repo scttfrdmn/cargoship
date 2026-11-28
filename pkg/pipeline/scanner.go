@@ -43,6 +43,10 @@ type ScannerStage struct {
 	jobsProcessed  int64
 	bytesProcessed int64
 
+	// skippedNonRegular counts the FIFOs, sockets and device nodes the walk
+	// skipped (#1010).
+	skippedNonRegular int64
+
 	// chunkIDSeq allocates globally-unique chunk IDs across batches. The chunker
 	// numbers chunks 0..k-1 within each batch, and batches are processed
 	// concurrently; without a global sequence, chunk IDs (and therefore the
@@ -395,6 +399,16 @@ func (s *ScannerStage) walkError(rootPath, path string, info os.FileInfo, err er
 // by one; the final error counts them all (#1003).
 const maxNamedNonUTF8 = 20
 
+// maxNamedNonRegular caps how many skipped non-regular files the scan names one
+// by one before it only counts them (#1010).
+const maxNamedNonRegular = 20
+
+// SkippedNonRegular returns how many FIFOs, sockets and device nodes the scan
+// skipped (#1010).
+func (s *ScannerStage) SkippedNonRegular() int64 {
+	return atomic.LoadInt64(&s.skippedNonRegular)
+}
+
 // streamFiles streams files from the root path via a channel instead of loading all into memory
 func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan chunking.File, <-chan error) {
 	fileChan := make(chan chunking.File, 100) // Buffer for 100 files
@@ -435,6 +449,19 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 
 			// Check include filter (Issue #148: Incremental sync)
 			if !s.shouldInclude(path, rootPath) {
+				return nil
+			}
+
+			// #1010: only a regular file can be archived; the delta scan has the same
+			// rule (#693). A FIFO, socket or device node used to be chunked: opening a
+			// FIFO blocks until a writer appears, which hung the upload, and a socket
+			// can't be opened, which failed it. Each is skipped, with a warning, and
+			// counted. A symlink only gets here with FollowSymlinks, which the open
+			// enforces separately.
+			if info.Mode()&os.ModeSymlink == 0 && !info.Mode().IsRegular() {
+				if n := atomic.AddInt64(&s.skippedNonRegular, 1); n <= maxNamedNonRegular {
+					fmt.Fprintf(os.Stderr, "⚠️  Skipping %q: not a regular file (%s)\n", path, info.Mode().Type())
+				}
 				return nil
 			}
 
@@ -489,6 +516,9 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 		})
 		if err == nil && len(nonUTF8) > 0 {
 			err = &manifest.NonUTF8PathsError{Root: rootPath, Paths: nonUTF8}
+		}
+		if n := atomic.LoadInt64(&s.skippedNonRegular); n > maxNamedNonRegular {
+			fmt.Fprintf(os.Stderr, "⚠️  Skipped %d files in all that are not regular files (FIFOs, sockets, devices)\n", n)
 		}
 
 		// #1005: the error goes out before either channel closes, and errChan closes
