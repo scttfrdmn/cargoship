@@ -122,14 +122,13 @@ func (f *fakeS3) DeleteObject(_ context.Context, in *s3.DeleteObjectInput, _ ...
 	return &s3.DeleteObjectOutput{}, nil
 }
 
-// newTestS3Store wires an s3Store to a fake client with deterministic, fast
-// backoff (no real sleeps of consequence).
+// newTestS3Store wires an s3Store to a fake client.
 func newTestS3Store(f *fakeS3) *s3Store {
-	s := newS3Store(context.Background(), f, "test-bucket", ".cargoship/", nil)
-	s.baseWait = time.Microsecond
-	s.randf = func() float64 { return 1.0 }
-	return s
+	return newS3Store(context.Background(), f, "test-bucket", ".cargoship/", nil)
 }
+
+// noWait is a saveMerged backoff that does not sleep.
+func noWait(int) {}
 
 func TestParseStoreSpec(t *testing.T) {
 	cases := []struct {
@@ -185,7 +184,6 @@ func TestS3Store_SaveThenLoadRoundTrip(t *testing.T) {
 	f := newFakeS3()
 	s := newTestS3Store(f)
 
-	// Seed a fresh load so lastLoaded is set.
 	_, tok, err := s.Load()
 	require.NoError(t, err)
 
@@ -270,9 +268,10 @@ func TestS3Store_UpdateUsesIfMatch(t *testing.T) {
 	assert.True(t, sawIfMatch, "update of an existing object must use If-Match")
 }
 
-func TestS3Store_CASRetryOn412(t *testing.T) {
+// TestS3Store_412IsConflict: a failed precondition is reported as
+// ErrBudgetStoreConflict and the store does not merge on its own (#1031).
+func TestS3Store_412IsConflict(t *testing.T) {
 	f := newFakeS3()
-	// Fail the first PutObject to the project key with a 412, succeed on retry.
 	f.fail412On[".cargoship/projects/p.json"] = 1
 
 	s := newTestS3Store(f)
@@ -281,65 +280,161 @@ func TestS3Store_CASRetryOn412(t *testing.T) {
 		Version:        StoreVersion,
 		ProjectBudgets: map[string]config.ProjectBudget{"p": {ProjectID: "p", MaxBudget: 10}},
 	}, tok)
-	require.NoError(t, err, "CAS should recover after a single 412")
-	assert.GreaterOrEqual(t, f.putCount[".cargoship/projects/p.json"], 2, "should have retried the PUT")
-}
-
-func TestS3Store_CASGivesUpAfterMaxRetry(t *testing.T) {
-	f := newFakeS3()
-	s := newTestS3Store(f)
-	s.maxRetry = 2
-	_, tok, _ := s.Load()
-
-	// Always 412 on this key.
-	f.alwaysFail412[".cargoship/projects/p.json"] = true
-
-	err := s.Save(LedgerState{
-		Version:        StoreVersion,
-		ProjectBudgets: map[string]config.ProjectBudget{"p": {ProjectID: "p", MaxBudget: 10}},
-	}, tok)
-	require.Error(t, err, "persistent 412 should surface an error after maxRetry")
+	require.ErrorIs(t, err, ErrBudgetStoreConflict)
 	assert.Contains(t, err.Error(), "conditional put")
+	assert.Equal(t, 1, f.putCount[".cargoship/projects/p.json"], "the store itself must not retry")
 }
 
-// TestS3Store_RecordUnionMergeOnConflict proves the loss-free-append property:
-// when a concurrent writer changes the object between our Load and Save, the
-// 412 re-GET union-merges records so the other writer's record survives.
-func TestS3Store_RecordUnionMergeOnConflict(t *testing.T) {
+// TestSaveMerged_RecoversFromS3Conflict: saveMerged re-loads and retries after
+// a 412 and lands the change.
+func TestSaveMerged_RecoversFromS3Conflict(t *testing.T) {
+	f := newFakeS3()
+	f.fail412On[".cargoship/projects/p.json"] = 1
+	s := newTestS3Store(f)
+
+	d := diffLedger(fingerprintLedger(LedgerState{}), LedgerState{
+		ProjectBudgets: map[string]config.ProjectBudget{"p": {ProjectID: "p", MaxBudget: 10}},
+	})
+	require.NoError(t, saveMerged(s, d, noWait), "a single 412 must be retried")
+	assert.Equal(t, 2, f.putCount[".cargoship/projects/p.json"])
+
+	got, _, err := newTestS3Store(f).Load()
+	require.NoError(t, err)
+	assert.Equal(t, 10.0, got.ProjectBudgets["p"].MaxBudget)
+}
+
+// TestSaveMerged_GivesUpAfterMaxAttempts: a store that conflicts forever
+// surfaces an error that still matches ErrBudgetStoreConflict.
+func TestSaveMerged_GivesUpAfterMaxAttempts(t *testing.T) {
+	f := newFakeS3()
+	f.alwaysFail412[".cargoship/projects/p.json"] = true
+	s := newTestS3Store(f)
+
+	waits := 0
+	d := diffLedger(fingerprintLedger(LedgerState{}), LedgerState{
+		ProjectBudgets: map[string]config.ProjectBudget{"p": {ProjectID: "p", MaxBudget: 10}},
+	})
+	err := saveMerged(s, d, func(int) { waits++ })
+	require.ErrorIs(t, err, ErrBudgetStoreConflict)
+	assert.Equal(t, maxMergeSaveAttempts, f.putCount[".cargoship/projects/p.json"])
+	assert.Equal(t, maxMergeSaveAttempts-1, waits, "back off between attempts, not after the last")
+}
+
+// TestSaveMerged_ConcurrentWriterRecordSurvives proves the loss-free-append
+// property: writer B lands a record between our view and our save; our record
+// is merged onto B's object instead of replacing it.
+func TestSaveMerged_ConcurrentWriterRecordSurvives(t *testing.T) {
 	f := newFakeS3()
 	key := ".cargoship/projects/p.json"
+	budget := config.ProjectBudget{ProjectID: "p", MaxBudget: 10}
 
-	// Pre-existing object with the budget and one record from "writer B".
-	writerB := projectDoc{
+	// Our view: the budget, no records yet.
+	base := fingerprintLedger(LedgerState{ProjectBudgets: map[string]config.ProjectBudget{"p": budget}})
+	seedObject(f, key, projectDoc{
 		Version: StoreVersion,
-		Budget:  config.ProjectBudget{ProjectID: "p", MaxBudget: 10},
+		Budget:  budget,
 		Records: []CostRecord{{Timestamp: time.Unix(1, 0).UTC(), ProjectID: "p", JobID: "B", FileName: "b", Cost: 1}},
-	}
-	seedObject(f, key, writerB)
+	})
 
-	// Our store loaded an EARLIER (empty) view, then appends its own record and
-	// saves against a stale/absent etag → 412 → re-GET merges.
-	s := newTestS3Store(f)
-	// Simulate: we loaded when the object didn't exist (empty token), and our
-	// in-memory ledger has only our record.
-	s.lastLoaded = &LedgerState{Version: StoreVersion, ProjectBudgets: map[string]config.ProjectBudget{}}
-	ourRecord := CostRecord{Timestamp: time.Unix(2, 0).UTC(), ProjectID: "p", JobID: "A", FileName: "a", Cost: 2}
-	err := s.Save(LedgerState{
-		Version:        StoreVersion,
-		ProjectBudgets: map[string]config.ProjectBudget{"p": {ProjectID: "p", MaxBudget: 10}},
-		Records:        []CostRecord{ourRecord},
-	}, encodeToken(s3Token{Projects: map[string]string{}})) // empty etag → If-None-Match → 412 (object exists)
-	require.NoError(t, err)
+	ours := CostRecord{Timestamp: time.Unix(2, 0).UTC(), ProjectID: "p", JobID: "A", FileName: "a", Cost: 2}
+	d := diffLedger(base, LedgerState{
+		ProjectBudgets: map[string]config.ProjectBudget{"p": budget},
+		Records:        []CostRecord{ours},
+	})
+	require.NoError(t, saveMerged(newTestS3Store(f), d, noWait))
 
-	// Reload: BOTH records must be present.
-	s2 := newTestS3Store(f)
-	got, _, err := s2.Load()
+	got, _, err := newTestS3Store(f).Load()
 	require.NoError(t, err)
 	var jobs []string
 	for _, r := range got.Records {
 		jobs = append(jobs, r.JobID)
 	}
-	assert.ElementsMatch(t, []string{"A", "B"}, jobs, "both writers' records must survive the conflict")
+	assert.ElementsMatch(t, []string{"A", "B"}, jobs, "both writers' records must survive")
+}
+
+// TestS3Store_SkipsUnchangedObjects: a save that changes one project rewrites
+// only that object, so writers touching different projects do not conflict.
+func TestS3Store_SkipsUnchangedObjects(t *testing.T) {
+	f := newFakeS3()
+	s := newTestS3Store(f)
+	_, tok, err := s.Load()
+	require.NoError(t, err)
+	require.NoError(t, s.Save(LedgerState{
+		Version: StoreVersion,
+		ProjectBudgets: map[string]config.ProjectBudget{
+			"a": {ProjectID: "a", MaxBudget: 1},
+			"b": {ProjectID: "b", MaxBudget: 2},
+		},
+	}, tok))
+
+	state, tok, err := s.Load()
+	require.NoError(t, err)
+	state.ProjectBudgets["a"] = config.ProjectBudget{ProjectID: "a", MaxBudget: 5}
+	before := map[string]int{}
+	for k, v := range f.putCount {
+		before[k] = v
+	}
+	require.NoError(t, s.Save(state, tok))
+	assert.Equal(t, before[".cargoship/projects/a.json"]+1, f.putCount[".cargoship/projects/a.json"], "the changed object is written")
+	assert.Equal(t, before[".cargoship/projects/b.json"], f.putCount[".cargoship/projects/b.json"], "an unchanged object is not rewritten")
+	assert.Equal(t, before[".cargoship/global.json"], f.putCount[".cargoship/global.json"])
+}
+
+// TestS3Store_CorruptObjectRefused: an unparseable object is an error matching
+// ErrBudgetStoreCorrupt that names it, even with a local mirror to fall back on.
+func TestS3Store_CorruptObjectRefused(t *testing.T) {
+	isolateBudgetStore(t)
+	f := newFakeS3()
+	key := ".cargoship/projects/p.json"
+	f.objects[key] = []byte(`{"version": 1, "budget": {`)
+	f.etags[key] = `"etag-corrupt"`
+
+	s := newS3Store(context.Background(), f, "test-bucket", ".cargoship/", &localStore{})
+	_, _, err := s.Load()
+	require.ErrorIs(t, err, ErrBudgetStoreCorrupt)
+	assert.Contains(t, err.Error(), "s3://test-bucket/"+key)
+
+	d := diffLedger(fingerprintLedger(LedgerState{}), LedgerState{
+		ProjectBudgets: map[string]config.ProjectBudget{"q": {ProjectID: "q", MaxBudget: 1}},
+	})
+	require.ErrorIs(t, saveMerged(s, d, noWait), ErrBudgetStoreCorrupt)
+	assert.Equal(t, `{"version": 1, "budget": {`, string(f.objects[key]), "never overwritten")
+	assert.Zero(t, f.puts, "nothing is written over an unreadable store")
+}
+
+// TestS3Store_RecordInTwoObjectsCountsOnce: a record left in both global.json
+// and a project object by an interrupted move is loaded once.
+func TestS3Store_RecordInTwoObjectsCountsOnce(t *testing.T) {
+	f := newFakeS3()
+	r := CostRecord{Timestamp: time.Unix(5, 0).UTC(), ProjectID: "p", JobID: "j", FileName: "f", Cost: 3}
+	seedObject(f, ".cargoship/global.json", globalDoc{Version: StoreVersion, Records: []CostRecord{r}})
+	seedObject(f, ".cargoship/projects/p.json", projectDoc{
+		Version: StoreVersion,
+		Budget:  config.ProjectBudget{ProjectID: "p", MaxBudget: 10},
+		Records: []CostRecord{r},
+	})
+
+	got, _, err := newTestS3Store(f).Load()
+	require.NoError(t, err)
+	assert.Len(t, got.Records, 1)
+}
+
+// TestS3Store_RemoveBudgetDeleteFailureIsReturned: if the removed project's
+// object can't be deleted, Save fails (the next Load would resurrect it).
+func TestS3Store_RemoveBudgetDeleteFailureIsReturned(t *testing.T) {
+	f := newFakeS3()
+	seedObject(f, ".cargoship/projects/p.json", projectDoc{
+		Version: StoreVersion,
+		Budget:  config.ProjectBudget{ProjectID: "p", MaxBudget: 10},
+	})
+	s := newTestS3Store(f)
+	_, tok, err := s.Load()
+	require.NoError(t, err)
+
+	s.client = &failDeleteS3{fakeS3: f}
+	err = s.Save(LedgerState{Version: StoreVersion, ProjectBudgets: map[string]config.ProjectBudget{}}, tok)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "delete .cargoship/projects/p.json")
 }
 
 func TestS3Store_NoSuchKeyIsAbsent(t *testing.T) {
@@ -349,14 +444,6 @@ func TestS3Store_NoSuchKeyIsAbsent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, body)
 	assert.Empty(t, etag)
-}
-
-func TestUnionRecords_Dedup(t *testing.T) {
-	a := CostRecord{Timestamp: time.Unix(1, 0).UTC(), JobID: "j", FileName: "f"}
-	b := CostRecord{Timestamp: time.Unix(2, 0).UTC(), JobID: "k", FileName: "g"}
-	// a appears in both slices → deduped to one.
-	out := unionRecords([]CostRecord{a}, []CostRecord{a, b})
-	assert.Len(t, out, 2)
 }
 
 func TestValidateProjectID(t *testing.T) {
@@ -386,6 +473,15 @@ func (h *headerSpyS3) PutObject(ctx context.Context, in *s3.PutObjectInput, optF
 		h.onPut(in)
 	}
 	return h.fakeS3.PutObject(ctx, in, optFns...)
+}
+
+// failDeleteS3 wraps a fakeS3 so every DeleteObject fails.
+type failDeleteS3 struct {
+	*fakeS3
+}
+
+func (failDeleteS3) DeleteObject(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error) {
+	return nil, fmt.Errorf("access denied")
 }
 
 func seedObject(f *fakeS3, key string, doc any) {
