@@ -369,3 +369,15 @@ func TestRecordUploadOutcome_AssemblesFromManifest(t *testing.T) {
 	assert.Greater(t, o.ThroughputMBps, 0.0)
 	assert.True(t, o.Success)
 }
+
+// TestTransporterS3Config_CarriesStorageClass pins the CLI half of #1000: the
+// transporter's own S3 config omitted --storage-class, so a transporter with no
+// per-archive class stored every chunk as STANDARD.
+func TestTransporterS3Config_CarriesStorageClass(t *testing.T) {
+	for _, class := range []string{"STANDARD", "STANDARD_IA", "GLACIER_IR", "DEEP_ARCHIVE"} {
+		c := transporterS3Config("b", "key-1", class)
+		assert.Equal(t, class, string(c.StorageClass), "--storage-class must reach the transporter")
+		assert.Equal(t, "b", c.Bucket)
+		assert.Equal(t, "key-1", c.KMSKeyID)
+	}
+}
