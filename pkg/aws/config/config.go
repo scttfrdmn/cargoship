@@ -83,6 +83,7 @@ type GlobalBudget struct {
 type CostControlConfig struct {
 	// DEPRECATED: Maximum monthly budget (USD) - Use BudgetPeriods instead for flexible periods
 	// Kept for backward compatibility. If set, creates a default monthly budget period.
+	// 0 (the default) means no monthly budget: nothing is enforced (#988).
 	MaxMonthlyBudget float64 `yaml:"max_monthly_budget,omitempty" json:"max_monthly_budget,omitempty"`
 
 	// DEPRECATED: Alert threshold (0.0-1.0, percentage of budget) - Use BudgetPeriods instead
@@ -406,7 +407,9 @@ func DefaultAWSConfig() *AWSConfig {
 			Concurrency:        8,
 		},
 		CostControl: CostControlConfig{
-			MaxMonthlyBudget:    1000.0,
+			// No monthly budget by default: an unset budget is unlimited, so an
+			// upload is never refused unless the user set a cap (#988).
+			MaxMonthlyBudget:    0,
 			AlertThreshold:      0.8,
 			AutoOptimize:        true,
 			RequireApprovalOver: 500.0,

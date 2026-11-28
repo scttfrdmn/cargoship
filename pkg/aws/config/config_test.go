@@ -35,8 +35,9 @@ func TestDefaultAWSConfig(t *testing.T) {
 		t.Errorf("DefaultAWSConfig() S3.Concurrency = %v, want 8", config.S3.Concurrency)
 	}
 
-	if config.CostControl.MaxMonthlyBudget != 1000.0 {
-		t.Errorf("DefaultAWSConfig() CostControl.MaxMonthlyBudget = %v, want 1000.0", config.CostControl.MaxMonthlyBudget)
+	// #988: no hidden monthly cap; an unset budget is unlimited.
+	if config.CostControl.MaxMonthlyBudget != 0 {
+		t.Errorf("DefaultAWSConfig() CostControl.MaxMonthlyBudget = %v, want 0 (unset)", config.CostControl.MaxMonthlyBudget)
 	}
 
 	if config.CostControl.AlertThreshold != 0.8 {
@@ -316,9 +317,9 @@ func TestS3ConfigDefaults(t *testing.T) {
 func TestCostControlDefaults(t *testing.T) {
 	config := DefaultAWSConfig()
 
-	// Test CostControl defaults
-	if config.CostControl.MaxMonthlyBudget <= 0 {
-		t.Errorf("CostControl.MaxMonthlyBudget should be > 0, got %v", config.CostControl.MaxMonthlyBudget)
+	// Test CostControl defaults. MaxMonthlyBudget is unset (0 = no cap, #988).
+	if config.CostControl.MaxMonthlyBudget != 0 {
+		t.Errorf("CostControl.MaxMonthlyBudget should default to 0 (unset), got %v", config.CostControl.MaxMonthlyBudget)
 	}
 	if config.CostControl.AlertThreshold < 0 || config.CostControl.AlertThreshold > 1 {
 		t.Errorf("CostControl.AlertThreshold should be between 0 and 1, got %v", config.CostControl.AlertThreshold)
