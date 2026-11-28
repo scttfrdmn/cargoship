@@ -211,7 +211,7 @@ Exit Codes:
 				// recompute checksums to confirm the DATA matches the manifest,
 				// not just that the manifest is internally consistent.
 				if deep {
-					if err := runDeepVerify(ctx, s3Client, m, bucket, verbose); err != nil {
+					if err := runDeepVerify(ctx, s3Client, m, bucket, prefix, verbose); err != nil {
 
 						// runDeepVerify prints its own per-file diagnostics, so
 						// report failure by exit code alone. Returning instead of
@@ -309,11 +309,12 @@ func deepVerifyPassed(chunks *manifest.DeepVerifyResult, files *manifest.FilesVe
 // runDeepVerify re-downloads each chunk object, recomputes its checksum, and
 // compares it to the manifest. It prints a per-chunk report and returns an
 // error if any chunk is corrupted, missing, or unverifiable (#271).
-// bucket is where the manifest was actually read from; chunk objects are fetched
-// there rather than from the name recorded inside the manifest. A deep verify
-// that silently read the ORIGINAL bucket would report a copied archive as intact
-// without touching a byte of it (#335).
-func runDeepVerify(ctx context.Context, s3Client manifest.S3Downloader, m *manifest.Manifest, bucket string, verbose bool) error {
+// bucket and prefix are where the manifest was actually read from; chunk objects
+// are fetched there rather than from the location recorded inside the manifest.
+// A deep verify that silently read the ORIGINAL would report a copied archive as
+// intact without touching a byte of it (#335 for the bucket, #1032 for the
+// prefix).
+func runDeepVerify(ctx context.Context, s3Client manifest.S3Downloader, m *manifest.Manifest, bucket, prefix string, verbose bool) error {
 	fmt.Printf("🔬 Deep verification: re-downloading and checksumming stored data...\n")
 	if m.ChecksumAlgorithm == "" {
 		fmt.Printf("⚠️  This manifest predates checksum capture (no algorithm recorded).\n")
@@ -322,7 +323,7 @@ func runDeepVerify(ctx context.Context, s3Client manifest.S3Downloader, m *manif
 		fmt.Printf("   Algorithm: %s | Chunks: %d\n\n", m.ChecksumAlgorithm, len(m.Chunks))
 	}
 
-	verifier := manifest.NewDeepVerifier(m, s3Client).SetBucket(bucket)
+	verifier := manifest.NewDeepVerifier(m, s3Client).SetBucket(bucket).SetPrefix(prefix)
 	result, err := verifier.VerifyChunks(ctx)
 	if err != nil {
 		fmt.Printf("❌ Deep verification aborted: %v\n", err)

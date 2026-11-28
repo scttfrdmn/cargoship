@@ -164,11 +164,12 @@ Examples:
 			}
 
 			maxCacheBytes := cacheGB * 1024 * 1024 * 1024
-			// SetBucket: fetch from the bucket the manifest was just read from,
-			// not the stale name recorded inside it, so a copied or replicated
-			// archive restores from where it actually is (#335).
+			// SetBucket/SetPrefix: fetch from where the manifest was just read,
+			// not the stale location recorded inside it, so a copied or
+			// replicated archive restores from where it actually is (#335, #1032).
 			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes).
 				SetBucket(bucket).
+				SetPrefix(actualPrefix).
 				SetVerify(!noVerify).
 				SetFlatten(flatten).
 				SetExisting(existing.policy())
