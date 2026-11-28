@@ -72,4 +72,16 @@ func TestFilterFiles_UnchangedSubdirectoryFileSkipped(t *testing.T) {
 	files, err := s.FilterFiles(dir)
 	require.NoError(t, err)
 	assert.Empty(t, files, "an unchanged file in a subdirectory must be skipped")
+
+	// A manifest with no SourcePath records OS-native relative paths, which
+	// RelativeToSource passes through unchanged (backslashes on Windows). They
+	// must match too: normalizing only the lookup side broke this shape on
+	// Windows (TestShouldUpload_ConcurrentSafe).
+	s, err = NewIncrementalScanner(&manifest.Manifest{Files: []manifest.FileEntry{
+		{Path: filepath.Join("data", "nested", "table.csv"), Size: fi.Size(), ModTime: fi.ModTime()},
+	}}, "")
+	require.NoError(t, err)
+	files, err = s.FilterFiles(dir)
+	require.NoError(t, err)
+	assert.Empty(t, files, "an unchanged file recorded by OS-native relative path must be skipped")
 }

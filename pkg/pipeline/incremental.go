@@ -73,10 +73,13 @@ func NewIncrementalScanner(prev *manifest.Manifest, cacheFile string) (*Incremen
 
 	// Build O(1) path index from previous manifest entries, keyed by the
 	// source-relative path so lookups by relPath match; FileEntry.Path is stored as
-	// the full (source-prefixed) walked path (#624).
+	// the full (source-prefixed) walked path (#624). Keys are slash-separated on
+	// every OS, as ShouldUpload looks them up: RelativeToSource returns the
+	// entry's path unchanged when there is no SourcePath or the entry lies
+	// outside it, and on Windows that path carries backslashes.
 	fileIndex := make(map[string]manifest.FileEntry, len(prev.Files))
 	for _, f := range prev.Files {
-		fileIndex[manifest.RelativeToSource(prev.SourcePath, f.Path)] = f
+		fileIndex[filepath.ToSlash(manifest.RelativeToSource(prev.SourcePath, f.Path))] = f
 	}
 
 	return &IncrementalScanner{
@@ -96,8 +99,8 @@ func NewIncrementalScanner(prev *manifest.Manifest, cacheFile string) (*Incremen
 // ShouldUpload is safe to call concurrently from multiple goroutines.
 func (s *IncrementalScanner) ShouldUpload(absPath, relPath string) bool {
 	// Tier 1: existence check against previous manifest. The index is keyed by
-	// slash-separated paths (RelativeToSource); the walk gives the OS separator,
-	// so on Windows every file in a subdirectory missed and looked new.
+	// slash-separated paths; the walk gives the OS separator, so on Windows every
+	// file in a subdirectory missed and looked new.
 	prev, found := s.fileIndex[filepath.ToSlash(relPath)]
 	if !found {
 		s.recordUpload(0)
