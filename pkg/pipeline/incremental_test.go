@@ -129,16 +129,18 @@ func TestShouldUpload_NoHash_SameSizeSkips(t *testing.T) {
 	dir := t.TempDir()
 	content := "fixed content"
 	absPath := writeFile(t, dir, "readme.md", content)
+	fi, err := os.Stat(absPath)
+	require.NoError(t, err)
 
 	m := makeManifest([]manifest.FileEntry{
-		// No ContentHash — size-only comparison applies.
-		{Path: "readme.md", Size: int64(len(content)), ContentHash: ""},
+		// No ContentHash — size and modification time apply (#1002).
+		{Path: "readme.md", Size: int64(len(content)), ModTime: fi.ModTime(), ContentHash: ""},
 	})
 	s, err := NewIncrementalScanner(m, "")
 	require.NoError(t, err)
 
 	assert.False(t, s.ShouldUpload(absPath, "readme.md"),
-		"no hash + same size must skip upload")
+		"no hash + same size + same mtime must skip upload")
 }
 
 // --- ShouldUpload: file missing on disk ---

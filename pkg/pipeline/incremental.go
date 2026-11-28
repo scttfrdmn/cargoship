@@ -44,7 +44,8 @@ type IncrementalStats struct {
 // without computing the more expensive subsequent checks.
 //
 // When the previous manifest contains no ContentHash for a file, tier 3 is
-// skipped and a matching size is treated as unchanged.
+// replaced by sync's rule (manifest.FileChanged): a modification-time
+// difference is a change (#1002).
 //
 // An in-memory HashCache avoids redundant disk reads across repeated calls to
 // ShouldUpload for the same file (e.g., when multiple goroutines scan concurrently).
@@ -130,7 +131,13 @@ func (s *IncrementalScanner) ShouldUpload(absPath, relPath string) bool {
 		return true
 	}
 
-	// No content hash in previous manifest: same size → treat as unchanged.
+	// No content hash in the previous manifest (the usual case, #987): sync's
+	// change rule. #1002: size alone missed every same-size in-place edit, and
+	// the new version then claimed the old bytes.
+	if manifest.FileChanged(fi.Size(), fi.ModTime(), prev) {
+		s.recordUpload(fi.Size())
+		return true
+	}
 	s.recordSkip(fi.Size())
 	return false
 }

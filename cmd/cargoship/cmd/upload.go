@@ -191,6 +191,15 @@ Examples:
 				return fmt.Errorf("shard-count must be between 0 (auto) and 32")
 			}
 
+			// #1002: --incremental without a predecessor ran a full upload
+			// labelled incremental, with no parent to chain to.
+			if incrementalMode && prevManifest == "" {
+				return fmt.Errorf("%w: --incremental requires --prev-manifest (the manifest of the upload to compare against)", ErrUsage)
+			}
+			if prevManifest != "" && !incrementalMode {
+				return fmt.Errorf("%w: --prev-manifest is only used with --incremental", ErrUsage)
+			}
+
 			// Validate encryption flags (Issue #163)
 			if encryptManifest && kmsKeyID == "" {
 				return fmt.Errorf("--encrypt-manifest requires --kms-key-id to be set")
@@ -539,32 +548,36 @@ Examples:
 
 			// Issue #179: Incremental sync — determine which files need uploading.
 			var includeOnlyFiles []string
-			var prevUploadID string
-			if incrementalMode && prevManifest != "" {
-				prev, err := manifest.LoadManifestFromFile(prevManifest)
+			var prevUploadID, datasetID string
+			var versionOrdinal int
+			if incrementalMode {
+				plan, err := planIncremental(ctx, prevManifest, absPath, func(fctx context.Context, id string) (*manifest.Manifest, error) {
+					return manifest.DownloadFromS3(fctx, s3Client, bucket, prefix, id)
+				})
 				if err != nil {
-					return fmt.Errorf("load previous manifest: %w", err)
+					return err
 				}
-				prevUploadID = prev.UploadID
-
-				incScanner, err := pipeline.NewIncrementalScanner(prev, "")
-				if err != nil {
-					return fmt.Errorf("create incremental scanner: %w", err)
-				}
-
-				toUpload, scanErr := incScanner.FilterFiles(absPath)
-				if scanErr != nil && !quiet {
-					fmt.Printf("⚠️  Incremental scan errors (proceeding): %v\n", scanErr)
-				}
-				includeOnlyFiles = toUpload
+				includeOnlyFiles = plan.files
+				prevUploadID = plan.prevUploadID
+				datasetID, versionOrdinal = plan.datasetID, plan.versionOrdinal
 
 				if !quiet {
-					stats := incScanner.Stats()
+					stats := plan.stats
 					fmt.Printf("📊 Incremental Scan:\n")
 					fmt.Printf("   Files scanned:     %d\n", stats.FilesScanned)
 					fmt.Printf("   Unchanged (skip):  %d (%.2f GB saved)\n",
 						stats.FilesSkipped, float64(stats.BytesSaved)/(1024*1024*1024))
 					fmt.Printf("   Changed (upload):  %d\n\n", stats.FilesUploaded)
+				}
+				// #1002: an empty change set means there is nothing to upload. It
+				// reached the pipeline as an empty IncludeOnlyFiles, which the
+				// scanner reads as "every file", so it ran a full upload labelled
+				// incremental.
+				if len(includeOnlyFiles) == 0 {
+					if !quiet {
+						fmt.Printf("✅ No changes since upload %s: nothing to upload.\n", prevUploadID)
+					}
+					return nil
 				}
 			}
 
@@ -650,6 +663,10 @@ Examples:
 					return "full"
 				}(),
 				PreviousUploadID: prevUploadID,
+				// #1002: the delta joins its predecessor's dataset (#521); unset, it
+				// started a new dataset of its own as v1.
+				DatasetID:      datasetID,
+				VersionOrdinal: versionOrdinal,
 
 				// v0.6.2: Advanced transporter
 				Transporter: transporter,
@@ -1135,6 +1152,44 @@ func promptForResume(state *resume.UploadState) bool {
 
 	// Empty or "y" means yes
 	return response == "" || response == "y" || response == "Y"
+}
+
+// incrementalPlan is what an `upload --incremental` run uploads and where the
+// new version sits in its dataset chain.
+type incrementalPlan struct {
+	files          []string // new or changed files, relative to the source root
+	prevUploadID   string
+	datasetID      string
+	versionOrdinal int
+	stats          pipeline.IncrementalStats
+}
+
+// planIncremental compares the source tree at absPath with the previous
+// upload's manifest (#179). A scan error fails the plan instead of proceeding
+// with a partial change list, which silently missed every change after the
+// error (#1002). The new version joins the predecessor's dataset (#521); fetch
+// reads chain members for a legacy predecessor with no recorded dataset ID.
+func planIncremental(ctx context.Context, prevManifestPath, absPath string, fetch manifest.ChainFetcher) (*incrementalPlan, error) {
+	prev, err := manifest.LoadManifestFromFile(prevManifestPath)
+	if err != nil {
+		return nil, fmt.Errorf("load previous manifest: %w", err)
+	}
+	sc, err := pipeline.NewIncrementalScanner(prev, "")
+	if err != nil {
+		return nil, fmt.Errorf("create incremental scanner: %w", err)
+	}
+	files, err := sc.FilterFiles(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("incremental scan of %s failed, so the change set is incomplete; nothing was uploaded: %w", absPath, err)
+	}
+	datasetID, ordinal := manifest.NextVersion(ctx, prev, fetch)
+	return &incrementalPlan{
+		files:          files,
+		prevUploadID:   prev.UploadID,
+		datasetID:      datasetID,
+		versionOrdinal: ordinal,
+		stats:          sc.Stats(),
+	}, nil
 }
 
 // recordUploadCost records a completed upload's cost against its project budget
