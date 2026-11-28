@@ -48,7 +48,7 @@ func noTempFiles(t *testing.T, dir string) {
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	for _, e := range entries {
-		assert.False(t, strings.HasPrefix(e.Name(), ".cargoship-restore-"), "temporary file left behind: %s", e.Name())
+		assert.False(t, strings.HasPrefix(e.Name(), restoreTempPrefix), "temporary file left behind: %s", e.Name())
 	}
 }
 
@@ -110,7 +110,7 @@ func TestAtomicFile_AbortAndCommit(t *testing.T) {
 	defer func() { _ = root.Close() }()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "f"), []byte("old"), 0o600))
 
-	a, err := createAtomic(root, "f")
+	a, err := createAtomic(root, "f", 0o644)
 	require.NoError(t, err)
 	_, err = a.Write([]byte("partial"))
 	require.NoError(t, err)
@@ -120,7 +120,7 @@ func TestAtomicFile_AbortAndCommit(t *testing.T) {
 	assert.Equal(t, "old", string(got), "abort must leave the destination untouched")
 	noTempFiles(t, dir)
 
-	a, err = createAtomic(root, "f")
+	a, err = createAtomic(root, "f", 0o644)
 	require.NoError(t, err)
 	_, err = a.Write([]byte("new"))
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestAtomicFile_AbortAndCommit(t *testing.T) {
 	noTempFiles(t, dir)
 
 	// A failed close (here: the file is already closed) must not commit.
-	a, err = createAtomic(root, "f")
+	a, err = createAtomic(root, "f", 0o644)
 	require.NoError(t, err)
 	_, err = a.Write([]byte("lost"))
 	require.NoError(t, err)
@@ -152,7 +152,7 @@ func TestWriteContained_RefusesSymlinkLeaf(t *testing.T) {
 	root, err := os.OpenRoot(dir)
 	require.NoError(t, err)
 	defer func() { _ = root.Close() }()
-	require.Error(t, writeContained(root, "link", []byte("x")))
+	require.Error(t, writeContained(root, "link", []byte("x"), 0o644))
 	got, err := os.ReadFile(filepath.Join(dir, "real"))
 	require.NoError(t, err)
 	assert.Equal(t, "keep", string(got))

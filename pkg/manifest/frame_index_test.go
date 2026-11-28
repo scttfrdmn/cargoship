@@ -46,6 +46,13 @@ func (c *offsetCounter) Write(p []byte) (int, error) {
 // offset in the uncompressed tar stream.
 func buildStdlibFramedChunk(t *testing.T, entries []framedFile, frameSize int64) ([]byte, []FrameEntry, map[string]int64) {
 	t.Helper()
+	return buildStdlibFramedChunkModes(t, entries, frameSize, nil)
+}
+
+// buildStdlibFramedChunkModes is buildStdlibFramedChunk with a tar header mode
+// per file name; a file absent from modes gets 0644.
+func buildStdlibFramedChunkModes(t *testing.T, entries []framedFile, frameSize int64, modes map[string]int64) ([]byte, []FrameEntry, map[string]int64) {
+	t.Helper()
 	var out bytes.Buffer
 	cwC := &offsetCounter{w: &out}
 	enc, err := zstd.NewWriter(cwC)
@@ -71,7 +78,11 @@ func buildStdlibFramedChunk(t *testing.T, entries []framedFile, frameSize int64)
 	}
 
 	for _, f := range entries {
-		require.NoError(t, tw.WriteHeader(&tar.Header{Name: f.name, Mode: 0644, Size: int64(len(f.content))}))
+		mode, ok := modes[f.name]
+		if !ok {
+			mode = 0644
+		}
+		require.NoError(t, tw.WriteHeader(&tar.Header{Name: f.name, Mode: mode, Size: int64(len(f.content))}))
 		offsets[f.name] = cwU.n // data starts right after the header
 		_, err := tw.Write(f.content)
 		require.NoError(t, err)
