@@ -18,6 +18,10 @@ Glacier/Deep Archive support:
   --wait        : Block until Glacier restoration completes before downloading
   --dry-run     : Show what would be restored (size, cost) without downloading
 
+  Without --wait, a restore whose chunks are still archived requests their
+  retrieval, saves a restore job, and exits 75 with nothing restored yet;
+  finish it with 'cargoship restore jobs download JOB_ID'.
+
 Budget controls:
   --max-restore-cost : Abort if estimated retrieval cost exceeds this USD limit
 

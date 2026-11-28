@@ -104,7 +104,8 @@ func TestRestoreCmd_GlacierGatesRunBeforeRetrieval(t *testing.T) {
 			wantErr: "exceeds --max-restore-cost", wantRequests: 0},
 		{name: "dry run over the cap requests nothing", flags: []string{"--dry-run", "--max-restore-cost", "0.000001"},
 			wantErr: "exceeds --max-restore-cost", wantRequests: 0},
-		{name: "a real restore requests the frozen chunk", flags: nil, wantRequests: 1},
+		{name: "a real restore requests the frozen chunk", flags: nil,
+			wantErr: "restore pending", wantRequests: 1}, // #979: exits ExitPending
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

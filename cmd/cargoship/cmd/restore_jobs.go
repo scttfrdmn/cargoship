@@ -198,7 +198,8 @@ The job must be in 'ready' status (run 'restore jobs check' first if unsure).`,
 
 			switch job.Status {
 			case restore.JobStatusPendingGlacier:
-				return fmt.Errorf("job %s is still pending Glacier restoration — run 'restore jobs check' first", jobID)
+				// #979: the same "not yet" exit code as the restore that saved it.
+				return fmt.Errorf("%w: job %s is still pending Glacier restoration — run 'restore jobs check' first", ErrPending, jobID)
 			case restore.JobStatusComplete:
 				fmt.Printf("Job %s already completed (%d files, %s).\n",
 					jobID, job.FilesRestored, humanize.Bytes(uint64(job.BytesWritten)))

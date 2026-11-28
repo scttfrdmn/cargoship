@@ -19,6 +19,11 @@ const (
 	// command or flag, a bad flag value, a missing required flag, or the wrong
 	// number of arguments.
 	ExitUsage = 2
+	// ExitPending is returned when a restore has requested a Glacier or Deep
+	// Archive retrieval that hasn't finished, so nothing is restored yet; the
+	// saved restore job (or the same restore, later) completes it (#979). 75
+	// is EX_TEMPFAIL from sysexits.h, the conventional "try again later" code.
+	ExitPending = 75
 )
 
 // ErrUsage marks an error as the caller's mistake rather than a runtime failure,
@@ -28,6 +33,11 @@ const (
 //
 //	return fmt.Errorf("%w: --bucket is required", ErrUsage)
 var ErrUsage = errors.New("usage error")
+
+// ErrPending marks a restore that is waiting on a Glacier retrieval, so main
+// exits ExitPending. Wrap it, usually together with ErrSilent once the command
+// has printed its own status (#979).
+var ErrPending = errors.New("restore pending: the Glacier retrieval has not finished")
 
 // ErrSilent reports failure through the exit code alone, for commands that have
 // already printed their own diagnostics.
@@ -77,6 +87,9 @@ var usagePatterns = []string{
 func ExitCode(err error) int {
 	if err == nil {
 		return ExitOK
+	}
+	if errors.Is(err, ErrPending) {
+		return ExitPending
 	}
 	if errors.Is(err, ErrUsage) {
 		return ExitUsage

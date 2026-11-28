@@ -196,9 +196,11 @@ Examples:
 					}
 					fmt.Println("✅ All chunks are accessible.")
 				} else {
-					fmt.Printf("\n⚠️  %d chunk(s) are not yet accessible.\n", len(report.Frozen)+len(report.InProgress))
+					fmt.Printf("\n⏳ %d chunk(s) are not yet accessible; nothing was restored.\n", len(report.Frozen)+len(report.InProgress))
 					fmt.Println("   Re-run with --wait to block until restoration completes.")
-					return nil
+					// #979: exit 75, not 0: the retrieval is requested, nothing
+					// is restored yet.
+					return fmt.Errorf("%w%w", ErrSilent, ErrPending)
 				}
 			}
 
