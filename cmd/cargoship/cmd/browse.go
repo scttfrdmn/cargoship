@@ -135,9 +135,10 @@ Examples:
 				return err
 			}
 
-			_ = outputDirHint // pre-populated in the TUI destination field if provided
-
-			result, err := tui.RunBrowser(m, s3Client)
+			// #972: the TUI only collects the selection and the destination
+			// (pre-filled from OUTPUT_DIR). The one restore is below, with the
+			// bucket override, existing-file policy and Glacier pre-flight.
+			result, err := tui.RunBrowser(m, outputDirHint)
 			if err != nil {
 				return fmt.Errorf("browser error: %w", err)
 			}

@@ -73,6 +73,10 @@ Keyboard controls:
 | `c` | Clear the selection |
 | `q` / `ctrl+c` | Quit without restoring |
 
+The output directory, when given, pre-fills the destination prompt. After you
+confirm, the browser closes and `browse` restores the selection once, with the
+same existing-file handling as `restore` (`--overwrite`, `--skip-existing`).
+
 Because `browse` restores, it supports the same Glacier options as
 [`restore`](/guides/restoring#glacier) — retrieval works even when files are in
 Glacier or Deep Archive:
