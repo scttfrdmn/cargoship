@@ -2,7 +2,9 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,6 +52,9 @@ type ScannerStage struct {
 
 	// Error from run() method
 	runError error
+
+	// batchErr is the first error a batch worker returned (guarded by mu).
+	batchErr error
 
 	// Manifest tracking (Issue #97)
 	pipeline *Pipeline // Reference to parent pipeline for manifest tracking
@@ -142,13 +147,45 @@ func (s *ScannerStage) Start(ctx context.Context) error {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		if err := s.run(s.ctx); err != nil {
-			// Store error for pipeline to check
+		// The single exit path (#1006). run returns only once every batch worker
+		// has, because they send to s.output. It used to return on a walk error
+		// without waiting, and its deferred close of the output raced their sends:
+		// "panic: send on closed channel", which crashed the upload.
+		err := s.run(s.ctx)
+
+		// Record the error before closing the output, so a consumer that sees the
+		// output close can already read it from Error().
+		s.mu.Lock()
+		s.runError = err
+		s.mu.Unlock()
+		close(s.output)
+	}()
+	return nil
+}
+
+// submitBatch hands a batch to the batch workers. The pool discards what its
+// functions return, so a batch's error is recorded here; dropping it left the
+// batch's files silently out of the upload.
+func (s *ScannerStage) submitBatch(files []chunking.File, totalSize int64) error {
+	return s.batchWorkerPool.Submit(func(ctx context.Context) error {
+		if err := s.processBatch(ctx, files, totalSize); err != nil {
 			s.mu.Lock()
-			s.runError = err
+			if s.batchErr == nil {
+				s.batchErr = err
+			}
 			s.mu.Unlock()
 		}
-	}()
+		return nil
+	})
+}
+
+// batchError returns the first error a batch worker reported.
+func (s *ScannerStage) batchError() error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.batchErr != nil {
+		return fmt.Errorf("failed to process a batch of scanned files: %w", s.batchErr)
+	}
 	return nil
 }
 
@@ -182,10 +219,10 @@ func (s *ScannerStage) Stats() StageStats {
 	return stats
 }
 
-// run executes the scanner logic with streaming file discovery
-func (s *ScannerStage) run(ctx context.Context) error {
+// run executes the scanner logic with streaming file discovery. Every return
+// waits for the batch workers first, and the caller closes the output (#1006).
+func (s *ScannerStage) run(ctx context.Context) (err error) {
 	startTime := time.Now()
-	defer close(s.output) // Close output when done
 
 	// Create stage span if tracing enabled (Issue #155)
 	if s.pipeline != nil && s.pipeline.tracer != nil {
@@ -199,6 +236,23 @@ func (s *ScannerStage) run(ctx context.Context) error {
 		}()
 	}
 
+	defer func() {
+		// Issue #34 Phase 4.1: Wait for all batch processing jobs to complete.
+		// #1006: on every path, including a walk error. The workers send to
+		// s.output, which Start closes once this returns.
+		s.batchWorkerPool.Wait()
+		if err == nil {
+			err = s.batchError()
+		}
+
+		s.mu.Lock()
+		s.stats.TotalTime = time.Since(startTime)
+		if s.stats.JobsProcessed > 0 {
+			s.stats.AverageTime = s.stats.TotalTime / time.Duration(s.stats.JobsProcessed)
+		}
+		s.mu.Unlock()
+	}()
+
 	// Stream files instead of loading all at once
 	fileChan, errChan := s.streamFiles(ctx, s.config.RootPath)
 
@@ -211,26 +265,25 @@ func (s *ScannerStage) run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case err := <-errChan:
-			if err != nil {
-				return fmt.Errorf("failed to stream files: %w", err)
-			}
 		case file, ok := <-fileChan:
 			if !ok {
-				// Channel closed, process final batch
+				// #1005: the walk is over. Its error, if any, was sent to errChan
+				// before fileChan closed, so this receive can't miss it. This loop used
+				// to select on errChan alongside fileChan, and could take the closed
+				// fileChan first and finish as if the walk had succeeded: the upload
+				// exited 0 without the files after the failure point.
+				if werr := <-errChan; werr != nil {
+					return fmt.Errorf("failed to stream files: %w", werr)
+				}
 				// Issue #34 Phase 4.1: Submit final batch to pool
 				if len(batch) > 0 {
 					batchCopy := make([]chunking.File, len(batch))
 					copy(batchCopy, batch)
-					batchSizeCopy := totalSize
-
-					if err := s.batchWorkerPool.Submit(func(ctx context.Context) error {
-						return s.processBatch(ctx, batchCopy, batchSizeCopy)
-					}); err != nil {
+					if err := s.submitBatch(batchCopy, totalSize); err != nil {
 						return err
 					}
 				}
-				goto done
+				return nil
 			}
 
 			batch = append(batch, file)
@@ -241,12 +294,9 @@ func (s *ScannerStage) run(ctx context.Context) error {
 				// Create a copy of the batch for async processing
 				batchCopy := make([]chunking.File, len(batch))
 				copy(batchCopy, batch)
-				batchSizeCopy := totalSize
 
 				// Submit to batch worker pool (non-blocking)
-				if err := s.batchWorkerPool.Submit(func(ctx context.Context) error {
-					return s.processBatch(ctx, batchCopy, batchSizeCopy)
-				}); err != nil {
+				if err := s.submitBatch(batchCopy, totalSize); err != nil {
 					return err
 				}
 
@@ -255,19 +305,6 @@ func (s *ScannerStage) run(ctx context.Context) error {
 			}
 		}
 	}
-
-done:
-	// Issue #34 Phase 4.1: Wait for all batch processing jobs to complete
-	s.batchWorkerPool.Wait()
-
-	s.mu.Lock()
-	s.stats.TotalTime = time.Since(startTime)
-	if s.stats.JobsProcessed > 0 {
-		s.stats.AverageTime = s.stats.TotalTime / time.Duration(s.stats.JobsProcessed)
-	}
-	s.mu.Unlock()
-
-	return nil
 }
 
 // shouldExclude reports whether path is excluded by the configured patterns.
@@ -316,18 +353,43 @@ func (s *ScannerStage) shouldInclude(path string, rootPath string) bool {
 	return false
 }
 
+// walkError decides what the walk does with a path it could not stat or read. It
+// follows manifest.ScanLocalFilesExcluding, which computes the delta for sync, so
+// the delta and the upload agree on which files exist (#1007). The walk used to
+// fail on any error, before it looked at the exclusions:
+//   - The source root itself is always an error.
+//   - A path that vanished mid-walk is routine churn on a live filesystem and is
+//     skipped. Failing the upload on it made unattended agents flaky.
+//   - An excluded path is skipped; an excluded directory is pruned. Excluding an
+//     unreadable directory (a NAS #recycle, say) is the remedy #705's error
+//     suggests, and it used to pass the delta and then fail the upload.
+//   - Anything else (permission denied, an I/O error) fails the walk, because the
+//     source holds data the upload can't see.
+func (s *ScannerStage) walkError(rootPath, path string, info os.FileInfo, err error) error {
+	if path == rootPath {
+		return err
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if s.shouldExclude(path, rootPath) {
+		if info != nil && info.IsDir() {
+			return filepath.SkipDir
+		}
+		return nil
+	}
+	return err
+}
+
 // streamFiles streams files from the root path via a channel instead of loading all into memory
 func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan chunking.File, <-chan error) {
 	fileChan := make(chan chunking.File, 100) // Buffer for 100 files
 	errChan := make(chan error, 1)
 
 	go func() {
-		defer close(fileChan)
-		defer close(errChan)
-
 		err := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
-				return err
+				return s.walkError(rootPath, path, info, err)
 			}
 
 			// Check context cancellation
@@ -337,8 +399,12 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 			default:
 			}
 
-			// Skip directories
+			// Skip directories. An excluded one is pruned, as the delta scan does
+			// (#1007), so nothing under it is read.
 			if info.IsDir() {
+				if path != rootPath && s.shouldExclude(path, rootPath) {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 
@@ -393,9 +459,14 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 			return nil
 		})
 
+		// #1005: the error goes out before either channel closes, and errChan closes
+		// before fileChan, so a receiver that sees fileChan close finds the error
+		// waiting in errChan. errChan is buffered, so the send never blocks.
 		if err != nil {
 			errChan <- err
 		}
+		close(errChan)
+		close(fileChan)
 	}()
 
 	return fileChan, errChan
