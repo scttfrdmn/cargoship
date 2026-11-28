@@ -114,14 +114,16 @@ func (e *VolumeQuotaExceededError) Error() string {
 	)
 }
 
-// CheckProjectBudget checks if a project would exceed its budget OR volume quota
-// Returns nil if within limits, BudgetExceededError or VolumeQuotaExceededError otherwise
+// CheckProjectBudget checks if a project would exceed its cost budget, then the
+// global cost limits. A cost limit of 0 means unlimited (#1030), so a
+// volume-only budget (`budget set p --volume 500`) never blocks on cost.
+// Returns nil if within limits, a *BudgetExceededError otherwise.
 func (m *Manager) CheckProjectBudget(projectID string, additionalCost float64) error {
 	// Check if project has a specific budget configured
 	projectBudget, hasProjectBudget := m.config.ProjectBudgets[projectID]
 
-	if !hasProjectBudget {
-		// No project-specific budget, check against global budget
+	if !hasProjectBudget || projectBudget.MaxBudget <= 0 {
+		// No project cost cap: only the global limits apply.
 		return m.checkGlobalBudget(additionalCost)
 	}
 
@@ -251,7 +253,10 @@ func (m *Manager) checkGlobalBudget(additionalCost float64) error {
 		return m.checkBudgetPeriod(additionalCost)
 	}
 
-	// Fall back to legacy monthly budget system
+	// Fall back to the legacy monthly budget; 0 means none is set (#1030).
+	if m.config.MaxMonthlyBudget <= 0 {
+		return nil
+	}
 	currentSpend := m.GetCurrentMonthSpend()
 	projectedSpend := currentSpend + additionalCost
 
@@ -279,6 +284,9 @@ func (m *Manager) checkBudgetPeriod(additionalCost float64) error {
 	}
 
 	budgetPeriod := m.config.BudgetPeriods[activeIndex]
+	if budgetPeriod.MaxBudget <= 0 {
+		return nil // no cost cap on this period (#1030)
+	}
 	currentSpend := m.GetCurrentMonthSpend() // TODO: Should filter by period, not just month
 	projectedSpend := currentSpend + additionalCost
 
@@ -352,10 +360,17 @@ func (m *Manager) GetProjectBudgetStatus(projectID string) (*BudgetStatus, error
 	totalDays, _ := budgetPeriod.GetTotalDays(now)
 	burnRate, _ := budgetPeriod.CalculateBurnRate(currentSpend, now)
 	projectedSpend, _ := budgetPeriod.ProjectEndOfPeriodSpend(currentSpend, now)
-	willExceed, _, _ := budgetPeriod.WillExceedBudget(currentSpend, now)
 
-	budgetUsed := currentSpend / projectBudget.MaxBudget
-	remaining := projectBudget.MaxBudget - currentSpend
+	// Cost usage only exists against a cost cap. A MaxBudget of 0 is unlimited
+	// (#1030): it reads as not over budget, as enforcement treats it, rather
+	// than as a NaN/Inf ratio that `budget status --json` cannot encode.
+	var budgetUsed, remaining float64
+	willExceed := false
+	if projectBudget.MaxBudget > 0 {
+		willExceed, _, _ = budgetPeriod.WillExceedBudget(currentSpend, now)
+		budgetUsed = currentSpend / projectBudget.MaxBudget
+		remaining = projectBudget.MaxBudget - currentSpend
+	}
 
 	// Calculate volume metrics
 	volumeUsed := 0.0
@@ -386,7 +401,7 @@ func (m *Manager) GetProjectBudgetStatus(projectID string) (*BudgetStatus, error
 
 	// Calculate target daily rate to stay within budget
 	targetDailyRate := 0.0
-	if daysRemaining > 0 {
+	if daysRemaining > 0 && projectBudget.MaxBudget > 0 {
 		targetDailyRate = remaining / float64(daysRemaining)
 	}
 
@@ -420,7 +435,7 @@ func (m *Manager) GetProjectBudgetStatus(projectID string) (*BudgetStatus, error
 		TargetDailyRate:   targetDailyRate,
 
 		OverBudget:     budgetUsed > 1.0,
-		AlertTriggered: budgetUsed > alertThreshold,
+		AlertTriggered: projectBudget.MaxBudget > 0 && budgetUsed > alertThreshold,
 
 		// Volume quota fields
 		MaxVolumeGB:          projectBudget.MaxVolumeGB,
