@@ -41,7 +41,7 @@ func (m *mockS3Client) PutObject(ctx context.Context, input *s3.PutObjectInput, 
 	return &s3.PutObjectOutput{}, nil
 }
 
-// captureBuilder records the args of the last UpdateFileS3KeyByPath call.
+// captureBuilder records the args of the last RecordDirectFile call.
 type captureBuilder struct {
 	mu           sync.Mutex
 	path, s3Key  string
@@ -49,7 +49,7 @@ type captureBuilder struct {
 	updateCalled bool
 }
 
-func (c *captureBuilder) UpdateFileS3KeyByPath(path string, shardID int, s3Key, checksum string) {
+func (c *captureBuilder) RecordDirectFile(path string, shardID int, s3Key, checksum string, size int64, modTime time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.path, c.s3Key, c.checksum, c.updateCalled = path, s3Key, checksum, true
@@ -674,11 +674,16 @@ func TestDirectUploaderStage_UploadIDIsolatesKeys(t *testing.T) {
 	k1 := up1.buildS3Key("/src/root/data/report.csv")
 	k2 := up2.buildS3Key("/src/root/data/report.csv")
 
-	if k1 != "p/uploads/20260101-aaaa/data/report.csv" {
-		t.Errorf("upload1 key = %q, want p/uploads/20260101-aaaa/data/report.csv", k1)
+	// #1020: under the files/ segment, clear of the upload's manifest objects.
+	if k1 != "p/uploads/20260101-aaaa/files/data/report.csv" {
+		t.Errorf("upload1 key = %q, want p/uploads/20260101-aaaa/files/data/report.csv", k1)
 	}
-	if k2 != "p/uploads/20260102-bbbb/data/report.csv" {
-		t.Errorf("upload2 key = %q, want p/uploads/20260102-bbbb/data/report.csv", k2)
+	if k2 != "p/uploads/20260102-bbbb/files/data/report.csv" {
+		t.Errorf("upload2 key = %q, want p/uploads/20260102-bbbb/files/data/report.csv", k2)
+	}
+	// A root-level file named like the manifest can't take the manifest's key.
+	if k := up1.buildS3Key("/src/root/manifest.json.gz"); k != "p/uploads/20260101-aaaa/files/manifest.json.gz" {
+		t.Errorf("manifest-named file key = %q, want it under files/", k)
 	}
 	if k1 == k2 {
 		t.Fatalf("same relative path from two uploads collided on one key %q (silent overwrite)", k1)
@@ -715,21 +720,21 @@ func TestDirectUploaderStage_WriterIsolatesKeys(t *testing.T) {
 
 	k1 := up1.buildS3Key("/src/root/data/report.csv")
 	k2 := up2.buildS3Key("/src/root/data/report.csv")
-	if k1 != "p/writers/lab-nas-1/uploads/20260101-aaaa/data/report.csv" {
+	if k1 != "p/writers/lab-nas-1/uploads/20260101-aaaa/files/data/report.csv" {
 		t.Errorf("writer1 key = %q", k1)
 	}
-	if k2 != "p/writers/lab-nas-2/uploads/20260101-aaaa/data/report.csv" {
+	if k2 != "p/writers/lab-nas-2/uploads/20260101-aaaa/files/data/report.csv" {
 		t.Errorf("writer2 key = %q", k2)
 	}
 	if k1 == k2 {
 		t.Fatalf("two writers collided on one key %q (cross-writer overwrite)", k1)
 	}
 
-	// Legacy (no writer id): byte-identical to the pre-#520 layout.
+	// Legacy (no writer id): no writers/ segment, as before #520.
 	legacy := mk("")
 	defer func() { _ = legacy.Stop() }()
-	if got := legacy.buildS3Key("/src/root/data/report.csv"); got != "p/uploads/20260101-aaaa/data/report.csv" {
-		t.Errorf("legacy key = %q, want p/uploads/20260101-aaaa/data/report.csv", got)
+	if got := legacy.buildS3Key("/src/root/data/report.csv"); got != "p/uploads/20260101-aaaa/files/data/report.csv" {
+		t.Errorf("legacy key = %q, want p/uploads/20260101-aaaa/files/data/report.csv", got)
 	}
 }
 
