@@ -52,8 +52,18 @@ while IFS='|' read -r ip dir deps; do
   fi
 done < <(go list -test -f '{{.ImportPath}}|{{.Dir}}|{{join .Deps " "}}' ./cmd/... ./pkg/... ./internal/...)
 
+# Suites under tests/ (e2e, integration, benchmarks) run the cargoship BINARY
+# with os.Environ(): they link nothing home-reading, yet the child reads the
+# real config. They're build-tagged, so `go list` can't see them; require
+# isolation in every one by file, whatever its tag.
+while IFS= read -r dir; do
+  if ! grep -lq 'testenv\.Isolate()' "$dir"/*_test.go 2>/dev/null; then
+    missing+=("$dir")
+  fi
+done < <(find tests -name '*_test.go' -exec dirname {} \; | sort -u)
+
 if [ ${#missing[@]} -gt 0 ]; then
-  echo "check-test-home-isolation: these test packages link home-reading code but never isolate HOME:" >&2
+  echo "check-test-home-isolation: these test packages can reach the real HOME but never isolate it:" >&2
   printf '  %s\n' "${missing[@]}" >&2
   echo "Add a _test.go file with:  func init() { testenv.Isolate() }  (internal/testenv, #1048)" >&2
   exit 1
