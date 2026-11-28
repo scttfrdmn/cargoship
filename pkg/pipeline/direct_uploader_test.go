@@ -674,11 +674,16 @@ func TestDirectUploaderStage_UploadIDIsolatesKeys(t *testing.T) {
 	k1 := up1.buildS3Key("/src/root/data/report.csv")
 	k2 := up2.buildS3Key("/src/root/data/report.csv")
 
-	if k1 != "p/uploads/20260101-aaaa/data/report.csv" {
-		t.Errorf("upload1 key = %q, want p/uploads/20260101-aaaa/data/report.csv", k1)
+	// #1020: under the files/ segment, clear of the upload's manifest objects.
+	if k1 != "p/uploads/20260101-aaaa/files/data/report.csv" {
+		t.Errorf("upload1 key = %q, want p/uploads/20260101-aaaa/files/data/report.csv", k1)
 	}
-	if k2 != "p/uploads/20260102-bbbb/data/report.csv" {
-		t.Errorf("upload2 key = %q, want p/uploads/20260102-bbbb/data/report.csv", k2)
+	if k2 != "p/uploads/20260102-bbbb/files/data/report.csv" {
+		t.Errorf("upload2 key = %q, want p/uploads/20260102-bbbb/files/data/report.csv", k2)
+	}
+	// A root-level file named like the manifest can't take the manifest's key.
+	if k := up1.buildS3Key("/src/root/manifest.json.gz"); k != "p/uploads/20260101-aaaa/files/manifest.json.gz" {
+		t.Errorf("manifest-named file key = %q, want it under files/", k)
 	}
 	if k1 == k2 {
 		t.Fatalf("same relative path from two uploads collided on one key %q (silent overwrite)", k1)
@@ -715,21 +720,21 @@ func TestDirectUploaderStage_WriterIsolatesKeys(t *testing.T) {
 
 	k1 := up1.buildS3Key("/src/root/data/report.csv")
 	k2 := up2.buildS3Key("/src/root/data/report.csv")
-	if k1 != "p/writers/lab-nas-1/uploads/20260101-aaaa/data/report.csv" {
+	if k1 != "p/writers/lab-nas-1/uploads/20260101-aaaa/files/data/report.csv" {
 		t.Errorf("writer1 key = %q", k1)
 	}
-	if k2 != "p/writers/lab-nas-2/uploads/20260101-aaaa/data/report.csv" {
+	if k2 != "p/writers/lab-nas-2/uploads/20260101-aaaa/files/data/report.csv" {
 		t.Errorf("writer2 key = %q", k2)
 	}
 	if k1 == k2 {
 		t.Fatalf("two writers collided on one key %q (cross-writer overwrite)", k1)
 	}
 
-	// Legacy (no writer id): byte-identical to the pre-#520 layout.
+	// Legacy (no writer id): no writers/ segment, as before #520.
 	legacy := mk("")
 	defer func() { _ = legacy.Stop() }()
-	if got := legacy.buildS3Key("/src/root/data/report.csv"); got != "p/uploads/20260101-aaaa/data/report.csv" {
-		t.Errorf("legacy key = %q, want p/uploads/20260101-aaaa/data/report.csv", got)
+	if got := legacy.buildS3Key("/src/root/data/report.csv"); got != "p/uploads/20260101-aaaa/files/data/report.csv" {
+		t.Errorf("legacy key = %q, want p/uploads/20260101-aaaa/files/data/report.csv", got)
 	}
 }
 
