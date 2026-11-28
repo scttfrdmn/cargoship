@@ -95,8 +95,10 @@ func NewIncrementalScanner(prev *manifest.Manifest, cacheFile string) (*Incremen
 //
 // ShouldUpload is safe to call concurrently from multiple goroutines.
 func (s *IncrementalScanner) ShouldUpload(absPath, relPath string) bool {
-	// Tier 1: existence check against previous manifest.
-	prev, found := s.fileIndex[relPath]
+	// Tier 1: existence check against previous manifest. The index is keyed by
+	// slash-separated paths (RelativeToSource); the walk gives the OS separator,
+	// so on Windows every file in a subdirectory missed and looked new.
+	prev, found := s.fileIndex[filepath.ToSlash(relPath)]
 	if !found {
 		s.recordUpload(0)
 		return true
