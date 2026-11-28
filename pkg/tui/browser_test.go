@@ -41,25 +41,24 @@ func buildBrowserManifest() *manifest.Manifest {
 
 func TestNewBrowserModel_BasicInit(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 
 	require.NotNil(t, bm)
 	assert.Equal(t, ModeList, bm.mode)
 	assert.NotNil(t, bm.query)
 	assert.NotNil(t, bm.selected)
-	assert.Nil(t, bm.extractor) // no S3 client provided
 }
 
 func TestNewBrowserModel_DVCStagesCollected(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 
 	assert.ElementsMatch(t, []string{"preprocess", "train", "evaluate"}, bm.dvcStages)
 }
 
 func TestNewBrowserModel_GitCommitsCollected(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 
 	require.Len(t, bm.gitCommits, 1)
 	assert.Equal(t, "abc1234", bm.gitCommits[0])
@@ -68,7 +67,7 @@ func TestNewBrowserModel_GitCommitsCollected(t *testing.T) {
 func TestNewBrowserModel_NoGitMetadata(t *testing.T) {
 	m := buildBrowserManifest()
 	m.GitMetadata = nil
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 	assert.Empty(t, bm.gitCommits)
 }
 
@@ -114,14 +113,14 @@ func TestFileItem_FilterValue(t *testing.T) {
 
 func TestBrowserModel_FilteredItems_NoFilter(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 	items := bm.filteredItems()
 	assert.Len(t, items, len(m.Files))
 }
 
 func TestBrowserModel_FilteredItems_DVCStage(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 	bm.activeDVCStage = "preprocess"
 	items := bm.filteredItems()
 	// 2 files have stage=preprocess
@@ -135,7 +134,7 @@ func TestBrowserModel_FilteredItems_DVCStage(t *testing.T) {
 
 func TestBrowserModel_FilteredItems_Search(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 	bm.activeSearch = "csv"
 	items := bm.filteredItems()
 	assert.Len(t, items, 2) // train.csv + test.csv
@@ -143,7 +142,7 @@ func TestBrowserModel_FilteredItems_Search(t *testing.T) {
 
 func TestBrowserModel_FilteredItems_SearchCaseInsensitive(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 	bm.activeSearch = "README"
 	items := bm.filteredItems()
 	assert.Len(t, items, 1)
@@ -151,7 +150,7 @@ func TestBrowserModel_FilteredItems_SearchCaseInsensitive(t *testing.T) {
 
 func TestBrowserModel_FilteredItems_SearchNoMatch(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 	bm.activeSearch = "zzznomatch"
 	items := bm.filteredItems()
 	assert.Len(t, items, 0)
@@ -181,7 +180,7 @@ func TestBrowserModel_CycleFilter_Advances(t *testing.T) {
 
 func TestBrowserModel_SpaceTogglesSelection(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 
 	// Simulate space key on the first item.
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}}
@@ -210,7 +209,7 @@ func TestBrowserModel_SpaceTogglesSelection(t *testing.T) {
 
 func TestBrowserModel_QuitSetsMode(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}
 	newModel, _ := bm.Update(msg)
@@ -222,7 +221,7 @@ func TestBrowserModel_QuitSetsMode(t *testing.T) {
 
 func TestBrowserModel_SlashEntersSearchMode(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}}
 	newModel, _ := bm.Update(msg)
@@ -233,7 +232,7 @@ func TestBrowserModel_SlashEntersSearchMode(t *testing.T) {
 
 func TestBrowserModel_SelectAllAndClear(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 
 	// 'a' selects all.
 	newModel, _ := bm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
@@ -257,7 +256,7 @@ func TestBrowserModel_SelectAllAndClear(t *testing.T) {
 
 func TestBrowserModel_DVCStageFilterKey(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 
 	// 'd' cycles the DVC stage filter.
 	newModel, _ := bm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
@@ -272,14 +271,14 @@ func TestBrowserModel_DVCStageFilterKey(t *testing.T) {
 
 func TestBrowserModel_ViewContainsUploadID(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 	view := bm.View()
 	assert.Contains(t, view, "browser-test-001")
 }
 
 func TestBrowserModel_ViewConfirm(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 	bm.mode = ModeConfirm
 	bm.selected["data/train.csv"] = true
 	view := bm.View()
@@ -293,14 +292,14 @@ func TestBrowserModel_ViewConfirm(t *testing.T) {
 
 func TestBrowserModel_AllItemsCount(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 	items := bm.allItems()
 	assert.Len(t, items, len(m.Files))
 }
 
 func TestBrowserModel_SelectedPaths(t *testing.T) {
 	m := buildBrowserManifest()
-	bm := NewBrowserModel(m, nil)
+	bm := NewBrowserModel(m)
 	bm.selected["data/train.csv"] = true
 	bm.selected["README.md"] = true
 	bm.selected["models/model.pkl"] = false // explicitly not selected
@@ -365,6 +364,6 @@ func BenchmarkNewBrowserModel_10kFiles(b *testing.B) {
 	}
 	b.ResetTimer()
 	for range b.N {
-		_ = NewBrowserModel(m, nil)
+		_ = NewBrowserModel(m)
 	}
 }

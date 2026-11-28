@@ -4,7 +4,6 @@
 package tui
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -115,9 +114,8 @@ type RestoreResult struct {
 // DVC stage / git commit filtering (Issue #190).
 type BrowserModel struct {
 	// source data
-	manifest  *manifest.Manifest
-	query     *manifest.ManifestQuery
-	extractor *manifest.SelectiveExtractor
+	manifest *manifest.Manifest
+	query    *manifest.ManifestQuery
 
 	// display state
 	mode        BrowserMode
@@ -149,10 +147,12 @@ type BrowserModel struct {
 // Constructors
 // ---------------------------------------------------------------------------
 
-// NewBrowserModel creates a BrowserModel for m. If s3Client is non-nil a
-// SelectiveExtractor is created so the model can perform restores directly;
-// pass nil to use the browser in read-only / selection-only mode.
-func NewBrowserModel(m *manifest.Manifest, s3Client manifest.S3Downloader) *BrowserModel {
+// NewBrowserModel creates a BrowserModel for m. The browser only collects a
+// selection and a destination; the caller performs the restore (#972). It used
+// to restore on confirm with an extractor of its own, which bypassed the
+// caller's bucket override, existing-file policy and Glacier pre-flight and
+// discarded the outcome, after which the caller restored the same files again.
+func NewBrowserModel(m *manifest.Manifest) *BrowserModel {
 	search := textinput.New()
 	search.Placeholder = "search by path…"
 	search.CharLimit = 200
@@ -171,10 +171,6 @@ func NewBrowserModel(m *manifest.Manifest, s3Client manifest.S3Downloader) *Brow
 		height:      24,
 	}
 
-	if s3Client != nil {
-		bm.extractor = manifest.NewSelectiveExtractor(m, s3Client, 0)
-	}
-
 	// Collect distinct DVC stages and git commits for filter hints.
 	stageSet := make(map[string]bool)
 	for i := range m.Files {
@@ -191,6 +187,11 @@ func NewBrowserModel(m *manifest.Manifest, s3Client manifest.S3Downloader) *Brow
 
 	bm.list = bm.buildList(bm.allItems())
 	return bm
+}
+
+// SetDestination pre-fills the destination prompt with dir.
+func (bm *BrowserModel) SetDestination(dir string) {
+	bm.destInput.SetValue(dir)
 }
 
 // ---------------------------------------------------------------------------
@@ -389,21 +390,9 @@ func (bm *BrowserModel) updateConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return bm, nil
 			}
 
-			paths := bm.selectedPaths()
-			if bm.extractor != nil {
-				stats, err := bm.extractor.BatchRestore(context.Background(), paths, destDir)
-				if err == nil {
-					bm.Result = RestoreResult{
-						SelectedPaths: paths,
-						DestDir:       destDir,
-					}
-					_ = stats // stats available for caller via Result
-				}
-			} else {
-				bm.Result = RestoreResult{
-					SelectedPaths: paths,
-					DestDir:       destDir,
-				}
+			bm.Result = RestoreResult{
+				SelectedPaths: bm.selectedPaths(),
+				DestDir:       destDir,
 			}
 			bm.mode = ModeDone
 			return bm, tea.Quit
@@ -559,9 +548,12 @@ func min8(n int) int {
 
 // RunBrowser runs the interactive TUI browser for m. Returns RestoreResult
 // with SelectedPaths and DestDir set when the user confirms a restore, or
-// Cancelled=true when the user quits without selecting.
-func RunBrowser(m *manifest.Manifest, s3Client manifest.S3Downloader) (*RestoreResult, error) {
-	bm := NewBrowserModel(m, s3Client)
+// Cancelled=true when the user quits without selecting. destHint, when not
+// empty, pre-fills the destination prompt. It restores nothing: the caller
+// does, with its own policy and pre-flight (#972).
+func RunBrowser(m *manifest.Manifest, destHint string) (*RestoreResult, error) {
+	bm := NewBrowserModel(m)
+	bm.SetDestination(destHint)
 	p := tea.NewProgram(bm, tea.WithAltScreen())
 	finalModel, err := p.Run()
 	if err != nil {
