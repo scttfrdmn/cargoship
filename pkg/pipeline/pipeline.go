@@ -1147,29 +1147,35 @@ func (p *Pipeline) savePartialManifest(ctx context.Context) error {
 
 	builder := p.manifestBuilder.(*manifest.Builder)
 
-	// Build current manifest state (non-finalized)
-	p.manifestMu.Lock()
-	manifestData := builder.Build()
-	p.manifestMu.Unlock()
-
 	// Skip if no chunks yet
-	if len(manifestData.Chunks) == 0 {
+	if builder.ChunkCount() == 0 {
 		return nil
 	}
 
-	// Serialize to JSON and compress with gzip. #913: an --encrypt-manifest
-	// upload's partial manifest is encrypted too; it used to be written in
-	// plaintext, leaving the full file list readable for an interrupted upload.
+	// Serialize the current (non-finalized) state. #1008: under the builder's
+	// lock, and under manifestMu so a chunk's records are all in or all out. This
+	// serialised builder.Build()'s result after the lock was released, while the
+	// uploaders kept appending to it: a data race that could save a torn resume
+	// snapshot or crash on a torn slice.
+	p.manifestMu.Lock()
+	snap, err := builder.SnapshotJSON()
+	p.manifestMu.Unlock()
+	if err != nil {
+		return fmt.Errorf("failed to serialize partial manifest: %w", err)
+	}
+
+	// Compress with gzip. #913: an --encrypt-manifest upload's partial manifest
+	// is encrypted too; it used to be written in plaintext, leaving the full file
+	// list readable for an interrupted upload.
 	var manifestBytes []byte
-	var err error
 	if p.config.EncryptManifest {
 		kmsClient, kerr := p.manifestKMS()
 		if kerr != nil {
 			return kerr
 		}
-		manifestBytes, err = manifestData.EncryptedPartialBytes(ctx, kmsClient, p.config.KMSKeyID)
+		manifestBytes, err = snap.Encrypted(ctx, kmsClient, p.config.KMSKeyID)
 	} else {
-		manifestBytes, err = manifestData.ToJSONCompressed()
+		manifestBytes, err = snap.Compressed()
 	}
 	if err != nil {
 		return fmt.Errorf("failed to serialize partial manifest: %w", err)
@@ -1193,8 +1199,8 @@ func (p *Pipeline) savePartialManifest(ctx context.Context) error {
 		Metadata: map[string]string{
 			"cargoship-manifest-version": "1.0-partial",
 			"cargoship-upload-id":        p.config.UploadID,
-			"cargoship-file-count":       fmt.Sprintf("%d", len(manifestData.Files)),
-			"cargoship-chunk-count":      fmt.Sprintf("%d", len(manifestData.Chunks)),
+			"cargoship-file-count":       fmt.Sprintf("%d", snap.Files),
+			"cargoship-chunk-count":      fmt.Sprintf("%d", snap.Chunks),
 			"cargoship-last-updated":     time.Now().Format(time.RFC3339),
 		},
 	}
