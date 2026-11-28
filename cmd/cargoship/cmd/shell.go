@@ -103,12 +103,11 @@ func runArchiveShell(ctx context.Context, s3URL, region string, cacheGB int64) e
 		uploadID = prefix
 	}
 
-	fmt.Printf("📥 Loading manifest: s3://%s/%s\n", bucket, prefix)
-	m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
+	// The whole dataset of an incremental version, not its delta (#975).
+	m, err := loadEffectiveManifest(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
 	if err != nil {
-		return fmt.Errorf("failed to load manifest: %w", err)
+		return err
 	}
-	fmt.Printf("✅ Manifest loaded: %d files, %d chunks\n\n", m.TotalFiles, m.TotalChunks)
 
 	maxCacheBytes := cacheGB * 1024 * 1024 * 1024
 	// SetBucket: fetch from where the manifest was read, not the bucket name

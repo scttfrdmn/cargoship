@@ -110,16 +110,12 @@ Examples:
 				uploadID = prefix
 			}
 
-			fmt.Printf("📥 Downloading manifest: s3://%s/%s/uploads/%s/\n", bucket, actualPrefix, uploadID)
-
-			// Download manifest (supports both encrypted and regular manifests)
-			m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
+			// Encrypted or plain, and for an incremental version the whole
+			// dataset rather than that version's delta (#975).
+			m, err := loadEffectiveManifest(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
 			if err != nil {
-				return fmt.Errorf("failed to download manifest from S3: %w", err)
+				return err
 			}
-
-			fmt.Printf("✅ Manifest loaded: %d files, %d chunks, %d shards\n\n",
-				m.TotalFiles, m.TotalChunks, m.ShardCount)
 
 			// Step 2: Determine which files to download based on filters
 			query := manifest.NewManifestQuery(m)
@@ -127,13 +123,20 @@ Examples:
 
 			if len(files) > 0 {
 				// Download specific files by exact path
+				var missing []string
 				for _, filePath := range files {
 					file := query.FindFile(filePath)
 					if file != nil {
 						filesToDownload = append(filesToDownload, *file)
 					} else {
+						missing = append(missing, filePath)
 						fmt.Printf("⚠️  Warning: file not found in manifest: %s\n", filePath)
 					}
+				}
+				// #983: a selection that selects nothing is a failure, not an
+				// empty success a script can't tell from a real download.
+				if len(filesToDownload) == 0 {
+					return fmt.Errorf("none of the requested --files are in the manifest: %s", strings.Join(missing, ", "))
 				}
 			} else if pattern != "" {
 				// Download files matching pattern
@@ -150,7 +153,10 @@ Examples:
 			}
 
 			if len(filesToDownload) == 0 {
-				fmt.Println("⚠️  No files matched the selection criteria")
+				if pattern != "" || len(shardIDs) > 0 {
+					return fmt.Errorf("no files matched the selection criteria (--pattern/--shard-ids)")
+				}
+				fmt.Println("⚠️  The manifest records no files")
 				return nil
 			}
 
@@ -168,20 +174,23 @@ Examples:
 			// number is how many objects have to be fetched; direct-upload
 			// manifests (TotalChunks == 0) store one object per file.
 			if m.TotalChunks > 0 {
-				chunkFiles := make(map[int][]manifest.FileEntry)
+				// Grouped by S3Key, not chunk ID: IDs repeat across the versions of
+				// an incremental chain's effective manifest (#554), which download
+				// now reads (#975).
+				chunkFiles := make(map[string][]manifest.FileEntry)
 				for _, file := range filesToDownload {
-					chunkFiles[file.ChunkID] = append(chunkFiles[file.ChunkID], file)
+					chunkFiles[file.S3Key] = append(chunkFiles[file.S3Key], file)
 				}
 
 				fmt.Printf("🎯 Need to download %d chunks (out of %d total)\n\n", len(chunkFiles), m.TotalChunks)
 
 				if dryRun {
 					fmt.Println("🔍 Dry run - would download:")
-					for chunkID, files := range chunkFiles {
-						chunk := findChunk(m, chunkID)
+					for key, files := range chunkFiles {
+						chunk := findChunk(m, key)
 						if chunk != nil {
 							fmt.Printf("\n  Chunk %d (s3://%s/%s, %s compressed):\n",
-								chunkID, bucket, chunk.S3Key, humanize.Bytes(uint64(chunk.CompressedSize)))
+								chunk.ID, bucket, chunk.S3Key, humanize.Bytes(uint64(chunk.CompressedSize)))
 							for _, file := range files {
 								fmt.Printf("    - %s (%s)\n", file.Path, humanize.Bytes(uint64(file.Size)))
 							}
@@ -304,10 +313,10 @@ func parseS3URL(s3URL string) (bucket, prefix string, err error) {
 	return bucket, prefix, nil
 }
 
-// findChunk finds a chunk by ID in the manifest
-func findChunk(m *manifest.Manifest, chunkID int) *manifest.ChunkEntry {
+// findChunk finds the chunk stored at s3Key in the manifest.
+func findChunk(m *manifest.Manifest, s3Key string) *manifest.ChunkEntry {
 	for i := range m.Chunks {
-		if m.Chunks[i].ID == chunkID {
+		if m.Chunks[i].S3Key == s3Key {
 			return &m.Chunks[i]
 		}
 	}
