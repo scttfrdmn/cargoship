@@ -6,9 +6,11 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/smtp"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -181,7 +183,7 @@ type BudgetAlertNotifier struct {
 	awsConfig      aws.Config
 	cloudwatchSvc  *cloudwatch.Client
 	httpClient     *http.Client
-	lastAlertTimes map[string]time.Time // key: projectID or "global"
+	lastAlertTimes map[string]time.Time // key: (projectID or "global") + "\x00" + channel; set on delivery
 }
 
 // NewBudgetAlertNotifier creates a new budget alert notifier
@@ -243,65 +245,112 @@ func (n *BudgetAlertNotifier) SendAlert(ctx context.Context, alert *BudgetAlert)
 		return nil
 	}
 
-	// Check cooldown period
+	// Cooldown is per (project or "global", channel), and starts only when that
+	// channel delivers (#1041). A failed delivery used to start it anyway, so one
+	// network blip silenced the alert for 24h; and a channel that failed while
+	// another succeeded is retried without re-sending on the one that worked.
 	key := "global"
 	if alert.ProjectID != "" {
 		key = alert.ProjectID
 	}
 
-	if lastAlert, ok := n.lastAlertTimes[key]; ok {
-		if time.Since(lastAlert) < n.config.CooldownPeriod {
-			return nil // Skip alert, in cooldown period
-		}
-	}
-
-	// Send alert through configured channels
 	var lastErr error
+	deliver := func(channel string, send func() error) {
+		ck := key + "\x00" + channel
+		if last, ok := n.lastAlertTimes[ck]; ok && time.Since(last) < n.config.CooldownPeriod {
+			return // delivered recently on this channel
+		}
+		if err := send(); err != nil {
+			if lastErr != nil {
+				lastErr = fmt.Errorf("%v; %s alert failed: %w", lastErr, channel, err)
+			} else {
+				lastErr = fmt.Errorf("%s alert failed: %w", channel, err)
+			}
+			return
+		}
+		n.lastAlertTimes[ck] = time.Now()
+	}
 
-	// Send webhook notification
 	if n.config.WebhookEnabled && n.config.WebhookURL != "" {
-		if err := n.sendWebhookAlert(ctx, alert); err != nil {
-			lastErr = fmt.Errorf("webhook alert failed: %w", err)
-		}
+		deliver("webhook", func() error { return n.sendWebhookAlert(ctx, alert) })
 	}
-
-	// Send CloudWatch alarm
 	if n.config.CloudWatchEnabled && n.cloudwatchSvc != nil {
-		if err := n.sendCloudWatchAlert(ctx, alert); err != nil {
-			if lastErr != nil {
-				lastErr = fmt.Errorf("%v; cloudwatch alert failed: %w", lastErr, err)
-			} else {
-				lastErr = fmt.Errorf("cloudwatch alert failed: %w", err)
-			}
-		}
+		deliver("cloudwatch", func() error { return n.sendCloudWatchAlert(ctx, alert) })
 	}
-
-	// Send email notification (Issue #147 Phase 4)
+	// Issue #147 Phase 4: email and Slack
 	if n.config.EmailEnabled && len(n.config.EmailRecipients) > 0 && n.config.SMTPHost != "" {
-		if err := n.sendEmailAlert(ctx, alert); err != nil {
-			if lastErr != nil {
-				lastErr = fmt.Errorf("%v; email alert failed: %w", lastErr, err)
-			} else {
-				lastErr = fmt.Errorf("email alert failed: %w", err)
-			}
-		}
+		deliver("email", func() error { return n.sendEmailAlert(ctx, alert) })
 	}
-
-	// Send Slack notification (Issue #147 Phase 4)
 	if n.config.SlackEnabled && n.config.SlackWebhookURL != "" {
-		if err := n.sendSlackAlert(ctx, alert); err != nil {
-			if lastErr != nil {
-				lastErr = fmt.Errorf("%v; slack alert failed: %w", lastErr, err)
-			} else {
-				lastErr = fmt.Errorf("slack alert failed: %w", err)
+		deliver("slack", func() error { return n.sendSlackAlert(ctx, alert) })
+	}
+
+	// The send paths already redact; scrub once more so no wrapped error can
+	// carry a webhook or Slack URL out.
+	return redactAlertSecrets(lastErr, n.config.WebhookURL, n.config.SlackWebhookURL)
+}
+
+// RedactURL returns only the scheme and host of raw, without userinfo, path,
+// query or fragment, for use in messages. Webhook and Slack URLs carry their
+// secret in the path (#1041). A URL that does not parse is "<redacted URL>".
+func RedactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "<redacted URL>"
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// redactURLError describes err without rawURL's secret parts. A *url.Error
+// (building or sending the request) embeds the whole URL, so it becomes its
+// operation, the redacted URL and the underlying cause.
+func redactURLError(err error, rawURL string) error {
+	if err == nil {
+		return nil
+	}
+	out := err
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		out = fmt.Errorf("%s %s: %w", ue.Op, RedactURL(rawURL), ue.Err)
+	}
+	return redactAlertSecrets(out, rawURL)
+}
+
+// redactAlertSecrets removes every copy of the given URLs, and of their path,
+// query, fragment and userinfo, from err's message. It returns err unchanged
+// (keeping its wrap chain) when nothing needed removing.
+func redactAlertSecrets(err error, rawURLs ...string) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	scrubbed := msg
+	for _, raw := range rawURLs {
+		if raw == "" {
+			continue
+		}
+		scrubbed = strings.ReplaceAll(scrubbed, raw, RedactURL(raw))
+		u, pErr := url.Parse(raw)
+		if pErr != nil {
+			continue
+		}
+		parts := []string{u.EscapedPath(), u.Path, u.RawQuery, u.Fragment}
+		if u.User != nil {
+			parts = append(parts, u.User.String())
+			if pw, ok := u.User.Password(); ok {
+				parts = append(parts, pw)
+			}
+		}
+		for _, p := range parts {
+			if len(p) > 1 {
+				scrubbed = strings.ReplaceAll(scrubbed, p, "<redacted>")
 			}
 		}
 	}
-
-	// Update last alert time
-	n.lastAlertTimes[key] = time.Now()
-
-	return lastErr
+	if scrubbed == msg {
+		return err
+	}
+	return errors.New(scrubbed)
 }
 
 // sendWebhookAlert sends an alert via webhook
@@ -315,7 +364,7 @@ func (n *BudgetAlertNotifier) sendWebhookAlert(ctx context.Context, alert *Budge
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, "POST", n.config.WebhookURL, bytes.NewReader(payload))
 	if err != nil {
-		return fmt.Errorf("failed to create webhook request: %w", err)
+		return fmt.Errorf("failed to create webhook request: %w", redactURLError(err, n.config.WebhookURL))
 	}
 
 	// Add headers
@@ -327,7 +376,7 @@ func (n *BudgetAlertNotifier) sendWebhookAlert(ctx context.Context, alert *Budge
 	// Send request
 	resp, err := n.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send webhook: %w", err)
+		return fmt.Errorf("failed to send webhook: %w", redactURLError(err, n.config.WebhookURL))
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -613,7 +662,7 @@ func (n *BudgetAlertNotifier) sendSlackAlert(ctx context.Context, alert *BudgetA
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, "POST", n.config.SlackWebhookURL, bytes.NewReader(payloadBytes))
 	if err != nil {
-		return fmt.Errorf("failed to create Slack request: %w", err)
+		return fmt.Errorf("failed to create Slack request: %w", redactURLError(err, n.config.SlackWebhookURL))
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -621,7 +670,7 @@ func (n *BudgetAlertNotifier) sendSlackAlert(ctx context.Context, alert *BudgetA
 	// Send request
 	resp, err := n.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send Slack webhook: %w", err)
+		return fmt.Errorf("failed to send Slack webhook: %w", redactURLError(err, n.config.SlackWebhookURL))
 	}
 	defer func() {
 		_ = resp.Body.Close()
