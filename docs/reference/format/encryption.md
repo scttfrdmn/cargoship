@@ -54,6 +54,12 @@ a `.tar.zst` (or `.tar`) object — and decryption is handled by S3 on `GetObjec
 for any caller with `kms:Decrypt` on the key. No CargoShip-specific unwrapping is
 needed to read the bytes.
 
+The final manifest object (`manifest.json.gz`, or `manifest.encrypted.json.gz`
+under `--encrypt-manifest`) is written with SSE-KMS under the same key. Before
+v0.44.0 it was written without SSE fields and so took the bucket's default
+encryption (#1016). Reading a manifest therefore needs `kms:Decrypt` on the data
+key as well.
+
 ## Manifest encryption (envelope)
 
 When `manifest_encrypted` is true, the manifest is not stored as plaintext JSON.

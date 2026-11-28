@@ -14,6 +14,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	"github.com/scttfrdmn/cargoship/pkg/encryption"
 )
@@ -787,6 +788,7 @@ func (m *Manifest) UploadToS3(ctx context.Context, s3Client *s3.Client, compress
 	if contentEncoding != "" {
 		input.ContentEncoding = aws.String(contentEncoding)
 	}
+	m.applyManifestSSE(input)
 
 	_, err = s3Client.PutObject(ctx, input)
 	if err != nil {
@@ -794,6 +796,19 @@ func (m *Manifest) UploadToS3(ctx context.Context, s3Client *s3.Client, compress
 	}
 
 	return nil
+}
+
+// applyManifestSSE stores a manifest object with SSE-KMS under the upload's
+// data key (--kms-key-id) when it has one (#1016). The manifest holds every
+// path, size and checksum; without this it sat under the bucket default (often
+// SSE-S3) while the data used the customer key. An upload without a data key
+// keeps the bucket default.
+func (m *Manifest) applyManifestSSE(input *s3.PutObjectInput) {
+	if m.Encryption == nil || m.Encryption.DataKMSKeyID == "" {
+		return
+	}
+	input.ServerSideEncryption = types.ServerSideEncryptionAwsKms
+	input.SSEKMSKeyId = aws.String(m.Encryption.DataKMSKeyID)
 }
 
 // UploadToS3WithEncryption uploads the manifest to S3 with optional KMS encryption (Issue #163)
@@ -871,6 +886,7 @@ func (m *Manifest) UploadToS3WithEncryption(ctx context.Context, s3Client *s3.Cl
 	if compress {
 		input.ContentEncoding = aws.String("gzip")
 	}
+	m.applyManifestSSE(input)
 
 	_, err = s3Client.PutObject(ctx, input)
 	if err != nil {
