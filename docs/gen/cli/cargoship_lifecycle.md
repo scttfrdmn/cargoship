@@ -9,15 +9,27 @@ Manage S3 lifecycle policies to automatically optimize storage costs.
 CargoShip provides predefined lifecycle policy templates optimized for different
 use cases, or you can create custom policies based on your access patterns.
 
+A template applies to the prefix your uploads use (--prefix, the part after the
+bucket in s3://bucket/prefix). Its transitions move only archive chunks, which
+carry the object tag cargoship-object=chunk. Manifests are never transitioned,
+so sync, list, info, verify and restore keep working without a thaw.
+
+The compliance-retention template also DELETES every object under the prefix,
+chunks and manifests, 2,555 days (about 7 years) after it was written. It needs
+a non-empty --prefix.
+
 Examples:
   # List available policy templates
   cargoship lifecycle --list-templates
 
-  # Apply archive optimization policy
-  cargoship lifecycle --bucket my-bucket --template archive-optimization
+  # Apply archive optimization to uploads under s3://my-bucket/backup
+  cargoship lifecycle --bucket my-bucket --prefix backup --template archive-optimization
+
+  # Apply a template to the whole bucket
+  cargoship lifecycle --bucket my-bucket --prefix "" --template intelligent-tiering
 
   # Estimate savings for a policy
-  cargoship lifecycle --bucket my-bucket --template intelligent-tiering --estimate-size 100
+  cargoship lifecycle --bucket my-bucket --prefix backup --template intelligent-tiering --estimate-size 100
 
   # Export current policy
   cargoship lifecycle --bucket my-bucket --export policy.json
@@ -38,6 +50,7 @@ cargoship lifecycle [flags]
   -h, --help                  help for lifecycle
       --import string         Import policy from file
       --list-templates        List available policy templates
+      --prefix string         Upload prefix the template applies to (s3://bucket/PREFIX); required with --template, "" for the whole bucket
       --region string         AWS region (default "us-east-1")
       --remove                Remove CargoShip's lifecycle rules (rules with other IDs are kept)
       --template string       Lifecycle policy template to apply
