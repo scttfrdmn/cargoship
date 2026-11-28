@@ -23,6 +23,11 @@ type UploadState struct {
 	ChunkSizeMB     int    `json:"chunk_size_mb,omitempty"`
 	ShardCount      int    `json:"shard_count,omitempty"`
 
+	// Settings are the rest of the upload's options, which a resume must
+	// reproduce (#1011). Nil in a state saved before they were recorded; a
+	// resume then uses the upload command's defaults.
+	Settings *UploadSettings `json:"settings,omitempty"`
+
 	// Progress tracking
 	TotalFiles     int64 `json:"total_files"`
 	TotalBytes     int64 `json:"total_bytes"`
@@ -34,6 +39,53 @@ type UploadState struct {
 
 	// File-level hashing for change detection (optional, can be large)
 	FileHashes map[string]string `json:"file_hashes,omitempty"`
+}
+
+// UploadSettings records the upload options that decide what a resumed upload
+// stores and how (#1011). `cargoship resume <id>` rebuilt its pipeline without
+// them, so a resumed upload lost its per-file checksums, frame size and
+// compression and shard settings, uploaded files its exclusions skip, dropped
+// its incremental change set and dataset chain identity, and lost its writer,
+// project and dedup settings.
+//
+// Every field is written as recorded; FileChecksums and FrameSize are written
+// even when zero, so an explicit --no-file-checksums or --frame-size 0 survives.
+type UploadSettings struct {
+	FileChecksums    bool   `json:"file_checksums"`
+	FrameSize        int64  `json:"frame_size"`
+	CompressionLevel int    `json:"compression_level,omitempty"`
+	ShardStrategy    string `json:"shard_strategy,omitempty"`
+
+	ExcludePatterns  []string `json:"exclude_patterns,omitempty"`
+	IncludeOnlyFiles []string `json:"include_only_files,omitempty"`
+
+	// Incremental and dataset chain identity, needed whenever IncludeOnlyFiles
+	// is: a resumed change set without them would be a "full" version holding
+	// only the changed files.
+	SyncType         string   `json:"sync_type,omitempty"`
+	PreviousUploadID string   `json:"previous_upload_id,omitempty"`
+	DeletedPaths     []string `json:"deleted_paths,omitempty"`
+	DatasetID        string   `json:"dataset_id,omitempty"`
+	VersionOrdinal   int      `json:"version_ordinal,omitempty"`
+
+	WriterID            string            `json:"writer_id,omitempty"`
+	ProjectID           string            `json:"project_id,omitempty"`
+	Tags                map[string]string `json:"tags,omitempty"`
+	EnableDeduplication bool              `json:"enable_deduplication,omitempty"`
+
+	// --auto-tier: the tier selector (nil when off) and the chunking strategy.
+	TierChunkingStrategy string        `json:"tier_chunking_strategy,omitempty"`
+	Tier                 *TierSettings `json:"tier,omitempty"`
+}
+
+// TierSettings records an --auto-tier upload's tier selector.
+type TierSettings struct {
+	HotDays         int    `json:"hot_days"`
+	ColdDays        int    `json:"cold_days"`
+	ArchiveDays     int    `json:"archive_days"`
+	MaxTier         string `json:"max_tier,omitempty"`
+	DefaultClass    string `json:"default_class,omitempty"`
+	FallbackToMtime bool   `json:"fallback_to_mtime"`
 }
 
 // ShardState tracks the state of a single shard during upload

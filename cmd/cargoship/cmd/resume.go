@@ -239,9 +239,11 @@ Each file is typically 10-50 KB.
 // ResumeUploadID, so the pipeline downloads that upload's S3 partial manifest
 // (#157) and skips every chunk already marked UploadedAt — transferring only the
 // remainder. Extracted so the resume wiring is unit-testable (the cobra RunE
-// closure is not). Knobs not persisted in UploadState (compression level, shard
-// strategy) fall back to defaults; the remaining chunks still upload correctly
-// because compression is content-aware per chunk.
+// closure is not). #1011: the upload's recorded settings (per-file checksums,
+// frame size, compression and shard settings, exclusions, change set, dataset
+// chain, writer, project, dedup, auto-tier) are restored with
+// pipeline.ApplyUploadSettings; a state saved before they were recorded gets the
+// upload command's defaults.
 func newResumePipelineConfig(state *resume.UploadState, s3Client *s3.Client, kmsClient *kms.Client) *pipeline.PipelineConfig {
 	shardCount := state.ShardCount
 	if shardCount <= 0 {
@@ -285,6 +287,7 @@ func newResumePipelineConfig(state *resume.UploadState, s3Client *s3.Client, kms
 	if kmsClient != nil {
 		cfg.KMSClient = kmsClient // a nil *kms.Client in the interface would look configured
 	}
+	pipeline.ApplyUploadSettings(cfg, state.Settings)
 	return cfg
 }
 
