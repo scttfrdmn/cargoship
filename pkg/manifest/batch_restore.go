@@ -443,13 +443,46 @@ func prepareParents(root *os.Root, relPath string) error {
 // replacement is ready.
 type atomicFile struct {
 	root *os.Root
-	rel  string // destination, relative to root
-	tmp  string // temporary file, relative to root
+	rel  string      // destination, relative to root
+	tmp  string      // temporary file, relative to root
+	mode os.FileMode // permission bits the file gets at commit (#974)
 	f    *os.File
 }
 
+// defaultRestoreMode is the mode of a restored file when nothing records one and
+// it replaces no existing file.
+const defaultRestoreMode os.FileMode = 0o644
+
+// archivedPerm returns the permission bits a tar header recorded, with setuid,
+// setgid and sticky dropped: a restore must not mint a setuid binary from an
+// archive. ok is false when the header records no bits at all (mode 0), which
+// callers treat as "no mode recorded".
+func archivedPerm(hdrMode int64) (perm os.FileMode, ok bool) {
+	perm = os.FileMode(hdrMode & 0o777)
+	return perm, perm != 0
+}
+
+// restoreMode picks the permission bits for a restored file: the archived bits
+// when the archive recorded them, else the bits of the regular file being
+// replaced, else defaultRestoreMode. A direct-upload object has no tar header
+// and the manifest records no mode, so an --overwrite keeps the file's own
+// mode rather than widening a 0600 file to 0644 (#974).
+func restoreMode(root *os.Root, relPath string, hdrMode int64) os.FileMode {
+	if perm, ok := archivedPerm(hdrMode); ok {
+		return perm
+	}
+	if fi, err := root.Lstat(relPath); err == nil && fi.Mode().IsRegular() {
+		return fi.Mode().Perm()
+	}
+	return defaultRestoreMode
+}
+
+// restoreTempPrefix starts every restore temporary file's name.
+const restoreTempPrefix = ".cargoship-restore-"
+
 // createAtomic starts writing relPath inside root, refusing to write through a
-// symlink at the leaf.
+// symlink at the leaf. The file gets mode's permission bits when it is
+// committed.
 //
 // os.Root alone already refuses a leaf symlink that points outside the root —
 // the escape #341 is about. The extra Lstat rejects a leaf symlink pointing
@@ -459,30 +492,41 @@ type atomicFile struct {
 // window. Containment does not depend on it: os.Root re-validates every component
 // at open time, and the final rename replaces the link itself rather than
 // following it.
-func createAtomic(root *os.Root, relPath string) (*atomicFile, error) {
+//
+// The temporary file is created 0600, so a file being restored is never more
+// readable than its final mode while it is written (#974). Its name has a fixed
+// length rather than embedding the basename: the longer name pushed a legal
+// 220–255 byte basename past NAME_MAX, and the restore failed with ENAMETOOLONG
+// (#977).
+func createAtomic(root *os.Root, relPath string, mode os.FileMode) (*atomicFile, error) {
 	if fi, err := root.Lstat(relPath); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("refusing to restore %s: destination path is a symlink", relPath)
 	}
-	var suffix [6]byte
+	var suffix [12]byte
 	if _, err := rand.Read(suffix[:]); err != nil {
 		return nil, fmt.Errorf("create %s: temporary name: %w", relPath, err)
 	}
-	dir, base := path.Split(relPath)
-	tmp := dir + ".cargoship-restore-" + base + "-" + hex.EncodeToString(suffix[:]) + ".tmp"
-	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	dir, _ := path.Split(relPath)
+	tmp := dir + restoreTempPrefix + hex.EncodeToString(suffix[:]) + ".tmp"
+	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("create %s: %w", relPath, err)
 	}
-	return &atomicFile{root: root, rel: relPath, tmp: tmp, f: f}, nil
+	return &atomicFile{root: root, rel: relPath, tmp: tmp, mode: mode & os.ModePerm, f: f}, nil
 }
 
 // Write implements io.Writer.
 func (a *atomicFile) Write(p []byte) (int, error) { return a.f.Write(p) }
 
-// commit syncs and closes the temporary file, checking both, then renames it over
-// the destination. On any failure the temporary file is removed and the
-// destination is left as it was.
+// commit applies the file's mode, syncs and closes the temporary file, checking
+// both, then renames it over the destination. On any failure the temporary
+// file is removed and the destination is left as it was.
+//
+// A chmod failure is not fatal, like restoreModTime's: the content is correct,
+// and the file is left 0600, never wider than intended. Some network and FUSE
+// filesystems refuse chmod outright.
 func (a *atomicFile) commit() error {
+	_ = a.f.Chmod(a.mode)
 	if err := a.f.Sync(); err != nil {
 		a.abort()
 		return fmt.Errorf("write %s: sync: %w", a.rel, err)
@@ -504,10 +548,10 @@ func (a *atomicFile) abort() {
 	_ = a.root.Remove(a.tmp)
 }
 
-// writeContained writes data to relPath inside root, atomically and with the
-// same symlink refusal as createAtomic.
-func writeContained(root *os.Root, relPath string, data []byte) error {
-	a, err := createAtomic(root, relPath)
+// writeContained writes data to relPath inside root with mode's permission
+// bits, atomically and with the same symlink refusal as createAtomic.
+func writeContained(root *os.Root, relPath string, data []byte, mode os.FileMode) error {
+	a, err := createAtomic(root, relPath, mode)
 	if err != nil {
 		return err
 	}
@@ -1029,7 +1073,7 @@ func (se *SelectiveExtractor) writeDirectFiles(data []byte, files []*FileEntry, 
 		if err := prepareParents(root, rel); err != nil {
 			return restored, totalBytes, err
 		}
-		if err := writeContained(root, rel, data); err != nil {
+		if err := writeContained(root, rel, data, restoreMode(root, rel, 0)); err != nil {
 			return restored, totalBytes, err
 		}
 		restoreModTime(root, rel, entry.ModTime)
@@ -1260,6 +1304,12 @@ func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEn
 	if entry.TotalParts > 1 {
 		return false // split part: whole-chunk path reassembles it
 	}
+	if entry.IsDuplicate {
+		// #970: a duplicate has no offset of its own (its bytes sit at the
+		// original's), so slicing at its ArchiveOffset read the wrong bytes. The
+		// whole-chunk path finds the member by content instead.
+		return false
+	}
 	fr := findFrame(chunk.Frames, entry.ArchiveOffset, entry.Size)
 	if fr == nil {
 		return false
@@ -1310,10 +1360,17 @@ func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEn
 	// manifest size can disagree with the tar entry; slicing it padded a shrunk
 	// file with the next file's bytes. The entry's 512-byte header sits right
 	// before ArchiveOffset; when it's in this frame, its size must agree.
-	if hdrSize, ok := tarHeaderSizeBefore(raw, sliceStart); ok && hdrSize != entry.Size {
+	hdr, hdrOK := tarHeaderBefore(raw, sliceStart)
+	if hdrOK && hdr.Size != 0 && hdr.Size != entry.Size {
 		se.noteFailure(stats, 1, fmt.Errorf("%s: the archive holds %d bytes but the manifest records %d "+
-			"(the file changed while it was being uploaded)", entry.Path, hdrSize, entry.Size))
+			"(the file changed while it was being uploaded)", entry.Path, hdr.Size, entry.Size))
 		return true
+	}
+	// #974: the same header carries the archived mode. When it lies in an
+	// earlier frame, restoreMode falls back as for a direct object.
+	var hdrMode int64
+	if hdrOK {
+		hdrMode = hdr.Mode
 	}
 	content := raw[sliceStart : sliceStart+entry.Size]
 
@@ -1339,7 +1396,7 @@ func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEn
 		se.noteFailure(stats, 1, fmt.Errorf("%s: %w", entry.Path, err))
 		return true
 	}
-	if err := writeContained(root, rel, content); err != nil {
+	if err := writeContained(root, rel, content, restoreMode(root, rel, hdrMode)); err != nil {
 		se.noteFailure(stats, 1, fmt.Errorf("%s: %w", entry.Path, err))
 		return true
 	}
@@ -1354,15 +1411,26 @@ func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEn
 // (it lies in an earlier frame, or the size is carried in a PAX record, in which
 // case the header's own size field is zero).
 func tarHeaderSizeBefore(raw []byte, dataStart int64) (int64, bool) {
-	const block = 512
-	if dataStart < block || dataStart > int64(len(raw)) {
-		return 0, false
-	}
-	hdr, err := tar.NewReader(bytes.NewReader(raw[dataStart-block : dataStart])).Next()
-	if err != nil || hdr.Size == 0 {
+	hdr, ok := tarHeaderBefore(raw, dataStart)
+	if !ok || hdr.Size == 0 {
 		return 0, false
 	}
 	return hdr.Size, true
+}
+
+// tarHeaderBefore parses the tar header block that ends at dataStart in raw. ok
+// is false when there is no valid header there, e.g. because it lies in an
+// earlier frame.
+func tarHeaderBefore(raw []byte, dataStart int64) (*tar.Header, bool) {
+	const block = 512
+	if dataStart < block || dataStart > int64(len(raw)) {
+		return nil, false
+	}
+	hdr, err := tar.NewReader(bytes.NewReader(raw[dataStart-block : dataStart])).Next()
+	if err != nil {
+		return nil, false
+	}
+	return hdr, true
 }
 
 // decodeZstdFrame decompresses a single self-contained zstd frame (#436).
@@ -1379,12 +1447,39 @@ func decodeZstdFrame(compressed []byte) ([]byte, error) {
 	return raw, nil
 }
 
+// duplicateHash returns the SHA-256 content hash a --enable-dedup duplicate
+// was recorded with, or "" for a file that is not a duplicate.
+func duplicateHash(f *FileEntry) string {
+	if !f.IsDuplicate {
+		return ""
+	}
+	if f.DuplicateOfHash != "" {
+		return f.DuplicateOfHash
+	}
+	return f.Checksum
+}
+
 // extractFromChunkData decompresses data (a compressed tar archive) and writes
 // the requested files to destDir. Returns the count of files written and total
 // bytes written.
+//
+// A --enable-dedup duplicate has no tar member: its bytes are the original's,
+// stored under the original's name. The manifest records the duplicate's
+// content hash and the original's chunk, but not which member is the original,
+// and since #548 the original usually carries no checksum of its own. So a
+// duplicate is matched by content: every member of the duplicate's size is
+// hashed, and one whose SHA-256 equals the duplicate's hash is written to the
+// duplicate's path. Matching on the duplicate's own path never found it (#970).
 func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEntry, root *os.Root, destDir string) (int, int64, error) {
 	want := make(map[string]*FileEntry, len(files))
+	dups := make(map[string][]*FileEntry) // content hash -> duplicates to write from it
+	dupSizes := make(map[int64]bool)
 	for _, f := range files {
+		if h := duplicateHash(f); h != "" {
+			dups[h] = append(dups[h], f)
+			dupSizes[f.Size] = true
+			continue
+		}
 		want[f.Path] = f
 	}
 
@@ -1426,7 +1521,20 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 			return restored, totalBytes, fmt.Errorf("tar read: %w", err)
 		}
 		entry, ok := want[hdr.Name]
-		if !ok {
+		dupCandidate := len(dups) > 0 && dupSizes[hdr.Size] && hdr.Typeflag == tar.TypeReg
+		if !ok && !dupCandidate {
+			continue
+		}
+		if dupCandidate {
+			n, w, err := se.writeMemberAndDuplicates(tarReader, hdr, entry, dups, root, destDir)
+			restored += n
+			totalBytes += w
+			if err != nil {
+				return restored, totalBytes, err
+			}
+			if entry != nil {
+				delete(want, hdr.Name)
+			}
 			continue
 		}
 		// #282: same escape-safe, structure-preserving layout as the direct path.
@@ -1450,9 +1558,13 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 
 		if verifyThis {
 			// #270: hash the extracted content and only write it if it matches
-			// the manifest, so restore never lands corrupt bytes on disk. The
-			// entry is bounded by its declared size (hdr.Size), and CopyN both
-			// caps reads and detects a truncated entry.
+			// the manifest, so restore never lands corrupt bytes on disk. CopyN
+			// both caps reads and detects a truncated entry. #985: the buffer is
+			// sized from hdr.Size, so the header must agree with the manifest
+			// before anything is allocated.
+			if err := checkMemberSize(hdr, entry); err != nil {
+				return restored, totalBytes, err
+			}
 			buf := make([]byte, 0, hdr.Size)
 			w := bytes.NewBuffer(buf)
 			if _, err := io.CopyN(w, tarReader, hdr.Size); err != nil {
@@ -1462,7 +1574,7 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 			if se.checksumMismatch(entry, content) {
 				return restored, totalBytes, fmt.Errorf("checksum mismatch for %s: stored data does not match manifest", entry.Path)
 			}
-			if err := writeContained(root, rel, content); err != nil {
+			if err := writeContained(root, rel, content, restoreMode(root, rel, hdr.Mode)); err != nil {
 				return restored, totalBytes, err
 			}
 			restoreModTime(root, rel, entry.ModTime)
@@ -1472,7 +1584,7 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 			continue
 		}
 
-		f, err := createAtomic(root, rel)
+		f, err := createAtomic(root, rel, restoreMode(root, rel, hdr.Mode))
 		if err != nil {
 			return restored, totalBytes, err
 		}
@@ -1513,11 +1625,109 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 	// #905: a clean end of archive is not success if requested entries never
 	// appeared. A truncated or mismatched chunk (an empty object, a chunk
 	// rebound by resume, a manifest written for a failed upload) used to return
-	// nil here, so restore exited 0 with the files silently absent.
+	// nil here, so restore exited 0 with the files silently absent. A duplicate
+	// whose content no member holds is missing the same way (#970).
+	for _, ds := range dups {
+		for _, d := range ds {
+			want[d.Path] = d
+		}
+	}
 	if len(want) > 0 {
 		return restored, totalBytes, missingEntriesError(want, chunkKeyOf(files))
 	}
 	return restored, totalBytes, nil
+}
+
+// writeMemberAndDuplicates reads one tar member whose size matches a pending
+// duplicate, writes it to entry's path when the member was itself requested
+// (entry may be nil), and writes it to every pending duplicate whose content
+// hash it matches, removing those from dups. The member is buffered because one
+// read feeds several files and has to be hashed before any duplicate is
+// written; its size is a manifest-declared duplicate size (#970).
+func (se *SelectiveExtractor) writeMemberAndDuplicates(tr io.Reader, hdr *tar.Header, entry *FileEntry, dups map[string][]*FileEntry, root *os.Root, destDir string) (int, int64, error) {
+	if entry != nil {
+		if err := checkMemberSize(hdr, entry); err != nil {
+			return 0, 0, err
+		}
+	}
+	var buf bytes.Buffer
+	if _, err := io.CopyN(&buf, tr, hdr.Size); err != nil {
+		name := hdr.Name
+		if entry != nil {
+			name = entry.Path
+		}
+		return 0, 0, fmt.Errorf("read %s: %w", name, err)
+	}
+	content := buf.Bytes()
+	var restored int
+	var written int64
+	if entry != nil {
+		if se.checksumMismatch(entry, content) {
+			return 0, 0, fmt.Errorf("checksum mismatch for %s: stored data does not match manifest", entry.Path)
+		}
+		if err := se.writeRestored(root, destDir, entry, content, hdr.Mode); err != nil {
+			return 0, 0, err
+		}
+		restored++
+		written += int64(len(content))
+	}
+	sum := sha256.Sum256(content)
+	hash := hex.EncodeToString(sum[:])
+	for _, d := range dups[hash] {
+		// The content hash just matched, so this only fails for a duplicate whose
+		// recorded checksum disagrees with its own content hash.
+		if se.checksumMismatch(d, content) {
+			return restored, written, fmt.Errorf("checksum mismatch for %s: stored data does not match manifest", d.Path)
+		}
+		if err := se.writeRestored(root, destDir, d, content, hdr.Mode); err != nil {
+			return restored, written, err
+		}
+		restored++
+		written += int64(len(content))
+	}
+	delete(dups, hash)
+	return restored, written, nil
+}
+
+// writeRestored writes content to entry's restore path under destDir with the
+// archived mode hdrMode, then stamps the entry's modification time.
+func (se *SelectiveExtractor) writeRestored(root *os.Root, destDir string, entry *FileEntry, content []byte, hdrMode int64) error {
+	outPath, err := se.restorePath(destDir, entry.Path)
+	if err != nil {
+		return err
+	}
+	rel, err := destRelPath(destDir, outPath)
+	if err != nil {
+		return err
+	}
+	if err := prepareParents(root, rel); err != nil {
+		return err
+	}
+	if err := writeContained(root, rel, content, restoreMode(root, rel, hdrMode)); err != nil {
+		return err
+	}
+	restoreModTime(root, rel, entry.ModTime)
+	return nil
+}
+
+// checkMemberSize rejects a tar member whose header declares a size other than
+// the one the manifest records for entry. It runs before a member is buffered:
+// the header is read from the chunk, so a corrupt or crafted one could claim any
+// size, and a buffer allocated from it panicked or exhausted memory (#985).
+//
+// A mismatch is also how a file that changed while it was being uploaded shows
+// up in an archive written before #910; the frame path refuses those the same
+// way. --no-verify restores the archived bytes as they are, without buffering.
+func checkMemberSize(hdr *tar.Header, entry *FileEntry) error {
+	want := entry.Size
+	if entry.TotalParts > 1 && entry.Length > 0 {
+		want = entry.Length
+	}
+	if hdr.Size == want {
+		return nil
+	}
+	return fmt.Errorf("%s: the archive holds %d bytes but the manifest records %d "+
+		"(the file changed while it was being uploaded, or the chunk is corrupt)", entry.Path, hdr.Size, want)
 }
 
 // missingEntriesError reports requested entries that a chunk did not contain,
