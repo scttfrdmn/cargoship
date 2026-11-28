@@ -265,3 +265,83 @@ func TestFormatAccessibilityReport(t *testing.T) {
 	assert.Contains(t, out, "3–5 hours")
 	assert.Contains(t, out, "$0.0500")
 }
+
+// TestCheck_IsReadOnly pins #973: the estimate a dry run or cost cap looks at
+// must come from a check that requests nothing.
+func TestCheck_IsReadOnly(t *testing.T) {
+	gib := aws.Int64(1024 * 1024 * 1024)
+	client := &mockGlacierClient{
+		heads: map[string]*s3.HeadObjectOutput{
+			"cold.tar.zst": {StorageClass: s3types.StorageClassGlacier, ContentLength: gib},
+			"deep.tar.zst": {StorageClass: s3types.StorageClassDeepArchive, ContentLength: gib},
+			"hot.tar.zst":  {StorageClass: s3types.StorageClassStandard},
+		},
+	}
+	gr := NewGlacierRestorer(client, 0)
+	report, err := gr.Check(context.Background(), "b", []string{"cold.tar.zst", "deep.tar.zst", "hot.tar.zst"}, RestoreTierStandard)
+	require.NoError(t, err)
+	assert.Empty(t, client.restored, "Check must not issue RestoreObject")
+	assert.ElementsMatch(t, []string{"cold.tar.zst", "deep.tar.zst"}, report.Frozen)
+	assert.Empty(t, report.JustRequested)
+	assert.InDelta(t, 0.030, report.EstimatedCostUSD, 1e-9) // 1 GB GLACIER + 1 GB DEEP_ARCHIVE, standard tier
+	assert.False(t, report.AllAccessible())
+	assert.Contains(t, FormatAccessibilityReport(report, RestoreTierStandard),
+		"2 chunk(s) are archived and need a retrieval request (none sent)")
+}
+
+// TestRequestRestore_RequestsFrozenOnce: the request phase sends one
+// RestoreObject per frozen key, skips in-progress ones, and a second call
+// doesn't repeat them.
+func TestRequestRestore_RequestsFrozenOnce(t *testing.T) {
+	client := &countingGlacierClient{mockGlacierClient: mockGlacierClient{heads: map[string]*s3.HeadObjectOutput{
+		"cold.tar.zst":     {StorageClass: s3types.StorageClassGlacier},
+		"inflight.tar.zst": {StorageClass: s3types.StorageClassGlacier, Restore: aws.String(`ongoing-request="true"`)},
+	}}}
+	gr := NewGlacierRestorer(client, 0)
+	ctx := context.Background()
+	report, err := gr.Check(ctx, "b", []string{"cold.tar.zst", "inflight.tar.zst"}, RestoreTierBulk)
+	require.NoError(t, err)
+	require.Equal(t, 0, client.calls)
+
+	require.NoError(t, gr.RequestRestore(ctx, "b", report, RestoreTierBulk))
+	require.NoError(t, gr.RequestRestore(ctx, "b", report, RestoreTierBulk))
+	assert.Equal(t, 1, client.calls, "only the frozen key is requested, and only once")
+	assert.Equal(t, []string{"cold.tar.zst"}, report.JustRequested)
+	assert.Equal(t, []string{"inflight.tar.zst"}, report.InProgress)
+}
+
+// TestRequestRestore_Error names the failing key and records nothing as sent.
+func TestRequestRestore_Error(t *testing.T) {
+	client := &failingRestoreClient{mockGlacierClient: mockGlacierClient{heads: map[string]*s3.HeadObjectOutput{
+		"cold.tar.zst": {StorageClass: s3types.StorageClassGlacier},
+	}}}
+	gr := NewGlacierRestorer(client, 0)
+	ctx := context.Background()
+	report, err := gr.Check(ctx, "b", []string{"cold.tar.zst"}, "")
+	require.NoError(t, err)
+	err = gr.RequestRestore(ctx, "b", report, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cold.tar.zst")
+	assert.Empty(t, report.JustRequested)
+
+	_, err = gr.CheckAndRestore(ctx, "b", []string{"cold.tar.zst"}, "")
+	require.Error(t, err)
+}
+
+// countingGlacierClient counts RestoreObject calls.
+type countingGlacierClient struct {
+	mockGlacierClient
+	calls int
+}
+
+func (c *countingGlacierClient) RestoreObject(ctx context.Context, in *s3.RestoreObjectInput, opts ...func(*s3.Options)) (*s3.RestoreObjectOutput, error) {
+	c.calls++
+	return c.mockGlacierClient.RestoreObject(ctx, in, opts...)
+}
+
+// failingRestoreClient fails every RestoreObject.
+type failingRestoreClient struct{ mockGlacierClient }
+
+func (c *failingRestoreClient) RestoreObject(context.Context, *s3.RestoreObjectInput, ...func(*s3.Options)) (*s3.RestoreObjectOutput, error) {
+	return nil, assert.AnError
+}

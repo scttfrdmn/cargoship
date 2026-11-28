@@ -110,9 +110,12 @@ type AccessibilityReport struct {
 	Accessible []string
 	// InProgress contains keys whose restore has already been initiated.
 	InProgress []string
-	// Frozen contains keys that need a restore request before they can be read.
+	// Frozen contains keys that were archived with no restore in progress when
+	// Check ran. They stay listed after RequestRestore, since they are still not
+	// readable.
 	Frozen []string
-	// JustRequested contains keys for which this call issued RestoreObject.
+	// JustRequested contains the Frozen keys RequestRestore issued RestoreObject
+	// for. Check alone leaves it empty.
 	JustRequested []string
 	// EstimatedCostUSD is the approximate retrieval fee for frozen objects (USD).
 	EstimatedCostUSD float64
@@ -142,13 +145,12 @@ func NewGlacierRestorer(client GlacierS3Client, days int32) *GlacierRestorer {
 	return &GlacierRestorer{s3Client: client, Days: days}
 }
 
-// CheckAndRestore inspects each key's storage state and, for frozen objects,
-// issues a RestoreObject request at the requested tier. It returns an
-// AccessibilityReport describing what was found and what actions were taken.
-//
-// If a key is already in-progress (restore requested previously) it is
-// reported in InProgress without issuing a duplicate request.
-func (gr *GlacierRestorer) CheckAndRestore(ctx context.Context, bucket string, keys []string, tier RestoreTier) (*AccessibilityReport, error) {
+// Check inspects each key's storage state with HeadObject and estimates the
+// retrieval cost of the frozen ones. It is read-only: it never issues
+// RestoreObject, so it is safe for a dry run and for a cost check that has to
+// happen before any money is spent (#973). Call RequestRestore afterwards to
+// start the retrievals.
+func (gr *GlacierRestorer) Check(ctx context.Context, bucket string, keys []string, tier RestoreTier) (*AccessibilityReport, error) {
 	if tier == "" {
 		tier = DefaultRestoreTier
 	}
@@ -171,22 +173,61 @@ func (gr *GlacierRestorer) CheckAndRestore(ctx context.Context, bucket string, k
 			report.InProgress = append(report.InProgress, key)
 
 		case GlacierObjectFrozen:
-			// Estimate retrieval cost.
 			costPerGB := retrievalCostPerGB[info.StorageClass][tier]
 			if costPerGB == 0 {
 				costPerGB = retrievalCostPerGB[info.StorageClass][RestoreTierStandard]
 			}
 			sizeGB := float64(info.SizeBytes) / (1024 * 1024 * 1024)
 			report.EstimatedCostUSD += sizeGB * costPerGB
-
-			if err := gr.requestRestore(ctx, bucket, key, tier); err != nil {
-				return nil, fmt.Errorf("RestoreObject %q: %w", key, err)
-			}
-			report.JustRequested = append(report.JustRequested, key)
 			report.Frozen = append(report.Frozen, key)
 		}
 	}
 
+	return report, nil
+}
+
+// RequestRestore issues RestoreObject at the given tier for every frozen key in
+// report that has not been requested yet, recording each in JustRequested. This
+// is the step that is billed, so callers apply their dry-run and cost checks to
+// the report from Check first (#973). On error, JustRequested holds the keys
+// that were requested before the failure.
+func (gr *GlacierRestorer) RequestRestore(ctx context.Context, bucket string, report *AccessibilityReport, tier RestoreTier) error {
+	if tier == "" {
+		tier = DefaultRestoreTier
+	}
+	requested := make(map[string]bool, len(report.JustRequested))
+	for _, k := range report.JustRequested {
+		requested[k] = true
+	}
+	for _, key := range report.Frozen {
+		if requested[key] {
+			continue
+		}
+		if err := gr.requestRestore(ctx, bucket, key, tier); err != nil {
+			return fmt.Errorf("RestoreObject %q: %w", key, err)
+		}
+		report.JustRequested = append(report.JustRequested, key)
+		requested[key] = true
+	}
+	return nil
+}
+
+// CheckAndRestore runs Check and then RequestRestore, requesting every frozen
+// key with no chance to look at the estimate in between. Use it only where the
+// retrieval was already approved — `restore jobs check` re-requesting a job's
+// chunks. A command with --dry-run or a cost cap must call Check, apply them,
+// and then RequestRestore (#973).
+//
+// A key whose restore is already in progress is reported in InProgress without
+// a duplicate request.
+func (gr *GlacierRestorer) CheckAndRestore(ctx context.Context, bucket string, keys []string, tier RestoreTier) (*AccessibilityReport, error) {
+	report, err := gr.Check(ctx, bucket, keys, tier)
+	if err != nil {
+		return nil, err
+	}
+	if err := gr.RequestRestore(ctx, bucket, report, tier); err != nil {
+		return nil, err
+	}
 	return report, nil
 }
 
@@ -335,13 +376,16 @@ func EstimateRetrievalCost(sizeGB float64, storageClass string, tier RestoreTier
 func FormatAccessibilityReport(report *AccessibilityReport, tier RestoreTier) string {
 	var sb strings.Builder
 
+	sc := ""
+	if len(report.Objects) > 0 {
+		sc = report.Objects[0].StorageClass
+	}
+	eta := estimatedRestoreDuration(sc, tier)
 	if len(report.JustRequested) > 0 {
-		sc := ""
-		if len(report.Objects) > 0 {
-			sc = report.Objects[0].StorageClass
-		}
-		eta := estimatedRestoreDuration(sc, tier)
 		fmt.Fprintf(&sb, "🧊 Restore requested for %d chunk(s) — estimated ready in %s\n", len(report.JustRequested), eta)
+	}
+	if n := len(report.Frozen) - len(report.JustRequested); n > 0 {
+		fmt.Fprintf(&sb, "🧊 %d chunk(s) are archived and need a retrieval request (none sent) — ready about %s after one is sent\n", n, eta)
 	}
 	if len(report.InProgress) > 0 {
 		fmt.Fprintf(&sb, "⏳ %d chunk(s) already being restored (in-progress)\n", len(report.InProgress))

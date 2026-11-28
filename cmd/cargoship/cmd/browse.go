@@ -171,16 +171,14 @@ Examples:
 			}
 			chunkKeys := se.ChunkKeysForPaths(result.SelectedPaths)
 
+			// #973: the cost cap is applied before any retrieval is requested.
 			gr := s3pkg.NewGlacierRestorer(s3Client, restoreDays)
-			report, err := gr.CheckAndRestore(ctx, bucket, chunkKeys, restoreTier)
+			report, err := glacierPreflight(ctx, gr, bucket, chunkKeys, restoreTier, maxRestoreCost)
 			if err != nil {
-				return fmt.Errorf("glacier pre-flight check failed: %w", err)
+				return err
 			}
-
-			// Budget guard.
-			if maxRestoreCost > 0 && report.EstimatedCostUSD > maxRestoreCost {
-				return fmt.Errorf("estimated retrieval cost $%.4f exceeds --max-restore-cost $%.4f; aborting",
-					report.EstimatedCostUSD, maxRestoreCost)
+			if err := requestGlacierRestores(ctx, gr, bucket, report, restoreTier); err != nil {
+				return err
 			}
 
 			if summary := s3pkg.FormatAccessibilityReport(report, restoreTier); summary != "" {

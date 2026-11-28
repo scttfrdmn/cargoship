@@ -104,7 +104,9 @@ for you and reports the estimated cost:
 - `--wait` — block until the thaw finishes, then download automatically.
 - `--restore-days` — how many days to keep the restored copy available (default 7).
 - `--max-restore-cost` — abort if the estimated retrieval cost exceeds this USD limit.
-- `--dry-run` — show the size and estimated cost without restoring.
+  The check runs before any retrieval is requested, so an aborted restore costs nothing.
+- `--dry-run` — show the size and estimated cost without requesting a retrieval or
+  restoring anything.
 
 ```bash
 cargoship restore s3://my-bucket/archives/uploads/20260721-a1b2c3 ./out \
