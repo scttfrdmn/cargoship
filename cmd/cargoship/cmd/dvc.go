@@ -222,7 +222,9 @@ func newDVCExportCmd() *cobra.Command {
 // ---------------------------------------------------------------------------
 
 // loadManifestFromS3URL parses an s3://bucket/prefix/uploads/<id> URL, creates
-// an S3 client, and downloads the manifest.
+// an S3 client, and loads the version's effective manifest: for an incremental
+// version, the whole dataset rather than its delta (#975). Quiet, since the dvc
+// commands can print JSON on stdout.
 func loadManifestFromS3URL(ctx context.Context, s3URL, region string) (*manifest.Manifest, error) {
 	bucket, prefix, err := parseS3URL(s3URL)
 	if err != nil {
@@ -245,9 +247,9 @@ func loadManifestFromS3URL(ctx context.Context, s3URL, region string) (*manifest
 	}
 
 	// Decryption-aware: handles --encrypt-manifest uploads (#479).
-	m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
+	m, _, err := resolveEffectiveManifest(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
 	if err != nil {
-		return nil, fmt.Errorf("download manifest: %w", err)
+		return nil, err
 	}
 	return m, nil
 }

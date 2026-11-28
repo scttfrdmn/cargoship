@@ -413,31 +413,47 @@ func allFilePaths(m *manifest.Manifest) []string {
 	return paths
 }
 
-// loadEffectiveManifest downloads the manifest for uploadID and, when it is an
-// incremental-sync delta (PreviousManifestID set), resolves the chain into the
-// full effective dataset (newest-wins per path + deletion tombstones), so the
-// caller sees every current file — not just that version's delta (#552).
-// Shared by `restore` and `browse` so they can't diverge on chain handling.
-// `verify` deliberately uses ResolveChain directly (it validates each version),
-// so it does not use this.
+// resolveEffectiveManifest downloads the manifest for uploadID and, when it is
+// an incremental-sync delta (PreviousManifestID set), resolves the chain into
+// the full effective dataset (newest-wins per path + deletion tombstones), so
+// the caller sees every current file — not just that version's delta (#552).
+// chained reports whether a chain was resolved. It prints nothing, for callers
+// whose stdout is machine-readable (dvc --json); loadEffectiveManifest is the
+// same with progress output.
+//
+// Every command that reads one version's files goes through here — restore,
+// browse, download, shell and dvc — so they can't diverge on chain handling;
+// download, shell and dvc used to read only the delta (#975). `verify`
+// deliberately uses ResolveChain directly (it validates each version).
+func resolveEffectiveManifest(ctx context.Context, s3Client *s3.Client, kmsClient *kms.Client, bucket, actualPrefix, uploadID string) (m *manifest.Manifest, chained bool, err error) {
+	m, err = manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to load manifest: %w", err)
+	}
+	if m.PreviousManifestID == "" {
+		return m, false, nil
+	}
+	fetch := func(ctx context.Context, prevID string) (*manifest.Manifest, error) {
+		return manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, prevID)
+	}
+	merged, err := manifest.ResolveEffective(ctx, m, fetch)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to resolve incremental version chain: %w", err)
+	}
+	return merged, true, nil
+}
+
+// loadEffectiveManifest is resolveEffectiveManifest with progress output.
 func loadEffectiveManifest(ctx context.Context, s3Client *s3.Client, kmsClient *kms.Client, bucket, actualPrefix, uploadID string) (*manifest.Manifest, error) {
 	fmt.Printf("📥 Loading manifest: s3://%s/%s/uploads/%s\n", bucket, actualPrefix, uploadID)
-	m, err := manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
+	m, chained, err := resolveEffectiveManifest(ctx, s3Client, kmsClient, bucket, actualPrefix, uploadID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load manifest: %w", err)
+		return nil, err
 	}
-	fmt.Printf("✅ Manifest loaded: %d files, %d chunks\n\n", m.TotalFiles, m.TotalChunks)
-
-	if m.PreviousManifestID != "" {
-		fetch := func(ctx context.Context, prevID string) (*manifest.Manifest, error) {
-			return manifest.DownloadFromS3WithDecryption(ctx, s3Client, kmsClient, bucket, actualPrefix, prevID)
-		}
-		merged, err := manifest.ResolveEffective(ctx, m, fetch)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve incremental version chain: %w", err)
-		}
-		fmt.Printf("🔗 Resolved incremental version chain: %d files across the full dataset\n\n", merged.TotalFiles)
-		m = merged
+	if chained {
+		fmt.Printf("🔗 Resolved incremental version chain: %d files across the full dataset\n\n", m.TotalFiles)
+	} else {
+		fmt.Printf("✅ Manifest loaded: %d files, %d chunks\n\n", m.TotalFiles, m.TotalChunks)
 	}
 	return m, nil
 }
