@@ -104,6 +104,12 @@ type DeepVerifier struct {
 	// bucket overrides the bucket objects are fetched from; empty means use
 	// manifest.Bucket. See SetBucket (#335).
 	bucket string
+
+	// prefix, when prefixSet, is the prefix the manifest was read from, which
+	// object keys are resolved against instead of manifest.Prefix. See
+	// SetPrefix (#1032).
+	prefix    string
+	prefixSet bool
 }
 
 // NewDeepVerifier creates a deep verifier for a manifest.
@@ -121,6 +127,20 @@ func NewDeepVerifier(m *Manifest, s3Client S3Downloader) *DeepVerifier {
 // integrity check must not do (#335).
 func (dv *DeepVerifier) SetBucket(bucket string) *DeepVerifier {
 	dv.bucket = bucket
+	return dv
+}
+
+// SetPrefix resolves chunk object keys against prefix — the prefix the manifest
+// was read from — instead of the prefix recorded inside it. Unlike SetBucket,
+// "" is a real prefix here (an archive at the bucket root), so every call takes
+// effect. Returns the receiver for chaining.
+//
+// It is the prefix half of #335: a copy of an archive at a new prefix carries
+// the original's prefix in its manifest, so without this a deep verify of the
+// copy read the ORIGINAL's chunks and passed with the copy's chunks overwritten
+// by garbage (#1032).
+func (dv *DeepVerifier) SetPrefix(prefix string) *DeepVerifier {
+	dv.prefix, dv.prefixSet = prefix, true
 	return dv
 }
 
@@ -226,6 +246,28 @@ func ResolveObjectKey(prefix, bucket, s3Key string) string {
 	return key
 }
 
+// ResolveObjectKeyAt is ResolveObjectKey for an archive that is read from
+// readPrefix rather than the recordedPrefix written into its manifest — a copy
+// or a move. The key is resolved at the recorded location, made relative to it,
+// and re-rooted at readPrefix, so a key stored already prefix-scoped ("orig/
+// uploads/...") lands under the new prefix rather than gaining it twice. When the
+// two prefixes agree it returns exactly what ResolveObjectKey does (#1032).
+func ResolveObjectKeyAt(recordedPrefix, readPrefix, bucket, s3Key string) string {
+	key := ResolveObjectKey(recordedPrefix, bucket, s3Key)
+	rec := strings.Trim(recordedPrefix, "/")
+	at := strings.Trim(readPrefix, "/")
+	if rec == at {
+		return key
+	}
+	if rec != "" {
+		key = strings.TrimPrefix(key, rec+"/")
+	}
+	if at == "" {
+		return key
+	}
+	return at + "/" + key
+}
+
 // stripURLScheme removes a leading scheme://host/ from an S3 key stored as a
 // full URL. Only a "://" in true scheme position counts: S3 permits ':' in
 // object keys, so matching "://" anywhere would mangle a legitimate key (a file
@@ -269,8 +311,12 @@ func isURLScheme(s string) bool {
 	return true
 }
 
-// objectKey resolves a chunk key against this manifest's prefix/bucket.
+// objectKey resolves a chunk key against the prefix the manifest was read from
+// (SetPrefix), or else the one it records.
 func (dv *DeepVerifier) objectKey(chunkKey string) string {
+	if dv.prefixSet {
+		return ResolveObjectKeyAt(dv.manifest.Prefix, dv.prefix, dv.manifest.Bucket, chunkKey)
+	}
 	return ResolveObjectKey(dv.manifest.Prefix, dv.manifest.Bucket, chunkKey)
 }
 

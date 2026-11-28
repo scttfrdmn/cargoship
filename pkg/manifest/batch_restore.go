@@ -186,6 +186,11 @@ type SelectiveExtractor struct {
 	// bucket in the S3 URL and had no reason to think it was ignored (#335). Set
 	// with SetBucket to the bucket the manifest was actually read from.
 	bucket string
+
+	// prefix, when prefixSet, is the prefix the manifest was read from, which
+	// object keys are resolved against instead of manifest.Prefix (#1032).
+	prefix    string
+	prefixSet bool
 }
 
 // NewSelectiveExtractor creates a SelectiveExtractor. maxCacheSize sets the
@@ -219,6 +224,20 @@ func (se *SelectiveExtractor) SetVerify(v bool) *SelectiveExtractor {
 // Returns the receiver for chaining.
 func (se *SelectiveExtractor) SetBucket(bucket string) *SelectiveExtractor {
 	se.bucket = bucket
+	return se
+}
+
+// SetPrefix resolves object keys against prefix — the prefix the manifest was
+// read from — instead of the prefix recorded inside it. "" is a real prefix (an
+// archive at the bucket root), so every call takes effect. Returns the receiver
+// for chaining.
+//
+// The prefix half of #335: an archive copied to a new prefix carries the
+// original's prefix in its manifest, so a restore from the copy fetched the
+// ORIGINAL's objects, succeeding against data the user believed they had moved
+// or reporting a 404 for data that was right there (#1032).
+func (se *SelectiveExtractor) SetPrefix(prefix string) *SelectiveExtractor {
+	se.prefix, se.prefixSet = prefix, true
 	return se
 }
 
@@ -588,9 +607,12 @@ func (se *SelectiveExtractor) AllChunkKeys() []string {
 }
 
 // resolveKey maps a manifest-recorded S3Key to the object key within the
-// manifest's bucket. Single place so the pre-flight and download paths cannot
-// drift apart again (#334).
+// bucket, under the prefix set by SetPrefix or else the manifest's own. Single
+// place so the pre-flight and download paths cannot drift apart again (#334).
 func (se *SelectiveExtractor) resolveKey(s3Key string) string {
+	if se.prefixSet {
+		return ResolveObjectKeyAt(se.manifest.Prefix, se.prefix, se.manifest.Bucket, s3Key)
+	}
 	return ResolveObjectKey(se.manifest.Prefix, se.manifest.Bucket, s3Key)
 }
 

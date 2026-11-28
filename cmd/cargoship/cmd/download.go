@@ -219,7 +219,8 @@ Examples:
 				targets[i] = file.Path
 			}
 			extractor := manifest.NewSelectiveExtractor(m, s3Client, 0).
-				SetBucket(bucket). // where the manifest actually came from (#335)
+				SetBucket(bucket).       // where the manifest actually came from (#335)
+				SetPrefix(actualPrefix). // and the prefix it came from (#1032)
 				SetVerify(!noVerify).
 				SetFlatten(flatten).
 				SetExisting(existing.policy())

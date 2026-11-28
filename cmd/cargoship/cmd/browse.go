@@ -161,7 +161,9 @@ Examples:
 			// not the one recorded inside it. Without it the Glacier pre-flight
 			// below checks `bucket` while the download goes somewhere else — the
 			// same split that made #334 undetectable. (#335)
+			// SetPrefix: likewise the prefix it was read from (#1032).
 			se := manifest.NewSelectiveExtractor(m, s3Client, maxCacheBytes).SetBucket(bucket).
+				SetPrefix(actualPrefix).
 				SetExisting(existing.policy())
 
 			// Glacier pre-flight check on the chunks needed for selected files.
