@@ -106,6 +106,11 @@ cargoship upload ./my-data s3://my-bucket/archives/ \
   --incremental --prev-manifest ./manifest.json.gz
 ```
 
+`--incremental` needs `--prev-manifest`. A file counts as changed when it is new
+or its size or modification time differs from the previous manifest, which is the
+same rule `sync` uses. If nothing has changed, the upload writes nothing and exits
+0. The new version joins the previous upload's dataset as its next version.
+
 For a dedicated sync workflow (including delete tracking), see
 [Incremental sync](/guides/sync).
 

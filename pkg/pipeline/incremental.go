@@ -44,7 +44,8 @@ type IncrementalStats struct {
 // without computing the more expensive subsequent checks.
 //
 // When the previous manifest contains no ContentHash for a file, tier 3 is
-// skipped and a matching size is treated as unchanged.
+// replaced by sync's rule (manifest.FileChanged): a modification-time
+// difference is a change (#1002).
 //
 // An in-memory HashCache avoids redundant disk reads across repeated calls to
 // ShouldUpload for the same file (e.g., when multiple goroutines scan concurrently).
@@ -72,10 +73,13 @@ func NewIncrementalScanner(prev *manifest.Manifest, cacheFile string) (*Incremen
 
 	// Build O(1) path index from previous manifest entries, keyed by the
 	// source-relative path so lookups by relPath match; FileEntry.Path is stored as
-	// the full (source-prefixed) walked path (#624).
+	// the full (source-prefixed) walked path (#624). Keys are slash-separated on
+	// every OS, as ShouldUpload looks them up: RelativeToSource returns the
+	// entry's path unchanged when there is no SourcePath or the entry lies
+	// outside it, and on Windows that path carries backslashes.
 	fileIndex := make(map[string]manifest.FileEntry, len(prev.Files))
 	for _, f := range prev.Files {
-		fileIndex[manifest.RelativeToSource(prev.SourcePath, f.Path)] = f
+		fileIndex[filepath.ToSlash(manifest.RelativeToSource(prev.SourcePath, f.Path))] = f
 	}
 
 	return &IncrementalScanner{
@@ -94,8 +98,10 @@ func NewIncrementalScanner(prev *manifest.Manifest, cacheFile string) (*Incremen
 //
 // ShouldUpload is safe to call concurrently from multiple goroutines.
 func (s *IncrementalScanner) ShouldUpload(absPath, relPath string) bool {
-	// Tier 1: existence check against previous manifest.
-	prev, found := s.fileIndex[relPath]
+	// Tier 1: existence check against previous manifest. The index is keyed by
+	// slash-separated paths; the walk gives the OS separator, so on Windows every
+	// file in a subdirectory missed and looked new.
+	prev, found := s.fileIndex[filepath.ToSlash(relPath)]
 	if !found {
 		s.recordUpload(0)
 		return true
@@ -130,7 +136,13 @@ func (s *IncrementalScanner) ShouldUpload(absPath, relPath string) bool {
 		return true
 	}
 
-	// No content hash in previous manifest: same size → treat as unchanged.
+	// No content hash in the previous manifest (the usual case, #987): sync's
+	// change rule. #1002: size alone missed every same-size in-place edit, and
+	// the new version then claimed the old bytes.
+	if manifest.FileChanged(fi.Size(), fi.ModTime(), prev) {
+		s.recordUpload(fi.Size())
+		return true
+	}
 	s.recordSkip(fi.Size())
 	return false
 }

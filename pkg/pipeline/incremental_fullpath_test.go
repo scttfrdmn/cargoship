@@ -18,9 +18,13 @@ func TestIncrementalScanner_FullPathManifest_SkipsUnchanged(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "a.txt"), content, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	fi, err := os.Stat(filepath.Join(dir, "a.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	prev := &manifest.Manifest{
 		SourcePath: dir,
-		Files:      []manifest.FileEntry{{Path: filepath.Join(dir, "a.txt"), Size: int64(len(content))}},
+		Files:      []manifest.FileEntry{{Path: filepath.Join(dir, "a.txt"), Size: int64(len(content)), ModTime: fi.ModTime()}},
 	}
 	sc, err := NewIncrementalScanner(prev, "")
 	if err != nil {
