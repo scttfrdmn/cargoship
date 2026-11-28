@@ -253,6 +253,11 @@ func (s *ScannerStage) run(ctx context.Context) (err error) {
 		s.mu.Unlock()
 	}()
 
+	// #1003: a source path that isn't valid UTF-8 would corrupt every name under it.
+	if !manifest.StorablePathName(s.config.RootPath) {
+		return &manifest.NonUTF8PathsError{Root: s.config.RootPath}
+	}
+
 	// Stream files instead of loading all at once
 	fileChan, errChan := s.streamFiles(ctx, s.config.RootPath)
 
@@ -272,7 +277,12 @@ func (s *ScannerStage) run(ctx context.Context) (err error) {
 				// to select on errChan alongside fileChan, and could take the closed
 				// fileChan first and finish as if the walk had succeeded: the upload
 				// exited 0 without the files after the failure point.
-				if werr := <-errChan; werr != nil {
+				werr := <-errChan
+				// #1003: names that aren't valid UTF-8 were left out, and the walk
+				// went on, so every other file is still chunked and uploaded. The
+				// error then fails the run, which writes no final manifest (#999).
+				var badNames *manifest.NonUTF8PathsError
+				if werr != nil && !errors.As(werr, &badNames) {
 					return fmt.Errorf("failed to stream files: %w", werr)
 				}
 				// Issue #34 Phase 4.1: Submit final batch to pool
@@ -283,7 +293,7 @@ func (s *ScannerStage) run(ctx context.Context) (err error) {
 						return err
 					}
 				}
-				return nil
+				return werr
 			}
 
 			batch = append(batch, file)
@@ -381,12 +391,17 @@ func (s *ScannerStage) walkError(rootPath, path string, info os.FileInfo, err er
 	return err
 }
 
+// maxNamedNonUTF8 caps how many names that aren't valid UTF-8 the scan prints one
+// by one; the final error counts them all (#1003).
+const maxNamedNonUTF8 = 20
+
 // streamFiles streams files from the root path via a channel instead of loading all into memory
 func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan chunking.File, <-chan error) {
 	fileChan := make(chan chunking.File, 100) // Buffer for 100 files
 	errChan := make(chan error, 1)
 
 	go func() {
+		var nonUTF8 []string // #1003: relative paths left out because of their names
 		err := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return s.walkError(rootPath, path, info, err)
@@ -420,6 +435,20 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 
 			// Check include filter (Issue #148: Incremental sync)
 			if !s.shouldInclude(path, rootPath) {
+				return nil
+			}
+
+			// #1003: a name that isn't valid UTF-8 can't be stored in the manifest,
+			// whose JSON would replace the invalid bytes: the file would upload but not
+			// restore, and two such names could collapse to one. It is left out, named
+			// here, and the walk goes on; the scan then fails (see run).
+			if rel, relErr := filepath.Rel(rootPath, path); relErr == nil && !manifest.StorablePathName(rel) {
+				nonUTF8 = append(nonUTF8, rel)
+				if len(nonUTF8) <= maxNamedNonUTF8 {
+					fmt.Fprintf(os.Stderr, "⚠️  Not archiving %q: its name is not valid UTF-8 (see #1003)\n", rel)
+				} else if len(nonUTF8) == maxNamedNonUTF8+1 {
+					fmt.Fprintf(os.Stderr, "⚠️  More names that are not valid UTF-8; the final error counts them all\n")
+				}
 				return nil
 			}
 
@@ -458,6 +487,9 @@ func (s *ScannerStage) streamFiles(ctx context.Context, rootPath string) (<-chan
 
 			return nil
 		})
+		if err == nil && len(nonUTF8) > 0 {
+			err = &manifest.NonUTF8PathsError{Root: rootPath, Paths: nonUTF8}
+		}
 
 		// #1005: the error goes out before either channel closes, and errChan closes
 		// before fileChan, so a receiver that sees fileChan close finds the error

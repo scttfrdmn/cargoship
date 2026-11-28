@@ -226,6 +226,13 @@ func ScanLocalFilesExcluding(rootPath string, excludePatterns []string) ([]FileI
 	// to fail first.
 	var unreadable []string
 
+	// #1003: files whose names are not valid UTF-8, relative to absRoot. A root that
+	// is not valid UTF-8 would corrupt every name the same way, so it fails up front.
+	var nonUTF8 []string
+	if !StorablePathName(absRoot) {
+		return nil, &NonUTF8PathsError{Root: absRoot}
+	}
+
 	err = filepath.Walk(absRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			// #705: this used to `return nil` under a comment claiming it logged. It did
@@ -304,6 +311,14 @@ func ScanLocalFilesExcluding(rootPath string, excludePatterns []string) ([]FileI
 			return nil
 		}
 
+		// #1003: a name that isn't valid UTF-8 can't be stored in a manifest, so the
+		// pipeline refuses it too. Collected, like unreadable paths, so the error names
+		// every one. Checked after the exclusions, which are the escape hatch.
+		if !StorablePathName(relPath) {
+			nonUTF8 = append(nonUTF8, relPath)
+			return nil
+		}
+
 		files = append(files, FileInfo{
 			Path:    relPath,
 			Size:    info.Size(),
@@ -326,6 +341,9 @@ func ScanLocalFilesExcluding(rootPath string, excludePatterns []string) ([]FileI
 	// or the version chain.
 	if len(unreadable) > 0 {
 		return nil, &UnreadablePathsError{Root: absRoot, Paths: unreadable}
+	}
+	if len(nonUTF8) > 0 {
+		return nil, &NonUTF8PathsError{Root: absRoot, Paths: nonUTF8}
 	}
 
 	return files, nil
