@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"bytes"
-	"io"
-	"os"
 	"strings"
 	"testing"
 
@@ -71,25 +68,12 @@ func TestResolveLifecycleTemplate_UsesPrefix(t *testing.T) {
 }
 
 func TestListLifecycleTemplates_StatesDeletionAndTag(t *testing.T) {
-	out := captureLifecycleStdout(t, func() { require.NoError(t, listLifecycleTemplates()) })
+	var err error
+	out := captureStdout(t, func() { err = listLifecycleTemplates() })
+	require.NoError(t, err)
 	assert.Contains(t, out, "DELETES all objects after 2555d", "the compliance expiration must be visible")
 	assert.Contains(t, out, "cargoship-object=chunk")
 	assert.Contains(t, out, "--prefix")
-}
-
-func captureLifecycleStdout(t *testing.T, fn func()) string {
-	t.Helper()
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	orig := os.Stdout
-	os.Stdout = w
-	defer func() { os.Stdout = orig }()
-	fn()
-	require.NoError(t, w.Close())
-	var buf bytes.Buffer
-	_, err = io.Copy(&buf, r)
-	require.NoError(t, err)
-	return buf.String()
 }
 
 func TestLifecycleHelp_DocumentsPrefixAndExpiration(t *testing.T) {
