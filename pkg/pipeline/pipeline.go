@@ -1103,10 +1103,12 @@ func (p *Pipeline) uploadManifest(ctx context.Context) error {
 // one last partial-manifest snapshot so resume starts from the latest state rather than
 // the last periodic save, and it leaves the local state file alone. With
 // CleanupOnFailure the uploaded chunks and the partial manifest are deleted next
-// anyway, so the snapshot is skipped.
+// anyway, so the snapshot is skipped. A resumed run is the exception: its cleanup
+// keeps the recorded chunks and the partial manifest (#1009), so the snapshot is
+// what records this run's chunks alongside the earlier runs'.
 func (p *Pipeline) keepResumeState(ctx context.Context) {
 	fmt.Println("Upload incomplete: the final manifest was not written, so the next run uploads the failed files again")
-	if !p.config.EnablePartialManifest || p.config.CleanupOnFailure {
+	if !p.config.EnablePartialManifest || (p.config.CleanupOnFailure && !p.resumeKeepsRecorded()) {
 		return
 	}
 	if err := p.savePartialManifest(ctx); err != nil {
@@ -1497,6 +1499,30 @@ func (p *Pipeline) trackUploadedKey(s3Key string) {
 	p.uploadedKeys = append(p.uploadedKeys, s3Key)
 }
 
+// resumeKeepsRecorded reports whether this run resumed a saved upload, whose
+// partial manifest records chunks that earlier runs stored (#1009).
+func (p *Pipeline) resumeKeepsRecorded() bool {
+	return p.config.ResumeMode && p.manifestBuilder != nil
+}
+
+// recordedChunkKeys returns the prefix-relative keys of the chunks the manifest
+// records. It is called once the stages have finished, so nothing still writes to
+// the builder.
+func (p *Pipeline) recordedChunkKeys() map[string]bool {
+	builder, ok := p.manifestBuilder.(*manifest.Builder)
+	if !ok {
+		return nil
+	}
+	p.manifestMu.Lock()
+	defer p.manifestMu.Unlock()
+	chunks := builder.Build().Chunks
+	keys := make(map[string]bool, len(chunks))
+	for _, c := range chunks {
+		keys[c.S3Key] = true
+	}
+	return keys
+}
+
 // cleanupPartialUpload deletes uploaded chunks and partial manifest on failure (Issue #158)
 func (p *Pipeline) cleanupPartialUpload(ctx context.Context) error {
 	if !p.config.CleanupOnFailure || !p.config.UseRealS3 {
@@ -1509,11 +1535,31 @@ func (p *Pipeline) cleanupPartialUpload(ctx context.Context) error {
 	// missed every chunk of an upload under a prefix (while reporting them
 	// deleted) and could delete an unrelated object at the bucket root.
 	p.uploadedKeysMu.Lock()
-	keys := make([]string, 0, len(p.uploadedKeys)+1)
-	for _, k := range p.uploadedKeys {
+	tracked := append([]string(nil), p.uploadedKeys...)
+	p.uploadedKeysMu.Unlock()
+
+	// #1009: a resumed run keeps every chunk the manifest records and the partial
+	// manifest itself. That manifest is the only record of the chunks the earlier
+	// runs stored; deleting it orphaned them (billed, unreferenced) and threw the
+	// progress away. keepResumeState has just re-saved it with this run's chunks
+	// too, so only an object this run stored and nothing records is deleted.
+	resumed := p.resumeKeepsRecorded()
+	var recorded map[string]bool
+	if resumed {
+		recorded = p.recordedChunkKeys()
+	}
+	keys := make([]string, 0, len(tracked)+1)
+	kept := 0
+	for _, k := range tracked {
+		if recorded[k] {
+			kept++
+			continue
+		}
 		keys = append(keys, objectKeyFor(p.config.S3Prefix, k))
 	}
-	p.uploadedKeysMu.Unlock()
+	if kept > 0 {
+		fmt.Printf("\nKeeping the %d chunks this resumed run stored: the partial manifest records them for the next --resume\n", kept)
+	}
 
 	if len(keys) == 0 {
 		return nil
@@ -1522,7 +1568,9 @@ func (p *Pipeline) cleanupPartialUpload(ctx context.Context) error {
 	fmt.Printf("\n🧹 Cleaning up %d partial chunks...\n", len(keys))
 
 	// Add partial manifest to cleanup list
-	keys = append(keys, p.partialManifestKeys()...)
+	if !resumed {
+		keys = append(keys, p.partialManifestKeys()...)
+	}
 
 	// DeleteObjects supports up to 1000 keys per request
 	var deletedCount int
