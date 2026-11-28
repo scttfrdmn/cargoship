@@ -27,7 +27,8 @@ key never leaves KMS and access is governed by IAM.
 ## Envelope-encrypt the manifest
 
 The [manifest](/intro/concepts) is the index of what's in your upload — file
-names, sizes, layout. SSE-KMS protects it at rest like any object, but you can
+names, sizes, layout. With `--kms-key-id` it is stored with SSE-KMS under the
+same key as the data, so reading it needs `kms:Decrypt` on that key. You can
 add a second layer that encrypts the manifest's contents with a KMS-derived data
 key (envelope encryption) so it's unreadable without an explicit decrypt:
 

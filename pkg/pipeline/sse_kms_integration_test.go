@@ -16,6 +16,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/scttfrdmn/cargoship/pkg/manifest"
 )
 
 // TestUpload_KMSKeyEncryptsEveryDataObject: with a KMS key configured, every data
@@ -70,19 +72,23 @@ func TestUpload_KMSKeyEncryptsEveryDataObject(t *testing.T) {
 
 			out, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: aws.String(bucket), Prefix: aws.String(prefix + "/")})
 			require.NoError(t, err)
-			data := 0
+			// #1016: manifest objects too. They hold every path, size and
+			// checksum, and were left under the bucket default.
+			data, manifests := 0, 0
 			for _, obj := range out.Contents {
 				k := aws.ToString(obj.Key)
-				if strings.Contains(k, "manifest") {
-					continue
+				if strings.HasSuffix(k, "/"+manifest.ManifestFileNameGZ) {
+					manifests++
+				} else {
+					data++
 				}
-				data++
 				h, err := client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(k)})
 				require.NoError(t, err)
 				assert.Equal(t, types.ServerSideEncryptionAwsKms, h.ServerSideEncryption, "%s must be SSE-KMS", k)
 				assert.Equal(t, key, aws.ToString(h.SSEKMSKeyId), "%s must use the configured key", k)
 			}
 			require.Positive(t, data, "the upload must have written data objects")
+			require.Equal(t, 1, manifests, "the upload must have written its manifest")
 		})
 	}
 }
