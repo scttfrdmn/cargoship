@@ -396,14 +396,21 @@ func (m *Manager) GetBudgetStatus() map[string]interface{} {
 		totalDays, _ := budgetPeriod.GetTotalDays(now)
 		burnRate, _ := budgetPeriod.CalculateBurnRate(currentSpend, now)
 		projectedSpend, _ := budgetPeriod.ProjectEndOfPeriodSpend(currentSpend, now)
-		willExceed, _, _ := budgetPeriod.WillExceedBudget(currentSpend, now)
 
-		budgetUsed := currentSpend / budgetPeriod.MaxBudget
-		remaining := budgetPeriod.MaxBudget - currentSpend
+		// A period MaxBudget of 0 has no cost cap (#1030/#988): report it as not
+		// over budget, matching enforcement, instead of a NaN/Inf ratio.
+		capped := budgetPeriod.MaxBudget > 0
+		var budgetUsed, remaining float64
+		willExceed := false
+		if capped {
+			willExceed, _, _ = budgetPeriod.WillExceedBudget(currentSpend, now)
+			budgetUsed = currentSpend / budgetPeriod.MaxBudget
+			remaining = budgetPeriod.MaxBudget - currentSpend
+		}
 
 		// Calculate target daily rate to stay within budget
 		targetDailyRate := 0.0
-		if daysRemaining > 0 {
+		if capped && daysRemaining > 0 {
 			targetDailyRate = remaining / float64(daysRemaining)
 		}
 
@@ -432,7 +439,7 @@ func (m *Manager) GetBudgetStatus() map[string]interface{} {
 
 			// Status flags
 			"over_budget":     budgetUsed > 1.0,
-			"alert_triggered": budgetUsed > budgetPeriod.AlertThreshold,
+			"alert_triggered": capped && budgetUsed > budgetPeriod.AlertThreshold,
 
 			// Grant-specific information
 			"grant_name":      budgetPeriod.GrantName,
@@ -440,6 +447,9 @@ func (m *Manager) GetBudgetStatus() map[string]interface{} {
 		}
 
 		// Add overage/savings information
+		if !capped {
+			return status
+		}
 		if willExceed {
 			overage := projectedSpend - budgetPeriod.MaxBudget
 			status["projected_overage"] = overage
@@ -457,10 +467,17 @@ func (m *Manager) GetBudgetStatus() map[string]interface{} {
 	return m.getLegacyBudgetStatus(currentSpend)
 }
 
-// getLegacyBudgetStatus provides backward compatibility with old monthly budget system
+// getLegacyBudgetStatus provides backward compatibility with old monthly budget
+// system. A MaxMonthlyBudget of 0 (the default) means no budget is set (#988):
+// usage reads 0 and nothing is over budget or alerting, matching enforcement.
 func (m *Manager) getLegacyBudgetStatus(currentSpend float64) map[string]interface{} {
-	budgetUsed := currentSpend / m.config.MaxMonthlyBudget
-	remaining := m.config.MaxMonthlyBudget - currentSpend
+	var budgetUsed, remaining float64
+	alerting := false
+	if m.config.MaxMonthlyBudget > 0 {
+		budgetUsed = currentSpend / m.config.MaxMonthlyBudget
+		remaining = m.config.MaxMonthlyBudget - currentSpend
+		alerting = budgetUsed > m.config.AlertThreshold
+	}
 
 	return map[string]interface{}{
 		"max_budget":       m.config.MaxMonthlyBudget,
@@ -470,7 +487,7 @@ func (m *Manager) getLegacyBudgetStatus(currentSpend float64) map[string]interfa
 		"alert_threshold":  m.config.AlertThreshold,
 		"currency":         m.config.Pricing.Currency,
 		"over_budget":      budgetUsed > 1.0,
-		"alert_triggered":  budgetUsed > m.config.AlertThreshold,
+		"alert_triggered":  alerting,
 	}
 }
 
@@ -509,8 +526,12 @@ func (m *Manager) PerformScheduledTasks(ctx context.Context) error {
 	return nil
 }
 
-// checkBudgetLimits checks if the operation would exceed budget limits
+// checkBudgetLimits checks if the operation would exceed the legacy monthly
+// budget. A MaxMonthlyBudget of 0 means none is set (#1030).
 func (m *Manager) checkBudgetLimits(additionalCost float64) error {
+	if m.config.MaxMonthlyBudget <= 0 {
+		return nil
+	}
 	currentSpend := m.GetCurrentMonthSpend()
 	projectedSpend := currentSpend + additionalCost
 
@@ -523,7 +544,12 @@ func (m *Manager) checkBudgetLimits(additionalCost float64) error {
 }
 
 // checkAndSendBudgetAlerts checks if budget alerts should be sent (Issue #133)
+// against the legacy monthly budget. With none set (#988) there is nothing to
+// alert on.
 func (m *Manager) checkAndSendBudgetAlerts(ctx context.Context) error {
+	if m.config.MaxMonthlyBudget <= 0 {
+		return nil
+	}
 	currentSpend := m.GetCurrentMonthSpend()
 	budgetUsed := currentSpend / m.config.MaxMonthlyBudget
 
@@ -602,8 +628,8 @@ func (m *Manager) GetPricingStats() map[string]interface{} {
 
 // ValidateConfig validates the cost configuration
 func (m *Manager) ValidateConfig() error {
-	if m.config.MaxMonthlyBudget <= 0 {
-		return fmt.Errorf("max_monthly_budget must be greater than 0")
+	if m.config.MaxMonthlyBudget < 0 {
+		return fmt.Errorf("max_monthly_budget cannot be negative (use 0 for no monthly budget)")
 	}
 
 	if m.config.AlertThreshold < 0 || m.config.AlertThreshold > 1 {

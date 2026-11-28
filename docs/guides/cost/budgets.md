@@ -56,27 +56,26 @@ A **project** is a logical grouping of uploads — a grant, a cost center, an
 experiment. The project ID is typically the manifest upload ID but can be any
 identifier you pass to `--project`.
 
-Enforcement is hierarchical:
+Every limit that applies is checked, and an upload must fit all of them:
 
-1. **Project budget** — if the upload's `--project` has a budget set, that's checked.
-2. **Global budget** — otherwise, the global limits from your
-   [config file](/guides/config/files) apply.
+1. **Project budget**: if the upload's `--project` has a budget, its cost and
+   volume limits are checked.
+2. **Global budget**: an org-wide ceiling on total spend and volume across all
+   projects. It's checked for every upload, whether or not the project has its
+   own budget. Set it with `--global`:
 
-Set global limits in `~/.cargoship.yaml`:
-
-```yaml
-cost_control:
-  enabled: true
-  max_budget: 10000.0          # global cost budget (USD)
-  alert_threshold: 0.80        # alert at 80%
-  max_volume_gb: 5000.0        # global volume quota (GB)
-  volume_alert_threshold: 0.75 # alert at 75%
+```bash
+cargoship budget set --global --cost 10000 --volume 5000
+cargoship budget status --global
 ```
 
-::: warning Enforcement must be enabled
-Global budgets only take effect when `cost_control.enabled: true` is set in your
-config. If uploads proceed past a limit you thought you set, check this first,
-then confirm the `--project` on the upload matches the project you budgeted.
+With no budget set, nothing is enforced. CargoShip has no built-in default
+cap, so no upload is refused until you set one. The `cost_control` settings in
+`~/.cargoship.yaml` don't set budgets; use `cargoship budget set`.
+
+::: warning Check the project ID
+If an upload proceeds past a limit you thought you set, confirm that the
+`--project` on the upload matches the project you budgeted.
 :::
 
 ## Setting and adjusting budgets
@@ -228,7 +227,8 @@ the same checks (`CheckProjectBudget`, `CheckProjectVolumeQuota`,
   constraint on shared storage allocations.
 - **Alert early (75–80%), block at 100%** — the defaults are sensible; tighten
   alerts for high-risk projects.
-- **Enable `cost_control` globally** so untagged uploads still hit a ceiling.
+- **Set a global budget** (`budget set --global`) so uploads without a project
+  budget still hit a ceiling.
 - **Watch `Projected Total`, not just current usage** — the burn-rate projection
   catches trouble before you hit the wall.
 - **Wire `--json` status into your monitoring** for a single pane of glass.
@@ -239,5 +239,5 @@ the same checks (`CheckProjectBudget`, `CheckProjectVolumeQuota`,
 - [Estimating costs](/guides/cost/estimate) — size a budget before setting it.
 - [Cost management & reporting](/guides/cost/management) — forecasts and burn rate.
 - [Alerts & notifications](/guides/cost/alerts) — get told when limits approach.
-- [Config files & precedence](/guides/config/files) — where global limits live.
+- [Config files & precedence](/guides/config/files) — CargoShip's other settings.
 - Reference: [Cost, budget & alerts commands](/reference/commands/cost).

@@ -57,3 +57,23 @@ func TestEnforceBudgetCaps(t *testing.T) {
 		t.Fatalf("within quota should pass: %v", err)
 	}
 }
+
+// TestEnforceBudgetCaps_NoBudgetNeverRefuses (#988): with no budget configured,
+// the pre-write gate upload and ghostship run call must allow any size. The
+// CLI's default config used to carry a hidden $1000/month cap.
+func TestEnforceBudgetCaps_NoBudgetNeverRefuses(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("CARGOSHIP_BUDGET_STORE", "")
+
+	dc := cargoconfig.DefaultAWSConfig()
+	dc.CostControl.Pricing.UseAWSPricingAPI = false // offline; see #731 above
+	mgr, err := cost.NewManager(&dc.CostControl, aws.Config{}, slog.Default())
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	// 100 TB at STANDARD is well over $1000.
+	if err := enforceBudgetCaps(context.Background(), mgr, "nobudget", 100_000, "STANDARD", "us-east-1"); err != nil {
+		t.Fatalf("no budget configured must never refuse an upload, got: %v", err)
+	}
+}
