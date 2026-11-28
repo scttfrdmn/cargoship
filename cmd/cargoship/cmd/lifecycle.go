@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/charmbracelet/lipgloss"
@@ -16,6 +17,7 @@ import (
 
 var (
 	lifecycleBucket       string
+	lifecyclePrefix       string
 	lifecycleTemplate     string
 	lifecycleListOnly     bool
 	lifecycleRemove       bool
@@ -35,16 +37,28 @@ func NewLifecycleCmd() *cobra.Command {
 CargoShip provides predefined lifecycle policy templates optimized for different
 use cases, or you can create custom policies based on your access patterns.
 
+A template applies to the prefix your uploads use (--prefix, the part after the
+bucket in s3://bucket/prefix). Its transitions move only archive chunks, which
+carry the object tag cargoship-object=chunk. Manifests are never transitioned,
+so sync, list, info, verify and restore keep working without a thaw.
+
+The compliance-retention template also DELETES every object under the prefix,
+chunks and manifests, 2,555 days (about 7 years) after it was written. It needs
+a non-empty --prefix.
+
 Examples:
   # List available policy templates
   cargoship lifecycle --list-templates
-  
-  # Apply archive optimization policy
-  cargoship lifecycle --bucket my-bucket --template archive-optimization
-  
+
+  # Apply archive optimization to uploads under s3://my-bucket/backup
+  cargoship lifecycle --bucket my-bucket --prefix backup --template archive-optimization
+
+  # Apply a template to the whole bucket
+  cargoship lifecycle --bucket my-bucket --prefix "" --template intelligent-tiering
+
   # Estimate savings for a policy
-  cargoship lifecycle --bucket my-bucket --template intelligent-tiering --estimate-size 100
-  
+  cargoship lifecycle --bucket my-bucket --prefix backup --template intelligent-tiering --estimate-size 100
+
   # Export current policy
   cargoship lifecycle --bucket my-bucket --export policy.json
   
@@ -54,6 +68,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&lifecycleBucket, "bucket", "", "S3 bucket name (required unless listing templates)")
+	cmd.Flags().StringVar(&lifecyclePrefix, "prefix", "", "Upload prefix the template applies to (s3://bucket/PREFIX); required with --template, \"\" for the whole bucket")
 	cmd.Flags().StringVar(&lifecycleTemplate, "template", "", "Lifecycle policy template to apply")
 	cmd.Flags().BoolVar(&lifecycleListOnly, "list-templates", false, "List available policy templates")
 	cmd.Flags().BoolVar(&lifecycleRemove, "remove", false, "Remove CargoShip's lifecycle rules (rules with other IDs are kept)")
@@ -76,6 +91,17 @@ func runLifecycle(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("bucket name is required (use --bucket)")
 	}
 
+	// Resolve a template before touching AWS, so a wrong --template or a
+	// missing --prefix fails without a network call (#993).
+	var selected *lifecycle.PolicyTemplate
+	if lifecycleTemplate != "" && !lifecycleRemove && lifecycleExport == "" && lifecycleImport == "" {
+		tmpl, err := resolveLifecycleTemplate(cmd, lifecycleTemplate, lifecyclePrefix)
+		if err != nil {
+			return err
+		}
+		selected = &tmpl
+	}
+
 	// Create AWS S3 client
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(lifecycleRegion))
@@ -94,8 +120,8 @@ func runLifecycle(cmd *cobra.Command, args []string) error {
 		return exportLifecyclePolicy(ctx, manager, lifecycleExport)
 	case lifecycleImport != "":
 		return importLifecyclePolicy(ctx, manager, lifecycleImport)
-	case lifecycleTemplate != "":
-		return applyLifecycleTemplate(ctx, manager, lifecycleTemplate)
+	case selected != nil:
+		return applyLifecycleTemplate(ctx, manager, *selected)
 	default:
 		return showCurrentPolicy(ctx, manager)
 	}
@@ -119,43 +145,59 @@ func listLifecycleTemplates() error {
 
 		fmt.Printf("   📝 Rules:\n")
 		for _, rule := range template.Rules {
-			fmt.Printf("      • %s: ", rule.ID)
+			var parts []string
 			if len(rule.Transitions) > 0 {
 				transitions := make([]string, len(rule.Transitions))
 				for i, t := range rule.Transitions {
 					transitions[i] = fmt.Sprintf("%dd→%s", t.Days, t.StorageClass)
 				}
-				fmt.Printf("%s", strings.Join(transitions, ", "))
+				parts = append(parts, "chunks "+strings.Join(transitions, ", "))
 			}
 			if rule.Expiration != nil {
-				fmt.Printf(", expires after %dd", rule.Expiration.Days)
+				parts = append(parts, fmt.Sprintf("DELETES all objects after %dd", rule.Expiration.Days))
 			}
-			fmt.Println()
+			if rule.AbortIncompleteUploads != nil {
+				parts = append(parts, fmt.Sprintf("aborts incomplete uploads after %dd", *rule.AbortIncompleteUploads))
+			}
+			fmt.Printf("      • %s: %s\n", rule.ID, strings.Join(parts, "; "))
 		}
 	}
 
-	fmt.Printf("\n💡 Usage: cargoship lifecycle --bucket YOUR_BUCKET --template TEMPLATE_ID\n")
+	fmt.Printf("\nTransitions move only objects tagged %s=%s (archive chunks); manifests are never transitioned.\n",
+		lifecycle.ChunkTagKey, lifecycle.ChunkTagValue)
+	fmt.Printf("\n💡 Usage: cargoship lifecycle --bucket YOUR_BUCKET --prefix YOUR_PREFIX --template TEMPLATE_ID\n")
 	return nil
 }
 
-// applyLifecycleTemplate applies a predefined template to the bucket
-func applyLifecycleTemplate(ctx context.Context, manager *lifecycle.Manager, templateID string) error {
-	templates := lifecycle.GetPredefinedTemplates()
-
-	var selectedTemplate *lifecycle.PolicyTemplate
-	for _, template := range templates {
-		if template.ID == templateID {
-			selectedTemplate = &template
-			break
-		}
+// resolveLifecycleTemplate returns the built-in template scoped to the upload
+// prefix. --prefix must be given explicitly ("" means the whole bucket): the
+// templates used to target a fixed archives/ prefix, which silently skipped data
+// at every other prefix (#993).
+func resolveLifecycleTemplate(cmd *cobra.Command, templateID, prefix string) (lifecycle.PolicyTemplate, error) {
+	if !cmd.Flags().Changed("prefix") {
+		return lifecycle.PolicyTemplate{}, fmt.Errorf(
+			"%w: --prefix is required with --template: pass the prefix your uploads use (the PREFIX in s3://bucket/PREFIX), or --prefix \"\" for the whole bucket",
+			ErrUsage)
 	}
-
-	if selectedTemplate == nil {
-		return fmt.Errorf("template '%s' not found. Use --list-templates to see available templates", templateID)
+	tmpl, err := lifecycle.TemplateFor(templateID, prefix)
+	if err != nil {
+		return lifecycle.PolicyTemplate{}, fmt.Errorf("%w: %w", ErrUsage, err)
 	}
+	return tmpl, nil
+}
 
+// applyLifecycleTemplate applies a resolved template to the bucket
+func applyLifecycleTemplate(ctx context.Context, manager *lifecycle.Manager, tmpl lifecycle.PolicyTemplate) error {
+	selectedTemplate := &tmpl
+
+	scope := "the whole bucket"
+	if p := lifecycle.NormalizePrefix(lifecyclePrefix); p != "" {
+		scope = "s3://" + lifecycleBucket + "/" + p
+	}
 	fmt.Printf("📋 Applying lifecycle policy: %s\n", selectedTemplate.Name)
 	fmt.Printf("   %s\n", selectedTemplate.Description)
+	fmt.Printf("   Scope: %s (transitions apply to objects tagged %s=%s; manifests stay put)\n",
+		scope, lifecycle.ChunkTagKey, lifecycle.ChunkTagValue)
 
 	// Validate the policy
 	if err := manager.ValidatePolicy(*selectedTemplate); err != nil {
@@ -287,6 +329,14 @@ func showCurrentPolicy(ctx context.Context, manager *lifecycle.Manager) error {
 			}
 			if rule.Filter.Tag != nil {
 				fmt.Printf("   Tag: %s = %s\n", *rule.Filter.Tag.Key, *rule.Filter.Tag.Value)
+			}
+			if and := rule.Filter.And; and != nil {
+				if and.Prefix != nil {
+					fmt.Printf("   Prefix: %s\n", *and.Prefix)
+				}
+				for _, tag := range and.Tags {
+					fmt.Printf("   Tag: %s = %s\n", aws.ToString(tag.Key), aws.ToString(tag.Value))
+				}
 			}
 		}
 

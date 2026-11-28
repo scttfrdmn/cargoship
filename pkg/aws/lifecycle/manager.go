@@ -78,28 +78,78 @@ type EstimatedSavings struct {
 	AnnualUSD      float64 `json:"annual_usd"`
 }
 
-// GetPredefinedTemplates returns common lifecycle policy templates
-func GetPredefinedTemplates() []PolicyTemplate {
+// Object tag that marks CargoShip archive data (#993). Lifecycle transitions
+// select objects by this tag, never by prefix alone: a manifest
+// (<prefix>/uploads/<id>/manifest*.json[.gz]) sits under the same prefix as its
+// chunks, and S3 lifecycle filters have no suffix match, so a prefix-only rule
+// moved manifests to GLACIER/DEEP_ARCHIVE too and left every upload unreadable
+// without a thaw. The uploader sets this tag on chunk objects only.
+const (
+	// ChunkTagKey is the object tag key CargoShip sets on archive chunks.
+	ChunkTagKey = "cargoship-object"
+	// ChunkTagValue is the ChunkTagKey value for an archive chunk.
+	ChunkTagValue = "chunk"
+)
+
+// ComplianceRetentionDays is how long the compliance-retention template keeps
+// objects before S3 deletes them: 2,555 days, about 7 years.
+const ComplianceRetentionDays = 2555
+
+// templateCompliance is the template whose rules delete data.
+const templateCompliance = "compliance-retention"
+
+// NormalizePrefix turns an upload prefix (the part after the bucket in
+// s3://bucket/prefix) into a lifecycle filter prefix: surrounding slashes are
+// trimmed and one trailing "/" is added, so "backup" cannot also match
+// "backup2/". An empty prefix means the whole bucket.
+func NormalizePrefix(prefix string) string {
+	p := strings.Trim(prefix, "/")
+	if p == "" {
+		return ""
+	}
+	return p + "/"
+}
+
+// dataRules builds a template's rules for one prefix. Transitions go in a rule
+// that matches only tagged chunks under the prefix. Multipart-upload cleanup and
+// any expiration go in a second rule that matches by prefix only: S3 rejects
+// AbortIncompleteMultipartUpload in a tag-filtered rule, and an expiration must
+// remove an upload's manifests together with its chunks, not strand them.
+func dataRules(id, prefix string, transitions []Transition, expiration *Expiration, abortDays int) []LifecycleRule {
+	return []LifecycleRule{
+		{
+			ID:          managedRulePrefix + id,
+			Status:      "Enabled",
+			Filter:      RuleFilter{Prefix: prefix, Tags: map[string]string{ChunkTagKey: ChunkTagValue}},
+			Transitions: transitions,
+		},
+		{
+			ID:                     managedRulePrefix + id + "-cleanup",
+			Status:                 "Enabled",
+			Filter:                 RuleFilter{Prefix: prefix},
+			Expiration:             expiration,
+			AbortIncompleteUploads: aws.Int(abortDays),
+		},
+	}
+}
+
+// PredefinedTemplates returns the built-in lifecycle templates scoped to an
+// upload prefix (see NormalizePrefix; "" is the whole bucket). Each template
+// transitions only CargoShip chunks (objects tagged ChunkTagKey=ChunkTagValue);
+// manifests stay in the class they were uploaded in, so sync, list, info,
+// verify and restore keep working (#993).
+func PredefinedTemplates(prefix string) []PolicyTemplate {
+	p := NormalizePrefix(prefix)
 	return []PolicyTemplate{
 		{
 			ID:          "archive-optimization",
 			Name:        "Archive Optimization",
 			Description: "Aggressive cost optimization for long-term archival data",
-			Rules: []LifecycleRule{
-				{
-					ID:     "cargoship-archive-optimization",
-					Status: "Enabled",
-					Filter: RuleFilter{
-						Prefix: "archives/",
-					},
-					Transitions: []Transition{
-						{Days: 30, StorageClass: "STANDARD_IA"},
-						{Days: 90, StorageClass: "GLACIER"},
-						{Days: 365, StorageClass: "DEEP_ARCHIVE"},
-					},
-					AbortIncompleteUploads: aws.Int(7), // Clean up failed uploads after 7 days
-				},
-			},
+			Rules: dataRules("archive-optimization", p, []Transition{
+				{Days: 30, StorageClass: "STANDARD_IA"},
+				{Days: 90, StorageClass: "GLACIER"},
+				{Days: 365, StorageClass: "DEEP_ARCHIVE"},
+			}, nil, 7), // clean up failed uploads after 7 days
 			Savings: EstimatedSavings{
 				MonthlyPercent: 60.0,
 				AnnualUSD:      1200.0, // Example based on 100GB
@@ -109,46 +159,24 @@ func GetPredefinedTemplates() []PolicyTemplate {
 			ID:          "intelligent-tiering",
 			Name:        "Intelligent Tiering",
 			Description: "Automatic optimization with S3 Intelligent Tiering",
-			Rules: []LifecycleRule{
-				{
-					ID:     "cargoship-intelligent-tiering",
-					Status: "Enabled",
-					Filter: RuleFilter{
-						Prefix: "archives/",
-					},
-					Transitions: []Transition{
-						{Days: 0, StorageClass: "INTELLIGENT_TIERING"},
-					},
-					AbortIncompleteUploads: aws.Int(7),
-				},
-			},
+			Rules: dataRules("intelligent-tiering", p, []Transition{
+				{Days: 0, StorageClass: "INTELLIGENT_TIERING"},
+			}, nil, 7),
 			Savings: EstimatedSavings{
 				MonthlyPercent: 25.0,
 				AnnualUSD:      600.0,
 			},
 		},
 		{
-			ID:          "compliance-retention",
-			Name:        "Compliance Retention",
-			Description: "7-year retention with automatic deletion for compliance",
-			Rules: []LifecycleRule{
-				{
-					ID:     "cargoship-compliance-retention",
-					Status: "Enabled",
-					Filter: RuleFilter{
-						Prefix: "archives/compliance/",
-					},
-					Transitions: []Transition{
-						{Days: 30, StorageClass: "STANDARD_IA"},
-						{Days: 90, StorageClass: "GLACIER"},
-						{Days: 365, StorageClass: "DEEP_ARCHIVE"},
-					},
-					Expiration: &Expiration{
-						Days: 2555, // 7 years
-					},
-					AbortIncompleteUploads: aws.Int(1),
-				},
-			},
+			ID:   templateCompliance,
+			Name: "Compliance Retention",
+			Description: fmt.Sprintf("Archive tiering, then DELETES every object under the prefix (chunks and manifests) "+
+				"%d days (about 7 years) after it was written", ComplianceRetentionDays),
+			Rules: dataRules(templateCompliance, p, []Transition{
+				{Days: 30, StorageClass: "STANDARD_IA"},
+				{Days: 90, StorageClass: "GLACIER"},
+				{Days: 365, StorageClass: "DEEP_ARCHIVE"},
+			}, &Expiration{Days: ComplianceRetentionDays}, 1),
 			Savings: EstimatedSavings{
 				MonthlyPercent: 65.0,
 				AnnualUSD:      1500.0,
@@ -158,26 +186,39 @@ func GetPredefinedTemplates() []PolicyTemplate {
 			ID:          "fast-access",
 			Name:        "Fast Access",
 			Description: "Optimized for data that needs quick retrieval",
-			Rules: []LifecycleRule{
-				{
-					ID:     "cargoship-fast-access",
-					Status: "Enabled",
-					Filter: RuleFilter{
-						Prefix: "archives/frequent/",
-					},
-					Transitions: []Transition{
-						{Days: 90, StorageClass: "STANDARD_IA"},
-						{Days: 365, StorageClass: "GLACIER"},
-					},
-					AbortIncompleteUploads: aws.Int(3),
-				},
-			},
+			Rules: dataRules("fast-access", p, []Transition{
+				{Days: 90, StorageClass: "STANDARD_IA"},
+				{Days: 365, StorageClass: "GLACIER"},
+			}, nil, 3),
 			Savings: EstimatedSavings{
 				MonthlyPercent: 30.0,
 				AnnualUSD:      400.0,
 			},
 		},
 	}
+}
+
+// GetPredefinedTemplates returns the built-in templates scoped to the whole
+// bucket. Use PredefinedTemplates or TemplateFor to scope them to the prefix an
+// upload was written to.
+func GetPredefinedTemplates() []PolicyTemplate {
+	return PredefinedTemplates("")
+}
+
+// TemplateFor returns the built-in template id scoped to prefix. A template
+// that deletes data (compliance-retention) requires a non-empty prefix, so it
+// can't expire every object in the bucket by accident.
+func TemplateFor(id, prefix string) (PolicyTemplate, error) {
+	for _, t := range PredefinedTemplates(prefix) {
+		if t.ID != id {
+			continue
+		}
+		if id == templateCompliance && NormalizePrefix(prefix) == "" {
+			return PolicyTemplate{}, fmt.Errorf("template %q deletes data after %d days, so it needs the prefix your uploads use, not the whole bucket", id, ComplianceRetentionDays)
+		}
+		return t, nil
+	}
+	return PolicyTemplate{}, fmt.Errorf("template '%s' not found. Use --list-templates to see available templates", id)
 }
 
 // ApplyPolicy applies a lifecycle policy to the S3 bucket
@@ -319,47 +360,39 @@ func (m *Manager) GenerateCustomPolicy(patterns map[string]AccessPattern) Policy
 	ruleID := 1
 
 	for prefix, pattern := range patterns {
-		rule := LifecycleRule{
-			ID:     fmt.Sprintf("cargoship-custom-%d", ruleID),
-			Status: "Enabled",
-			Filter: RuleFilter{
-				Prefix: prefix,
-			},
-			AbortIncompleteUploads: aws.Int(7),
-		}
-
 		// Generate transitions based on access pattern
+		var transitions []Transition
 		switch pattern.Frequency {
 		case "frequent":
-			rule.Transitions = []Transition{
+			transitions = []Transition{
 				{Days: 90, StorageClass: "STANDARD_IA"},
 				{Days: 365, StorageClass: "GLACIER"},
 			}
 		case "infrequent":
-			rule.Transitions = []Transition{
+			transitions = []Transition{
 				{Days: 30, StorageClass: "STANDARD_IA"},
 				{Days: 90, StorageClass: "GLACIER"},
 				{Days: 365, StorageClass: "DEEP_ARCHIVE"},
 			}
 		case "archive":
-			rule.Transitions = []Transition{
+			transitions = []Transition{
 				{Days: 0, StorageClass: "GLACIER"},
 				{Days: 90, StorageClass: "DEEP_ARCHIVE"},
 			}
 		default: // unknown
-			rule.Transitions = []Transition{
+			transitions = []Transition{
 				{Days: 0, StorageClass: "INTELLIGENT_TIERING"},
 			}
 		}
 
 		// Add expiration if specified
+		var expiration *Expiration
 		if pattern.RetentionDays > 0 {
-			rule.Expiration = &Expiration{
-				Days: pattern.RetentionDays,
-			}
+			expiration = &Expiration{Days: pattern.RetentionDays}
 		}
 
-		rules = append(rules, rule)
+		// Chunks transition; manifests don't (#993).
+		rules = append(rules, dataRules(fmt.Sprintf("custom-%d", ruleID), prefix, transitions, expiration, 7)...)
 		ruleID++
 	}
 
@@ -434,6 +467,9 @@ func (m *Manager) convertToAWSRule(rule LifecycleRule) (types.LifecycleRule, err
 		}
 
 		awsRule.Filter = filter
+	} else {
+		// No prefix and no tags: the whole bucket. S3 needs an explicit filter.
+		awsRule.Filter = &types.LifecycleRuleFilter{Prefix: aws.String("")}
 	}
 
 	// Convert transitions
@@ -473,6 +509,11 @@ func (m *Manager) validateRule(rule LifecycleRule) error {
 
 	if rule.Status != "Enabled" && rule.Status != "Disabled" {
 		return fmt.Errorf("rule status must be 'Enabled' or 'Disabled'")
+	}
+
+	// S3 rejects this combination; say so before the API call does.
+	if len(rule.Filter.Tags) > 0 && rule.AbortIncompleteUploads != nil {
+		return fmt.Errorf("a rule with a tag filter cannot abort incomplete multipart uploads; put that in a separate prefix-only rule")
 	}
 
 	// Validate transitions are in chronological order

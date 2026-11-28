@@ -405,14 +405,24 @@ func TestManager_GenerateCustomPolicy(t *testing.T) {
 		t.Errorf("Generated policy ID = %v, want cargoship-custom-generated", policy.ID)
 	}
 
-	if len(policy.Rules) != len(patterns) {
-		t.Errorf("Generated policy has %d rules, want %d", len(policy.Rules), len(patterns))
+	// #993: each pattern is a chunk-only transition rule plus a prefix-wide
+	// cleanup rule (multipart abort, expiration).
+	if len(policy.Rules) != 2*len(patterns) {
+		t.Errorf("Generated policy has %d rules, want %d", len(policy.Rules), 2*len(patterns))
 	}
 
 	// Check that rules were generated for each pattern
 	rulesByPrefix := make(map[string]LifecycleRule)
+	cleanupByPrefix := make(map[string]LifecycleRule)
 	for _, rule := range policy.Rules {
-		rulesByPrefix[rule.Filter.Prefix] = rule
+		if len(rule.Transitions) > 0 {
+			if rule.Filter.Tags[ChunkTagKey] != ChunkTagValue {
+				t.Errorf("transition rule %s is not limited to chunks", rule.ID)
+			}
+			rulesByPrefix[rule.Filter.Prefix] = rule
+		} else {
+			cleanupByPrefix[rule.Filter.Prefix] = rule
+		}
 	}
 
 	// Verify frequent access pattern
@@ -423,13 +433,13 @@ func TestManager_GenerateCustomPolicy(t *testing.T) {
 		if len(frequentRule.Transitions) != 2 {
 			t.Errorf("Frequent access rule has %d transitions, want 2", len(frequentRule.Transitions))
 		}
-		if frequentRule.Expiration != nil {
+		if cleanupByPrefix["archives/frequent/"].Expiration != nil {
 			t.Errorf("Frequent access rule should not have expiration")
 		}
 	}
 
 	// Verify backup pattern with retention
-	backupRule, exists := rulesByPrefix["archives/backup/"]
+	backupRule, exists := cleanupByPrefix["archives/backup/"]
 	if !exists {
 		t.Errorf("Missing rule for backup pattern")
 	} else {
