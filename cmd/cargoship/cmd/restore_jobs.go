@@ -141,6 +141,8 @@ are accessible. If a job ID is given, only that job is checked.`,
 				s3Client := s3.NewFromConfig(cfg)
 				gr := s3pkg.NewGlacierRestorer(s3Client, j.RestoreDays)
 
+				// The job's retrieval was approved when it was saved, so a chunk
+				// found frozen again (its restored copy expired) is re-requested.
 				report, err := gr.CheckAndRestore(context.Background(), j.Bucket, j.ChunkKeys, s3pkg.RestoreTier(j.Tier))
 				if err != nil {
 					fmt.Printf("  [%s] ⚠️  check failed: %v\n", j.ID, err)
