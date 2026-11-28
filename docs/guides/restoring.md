@@ -85,6 +85,16 @@ the conflicting files are listed. Choose what you want:
 The same flags apply to `download`, `browse` and `restore jobs download`. In
 `cargoship shell`, use `get -f` to replace an existing file.
 
+### File permissions
+
+A restored file gets the permission bits it was archived with, so a `0600` key
+comes back `0600` and a `0755` script stays executable. Setuid, setgid and
+sticky bits are never restored. A file stored as its own object (the
+direct-upload layout) has no recorded mode: it keeps the mode of the file it
+replaces under `--overwrite`, and is otherwise created `0644`. While a file is
+being written it is a `0600` temporary file in the same directory, so it is
+never readable by others before its final mode is set.
+
 ```bash
 # Recreate the directory structure (default)
 cargoship restore s3://my-bucket/.../20260721-a1b2c3 ./out --file data/train.csv

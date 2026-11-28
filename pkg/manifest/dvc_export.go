@@ -197,7 +197,7 @@ func writeDVCFile(root *os.Root, rel string, entry FileEntry, uploadID, bucket s
 	if err != nil {
 		return 0, fmt.Errorf("marshal yaml: %w", err)
 	}
-	if err := writeContained(root, dvcRel, data); err != nil {
+	if err := writeContained(root, dvcRel, data, restoreMode(root, dvcRel, 0)); err != nil {
 		return 0, err
 	}
 	return 1, nil
