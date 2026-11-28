@@ -6,9 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
+	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -40,7 +43,9 @@ func RequireChunkedUpload(cfg *PipelineConfig) {
 // directManifestBuilder is the interface satisfied by *manifest.Builder for direct upload mode.
 // Using a minimal interface keeps direct_uploader.go decoupled from the concrete type.
 type directManifestBuilder interface {
-	UpdateFileS3KeyByPath(path string, shardID int, s3Key, checksum string)
+	// RecordDirectFile records a stored file's key and the checksum, size and
+	// modification time of the bytes sent (#1015).
+	RecordDirectFile(path string, shardID int, s3Key, checksum string, size int64, modTime time.Time)
 }
 
 // S3Uploader is an interface for uploading to S3 (allows mocking)
@@ -272,23 +277,6 @@ func (s *DirectUploaderStage) uploadFile(ctx context.Context, file chunking.File
 		_ = f.Close()
 	}()
 
-	// Compute the per-file SHA-256 in one local pass before uploading, then
-	// rewind, so direct mode records the same integrity as packed mode
-	// (CSH-SEC-002). It is deliberately NOT teed onto the upload body: the AWS SDK
-	// needs a seekable *os.File to sign and retry a PutObject, and a TeeReader is
-	// not seekable. The extra read is local and cheap next to the network PUT.
-	checksum := ""
-	if s.config.FileChecksums {
-		h := sha256.New()
-		if _, err := io.Copy(h, f); err != nil {
-			return fmt.Errorf("failed to checksum %s: %w", file.Path, err)
-		}
-		checksum = hex.EncodeToString(h.Sum(nil))
-		if _, err := f.Seek(0, 0); err != nil {
-			return fmt.Errorf("failed to rewind %s: %w", file.Path, err)
-		}
-	}
-
 	// Upload with retries
 	var lastErr error
 	for attempt := 0; attempt < s.config.MaxRetries; attempt++ {
@@ -300,49 +288,26 @@ func (s *DirectUploaderStage) uploadFile(ctx context.Context, file chunking.File
 			}
 		}
 
-		// Seek to beginning for retry
-		if _, err := f.Seek(0, 0); err != nil {
-			return fmt.Errorf("failed to seek file: %w", err)
-		}
-
-		// Upload to S3 (body is the seekable *os.File; retries re-seek to 0).
-		input := &s3.PutObjectInput{
-			Bucket:       aws.String(s.config.Bucket),
-			Key:          aws.String(s3Key),
-			Body:         f,
-			StorageClass: s.config.StorageClass,
-			// #1037: no cargoship-file-path. It held the file's absolute local
-			// path, which nothing reads, and it exposed every name to anyone who
-			// can HeadObject. The manifest records the path.
-			Metadata: map[string]string{
-				"cargoship-mode":      "direct",
-				"cargoship-file-size": fmt.Sprintf("%d", file.Size),
-			},
-		}
-		if s.config.SSEKMSKeyID != "" {
-			input.ServerSideEncryption = types.ServerSideEncryptionAwsKms
-			input.SSEKMSKeyId = aws.String(s.config.SSEKMSKeyID)
-		}
-		_, err := s.config.S3Client.PutObject(ctx, input)
-
+		sent, err := s.putFile(ctx, f, file, s3Key)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 
-		// Record S3 key (and checksum, when enabled) in the manifest.
+		// Record what was sent in the manifest: the key, the checksum of the
+		// bytes sent (when enabled), and their size and modification time (#1015).
 		if s.config.ManifestBuilder != nil {
-			s.config.ManifestBuilder.UpdateFileS3KeyByPath(file.Path, 0, s3Key, checksum)
+			s.config.ManifestBuilder.RecordDirectFile(file.Path, 0, s3Key, sent.checksum, sent.size, sent.modTime)
 		}
 
 		// Success
 		atomic.AddInt64(&s.filesProcessed, 1)
-		atomic.AddInt64(&s.bytesProcessed, file.Size)
-		s.pool.AddBytes(file.Size) // For throughput monitoring
+		atomic.AddInt64(&s.bytesProcessed, sent.size)
+		s.pool.AddBytes(sent.size) // For throughput monitoring
 
 		s.mu.Lock()
 		s.stats.JobsProcessed++
-		s.stats.BytesProcessed += file.Size
+		s.stats.BytesProcessed += sent.size
 		s.stats.TotalTime += time.Since(startTime)
 		if s.stats.JobsProcessed > 0 {
 			s.stats.AverageTime = s.stats.TotalTime / time.Duration(s.stats.JobsProcessed)
@@ -353,6 +318,124 @@ func (s *DirectUploaderStage) uploadFile(ctx context.Context, file chunking.File
 	}
 
 	return fmt.Errorf("upload failed after %d attempts for %s: %w", s.config.MaxRetries, file.Path, lastErr)
+}
+
+// sentFile is what one successful direct PUT sent.
+type sentFile struct {
+	checksum string // SHA-256 of the bytes sent; "" when checksums are off
+	size     int64
+	modTime  time.Time
+}
+
+// putFile sends f as it is now and reports what was sent (#1015). The size and
+// modification time come from a stat taken just before the PUT, the body is
+// bounded to that size, and the checksum is taken from the bytes the SDK read
+// for the request rather than from an earlier pass, which a change in between
+// left describing other bytes. A stat after the PUT that differs means the file
+// changed while it was read; that attempt fails, so the caller sends it again.
+func (s *DirectUploaderStage) putFile(ctx context.Context, f *os.File, file chunking.File, s3Key string) (sentFile, error) {
+	before, err := f.Stat()
+	if err != nil {
+		return sentFile{}, fmt.Errorf("stat %s: %w", file.Path, err)
+	}
+	size := before.Size()
+	section := io.NewSectionReader(f, 0, size)
+	var body io.ReadSeeker = section
+	var hasher *sentBytesHasher
+	if s.config.FileChecksums {
+		hasher = &sentBytesHasher{r: section, h: sha256.New()}
+		body = hasher
+	}
+
+	input := &s3.PutObjectInput{
+		Bucket:        aws.String(s.config.Bucket),
+		Key:           aws.String(s3Key),
+		Body:          body, // seekable, so the SDK can sign it and rewind on retry
+		ContentLength: aws.Int64(size),
+		StorageClass:  s.config.StorageClass,
+		// #1037: no cargoship-file-path. It held the file's absolute local
+		// path, which nothing reads, and it exposed every name to anyone who
+		// can HeadObject. The manifest records the path.
+		Metadata: map[string]string{
+			"cargoship-mode":      "direct",
+			"cargoship-file-size": strconv.FormatInt(size, 10),
+		},
+	}
+	if s.config.SSEKMSKeyID != "" {
+		input.ServerSideEncryption = types.ServerSideEncryptionAwsKms
+		input.SSEKMSKeyId = aws.String(s.config.SSEKMSKeyID)
+	}
+	if _, err := s.config.S3Client.PutObject(ctx, input); err != nil {
+		return sentFile{}, err
+	}
+
+	after, err := f.Stat()
+	if err != nil {
+		return sentFile{}, fmt.Errorf("stat %s after upload: %w", file.Path, err)
+	}
+	if after.Size() != size || !after.ModTime().Equal(before.ModTime()) {
+		return sentFile{}, fmt.Errorf("%s changed while it was being uploaded (%d bytes, modified %s, became %d bytes, modified %s); upload it again",
+			file.Path, size, before.ModTime().Format(time.RFC3339Nano), after.Size(), after.ModTime().Format(time.RFC3339Nano))
+	}
+	sent := sentFile{size: size, modTime: before.ModTime()}
+	if hasher != nil {
+		sum, ok := hasher.sum(size)
+		if !ok {
+			return sentFile{}, fmt.Errorf("%s: the upload did not read the file once in full (%d of %d bytes hashed); upload it again",
+				file.Path, hasher.n, size)
+		}
+		sent.checksum = sum
+	}
+	return sent, nil
+}
+
+// sentBytesHasher hashes the bytes read from a seekable upload body. The SDK can
+// read a body more than once (to sign it, to checksum it, to retry), rewinding
+// to the start before each pass, so the hash restarts on every rewind. Once the
+// PUT returns, it covers the pass that was sent (#1015).
+type sentBytesHasher struct {
+	r      io.ReadSeeker
+	h      hash.Hash
+	n      int64 // bytes hashed since the last rewind
+	pos    int64 // current offset in r
+	broken bool  // a read since the last rewind didn't continue where the hashed bytes end
+}
+
+// Read reads from the body and hashes what it returns.
+func (s *sentBytesHasher) Read(p []byte) (int, error) {
+	n, err := s.r.Read(p)
+	if n > 0 {
+		if s.pos != s.n {
+			s.broken = true
+		}
+		s.h.Write(p[:n])
+		s.n += int64(n)
+		s.pos += int64(n)
+	}
+	return n, err
+}
+
+// Seek seeks the body; seeking to the start restarts the hash.
+func (s *sentBytesHasher) Seek(offset int64, whence int) (int64, error) {
+	pos, err := s.r.Seek(offset, whence)
+	if err != nil {
+		return pos, err
+	}
+	s.pos = pos
+	if pos == 0 {
+		s.h.Reset()
+		s.n, s.broken = 0, false
+	}
+	return pos, nil
+}
+
+// sum returns the digest of the last pass, and false unless that pass read the
+// body once, in order, from the start to size.
+func (s *sentBytesHasher) sum(size int64) (string, bool) {
+	if s.broken || s.n != size {
+		return "", false
+	}
+	return hex.EncodeToString(s.h.Sum(nil)), true
 }
 
 // buildS3Key constructs the S3 key for a file, preserving its path relative to

@@ -41,7 +41,7 @@ func (m *mockS3Client) PutObject(ctx context.Context, input *s3.PutObjectInput, 
 	return &s3.PutObjectOutput{}, nil
 }
 
-// captureBuilder records the args of the last UpdateFileS3KeyByPath call.
+// captureBuilder records the args of the last RecordDirectFile call.
 type captureBuilder struct {
 	mu           sync.Mutex
 	path, s3Key  string
@@ -49,7 +49,7 @@ type captureBuilder struct {
 	updateCalled bool
 }
 
-func (c *captureBuilder) UpdateFileS3KeyByPath(path string, shardID int, s3Key, checksum string) {
+func (c *captureBuilder) RecordDirectFile(path string, shardID int, s3Key, checksum string, size int64, modTime time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.path, c.s3Key, c.checksum, c.updateCalled = path, s3Key, checksum, true
