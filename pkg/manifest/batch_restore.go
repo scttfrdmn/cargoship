@@ -1558,9 +1558,13 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 
 		if verifyThis {
 			// #270: hash the extracted content and only write it if it matches
-			// the manifest, so restore never lands corrupt bytes on disk. The
-			// entry is bounded by its declared size (hdr.Size), and CopyN both
-			// caps reads and detects a truncated entry.
+			// the manifest, so restore never lands corrupt bytes on disk. CopyN
+			// both caps reads and detects a truncated entry. #985: the buffer is
+			// sized from hdr.Size, so the header must agree with the manifest
+			// before anything is allocated.
+			if err := checkMemberSize(hdr, entry); err != nil {
+				return restored, totalBytes, err
+			}
 			buf := make([]byte, 0, hdr.Size)
 			w := bytes.NewBuffer(buf)
 			if _, err := io.CopyN(w, tarReader, hdr.Size); err != nil {
@@ -1641,6 +1645,11 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 // read feeds several files and has to be hashed before any duplicate is
 // written; its size is a manifest-declared duplicate size (#970).
 func (se *SelectiveExtractor) writeMemberAndDuplicates(tr io.Reader, hdr *tar.Header, entry *FileEntry, dups map[string][]*FileEntry, root *os.Root, destDir string) (int, int64, error) {
+	if entry != nil {
+		if err := checkMemberSize(hdr, entry); err != nil {
+			return 0, 0, err
+		}
+	}
 	var buf bytes.Buffer
 	if _, err := io.CopyN(&buf, tr, hdr.Size); err != nil {
 		name := hdr.Name
@@ -1699,6 +1708,26 @@ func (se *SelectiveExtractor) writeRestored(root *os.Root, destDir string, entry
 	}
 	restoreModTime(root, rel, entry.ModTime)
 	return nil
+}
+
+// checkMemberSize rejects a tar member whose header declares a size other than
+// the one the manifest records for entry. It runs before a member is buffered:
+// the header is read from the chunk, so a corrupt or crafted one could claim any
+// size, and a buffer allocated from it panicked or exhausted memory (#985).
+//
+// A mismatch is also how a file that changed while it was being uploaded shows
+// up in an archive written before #910; the frame path refuses those the same
+// way. --no-verify restores the archived bytes as they are, without buffering.
+func checkMemberSize(hdr *tar.Header, entry *FileEntry) error {
+	want := entry.Size
+	if entry.TotalParts > 1 && entry.Length > 0 {
+		want = entry.Length
+	}
+	if hdr.Size == want {
+		return nil
+	}
+	return fmt.Errorf("%s: the archive holds %d bytes but the manifest records %d "+
+		"(the file changed while it was being uploaded, or the chunk is corrupt)", entry.Path, hdr.Size, want)
 }
 
 // missingEntriesError reports requested entries that a chunk did not contain,
