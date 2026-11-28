@@ -43,7 +43,7 @@ func TestLedgerStore_RoundTrip(t *testing.T) {
 
 	got, tok, err := store.Load()
 	require.NoError(t, err)
-	assert.Equal(t, Token(""), tok, "local store uses no concurrency token")
+	assert.NotEmpty(t, tok, "local store returns a content-hash token (#1031)")
 	assert.Equal(t, StoreVersion, got.Version)
 	assert.Equal(t, want.ProjectBudgets, got.ProjectBudgets)
 	require.Len(t, got.Records, 1)

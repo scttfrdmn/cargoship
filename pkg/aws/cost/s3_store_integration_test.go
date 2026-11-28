@@ -51,7 +51,7 @@ func realS3StoreClient(t *testing.T) (*s3.Client, string) {
 // TestS3Store_TwoConcurrentWritersConverge proves loss-free convergence: two
 // independent stores each record a distinct upload for the same project
 // concurrently; after both settle, a fresh Load contains BOTH records — the
-// If-Match CAS + union-merge handled the 412 conflict without dropping either.
+// If-Match CAS rejected the stale write and saveMerged re-applied it (#1031).
 func TestS3Store_TwoConcurrentWritersConverge(t *testing.T) {
 	client, bucket := realS3StoreClient(t)
 	ctx := context.Background()
@@ -61,19 +61,17 @@ func TestS3Store_TwoConcurrentWritersConverge(t *testing.T) {
 
 	writer := func(jobID string) error {
 		s := newS3Store(ctx, client, bucket, prefix, nil)
-		_, tok, err := s.Load()
+		loaded, _, err := s.Load()
 		if err != nil {
 			return err
 		}
-		state := LedgerState{
-			Version:        StoreVersion,
-			ProjectBudgets: map[string]config.ProjectBudget{"proj": {ProjectID: "proj", MaxBudget: 100}},
-			Records: []CostRecord{{
-				Timestamp: time.Now().UTC(), ProjectID: "proj",
-				JobID: jobID, FileName: jobID + ".dat", Cost: 1.0, SizeGB: 1.0,
-			}},
-		}
-		return s.Save(state, tok)
+		state := loaded
+		state.ProjectBudgets = map[string]config.ProjectBudget{"proj": {ProjectID: "proj", MaxBudget: 100}}
+		state.Records = append(append([]CostRecord(nil), loaded.Records...), CostRecord{
+			Timestamp: time.Now().UTC(), ProjectID: "proj",
+			JobID: jobID, FileName: jobID + ".dat", Cost: 1.0, SizeGB: 1.0,
+		})
+		return saveMerged(s, diffLedger(fingerprintLedger(loaded), state), nil)
 	}
 
 	var wg sync.WaitGroup

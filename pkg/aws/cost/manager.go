@@ -28,6 +28,12 @@ type Manager struct {
 	store         BudgetStore          // #246: durable budget limits + cost ledger
 	logger        *slog.Logger
 	awsConfig     aws.Config // Issue #147 Phase 4: Needed for alert notification
+
+	// baseline fingerprints the state this process last read from or wrote to
+	// the store; saveState persists only the delta from it (#1031).
+	baseline ledgerFingerprint
+	// saveWait backs off between merge-save attempts; nil = jittered backoff.
+	saveWait func(attempt int)
 }
 
 // BudgetTracker tracks budget usage and alerts
@@ -134,28 +140,31 @@ func newManagerWithStore(cfg *config.CostControlConfig, awsCfg aws.Config, logge
 	// Budgets from the config file (if any) take precedence over the persisted
 	// store for the same project ID; the recorded ledger seeds the reporter so
 	// `budget status` reflects prior uploads.
-	var loadedAlert *BudgetAlertConfig
-	if state, _, err := store.Load(); err != nil {
-		logger.Warn("failed to load persisted budget store", "error", err)
-	} else {
-		if len(state.ProjectBudgets) > 0 {
-			if cfg.ProjectBudgets == nil {
-				cfg.ProjectBudgets = make(map[string]config.ProjectBudget)
-			}
-			for id, b := range state.ProjectBudgets {
-				if _, exists := cfg.ProjectBudgets[id]; !exists {
-					cfg.ProjectBudgets[id] = b
-				}
-			}
-		}
-		// Seed the persisted global/team budget (#246 PR2) unless the config file
-		// already specifies one (config takes precedence, matching projects).
-		if state.GlobalBudget != nil && cfg.GlobalBudget == nil {
-			cfg.GlobalBudget = state.GlobalBudget
-		}
-		reporter.SeedRecords(state.Records)
-		loadedAlert = state.AlertConfig // #630: persisted alert config (may be nil)
+	//
+	// A store that cannot be read is fatal (#1031): continuing with an empty state
+	// would silently stop enforcing every budget, and the next save would replace
+	// the store with that empty state.
+	state, _, err := store.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load budgets: %w", err)
 	}
+	if len(state.ProjectBudgets) > 0 {
+		if cfg.ProjectBudgets == nil {
+			cfg.ProjectBudgets = make(map[string]config.ProjectBudget)
+		}
+		for id, b := range state.ProjectBudgets {
+			if _, exists := cfg.ProjectBudgets[id]; !exists {
+				cfg.ProjectBudgets[id] = b
+			}
+		}
+	}
+	// Seed the persisted global/team budget (#246 PR2) unless the config file
+	// already specifies one (config takes precedence, matching projects).
+	if state.GlobalBudget != nil && cfg.GlobalBudget == nil {
+		cfg.GlobalBudget = state.GlobalBudget
+	}
+	reporter.SeedRecords(state.Records)
+	loadedAlert := state.AlertConfig // #630: persisted alert config (may be nil)
 
 	// #133/#630: build the alert notifier from the persisted config (secrets from
 	// env), else disabled defaults. A nil loadedAlert leaves m.alertConfig nil so
@@ -166,7 +175,7 @@ func newManagerWithStore(cfg *config.CostControlConfig, awsCfg aws.Config, logge
 	}
 	notifier := NewBudgetAlertNotifier(withSecretsFromEnv(effectiveAlert), awsCfg)
 
-	return &Manager{
+	m := &Manager{
 		config:        cfg,
 		pricingMgr:    pricingMgr,
 		reporter:      reporter,
@@ -176,35 +185,50 @@ func newManagerWithStore(cfg *config.CostControlConfig, awsCfg aws.Config, logge
 		store:         store,
 		logger:        logger.With("component", "cost-manager"),
 		awsConfig:     awsCfg, // Issue #147 Phase 4: For alert notification
-	}, nil
+	}
+	// Budgets that came from the config file are part of the baseline, so they
+	// are not copied into the store unless this process changes them.
+	m.baseline = fingerprintLedger(m.currentState())
+	return m, nil
 }
 
-// saveState writes the current project budgets and recorded cost ledger to the
-// store as one document (both halves together, so a limits update never clobbers
-// the recorded ledger and vice versa — #246). FIFO rotation bounds the ledger.
+// currentState is this process's in-memory view in store shape: project
+// budgets, the recorded ledger, the global budget, and the alert config (#630;
+// its secrets are json:"-" and never persisted).
+func (m *Manager) currentState() LedgerState {
+	return LedgerState{
+		Version:        StoreVersion,
+		ProjectBudgets: m.config.ProjectBudgets,
+		Records:        m.reporter.SnapshotRecords(),
+		GlobalBudget:   m.config.GlobalBudget,
+		AlertConfig:    m.alertConfig,
+	}
+}
+
+// saveState persists what this process changed since it last read or wrote the
+// store: budgets set or removed, spend records added or purged, and the global
+// budget and alert config. The change set is applied to a fresh read of the
+// store and written with a compare-and-swap, retrying on conflict, so another
+// process's concurrent budgets and spend survive (#1031). Budgets and ledger
+// stay one document (#246); the ledger is bounded FIFO. A store that cannot be
+// read is never written.
 func (m *Manager) saveState() error {
 	if m.store == nil {
 		m.store = localStore{}
 	}
-	records := m.reporter.SnapshotRecords()
-	if len(records) > maxLedgerRecords {
-		records = records[len(records)-maxLedgerRecords:]
+	if m.baseline.budgets == nil {
+		m.baseline = fingerprintLedger(LedgerState{})
 	}
-	state := LedgerState{
-		Version:        StoreVersion,
-		ProjectBudgets: m.config.ProjectBudgets,
-		Records:        records,
-		GlobalBudget:   m.config.GlobalBudget,
-		AlertConfig:    m.alertConfig, // #630: persist alert config alongside budgets (secrets are json:"-")
+	cur := m.currentState()
+	d := diffLedger(m.baseline, cur)
+	if d.empty() {
+		return nil
 	}
-	// Load the current token first so a Phase B S3 store can do a CAS write; the
-	// local store ignores it. A load error still attempts an unconditional save.
-	_, tok, err := m.store.Load()
-	if err != nil {
-		m.logger.Warn("budget store load before save failed", "error", err)
-		tok = ""
+	if err := saveMerged(m.store, d, m.saveWait); err != nil {
+		return err
 	}
-	return m.store.Save(state, tok)
+	m.baseline = fingerprintLedger(cur)
+	return nil
 }
 
 // persistLedger is the best-effort variant of saveState used on the

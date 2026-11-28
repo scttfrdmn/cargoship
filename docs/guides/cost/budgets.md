@@ -158,6 +158,27 @@ cargoship budget list
 cargoship budget remove genomics-2026
 ```
 
+## Where budgets are stored
+
+Budgets and recorded spend are kept in one store: `~/.cargoship/budgets.json`
+by default, `$XDG_DATA_HOME/cargoship/budgets.json` when `XDG_DATA_HOME` is set,
+or the path in `CARGOSHIP_BUDGET_STORE`. Set
+`CARGOSHIP_BUDGET_STORE=s3://bucket/prefix` (or pass `--store` to
+`cargoship budget`) to keep them in S3 instead, shared by every machine that
+uses that location.
+
+Several cargoship processes can use the same store at once, such as an upload,
+a `budget set` and a `ghostship run`, on one machine or, with an S3 store, on
+many. Each process saves only what it changed (the budgets it set or removed
+and the spend it recorded), merged onto the latest copy of the store with a
+compare-and-swap write, so one process never reverts or deletes another's
+budgets or spend.
+
+If the store exists but can't be parsed, for example after a hand edit or a disk
+error, cargoship stops using it. `budget`, `cost` and `alerts` commands fail with
+an error that names the file, and no cargoship command overwrites it. Repair the
+JSON, or move the file aside to start over with no budgets.
+
 ## Common patterns
 
 **Per-grant tracking.** Give each grant its own project and budget, then check

@@ -1,10 +1,15 @@
 package cost
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/scttfrdmn/cargoship/pkg/aws/config"
 )
@@ -37,39 +42,79 @@ func budgetStorePath() (string, error) {
 }
 
 // localStore is the default BudgetStore: a single JSON document on the local
-// filesystem at budgetStorePath, written atomically. It ignores the concurrency
-// token (whole-document read/modify/write); the S3 store added in Phase B (#246)
-// uses the token for ETag/If-Match conditional writes.
+// filesystem at budgetStorePath, written atomically. Its Token is a content hash
+// of the file a Load read; Save takes a lock file, re-reads, and refuses with
+// ErrBudgetStoreConflict if the file changed since (#1031).
 type localStore struct{}
 
-// Load reads the persisted budget document. A missing file is not an error —
-// it returns an empty, current-version state (the store simply hasn't been
-// written yet). Legacy pre-versioning files (a bare
-// map[string]config.ProjectBudget) are migrated in memory to the current shape;
-// they're rewritten in the new shape on the next Save.
-func (localStore) Load() (LedgerState, Token, error) {
-	path, err := budgetStorePath()
-	if err != nil {
-		return LedgerState{}, "", err
-	}
+const (
+	// localTokenAbsent is the Token for a store file that did not exist at Load.
+	localTokenAbsent Token = "absent"
+
+	// storeLockStaleAfter is how old a lock file must be before a writer treats it
+	// as left behind by a crashed process and removes it. A save holds the lock
+	// for milliseconds.
+	storeLockStaleAfter = 30 * time.Second
+
+	// storeLockWait bounds how long a writer waits for a live lock.
+	storeLockWait = 10 * time.Second
+
+	storeLockPoll = 5 * time.Millisecond
+)
+
+// localToken returns the concurrency token for store bytes read from disk.
+func localToken(data []byte) Token {
+	sum := sha256.Sum256(data)
+	return Token("sha256:" + hex.EncodeToString(sum[:]))
+}
+
+// corruptStoreError wraps a parse failure of the store at path so it names the
+// file, says what to do, and matches ErrBudgetStoreCorrupt.
+func corruptStoreError(path string, err error) error {
+	return fmt.Errorf("%w: %q: %v (budgets cannot be enforced from it; cargoship will not overwrite it, so repair the file or move it aside)",
+		ErrBudgetStoreCorrupt, path, err)
+}
+
+// readLocalStore reads and parses the store file. A missing file is an empty,
+// current-version state with the absent token.
+func readLocalStore(path string) (LedgerState, Token, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // path is derived from home/XDG, not user input
 	if err != nil {
 		if os.IsNotExist(err) {
-			return LedgerState{Version: StoreVersion, ProjectBudgets: map[string]config.ProjectBudget{}}, "", nil
+			return LedgerState{Version: StoreVersion, ProjectBudgets: map[string]config.ProjectBudget{}}, localTokenAbsent, nil
 		}
 		return LedgerState{}, "", fmt.Errorf("read budget store %q: %w", path, err)
 	}
 	state, err := decodeLedgerState(data)
 	if err != nil {
-		return LedgerState{}, "", fmt.Errorf("parse budget store %q: %w", path, err)
+		return LedgerState{}, "", corruptStoreError(path, err)
 	}
-	return state, "", nil
+	return state, localToken(data), nil
+}
+
+// Load reads the persisted budget document. A missing file is not an error —
+// it returns an empty, current-version state (the store simply hasn't been
+// written yet). Legacy pre-versioning files (a bare
+// map[string]config.ProjectBudget) are migrated in memory to the current shape;
+// they're rewritten in the new shape on the next Save. An unparseable file is an
+// error wrapping ErrBudgetStoreCorrupt.
+func (localStore) Load() (LedgerState, Token, error) {
+	path, err := budgetStorePath()
+	if err != nil {
+		return LedgerState{}, "", err
+	}
+	return readLocalStore(path)
 }
 
 // Save writes the budget document atomically (temp file in the same dir, then
 // rename) so a crash mid-write can't corrupt the store. The file is written
-// 0600 since budgets may reference grant numbers. The token is ignored.
-func (localStore) Save(state LedgerState, _ Token) error {
+// 0600 since budgets may reference grant numbers.
+//
+// Under a lock file it re-reads the store first: an unparseable file is never
+// overwritten (ErrBudgetStoreCorrupt), and a non-empty token that no longer
+// matches the file is a conflict (ErrBudgetStoreConflict). An empty token skips
+// only the conflict check.
+func (localStore) Save(state LedgerState, token Token) error {
 	if state.Version == 0 {
 		state.Version = StoreVersion
 	}
@@ -84,7 +129,51 @@ func (localStore) Save(state LedgerState, _ Token) error {
 	if err != nil {
 		return fmt.Errorf("marshal budget store: %w", err)
 	}
+	unlock, err := lockStoreFile(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	_, current, err := readLocalStore(path)
+	if err != nil {
+		return err
+	}
+	if token != "" && token != current {
+		return fmt.Errorf("save budget store %q: %w", path, ErrBudgetStoreConflict)
+	}
 	return atomicWriteFile(path, data)
+}
+
+// lockStoreFile takes an exclusive lock on the store at path by creating
+// path+".lock" with O_EXCL, waiting up to storeLockWait for another writer. A
+// lock older than storeLockStaleAfter was left by a crashed process and is
+// removed. The returned func releases the lock.
+func lockStoreFile(path string) (func(), error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return nil, fmt.Errorf("create budget store dir: %w", err)
+	}
+	lockPath := path + ".lock"
+	deadline := time.Now().Add(storeLockWait)
+	for {
+		f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600) //nolint:gosec // derived from the store path
+		if err == nil {
+			_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())
+			_ = f.Close()
+			return func() { _ = os.Remove(lockPath) }, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return nil, fmt.Errorf("lock budget store %q: %w", path, err)
+		}
+		if fi, sErr := os.Stat(lockPath); sErr == nil && time.Since(fi.ModTime()) > storeLockStaleAfter {
+			_ = os.Remove(lockPath)
+			continue
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("budget store %q is locked by another cargoship process; if none is running, remove %q", path, lockPath)
+		}
+		time.Sleep(storeLockPoll)
+	}
 }
 
 // decodeLedgerState parses budget-store bytes, migrating the legacy format

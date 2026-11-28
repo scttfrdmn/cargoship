@@ -1,6 +1,22 @@
 package cost
 
-import "github.com/scttfrdmn/cargoship/pkg/aws/config"
+import (
+	"errors"
+
+	"github.com/scttfrdmn/cargoship/pkg/aws/config"
+)
+
+// ErrBudgetStoreConflict reports that the budget store changed between the Load
+// that produced a Token and the Save that presented it: another process wrote
+// first. The write was not applied; the caller re-loads, re-applies its own
+// changes, and retries (#1031). Test with errors.Is.
+var ErrBudgetStoreConflict = errors.New("budget store changed concurrently")
+
+// ErrBudgetStoreCorrupt reports that the persisted budget store exists but
+// cannot be parsed. Budgets cannot be enforced from it, and no store
+// implementation overwrites it: the file (or object) is left byte-for-byte as
+// found for the user to repair or move aside (#1031). Test with errors.Is.
+var ErrBudgetStoreCorrupt = errors.New("budget store is unreadable")
 
 // StoreVersion is the current on-disk schema version for the budget store.
 // Version 1 introduced the LedgerState wrapper (project budgets + recorded cost
@@ -36,18 +52,21 @@ type LedgerState struct {
 }
 
 // Token is an opaque optimistic-concurrency token returned by Load and passed
-// back to Save. The local file store does not use it (returns ""); the S3 store
-// added in Phase B (#246) carries the object ETag here for If-Match writes.
+// back to Save. The local file store carries a content hash of the file it read;
+// the S3 store (#246 Phase B) carries the per-object ETags for If-Match writes.
 type Token string
 
 // BudgetStore abstracts durable persistence of budget limits and the cost
 // ledger. Load returns the current state plus a concurrency token; Save writes
-// state, passing back the token from the prior Load so a compare-and-swap
-// implementation can reject a stale write.
+// state, passing back the token from the prior Load.
 //
-// The local implementation (localStore) is whole-document read/modify/write and
-// ignores the token. Phase B adds an S3-backed implementation that uses it for
-// ETag/If-Match conditional writes.
+// Save is a compare-and-swap (#1031): if the store changed since that Load, it
+// writes nothing and returns an error wrapping ErrBudgetStoreConflict. Callers
+// that must not lose another process's update (Manager.saveState) re-load,
+// re-apply only their own changes, and retry. An empty token means "no prior
+// Load" and is accepted unconditionally by the local store. No implementation
+// overwrites a store it cannot parse: Load and Save both return an error
+// wrapping ErrBudgetStoreCorrupt instead.
 type BudgetStore interface {
 	Load() (LedgerState, Token, error)
 	Save(state LedgerState, token Token) error
