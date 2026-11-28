@@ -38,7 +38,16 @@ func (m *Manifest) EncryptedPartialBytes(ctx context.Context, kmsClient encrypti
 	if err != nil {
 		return nil, fmt.Errorf("serialize partial manifest: %w", err)
 	}
-	sealed, err := encryption.NewKMSEncryptor(kmsClient, kmsKeyID).EncryptManifest(ctx, plain, partialIdentity(m.UploadID))
+	return sealPartialJSON(ctx, kmsClient, kmsKeyID, m.UploadID, plain)
+}
+
+// sealPartialJSON is EncryptedPartialBytes for a manifest already serialised
+// with ToJSON.
+func sealPartialJSON(ctx context.Context, kmsClient encryption.KMSClient, kmsKeyID, uploadID string, plain []byte) ([]byte, error) {
+	if kmsClient == nil || kmsKeyID == "" {
+		return nil, fmt.Errorf("encrypt partial manifest: a KMS client and key are required")
+	}
+	sealed, err := encryption.NewKMSEncryptor(kmsClient, kmsKeyID).EncryptManifest(ctx, plain, partialIdentity(uploadID))
 	if err != nil {
 		return nil, fmt.Errorf("encrypt partial manifest: %w", err)
 	}
