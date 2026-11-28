@@ -645,6 +645,9 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 	sort.Strings(keys)
 
 	seen := make(map[fileKey]bool)
+	// #970: the SHA-256 of every file each object was found to hold, so a
+	// duplicate can be checked against the bytes it would restore from.
+	held := make(map[string]map[string]bool)
 
 	for _, key := range keys {
 		if err := ctx.Err(); err != nil {
@@ -663,6 +666,9 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 				}
 				fr := dv.verifyStandaloneObject(ctx, f)
 				seen[fileKey{f.Path, f.PartIndex}] = true
+				if fr.Actual != "" {
+					held[key] = map[string]bool{fr.Actual: true}
+				}
 				switch fr.Status {
 				case ChunkVerifyOK:
 					result.OK++
@@ -679,7 +685,9 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 			}
 			continue
 		}
-		fileResults, err := dv.verifyChunkFiles(ctx, chunk, expected, offsets, seen)
+		hashes := make(map[string]bool)
+		fileResults, err := dv.verifyChunkFiles(ctx, chunk, expected, offsets, seen, hashes)
+		held[key] = hashes
 		if err != nil {
 			// Chunk object unreadable: every file backed by it is missing.
 			for _, f := range dv.manifest.Files {
@@ -721,7 +729,62 @@ func (dv *DeepVerifier) VerifyFiles(ctx context.Context) (*FilesVerifyResult, er
 		}
 	}
 
+	// #970: a duplicate used to be skipped here, so verify --deep passed an
+	// archive whose duplicates could not be restored. It is a file of the
+	// dataset like any other, proven when the object it restores from holds a
+	// file with its content hash.
+	for i := range dv.manifest.Files {
+		f := &dv.manifest.Files[i]
+		if !f.IsDuplicate {
+			continue
+		}
+		result.TotalFiles++
+		fr := verifyDuplicate(f, held)
+		switch fr.Status {
+		case ChunkVerifyOK:
+			result.OK++
+		case ChunkVerifyMismatch:
+			result.Mismatched++
+		case ChunkVerifyMissing:
+			result.Missing++
+		case ChunkVerifyUnverifiable:
+			result.Unverifiable++
+		}
+		result.Files = append(result.Files, fr)
+	}
+
 	return result, nil
+}
+
+// verifyDuplicate checks a --enable-dedup duplicate against the content hashes
+// held by the object it restores from (its S3Key, which is the original's). The
+// duplicate's hash is always SHA-256 — the dedup index computes nothing else —
+// so it is compared directly with the SHA-256 of what was read.
+func verifyDuplicate(f *FileEntry, held map[string]map[string]bool) FileVerifyResult {
+	hash := duplicateHash(f)
+	fr := FileVerifyResult{Path: f.Path, ChunkID: f.ChunkID, Expected: hash}
+	if hash == "" {
+		fr.Status = ChunkVerifyUnverifiable
+		fr.Detail = "duplicate records no content hash"
+		return fr
+	}
+	hashes, ok := held[f.S3Key]
+	if !ok && f.OriginalS3Key != "" {
+		hashes, ok = held[f.OriginalS3Key]
+	}
+	switch {
+	case !ok:
+		fr.Status = ChunkVerifyMissing
+		fr.Detail = fmt.Sprintf("duplicate: the object holding its original (%s) was not read", f.S3Key)
+	case hashes[hash]:
+		fr.Status = ChunkVerifyOK
+		fr.Actual = hash
+		fr.Detail = fmt.Sprintf("duplicate: content found in %s", f.S3Key)
+	default:
+		fr.Status = ChunkVerifyMismatch
+		fr.Detail = fmt.Sprintf("duplicate: no file in %s holds its content", f.S3Key)
+	}
+	return fr
 }
 
 // verifyStandaloneObject verifies a file stored as its OWN S3 object rather than
@@ -809,7 +872,9 @@ type chunkIdent struct {
 // verifyChunkFiles downloads one chunk, walks its tar, and hashes each file
 // entry, comparing to the expected checksums. It marks seen keys so the caller
 // can detect files that never appeared.
-func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry, expected map[fileKey]string, offsets map[fileKey]int64, seen map[fileKey]bool) ([]FileVerifyResult, error) {
+//
+// The SHA-256 of every file it reads in full is added to hashes (#970).
+func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry, expected map[fileKey]string, offsets map[fileKey]int64, seen map[fileKey]bool, hashes map[string]bool) ([]FileVerifyResult, error) {
 	output, err := dv.s3Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(dv.objectBucket()),
 		Key:    aws.String(dv.objectKey(chunk.S3Key)),
@@ -912,6 +977,7 @@ func (dv *DeepVerifier) verifyChunkFiles(ctx context.Context, chunk *ChunkEntry,
 			continue
 		}
 		actual := hex.EncodeToString(hasher.Sum(nil))
+		hashes[actual] = true
 
 		fr := FileVerifyResult{Path: path, ChunkID: chunk.ID, Expected: exp, Actual: actual}
 		switch {

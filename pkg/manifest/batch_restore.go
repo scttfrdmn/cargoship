@@ -1304,6 +1304,12 @@ func (se *SelectiveExtractor) tryFrameRestore(ctx context.Context, entry *FileEn
 	if entry.TotalParts > 1 {
 		return false // split part: whole-chunk path reassembles it
 	}
+	if entry.IsDuplicate {
+		// #970: a duplicate has no offset of its own (its bytes sit at the
+		// original's), so slicing at its ArchiveOffset read the wrong bytes. The
+		// whole-chunk path finds the member by content instead.
+		return false
+	}
 	fr := findFrame(chunk.Frames, entry.ArchiveOffset, entry.Size)
 	if fr == nil {
 		return false
@@ -1441,12 +1447,39 @@ func decodeZstdFrame(compressed []byte) ([]byte, error) {
 	return raw, nil
 }
 
+// duplicateHash returns the SHA-256 content hash a --enable-dedup duplicate
+// was recorded with, or "" for a file that is not a duplicate.
+func duplicateHash(f *FileEntry) string {
+	if !f.IsDuplicate {
+		return ""
+	}
+	if f.DuplicateOfHash != "" {
+		return f.DuplicateOfHash
+	}
+	return f.Checksum
+}
+
 // extractFromChunkData decompresses data (a compressed tar archive) and writes
 // the requested files to destDir. Returns the count of files written and total
 // bytes written.
+//
+// A --enable-dedup duplicate has no tar member: its bytes are the original's,
+// stored under the original's name. The manifest records the duplicate's
+// content hash and the original's chunk, but not which member is the original,
+// and since #548 the original usually carries no checksum of its own. So a
+// duplicate is matched by content: every member of the duplicate's size is
+// hashed, and one whose SHA-256 equals the duplicate's hash is written to the
+// duplicate's path. Matching on the duplicate's own path never found it (#970).
 func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEntry, root *os.Root, destDir string) (int, int64, error) {
 	want := make(map[string]*FileEntry, len(files))
+	dups := make(map[string][]*FileEntry) // content hash -> duplicates to write from it
+	dupSizes := make(map[int64]bool)
 	for _, f := range files {
+		if h := duplicateHash(f); h != "" {
+			dups[h] = append(dups[h], f)
+			dupSizes[f.Size] = true
+			continue
+		}
 		want[f.Path] = f
 	}
 
@@ -1488,7 +1521,20 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 			return restored, totalBytes, fmt.Errorf("tar read: %w", err)
 		}
 		entry, ok := want[hdr.Name]
-		if !ok {
+		dupCandidate := len(dups) > 0 && dupSizes[hdr.Size] && hdr.Typeflag == tar.TypeReg
+		if !ok && !dupCandidate {
+			continue
+		}
+		if dupCandidate {
+			n, w, err := se.writeMemberAndDuplicates(tarReader, hdr, entry, dups, root, destDir)
+			restored += n
+			totalBytes += w
+			if err != nil {
+				return restored, totalBytes, err
+			}
+			if entry != nil {
+				delete(want, hdr.Name)
+			}
 			continue
 		}
 		// #282: same escape-safe, structure-preserving layout as the direct path.
@@ -1575,11 +1621,84 @@ func (se *SelectiveExtractor) extractFromChunkData(data []byte, files []*FileEnt
 	// #905: a clean end of archive is not success if requested entries never
 	// appeared. A truncated or mismatched chunk (an empty object, a chunk
 	// rebound by resume, a manifest written for a failed upload) used to return
-	// nil here, so restore exited 0 with the files silently absent.
+	// nil here, so restore exited 0 with the files silently absent. A duplicate
+	// whose content no member holds is missing the same way (#970).
+	for _, ds := range dups {
+		for _, d := range ds {
+			want[d.Path] = d
+		}
+	}
 	if len(want) > 0 {
 		return restored, totalBytes, missingEntriesError(want, chunkKeyOf(files))
 	}
 	return restored, totalBytes, nil
+}
+
+// writeMemberAndDuplicates reads one tar member whose size matches a pending
+// duplicate, writes it to entry's path when the member was itself requested
+// (entry may be nil), and writes it to every pending duplicate whose content
+// hash it matches, removing those from dups. The member is buffered because one
+// read feeds several files and has to be hashed before any duplicate is
+// written; its size is a manifest-declared duplicate size (#970).
+func (se *SelectiveExtractor) writeMemberAndDuplicates(tr io.Reader, hdr *tar.Header, entry *FileEntry, dups map[string][]*FileEntry, root *os.Root, destDir string) (int, int64, error) {
+	var buf bytes.Buffer
+	if _, err := io.CopyN(&buf, tr, hdr.Size); err != nil {
+		name := hdr.Name
+		if entry != nil {
+			name = entry.Path
+		}
+		return 0, 0, fmt.Errorf("read %s: %w", name, err)
+	}
+	content := buf.Bytes()
+	var restored int
+	var written int64
+	if entry != nil {
+		if se.checksumMismatch(entry, content) {
+			return 0, 0, fmt.Errorf("checksum mismatch for %s: stored data does not match manifest", entry.Path)
+		}
+		if err := se.writeRestored(root, destDir, entry, content, hdr.Mode); err != nil {
+			return 0, 0, err
+		}
+		restored++
+		written += int64(len(content))
+	}
+	sum := sha256.Sum256(content)
+	hash := hex.EncodeToString(sum[:])
+	for _, d := range dups[hash] {
+		// The content hash just matched, so this only fails for a duplicate whose
+		// recorded checksum disagrees with its own content hash.
+		if se.checksumMismatch(d, content) {
+			return restored, written, fmt.Errorf("checksum mismatch for %s: stored data does not match manifest", d.Path)
+		}
+		if err := se.writeRestored(root, destDir, d, content, hdr.Mode); err != nil {
+			return restored, written, err
+		}
+		restored++
+		written += int64(len(content))
+	}
+	delete(dups, hash)
+	return restored, written, nil
+}
+
+// writeRestored writes content to entry's restore path under destDir with the
+// archived mode hdrMode, then stamps the entry's modification time.
+func (se *SelectiveExtractor) writeRestored(root *os.Root, destDir string, entry *FileEntry, content []byte, hdrMode int64) error {
+	outPath, err := se.restorePath(destDir, entry.Path)
+	if err != nil {
+		return err
+	}
+	rel, err := destRelPath(destDir, outPath)
+	if err != nil {
+		return err
+	}
+	if err := prepareParents(root, rel); err != nil {
+		return err
+	}
+	if err := writeContained(root, rel, content, restoreMode(root, rel, hdrMode)); err != nil {
+		return err
+	}
+	restoreModTime(root, rel, entry.ModTime)
+	return nil
 }
 
 // missingEntriesError reports requested entries that a chunk did not contain,

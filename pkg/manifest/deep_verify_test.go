@@ -349,9 +349,10 @@ func TestVerifyFiles_Unverifiable(t *testing.T) {
 	assert.Equal(t, 1, res.Unverifiable)
 }
 
-// TestVerifyFiles_SkipsDuplicates verifies deduplicated files aren't counted
-// (they don't have their own stored bytes).
-func TestVerifyFiles_SkipsDuplicates(t *testing.T) {
+// TestVerifyFiles_VerifiesDuplicatesThroughOriginal: a deduplicated file has
+// no stored bytes of its own, so it is proven through the chunk member holding
+// its content rather than skipped (#970).
+func TestVerifyFiles_VerifiesDuplicatesThroughOriginal(t *testing.T) {
 	fileA := []byte("original")
 	chunk := makeTarZst(t, map[string][]byte{"a.txt": fileA})
 	dl := &fakeDownloader{objects: map[string][]byte{"pfx/chunk-0": chunk}}
@@ -366,7 +367,8 @@ func TestVerifyFiles_SkipsDuplicates(t *testing.T) {
 	}
 	res, err := NewDeepVerifier(m, dl).VerifyFiles(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, 1, res.TotalFiles, "duplicate excluded")
+	assert.Equal(t, 2, res.TotalFiles, "the duplicate is counted")
+	assert.Equal(t, 2, res.OK)
 	assert.True(t, res.Passed())
 }
 
