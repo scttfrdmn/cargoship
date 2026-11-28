@@ -78,7 +78,7 @@ func corruptStoreError(path string, err error) error {
 // readLocalStore reads and parses the store file. A missing file is an empty,
 // current-version state with the absent token.
 func readLocalStore(path string) (LedgerState, Token, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // path is derived from home/XDG, not user input
+	data, err := readStoreFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return LedgerState{Version: StoreVersion, ProjectBudgets: map[string]config.ProjectBudget{}}, localTokenAbsent, nil
@@ -148,7 +148,9 @@ func (localStore) Save(state LedgerState, token Token) error {
 // lockStoreFile takes an exclusive lock on the store at path by creating
 // path+".lock" with O_EXCL, waiting up to storeLockWait for another writer. A
 // lock older than storeLockStaleAfter was left by a crashed process and is
-// removed. The returned func releases the lock.
+// removed. On Windows a lock file that another writer is removing refuses the
+// create with a sharing error rather than "exists"; that is waited out too.
+// The returned func releases the lock.
 func lockStoreFile(path string) (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, fmt.Errorf("create budget store dir: %w", err)
@@ -160,13 +162,14 @@ func lockStoreFile(path string) (func(), error) {
 		if err == nil {
 			_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())
 			_ = f.Close()
-			return func() { _ = os.Remove(lockPath) }, nil
+			// A lock that can't be removed is broken as stale by the next writer.
+			return func() { _ = removeStoreFile(lockPath) }, nil
 		}
-		if !errors.Is(err, fs.ErrExist) {
+		if !errors.Is(err, fs.ErrExist) && !isTransientFileError(err) {
 			return nil, fmt.Errorf("lock budget store \"%s\": %w", path, err)
 		}
 		if fi, sErr := os.Stat(lockPath); sErr == nil && time.Since(fi.ModTime()) > storeLockStaleAfter {
-			_ = os.Remove(lockPath)
+			_ = removeStoreFile(lockPath) // if this fails, the create below keeps waiting
 			continue
 		}
 		if time.Now().After(deadline) {
@@ -230,7 +233,9 @@ func atomicWriteFile(path string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp budget file: %w", err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	// On Windows a reader's open handle refuses the replace for a moment;
+	// replaceFile waits it out instead of dropping the save (#1031).
+	if err := replaceFile(tmpName, path); err != nil {
 		return fmt.Errorf("rename budget store into place: %w", err)
 	}
 	return nil
