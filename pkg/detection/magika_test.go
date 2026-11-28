@@ -50,10 +50,7 @@ func TestMagikaDetector_BinaryNotFound(t *testing.T) {
 // TestMagikaDetector_AutoDiscovery tests automatic binary discovery
 func TestMagikaDetector_AutoDiscovery(t *testing.T) {
 	// Check if magika is in PATH
-	_, err := exec.LookPath("magika")
-	if err != nil {
-		t.Skip("Magika not installed, skipping auto-discovery test")
-	}
+	requireMagika(t)
 
 	cfg := config.MagikaConfig{
 		Enabled:     true,
@@ -73,10 +70,7 @@ func TestMagikaDetector_AutoDiscovery(t *testing.T) {
 // TestMagikaDetector_BatchDetection tests batch detection with real files
 func TestMagikaDetector_BatchDetection(t *testing.T) {
 	// Check if magika is installed
-	_, err := exec.LookPath("magika")
-	if err != nil {
-		t.Skip("Magika not installed, skipping batch detection test")
-	}
+	requireMagika(t)
 
 	// Create temporary test files
 	tmpDir := t.TempDir()
@@ -132,14 +126,11 @@ func TestMagikaDetector_BatchDetection(t *testing.T) {
 
 // TestMagikaDetector_DetectSingle tests single file detection
 func TestMagikaDetector_DetectSingle(t *testing.T) {
-	_, err := exec.LookPath("magika")
-	if err != nil {
-		t.Skip("Magika not installed, skipping single detection test")
-	}
+	requireMagika(t)
 
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test.txt")
-	err = os.WriteFile(testFile, []byte("Hello, world!"), 0644)
+	err := os.WriteFile(testFile, []byte("Hello, world!"), 0644)
 	require.NoError(t, err)
 
 	cfg := config.MagikaConfig{
@@ -162,14 +153,11 @@ func TestMagikaDetector_DetectSingle(t *testing.T) {
 
 // TestMagikaDetector_Cache tests caching behavior
 func TestMagikaDetector_Cache(t *testing.T) {
-	_, err := exec.LookPath("magika")
-	if err != nil {
-		t.Skip("Magika not installed, skipping cache test")
-	}
+	requireMagika(t)
 
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test.txt")
-	err = os.WriteFile(testFile, []byte("Test content"), 0644)
+	err := os.WriteFile(testFile, []byte("Test content"), 0644)
 	require.NoError(t, err)
 
 	cfg := config.MagikaConfig{
@@ -211,14 +199,11 @@ func TestMagikaDetector_Cache(t *testing.T) {
 
 // TestMagikaDetector_Timeout tests timeout handling
 func TestMagikaDetector_Timeout(t *testing.T) {
-	_, err := exec.LookPath("magika")
-	if err != nil {
-		t.Skip("Magika not installed, skipping timeout test")
-	}
+	requireMagika(t)
 
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test.txt")
-	err = os.WriteFile(testFile, []byte("Test"), 0644)
+	err := os.WriteFile(testFile, []byte("Test"), 0644)
 	require.NoError(t, err)
 
 	cfg := config.MagikaConfig{
@@ -260,10 +245,7 @@ func TestMagikaDetector_EmptyBatch(t *testing.T) {
 
 // TestMagikaDetector_NonexistentFile tests handling of nonexistent files
 func TestMagikaDetector_NonexistentFile(t *testing.T) {
-	_, err := exec.LookPath("magika")
-	if err != nil {
-		t.Skip("Magika not installed, skipping nonexistent file test")
-	}
+	requireMagika(t)
 
 	cfg := config.MagikaConfig{
 		Enabled:     true,
@@ -394,14 +376,11 @@ func TestGetMappingStats(t *testing.T) {
 
 // TestMagikaDetector_ConcurrentAccess tests thread-safe cache access
 func TestMagikaDetector_ConcurrentAccess(t *testing.T) {
-	_, err := exec.LookPath("magika")
-	if err != nil {
-		t.Skip("Magika not installed, skipping concurrent access test")
-	}
+	requireMagika(t)
 
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test.txt")
-	err = os.WriteFile(testFile, []byte("Concurrent test"), 0644)
+	err := os.WriteFile(testFile, []byte("Concurrent test"), 0644)
 	require.NoError(t, err)
 
 	cfg := config.MagikaConfig{
@@ -517,4 +496,19 @@ func createTestFiles(t *testing.T, dir string) []string {
 	}
 
 	return paths
+}
+
+// requireMagika skips a test that executes the real magika binary unless magika
+// is installed AND the run isn't -short. These tests run an external ML model
+// with fixed timeouts, so on a loaded machine (parallel builds, agent
+// worktrees) they time out and fail the pre-commit hook's -short run. CI has no
+// magika and never runs them; `go test ./pkg/detection` (no -short) still does.
+func requireMagika(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("executes the magika binary; skipped in -short mode")
+	}
+	if _, err := exec.LookPath("magika"); err != nil {
+		t.Skip("magika not installed")
+	}
 }
