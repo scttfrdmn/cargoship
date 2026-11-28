@@ -17,8 +17,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 )
+
+// homePrefix names every isolated home under os.TempDir().
+const homePrefix = "cargoship-testhome-"
+
+// staleHomeAge is how old an isolated home must be before a later test binary
+// deletes it. Isolate runs from init, so no hook runs after the tests to remove
+// the binary's own home; instead each run sweeps homes left by earlier runs.
+// Six hours is far beyond the longest test timeout (30m), so a home still in
+// use by a concurrently running binary is never removed.
+const staleHomeAge = 6 * time.Hour
 
 // realAWSOptIns are the environment switches that opt a test run into real AWS.
 // When any is set, the AWS credential chain is left alone (only its file paths
@@ -94,7 +106,8 @@ func isolate() (string, error) {
 	pinIfUnset("GOPATH", filepath.Join(realHome, "go"))
 	pinIfUnset("GOMODCACHE", filepath.Join(os.Getenv("GOPATH"), "pkg", "mod"))
 
-	dir, err := os.MkdirTemp("", "cargoship-testhome-")
+	sweepStaleHomes(os.TempDir(), time.Now().Add(-staleHomeAge))
+	dir, err := os.MkdirTemp("", homePrefix)
 	if err != nil {
 		return "", fmt.Errorf("create isolated home: %w", err)
 	}
@@ -143,5 +156,24 @@ func isolate() (string, error) {
 func pinIfUnset(name, value string) {
 	if os.Getenv(name) == "" {
 		_ = os.Setenv(name, value)
+	}
+}
+
+// sweepStaleHomes removes isolated homes under tmp last modified before cutoff.
+// Best effort: a home that can't be read or removed is left alone.
+func sweepStaleHomes(tmp string, cutoff time.Time) {
+	entries, err := os.ReadDir(tmp)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), homePrefix) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || !info.ModTime().Before(cutoff) {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(tmp, e.Name()))
 	}
 }

@@ -27,9 +27,18 @@ mkdir -p "$OUT_DIR"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-( cd "$REPO_ROOT" && go run ./cmd/cargoship mddocs "$TMP_DIR" )
+# Run the binary against an empty HOME (#1048): it otherwise reads the
+# developer's ~/.cargoship.yaml ("Using config file: ...") while generating.
+# Go's caches are pinned first so the build doesn't move with HOME.
+GEN_HOME="$TMP_DIR/home"
+mkdir -p "$GEN_HOME" "$TMP_DIR/out"
+( cd "$REPO_ROOT" &&
+  GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)" GOPATH="$(go env GOPATH)" \
+  HOME="$GEN_HOME" USERPROFILE="$GEN_HOME" XDG_CONFIG_HOME="$GEN_HOME/.config" \
+  go run ./cmd/cargoship mddocs "$TMP_DIR/out" )
+GEN_DIR="$TMP_DIR/out"
 
-for f in "$TMP_DIR"/*.md; do
+for f in "$GEN_DIR"/*.md; do
   base="$(basename "$f")"
   # Sanitize for VitePress:
   #  - stop at the volatile SEE ALSO block (sibling-file links that don't resolve

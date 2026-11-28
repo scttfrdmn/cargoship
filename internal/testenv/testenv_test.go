@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestIsolatePointsHomeAtTempDir(t *testing.T) {
@@ -90,5 +91,34 @@ func TestIsolateCoversUserCacheDir(t *testing.T) {
 	}
 	if !strings.HasPrefix(cache, HomeDir()) {
 		t.Fatalf("UserCacheDir %q escapes the isolated home %q", cache, HomeDir())
+	}
+}
+
+func TestSweepStaleHomes(t *testing.T) {
+	tmp := t.TempDir()
+	mk := func(name string, age time.Duration) string {
+		p := filepath.Join(tmp, name)
+		if err := os.MkdirAll(filepath.Join(p, ".cargoship"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		when := time.Now().Add(-age)
+		if err := os.Chtimes(p, when, when); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	stale := mk(homePrefix+"old", 7*time.Hour)
+	fresh := mk(homePrefix+"new", time.Minute)
+	other := mk("someone-elses-dir", 30*24*time.Hour)
+
+	sweepStaleHomes(tmp, time.Now().Add(-staleHomeAge))
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale home %s should be removed (err=%v)", stale, err)
+	}
+	for _, keep := range []string{fresh, other} {
+		if _, err := os.Stat(keep); err != nil {
+			t.Errorf("%s must be kept: %v", keep, err)
+		}
 	}
 }
