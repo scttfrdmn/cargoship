@@ -94,6 +94,20 @@ func TestTorture(t *testing.T) {
 		})
 	})
 
+	// #970: the same corpus in the CHUNKED layout. dedup_duplicates above takes
+	// the direct path (chunks=0), where a duplicate's S3Key names an object that
+	// IS the bytes. In a chunk the bytes sit under the ORIGINAL's tar name and
+	// offset, so restore must resolve a duplicate through its original.
+	t.Run("dedup_duplicates_chunked", func(t *testing.T) {
+		src := t.TempDir()
+		corpus := plantDuplicateContent(t, src, rng)
+		m := tortureRoundTrip(t, corpus, src, func(pc *PipelineConfig) {
+			pc.EnableDeduplication = true
+			pc.DirectUploadThresholdMB = -1 // never take the direct path
+		})
+		require.Positive(t, m.TotalChunks, "the chunked variant must actually produce chunks")
+	})
+
 	// #468: a chunked upload spanning MORE THAN ONE scan batch (batchSize=1000)
 	// must not collide chunk IDs/S3 keys across batches. Force the packed path
 	// (negative threshold) with >1000 files so ≥2 batches run.
