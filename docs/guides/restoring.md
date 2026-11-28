@@ -104,7 +104,9 @@ for you and reports the estimated cost:
 - `--wait` — block until the thaw finishes, then download automatically.
 - `--restore-days` — how many days to keep the restored copy available (default 7).
 - `--max-restore-cost` — abort if the estimated retrieval cost exceeds this USD limit.
-- `--dry-run` — show the size and estimated cost without restoring.
+  The check runs before any retrieval is requested, so an aborted restore costs nothing.
+- `--dry-run` — show the size and estimated cost without requesting a retrieval or
+  restoring anything.
 
 ```bash
 cargoship restore s3://my-bucket/archives/uploads/20260721-a1b2c3 ./out \
@@ -162,6 +164,26 @@ cargoship restore jobs clean --older-than 72h
 `restore jobs download` takes `--cache-gb` to size the LRU chunk cache. See the
 [command reference](/reference/commands/inspect) for the complete `restore jobs`
 flags.
+
+A restore that has to wait like this exits **`75`**, not `0`: the retrieval is
+requested but nothing is restored yet, so a script can tell "restored" from
+"come back later". `browse` does the same without `--wait`, and so does
+`restore jobs download` on a job that is still pending. With `--json`, the
+restore prints a status object instead of the restore statistics:
+
+```json
+{"status":"pending","job_id":"20260721-a1b2c3-...","chunks_pending":4,"chunks_requested":4,"tier":"standard","retrieval_cost_usd":0.62}
+```
+
+If the job can't be saved, the restore exits `1` (the object carries an `error`
+field): the retrieval was requested, but nothing records the restore, so run it
+again once the chunks are accessible. See [Exit codes](/reference/exit-codes).
+
+::: warning Changed in v0.44.0
+Earlier versions exited `0` here, so `cargoship restore ... && rm -rf ./local`
+deleted the local copy with nothing restored
+([#979](https://github.com/scttfrdmn/cargoship/issues/979)).
+:::
 
 ## Best practices
 

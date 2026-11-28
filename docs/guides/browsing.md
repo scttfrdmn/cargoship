@@ -89,6 +89,7 @@ cargoship browse s3://my-bucket/.../20260721-a1b2c3 --tier standard --wait
 - `--wait` — block until the Glacier thaw completes, then download.
 - `--restore-days` — days to keep the restored copy (default 7).
 - `--max-restore-cost` — abort if the estimated retrieval cost exceeds this USD limit.
+  The check runs before any retrieval is requested.
 - `--cache-gb`, `-r`/`--region` — as for `shell`.
 
 ## Which one to use

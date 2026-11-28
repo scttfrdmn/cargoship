@@ -61,6 +61,10 @@ Glacier/Deep Archive support:
   --wait        : Block until Glacier restoration completes before downloading
   --dry-run     : Show what would be restored (size, cost) without downloading
 
+  Without --wait, a restore whose chunks are still archived requests their
+  retrieval, saves a restore job, and exits 75 with nothing restored yet;
+  finish it with 'cargoship restore jobs download JOB_ID'.
+
 Budget controls:
   --max-restore-cost : Abort if estimated retrieval cost exceeds this USD limit
 
@@ -224,16 +228,17 @@ Examples:
 				restoreTier = s3pkg.DefaultRestoreTier
 			}
 
+			// #973: check and cost-cap first, request retrieval only after the
+			// dry-run return below.
 			gr := s3pkg.NewGlacierRestorer(s3Client, restoreDays)
-			report, err := gr.CheckAndRestore(ctx, bucket, chunkKeys, restoreTier)
+			report, err := glacierPreflight(ctx, gr, bucket, chunkKeys, restoreTier, maxRestoreCost)
 			if err != nil {
-				return fmt.Errorf("glacier pre-flight check failed: %w", err)
+				return err
 			}
-
-			// Budget guard.
-			if maxRestoreCost > 0 && report.EstimatedCostUSD > maxRestoreCost {
-				return fmt.Errorf("estimated retrieval cost $%.4f exceeds --max-restore-cost $%.4f; aborting",
-					report.EstimatedCostUSD, maxRestoreCost)
+			if !dryRun {
+				if err := requestGlacierRestores(ctx, gr, bucket, report, restoreTier); err != nil {
+					return err
+				}
 			}
 
 			// Print Glacier status.
@@ -274,6 +279,7 @@ Examples:
 					fmt.Println("✅ All chunks are accessible.")
 				} else {
 					// Save a job so the user can check and download later.
+					var jobID string
 					jobStore, storeErr := restore.NewDefaultStore()
 					if storeErr == nil {
 						sel := restore.SelectionCriteria{
@@ -293,18 +299,25 @@ Examples:
 							jobErr = jobStore.Save(job)
 						}
 						if jobErr == nil {
-							fmt.Printf("\n💾 Restore job saved: %s\n", job.ID)
-							fmt.Printf("   Check status:  cargoship restore jobs check %s\n", job.ID)
-							fmt.Printf("   Download when ready: cargoship restore jobs download %s\n", job.ID)
+							jobID = job.ID
+							if !jsonOutput {
+								fmt.Printf("\n💾 Restore job saved: %s\n", job.ID)
+								fmt.Printf("   Check status:  cargoship restore jobs check %s\n", job.ID)
+								fmt.Printf("   Download when ready: cargoship restore jobs download %s\n", job.ID)
+							}
 						} else {
 							storeErr = jobErr
 						}
 					}
-					if storeErr != nil {
-						fmt.Fprintf(os.Stderr, "⚠️  Could not save a restore job (%v); re-run this restore once the chunks are accessible.\n", storeErr)
-					}
-					fmt.Printf("\n⚠️  %d chunk(s) are not yet accessible.\n", len(report.Frozen)+len(report.InProgress))
-					return nil
+					// #979: this used to return nil, so a script saw exit 0 with
+					// nothing restored.
+					return restorePendingOutcome(jsonOutput, pendingStatus{
+						JobID:            jobID,
+						ChunksPending:    len(report.Frozen) + len(report.InProgress),
+						ChunksRequested:  len(report.JustRequested),
+						Tier:             string(restoreTier),
+						RetrievalCostUSD: report.EstimatedCostUSD,
+					}, storeErr)
 				}
 			}
 
@@ -438,6 +451,73 @@ func loadEffectiveManifest(ctx context.Context, s3Client *s3.Client, kmsClient *
 		m = merged
 	}
 	return m, nil
+}
+
+// glacierPreflight checks the chunks a restore needs and applies the
+// --max-restore-cost cap (0 = no cap). It sends no RestoreObject: retrieval is
+// billed, so it is a separate step (requestGlacierRestores) that a caller takes
+// only once the cap and any --dry-run have had their say. Requesting while
+// estimating is how both checks came to run after the money was spent (#973).
+// Shared by restore and browse.
+func glacierPreflight(ctx context.Context, gr *s3pkg.GlacierRestorer, bucket string, keys []string, tier s3pkg.RestoreTier, maxCost float64) (*s3pkg.AccessibilityReport, error) {
+	report, err := gr.Check(ctx, bucket, keys, tier)
+	if err != nil {
+		return nil, fmt.Errorf("glacier pre-flight check failed: %w", err)
+	}
+	if maxCost > 0 && report.EstimatedCostUSD > maxCost {
+		return nil, fmt.Errorf("estimated retrieval cost $%.4f exceeds --max-restore-cost $%.4f; aborting (no retrieval was requested)",
+			report.EstimatedCostUSD, maxCost)
+	}
+	return report, nil
+}
+
+// requestGlacierRestores starts retrieval of the frozen chunks in report. Call
+// it only after glacierPreflight passed and the caller is not in a dry run.
+func requestGlacierRestores(ctx context.Context, gr *s3pkg.GlacierRestorer, bucket string, report *s3pkg.AccessibilityReport, tier s3pkg.RestoreTier) error {
+	if len(report.Frozen) == 0 {
+		return nil
+	}
+	if err := gr.RequestRestore(ctx, bucket, report, tier); err != nil {
+		return fmt.Errorf("glacier restore request failed after %d of %d chunk(s): %w",
+			len(report.JustRequested), len(report.Frozen), err)
+	}
+	return nil
+}
+
+// pendingStatus is the --json report of a restore waiting on Glacier (#979).
+type pendingStatus struct {
+	Status           string  `json:"status"` // always "pending"
+	JobID            string  `json:"job_id,omitempty"`
+	ChunksPending    int     `json:"chunks_pending"`
+	ChunksRequested  int     `json:"chunks_requested"`
+	Tier             string  `json:"tier"`
+	RetrievalCostUSD float64 `json:"retrieval_cost_usd"`
+	Error            string  `json:"error,omitempty"`
+}
+
+// restorePendingOutcome reports a restore whose chunks are still archived and
+// returns the error that sets its exit code (#979): ErrPending (exit 75) when a
+// restore job was saved to finish it with, and a plain failure (exit 1) when
+// even that could not be saved, since then nothing records the restore.
+func restorePendingOutcome(jsonOutput bool, p pendingStatus, saveErr error) error {
+	p.Status = "pending"
+	if saveErr != nil {
+		p.Error = fmt.Sprintf("could not save a restore job: %v", saveErr)
+	}
+	if jsonOutput {
+		b, err := json.Marshal(p)
+		if err != nil {
+			return fmt.Errorf("encode pending status: %w", err)
+		}
+		fmt.Println(string(b))
+	} else {
+		fmt.Printf("\n⏳ %d chunk(s) are not yet accessible; nothing was restored.\n", p.ChunksPending)
+	}
+	if saveErr != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  Could not save a restore job (%v); re-run this restore once the chunks are accessible.\n", saveErr)
+		return fmt.Errorf("%w%s", ErrSilent, p.Error)
+	}
+	return fmt.Errorf("%w%w", ErrSilent, ErrPending)
 }
 
 // restoreOutcomeError converts restore statistics into the command's error
