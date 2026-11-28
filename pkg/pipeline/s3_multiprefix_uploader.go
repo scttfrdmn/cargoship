@@ -16,8 +16,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	tmtypes "github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	smithy "github.com/aws/smithy-go"
+	awsconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 	s3transport "github.com/scttfrdmn/cargoship/pkg/aws/s3"
+	"github.com/scttfrdmn/cargoship/pkg/chunking"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 	"github.com/scttfrdmn/cargoship/pkg/observability/tracing"
 	"go.opentelemetry.io/otel/trace"
@@ -501,12 +504,15 @@ func (s *S3MultiPrefixUploaderStage) uploadToS3(ctx context.Context, job *Job) e
 
 // uploadViaTransporter uploads using advanced S3 transporter
 func (s *S3MultiPrefixUploaderStage) uploadViaTransporter(ctx context.Context, s3Key string, job *Job, metadata map[string]string) error {
-	// Create transporter Archive struct
+	// #1000: the archive carries the chunk's storage class. It was left empty, so
+	// the transporter fell back to its own config's class (unset by the CLI) and
+	// every chunk on the default --transporter staging path was stored STANDARD.
 	archive := s3transport.Archive{
-		Key:      s3Key,
-		Reader:   job.Archive,
-		Size:     atomic.LoadInt64(&job.ArchiveSize),
-		Metadata: metadata,
+		Key:          s3Key,
+		Reader:       job.Archive,
+		Size:         atomic.LoadInt64(&job.ArchiveSize),
+		StorageClass: awsconfig.StorageClass(chunkStorageClass(s.config, &job.Chunk)),
+		Metadata:     metadata,
 	}
 
 	// Upload via transporter.
@@ -523,6 +529,37 @@ func (s *S3MultiPrefixUploaderStage) uploadViaTransporter(ctx context.Context, s
 	// sibling keys relative to the bucket). The object was written at
 	// Prefix + "/" + job.S3Key, so the relative key is correct as-is.
 	return nil
+}
+
+// chunkStorageClass returns the storage class a chunk object is written with:
+// the tier the tier-aware chunker pre-assigned (#164), else the TierSelector's
+// pick for the chunk's most recently accessed file (#32), else the configured
+// class (--storage-class). Every chunk upload path uses it, so a requested class
+// can't be honoured on one path and dropped on another (#1000).
+func chunkStorageClass(cfg *S3UploaderConfig, chunk *chunking.Chunk) types.StorageClass {
+	if chunk.PreAssignedTier != "" {
+		return chunk.PreAssignedTier
+	}
+	if cfg.TierSelector == nil || !cfg.TierSelector.Enabled || len(chunk.Files) == 0 {
+		return cfg.StorageClass
+	}
+	// Conservative: if ANY file in the chunk is hot, the whole chunk stays hot.
+	var youngestAtime, youngestMtime time.Time
+	for _, file := range chunk.Files {
+		atimeStr, ok := file.Metadata["atime"]
+		if !ok {
+			continue
+		}
+		parsed, err := time.Parse(time.RFC3339, atimeStr)
+		if err != nil {
+			continue
+		}
+		if youngestAtime.IsZero() || parsed.After(youngestAtime) {
+			youngestAtime = parsed
+			youngestMtime = file.ModTime
+		}
+	}
+	return cfg.TierSelector.SelectTier(youngestAtime, youngestMtime)
 }
 
 // maybeSignalThrottle feeds an S3 server-side throttle (503 SlowDown /
@@ -551,7 +588,7 @@ func (s *S3MultiPrefixUploaderStage) uploadViaManager(ctx context.Context, s3Key
 		Bucket:       aws.String(s.config.Bucket),
 		Key:          aws.String(s3Key),
 		Body:         job.Archive,
-		StorageClass: tmtypes.StorageClass(string(s.config.StorageClass)),
+		StorageClass: tmtypes.StorageClass(string(chunkStorageClass(s.config, &job.Chunk))),
 		Metadata:     metadata,
 	}
 

@@ -325,19 +325,11 @@ Examples:
 			// v0.6.2: Create advanced transporter if requested
 			var transporter interface{} // s3transport.BasicTransporter
 			if transporterType != "" && transporterType != "none" {
-				// Create S3 config for transporter
-				s3Config := cargoconfig.S3Config{
-					Bucket:             bucket,
-					MultipartChunkSize: 64 * 1024 * 1024, // 64MB
-					Concurrency:        4,
-					KMSKeyID:           kmsKeyID, // Issue #163: KMS encryption
-				}
-
 				// Create transporter config
 				transporterConfig := pipeline.TransporterConfig{
 					Type:               pipeline.TransporterType(transporterType),
 					S3Client:           s3Client,
-					S3Config:           s3Config,
+					S3Config:           transporterS3Config(bucket, kmsKeyID, storageClass),
 					EnableOptimization: enableOptimization,
 					CongestionControl:  congestionControl,
 					DisableStaging:     disableStaging,
@@ -1053,6 +1045,20 @@ Examples:
 	cmd.Flags().BoolVar(&dvcAuto, "dvc-auto", false, "Auto-discover DVC stages from dvc.yaml and annotate each file entry with its stage name")
 
 	return cmd
+}
+
+// transporterS3Config is the S3 config the --transporter is built with. It
+// carries --storage-class as the transporter's default class (#1000: it was
+// omitted, so every chunk on the default staging path was stored STANDARD while
+// the manifest, estimate and budget used the requested class).
+func transporterS3Config(bucket, kmsKeyID, storageClass string) cargoconfig.S3Config {
+	return cargoconfig.S3Config{
+		Bucket:             bucket,
+		StorageClass:       cargoconfig.StorageClass(storageClass),
+		MultipartChunkSize: 64 * 1024 * 1024, // 64MB
+		Concurrency:        4,
+		KMSKeyID:           kmsKeyID, // Issue #163: KMS encryption
+	}
 }
 
 // parseS3Destination parses s3://bucket/prefix format

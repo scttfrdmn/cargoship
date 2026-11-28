@@ -364,39 +364,8 @@ func (s *S3UploaderStage) uploadToS3(ctx context.Context, job *Job) error {
 
 // uploadViaTransporter uploads using advanced S3 transporter
 func (s *S3UploaderStage) uploadViaTransporter(ctx context.Context, s3Key string, job *Job, metadata map[string]string) error {
-	// Determine storage class: use pre-assigned tier (Issue #164), TierSelector, or default
-	storageClass := awsconfig.StorageClass(s.config.StorageClass)
-
-	// Issue #164: Check for pre-assigned tier from tier-aware chunking (v2)
-	if job.Chunk.PreAssignedTier != "" {
-		// Tier-aware chunking has already grouped files by tier - use pre-assigned tier
-		storageClass = awsconfig.StorageClass(job.Chunk.PreAssignedTier)
-	} else if s.config.TierSelector != nil && s.config.TierSelector.Enabled {
-		// Fallback to v1 youngest-file strategy for backward compatibility
-		// Find youngest (most recently accessed) file in chunk for tier selection
-		// Conservative approach: if ANY file is hot, keep entire chunk in hot tier
-		if len(job.Chunk.Files) > 0 {
-			var youngestAtime time.Time
-			var youngestMtime time.Time
-
-			// Scan all files to find the most recently accessed
-			for _, file := range job.Chunk.Files {
-				// Parse atime from metadata (stored as RFC3339 string)
-				if atimeStr, ok := file.Metadata["atime"]; ok {
-					if parsedTime, err := time.Parse(time.RFC3339, atimeStr); err == nil {
-						if youngestAtime.IsZero() || parsedTime.After(youngestAtime) {
-							youngestAtime = parsedTime
-							youngestMtime = file.ModTime
-						}
-					}
-				}
-			}
-
-			// Use TierSelector with youngest file's access time
-			selectedClass := s.config.TierSelector.SelectTier(youngestAtime, youngestMtime)
-			storageClass = awsconfig.StorageClass(selectedClass)
-		}
-	}
+	// Storage class: pre-assigned tier (#164), TierSelector, or the default.
+	storageClass := awsconfig.StorageClass(chunkStorageClass(s.config, &job.Chunk))
 
 	// Create transporter Archive struct
 	archive := s3transport.Archive{
@@ -421,38 +390,8 @@ func (s *S3UploaderStage) uploadViaTransporter(ctx context.Context, s3Key string
 
 // uploadViaManager uploads using basic AWS SDK the SDK transfer manager (backward compatibility)
 func (s *S3UploaderStage) uploadViaManager(ctx context.Context, s3Key string, job *Job, metadata map[string]string) error {
-	// Determine storage class: use pre-assigned tier (Issue #164), TierSelector, or default
-	storageClass := s.config.StorageClass
-
-	// Issue #164: Check for pre-assigned tier from tier-aware chunking (v2)
-	if job.Chunk.PreAssignedTier != "" {
-		// Tier-aware chunking has already grouped files by tier - use pre-assigned tier
-		storageClass = job.Chunk.PreAssignedTier
-	} else if s.config.TierSelector != nil && s.config.TierSelector.Enabled {
-		// Fallback to v1 youngest-file strategy for backward compatibility
-		// Find youngest (most recently accessed) file in chunk for tier selection
-		// Conservative approach: if ANY file is hot, keep entire chunk in hot tier
-		if len(job.Chunk.Files) > 0 {
-			var youngestAtime time.Time
-			var youngestMtime time.Time
-
-			// Scan all files to find the most recently accessed
-			for _, file := range job.Chunk.Files {
-				// Parse atime from metadata (stored as RFC3339 string)
-				if atimeStr, ok := file.Metadata["atime"]; ok {
-					if parsedTime, err := time.Parse(time.RFC3339, atimeStr); err == nil {
-						if youngestAtime.IsZero() || parsedTime.After(youngestAtime) {
-							youngestAtime = parsedTime
-							youngestMtime = file.ModTime
-						}
-					}
-				}
-			}
-
-			// Use TierSelector with youngest file's access time
-			storageClass = s.config.TierSelector.SelectTier(youngestAtime, youngestMtime)
-		}
-	}
+	// Storage class: pre-assigned tier (#164), TierSelector, or the default.
+	storageClass := chunkStorageClass(s.config, &job.Chunk)
 
 	// Prepare upload input (#384: transfermanager's own input/enum types; string
 	// casts preserve identical StorageClass/SSE values).
