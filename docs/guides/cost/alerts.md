@@ -141,10 +141,19 @@ A failed test prints the underlying error (e.g. SMTP `535 Authentication
 failed`) with troubleshooting hints — much faster than waiting for a real alert
 that never arrives.
 
+Delivery errors name a Slack or webhook endpoint by scheme and host only, such
+as `https://hooks.slack.com`. The path and query, which carry the webhook's
+secret, never appear in an error or in `alerts config` output, so the logs of
+a long-running `fleet monitor` stay safe to share.
+
 ::: tip Cooldown prevents spam
 Alerts have a cooldown period (24h by default) so a project sitting just over a
 threshold doesn't notify on every upload. Shorten it for critical projects,
 lengthen it for stable ones.
+
+The cooldown is tracked per channel and starts only when that channel delivers.
+If an alert fails, for example because Slack is unreachable, the next check
+retries it, and channels that already delivered aren't sent the alert again.
 :::
 
 ## Troubleshooting

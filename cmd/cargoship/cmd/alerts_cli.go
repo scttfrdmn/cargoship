@@ -325,7 +325,7 @@ func runAlertsConfig(ctx context.Context, jsonOutput bool) error {
 		fmt.Println("  Status:         ✅ Enabled")
 		fmt.Printf("  Timeout:        %v\n", config.WebhookTimeout)
 		if config.WebhookURL != "" {
-			fmt.Printf("  URL:            %s\n", config.WebhookURL)
+			fmt.Printf("  URL:            %s/... (path hidden: it can carry the credential)\n", cost.RedactURL(config.WebhookURL))
 		}
 	} else {
 		fmt.Println("  Status:         ⏸️  Disabled")
