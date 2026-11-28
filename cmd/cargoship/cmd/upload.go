@@ -19,6 +19,7 @@ import (
 	versionpkg "github.com/scttfrdmn/cargoship/internal/version"
 	cargoconfig "github.com/scttfrdmn/cargoship/pkg/aws/config"
 	"github.com/scttfrdmn/cargoship/pkg/aws/cost"
+	"github.com/scttfrdmn/cargoship/pkg/encryption"
 	"github.com/scttfrdmn/cargoship/pkg/manifest"
 	"github.com/scttfrdmn/cargoship/pkg/observability/bindguard"
 	"github.com/scttfrdmn/cargoship/pkg/observability/metrics"
@@ -855,7 +856,15 @@ Examples:
 			if dvcAuto && result.Success {
 				if m := pipe.GetManifest(); m != nil {
 					manifest.AnnotateFilesWithDVCStages(m.Files, absPath)
-					if rerr := m.UploadToS3(ctx, s3Client, true); rerr != nil {
+					// #1001: rewrite through the same encrypt-or-fail rule as the
+					// pipeline's own manifest upload; this used the plaintext
+					// UploadToS3 and left a readable manifest.json.gz next to the
+					// encrypted one.
+					var mk encryption.KMSClient // a nil *kms.Client must stay a nil interface
+					if kmsClient != nil {
+						mk = kmsClient
+					}
+					if rerr := rewriteFinalManifest(ctx, s3Client, mk, m, encryptManifest); rerr != nil {
 						_, _ = fmt.Fprintf(cmd.OutOrStderr(),
 							"⚠️  DVC annotation manifest re-upload failed: %v\n", rerr)
 					} else if !quiet {
@@ -1217,6 +1226,23 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%.1f hours", d.Hours())
 	}
 	return fmt.Sprintf("%.1f days", d.Hours()/24)
+}
+
+// rewriteFinalManifest re-uploads a finalized manifest after a post-upload edit
+// (--dvc-auto) with the rule the pipeline's own manifest upload follows (#913):
+// an --encrypt-manifest upload's manifest is written encrypted, or the rewrite
+// fails; it is never written in plaintext (#1001).
+func rewriteFinalManifest(ctx context.Context, s3Client *s3.Client, kmsClient encryption.KMSClient, m *manifest.Manifest, encryptManifest bool) error {
+	if !encryptManifest {
+		return m.UploadToS3(ctx, s3Client, true)
+	}
+	if kmsClient == nil {
+		return fmt.Errorf("--encrypt-manifest is set but no KMS client is available; the manifest was not rewritten")
+	}
+	if m.Encryption == nil || !m.Encryption.ManifestEncrypted || m.Encryption.ManifestKMSKeyID == "" {
+		return fmt.Errorf("--encrypt-manifest is set but manifest %s has no manifest encryption settings; it was not rewritten", m.UploadID)
+	}
+	return m.UploadToS3WithEncryption(ctx, s3Client, kmsClient, true)
 }
 
 // resumeEncryption reconciles the encryption flags of a resuming `upload` with

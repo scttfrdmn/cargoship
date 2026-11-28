@@ -747,8 +747,14 @@ func parseManifestJSON(data []byte) (*Manifest, error) {
 	return FromJSON(data)
 }
 
-// UploadToS3 uploads the manifest to S3
+// UploadToS3 uploads the manifest to S3 in plaintext. It refuses a manifest
+// marked ManifestEncrypted (--encrypt-manifest): that one must go through
+// UploadToS3WithEncryption, or not be written at all (#1001).
 func (m *Manifest) UploadToS3(ctx context.Context, s3Client *s3.Client, compress bool) error {
+	if m.Encryption != nil && m.Encryption.ManifestEncrypted {
+		return fmt.Errorf("refusing to write manifest %s in plaintext: it is marked encrypted (--encrypt-manifest)", m.UploadID)
+	}
+
 	var data []byte
 	var key string
 	var contentType string
@@ -793,9 +799,17 @@ func (m *Manifest) UploadToS3(ctx context.Context, s3Client *s3.Client, compress
 // UploadToS3WithEncryption uploads the manifest to S3 with optional KMS encryption (Issue #163)
 func (m *Manifest) UploadToS3WithEncryption(ctx context.Context, s3Client *s3.Client, kmsClient encryption.KMSClient, compress bool) error {
 	// Check if manifest encryption is enabled
-	if m.Encryption == nil || !m.Encryption.ManifestEncrypted || m.Encryption.ManifestKMSKeyID == "" {
+	if m.Encryption == nil || !m.Encryption.ManifestEncrypted {
 		// No encryption - use regular upload
 		return m.UploadToS3(ctx, s3Client, compress)
+	}
+	// #1001: an encrypted manifest with no key used to fall through to the
+	// plaintext upload. Encrypt or fail.
+	if m.Encryption.ManifestKMSKeyID == "" {
+		return fmt.Errorf("refusing to write manifest %s in plaintext: it is marked encrypted but has no manifest KMS key", m.UploadID)
+	}
+	if kmsClient == nil {
+		return fmt.Errorf("refusing to write manifest %s in plaintext: it is marked encrypted but no KMS client was given", m.UploadID)
 	}
 
 	// Serialize manifest to JSON
