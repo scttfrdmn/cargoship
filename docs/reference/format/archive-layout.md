@@ -141,8 +141,11 @@ The key is:
 ```
 
 `{relative-path}` is the file's path relative to the source root, with `/`
-separators on every OS. Each object carries the metadata `cargoship-mode: direct`,
-`cargoship-file-path` and `cargoship-file-size`.
+separators on every OS. Each object carries the metadata `cargoship-mode: direct`
+and `cargoship-file-size`. Objects written before v0.44.0 also carry
+`cargoship-file-path`, which held the file's absolute local path. It is no longer
+written, because nothing reads it and it exposed names (#1037). An
+`--encrypt-manifest` upload never uses this layout: its files always go into chunks.
 
 Uploads written by earlier releases keep the keys they were written with, and
 readers resolve each file's recorded `s3_key`, so they restore unchanged:

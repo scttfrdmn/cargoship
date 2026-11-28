@@ -25,6 +25,18 @@ import (
 // files out of the namespace of CargoShip's own objects (manifest*.json*).
 const DirectFilesSegment = "files"
 
+// RequireChunkedUpload makes cfg's upload pack every file into chunks: direct
+// mode is never chosen, automatically or otherwise. Direct mode stores each
+// file as its own object keyed by its path, so an --encrypt-manifest upload,
+// which exists to hide file names, must not use it (#1037). The automatic
+// choice requires fileCount <= DirectUploadMaxFiles, which no count meets when
+// the limit is negative.
+func RequireChunkedUpload(cfg *PipelineConfig) {
+	cfg.EnableDirectUpload = false
+	cfg.ForceDirectUpload = false
+	cfg.DirectUploadMaxFiles = -1
+}
+
 // directManifestBuilder is the interface satisfied by *manifest.Builder for direct upload mode.
 // Using a minimal interface keeps direct_uploader.go decoupled from the concrete type.
 type directManifestBuilder interface {
@@ -299,9 +311,11 @@ func (s *DirectUploaderStage) uploadFile(ctx context.Context, file chunking.File
 			Key:          aws.String(s3Key),
 			Body:         f,
 			StorageClass: s.config.StorageClass,
+			// #1037: no cargoship-file-path. It held the file's absolute local
+			// path, which nothing reads, and it exposed every name to anyone who
+			// can HeadObject. The manifest records the path.
 			Metadata: map[string]string{
 				"cargoship-mode":      "direct",
-				"cargoship-file-path": file.Path,
 				"cargoship-file-size": fmt.Sprintf("%d", file.Size),
 			},
 		}

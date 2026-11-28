@@ -195,6 +195,12 @@ Examples:
 			if encryptManifest && kmsKeyID == "" {
 				return fmt.Errorf("--encrypt-manifest requires --kms-key-id to be set")
 			}
+			// #1037: direct mode names every object after its file, which is what
+			// --encrypt-manifest exists to hide.
+			if encryptManifest && (cmd.Flags().Changed("direct-upload") || cmd.Flags().Changed("force-direct-upload")) {
+				return fmt.Errorf("%w: --encrypt-manifest can't be combined with --direct-upload or --force-direct-upload: "+
+					"direct mode stores each file as an object named by its path, which would expose the names the manifest encryption hides", ErrUsage)
+			}
 
 			// Validate auto-tier flag (Issue #32)
 			autoTier, _ := cmd.Flags().GetBool("auto-tier")
@@ -714,6 +720,16 @@ Examples:
 				// Issue #185: DVC pipeline and Git metadata
 				DVCPipelineData: dvcPipelineData,
 				GitMetadataData: gitMetadataData,
+			}
+
+			// #1037: under --encrypt-manifest every file goes into chunks, whose keys
+			// name no file. The small-file fast path stored each file as an object
+			// named by its path, listable without KMS.
+			if encryptManifest {
+				pipeline.RequireChunkedUpload(pipelineConfig)
+				if !quiet {
+					fmt.Println("🔒 --encrypt-manifest: packing every file into chunks (direct upload would name objects after files)")
+				}
 			}
 
 			if !quiet {

@@ -282,6 +282,12 @@ func newResumePipelineConfig(state *resume.UploadState, s3Client *s3.Client, kms
 		ResumeMode:     true,
 		ResumeUploadID: state.UploadID,
 	}
+	// #1037: an --encrypt-manifest upload never uses direct mode, which names
+	// objects after files; its resume doesn't either.
+	if state.EncryptManifest {
+		pipeline.RequireChunkedUpload(cfg)
+	}
+
 	if kmsClient != nil {
 		cfg.KMSClient = kmsClient // a nil *kms.Client in the interface would look configured
 	}
