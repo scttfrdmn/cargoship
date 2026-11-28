@@ -45,6 +45,15 @@ from.
 Use this when even file *names and structure* are sensitive (e.g. clinical or
 proprietary datasets), not just file contents.
 
+With `--encrypt-manifest`, every file is packed into chunks, including small
+uploads that would otherwise take the direct-upload fast path. That path stores
+each file as its own object named by its path, so anyone allowed to list the
+bucket would see the names. Chunk keys (`uploads/<id>/shard-N/chunk-M.tar.zst`)
+name no file. `--direct-upload` and `--force-direct-upload` are refused with
+`--encrypt-manifest`. Objects written before v0.44.0 by a small encrypted upload
+still have path-named keys; to hide those names, re-upload the data and delete
+the old upload.
+
 ## GPG key pairs
 
 For encryption that doesn't depend on AWS KMS — portable archives, offline

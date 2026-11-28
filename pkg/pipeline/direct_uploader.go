@@ -20,6 +20,23 @@ import (
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
 )
 
+// DirectFilesSegment is the key segment direct-mode objects live under:
+// <prefix>/uploads/<upload-id>/files/<relative path> (#1020). It keeps source
+// files out of the namespace of CargoShip's own objects (manifest*.json*).
+const DirectFilesSegment = "files"
+
+// RequireChunkedUpload makes cfg's upload pack every file into chunks: direct
+// mode is never chosen, automatically or otherwise. Direct mode stores each
+// file as its own object keyed by its path, so an --encrypt-manifest upload,
+// which exists to hide file names, must not use it (#1037). The automatic
+// choice requires fileCount <= DirectUploadMaxFiles, which no count meets when
+// the limit is negative.
+func RequireChunkedUpload(cfg *PipelineConfig) {
+	cfg.EnableDirectUpload = false
+	cfg.ForceDirectUpload = false
+	cfg.DirectUploadMaxFiles = -1
+}
+
 // directManifestBuilder is the interface satisfied by *manifest.Builder for direct upload mode.
 // Using a minimal interface keeps direct_uploader.go decoupled from the concrete type.
 type directManifestBuilder interface {
@@ -294,9 +311,11 @@ func (s *DirectUploaderStage) uploadFile(ctx context.Context, file chunking.File
 			Key:          aws.String(s3Key),
 			Body:         f,
 			StorageClass: s.config.StorageClass,
+			// #1037: no cargoship-file-path. It held the file's absolute local
+			// path, which nothing reads, and it exposed every name to anyone who
+			// can HeadObject. The manifest records the path.
 			Metadata: map[string]string{
 				"cargoship-mode":      "direct",
-				"cargoship-file-path": file.Path,
 				"cargoship-file-size": fmt.Sprintf("%d", file.Size),
 			},
 		}
@@ -351,6 +370,14 @@ func (s *DirectUploaderStage) uploadFile(ctx context.Context, file chunking.File
 // upload's bytes. When UploadID is empty (unit tests), the pre-#591 flat layout
 // is kept; restore is unaffected either way because it resolves the manifest's
 // stored FileEntry.S3Key, and ResolveObjectKey is idempotent for both shapes.
+//
+// #1020: the files sit one level down, under uploads/<uploadID>/files/, so no
+// source file can take a key CargoShip writes for itself. At uploads/<id>/ a
+// root-level manifest.json.gz was overwritten by the manifest,
+// manifest.partial.json.gz was deleted with the partial manifest, and a
+// manifest.encrypted.json[.gz] made readers try to decrypt the user's file.
+// Uploads written before this keep their keys and still restore (readers use
+// the recorded S3Key).
 func (s *DirectUploaderStage) buildS3Key(filePath string) string {
 	relPath := filepath.Base(filePath)
 	if s.config.SourcePath != "" {
@@ -362,12 +389,12 @@ func (s *DirectUploaderStage) buildS3Key(filePath string) string {
 	// S3 keys are always slash-separated, regardless of host OS.
 	relPath = filepath.ToSlash(relPath)
 
-	segments := make([]string, 0, 4)
+	segments := make([]string, 0, 5)
 	if s.config.Prefix != "" {
 		segments = append(segments, s.config.Prefix)
 	}
 	if s.config.UploadID != "" {
-		segments = append(segments, "uploads", s.config.UploadID)
+		segments = append(segments, "uploads", s.config.UploadID, DirectFilesSegment)
 	}
 	segments = append(segments, relPath)
 	return path.Join(segments...)

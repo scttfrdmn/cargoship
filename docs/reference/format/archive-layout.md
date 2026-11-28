@@ -118,6 +118,52 @@ carries the full `s3_key` (and shards carry `chunk_keys`). Use those. The scheme
 here is for understanding and for tools that scan a bucket without a manifest.
 :::
 
+### Direct-upload layout
+
+Small uploads take the direct-upload fast path (see
+[Optimization](/guides/features/optimization)). There are no chunks: each file is
+stored as its own object, uncompressed, under a `files/` segment, so no source
+file can take the key of one of CargoShip's own objects:
+
+```
+s3://{bucket}/{prefix}/uploads/{upload-id}/
+├── manifest.json.gz                         # the index
+└── files/
+    ├── manifest.json.gz                     # a source file with that name, kept apart
+    └── data/
+        └── report.csv                       # path relative to the source root
+```
+
+The key is:
+
+```
+{prefix}/uploads/{upload-id}/files/{relative-path}
+```
+
+`{relative-path}` is the file's path relative to the source root, with `/`
+separators on every OS. Each object carries the metadata `cargoship-mode: direct`
+and `cargoship-file-size`. Objects written before v0.44.0 also carry
+`cargoship-file-path`, which held the file's absolute local path. It is no longer
+written, because nothing reads it and it exposed names (#1037). An
+`--encrypt-manifest` upload never uses this layout: its files always go into chunks.
+
+Uploads written by earlier releases keep the keys they were written with, and
+readers resolve each file's recorded `s3_key`, so they restore unchanged:
+
+| Written by | Direct-object key |
+|------------|-------------------|
+| v0.44.0 and later | `{prefix}/uploads/{upload-id}/files/{relative-path}` |
+| v0.31.0 – v0.43.x | `{prefix}/uploads/{upload-id}/{relative-path}` |
+| v0.24.3 – v0.30.x | `{prefix}/{relative-path}` |
+| up to v0.24.2 | `{prefix}/{basename}` |
+
+The v0.31–v0.43 layout shares the upload's namespace with its manifest objects.
+A source file at the root named `manifest.json.gz`, `manifest.json`,
+`manifest.partial.json.gz` or `manifest.encrypted.json[.gz]` was overwritten or
+deleted by CargoShip's own manifest writes, or (for the encrypted names) made
+the manifest reader try to decrypt it (#1020). The `files/` segment exists to
+prevent this.
+
 ## Shard assignment
 
 A chunk's shard is a deterministic function of the chunk, chosen by
