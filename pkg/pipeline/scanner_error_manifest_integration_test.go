@@ -4,11 +4,10 @@ package pipeline
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,35 +19,6 @@ import (
 
 	"github.com/scttfrdmn/cargoship/pkg/chunking"
 )
-
-// writePrefixedFiles writes n files of size bytes under dir. Each starts with a
-// fixed text prefix, so random bytes can never look like a magic number.
-func writePrefixedFiles(t *testing.T, dir, name string, n, size int) {
-	t.Helper()
-	require.NoError(t, os.MkdirAll(dir, 0o750))
-	for i := 0; i < n; i++ {
-		buf := make([]byte, size)
-		_, err := rand.Read(buf)
-		require.NoError(t, err)
-		copy(buf, fmt.Sprintf("cargoship-test %s %05d\n", name, i))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, fmt.Sprintf("%s%05d.dat", name, i)), buf, 0o600))
-	}
-}
-
-// lockedDir creates dir with one file in it and then removes every permission
-// from it, so the walk can't read it. The test is skipped where that can't work.
-func lockedDir(t *testing.T, dir string) {
-	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("mode 000 does not make a directory unreadable on Windows")
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("root can read a mode-000 directory")
-	}
-	writePrefixedFiles(t, dir, "hidden", 1, 64)
-	require.NoError(t, os.Chmod(dir, 0o000))
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o750) }) //nolint:gosec // restore so TempDir cleanup can remove it
-}
 
 // TestUpload_ScannerErrorWritesNoFinalManifest pins #999. A walk error (here an
 // unreadable directory) used to leave the final manifest decision to the chunk
@@ -122,6 +92,82 @@ func TestUpload_ScannerErrorWritesNoFinalManifest(t *testing.T) {
 			assert.True(t, isNoSuchKeyErr(headErr),
 				"a run whose scan failed must not write its final manifest (HeadObject err=%v)", headErr)
 			assert.True(t, p.GetManifest() == nil, "a run whose scan failed must not finalize a manifest")
+		})
+	}
+}
+
+// TestUpload_ScanFailsWithChunksInFlight is the audit's reproduction for #999,
+// #1005 and #1006 together: a full batch of files is chunked and uploading when
+// the walk reaches an unreadable directory. Before the fixes the run panicked
+// ("send on closed channel"), or lost the walk error and succeeded without the
+// rest of the files, or wrote a final manifest whose chunks cleanup then deleted.
+func TestUpload_ScanFailsWithChunksInFlight(t *testing.T) {
+	bucket := os.Getenv("CARGOSHIP_TEST_BUCKET")
+	if bucket == "" {
+		bucket = "cargoship-pipeline-test"
+	}
+	region := os.Getenv("AWS_REGION")
+	if region == "" {
+		region = "us-east-1"
+	}
+	ctx := context.Background()
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	require.NoError(t, err)
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) { o.UsePathStyle = substrateURL != "" })
+
+	src := t.TempDir()
+	writePrefixedFiles(t, filepath.Join(src, "a"), "f", 1100, 1024)
+	lockedDir(t, filepath.Join(src, "b-locked"))
+
+	for _, cleanup := range []bool{true, false} {
+		t.Run(fmt.Sprintf("cleanup=%v", cleanup), func(t *testing.T) {
+			prefix := fmt.Sprintf("scan-fails-%d", time.Now().UnixNano())
+			uploadID := fmt.Sprintf("u-%d", time.Now().UnixNano())
+			p, err := NewPipeline(&PipelineConfig{
+				ScannerWorkers: 2, ArchiverWorkers: 2, UploaderWorkers: 2,
+				S3Bucket: bucket, S3Prefix: prefix, S3Region: region,
+				UseRealS3: true, S3Client: client, S3PartSize: 5 * 1024 * 1024,
+				UploadID:                    uploadID,
+				EnableManifest:              true,
+				EnablePartialManifest:       true,
+				PartialManifestSaveInterval: time.Hour,
+				CleanupOnFailure:            cleanup,
+				SourcePath:                  src,
+				DirectUploadMaxFiles:        1,
+				ChunkingConfig: &chunking.ChunkingConfig{
+					Workers: 2, AvailableMemory: 1 << 30,
+					TargetChunkSize: 256 << 10, MinChunkSize: 128 << 10, MaxChunkSize: 256 << 10,
+				},
+				EnableMultiPrefix: true, ShardCount: 4, WorkersPerPrefix: 2,
+			})
+			require.NoError(t, err)
+
+			result, runErr := p.Run(ctx, src)
+			require.Error(t, runErr, "the walk error must fail the run")
+			assert.Contains(t, runErr.Error(), "b-locked")
+			assert.False(t, result.Success)
+			assert.Positive(t, result.ChunksUploaded, "the test needs chunks uploaded before the walk failed")
+
+			objects := map[string]bool{}
+			out, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: aws.String(bucket), Prefix: aws.String(prefix + "/")})
+			require.NoError(t, err)
+			chunks := 0
+			for _, obj := range out.Contents {
+				objects[aws.ToString(obj.Key)] = true
+				if strings.Contains(aws.ToString(obj.Key), "/chunk-") {
+					chunks++
+				}
+			}
+			base := fmt.Sprintf("%s/uploads/%s/", prefix, uploadID)
+			assert.False(t, objects[base+"manifest.json.gz"], "no final manifest after a failed scan; objects: %v", objects)
+			if cleanup {
+				assert.Zero(t, chunks, "cleanup deletes the run's chunks; objects: %v", objects)
+				assert.False(t, objects[base+"manifest.partial.json.gz"], "cleanup deletes the partial manifest")
+			} else {
+				assert.Positive(t, chunks, "without cleanup the stored chunks stay for resume")
+				assert.True(t, objects[base+"manifest.partial.json.gz"],
+					"without cleanup the partial manifest stays for resume; objects: %v", objects)
+			}
 		})
 	}
 }
