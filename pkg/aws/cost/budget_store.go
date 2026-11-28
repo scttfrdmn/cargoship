@@ -71,7 +71,7 @@ func localToken(data []byte) Token {
 // corruptStoreError wraps a parse failure of the store at path so it names the
 // file, says what to do, and matches ErrBudgetStoreCorrupt.
 func corruptStoreError(path string, err error) error {
-	return fmt.Errorf("%w: %q: %v (budgets cannot be enforced from it; cargoship will not overwrite it, so repair the file or move it aside)",
+	return fmt.Errorf("%w: \"%s\": %v (budgets cannot be enforced from it; cargoship will not overwrite it, so repair the file or move it aside)",
 		ErrBudgetStoreCorrupt, path, err)
 }
 
@@ -140,7 +140,7 @@ func (localStore) Save(state LedgerState, token Token) error {
 		return err
 	}
 	if token != "" && token != current {
-		return fmt.Errorf("save budget store %q: %w", path, ErrBudgetStoreConflict)
+		return fmt.Errorf("save budget store \"%s\": %w", path, ErrBudgetStoreConflict)
 	}
 	return atomicWriteFile(path, data)
 }
@@ -163,14 +163,14 @@ func lockStoreFile(path string) (func(), error) {
 			return func() { _ = os.Remove(lockPath) }, nil
 		}
 		if !errors.Is(err, fs.ErrExist) {
-			return nil, fmt.Errorf("lock budget store %q: %w", path, err)
+			return nil, fmt.Errorf("lock budget store \"%s\": %w", path, err)
 		}
 		if fi, sErr := os.Stat(lockPath); sErr == nil && time.Since(fi.ModTime()) > storeLockStaleAfter {
 			_ = os.Remove(lockPath)
 			continue
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("budget store %q is locked by another cargoship process; if none is running, remove %q", path, lockPath)
+			return nil, fmt.Errorf("budget store \"%s\" is locked by another cargoship process; if none is running, remove \"%s\"", path, lockPath)
 		}
 		time.Sleep(storeLockPoll)
 	}

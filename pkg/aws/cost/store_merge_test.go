@@ -404,3 +404,14 @@ func TestManager_ConcurrentGoroutineWriters(t *testing.T) {
 	assert.Len(t, got.ProjectBudgets, writers)
 	assert.Len(t, got.Records, writers)
 }
+
+func TestJitterBounds(t *testing.T) {
+	assert.Zero(t, jitter(0))
+	assert.Zero(t, jitter(-time.Second))
+	const limit = 10 * time.Millisecond
+	for i := 0; i < 200; i++ {
+		j := jitter(limit)
+		require.GreaterOrEqual(t, j, time.Duration(0))
+		require.LessOrEqual(t, j, limit)
+	}
+}

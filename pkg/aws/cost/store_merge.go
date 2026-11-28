@@ -1,10 +1,11 @@
 package cost
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"sort"
 	"time"
 
@@ -249,5 +250,19 @@ func mergeSaveBackoff(attempt int) {
 	if wait <= 0 || wait > mergeSaveMaxWait {
 		wait = mergeSaveMaxWait
 	}
-	time.Sleep(wait/2 + time.Duration(rand.Int64N(int64(wait/2)+1))) //nolint:gosec // retry jitter, not security
+	time.Sleep(wait/2 + jitter(wait/2))
+}
+
+// jitter returns a random duration in [0, limit]. It reads crypto/rand, since
+// the repo's SAST policy rejects the non-crypto generator. The value only
+// spreads retries out, so if the read fails it falls back to half the limit.
+func jitter(limit time.Duration) time.Duration {
+	if limit <= 0 {
+		return 0
+	}
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return limit / 2
+	}
+	return time.Duration(binary.LittleEndian.Uint64(b[:]) % (uint64(limit) + 1))
 }
